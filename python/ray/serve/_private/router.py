@@ -99,6 +99,7 @@ class RouterMetricsManager:
                 "actor_id": self._self_actor_id,
             }
         )
+
         self.num_queued_requests = 0
         self.num_queued_requests_gauge = queued_requests_gauge
         self.num_queued_requests_gauge.set_default_tags(
@@ -110,6 +111,7 @@ class RouterMetricsManager:
             }
         )
         self.num_queued_requests_gauge.set(0)
+
         # Track queries sent to replicas for the autoscaling algorithm.
         self.num_requests_sent_to_replicas: DefaultDict[ReplicaID, int] = defaultdict(
             int
@@ -123,7 +125,6 @@ class RouterMetricsManager:
                 "actor_id": self._self_actor_id,
             }
         )
-
         # We use Ray object ref callbacks to update state when tracking
         # number of requests running on replicas. The callbacks will be
         # called from a C++ thread into the router's async event loop,
