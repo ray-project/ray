@@ -61,7 +61,6 @@ struct SerializeReturnObjectState {
 void SerializeReturnObject(const ObjectID &object_id,
                            const std::shared_ptr<RayObject> &return_object,
                            rpc::ReturnObject *return_object_proto) {
-  double start_time = absl::GetCurrentTimeNanos() / 1e6;
   return_object_proto->set_object_id(object_id.Binary());
 
   if (!return_object) {
@@ -74,15 +73,10 @@ void SerializeReturnObject(const ObjectID &object_id,
   return_object_proto->set_size(return_object->GetSize());
   if (return_object->GetData() != nullptr && return_object->GetData()->IsPlasmaBuffer()) {
     return_object_proto->set_in_plasma(true);
-    RAY_LOG(ERROR) << "SerializeReturnObject into plasma " << object_id;
   } else {
     if (return_object->HasString()) {
-      RAY_LOG(ERROR) << "SerializeReturnObject: " << object_id << " "
-                     << return_object->GetString().size();
       return_object_proto->set_data(std::move(return_object->GetString()));
     } else if (return_object->HasData()) {
-      RAY_LOG(ERROR) << "SerializeReturnObject: " << object_id << " "
-                     << return_object->GetData()->Size();
       return_object_proto->set_data(return_object->GetData()->Data(),
                                     return_object->GetData()->Size());
     }
@@ -94,11 +88,6 @@ void SerializeReturnObject(const ObjectID &object_id,
   for (const auto &nested_ref : return_object->GetNestedRefs()) {
     return_object_proto->add_nested_inlined_refs()->CopyFrom(nested_ref);
   }
-  static SerializeReturnObjectState state;
-  double duration = ((absl::GetCurrentTimeNanos() / 1e6) - start_time);
-  state.total_duration = state.total_duration + duration;
-  // RAY_LOG(ERROR) << "SerializeReturnObject done in " << duration << "ms";
-  RAY_LOG(ERROR) << "Total duration: " << state.total_duration << "ms";
 }
 
 }  // namespace core

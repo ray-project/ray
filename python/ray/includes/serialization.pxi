@@ -621,7 +621,5 @@ cdef class RawSerializedObject(SerializedObject):
     @cython.boundscheck(False)
     @cython.wraparound(False)
     cdef void write_to_str(self, c_string* buffer) nogil:
-        with gil:
-            print("my special raw serializer called")
         with nogil:
             buffer[0].append(<const char*>(self.value_ptr), self._total_bytes)
