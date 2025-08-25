@@ -64,8 +64,11 @@ class NodeResourceInfoGrpcService : public GrpcService {
   ///
   /// \param[in] handler The service handler that actually handle the requests.
   explicit NodeResourceInfoGrpcService(instrumented_io_context &io_service,
-                                       NodeResourceInfoGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler){};
+                                       NodeResourceInfoGcsServiceHandler &handler,
+                                       int64_t max_active_rpcs_per_handler)
+      : GrpcService(io_service),
+        service_handler_(handler),
+        max_active_rpcs_per_handler_(max_active_rpcs_per_handler_){};
 
  protected:
   grpc::Service &GetGrpcService() override { return service_; }
@@ -76,10 +79,9 @@ class NodeResourceInfoGrpcService : public GrpcService {
       const ClusterID &cluster_id) override;
 
  private:
-  /// The grpc async service object.
   NodeResourceInfoGcsService::AsyncService service_;
-  /// The service handler that actually handle the requests.
   NodeResourceInfoGcsServiceHandler &service_handler_;
+  int64_t max_active_rpcs_per_handler_;
 };
 
 }  // namespace rpc
