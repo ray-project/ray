@@ -113,6 +113,7 @@ def __ray_fetch_gpu_object__(self, obj_id: str):
 def __ray_get_cuda_device__(self) -> int:
     try:
         import torch as _torch
+
         if _torch.cuda.is_available():
             return int(_torch.cuda.current_device())
     except Exception:
@@ -156,8 +157,9 @@ def _extract_cuda_metadata(tensor: torch.Tensor):
 # Returns a list of metadata tuples per tensor.
 def __ray_cuda_ipc_export__(self, obj_id: str):
     from ray._private.worker import global_worker
+
     tensors = global_worker.gpu_object_manager.gpu_object_store.get_object(obj_id)
-    
+
     metas = []
     for t in tensors:
         tensor_meta = _extract_cuda_metadata(t)
@@ -177,6 +179,7 @@ def __ray_cuda_ipc_import__(self, obj_id: str, metas):
         tensors.append(t)
 
     from ray._private.worker import global_worker
+
     global_worker.gpu_object_manager.gpu_object_store.add_object(obj_id, tensors)
 
 
