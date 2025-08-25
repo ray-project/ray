@@ -6,8 +6,6 @@ from ray._private.custom_types import TensorTransportEnum
 from ray._raylet import ObjectRef
 from ray._private import ray_constants
 
-import traceback
-
 
 if TYPE_CHECKING:
     import torch
@@ -85,7 +83,6 @@ class GPUObjectManager:
         dst_actor: "ray.actor.ActorHandle",
         obj_ref: ObjectRef,
     ) -> bool:
-        print("try ipc transfer same gpu")
         """
         Attempt a same-GPU transfer using CUDA IPC when both actors are on the
         same CUDA device. Returns True on success; False to fall back to network.
@@ -107,7 +104,6 @@ class GPUObjectManager:
             )
         )
         if src_dev >= 0 and dst_dev >= 0 and src_dev == dst_dev:
-            print("try ipc transfer same gpu success")
             obj_id = obj_ref.hex()
             metas = ray.get(
                 src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
@@ -303,8 +299,7 @@ class GPUObjectManager:
                     # Done for this object; skip network transfer.
                     continue
             except Exception as e:
-                print(f"IPC transfer failed for {obj_ref.hex()}: {e}")
-                print(traceback.format_exc())
+                raise ValueError(f"IPC transfer failed for {obj_ref.hex()}: {e}")
 
             communicators = get_collective_groups(
                 [src_actor, dst_actor], backend=gpu_object_meta.tensor_transport_backend
@@ -341,7 +336,6 @@ class GPUObjectManager:
                 # be transferred intra-process, so we skip the out-of-band tensor
                 # transfer.
                 continue
-            print("normal transfer")
             obj_id = obj_ref.hex()
             self._send_object(communicator.name, src_actor, obj_id, dst_rank)
             self._recv_object(

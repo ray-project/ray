@@ -46,18 +46,6 @@ class GPUTestActor:
 
     def fail(self, error_message):
         raise Exception(error_message)
-    
-    @ray.method(tensor_transport="gloo")  # force CPU transport
-    def compute_and_send(self, size=1000000000):
-        x = torch.randn((size,), device="cuda")
-        y = x.relu()  # GPU compute
-        # return y.to("cpu")  # move to CPU for GLOO
-        return y
-    
-    def recv_and_compute(self, data):
-        # z = data.to("cuda")  # move back to GPU
-        # return (z.square()).sum().item()
-        return (data.square()).sum().item()
 
 
 @pytest.mark.parametrize("data_size_bytes", [100])
@@ -231,26 +219,6 @@ def test_p2p_with_cpu_data(ray_start_regular):
     ref = sender.echo.remote(cpu_data)
     result = receiver.double.remote(ref)
     assert ray.get(result) == cpu_data * 2
-
-
-def test_ipc(ray_start_regular):
-    world_size = 2
-    actors = [GPUTestActor.options(num_gpus=0.5).remote() for _ in range(world_size)]
-    create_collective_group(actors, backend="torch_gloo")
-
-    sender, receiver = actors[0], actors[1]
-    # tensor = torch.randn((1000000000,))  # CPU tensor for GLOO
-
-    ref = sender.compute_and_send.remote()
-    t0 = time.perf_counter()
-    result = receiver.recv_and_compute.remote(ref)
-    t1 = time.perf_counter()
-    print(f"gloo_submit_s={t1 - t0:.6f}")
-    out = ray.get(result)
-    t2 = time.perf_counter()
-    print(f"gloo_overall={t2 - t0:.6f}")
-
-    # assert torch.allclose(out, tensor * 2)
 
 
 def test_send_same_ref_to_same_actor_task_multiple_times(ray_start_regular):
@@ -683,7 +651,7 @@ def test_wait_tensor_freed_double_tensor(ray_start_regular):
     ray.experimental.wait_tensor_freed(tensor)
     gc_thread.join()
     assert not gpu_object_store.has_object(obj_id2)
-    
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

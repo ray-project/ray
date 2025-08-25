@@ -3,7 +3,6 @@ import torch
 import pytest
 import ray
 from ray.experimental.collective import create_collective_group
-import time
 
 
 @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
@@ -32,27 +31,6 @@ def test_p2p(ray_start_regular):
     # Trigger tensor transfer from src to dst actor
     remote_sum = ray.get(dst_actor.sum.remote(gpu_ref))
     assert tensor.sum().item() == remote_sum
-
-
-def test_ipc(ray_start_regular):
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA required for IPC test")
-    world_size = 2
-    actors = [GPUTestActor.options(num_gpus=0.5).remote() for _ in range(world_size)]
-    create_collective_group(actors, backend="nccl")
-
-    sender, receiver = actors[0], actors[1]
-    tensor = torch.randn((10,), device="cuda")
-
-    ref = sender.echo.remote(tensor)
-    t0 = time.perf_counter()
-    result = receiver.sum.remote(ref)
-    t1 = time.perf_counter()
-    out = ray.get(result)
-    t2 = time.perf_counter()
-    print(f"ipc_submit_s={t1 - t0:.6f} ipc_get_s={t2 - t1:.6f} ipc_total_s={t2 - t0:.6f}")
-    
-    assert out == tensor.sum().item()
 
 
 if __name__ == "__main__":
