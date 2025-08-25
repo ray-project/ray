@@ -79,8 +79,7 @@ def main(
     env = {}
     frequency = settings["frequency"]
     prefer_smoke_tests = settings["prefer_smoke_tests"]
-    test_attr_regex_filters = settings["test_attr_regex_filters"]
-    test_name_prefix = settings["test_name_prefix"]
+    test_filters = settings["test_filters"]
     priority = settings["priority"]
 
     logger.info(
@@ -113,8 +112,7 @@ def main(
     filtered_tests = filter_tests(
         test_collection,
         frequency=frequency,
-        test_attr_regex_filters=test_attr_regex_filters,
-        test_name_prefix_filter=test_name_prefix,
+        test_filters=test_filters,
         prefer_smoke_tests=prefer_smoke_tests,
         run_jailed_tests=run_jailed_tests,
         run_unstable_tests=run_unstable_tests,
