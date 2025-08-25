@@ -70,6 +70,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.delete
    serve.status
    serve.shutdown
+   serve.shutdown_async
 ```
 
 ### Configurations

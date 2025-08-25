@@ -4,7 +4,7 @@ import pytest
 
 import ray
 import ray.train.collective
-from ray.train.collective import collectives
+from ray.train.v2._internal.execution import collective_impl
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 
 
@@ -49,12 +49,14 @@ def test_broadcast_from_rank_zero(ray_start_4_cpus):
 
 def test_broadcast_from_rank_zero_data_too_big(ray_start_4_cpus):
     def train_fn():
-        collectives.logger = mock.create_autospec(collectives.logger, instance=True)
-        collectives._MAX_BROADCAST_SIZE_BYTES = 0
+        collective_impl.logger = mock.create_autospec(
+            collective_impl.logger, instance=True
+        )
+        collective_impl._MAX_BROADCAST_SIZE_BYTES = 0
         rank = ray.train.get_context().get_world_rank()
         value = ray.train.collective.broadcast_from_rank_zero({"key": rank})
         assert value == {"key": 0}
-        collectives.logger.warning.assert_called_once()
+        collective_impl.logger.warning.assert_called_once()
 
     trainer = DataParallelTrainer(
         train_fn,
