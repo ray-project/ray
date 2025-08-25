@@ -317,8 +317,8 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
       best_node = GetBestNode(
           aggregated_resource_request,
           absl::flat_hash_map<scheduling::NodeID, const ray::Node *>{
-              {options.bundle_strict_pack_soft_target_node_id,
-               candidate_nodes[options.bundle_strict_pack_soft_target_node_id]}},
+              {options.bundle_strict_pack_soft_target_node_id_,
+               candidate_nodes[options.bundle_strict_pack_soft_target_node_id_]}},
           options);
     }
   }
