@@ -63,14 +63,14 @@ class TaskArgByReference : public TaskArg {
       : id_(object_id),
         owner_address_(owner_address),
         call_site_(call_site),
-        tensor_transport_val_(tensor_transport_val) {}
+        tensor_transport_(static_cast<rpc::TensorTransport>(tensor_transport_val)) {}
 
   void ToProto(rpc::TaskArg *arg_proto) const {
     auto ref = arg_proto->mutable_object_ref();
     ref->set_object_id(id_.Binary());
     ref->mutable_owner_address()->CopyFrom(owner_address_);
     ref->set_call_site(call_site_);
-    ref->set_tensor_transport(static_cast<rpc::TensorTransport>(tensor_transport_val_));
+    ref->set_tensor_transport(tensor_transport_);
   }
 
  private:
@@ -78,7 +78,7 @@ class TaskArgByReference : public TaskArg {
   const ObjectID id_;
   const rpc::Address owner_address_;
   const std::string call_site_;
-  const int tensor_transport_val_;
+  const rpc::TensorTransport tensor_transport_;
 };
 
 class TaskArgByValue : public TaskArg {
