@@ -1575,7 +1575,6 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
     // plasma stores. We make the request to the plasma store even if we have num_objects
     // ready since we want to at least make the request to start pulling these objects.
     if (!plasma_object_ids.empty()) {
-      RAY_LOG(ERROR) << "hitting plasma wait" << plasma_object_ids.size();
       RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
           plasma_object_ids,
           std::min(static_cast<int>(plasma_object_ids.size()),
