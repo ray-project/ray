@@ -1,5 +1,5 @@
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 import logging
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 
 from ray.train import Checkpoint, DataConfig
 from ray.train.trainer import GenDataset
@@ -18,12 +18,12 @@ logger = logging.getLogger(__name__)
 
 def _auto_configure_xla_spmd(scaling_config):
     """Auto-configure XLA SPMD settings based on scaling configuration.
-    
+
     This function automatically determines optimal XLA SPMD configuration
     based on the TPU topology and number of workers.
     """
     spmd_config = {}
-    
+
     # Parse topology to determine mesh shape
     if scaling_config.topology:
         try:
@@ -32,23 +32,31 @@ def _auto_configure_xla_spmd(scaling_config):
                 parts = scaling_config.topology.split("x")
                 if len(parts) == 2:
                     spmd_config["mesh_shape"] = [int(parts[0]), int(parts[1])]
-                    logger.info(f"Auto-configured mesh shape: {spmd_config['mesh_shape']}")
+                    logger.info(
+                        f"Auto-configured mesh shape: {spmd_config['mesh_shape']}"
+                    )
         except (ValueError, IndexError):
-            logger.warning(f"Could not parse topology '{scaling_config.topology}', using default SPMD config")
-    
+            logger.warning(
+                f"Could not parse topology '{scaling_config.topology}', using default SPMD config"
+            )
+
     # Set data parallelism based on number of workers
     if scaling_config.num_workers > 1:
         spmd_config["data_parallel_size"] = scaling_config.num_workers
-        logger.info(f"Auto-configured data parallel size: {spmd_config['data_parallel_size']}")
-    
+        logger.info(
+            f"Auto-configured data parallel size: {spmd_config['data_parallel_size']}"
+        )
+
     # Set model parallelism if mesh shape is available
     if "mesh_shape" in spmd_config:
         mesh_shape = spmd_config["mesh_shape"]
         if len(mesh_shape) == 2:
             # For 2D mesh, typically first dimension is data parallel, second is model parallel
             spmd_config["model_parallel_size"] = mesh_shape[1]
-            logger.info(f"Auto-configured model parallel size: {spmd_config['model_parallel_size']}")
-    
+            logger.info(
+                f"Auto-configured model parallel size: {spmd_config['model_parallel_size']}"
+            )
+
     return spmd_config
 
 
@@ -242,17 +250,21 @@ class TorchTrainer(DataParallelTrainer):
         from ray.train.torch.config import TorchConfig
 
         torch_config = torch_config or TorchConfig()
-        
+
         if not torch_config.backend:
             if scaling_config and scaling_config.use_gpu:
                 torch_config.backend = "nccl"
             elif scaling_config and scaling_config.use_tpu:
-                logger.info("Auto-configured torch_config for TPU training with XLA SPMD")
+                logger.info(
+                    "Auto-configured torch_config for TPU training with XLA SPMD"
+                )
                 torch_config.backend = "xla_tpu"
-                
+
                 # Auto-configure XLA SPMD for TPU training
                 if not torch_config.xla_spmd_config:
-                    torch_config.xla_spmd_config = _auto_configure_xla_spmd(scaling_config)
+                    torch_config.xla_spmd_config = _auto_configure_xla_spmd(
+                        scaling_config
+                    )
             else:
                 torch_config.backend = "gloo"
 
