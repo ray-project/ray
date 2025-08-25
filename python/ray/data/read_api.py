@@ -31,6 +31,7 @@ from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data._internal.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
 )
+from ray.data._internal.datasource.flink_datasource import FlinkDatasource
 from ray.data._internal.datasource.hudi_datasource import HudiDatasource
 from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
 from ray.data._internal.datasource.image_datasource import (
@@ -42,6 +43,7 @@ from ray.data._internal.datasource.json_datasource import (
     ArrowJSONDatasource,
     PandasJSONDatasource,
 )
+from ray.data._internal.datasource.kafka_datasource import KafkaDatasource
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
@@ -65,6 +67,10 @@ from ray.data._internal.logical.operators.from_operators import (
     FromPandas,
 )
 from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.operators.streaming_data_operator import (
+    StreamingTrigger,
+    UnboundedQueueStreamingData,
+)
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
@@ -4079,4 +4085,535 @@ def _emit_meta_provider_deprecation_warning(
             "The `meta_provider` argument is deprecated and will be removed after May "
             "2025.",
             DeprecationWarning,
+        )
+
+
+def _parse_streaming_trigger(trigger: Union[str, StreamingTrigger]) -> StreamingTrigger:
+    """Parse trigger parameter into StreamingTrigger object.
+
+    Args:
+        trigger: Either a string trigger type or StreamingTrigger object.
+
+    Returns:
+        StreamingTrigger object.
+
+    Raises:
+        ValueError: If trigger type is invalid.
+    """
+    if isinstance(trigger, str):
+        if trigger in ["once", "continuous", "available_now"]:
+            return StreamingTrigger(trigger_type=trigger)
+        elif "interval:" in trigger:
+            interval_str = trigger.split(":", 1)[1]
+            return StreamingTrigger.fixed_interval(interval_str)
+        elif trigger.startswith("cron:"):
+            cron_expr = trigger.split(":", 1)[1]
+            return StreamingTrigger.cron(cron_expr)
+        else:
+            raise ValueError(f"Invalid string trigger: {trigger}")
+    elif isinstance(trigger, StreamingTrigger):
+        return trigger
+    else:
+        raise ValueError(
+            f"Invalid trigger type: {type(trigger)}. Expected str or StreamingTrigger."
+        )
+
+
+@PublicAPI(stability="alpha")
+@wrap_auto_init
+def read_kafka(
+    topics: Union[str, List[str]],
+    *,
+    kafka_config: Dict[str, Any],
+    trigger: Union[str, StreamingTrigger] = "once",
+    max_records_per_task: int = 1000,
+    start_offset: Optional[str] = None,
+    end_offset: Optional[str] = None,
+    parallelism: int = -1,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """Read from Apache Kafka topics as a streaming or batch dataset.
+
+    .. note::
+        This is an alpha API and may change in future releases.
+        Requires ``kafka-python`` to be installed.
+
+    This function creates a dataset that can read from one or more Kafka topics.
+    It supports both batch reading (with ``trigger="once"``) and streaming modes
+    with various trigger patterns.
+
+    Examples:
+        Basic usage for reading from a Kafka topic:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+
+            # Read all available data from topic once
+            ds = ray.data.read_kafka(
+                topics=["my-topic"],
+                kafka_config={"bootstrap_servers": "localhost:9092"},
+                trigger="once"
+            )
+
+            for batch in ds.iter_batches():
+                print(f"Read {len(batch)} records")
+
+        Streaming with continuous trigger:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+            from ray.data._internal.logical.operators.streaming_data_operator import StreamingTrigger
+
+            # Continuous streaming
+            ds = ray.data.read_kafka(
+                topics=["events"],
+                kafka_config={
+                    "bootstrap_servers": "localhost:9092",
+                    "group.id": "my-consumer-group"
+                },
+                trigger="continuous"
+            )
+
+        Fixed interval streaming:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+
+            # Process every 30 seconds
+            ds = ray.data.read_kafka(
+                topics=["metrics"],
+                kafka_config={"bootstrap_servers": "localhost:9092"},
+                trigger="interval:30s"
+            )
+
+        Cron-based streaming:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+
+            # Process every hour at minute 30
+            ds = ray.data.read_kafka(
+                topics=["hourly-reports"],
+                kafka_config={"bootstrap_servers": "localhost:9092"},
+                trigger="cron:30 * * * *"
+            )
+
+        Historical data reading:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+
+            # Read specific offset range
+            ds = ray.data.read_kafka(
+                topics=["historical-data"],
+                kafka_config={"bootstrap_servers": "localhost:9092"},
+                start_offset="1000000",
+                end_offset="2000000",
+                trigger="once"
+            )
+
+    Args:
+        topics: Kafka topic name(s) to read from. Can be a single topic string
+            or list of topic strings.
+        kafka_config: Kafka consumer configuration dictionary. Must include
+            "bootstrap_servers". Supports all kafka-python consumer options including:
+            - bootstrap_servers: Kafka broker addresses (required)
+            - group_id: Consumer group ID
+            - security_protocol: Security protocol (PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL)
+            - sasl_mechanism: SASL mechanism (PLAIN, SCRAM-SHA-256, SCRAM-SHA-512, GSSAPI)
+            - sasl_username: SASL username for authentication
+            - sasl_password: SASL password for authentication
+            - ssl_ca_location: Path to CA certificate file
+            - ssl_certificate_location: Path to client certificate file
+            - ssl_key_location: Path to client private key file
+        trigger: Streaming trigger configuration. Can be:
+            - "once": Read all available data once (batch mode)
+            - "continuous": Continuous streaming processing
+            - "available_now": Process all currently available data then stop
+            - "interval:30s": Fixed interval triggers (supports s, m, h, d units)
+            - "cron:0 * * * *": Cron expression for scheduled processing
+            - StreamingTrigger object for advanced configuration
+        max_records_per_task: Maximum number of records per partition per task per batch.
+        start_offset: Starting offset for reading. Can be:
+            - "123": Absolute offset number
+            - "offset:123": Explicit offset syntax
+            - None: Start from latest (default)
+        end_offset: Ending offset for reading. Can be:
+            - "456": Absolute offset number
+            - "offset:456": Explicit offset syntax
+            - None: Read indefinitely (default)
+        parallelism: Number of parallel tasks to use for reading. -1 means
+            auto-detection based on number of partitions.
+        ray_remote_args: Additional Ray remote arguments for read tasks.
+        concurrency: **Deprecated**. Use parallelism instead.
+        override_num_blocks: **Deprecated**. Use parallelism instead.
+
+    Returns:
+        Dataset containing Kafka records. Each record contains:
+        - topic: Topic name
+        - partition: Partition ID
+        - offset: Message offset
+        - key: Message key (decoded string)
+        - value: Message value (decoded string)
+        - timestamp: Message timestamp
+        - timestamp_type: Timestamp type
+        - headers: Message headers (dict)
+        - partition_id: Combined topic-partition identifier
+        - read_timestamp: When the record was read
+        - current_position: Current offset position
+
+    Raises:
+        ValueError: If configuration is invalid or required parameters are missing.
+        ImportError: If kafka-python is not installed.
+    """
+    from ray.data._internal.logical.interfaces import LogicalPlan
+    from ray.data._internal.logical.operators.streaming_data_operator import (
+        UnboundedQueueStreamingData,
+    )
+    from ray.data._internal.plan import ExecutionPlan
+    from ray.data._internal.stats import DatasetStats
+    from ray.data.context import DataContext
+
+    # Create datasource
+    datasource = KafkaDatasource(
+        topics=topics,
+        kafka_config=kafka_config,
+        max_records_per_task=max_records_per_task,
+        start_offset=start_offset,
+        end_offset=end_offset,
+    )
+
+    # Parse trigger configuration
+    streaming_trigger = _parse_streaming_trigger(trigger)
+
+    # For streaming triggers, use the new streaming operator
+    if streaming_trigger.trigger_type != "once":
+        # Create streaming logical operator
+        streaming_op = UnboundedQueueStreamingData(
+            datasource=datasource,
+            trigger=streaming_trigger,
+            parallelism=parallelism,
+        )
+
+        # Create logical plan
+        ctx = DataContext.get_current()
+        logical_plan = LogicalPlan(streaming_op, ctx)
+
+        # Create execution plan - this will be handled by the planner
+        execution_plan = ExecutionPlan(
+            DatasetStats(metadata={}, parent=None),
+            ctx.copy(),
+        )
+
+        return Dataset(
+            plan=execution_plan,
+            logical_plan=logical_plan,
+        )
+    else:
+        # For "once" trigger, use standard read_datasource
+        return read_datasource(
+            datasource,
+            parallelism=parallelism,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+            override_num_blocks=override_num_blocks,
+        )
+
+
+@PublicAPI(stability="alpha")
+@wrap_auto_init
+def read_kinesis(
+    stream_name: str,
+    *,
+    kinesis_config: Dict[str, Any],
+    trigger: Union[str, StreamingTrigger] = "once",
+    max_records_per_task: int = 1000,
+    start_sequence: Optional[str] = None,
+    end_sequence: Optional[str] = None,
+    parallelism: int = -1,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """Read from Amazon Kinesis streams as a streaming or batch dataset.
+
+    .. note::
+        This is an alpha API and may change in future releases.
+        Requires ``boto3`` to be installed.
+
+    This function creates a dataset that can read from Kinesis data streams.
+    It supports both batch reading (with ``trigger="once"``) and streaming modes
+    with various trigger patterns.
+
+    Examples:
+        Basic usage for reading from a Kinesis stream:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+
+            # Read all available data from stream once
+            ds = ray.data.read_kinesis(
+                stream_name="my-stream",
+                kinesis_config={
+                    "region_name": "us-west-2"
+                },
+                trigger="once"
+            )
+
+        Streaming with authentication:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+
+            # Continuous streaming with credentials
+            ds = ray.data.read_kinesis(
+                stream_name="user-events",
+                kinesis_config={
+                    "region_name": "us-west-2",
+                    "aws_access_key_id": "your-key",
+                    "aws_secret_access_key": "your-secret"
+                },
+                trigger="continuous"
+            )
+
+        Scheduled processing:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+
+            # Process every 5 minutes
+            ds = ray.data.read_kinesis(
+                stream_name="metrics",
+                kinesis_config={"region_name": "us-west-2"},
+                trigger="interval:5m"
+            )
+
+    Args:
+        stream_name: Name of the Kinesis stream to read from.
+        kinesis_config: Kinesis client configuration dictionary. Must include
+            "region_name". Supports all boto3 Kinesis client options.
+        trigger: Streaming trigger configuration. Same options as read_kafka.
+        max_records_per_task: Maximum number of records per shard per task per batch.
+        start_sequence: Starting sequence number for reading.
+        end_sequence: Ending sequence number for reading.
+        parallelism: Number of parallel tasks to use for reading.
+        ray_remote_args: Additional Ray remote arguments for read tasks.
+        concurrency: **Deprecated**. Use parallelism instead.
+        override_num_blocks: **Deprecated**. Use parallelism instead.
+
+    Returns:
+        Dataset containing Kinesis records.
+    """
+    from ray.data._internal.datasource.kinesis_datasource import KinesisDatasource
+    from ray.data._internal.logical.interfaces import LogicalPlan
+    from ray.data._internal.plan import ExecutionPlan
+    from ray.data._internal.stats import DatasetStats
+    from ray.data.context import DataContext
+
+    # Create datasource
+    datasource = KinesisDatasource(
+        stream_name=stream_name,
+        kinesis_config=kinesis_config,
+        max_records_per_task=max_records_per_task,
+        start_sequence=start_sequence,
+        end_sequence=end_sequence,
+    )
+
+    # Parse trigger configuration
+    streaming_trigger = _parse_streaming_trigger(trigger)
+
+    # For streaming triggers, use the new streaming operator
+    if streaming_trigger.trigger_type != "once":
+        # Create streaming logical operator
+        streaming_op = UnboundedQueueStreamingData(
+            datasource=datasource,
+            trigger=streaming_trigger,
+            parallelism=parallelism,
+        )
+
+        # Create logical plan
+        ctx = DataContext.get_current()
+        logical_plan = LogicalPlan(streaming_op, ctx)
+
+        # Create execution plan
+        execution_plan = ExecutionPlan(
+            DatasetStats(metadata={}, parent=None),
+            ctx.copy(),
+        )
+
+        return Dataset(
+            plan=execution_plan,
+            logical_plan=logical_plan,
+        )
+    else:
+        # For "once" trigger, use standard read_datasource
+        return read_datasource(
+            datasource,
+            parallelism=parallelism,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+            override_num_blocks=override_num_blocks,
+        )
+
+
+@PublicAPI(stability="alpha")
+@wrap_auto_init
+def read_flink(
+    source_type: str,
+    *,
+    flink_config: Dict[str, Any],
+    trigger: Union[str, StreamingTrigger] = "once",
+    max_records_per_task: int = 1000,
+    start_position: Optional[str] = None,
+    end_position: Optional[str] = None,
+    parallelism: int = -1,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """Read from Apache Flink sources as a streaming or batch dataset.
+
+    .. note::
+        This is an alpha API and may change in future releases.
+        Requires ``requests`` for REST API connections.
+
+    This function creates a dataset that can read from various Flink data sources
+    including REST API, SQL queries, checkpoints, and tables.
+
+    Examples:
+        Reading from Flink REST API:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+
+            # Query Flink job metrics
+            ds = ray.data.read_flink(
+                source_type="rest_api",
+                flink_config={
+                    "rest_api_url": "http://localhost:8081",
+                    "job_id": "my-job-id"
+                },
+                trigger="once"
+            )
+
+        Reading from Flink table:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+
+            # Continuous reading from Flink table
+            ds = ray.data.read_flink(
+                source_type="table",
+                flink_config={
+                    "table_name": "events_table"
+                },
+                trigger="continuous"
+            )
+
+        Cron-based reading (every hour at minute 30):
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+
+            cron_trigger = "cron:30 * * * *"
+            ds = ray.data.read_flink(
+                source_type="checkpoint",
+                flink_config={
+                    "checkpoint_path": "/path/to/checkpoint"
+                },
+                trigger=cron_trigger
+            )
+
+    Args:
+        source_type: Type of Flink source. One of:
+            - "rest_api": Read from Flink REST API
+            - "sql_query": Execute Flink SQL queries
+            - "checkpoint": Read from Flink checkpoints
+            - "table": Read from Flink tables
+        flink_config: Flink source configuration dictionary. Required keys
+            vary by source_type.
+        trigger: Streaming trigger configuration. Same options as read_kafka.
+        max_records_per_task: Maximum number of records per task per batch.
+        start_position: Starting position for reading (source-specific format).
+        end_position: Ending position for reading (source-specific format).
+        parallelism: Number of parallel tasks to use for reading.
+        ray_remote_args: Additional Ray remote arguments for read tasks.
+        concurrency: **Deprecated**. Use parallelism instead.
+        override_num_blocks: **Deprecated**. Use parallelism instead.
+
+    Returns:
+        Dataset containing Flink source records.
+    """
+    from ray.data._internal.logical.interfaces import LogicalPlan
+    from ray.data._internal.plan import ExecutionPlan
+    from ray.data._internal.stats import DatasetStats
+    from ray.data.context import DataContext
+
+    # Create datasource
+    datasource = FlinkDatasource(
+        source_type=source_type,
+        flink_config=flink_config,
+        max_records_per_task=max_records_per_task,
+        start_position=start_position,
+        end_position=end_position,
+    )
+
+    # Parse trigger configuration
+    streaming_trigger = _parse_streaming_trigger(trigger)
+
+    # For streaming triggers, use the new streaming operator
+    if streaming_trigger.trigger_type != "once":
+        # Create streaming logical operator
+        streaming_op = UnboundedQueueStreamingData(
+            datasource=datasource,
+            trigger=streaming_trigger,
+            parallelism=parallelism,
+        )
+
+        # Create logical plan
+        ctx = DataContext.get_current()
+        logical_plan = LogicalPlan(streaming_op, ctx)
+
+        # Create execution plan
+        execution_plan = ExecutionPlan(
+            DatasetStats(metadata={}, parent=None),
+            ctx.copy(),
+        )
+
+        return Dataset(
+            plan=execution_plan,
+            logical_plan=logical_plan,
+        )
+    else:
+        # For "once" trigger, use standard read_datasource
+        return read_datasource(
+            datasource,
+            parallelism=parallelism,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+            override_num_blocks=override_num_blocks,
         )
