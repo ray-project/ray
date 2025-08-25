@@ -157,15 +157,13 @@ class TrainLoopRunner:
                     self._train_step(batch)
 
             # TODO: This is slightly off if the last batch is a partial batch (if drop_last=False)
-            self._metrics["train/rows_processed"].add(
+            global_batch_size = (
                 self.benchmark_config.dataloader_config.train_batch_size
                 * ray.train.get_context().get_world_size()
             )
+            self._metrics["train/rows_processed"].add(global_batch_size)
 
-            self._global_rows_processed_this_epoch += (
-                self.benchmark_config.dataloader_config.train_batch_size
-                * ray.train.get_context().get_world_size()
-            )
+            self._global_rows_processed_this_epoch += global_batch_size
 
             if self._should_checkpoint_during_epoch():
                 self._checkpoint()
