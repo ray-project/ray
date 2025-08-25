@@ -65,7 +65,7 @@ class ColAgg:
     struct_schemas: list = dataclasses.field(default_factory=list)
     # list<null> fixup
     saw_null_list: bool = False
-    first_nonnull_list_type: pyarrow.DataType | None = None
+    first_nonnull_list_type: Optional[pyarrow.DataType] = None
 
 
 def sort(table: "pyarrow.Table", sort_key: "SortKey") -> "pyarrow.Table":
