@@ -38,7 +38,10 @@ class DataType:
         elif self.is_numpy_type():
             return pa.from_numpy_dtype(self.internal_type)
         else:
-            return pa.string()
+            try:
+                return pa.from_numpy_dtype(np.dtype(self.internal_type))
+            except (TypeError, pa.ArrowNotImplementedError):
+                return pa.string()
 
     def to_numpy_dtype(self) -> np.dtype:
         if self.is_numpy_type():

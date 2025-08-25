@@ -7,6 +7,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
 
+from ray.data.block import DataBatch
 from ray.data.expressions import (
     BinaryExpr,
     ColumnExpr,
@@ -45,7 +46,9 @@ _ARROW_EXPR_OPS_MAP = {
 }
 
 
-def _eval_expr_recursive(expr: "Expr", batch, ops: Dict["Operation", Callable]) -> Any:
+def _eval_expr_recursive(
+    expr: "Expr", batch: DataBatch, ops: Dict["Operation", Callable]
+) -> Any:
     """Generic recursive expression evaluator."""
     # TODO: Separate unresolved expressions (arbitrary AST with unresolved refs)
     # and resolved expressions (bound to a schema) for better error handling
@@ -68,7 +71,7 @@ def _eval_expr_recursive(expr: "Expr", batch, ops: Dict["Operation", Callable]) 
     raise TypeError(f"Unsupported expression node: {type(expr).__name__}")
 
 
-def eval_expr(expr: "Expr", batch: Any) -> Any:
+def eval_expr(expr: "Expr", batch: DataBatch) -> Any:
     """Recursively evaluate *expr* against a batch of the appropriate type."""
     if isinstance(batch, pd.DataFrame):
         return _eval_expr_recursive(expr, batch, _PANDAS_EXPR_OPS_MAP)
