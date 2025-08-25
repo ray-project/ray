@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 TRANSFORMERS_IMPORT_ERROR: Optional[ImportError] = None
 
 try:
-    # Due to HF Dataset's dynamic module system, we need to dynamically import the
+    # Due to HF Dataset's dynamic module system, we need to dynamically import tloohe
     # datasets_modules module on every actor when training.
     # We accomplish this by simply running the following bit of code directly
     # in the module you are currently viewing. This ensures that when we
@@ -32,16 +32,19 @@ try:
 
         import datasets.load
 
-        dynamic_modules_path = os.path.join(
-            datasets.load.init_dynamic_modules(), "__init__.py"
-        )
-        # load dynamic_modules from path
-        spec = importlib.util.spec_from_file_location(
-            "datasets_modules", dynamic_modules_path
-        )
-        datasets_modules = importlib.util.module_from_spec(spec)
-        sys.modules[spec.name] = datasets_modules
-        spec.loader.exec_module(datasets_modules)
+        # Datasets >= 4.0 removed dataset scripts support and the dynamic-modules cache.
+        # Only initialize dynamic modules on <= 3.x where the initializer `init_dynamic_modules` exists.
+        if hasattr(datasets.load, "init_dynamic_modules"):
+            dynamic_modules_path = os.path.join(
+                datasets.load.init_dynamic_modules(), "__init__.py"
+            )
+            # load dynamic_modules from path
+            spec = importlib.util.spec_from_file_location(
+                "datasets_modules", dynamic_modules_path
+            )
+            datasets_modules = importlib.util.module_from_spec(spec)
+            sys.modules[spec.name] = datasets_modules
+            spec.loader.exec_module(datasets_modules)
 except ImportError as e:
     TRANSFORMERS_IMPORT_ERROR = e
 
