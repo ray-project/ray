@@ -310,12 +310,6 @@ class VLLMEngine(LLMEngine):
         """Creates an async LLM engine from the engine arguments."""
         from vllm import envs as vllm_envs
 
-        print("vllm_engine_args")
-        print(vllm_engine_args)
-        print("vllm_engine_config")
-        print(vllm_engine_config)
-        print("use v0?", not vllm_envs.VLLM_USE_V1)
-
         # NOTE: This is a temporary solution until vLLM v1 supports embeddings.
         if not vllm_envs.VLLM_USE_V1:
             return self._start_async_llm_engine_v0(
