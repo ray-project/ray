@@ -829,10 +829,10 @@ class Dataset:
         Returns:
             A new dataset with the added column.
         """
-        from ray.data._expression_evaluator import _contains_udf, eval_expr
+        from ray.data._expression_evaluator import eval_expr
 
         # TODO: update schema based on the expression AST.
-        if batch_size is not None and _contains_udf(expr):
+        if batch_size is not None:
             import pyarrow as pa
 
             def _batch_fn(batch: pa.Table) -> pa.Table:
