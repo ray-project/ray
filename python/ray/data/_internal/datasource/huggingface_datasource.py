@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 TRANSFORMERS_IMPORT_ERROR: Optional[ImportError] = None
 
 try:
-    # Due to HF Dataset's dynamic module system, we need to dynamically import tloohe
+    # Due to HF Dataset's dynamic module system, we need to dynamically import the
     # datasets_modules module on every actor when training.
     # We accomplish this by simply running the following bit of code directly
     # in the module you are currently viewing. This ensures that when we
