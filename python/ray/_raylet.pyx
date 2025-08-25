@@ -621,10 +621,8 @@ cdef RayObjectsToSerializedRayObjects(
 cdef VectorToObjectRefs(const c_vector[CObjectReference] &object_refs,
                         skip_adding_local_ref):
     result = []
-    print("VectorToObjectRefs")
     for i in range(object_refs.size()):
         tensor_transport_val = <int>object_refs[i].tensor_transport()
-        print(f"obj_id: {object_refs[i].object_id().hex()}, tensor_transport: {tensor_transport_val}")
         result.append(ObjectRef(
             object_refs[i].object_id(),
             object_refs[i].owner_address().SerializeAsString(),
@@ -1004,7 +1002,7 @@ cdef prepare_args_internal(
                             put_id,
                             CCoreWorkerProcess.GetCoreWorker().GetRpcAddress(),
                             put_arg_call_site,
-                            0
+                            0 # default to OBJECT_STORE
                         )))
                 incremented_put_arg_ids.push_back(put_id)
 
