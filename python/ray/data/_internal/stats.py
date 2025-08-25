@@ -283,7 +283,7 @@ class _StatsActor:
         self.time_to_first_batch_s = Gauge(
             "data_iter_time_to_first_batch_seconds",
             description="Total time spent waiting for the first batch after starting iteration. "
-            "This includes the dataset pipeline warmup time. This metrics is accumulated across different epochs.",
+            "This includes the dataset pipeline warmup time. This metric is accumulated across different epochs.",
             tag_keys=iter_tag_keys,
         )
         self.iter_user_s = Gauge(
