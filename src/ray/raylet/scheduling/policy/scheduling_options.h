@@ -149,7 +149,7 @@ struct SchedulingOptions {
                           /*spread_threshold*/ 0,
                           /*avoid_local_node*/ false,
                           /*require_node_available*/ true,
-                          /*avoid_gpu_nodes*/ false,
+                          /*avoid_gpu_nodes*/ false);
     scheduling_options.bundle_strict_pack_soft_target_node_id_ = soft_target_node_id;
     return scheduling_options;
   }
