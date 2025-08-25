@@ -2480,7 +2480,8 @@ class Dataset:
             ds: Other dataset to join against
             join_type: The kind of join that should be performed, one of ("inner",
                 "left_outer", "right_outer", "full_outer", "left_semi", "right_semi",
-                "left_anti", "right_anti").
+                "left_anti", "right_anti"). Note that when using
+                broadcast=True, only these 4 join types are supported.
             num_partitions: Total number of "partitions" input sequences will be split
                 into with each partition being joined independently. Increasing number
                 of partitions allows to reduce individual partition size, hence reducing
@@ -2504,6 +2505,8 @@ class Dataset:
                 dataset and can fit in a worker node's memory. Defaults to False.
                 Note that this will check the dataset counts and could materialize the
                 both datasets, triggering a full execution of the dataset.
+                Note: When broadcast=True, only "inner", "left_outer", "right_outer",
+                and "full_outer" join types are supported.
             partition_size_hint: (Optional) Hint to joining operator about the estimated
                 avg expected size of the individual partition (in bytes).
                 This is used in estimating the total dataset size and allow to tune
@@ -2628,6 +2631,19 @@ class Dataset:
         plan = self._plan.copy()
 
         if broadcast:
+            # Validate that the join type is supported for broadcast joins
+            supported_broadcast_join_types = {
+                "inner",
+                "left_outer",
+                "right_outer",
+                "full_outer",
+            }
+            if join_type not in supported_broadcast_join_types:
+                raise ValueError(
+                    f"Join type '{join_type}' is not supported in broadcast joins. "
+                    f"Supported types are: {list(supported_broadcast_join_types)}"
+                )
+
             # Create the broadcast join callable class
             from ray.data._internal.logical.operators.broadcast_join import (
                 BroadcastJoinFunction,
@@ -2656,7 +2672,7 @@ class Dataset:
                 small_key_columns = on
                 datasets_swapped = True
 
-            # Create the broadcast join function - PyArrow will handle all join types natively
+            # Create the broadcast join function - PyArrow will handle the supported join types natively
             # Note: left_suffix and right_suffix always refer to the original left and right datasets
             # regardless of which one is larger/smaller
             join_type_enum = JoinType(join_type)
@@ -2674,7 +2690,7 @@ class Dataset:
                 datasets_swapped=datasets_swapped,
             )
 
-            # Use PyArrow's native join functionality for all join types
+            # Use PyArrow's native join functionality for the supported join types
             result = large_ds.map_batches(
                 join_fn,
                 batch_format="pyarrow",
@@ -5897,9 +5913,9 @@ class Dataset:
         import pyarrow as pa
 
         ref_bundles: Iterator[RefBundle] = self.iter_internal_ref_bundles()
-        block_refs: List[ObjectRef["pyarrow.Table"]] = (
-            _ref_bundles_iterator_to_block_refs_list(ref_bundles)
-        )
+        block_refs: List[
+            ObjectRef["pyarrow.Table"]
+        ] = _ref_bundles_iterator_to_block_refs_list(ref_bundles)
         # Schema is safe to call since we have already triggered execution with
         # iter_internal_ref_bundles.
         schema = self.schema(fetch_if_missing=True)

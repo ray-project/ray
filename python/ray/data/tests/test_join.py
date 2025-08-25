@@ -439,10 +439,6 @@ def test_default_shuffle_aggregator_args():
         "left_outer",
         "right_outer",
         "full_outer",
-        "left_semi",
-        "right_semi",
-        "left_anti",
-        "right_anti",
     ],
 )
 @pytest.mark.parametrize(
@@ -517,10 +513,6 @@ def test_broadcast_join_basic(
         "left_outer",
         "right_outer",
         "full_outer",
-        "left_semi",
-        "right_semi",
-        "left_anti",
-        "right_anti",
     ],
 )
 @pytest.mark.parametrize(
@@ -598,10 +590,6 @@ def test_broadcast_join_left_smaller(
         "left_outer",
         "right_outer",
         "full_outer",
-        "left_semi",
-        "right_semi",
-        "left_anti",
-        "right_anti",
     ],
 )
 def test_broadcast_join_dataset_swapping_edge_cases(
@@ -696,10 +684,6 @@ def test_broadcast_join_dataset_swapping_edge_cases(
         "left_outer",
         "right_outer",
         "full_outer",
-        "left_semi",
-        "right_semi",
-        "left_anti",
-        "right_anti",
     ],
 )
 def test_broadcast_join_with_different_key_names_and_swapping(
@@ -1001,68 +985,6 @@ def test_broadcast_join_expected_outputs(ray_start_regular_shared_2_cpus):
     assert len(full_outer_df) == 7  # All left + all right + matches
     assert set(full_outer_df["id"].tolist()) == {1, 2, 3, 4, 5, 6, 7}
 
-    # Test left semi join
-    left_semi_result = left_ds.join(
-        right_ds,
-        join_type="left_semi",
-        num_partitions=2,
-        on=("id",),
-        broadcast=True,
-    )
-
-    left_semi_df = pd.DataFrame(left_semi_result.take_all())
-    assert len(left_semi_df) == 2  # Only left rows that have matches
-    assert set(left_semi_df["id"].tolist()) == {2, 3}
-    # Should only have left columns
-    expected_left_columns = {"id", "left_value", "left_only"}
-    assert set(left_semi_df.columns) == expected_left_columns
-
-    # Test right semi join
-    right_semi_result = left_ds.join(
-        right_ds,
-        join_type="right_semi",
-        num_partitions=2,
-        on=("id",),
-        broadcast=True,
-    )
-
-    right_semi_df = pd.DataFrame(right_semi_result.take_all())
-    assert len(right_semi_df) == 2  # Only right rows that have matches
-    assert set(right_semi_df["id"].tolist()) == {2, 3}
-    # Should only have right columns
-    expected_right_columns = {"id", "right_value", "right_only"}
-    assert set(right_semi_df.columns) == expected_right_columns
-
-    # Test left anti join
-    left_anti_result = left_ds.join(
-        right_ds,
-        join_type="left_anti",
-        num_partitions=2,
-        on=("id",),
-        broadcast=True,
-    )
-
-    left_anti_df = pd.DataFrame(left_anti_result.take_all())
-    assert len(left_anti_df) == 3  # Only left rows that don't have matches
-    assert set(left_anti_df["id"].tolist()) == {1, 4, 5}
-    # Should only have left columns
-    assert set(left_anti_df.columns) == expected_left_columns
-
-    # Test right anti join
-    right_anti_result = left_ds.join(
-        right_ds,
-        join_type="right_anti",
-        num_partitions=2,
-        on=("id",),
-        broadcast=True,
-    )
-
-    right_anti_df = pd.DataFrame(right_anti_result.take_all())
-    assert len(right_anti_df) == 2  # Only right rows that don't have matches
-    assert set(right_anti_df["id"].tolist()) == {6, 7}
-    # Should only have right columns
-    assert set(right_anti_df.columns) == expected_right_columns
-
 
 def test_broadcast_join_dataset_swapping_validation(ray_start_regular_shared_2_cpus):
     """Test that dataset swapping in broadcast joins produces correct results.
@@ -1147,68 +1069,6 @@ def test_broadcast_join_dataset_swapping_validation(ray_start_regular_shared_2_c
     full_outer_df = pd.DataFrame(full_outer_result.take_all())
     assert len(full_outer_df) == 6  # All left + all right + matches
     assert set(full_outer_df["id"].tolist()) == {1, 2, 3, 4, 5, 6}
-
-    # Test left semi join with swapped datasets
-    left_semi_result = left_ds.join(
-        right_ds,
-        join_type="left_semi",
-        num_partitions=2,
-        on=("id",),
-        broadcast=True,
-    )
-
-    left_semi_df = pd.DataFrame(left_semi_result.take_all())
-    assert len(left_semi_df) == 2  # Only left rows that have matches
-    assert set(left_semi_df["id"].tolist()) == {1, 2}
-    # Should only have left columns
-    expected_left_columns = {"id", "left_value"}
-    assert set(left_semi_df.columns) == expected_left_columns
-
-    # Test right semi join with swapped datasets
-    right_semi_result = left_ds.join(
-        right_ds,
-        join_type="right_semi",
-        num_partitions=2,
-        on=("id",),
-        broadcast=True,
-    )
-
-    right_semi_df = pd.DataFrame(right_semi_result.take_all())
-    assert len(right_semi_df) == 2  # Only right rows that have matches
-    assert set(right_semi_df["id"].tolist()) == {1, 2}
-    # Should only have right columns
-    expected_right_columns = {"id", "right_value"}
-    assert set(right_semi_df.columns) == expected_right_columns
-
-    # Test left anti join with swapped datasets
-    left_anti_result = left_ds.join(
-        right_ds,
-        join_type="left_anti",
-        num_partitions=2,
-        on=("id",),
-        broadcast=True,
-    )
-
-    left_anti_df = pd.DataFrame(left_anti_result.take_all())
-    assert len(left_anti_df) == 1  # Only left rows that don't have matches
-    assert set(left_anti_df["id"].tolist()) == {3}
-    # Should only have left columns
-    assert set(left_anti_df.columns) == expected_left_columns
-
-    # Test right anti join with swapped datasets
-    right_anti_result = left_ds.join(
-        right_ds,
-        join_type="right_anti",
-        num_partitions=2,
-        on=("id",),
-        broadcast=True,
-    )
-
-    right_anti_df = pd.DataFrame(right_anti_result.take_all())
-    assert len(right_anti_df) == 3  # Only right rows that don't have matches
-    assert set(right_anti_df["id"].tolist()) == {4, 5, 6}
-    # Should only have right columns
-    assert set(right_anti_df.columns) == expected_right_columns
 
 
 def test_broadcast_join_column_structure_validation(ray_start_regular_shared_2_cpus):

@@ -92,6 +92,13 @@ class BroadcastJoinFunction:
         self.small_table_columns_suffix = small_table_columns_suffix
         self.datasets_swapped = datasets_swapped
 
+        # Validate that the join type is supported
+        if join_type not in _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP:
+            raise ValueError(
+                f"Join type '{join_type}' is not supported in broadcast joins. "
+                f"Supported types are: {list(_JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP.keys())}"
+            )
+
         # Coalesce the small dataset to a single partition and materialize
         try:
             # Repartition to 1 partition and materialize
@@ -138,7 +145,7 @@ class BroadcastJoinFunction:
         if isinstance(batch, dict):
             batch = pa.table(batch)
 
-        # Get the appropriate PyArrow join type
+        # Get the appropriate PyArrow join type for standard joins
         arrow_join_type = _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP[self.join_type]
 
         # Determine whether to coalesce keys based on whether key column names are
@@ -153,15 +160,6 @@ class BroadcastJoinFunction:
             # - small_table is the originally LEFT dataset (smaller, broadcasted)
             # We need to maintain LEFT.join(RIGHT) semantics
             # So we do: small_table.join(batch) = LEFT.join(RIGHT_BATCH)
-
-            # For swapped datasets, we need to handle join types carefully:
-            # - inner: works the same
-            # - left_outer: becomes small_table.join(batch, "left outer") =
-            #   LEFT.join(RIGHT_BATCH, "left outer")
-            # - right_outer: becomes small_table.join(batch, "right outer") =
-            #   LEFT.join(RIGHT_BATCH, "right outer")
-            # - full_outer: becomes small_table.join(batch, "full outer") =
-            #   LEFT.join(RIGHT_BATCH, "full outer")
 
             joined_table = self.small_table.join(
                 batch,
