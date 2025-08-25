@@ -2,7 +2,6 @@ import asyncio
 import bisect
 import logging
 import statistics
-import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from itertools import chain
@@ -194,6 +193,24 @@ class InMemoryMetricsStore:
             A tuple of (float, int) where the first element is the aggregated value
             and the second element is the number of valid keys used.
             Returns (None, 0) if no valid keys have data.
+
+        Example:
+        Suppose the store contains:
+
+        >>> self.data = defaultdict[
+        ...     "a": [TimeStampedValue(0, 1.0), TimeStampedValue(1, 2.0)],
+        ...     "b": [],
+        ...     "c": [TimeStampedValue(0, 10.0)],
+        ... ]
+
+        Using sum across keys:
+
+        >>> self._aggregate_reduce(keys=["a", "b", "c"], aggregate_fn=sum)
+        (13.0, 2)
+
+        Here:
+        - The aggregated value is 1.0 + 2.0 + 10.0 = 13.0
+        - Only keys "a" and "c" contribute values, so report_count = 2
         """
         valid_key_count = 0
 
@@ -204,7 +221,7 @@ class InMemoryMetricsStore:
                 series = self.data.get(key, [])
                 if not series:
                     continue
-                
+
                 valid_key_count += 1
                 for timestamp_value in series:
                     yield timestamp_value.value
@@ -295,33 +312,70 @@ class InMemoryMetricsStore:
         return self._aggregate_reduce(keys, statistics.mean)
 
 
-def consolidate_metrics_stores(*stores: InMemoryMetricsStore) -> InMemoryMetricsStore:
-    """Consolidate multiple metrics stores into a single store. If duplicate keys
-    are found, the latest value is kept. If the QUEUED_REQUESTS_KEY is present,
-    the values are summed across all stores.
+def merge_timeseries(
+    t1: List[TimeStampedValue], t2: List[TimeStampedValue], window_ms: int
+) -> List[TimeStampedValue]:
+    """Merge two time series by summing values within a specified time window.
+    If multiple values fall within the same time-series window, the latest value
+    is used.
+    """
+    if not t1 and not t2:
+        return []
+    if not t1:
+        return t2.copy()
+    if not t2:
+        return t1.copy()
+
+    start = min(t1[0].timestamp, t2[0].timestamp) - (window_ms // 2)
+    end = max(t1[-1].timestamp, t2[-1].timestamp)
+    merged = []
+    current_time = start
+    i = j = 0
+    while current_time <= end:
+        t1_temp = t2_temp = None
+        while i < len(t1) and t1[i].timestamp < current_time + window_ms:
+            t1_temp = t1[i].value
+            i += 1
+        while j < len(t2) and t2[j].timestamp < current_time + window_ms:
+            t2_temp = t2[j].value
+            j += 1
+        if t1_temp is not None or t2_temp is not None:
+            val = (0.0 if t1_temp is None else t1_temp) + (
+                0.0 if t2_temp is None else t2_temp
+            )
+            merged.append(
+                TimeStampedValue(timestamp=current_time + (window_ms // 2), value=val)
+            )
+        current_time += window_ms
+
+    return merged
+
+
+def merge_metrics_stores(
+    *stores: InMemoryMetricsStore, window_ms: int
+) -> InMemoryMetricsStore:
+    """Merge multiple handle metrics stores together. If the same replica/key
+    is found in multiple handles, their time series data is merged using a
+    windowed sum. If multiple values from one handle-replica pair fall within
+    the same window, only latest value is used.
 
     Args:
-        stores: A variable number of InMemoryMetricsStore instances to consolidate.
+        *stores: A variable number of InMemoryMetricsStore instances to consolidate.
+        window_ms: Window size in milliseconds for merging time series data.
     Returns:
-        A new InMemoryMetricsStore instance with data only from exclusive keys
-        or the latest values for duplicate keys.
+        A single InMemoryMetricsStore object containing the merged data.
     """
     if len(stores) == 1:
         return stores[0]
     else:
         merged = InMemoryMetricsStore()
-        merged.data[QUEUED_REQUESTS_KEY] = [TimeStampedValue(time.time(), 0.0)]
         for store in stores:
             for key, timeseries in store.data.items():
-                if key == QUEUED_REQUESTS_KEY:
-                    # Sum queued requests across handle metrics.
-                    merged.data[QUEUED_REQUESTS_KEY][-1].value += timeseries[-1].value
-                elif not merged.data.get(key):
-                    merged.data[key] = timeseries.copy()
-                elif (
-                    timeseries
-                    and timeseries[-1].timestamp > merged.data[key][-1].timestamp
-                ):
+                if key in merged.data:
+                    merged.data[key] = merge_timeseries(
+                        merged.data[key], timeseries, window_ms
+                    )
+                else:
                     merged.data[key] = timeseries.copy()
 
     return merged

@@ -8,7 +8,8 @@ from ray.serve._private.metrics_utils import (
     QUEUED_REQUESTS_KEY,
     InMemoryMetricsStore,
     MetricsPusher,
-    consolidate_metrics_stores,
+    TimeStampedValue,
+    merge_metrics_stores,
 )
 from ray.serve._private.test_utils import MockAsyncTimer
 
@@ -206,26 +207,57 @@ class TestInMemoryMetricsStore:
         assert len(s.data["m2"]) == 2 and s.data["m2"] == s._get_datapoints("m2", 1.1)
         assert len(s.data["m3"]) == 1 and s.data["m3"] == s._get_datapoints("m3", 1.1)
 
-    def test_consolidate_metrics_stores(self):
+    def test_merge_metrics_stores(self):
         s1 = InMemoryMetricsStore()
         s2 = InMemoryMetricsStore()
         s3 = InMemoryMetricsStore()
-        s1.add_metrics_point({"m1": 1, "m3": 3, QUEUED_REQUESTS_KEY: 1}, timestamp=1)
-        s2.add_metrics_point({"m1": 2, "m2": 2, QUEUED_REQUESTS_KEY: 1}, timestamp=2)
-        # Earliest timestamps are ignored be later stores.
-        s3.add_metrics_point(
-            {"m1": 100, "m2": 100, "m3": 100, QUEUED_REQUESTS_KEY: 100}, timestamp=0
+        s1.add_metrics_point(
+            {"m1": 1, "m2": 2, "m3": 3, QUEUED_REQUESTS_KEY: 1}, timestamp=1
         )
-        consolidated = consolidate_metrics_stores(s1, s2, s3)
+        s2.add_metrics_point({"m1": 2, "m2": 2, QUEUED_REQUESTS_KEY: 1}, timestamp=2)
+        s3.add_metrics_point({"m2": 10, QUEUED_REQUESTS_KEY: 10}, timestamp=2)
+        merged = merge_metrics_stores(s1, s2, s3, window_ms=1)
 
-        # Earliest store overrides the latest store for each key.
-        assert consolidated.aggregate_avg(["m1"]) == (2, 1)
-        # New keys are added from later stores.
-        assert consolidated.aggregate_avg(["m2"]) == (2, 1)
-        # New keys are added from earlier stores.
-        assert consolidated.aggregate_avg(["m3"]) == (3, 1)
-        # QUEUED_REQUESTS_KEY is summed across stores.
-        assert consolidated.get_latest(QUEUED_REQUESTS_KEY) == 102
+        assert merged.data["m1"] == [TimeStampedValue(1, 1), TimeStampedValue(2, 2)]
+        assert merged.data["m2"] == [
+            TimeStampedValue(1, 2),
+            TimeStampedValue(2, 12),
+        ]
+        assert merged.data["m3"] == [TimeStampedValue(1, 3)]
+        assert merged.data[QUEUED_REQUESTS_KEY] == [
+            TimeStampedValue(1, 1),
+            TimeStampedValue(2, 11),
+        ]
+
+        s4 = InMemoryMetricsStore()
+        s4.add_metrics_point(
+            {"m1": 100, "m2": 100, "m3": 100, QUEUED_REQUESTS_KEY: 10}, timestamp=0
+        )
+        merged = merge_metrics_stores(s1, s2, s3, s4, window_ms=2)
+        assert merged.data["m1"] == [
+            TimeStampedValue(0, 101),
+            TimeStampedValue(2, 1),
+            TimeStampedValue(4, 2),
+        ]
+        assert merged.data["m2"] == [
+            TimeStampedValue(0, 100),
+            TimeStampedValue(2, 2),
+            TimeStampedValue(4, 12),
+        ]
+        assert merged.data["m3"] == [TimeStampedValue(0, 100), TimeStampedValue(2, 3)]
+        assert merged.data[QUEUED_REQUESTS_KEY] == [
+            TimeStampedValue(0, 10),
+            TimeStampedValue(2, 1),
+            TimeStampedValue(4, 11),
+        ]
+
+        s1_s2 = merge_metrics_stores(s1, s2, window_ms=1)
+        s2_s1 = merge_metrics_stores(s2, s1, window_ms=1)
+        s1_s2_s3_s4 = merge_metrics_stores(s1, s2, s3, s4, window_ms=1)
+        s4_s1_s3_s2 = merge_metrics_stores(s4, s1, s3, s2, window_ms=1)
+
+        assert s1_s2.data == s2_s1.data
+        assert s1_s2_s3_s4.data == s4_s1_s3_s2.data
 
 
 if __name__ == "__main__":
