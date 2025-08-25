@@ -23,7 +23,6 @@
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/gcs/gcs_server/gcs_server_io_context_policy.h"
-#include "ray/gcs/gcs_server/runtime_env_handler.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/observable_store_client.h"
@@ -77,6 +76,7 @@ class GcsTableStorage;
 class GcsTaskManager;
 class GcsWorkerManager;
 class InternalPubSubHandler;
+class RuntimeEnvHandler;
 class UsageStatsClient;
 
 /// The GcsServer will take over all requests from GcsClient and transparent
