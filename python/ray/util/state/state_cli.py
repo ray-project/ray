@@ -2,7 +2,7 @@ import json
 import logging
 from datetime import datetime
 from enum import Enum, unique
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 import click
 import yaml
@@ -303,16 +303,96 @@ def format_get_api_output(
     return output_with_format(state_data, schema=schema, format=format, detail=True)
 
 
-def format_list_api_output(
-    state_data: List[StateSchema],
+def format_grouped_output(
+    grouped_data: Dict,
     *,
     schema: StateSchema,
     format: AvailableFormat = AvailableFormat.DEFAULT,
     detail: bool = False,
 ) -> str:
+    """Format grouped object data with summaries."""
+    from ray.util.state.common import Humanify
+    
+    if len(grouped_data) == 0:
+        return "No resource in the cluster"
+    
+    time = datetime.now()
+    header = "=" * 8 + f" Grouped Objects: {time} " + "=" * 8
+    output = [header, ""]
+    
+    total_objects = 0
+    total_size = 0
+    
+    for group_key, group_data in grouped_data.items():
+        summary = group_data["summary"]
+        entries = group_data["entries"]
+        
+        # Group header and summary
+        output.append(f"--- Group: {group_key} ---")
+        output.append(f"Objects: {summary['total_objects']}")
+        output.append(f"Total Size: {Humanify.memory(summary['total_size'])}")
+        
+        # Show if results are limited per group
+        if 'displayed_objects' in summary and summary['displayed_objects'] < summary['total_objects']:
+            output.append(f"Showing: {summary['displayed_objects']} of {summary['total_objects']} objects")
+        
+        # Reference type breakdown
+        ref_types = summary['reference_type_counts']
+        if ref_types:
+            ref_breakdown = ", ".join([f"{ref_type}: {count}" for ref_type, count in ref_types.items()])
+            output.append(f"Reference Types: {ref_breakdown}")
+        
+        output.append("")
+        
+        # Show entries in table format
+        if entries:
+            # Create a mini table for this group
+            mini_table = get_table_output(entries, schema, detail)
+            # Remove the header lines from mini_table and just show the table part
+            table_lines = mini_table.split('\n')
+            # Find where the actual table starts (after "Table:")
+            table_start_idx = 0
+            for i, line in enumerate(table_lines):
+                if line.strip().startswith("Table:") or "---" in line:
+                    table_start_idx = i + 2  # Skip the "Table:" line and separator
+                    break
+            output.extend(table_lines[table_start_idx:])
+        
+        output.append("")
+        
+        # Update totals
+        total_objects += summary['total_objects']
+        total_size += summary['total_size']
+    
+    # Add overall summary at the end
+    output.append("=" * 40)
+    output.append(f"TOTAL - Objects: {total_objects}, Size: {Humanify.memory(total_size)}")
+    
+    return "\n".join(output)
+
+
+def format_list_api_output(
+    state_data: Union[List[StateSchema], List[Dict], Dict],
+    *,
+    schema: StateSchema,
+    format: AvailableFormat = AvailableFormat.DEFAULT,
+    detail: bool = False,
+    is_grouped: bool = False,
+) -> str:
+    # Handle grouped data
+    if is_grouped or isinstance(state_data, dict):
+        return format_grouped_output(
+            state_data, schema=schema, format=format, detail=detail
+        )
+    
+    # Handle ungrouped data (original logic)
     if len(state_data) == 0:
         return "No resource in the cluster"
-    state_data = [state.asdict() for state in state_data]
+    
+    # Convert to dicts if needed
+    if state_data and hasattr(state_data[0], 'asdict'):
+        state_data = [state.asdict() for state in state_data]
+    
     return output_with_format(state_data, schema=schema, format=format, detail=detail)
 
 
@@ -598,6 +678,94 @@ def summary_state_cli_group(ctx):
     pass
 
 
+def _sort_object_data(data: List[Dict], sort_by: str, order: str) -> List[Dict]:
+    """Sort object data by object size."""
+    reverse = (order == "desc")
+    
+    if sort_by == "object_size":
+        data.sort(key=lambda x: x.get("object_size", 0), reverse=reverse)
+    else:
+        raise ValueError(f"Unsupported sort field: {sort_by}. Only 'object_size' is supported.")
+    
+    return data
+
+
+def _group_object_data(data: List[Dict], group_by: str, limit_per_group: Optional[int] = None) -> Dict:
+    """Group object data by the specified field and calculate aggregates."""
+    from collections import defaultdict
+    
+    # Map group_by field to the actual field name in ObjectState
+    field_map = {
+        "call_site": "call_site",
+        "node_ip": "ip", 
+        "reference_type": "reference_type",
+        "pid": "pid"
+    }
+    
+    field_name = field_map[group_by]
+    groups = defaultdict(list)
+    
+    # Group entries
+    for entry in data:
+        group_key = entry.get(field_name, "unknown")
+        groups[group_key].append(entry)
+    
+    # Calculate aggregates for each group
+    result = {}
+    for group_key, entries in groups.items():
+        # Apply limit per group if specified
+        if limit_per_group and limit_per_group > 0:
+            displayed_entries = entries[:limit_per_group]
+        else:
+            displayed_entries = entries
+        
+        # Calculate aggregates based on ALL entries (before limiting)
+        total_size = sum(entry.get("object_size", 0) for entry in entries)
+        total_count = len(entries)
+        
+        # Count by reference type (based on all entries)
+        ref_type_counts = defaultdict(int)
+        for entry in entries:
+            ref_type_counts[entry.get("reference_type", "unknown")] += 1
+        
+        result[group_key] = {
+            "entries": displayed_entries,  # Limited entries for display
+            "summary": {
+                "total_objects": total_count,  # Total count (all entries)
+                "total_size": total_size,  # Total size (all entries)
+                "reference_type_counts": dict(ref_type_counts),
+                "displayed_objects": len(displayed_entries)  # How many are shown
+            }
+        }
+    
+    return result
+
+
+def _process_object_data(
+    data: List[Dict], 
+    sort_by: Optional[str] = None,
+    order: str = "asc", 
+    group_by: Optional[str] = None,
+    limit: Optional[int] = None
+) -> Union[List[Dict], Dict]:
+    """Process object data with sorting, limiting, and grouping."""
+    
+    # Apply sorting first if requested
+    if sort_by:
+        data = _sort_object_data(data, sort_by, order)
+    
+    # Apply grouping if requested  
+    if group_by:
+        # When grouping, limit is applied per-group
+        return _group_object_data(data, group_by, limit_per_group=limit)
+    
+    # Apply limit for non-grouped data
+    if limit and limit > 0:
+        data = data[:limit]
+    
+    return data
+
+
 # Experimental: `ray object ls` as a convenience alias to `ray list objects`
 @click.group("object")
 @click.pass_context
@@ -636,6 +804,22 @@ def object_state_cli_group(ctx):
     is_flag=True,
     default=False,
 )
+@click.option(
+    "--sort-by",
+    type=click.Choice(["object_size"]),
+    help="Sort objects by object size (use --group-by for other fields).",
+)
+@click.option(
+    "--order",
+    type=click.Choice(["asc", "desc"]),
+    default="asc",
+    help="Sort order: ascending or descending (default: asc).",
+)
+@click.option(
+    "--group-by",
+    type=click.Choice(["call_site", "node_ip", "reference_type", "pid"]),
+    help="Group objects by the specified field. Shows aggregate statistics per group.",
+)
 @timeout_option
 @address_option
 def object_ls(
@@ -643,15 +827,39 @@ def object_ls(
     filter: List[str],
     limit: int,
     detail: bool,
+    sort_by: Optional[str],
+    order: str,
+    group_by: Optional[str],
     timeout: float,
     address: str,
 ):
+    # Validation: grouping is only compatible with table formats
+    if group_by and format in ("json", "yaml"):
+        raise click.UsageError(
+            "Grouping (--group-by) is not compatible with JSON/YAML formats. "
+            "Use --format=default or --format=table instead."
+        )
+    
     resource = StateResource.OBJECTS
     format = AvailableFormat(format)
     client = StateApiClient(address=address)
     filter = [_parse_filter(f) for f in filter]
+    
+    # Smart limit strategy:
+    # - If sorting or grouping: use high server-side limit, apply user limit client-side
+    # - If neither: use user limit server-side (existing behavior for performance)
+    if sort_by or group_by:
+        # When sorting or grouping, we need more data for correct results
+        server_limit = max(limit * 10, 1000)  # Get 10x user limit or at least 1000 items
+        # Always apply client limit (for groups it's per-group, for sorting it's global)
+        client_limit = limit
+    else:
+        # No sorting or grouping: apply user limit server-side for performance  
+        server_limit = limit
+        client_limit = None
+    
     options = ListApiOptions(
-        limit=limit, timeout=timeout, filters=filter, detail=detail
+        limit=server_limit, timeout=timeout, filters=filter, detail=detail
     )
     try:
         data = client.list(
@@ -666,12 +874,21 @@ def object_ls(
     if detail and format == AvailableFormat.DEFAULT:
         format = AvailableFormat.YAML
 
+    # Convert to dict format for processing
+    data_dicts = [state.asdict() for state in data]
+    
+    # Apply sorting, limiting, and grouping if requested
+    processed_data = _process_object_data(
+        data_dicts, sort_by=sort_by, order=order, group_by=group_by, limit=client_limit
+    )
+
     print(
         format_list_api_output(
-            state_data=data,
+            state_data=processed_data,
             schema=resource_to_schema(resource),
             format=format,
             detail=detail,
+            is_grouped=(group_by is not None),
         )
     )
 
