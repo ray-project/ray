@@ -24,7 +24,6 @@ from ray.serve._private.common import (
     RequestProtocol,
     ServeDeployMode,
 )
-from ray.serve._private.utils import validate_ssl_config
 from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_MAX_ONGOING_REQUESTS,
@@ -33,7 +32,7 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
-from ray.serve._private.utils import DEFAULT
+from ray.serve._private.utils import DEFAULT, validate_ssl_config
 from ray.serve.config import ProxyLocation, RequestRouterConfig
 from ray.util.annotations import PublicAPI
 

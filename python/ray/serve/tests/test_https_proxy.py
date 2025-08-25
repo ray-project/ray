@@ -1,16 +1,17 @@
+import asyncio
+import json
 import os
+import ssl
 import tempfile
+
 import pytest
 import requests
-import ssl
-import asyncio
 import websockets
-import json
 
 import ray
 from ray import serve
-from ray.serve.config import HTTPOptions
 from ray._private.tls_utils import generate_self_signed_tls_certs
+from ray.serve.config import HTTPOptions
 
 
 @pytest.fixture(scope="session")
