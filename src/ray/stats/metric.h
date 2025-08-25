@@ -29,7 +29,7 @@
 #include "opencensus/stats/stats_exporter.h"
 #include "opencensus/tags/tag_key.h"
 #include "ray/common/ray_config.h"
-#include "ray/telemetry/open_telemetry_metric_recorder.h"
+#include "ray/observability/open_telemetry_metric_recorder.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -39,7 +39,7 @@ namespace stats {
 /// Include tag_defs.h to define tag items
 #include "ray/stats/tag_defs.h"
 
-using OpenTelemetryMetricRecorder = ray::telemetry::OpenTelemetryMetricRecorder;
+using OpenTelemetryMetricRecorder = ray::observability::OpenTelemetryMetricRecorder;
 
 /// StatsConfig per process.
 /// Note that this is not thread-safe. Don't modify its internal values
@@ -265,7 +265,7 @@ void RegisterView(const std::string &name,
                   const std::string &description,
                   const std::vector<opencensus::tags::TagKey> &tag_keys,
                   const std::vector<double> &buckets) {
-  if (!::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
+  if (!::RayConfig::instance().enable_open_telemetry()) {
     // OpenTelemetry is not enabled, register the view as an OpenCensus view.
     using I = StatsTypeMap<T>;
     auto view_descriptor = opencensus::stats::ViewDescriptor()
