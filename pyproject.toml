@@ -1,10 +1,5 @@
 [project]
-name = "ray"
-version = "3.0.0-dev"
 requires-python = ">=3.9"
-dependencies = [
-    "httpx>=0.28.1",
-]
 
 [tool.ruff]
 line-length = 88
