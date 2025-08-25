@@ -295,10 +295,8 @@ class KubeRayIPPRProvider:
                             {
                                 "raylet-id": resize.raylet_id,
                                 "resized-at": resized_at,
-                                "last-suggested-max-cpu": resize.suggested_max_cpu
-                                or resize.last_suggested_max_cpu,
-                                "last-suggested-max-memory": resize.suggested_max_memory
-                                or resize.last_suggested_max_memory,
+                                "suggested-max-cpu": resize.suggested_max_cpu,
+                                "suggested-max-memory": resize.suggested_max_memory,
                             }
                         )
                     }
@@ -467,12 +465,8 @@ def _get_ippr_status_from_pod(
         pod_ippr_status = json.loads(pod_ippr_status_json)
         ippr_status.raylet_id = pod_ippr_status.get("raylet-id")
         ippr_status.resized_at = pod_ippr_status.get("resized-at")
-        ippr_status.last_suggested_max_cpu = pod_ippr_status.get(
-            "last-suggested-max-cpu"
-        )
-        ippr_status.last_suggested_max_memory = pod_ippr_status.get(
-            "last-suggested-max-memory"
-        )
+        ippr_status.suggested_max_cpu = pod_ippr_status.get("suggested-max-cpu")
+        ippr_status.suggested_max_memory = pod_ippr_status.get("suggested-max-memory")
 
     for condition in pod.get("status", {}).get("conditions", []):
         if condition["type"] == "PodResizePending" and condition["status"] == "True":
@@ -521,9 +515,12 @@ def _get_ippr_status_from_pod(
                     ippr_status.suggested_max_cpu = float(
                         Decimal(str(max_request / 1000)) + diff
                     )
-                    ippr_status.suggested_max_memory = (
-                        ippr_status.last_suggested_max_memory
-                    )
+                    if ippr_status.queue_resize_request(
+                        desired_cpu=ippr_status.suggested_max_cpu,
+                    ):
+                        logger.info(
+                            f"Apply CPU suggestion for {ippr_status.cloud_instance_id} to {ippr_status.suggested_max_cpu}"
+                        )
                 else:
                     diff = int(
                         parse_quantity(
@@ -532,7 +529,12 @@ def _get_ippr_status_from_pod(
                         )
                     ) - int(parse_quantity(pod_status_requests.get("memory")))
                     ippr_status.suggested_max_memory = max_request + diff
-                    ippr_status.suggested_max_cpu = ippr_status.last_suggested_max_cpu
+                    if ippr_status.queue_resize_request(
+                        desired_memory=ippr_status.suggested_max_memory,
+                    ):
+                        logger.info(
+                            f"Apply memory suggestion for {ippr_status.cloud_instance_id} to {ippr_status.suggested_max_memory}"
+                        )
             break
         elif (
             condition["type"] == "PodResizeInProgress" and condition["status"] == "True"
@@ -542,6 +544,15 @@ def _get_ippr_status_from_pod(
             if condition.get("reason") == "Error":
                 ippr_status.resized_status = "error"
             break
+
+    if ippr_status.is_failed() or ippr_status.is_timeout():
+        if ippr_status.queue_resize_request(
+            desired_cpu=ippr_status.current_cpu,
+            desired_memory=ippr_status.current_memory,
+        ):
+            logger.info(
+                f"Revert failed or stuck IPPR for {ippr_status.cloud_instance_id} with status {ippr_status}"
+            )
 
     return (
         ippr_status,

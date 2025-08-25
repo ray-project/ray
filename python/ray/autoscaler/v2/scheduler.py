@@ -1517,29 +1517,7 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         for node in existing_nodes:
             if node.ippr_status is not None:
-                if (
-                    node.ippr_status.suggested_max_cpu is not None
-                    or node.ippr_status.suggested_max_memory is not None
-                ):
-                    # If provider suggested adjusted sizes (from Deferred/Infeasible),
-                    # make those the desired values for the next resize.
-                    node.ippr_status.queue_resize_request(
-                        raylet_id=node.ray_node_id,
-                        desired_cpu=node.ippr_status.suggested_max_cpu,
-                        desired_memory=node.ippr_status.suggested_max_memory,
-                    )
-                if (  # Revert failed or stuck IPPR
-                    node.ippr_status.is_failed() or node.ippr_status.is_timeout()
-                ):
-                    logger.info(
-                        f"Revert failed or stuck IPPR for {node.ippr_status.cloud_instance_id} with status {node.ippr_status}"
-                    )
-                    node.ippr_status.queue_resize_request(
-                        raylet_id=node.ray_node_id,
-                        desired_cpu=node.ippr_status.current_cpu,
-                        desired_memory=node.ippr_status.current_memory,
-                    )
-                elif (  # Reflect finished / ongoing IPPR in node capacity
+                if (  # Reflect finished / ongoing IPPR in node capacity
                     node.ippr_status.is_pod_resized_finished()
                     or node.ippr_status.is_in_progress()
                 ):

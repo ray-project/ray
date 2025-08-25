@@ -323,14 +323,8 @@ class IPPRStatus:
             state or failure, if any.
         suggested_max_cpu: Current-iteration suggested CPU cap (cores), computed from
             node remaining capacity plus existing gap when resize is deferred/infeasible.
-            None if no suggestion this iteration.
         suggested_max_memory: Current-iteration suggested memory cap (bytes), computed
             from node remaining capacity plus existing gap when resize is deferred/infeasible.
-            None if no suggestion this iteration.
-        last_suggested_max_cpu: Persisted CPU cap (cores) from the most recent prior
-            suggestion (stored/loaded via pod annotation).
-        last_suggested_max_memory: Persisted memory cap (bytes) from the most recent
-            prior suggestion (stored/loaded via pod annotation).
         raylet_id: Raylet node id (hex) running in this pod, used to sync Ray's
             internal resource view when K8s successfully changed pod resources.
     """
@@ -346,16 +340,14 @@ class IPPRStatus:
     resized_message: Optional[str] = None
     suggested_max_cpu: Optional[float] = None
     suggested_max_memory: Optional[int] = None
-    last_suggested_max_cpu: Optional[float] = None
-    last_suggested_max_memory: Optional[int] = None
     raylet_id: Optional[str] = None
 
     def queue_resize_request(
         self,
-        raylet_id: str,
+        raylet_id: Optional[str] = None,
         desired_cpu: Optional[float] = None,
         desired_memory: Optional[int] = None,
-    ) -> None:
+    ) -> bool:
         """Queue the new desired resources and reset resize tracking state.
 
         Queues the new desired CPU/memory if provided, associates the Raylet id,
@@ -367,24 +359,28 @@ class IPPRStatus:
             desired_cpu: Optional new desired CPU in cores.
             desired_memory: Optional new desired memory in bytes.
         """
-        if desired_cpu == self.desired_cpu and desired_memory == self.desired_memory:
-            return
-        if desired_cpu is not None:
+        updated = False
+        if raylet_id is not None and raylet_id != self.raylet_id:
+            self.raylet_id = raylet_id
+            updated = True
+        if desired_cpu is not None and desired_cpu != self.desired_cpu:
             self.desired_cpu = desired_cpu
-        if desired_memory is not None:
+            updated = True
+        if desired_memory is not None and desired_memory != self.desired_memory:
             self.desired_memory = desired_memory
-
-        self.raylet_id = raylet_id
-        self.resized_at = None
-        self.resized_status = "new"
-        self.resized_message = None
+            updated = True
+        if updated:
+            self.resized_at = None
+            self.resized_status = "new"
+            self.resized_message = None
+        return updated
 
     def has_resize_request_to_send(self) -> bool:
         """Whether this pod should be sent an IPPR request now.
 
         Returns True if there is a Raylet id, the status is marked as "new".
         """
-        return self.raylet_id and self.resized_status == "new"
+        return self.raylet_id is not None and self.resized_status == "new"
 
     def is_in_progress(self) -> bool:
         """Whether a resize is on going or about to be issued.
@@ -428,26 +424,18 @@ class IPPRStatus:
 
         Preference order:
         1) ``suggested_max_cpu`` (current iteration)
-        2) ``last_suggested_max_cpu`` (persisted from prior iteration)
-        3) ``spec.max_cpu`` (static limit)
+        2) ``spec.max_cpu`` (static limit)
         """
-        return (
-            self.suggested_max_cpu or self.last_suggested_max_cpu or self.spec.max_cpu
-        )
+        return self.suggested_max_cpu or self.spec.max_cpu
 
     def max_memory(self) -> int:
         """Effective maximum memory bytes allowed for this pod.
 
         Preference order:
         1) ``suggested_max_memory`` (current iteration)
-        2) ``last_suggested_max_memory`` (persisted from prior iteration)
-        3) ``spec.max_memory`` (static limit)
+        2) ``spec.max_memory`` (static limit)
         """
-        return (
-            self.suggested_max_memory
-            or self.last_suggested_max_memory
-            or self.spec.max_memory
-        )
+        return self.suggested_max_memory or self.spec.max_memory
 
     def can_resize_up(self) -> bool:
         """Whether the pod can still be scaled up within allowed limits.
