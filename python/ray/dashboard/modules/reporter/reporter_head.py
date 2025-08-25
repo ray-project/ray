@@ -785,6 +785,28 @@ class ReportHead(SubprocessModule):
             status_code=status_code, message=message
         )
 
+    @routes.get("/api/prometheus/sd")
+    async def prometheus_service_discovery(self, req) -> aiohttp.web.Response:
+        """
+        Expose Prometheus metrics targets through HTTP Service Discovery.
+        """
+        content = self.service_discovery.get_latest_service_discovery_content()
+        if not isinstance(content, list):
+            error_message = "service discovery error: content is not a list"
+            logger.warning(error_message)
+            return aiohttp.web.json_response(
+                {"error": error_message},
+                status=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
+                headers={"Cache-Control": "no-store"},
+            )
+        return aiohttp.web.Response(
+            text=json.dumps(content),
+            content_type="application/json",
+            charset="utf-8",
+            status=dashboard_utils.HTTPStatusCode.OK,
+            headers={"Cache-Control": "no-store"},
+        )
+
     async def _get_stub_address_by_node_id(
         self, node_id: NodeID
     ) -> Optional[Tuple[NodeID, str, int, int]]:
