@@ -72,7 +72,7 @@ class ArrowPythonObjectType(pa.ExtensionType):
         )
 
     def __hash__(self) -> int:
-        return hash((self.__class__.__name__, self.storage_type.id, self.extension_name))
+        return hash((type(self), self.storage_type.id, self.extension_name))
 
 @PublicAPI(stability="alpha")
 class ArrowPythonObjectScalar(pa.ExtensionScalar):
