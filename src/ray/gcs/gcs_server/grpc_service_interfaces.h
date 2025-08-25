@@ -64,5 +64,34 @@ class NodeInfoGcsServiceHandler {
                                     SendReplyCallback send_reply_callback) = 0;
 };
 
+class JobInfoGcsServiceHandler {
+ public:
+  using JobFinishListenerCallback = std::function<void(const rpc::JobTableData &)>;
+
+  virtual ~JobInfoGcsServiceHandler() = default;
+
+  virtual void HandleAddJob(AddJobRequest request,
+                            AddJobReply *reply,
+                            SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleMarkJobFinished(MarkJobFinishedRequest request,
+                                     MarkJobFinishedReply *reply,
+                                     SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllJobInfo(GetAllJobInfoRequest request,
+                                   GetAllJobInfoReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
+
+  virtual void AddJobFinishedListener(JobFinishListenerCallback listener) = 0;
+
+  virtual void HandleReportJobError(ReportJobErrorRequest request,
+                                    ReportJobErrorReply *reply,
+                                    SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetNextJobID(GetNextJobIDRequest request,
+                                  GetNextJobIDReply *reply,
+                                  SendReplyCallback send_reply_callback) = 0;
+};
+
 }  // namespace rpc
 }  // namespace ray
