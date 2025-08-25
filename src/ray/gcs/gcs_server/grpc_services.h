@@ -29,7 +29,7 @@
 #include "ray/common/id.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
-#include "src/ray/gcs/gcs_server/grpc_service_interfaces.h"
+#include "ray/gcs/gcs_server/grpc_service_interfaces.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
