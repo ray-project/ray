@@ -255,7 +255,7 @@ With Ray Datasets, you can do scalable offline batch inference with Torch models
 
     # Step 2: Define a Predictor class for inference.
     # Use a class to initialize the model just once in `__init__`
-    # and re-use it for inference across multiple batches.
+    # and reuse it for inference across multiple batches.
     class TorchPredictor:
         def __init__(self):
             # Load a dummy neural network.
