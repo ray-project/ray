@@ -281,7 +281,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="percentunit",
         targets=[
             Target(
-                expr='rate(ray_vllm:gpu_prefix_cache_hits_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[30s]) / rate(ray_vllm:gpu_prefix_cache_queries_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[30s])',
+                expr='increase(ray_vllm:gpu_prefix_cache_hits_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[30s]) / increase(ray_vllm:gpu_prefix_cache_queries_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[30s])',
                 legend="GPU: {{model_name}} - {{WorkerId}}",
             ),
         ],
