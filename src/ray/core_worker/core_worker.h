@@ -351,8 +351,6 @@ class CoreWorker {
 
   void SetWebuiDisplay(const std::string &key, const std::string &message);
 
-  void SetActorTitle(const std::string &title);
-
   /// Sets the actor's repr name.
   ///
   /// This is set explicitly rather than included as part of actor creation task spec
@@ -1494,6 +1492,19 @@ class CoreWorker {
       std::string *application_error);
 
   /// Put an object in the local plasma store.
+  ///
+  /// Return status semantics:
+  /// - Status::OK(): The object was created (or already existed) and bookkeeping was
+  ///   updated. Note: an internal ObjectExists from the plasma provider is treated
+  ///   as OK and does not surface here.
+  /// - Status::ObjectStoreFull(): The local plasma store is out of memory (or out of
+  ///   disk when spilling). The error message contains context and a short memory
+  ///   report.
+  /// - Status::IOError(): IPC/connection failures while talking to the plasma store
+  ///   (e.g., broken pipe/connection reset during shutdown, store not reachable).
+  ///
+  /// Call sites that run during shutdown may choose to tolerate IOError specifically,
+  /// but should treat all other statuses as real failures.
   Status PutInLocalPlasmaStore(const RayObject &object,
                                const ObjectID &object_id,
                                bool pin_object);
@@ -1835,9 +1846,6 @@ class CoreWorker {
 
   /// Key value pairs to be displayed on Web UI.
   std::unordered_map<std::string, std::string> webui_display_ ABSL_GUARDED_BY(mutex_);
-
-  /// Actor title that consists of class name, args, kwargs for actor construction.
-  std::string actor_title_ ABSL_GUARDED_BY(mutex_);
 
   /// Actor repr name if overrides by the user, empty string if not.
   std::string actor_repr_name_ ABSL_GUARDED_BY(mutex_);
