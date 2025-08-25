@@ -1,8 +1,8 @@
-# Deploying a vision-capable LLM
+# Deploying a Vision LLM
 
-A vision-capable LLM can interpret images as well as text, enabling tasks like answering questions about charts, analyzing photos, or combining visuals with instructions. It extends LLMs beyond language to support multimodal reasoning and richer applications.  
+A Vision LLM can interpret images as well as text, enabling tasks like answering questions about charts, analyzing photos, or combining visuals with instructions. It extends LLMs beyond language to support multimodal reasoning and richer applications.  
 
-This tutorial walks you through deploying a vision-capable LLM using Ray Serve LLM.  
+This tutorial walks you through deploying a Vision LLM using Ray Serve LLM.  
 
 ---
 
@@ -219,4 +219,4 @@ applications:
 
 ## Summary
 
-In this tutorial, you deployed a vision-capable LLM with Ray Serve LLM, from development to production. You learned how to configure Ray Serve LLM, deploy your service on your Ray Cluster, and how to send requests with images.
+In this tutorial, you deployed a Vision LLM with Ray Serve LLM, from development to production. You learned how to configure Ray Serve LLM, deploy your service on your Ray Cluster, and how to send requests with images.

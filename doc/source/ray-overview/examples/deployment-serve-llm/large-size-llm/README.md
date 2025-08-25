@@ -37,7 +37,7 @@ llm_config = LLMConfig(
         )
     ),
     engine_kwargs=dict(
-        max_model_len=32768,
+        max_model_len=16384,
         ### Uncomment if your model is gated and need your Huggingface Token to access it
         #hf_token=os.environ.get("HF_TOKEN"),
         # Split weights among 8 GPUs in the node
@@ -148,7 +148,7 @@ serve shutdown -y
 
 For production, it's recommended to use Anyscale Services to deploy Ray Serve apps on dedicated clusters without code changes. Anyscale provides scalability, fault tolerance, and load balancing, while also automating multi-node setup and autoscaling for large models like DeepSeek-R1.
 
-**Beware**: this is an expensive deployment. At the time of writing, the deployment cost is around $110 USD per hour in the `us-west-2` AWS region using on-demand instances. Because this node has a high amount of inter-node traffic, and cross-zone traffic is expensive (around $0.02 per GB), it's recommended to *disable cross-zone autoscaling*. This demo is pre-configured with cross-zone autoscaling disabled for your convenience.
+**Beware**: this is an expensive deployment. At the time of writing, the deployment cost is around \$110 USD per hour in the `us-west-2` AWS region using on-demand instances. Because this node has a high amount of inter-node traffic, and cross-zone traffic is expensive (around \$0.02 per GB), it's recommended to *disable cross-zone autoscaling*. This demo is pre-configured with cross-zone autoscaling disabled for your convenience.
 
 ### Prerequisites
 
@@ -297,7 +297,7 @@ Ray Serve LLM uses [vLLM](https://docs.vllm.ai/en/latest/) as its backend engine
 
 Example log:
 ```console
-INFO 08-19 20:57:37 [kv_cache_utils.py:837] Maximum concurrency for 32,768 tokens per request: 13.02x
+INFO 07-30 11:56:04 [kv_cache_utils.py:637] Maximum concurrency for 32,768 tokens per request: 29.06x
 ```
 
 Here are a few ways to improve concurrency depending on your model and hardware:  
@@ -307,11 +307,12 @@ Lowering `max_model_len` reduces the memory needed for KV cache.
 
 > *Example*:  
 > Running DeepSeek-R1 on 2 nodes with 8xH100-80&nbsp;GB GPUs each:
-> * `max_model_len = 32,768` → concurrency ≈ 13
-> * `max_model_len = 16,384` → concurrency ≈ 26
+> * `max_model_len = 32,768` → concurrency ≈ 29
+> * `max_model_len = 16,384` → concurrency ≈ 58
 
-**Use Quantized Models**  
-Quantizing your model (for example, to FP8) reduces the model's memory footprint, freeing up memory for more KV cache and enabling more concurrent requests.
+**Use Distilled or Quantized Models**  
+Quantizing or distilling your model reduces its memory footprint, freeing up space for more KV cache and enabling more concurrent requests.  For example, see [`deepseek-ai/DeepSeek-R1-Distill-Llama-70B`](https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Llama-70B) for a distilled version of DeepSeek-R1.
+
 
 **Upgrade to GPUs with more memory**  
 Some GPUs provide significantly more room for KV cache and allow for higher concurrency out of the box.
