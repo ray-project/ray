@@ -906,12 +906,13 @@ class RayCgraphCapacityExceeded(RaySystemError):
 
     pass
 
+
 @PublicAPI(stability="alpha")
 class UnpickleableException(RayError):
     """Raised when attempting to unpickle a serialized exception fails.
-    
+
     This occurs when deserializing (unpickling) a previously serialized exception
-    fails. In this case, we fall back to raising the string representation of 
+    fails. In this case, we fall back to raising the string representation of
     the original exception along with its stack trace that was captured at the
     time of serialization.
     """
@@ -956,5 +957,5 @@ RAY_EXCEPTION_TYPES = [
     RayChannelTimeoutError,
     OufOfBandObjectRefSerializationException,
     RayCgraphCapacityExceeded,
-    UnpickleableException
+    UnpickleableException,
 ]
