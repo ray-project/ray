@@ -2987,6 +2987,76 @@ blocking_wait_inside_async_warned = False
 
 
 @PublicAPI
+def waitstream(
+    ray_waitables: List[Union[ObjectRef, ObjectRefGenerator]],
+    callback: Callable[[ObjectRef], None],
+) -> None:
+    """
+    Wait for the object refs to be ready and call the callback with the ready object refs.
+
+    Args:
+        ray_waitables: List of :class:`~ObjectRef` or
+            :class:`~ObjectRefGenerator` for objects that may or may
+            not be ready. Note that these must be unique.
+        callback: A function that will be called with the ready object refs.
+
+    Returns:
+        Nothing.
+    """
+    worker = global_worker
+    worker.check_connected()
+
+    if hasattr(worker, "core_worker") and worker.core_worker.current_actor_is_asyncio():
+        global blocking_wait_inside_async_warned
+        if not blocking_wait_inside_async_warned:
+            logger.debug(
+                "Using blocking ray.wait inside async method. "
+                "This blocks the event loop. Please use `await` "
+                "on object ref with asyncio.wait. "
+            )
+            blocking_wait_inside_async_warned = True
+
+    if isinstance(ray_waitables, ObjectRef) or isinstance(
+        ray_waitables, ObjectRefGenerator
+    ):
+        raise TypeError(
+            "wait() expected a list of ray.ObjectRef or ray.ObjectRefGenerator"
+            ", got a single ray.ObjectRef or ray.ObjectRefGenerator "
+            f"{ray_waitables}"
+        )
+
+    if not isinstance(ray_waitables, list):
+        raise TypeError(
+            "wait() expected a list of ray.ObjectRef or "
+            "ray.ObjectRefGenerator, "
+            f"got {type(ray_waitables)}"
+        )
+
+    for ray_waitable in ray_waitables:
+        if not isinstance(ray_waitable, ObjectRef) and not isinstance(
+            ray_waitable, ObjectRefGenerator
+        ):
+            raise TypeError(
+                "wait() expected a list of ray.ObjectRef or "
+                "ray.ObjectRefGenerator, "
+                f"got list containing {type(ray_waitable)}"
+            )
+    worker.check_connected()
+
+    with profiling.profile("ray.waitstream"):
+        if len(ray_waitables) == 0:
+            return [], []
+
+        if len(ray_waitables) != len(set(ray_waitables)):
+            raise ValueError("Wait requires a list of unique ray_waitables.")
+
+        worker.core_worker.waitstream(
+            ray_waitables,
+            callback,
+        )
+
+
+@PublicAPI
 @client_mode_hook
 def wait(
     ray_waitables: List[Union[ObjectRef, ObjectRefGenerator]],

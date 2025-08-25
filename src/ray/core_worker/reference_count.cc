@@ -596,6 +596,26 @@ bool ReferenceCounter::HasOwner(const ObjectID &object_id) const {
   return object_id_refs_.find(object_id) != object_id_refs_.end();
 }
 
+size_t ReferenceCounter::HasOwner(const std::vector<ObjectID> &object_ids,
+                                  int num_needed,
+                                  std::ostringstream &ids_stream) const {
+  absl::MutexLock lock(&mutex_);
+  size_t objs_without_owners = 0;
+  size_t objs_with_owners = 0;
+  for (const auto &object_id : object_ids) {
+    if (!object_id_refs_.contains(object_id)) {
+      ids_stream << object_id << " ";
+      ++objs_without_owners;
+    } else {
+      ++objs_with_owners;
+    }
+    if (objs_with_owners == static_cast<size_t>(num_needed)) {
+      break;
+    }
+  }
+  return objs_without_owners;
+}
+
 bool ReferenceCounter::GetOwner(const ObjectID &object_id,
                                 rpc::Address *owner_address) const {
   absl::MutexLock lock(&mutex_);
@@ -627,7 +647,8 @@ std::vector<rpc::Address> ReferenceCounter::GetOwnerAddresses(
     if (!has_owner) {
       RAY_LOG(WARNING)
           << " Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
-             "(ObjectID.from_binary(...)) cannot be passed to ray.get(), ray.wait(), or "
+             "(ObjectID.from_binary(...)) cannot be passed to ray.get(), ray.wait(), "
+             "or "
              "as "
              "a task argument because Ray does not know which task created them. "
              "If this was not how your object ID was generated, please file an issue "
@@ -1307,8 +1328,8 @@ void ReferenceCounter::SetRefRemovedCallback(
   }
 
   if (it->second.RefCount() == 0) {
-    RAY_LOG(DEBUG).WithField(object_id)
-        << "Ref count for borrowed object is already 0, responding to WaitForRefRemoved";
+    RAY_LOG(DEBUG).WithField(object_id) << "Ref count for borrowed object is already "
+                                           "0, responding to WaitForRefRemoved";
     // We already stopped borrowing the object ID. Respond to the owner
     // immediately.
     ref_removed_callback(object_id);
@@ -1479,8 +1500,8 @@ std::optional<LocalityData> ReferenceCounter::GetLocalityData(
   // - If we don't own this object, this will contain a snapshot of the object locations
   //   at future resolution time.
   auto node_ids = it->second.locations;
-  // Add location of the primary copy since the object must be there: either in memory or
-  // spilled.
+  // Add location of the primary copy since the object must be there: either in memory
+  // or spilled.
   if (it->second.pinned_at_node_id_.has_value()) {
     node_ids.emplace(it->second.pinned_at_node_id_.value());
   }
@@ -1591,10 +1612,10 @@ void ReferenceCounter::FillObjectInformation(
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
-    RAY_LOG(WARNING).WithField(object_id)
-        << "Object locations requested for object, but ref already removed. This may be "
-           "a bug in the distributed "
-           "reference counting protocol.";
+    RAY_LOG(WARNING).WithField(object_id) << "Object locations requested for object, "
+                                             "but ref already removed. This may be "
+                                             "a bug in the distributed "
+                                             "reference counting protocol.";
     object_info->set_ref_removed(true);
   } else {
     FillObjectInformationInternal(it, object_info);
@@ -1622,10 +1643,10 @@ void ReferenceCounter::PublishObjectLocationSnapshot(const ObjectID &object_id) 
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
-    RAY_LOG(WARNING).WithField(object_id)
-        << "Object locations requested for object, but ref already removed. This may be "
-           "a bug in the distributed "
-           "reference counting protocol.";
+    RAY_LOG(WARNING).WithField(object_id) << "Object locations requested for object, "
+                                             "but ref already removed. This may be "
+                                             "a bug in the distributed "
+                                             "reference counting protocol.";
     // First let subscribers handle this error.
     rpc::PubMessage pub_message;
     pub_message.set_key_id(object_id.Binary());

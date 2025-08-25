@@ -3474,6 +3474,43 @@ cdef class CoreWorker:
                                 move(c_owner_address)))
         return c_object_id.Binary()
 
+    def waitstream(self, object_refs_or_generators, callback):
+        cdef:
+            c_vector[CObjectID] wait_ids
+            int64_t waitstream_id
+            int64_t result_idx = 0
+            int64_t num_done = 0
+
+        object_refs = []
+        for ref_or_generator in object_refs_or_generators:
+            if (not isinstance(ref_or_generator, ObjectRef)
+                    and not isinstance(ref_or_generator, ObjectRefGenerator)):
+                raise TypeError(
+                    "wait() expected a list of ray.ObjectRef "
+                    "or ObjectRefGenerator, "
+                    f"got list containing {type(ref_or_generator)}"
+                )
+
+            if isinstance(ref_or_generator, ObjectRefGenerator):
+                # Before calling wait,
+                # get the next reference from a generator.
+                object_refs.append(ref_or_generator._get_next_ref())
+            else:
+                object_refs.append(ref_or_generator)
+
+        wait_ids = ObjectRefsToVector(object_refs)
+        with nogil:
+            waitstream_id = CCoreWorkerProcess.GetCoreWorker().InitWaitStream(
+                wait_ids)
+
+        while num_done < wait_ids.size():
+            with nogil:
+                result_idx = CCoreWorkerProcess.GetCoreWorker().GetFromWaitStream(
+                    waitstream_id)
+            callback(object_refs_or_generators[result_idx])
+            num_done += 1
+
+
     def wait(self,
              object_refs_or_generators,
              int num_returns,

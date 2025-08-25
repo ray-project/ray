@@ -1433,6 +1433,84 @@ Status CoreWorker::Contains(const ObjectID &object_id,
   return Status::OK();
 }
 
+void CoreWorker::AskPlasmaWaitStream(
+    int64_t waitstream_id, const absl::flat_hash_set<ObjectID> &plasma_object_ids) {
+  absl::flat_hash_set<ObjectID> ready;
+  RAY_UNUSED(plasma_store_provider_->Wait(
+      plasma_object_ids, plasma_object_ids.size(), -1, *worker_context_, &ready));
+  absl::MutexLock lock(&mutex_);
+  auto &waitstream = waitstreams_[waitstream_id];
+  absl::MutexLock waitstream_lock(&waitstream->mu_);
+  auto &object_id_to_idx = waitstream->object_id_to_idx;
+  for (auto &object_id : ready) {
+    waitstream->to_return_idxs.push_back(object_id_to_idx[object_id]);
+  }
+  waitstream->cv_.SignalAll();
+}
+
+int64_t CoreWorker::InitWaitStream(const std::vector<ObjectID> &object_ids) {
+  static std::atomic<int64_t> waitstream_id = 0;
+  int64_t this_waitstream_id = waitstream_id.fetch_add(1);
+
+  absl::flat_hash_map<ObjectID, size_t> object_id_to_idx;
+  object_id_to_idx.reserve(object_ids.size());
+  for (size_t i = 0; i < object_ids.size(); i++) {
+    object_id_to_idx[object_ids[i]] = i;
+  }
+  RAY_CHECK_EQ(object_id_to_idx.size(), object_ids.size());
+
+  std::shared_ptr<WaitStream> waitstream;
+  {
+    absl::MutexLock lock(&mutex_);
+    waitstream = waitstreams_.emplace(this_waitstream_id, std::make_shared<WaitStream>())
+                     .first->second;
+  }
+
+  {
+    absl::MutexLock waitstream_lock(&waitstream->mu_);
+    waitstream->object_id_to_idx = std::move(object_id_to_idx);
+  }
+  memory_store_->InitWaitStream(waitstream, object_ids);
+
+  absl::MutexLock waitstream_lock(&waitstream->mu_);
+  if (!waitstream->to_ask_plasma_object_ids.empty()) {
+    io_service_.post(
+        [this,
+         this_waitstream_id,
+         plasma_object_ids = std::move(waitstream->to_ask_plasma_object_ids)]() {
+          AskPlasmaWaitStream(this_waitstream_id, plasma_object_ids);
+        },
+        "PlasmaWait");
+    waitstream->to_ask_plasma_object_ids.clear();
+  }
+
+  return this_waitstream_id;
+}
+
+int64_t CoreWorker::GetFromWaitStream(int64_t waitstream_id) {
+  std::shared_ptr<WaitStream> waitstream;
+  {
+    absl::MutexLock lock(&mutex_);
+    waitstream = waitstreams_[waitstream_id];
+  }
+  absl::MutexLock waitstream_lock(&waitstream->mu_);
+  while (waitstream->to_return_idxs.empty()) {
+    waitstream->cv_.Wait(&waitstream->mu_);
+    if (!waitstream->to_ask_plasma_object_ids.empty()) {
+      io_service_.post(
+          [this,
+           waitstream_id,
+           plasma_object_ids = std::move(waitstream->to_ask_plasma_object_ids)]() {
+            AskPlasmaWaitStream(waitstream_id, plasma_object_ids);
+          },
+          "PlasmaWait");
+    }
+  }
+  int64_t idx = waitstream->to_return_idxs.back();
+  waitstream->to_return_idxs.pop_back();
+  return idx;
+}
+
 Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
                         int num_objects,
                         int64_t timeout_ms,
@@ -1458,36 +1536,23 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
     return Status::Invalid("Duplicate object IDs not supported in wait.");
   }
 
-  size_t objs_without_owners = 0;
-  size_t objs_with_owners = 0;
   std::ostringstream ids_stream;
-
-  for (size_t i = 0; i < ids.size(); i++) {
-    if (!reference_counter_->HasOwner(ids[i])) {
-      ids_stream << ids[i] << " ";
-      ++objs_without_owners;
-    } else {
-      ++objs_with_owners;
-    }
-    // enough owned objects to process this batch
-    if (objs_with_owners == static_cast<size_t>(num_objects)) {
-      break;
-    }
-    // not enough objects with owners to process the batch
-    if (static_cast<size_t>(num_objects) > ids.size() - objs_without_owners) {
-      std::ostringstream stream;
-      stream << "An application is trying to access a Ray object whose owner is unknown"
-             << "(" << ids_stream.str()
-             << "). "
-                "Please make sure that all Ray objects you are trying to access are part"
-                " of the current Ray session. Note that "
-                "object IDs generated randomly (ObjectID.from_random()) or out-of-band "
-                "(ObjectID.from_binary(...)) cannot be passed as a task argument because"
-                " Ray does not know which task created them. "
-                "If this was not how your object ID was generated, please file an issue "
-                "at https://github.com/ray-project/ray/issues/";
-      return Status::ObjectUnknownOwner(stream.str());
-    }
+  auto objs_without_owners =
+      reference_counter_->HasOwner(ids, /*num_needed=*/num_objects, ids_stream);
+  // not enough objects with owners to process the batch
+  if (static_cast<size_t>(num_objects) > ids.size() - objs_without_owners) {
+    std::ostringstream stream;
+    stream << "An application is trying to access a Ray object whose owner is unknown"
+           << "(" << ids_stream.str()
+           << "). "
+              "Please make sure that all Ray objects you are trying to access are part"
+              " of the current Ray session. Note that "
+              "object IDs generated randomly (ObjectID.from_random()) or out-of-band "
+              "(ObjectID.from_binary(...)) cannot be passed as a task argument because"
+              " Ray does not know which task created them. "
+              "If this was not how your object ID was generated, please file an issue "
+              "at https://github.com/ray-project/ray/issues/";
+    return Status::ObjectUnknownOwner(stream.str());
   }
 
   int64_t start_time = current_time_ms();

@@ -300,6 +300,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \return if the object has an owner.
   bool HasOwner(const ObjectID &object_id) const ABSL_LOCKS_EXCLUDED(mutex_);
 
+  size_t HasOwner(const std::vector<ObjectID> &object_ids,
+                  int num_needed,
+                  std::ostringstream &ids_stream) const ABSL_LOCKS_EXCLUDED(mutex_);
+
   /// Get the owner addresses of the given objects. The owner address
   /// must be registered for these objects.
   ///

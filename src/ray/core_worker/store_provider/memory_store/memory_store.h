@@ -40,6 +40,14 @@ struct MemoryStoreStats {
 
 class GetRequest;
 
+struct WaitStream {
+  absl::flat_hash_set<ObjectID> to_ask_plasma_object_ids ABSL_GUARDED_BY(mu_);
+  std::vector<size_t> to_return_idxs ABSL_GUARDED_BY(mu_);
+  absl::flat_hash_map<ObjectID, size_t> object_id_to_idx ABSL_GUARDED_BY(mu_);
+  absl::Mutex mu_;
+  absl::CondVar cv_ ABSL_GUARDED_BY(mu_);
+};
+
 /// The class provides implementations for local process memory store.
 /// An example usage for this is to retrieve the returned objects from direct
 /// actor call (see task_receiver.cc).
@@ -92,6 +100,12 @@ class CoreWorkerMemoryStore {
              const WorkerContext &ctx,
              absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
              bool *got_exception);
+
+  void InitWaitStream(const std::shared_ptr<WaitStream> &waitstream,
+                      const std::vector<ObjectID> &object_ids);
+
+  absl::flat_hash_map<ObjectID, std::shared_ptr<WaitStream>> obj_id_to_waitstream_
+      ABSL_GUARDED_BY(mu_);
 
   /// Waits for a number of objects to be ready from the list of object_ids given.
   /// \return A pair of sets of object IDs. The first set contains the object IDs that

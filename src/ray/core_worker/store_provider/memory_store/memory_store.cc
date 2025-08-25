@@ -221,6 +221,17 @@ void CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
         }
       }
     }
+    auto waitstream_iter = obj_id_to_waitstream_.find(object_id);
+    if (waitstream_iter != obj_id_to_waitstream_.end()) {
+      auto &waitstream = waitstream_iter->second;
+      absl::MutexLock waitstream_lock(&waitstream->mu_);
+      if (object_entry->IsInPlasmaError()) {
+        waitstream->to_ask_plasma_object_ids.insert(object_id);
+      } else {
+        waitstream->to_return_idxs.push_back(waitstream->object_id_to_idx[object_id]);
+      }
+      waitstream->cv_.SignalAll();
+    }
     // Don't put it in the store, since we won't get a callback for deletion.
     if (ref_counter_ != nullptr && !ref_counter_->HasReference(object_id)) {
       should_add_entry = false;
@@ -443,6 +454,31 @@ Status CoreWorkerMemoryStore::Get(
     }
   }
   return Status::OK();
+}
+
+void CoreWorkerMemoryStore::InitWaitStream(const std::shared_ptr<WaitStream> &waitstream,
+                                           const std::vector<ObjectID> &object_ids) {
+  absl::MutexLock lock(&mu_);
+  absl::flat_hash_set<ObjectID> remaining_ids;
+  absl::MutexLock waitstream_lock(&waitstream->mu_);
+  for (size_t i = 0; i < object_ids.size(); i++) {
+    const auto &object_id = object_ids[i];
+    auto iter = objects_.find(object_id);
+    if (iter != objects_.end()) {
+      auto &obj = iter->second;
+      obj->SetAccessed();
+      if (obj->IsInPlasmaError()) {
+        waitstream->to_ask_plasma_object_ids.insert(object_id);
+      } else {
+        waitstream->to_return_idxs.push_back(i);
+      }
+    } else {
+      remaining_ids.insert(object_id);
+    }
+  }
+  for (auto &object_id : remaining_ids) {
+    obj_id_to_waitstream_.emplace(object_id, waitstream);
+  }
 }
 
 Status CoreWorkerMemoryStore::Wait(const std::vector<ObjectID> &id_vector,

@@ -558,9 +558,11 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
     // this is okay because the pinned copy is on the local node, so we will
     // fate-share with the object if the local node fails.
     std::shared_ptr<LocalMemoryBuffer> data_buffer;
-    // Here
     if (!return_object.data().empty()) {
-      data_buffer = std::make_shared<LocalMemoryBuffer>(return_object);
+      data_buffer = std::make_shared<LocalMemoryBuffer>(
+          const_cast<uint8_t *>(
+              reinterpret_cast<const uint8_t *>(return_object.data().data())),
+          return_object.data().size());
     }
     std::shared_ptr<LocalMemoryBuffer> metadata_buffer;
     if (!return_object.metadata().empty()) {
