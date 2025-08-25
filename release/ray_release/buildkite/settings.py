@@ -201,9 +201,14 @@ def update_settings_from_buildkite(settings: Dict):
     test_attr_regex_filters = get_buildkite_prompt_value(
         "release-test-attr-regex-filters"
     )
+    test_prefix_filter = get_buildkite_prompt_value("release-test-prefix-filters")
     if test_attr_regex_filters:
         settings["test_attr_regex_filters"] = get_test_attr_regex_filters(
             test_attr_regex_filters
+        )
+    if test_prefix_filter:
+        settings["test_prefix_filter"] = get_test_attr_regex_filters(
+            "name:" + test_prefix_filters
         )
 
     test_priority = get_buildkite_prompt_value("release-priority")

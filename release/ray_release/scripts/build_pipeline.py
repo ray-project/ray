@@ -114,10 +114,10 @@ def main(
         test_collection,
         frequency=frequency,
         test_attr_regex_filters=test_attr_regex_filters,
+        test_name_prefix_filter=test_name_prefix,
         prefer_smoke_tests=prefer_smoke_tests,
         run_jailed_tests=run_jailed_tests,
         run_unstable_tests=run_unstable_tests,
-        test_name_prefix=test_name_prefix,
     )
     logger.info(f"Found {len(filtered_tests)} tests to run.")
     if len(filtered_tests) == 0:
