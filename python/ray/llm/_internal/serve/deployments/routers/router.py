@@ -46,9 +46,12 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     LLMChatResponse,
     LLMCompletionsResponse,
     LLMEmbeddingsResponse,
+    LLMScoreResponse,
     ModelCard,
     ModelList,
     OpenAIHTTPException,
+    ScoreRequest,
+    ScoreResponse,
     to_model_metadata,
 )
 from ray.llm._internal.serve.configs.server_models import LLMConfig
@@ -313,7 +316,13 @@ class LLMRouter:
         body: Union[CompletionRequest, ChatCompletionRequest, EmbeddingRequest],
         call_method: str,
     ) -> AsyncGenerator[
-        Union[LLMChatResponse, LLMCompletionsResponse, LLMEmbeddingsResponse], None
+        Union[
+            LLMChatResponse,
+            LLMCompletionsResponse,
+            LLMEmbeddingsResponse,
+            LLMScoreResponse,
+        ],
+        None,
     ]:
         """Calls the model deployment and returns the stream."""
         model: str = body.model
@@ -476,6 +485,29 @@ class LLMRouter:
                 )
 
             if isinstance(result, EmbeddingResponse):
+                return JSONResponse(content=result.model_dump())
+
+    @fastapi_router_app.post("/v1/score")
+    async def score(self, body: ScoreRequest) -> Response:
+        """Create scores for the provided text pairs.
+
+        Args:
+            body: The score request containing input text pairs to score.
+
+        Returns:
+            A response object with scores.
+        """
+        async with timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
+            results = self._get_response(body=body, call_method="score")
+            result = await results.__anext__()
+            if isinstance(result, ErrorResponse):
+                raise OpenAIHTTPException(
+                    message=result.message,
+                    status_code=result.code,
+                    type=result.type,
+                )
+
+            if isinstance(result, ScoreResponse):
                 return JSONResponse(content=result.model_dump())
 
     @classmethod
