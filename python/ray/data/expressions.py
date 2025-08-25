@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+from ray.data.datatype import DataType
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
@@ -66,6 +67,8 @@ class Expr(ABC):
         This class should not be instantiated directly. Use the concrete
         subclasses like ColumnExpr, LiteralExpr, etc.
     """
+
+    return_dtype: DataType
 
     @abstractmethod
     def structurally_equals(self, other: Any) -> bool:
@@ -172,6 +175,9 @@ class ColumnExpr(Expr):
     """
 
     name: str
+    return_dtype: DataType = field(
+        default_factory=lambda: DataType.from_python(object), init=False
+    )
 
     def structurally_equals(self, other: Any) -> bool:
         return isinstance(other, ColumnExpr) and self.name == other.name
@@ -193,9 +199,18 @@ class LiteralExpr(Expr):
         >>> # Create a literal value
         >>> five = lit(5) # Creates LiteralExpr(value=5)
         >>> name = lit("John") # Creates LiteralExpr(value="John")
+        >>> numpy_val = lit(np.int32(42)) # Creates LiteralExpr with numpy type
     """
 
     value: Any
+    return_dtype: DataType = field(init=False)
+
+    def __post_init__(self):
+        # Infer the type from the value using DataType.infer_dtype
+        inferred_dtype = DataType.infer_dtype(self.value)
+
+        # Use object.__setattr__ since the dataclass is frozen
+        object.__setattr__(self, "return_dtype", inferred_dtype)
 
     def structurally_equals(self, other: Any) -> bool:
         return (
@@ -229,6 +244,10 @@ class BinaryExpr(Expr):
     op: Operation
     left: Expr
     right: Expr
+
+    return_dtype: DataType = field(
+        default_factory=lambda: DataType.from_python(object), init=False
+    )
 
     def structurally_equals(self, other: Any) -> bool:
         return (
