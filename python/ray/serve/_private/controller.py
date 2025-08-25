@@ -442,8 +442,6 @@ class ServeController:
             dsm_update_start_time = time.time()
             any_recovering = self.deployment_state_manager.update()
 
-            self.deployment_state_manager.save_checkpoint()
-
             self.dsm_update_duration_gauge_s.set(time.time() - dsm_update_start_time)
             if not self.done_recovering_event.is_set() and not any_recovering:
                 self.done_recovering_event.set()
@@ -460,11 +458,6 @@ class ServeController:
         try:
             asm_update_start_time = time.time()
             self.application_state_manager.update()
-
-            self.application_state_manager.save_checkpoint()
-            # ApplicationStateManager.update() can also mutate the
-            # DeploymentStateManager so we need to checkpoint that as well
-            self.deployment_state_manager.save_checkpoint()
 
             self.asm_update_duration_gauge_s.set(time.time() - asm_update_start_time)
         except Exception:
