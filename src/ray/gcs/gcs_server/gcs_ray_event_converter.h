@@ -16,6 +16,7 @@
 
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "gtest/gtest_prod.h"
 #include "src/ray/protobuf/events_event_aggregator_service.pb.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
@@ -74,6 +75,26 @@ class GcsRayEventConverter {
       ::google::protobuf::Map<std::string, double> &&required_resources,
       rpc::Language language,
       rpc::TaskInfoEntry *task_info);
+
+  /// Add a task event to the appropriate job-grouped request.
+  ///
+  /// \param task_event The TaskEvents to add.
+  /// \param requests_per_job_id The list of requests grouped by job id.
+  /// \param job_id_to_index The map from job id to index in requests_per_job_id.
+  void AddTaskEventToRequest(
+      rpc::TaskEvents &&task_event,
+      std::vector<rpc::AddTaskEventDataRequest> &requests_per_job_id,
+      absl::flat_hash_map<std::string, size_t> &job_id_to_index);
+
+  /// Add dropped task attempts to the appropriate job-grouped request.
+  ///
+  /// \param metadata The task events metadata containing dropped task attempts.
+  /// \param requests_per_job_id The list of requests grouped by job id.
+  /// \param job_id_to_index The map from job id to index in requests_per_job_id.
+  void AddDroppedTaskAttemptsToRequest(
+      rpc::events::TaskEventsMetadata *metadata,
+      std::vector<rpc::AddTaskEventDataRequest> &requests_per_job_id,
+      absl::flat_hash_map<std::string, size_t> &job_id_to_index);
 
   FRIEND_TEST(GcsRayEventConverterTest, TestConvertTaskExecutionEvent);
   FRIEND_TEST(GcsRayEventConverterTest, TestConvertActorTaskDefinitionEvent);

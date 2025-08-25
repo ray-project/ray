@@ -16,8 +16,8 @@
 
 #include <google/protobuf/map.h>
 
-#include <unordered_map>
-
+#include "absl/container/flat_hash_map.h"
+#include "ray/common/id.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -25,8 +25,8 @@ namespace gcs {
 
 void GcsRayEventConverter::ConvertToTaskEventDataRequests(
     rpc::events::AddEventsRequest &&request,
-    std::vector<rpc::AddTaskEventDataRequest> &grouped_requests) {
-  std::unordered_map<std::string, size_t> job_id_to_index;
+    std::vector<rpc::AddTaskEventDataRequest> &requests_per_job_id) {
+  absl::flat_hash_map<std::string, size_t> job_id_to_index;
 
   // convert RayEvents to TaskEvents and group by job id.
   for (auto &event : *request.mutable_events_data()->mutable_events()) {
@@ -50,32 +50,62 @@ void GcsRayEventConverter::ConvertToTaskEventDataRequests(
       break;
     }
 
-    const std::string job_id_key = task_event.job_id();
-    auto it = job_id_to_index.find(job_id_key);
-    if (it == job_id_to_index.end()) {
-      size_t idx = grouped_requests.size();
-      grouped_requests.emplace_back();
-      auto *data = grouped_requests.back().mutable_data();
-      data->set_job_id(job_id_key);
-      data->add_events_by_task()->Swap(&task_event);
-      job_id_to_index.emplace(job_id_key, idx);
-    } else {
-      auto *data = grouped_requests[it->second].mutable_data();
-      data->add_events_by_task()->Swap(&task_event);
-    }
+    // Groups all taskEvents belonging to same jobId into one AddTaskEventDataRequest
+    AddTaskEventToRequest(std::move(task_event), requests_per_job_id, job_id_to_index);
   }
 
-  // Move dropped task attempts from the metadata into the first request only to avoid
-  // double counting. These are aggregated by job id (derived from task id) in the
-  // receiver so they can all be reported in the same request.
+  //  Groups all taskEventMetadata belonging to same jobId into one
+  //  AddTaskEventDataRequest
   auto *metadata = request.mutable_events_data()->mutable_task_events_metadata();
   if (metadata->dropped_task_attempts_size() > 0) {
-    if (grouped_requests.empty()) {
-      grouped_requests.emplace_back();
+    AddDroppedTaskAttemptsToRequest(metadata, requests_per_job_id, job_id_to_index);
+  }
+}
+
+void GcsRayEventConverter::AddTaskEventToRequest(
+    rpc::TaskEvents &&task_event,
+    std::vector<rpc::AddTaskEventDataRequest> &requests_per_job_id,
+    absl::flat_hash_map<std::string, size_t> &job_id_to_index) {
+  const std::string job_id_key = task_event.job_id();
+  auto it = job_id_to_index.find(job_id_key);
+  if (it == job_id_to_index.end()) {
+    // Create new AddTaskEventDataRequest entry and add index to map
+    size_t idx = requests_per_job_id.size();
+    requests_per_job_id.emplace_back();
+    auto *data = requests_per_job_id.back().mutable_data();
+    data->set_job_id(job_id_key);
+    *data->add_events_by_task() = std::move(task_event);
+    job_id_to_index.emplace(job_id_key, idx);
+  } else {
+    // add taskEvent to existing AddTaskEventDataRequest with same job id
+    auto *data = requests_per_job_id[it->second].mutable_data();
+    *data->add_events_by_task() = std::move(task_event);
+  }
+}
+
+void GcsRayEventConverter::AddDroppedTaskAttemptsToRequest(
+    rpc::events::TaskEventsMetadata *metadata,
+    std::vector<rpc::AddTaskEventDataRequest> &requests_per_job_id,
+    absl::flat_hash_map<std::string, size_t> &job_id_to_index) {
+  // Process each dropped task attempt individually and route to the correct job ID
+  for (auto &dropped_attempt : *metadata->mutable_dropped_task_attempts()) {
+    const auto task_id = TaskID::FromBinary(dropped_attempt.task_id());
+    const auto job_id_key = task_id.JobId().Binary();
+
+    auto it = job_id_to_index.find(job_id_key);
+    if (it == job_id_to_index.end()) {
+      // Create new request if job_id not found
+      size_t idx = requests_per_job_id.size();
+      requests_per_job_id.emplace_back();
+      auto *data = requests_per_job_id.back().mutable_data();
+      data->set_job_id(job_id_key);
+      *data->add_dropped_task_attempts() = std::move(dropped_attempt);
+      job_id_to_index.emplace(job_id_key, idx);
+    } else {
+      // Add to existing request with same job_id
+      auto *data = requests_per_job_id[it->second].mutable_data();
+      *data->add_dropped_task_attempts() = std::move(dropped_attempt);
     }
-    auto *first_task_event_data = grouped_requests.front().mutable_data();
-    first_task_event_data->mutable_dropped_task_attempts()->Swap(
-        metadata->mutable_dropped_task_attempts());
   }
 }
 
