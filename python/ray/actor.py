@@ -855,14 +855,18 @@ class ActorMethod:
         if self._decorator is not None:
             invocation = self._decorator(invocation)
 
-        obj_ref = invocation(args, kwargs)
+        object_refs = invocation(args, kwargs)
         if tensor_transport != TensorTransportEnum.OBJECT_STORE:
+            # Currently, we only support transfer tensor out-of-band when
+            # num_returns is 1.
+            assert isinstance(object_refs, ObjectRef)
+            object_ref = object_refs
             gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
             gpu_object_manager.add_gpu_object_ref(
-                obj_ref, self._actor, tensor_transport
+                object_ref, self._actor, tensor_transport
             )
 
-        return obj_ref
+        return object_refs
 
     def __getstate__(self):
         return {
