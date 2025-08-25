@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "ray/common/id.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/events_base_event.pb.h"
 #include "src/ray/protobuf/events_event_aggregator_service.pb.h"
@@ -27,7 +28,7 @@ namespace gcs {
 
 class GcsRayEventConverterTest : public ::testing::Test {
  public:
-  GcsRayEventConverterTest() {}
+  GcsRayEventConverterTest() = default;
 };
 
 TEST_F(GcsRayEventConverterTest, TestConvertToTaskEventData) {
@@ -110,11 +111,17 @@ TEST_F(GcsRayEventConverterTest, TestConvertWithDroppedTaskAttempts) {
   std::vector<rpc::AddTaskEventDataRequest> task_event_data_requests;
   GcsRayEventConverter converter;
 
+  // Create a proper TaskID for testing
+  const auto job_id = JobID::FromInt(100);
+  const auto driver_task_id = TaskID::ForDriverTask(job_id);
+  const auto test_task_id = TaskID::ForNormalTask(job_id, driver_task_id, 1);
+  const auto task_id_binary = test_task_id.Binary();
+
   // Add dropped task attempts to metadata
   auto *dropped_attempt = request.mutable_events_data()
                               ->mutable_task_events_metadata()
                               ->add_dropped_task_attempts();
-  dropped_attempt->set_task_id("dropped_task_id");
+  dropped_attempt->set_task_id(task_id_binary);
   dropped_attempt->set_attempt_number(2);
 
   // Convert
@@ -125,8 +132,139 @@ TEST_F(GcsRayEventConverterTest, TestConvertWithDroppedTaskAttempts) {
   EXPECT_EQ(task_event_data_requests[0].data().dropped_task_attempts_size(), 1);
   const auto &converted_dropped =
       task_event_data_requests[0].data().dropped_task_attempts(0);
-  EXPECT_EQ(converted_dropped.task_id(), "dropped_task_id");
+  EXPECT_EQ(converted_dropped.task_id(), task_id_binary);
   EXPECT_EQ(converted_dropped.attempt_number(), 2);
+}
+
+TEST_F(GcsRayEventConverterTest, TestMultipleJobIds) {
+  rpc::events::AddEventsRequest request;
+  std::vector<rpc::AddTaskEventDataRequest> task_event_data_requests;
+  GcsRayEventConverter converter;
+
+  // Create events with different job IDs
+  const auto job_id_1 = JobID::FromInt(100);
+  const auto job_id_2 = JobID::FromInt(200);
+
+  // Create first task event
+  auto *event1 = request.mutable_events_data()->add_events();
+  event1->set_event_id("test_event_1");
+  event1->set_event_type(rpc::events::RayEvent::TASK_DEFINITION_EVENT);
+  auto *task_def_event1 = event1->mutable_task_definition_event();
+  task_def_event1->set_task_type(rpc::TaskType::NORMAL_TASK);
+  task_def_event1->set_language(rpc::Language::PYTHON);
+  task_def_event1->set_task_id("task_1");
+  task_def_event1->set_job_id(job_id_1.Binary());
+  task_def_event1->set_task_name("task_1_name");
+
+  // Create second task event with different job ID
+  auto *event2 = request.mutable_events_data()->add_events();
+  event2->set_event_id("test_event_2");
+  event2->set_event_type(rpc::events::RayEvent::TASK_DEFINITION_EVENT);
+  auto *task_def_event2 = event2->mutable_task_definition_event();
+  task_def_event2->set_task_type(rpc::TaskType::NORMAL_TASK);
+  task_def_event2->set_language(rpc::Language::PYTHON);
+  task_def_event2->set_task_id("task_2");
+  task_def_event2->set_job_id(job_id_2.Binary());
+  task_def_event2->set_task_name("task_2_name");
+
+  // Add dropped task attempts for both job IDs
+  const auto driver_task_id_1 = TaskID::ForDriverTask(job_id_1);
+  const auto test_task_id_1 = TaskID::ForNormalTask(job_id_1, driver_task_id_1, 1);
+
+  const auto driver_task_id_2 = TaskID::ForDriverTask(job_id_2);
+  const auto test_task_id_2 = TaskID::ForNormalTask(job_id_2, driver_task_id_2, 1);
+
+  // Add dropped task attempt for job_id_1
+  auto *dropped_attempt_1 = request.mutable_events_data()
+                                ->mutable_task_events_metadata()
+                                ->add_dropped_task_attempts();
+  dropped_attempt_1->set_task_id(test_task_id_1.Binary());
+  dropped_attempt_1->set_attempt_number(3);
+
+  // Add dropped task attempt for job_id_2
+  auto *dropped_attempt_2 = request.mutable_events_data()
+                                ->mutable_task_events_metadata()
+                                ->add_dropped_task_attempts();
+  dropped_attempt_2->set_task_id(test_task_id_2.Binary());
+  dropped_attempt_2->set_attempt_number(4);
+
+  // Convert
+  converter.ConvertToTaskEventDataRequests(std::move(request), task_event_data_requests);
+
+  // Verify that we get two separate requests (one for each job ID)
+  ASSERT_EQ(task_event_data_requests.size(), 2);
+
+  // Check that each request has the correct job ID and dropped task attempts
+  bool found_job_1 = false, found_job_2 = false;
+  for (const auto &req : task_event_data_requests) {
+    if (req.data().job_id() == job_id_1.Binary()) {
+      found_job_1 = true;
+      EXPECT_EQ(req.data().events_by_task_size(), 1);
+      EXPECT_EQ(req.data().events_by_task(0).job_id(), job_id_1.Binary());
+
+      // Verify dropped task attempt for job_id_1
+      EXPECT_EQ(req.data().dropped_task_attempts_size(), 1);
+      const auto &dropped = req.data().dropped_task_attempts(0);
+      EXPECT_EQ(dropped.task_id(), test_task_id_1.Binary());
+      EXPECT_EQ(dropped.attempt_number(), 3);
+    } else if (req.data().job_id() == job_id_2.Binary()) {
+      found_job_2 = true;
+      EXPECT_EQ(req.data().events_by_task_size(), 1);
+      EXPECT_EQ(req.data().events_by_task(0).job_id(), job_id_2.Binary());
+
+      // Verify dropped task attempt for job_id_2
+      EXPECT_EQ(req.data().dropped_task_attempts_size(), 1);
+      const auto &dropped = req.data().dropped_task_attempts(0);
+      EXPECT_EQ(dropped.task_id(), test_task_id_2.Binary());
+      EXPECT_EQ(dropped.attempt_number(), 4);
+    }
+  }
+  EXPECT_TRUE(found_job_1);
+  EXPECT_TRUE(found_job_2);
+}
+
+TEST_F(GcsRayEventConverterTest, TestSameJobIdGrouping) {
+  rpc::events::AddEventsRequest request;
+  std::vector<rpc::AddTaskEventDataRequest> task_event_data_requests;
+  GcsRayEventConverter converter;
+
+  // Create multiple events with the same job ID
+  const auto job_id = JobID::FromInt(100);
+
+  // Create first task event
+  auto *event1 = request.mutable_events_data()->add_events();
+  event1->set_event_id("test_event_1");
+  event1->set_event_type(rpc::events::RayEvent::TASK_DEFINITION_EVENT);
+  auto *task_def_event1 = event1->mutable_task_definition_event();
+  task_def_event1->set_task_type(rpc::TaskType::NORMAL_TASK);
+  task_def_event1->set_language(rpc::Language::PYTHON);
+  task_def_event1->set_task_id("task_1");
+  task_def_event1->set_job_id(job_id.Binary());
+  task_def_event1->set_task_name("task_1_name");
+
+  // Create second task event with same job ID
+  auto *event2 = request.mutable_events_data()->add_events();
+  event2->set_event_id("test_event_2");
+  event2->set_event_type(rpc::events::RayEvent::TASK_DEFINITION_EVENT);
+  auto *task_def_event2 = event2->mutable_task_definition_event();
+  task_def_event2->set_task_type(rpc::TaskType::NORMAL_TASK);
+  task_def_event2->set_language(rpc::Language::PYTHON);
+  task_def_event2->set_task_id("task_2");
+  task_def_event2->set_job_id(job_id.Binary());
+  task_def_event2->set_task_name("task_2_name");
+
+  // Convert
+  converter.ConvertToTaskEventDataRequests(std::move(request), task_event_data_requests);
+
+  // Verify that we get one request with both events grouped together
+  ASSERT_EQ(task_event_data_requests.size(), 1);
+  EXPECT_EQ(task_event_data_requests[0].data().job_id(), job_id.Binary());
+  EXPECT_EQ(task_event_data_requests[0].data().events_by_task_size(), 2);
+
+  // Verify both tasks are present
+  const auto &events = task_event_data_requests[0].data().events_by_task();
+  EXPECT_EQ(events[0].job_id(), job_id.Binary());
+  EXPECT_EQ(events[1].job_id(), job_id.Binary());
 }
 
 }  // namespace gcs
