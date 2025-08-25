@@ -64,6 +64,8 @@ class ColAgg:
     struct_schemas: list = dataclasses.field(default_factory=list)
     saw_null_list: bool = False
     first_nonnull_list_type: Optional[pyarrow.DataType] = None
+    # Add this field to track non-list types
+    saw_non_list_type: bool = False
 
 
 def sort(table: "pyarrow.Table", sort_key: "SortKey") -> "pyarrow.Table":
@@ -222,6 +224,9 @@ def unify_schemas(
                     agg.saw_null_list = True
                 elif agg.first_nonnull_list_type is None:
                     agg.first_nonnull_list_type = field_type
+            else:
+                # Track non-list types
+                agg.saw_non_list_type = True
 
             # object / tensor / struct flags
             if isinstance(field_type, ArrowPythonObjectType):
@@ -266,8 +271,15 @@ def unify_schemas(
                     )
                 overrides[col] = new_type
 
-    # 2b) Objects override
+    # 2b) Objects and null list overrides - with validation
     for col, agg in per_col.items():
+        # Validate type compatibility for list/non-list mixing
+        if agg.saw_null_list and agg.saw_non_list_type:
+            raise ValueError(
+                f"Column '{col}' has incompatible types: found both list and non-list types. "
+                f"Cannot unify schemas with fundamentally different type categories for the same column."
+            )
+
         if agg.is_object:
             overrides[col] = ArrowPythonObjectType()
         if agg.is_struct:
@@ -276,7 +288,12 @@ def unify_schemas(
                 agg.struct_schemas, promote_types=promote_types
             )
             overrides[col] = pyarrow.struct(list(unified_struct_schema))
-        if agg.saw_null_list and agg.first_nonnull_list_type is not None:
+        # Only apply null list override when all instances are lists
+        if (
+            agg.saw_null_list
+            and agg.first_nonnull_list_type is not None
+            and not agg.saw_non_list_type
+        ):
             overrides[col] = agg.first_nonnull_list_type
 
     # ---- 3) Apply overrides to each schema (only touching present fields)
