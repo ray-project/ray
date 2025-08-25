@@ -72,9 +72,9 @@ ray_cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
     ],
     deps = [
-        ":grpc_service_interfaces",
         ":gcs_init_data",
         ":gcs_table_storage",
+        ":grpc_service_interfaces",
         "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
@@ -248,9 +248,9 @@ ray_cc_library(
         ":grpc_service_interfaces",
         "//src/ray/common:asio",
         "//src/ray/common:id",
+        "//src/ray/protobuf:gcs_service_cc_grpc",
         "//src/ray/rpc:grpc_server",
         "//src/ray/rpc:server_call",
-        "//src/ray/protobuf:gcs_service_cc_grpc",
         "@com_github_grpc_grpc//:grpc++",
     ],
 )
