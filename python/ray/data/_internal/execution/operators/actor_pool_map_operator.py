@@ -398,13 +398,10 @@ class ActorPoolMapOperator(MapOperator):
         num_gpus_per_actor = self._ray_remote_args.get("num_gpus", 0)
         memory_per_actor = self._ray_remote_args.get("memory", 0)
 
-        # For unstarted operators, we can't get the object store memory from metrics
-        # but we can still calculate CPU/GPU/memory requirements for validation
-        object_store_memory_per_task = 0
-        if self._started:
-            object_store_memory_per_task = (
-                self._metrics.obj_store_mem_max_pending_output_per_task or 0
-            )
+        # Access the metric directly (can be estimated or mocked even for unstarted operators)
+        object_store_memory_per_task = (
+            self._metrics.obj_store_mem_max_pending_output_per_task or 0
+        )
 
         min_resource_usage = ExecutionResources(
             cpu=num_cpus_per_actor * min_actors,
