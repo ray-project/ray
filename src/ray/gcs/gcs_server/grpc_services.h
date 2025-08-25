@@ -12,6 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+/*
+ * This file defines the gRPC service handlers for the GCS server binary.
+ * Subcomponents that implement a given interface should inherit from the relevant
+ * class in grpc_service_interfaces.h.
+ *
+ * The GCS server main binary should be the only user of this target.
+ */
+
 #pragma once
 
 #include <memory>

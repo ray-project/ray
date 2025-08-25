@@ -12,6 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+/*
+ * This file defines the gRPC service *INTERFACES* only.
+ * The subcomponent that handles a given interface should inherit from the relevant
+ * class. The target for the subcomponent should depend only on this file, not on
+ * grpc_services.h.
+ */
+
 #pragma once
 
 #include "ray/common/status.h"
