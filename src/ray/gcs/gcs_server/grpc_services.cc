@@ -39,9 +39,9 @@ void NodeInfoGrpcService::InitServerCallFactories(
 void RuntimeEnvGrpcService::InitServerCallFactories(
     const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-    const ClusterID &cluster_id) override {
+    const ClusterID &cluster_id) {
   RPC_SERVICE_HANDLER(
-      RuntimeEnvGrpcService, PinRuntimeEnvURI, max_active_rpcs_per_handler_);
+      RuntimeEnvGcsService, PinRuntimeEnvURI, max_active_rpcs_per_handler_);
 }
 
 }  // namespace rpc
