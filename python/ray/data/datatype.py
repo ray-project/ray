@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Union
+from typing import Any, Union
 
 import numpy as np
 import pyarrow as pa
@@ -126,7 +126,7 @@ class DataType:
         return cls(internal_type=python_type)
 
     @classmethod
-    def infer_dtype(cls, value) -> "DataType":
+    def infer_dtype(cls, value: Any) -> "DataType":
         """Infer DataType from a Python value, handling numpy, Arrow, and Python types.
 
         Args:
