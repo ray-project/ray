@@ -15,13 +15,13 @@
 #pragma once
 
 #include "gmock/gmock.h"
+#include "ray/pubsub/subscriber_interface.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
 namespace rpc {
 
-class MockCoreWorkerClientInterface : public ray::pubsub::MockSubscriberClientInterface,
-                                      public CoreWorkerClientInterface {
+class MockCoreWorkerClientInterface : public CoreWorkerClientInterface {
  public:
   MOCK_METHOD(void,
               PushActorTask,
@@ -129,6 +129,7 @@ class MockCoreWorkerClientInterface : public ray::pubsub::MockSubscriberClientIn
               (const AssignObjectOwnerRequest &request,
                const ClientCallback<AssignObjectOwnerReply> &callback),
               (override));
+  MOCK_METHOD(std::string, DebugString, (), (const, override));
 };
 
 class MockCoreWorkerClientConfigurableRunningTasks

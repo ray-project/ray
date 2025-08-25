@@ -14,8 +14,7 @@ ray_cc_library(
     ],
     deps = [
         "//src/ray/common:ray_config",
-        "//src/ray/telemetry:open_telemetry_metric_recorder",
-        "//src/ray/util",
+        "//src/ray/observability:open_telemetry_metric_recorder",
         "//src/ray/util:logging",
         "//src/ray/util:size_literals",
         "@com_github_jupp0r_prometheus_cpp//pull",
