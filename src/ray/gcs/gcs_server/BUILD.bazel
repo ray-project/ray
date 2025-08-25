@@ -129,9 +129,11 @@ ray_cc_library(
     hdrs = ["runtime_env_handler.h"],
     deps = [
         ":grpc_service_interfaces",
+        "//src/ray/common:asio",
         "//src/ray/common:runtime_env",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/util:thread_checker",
+        "@boost//:asio",
     ],
 )
 
