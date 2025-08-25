@@ -48,7 +48,6 @@ def _tensor_transport_to_collective_backend(
 def __ray_send__(
     self,
     obj_id: str,
-    tensor_transport_meta: TensorTransportMetadata,
     communicator_meta: CommunicatorMetadata,
 ):
     """Helper function that runs on the src actor to send tensors to the dst actor."""
@@ -69,7 +68,6 @@ def __ray_send__(
     tensor_transport_manager = get_tensor_transport_manager(backend)
     tensor_transport_manager.send_multiple_tensors(
         tensors,
-        tensor_transport_meta,
         communicator_meta,
         device=device,
     )

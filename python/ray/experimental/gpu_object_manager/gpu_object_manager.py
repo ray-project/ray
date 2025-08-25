@@ -222,7 +222,6 @@ class GPUObjectManager:
                 tensor_transport_manager.send_object(
                     src_actor,
                     obj_id,
-                    tensor_transport_meta,
                     communicator_meta,
                 )
             tensor_transport_manager.recv_object(
