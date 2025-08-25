@@ -55,7 +55,7 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
 
             # Step 2: Define a Predictor class for inference.
             # Use a class to initialize the model just once in `__init__`
-            # and re-use it for inference across multiple batches.
+            # and reuse it for inference across multiple batches.
             class HuggingFacePredictor:
                 def __init__(self):
                     from transformers import pipeline
@@ -105,7 +105,7 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
 
             # Step 2: Define a Predictor class for inference.
             # Use a class to initialize the model just once in `__init__`
-            # and re-use it for inference across multiple batches.
+            # and reuse it for inference across multiple batches.
             class TorchPredictor:
                 def __init__(self):
                     # Load a dummy neural network.
@@ -152,7 +152,7 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
 
             # Step 2: Define a Predictor class for inference.
             # Use a class to initialize the model just once in `__init__`
-            # and re-use it for inference across multiple batches.
+            # and reuse it for inference across multiple batches.
             class TFPredictor:
                 def __init__(self):
                     from tensorflow import keras
