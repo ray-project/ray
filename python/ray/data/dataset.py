@@ -787,7 +787,6 @@ class Dataset:
         self,
         column_name: str,
         expr: Expr,
-        batch_size: Optional[int] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """
@@ -822,40 +821,13 @@ class Dataset:
         Args:
             column_name: The name of the new column.
             expr: An expression that defines the new column values.
-            batch_size: When `batch_size` is specified, the expression is evaluated in batches.
             **ray_remote_args: Additional resource requirements to request from
                 Ray for the map tasks (e.g., `num_gpus=1`).
 
         Returns:
             A new dataset with the added column.
         """
-        from ray.data._expression_evaluator import eval_expr
-
         # TODO: update schema based on the expression AST.
-        if batch_size is not None:
-            import pyarrow as pa
-
-            def _batch_fn(batch: pa.Table) -> pa.Table:
-
-                new_column_values = eval_expr(expr, batch)
-                # Check if column already exists
-                if column_name in batch.column_names:
-                    # Replace existing column
-                    column_index = batch.column_names.index(column_name)
-                    return batch.set_column(
-                        column_index, column_name, new_column_values
-                    )
-                else:
-                    # Add new column
-                    return batch.append_column(column_name, new_column_values)
-
-            return self.map_batches(
-                _batch_fn,
-                batch_format="pyarrow",
-                batch_size=batch_size,
-                **ray_remote_args,
-            )
-
         from ray.data._internal.logical.operators.map_operator import Project
 
         plan = self._plan.copy()
