@@ -60,9 +60,6 @@ class NodeInfoGrpcService : public GrpcService {
 
 class NodeResourceInfoGrpcService : public GrpcService {
  public:
-  /// Constructor.
-  ///
-  /// \param[in] handler The service handler that actually handle the requests.
   explicit NodeResourceInfoGrpcService(instrumented_io_context &io_service,
                                        NodeResourceInfoGcsServiceHandler &handler,
                                        int64_t max_active_rpcs_per_handler)
