@@ -47,5 +47,23 @@ void NodeInfoGrpcService::InitServerCallFactories(
   RPC_SERVICE_HANDLER(NodeInfoGcsService, CheckAlive, max_active_rpcs_per_handler)
 }
 
+void NodeResourceInfoGrpcService::InitServerCallFactories(
+    const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+    std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+    const ClusterID &cluster_id) {
+  // XXX: inject?
+  auto max_active_rpcs_per_handler =
+      RayConfig::instance().gcs_max_active_rpcs_per_handler();
+
+  RPC_SERVICE_HANDLER(
+      NodeResourceInfoGcsService, GetAllAvailableResources, max_active_rpcs_per_handler)
+  RPC_SERVICE_HANDLER(
+      NodeResourceInfoGcsService, GetAllTotalResources, max_active_rpcs_per_handler)
+  RPC_SERVICE_HANDLER(
+      NodeResourceInfoGcsService, GetDrainingNodes, max_active_rpcs_per_handler)
+  RPC_SERVICE_HANDLER(
+      NodeResourceInfoGcsService, GetAllResourceUsage, max_active_rpcs_per_handler)
+}
+
 }  // namespace rpc
 }  // namespace ray

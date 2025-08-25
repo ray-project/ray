@@ -54,5 +54,29 @@ class NodeInfoGrpcService : public GrpcService {
   NodeInfoGcsServiceHandler &service_handler_;
 };
 
+class NodeResourceInfoGrpcService : public GrpcService {
+ public:
+  /// Constructor.
+  ///
+  /// \param[in] handler The service handler that actually handle the requests.
+  explicit NodeResourceInfoGrpcService(instrumented_io_context &io_service,
+                                       NodeResourceInfoGcsServiceHandler &handler)
+      : GrpcService(io_service), service_handler_(handler){};
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      const ClusterID &cluster_id) override {}
+
+ private:
+  /// The grpc async service object.
+  NodeResourceInfoGcsService::AsyncService service_;
+  /// The service handler that actually handle the requests.
+  NodeResourceInfoGcsServiceHandler &service_handler_;
+};
+
 }  // namespace rpc
 }  // namespace ray

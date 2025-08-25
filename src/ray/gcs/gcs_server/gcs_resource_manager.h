@@ -23,8 +23,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
-#include "ray/gcs/gcs_server/gcs_init_data.h"
-#include "ray/rpc/gcs/gcs_rpc_server.h"
+#include "ray/gcs/gcs_server/grpc_service_interfaces.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/ray_syncer.pb.h"
 
@@ -40,6 +39,7 @@ class ClusterTaskManager;
 
 namespace gcs {
 
+class GcsInitData;
 class GcsNodeManager;
 
 /// Ideally, the logic related to resource calculation should be moved from
