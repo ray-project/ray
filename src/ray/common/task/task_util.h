@@ -63,8 +63,7 @@ class TaskArgByReference : public TaskArg {
       : id_(object_id),
         owner_address_(owner_address),
         call_site_(call_site),
-        tensor_transport_val_(tensor_transport_val) {
-  }
+        tensor_transport_val_(tensor_transport_val) {}
 
   void ToProto(rpc::TaskArg *arg_proto) const {
     auto ref = arg_proto->mutable_object_ref();
