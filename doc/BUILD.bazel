@@ -490,8 +490,6 @@ doctest_each(
             # These tests run on GPU (see below).
             "source/data/batch_inference.rst",
             "source/data/transforming-data.rst",
-            # These tests are currently failing.
-            "source/data/working-with-llms.rst",
             # These don't contain code snippets.
             "source/data/api/**/*.rst",
         ],
