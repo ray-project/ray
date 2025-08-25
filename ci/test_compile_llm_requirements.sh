@@ -18,7 +18,7 @@ VARIANTS=(cpu cu121 cu128)
 
 for LOCK_TYPE in "${LOCK_TYPES[@]}"; do
     for VARIANT in "${VARIANTS[@]}"; do
-        cp ./python/deplocks/llm/"${LOCK_TYPE}"_py311_"${VARIANT}".lock "$TEMP_DIR/requirements_compiled_${LOCK_TYPE}_py311_${VARIANT}_backup.lock"
+        cp ./python/deplocks/llm/"${LOCK_TYPE}"_py311_"${VARIANT}".lock "$TEMP_DIR/${LOCK_TYPE}_py311_${VARIANT}_backup.lock"
     done
 done
 
