@@ -311,7 +311,7 @@ Lowering `max_model_len` reduces the memory needed for KV cache.
 > * `max_model_len = 16,384` → concurrency ≈ 58
 
 **Use Distilled or Quantized Models**  
-Quantizing or distilling your model reduces its memory footprint, freeing up space for more KV cache and enabling more concurrent requests.  For example, see [`deepseek-ai/DeepSeek-R1-Distill-Llama-70B`](https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Llama-70B) for a distilled version of DeepSeek-R1.
+Quantizing or distilling your model reduces its memory footprint, freeing up space for more KV cache and enabling more concurrent requests. For example, see [`deepseek-ai/DeepSeek-R1-Distill-Llama-70B`](https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Llama-70B) for a distilled version of DeepSeek-R1.
 
 
 **Upgrade to GPUs with more memory**  
