@@ -24,7 +24,7 @@ from ray import serve
 class ClassPredictor:
     def __init__(self, model_id, artifacts_dir, device="cuda"):
         """Initialize the model."""
-        # Embdding model
+        # Embedding model
         self.processor = CLIPProcessor.from_pretrained(model_id)
         self.model = CLIPModel.from_pretrained(model_id)
         self.model.to(device=device)
