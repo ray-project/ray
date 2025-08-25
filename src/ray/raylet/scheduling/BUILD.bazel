@@ -124,7 +124,7 @@ ray_cc_library(
         "//src/ray/common:ray_config",
         "//src/ray/common:ray_syncer",
         "//src/ray/common:task_common",
-        "//src/ray/gcs/gcs_client:gcs_client_lib",
+        "//src/ray/stats:stats_metric",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/protobuf:node_manager_cc_proto",
         "//src/ray/util:logging",
