@@ -128,9 +128,9 @@ ray_cc_library(
     srcs = ["runtime_env_handler.cc"],
     hdrs = ["runtime_env_handler.h"],
     deps = [
+        ":grpc_service_interfaces",
         "//src/ray/common:runtime_env",
         "//src/ray/protobuf:gcs_cc_proto",
-        "//src/ray/rpc:gcs_server",
         "//src/ray/util:thread_checker",
     ],
 )

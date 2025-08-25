@@ -17,7 +17,8 @@
 #include <utility>
 
 #include "ray/common/runtime_env_manager.h"
-#include "ray/rpc/gcs/gcs_rpc_server.h"
+#include "ray/gcs/gcs_server/grpc_service_interfaces.h"
+
 namespace ray {
 namespace gcs {
 
