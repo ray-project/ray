@@ -27,9 +27,9 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
+#include "ray/gcs/gcs_server/grpc_service_interfaces.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
-#include "ray/gcs/gcs_server/grpc_service_interfaces.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
