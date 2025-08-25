@@ -41,7 +41,7 @@ class DataType:
             try:
                 return pa.from_numpy_dtype(np.dtype(self.internal_type))
             except (TypeError, pa.ArrowNotImplementedError):
-                return pa.string()
+                return pa.py_object()
 
     def to_numpy_dtype(self) -> np.dtype:
         if self.is_numpy_type():
@@ -160,7 +160,7 @@ class DataType:
             try:
                 inferred_arrow_type = pa.infer_type([value])
                 return cls.from_arrow(inferred_arrow_type)
-            except Exception:
+            except pa.ArrowInvalid:
                 # Fall back to Python type if Arrow type inference fails
                 return cls.from_python(type(value))
 
