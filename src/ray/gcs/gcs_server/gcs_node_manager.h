@@ -23,6 +23,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_server/grpc_service_interfaces.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/util/event.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/ray_syncer.pb.h"

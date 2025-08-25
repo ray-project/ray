@@ -24,6 +24,7 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/gcs/gcs_server/grpc_service_interfaces.h"
+#include "ray/stats/metric_defs.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/ray_syncer.pb.h"
 
@@ -60,7 +61,7 @@ class GcsNodeManager;
 /// It is responsible for handing node resource related rpc requests and it is used for
 /// actor and placement group scheduling. It obtains the available resources of nodes
 /// through heartbeat reporting. Non-thread safe.
-class GcsResourceManager : public rpc::NodeResourceInfoHandler,
+class GcsResourceManager : public rpc::NodeResourceInfoGcsServiceHandler,
                            public syncer::ReceiverInterface {
  public:
   /// Create a GcsResourceManager.
