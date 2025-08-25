@@ -291,6 +291,27 @@ SERVE_LLM_GRAFANA_PANELS = [
         grid_pos=GridPos(0, 48, 12, 8),
     ),
     Panel(
+        id=27,
+        title="Tokens Per Request Per Model Last 7 Days",
+        description="",
+        unit="Tokens",
+        targets=[
+            Target(
+                expr='sum by (model_name) (delta(ray_vllm:prompt_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w])) / sum by (model_name) (delta(ray_vllm:request_success_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))',
+                legend="In: {{ model_name}}",
+            ),
+            Target(
+                expr='sum by (model_name) (delta(ray_vllm:generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w])) / sum by (model_name) (delta(ray_vllm:request_success_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))',
+                legend="Out: {{ model_name}}",
+            ),
+        ],
+        fill=1,
+        linewidth=2,
+        stack=False,
+        grid_pos=GridPos(12, 48, 12, 8),
+        template=PanelTemplate.GAUGE,
+    ),
+    Panel(
         id=14,
         title="Tokens Last 24 Hours",
         description="",
@@ -470,27 +491,6 @@ SERVE_LLM_GRAFANA_PANELS = [
         linewidth=2,
         stack=False,
         grid_pos=GridPos(12, 88, 12, 8),
-        template=PanelTemplate.GAUGE,
-    ),
-    Panel(
-        id=27,
-        title="Tokens Per Request Per Model Last 7 Days",
-        description="",
-        unit="Tokens",
-        targets=[
-            Target(
-                expr='sum by (model_name) (delta(ray_vllm:prompt_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w])) / sum by (model_name) (delta(ray_vllm:request_success_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))',
-                legend="In: {{ model_name}}",
-            ),
-            Target(
-                expr='sum by (model_name) (delta(ray_vllm:generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w])) / sum by (model_name) (delta(ray_vllm:request_success_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))',
-                legend="Out: {{ model_name}}",
-            ),
-        ],
-        fill=1,
-        linewidth=2,
-        stack=False,
-        grid_pos=GridPos(0, 96, 12, 8),
         template=PanelTemplate.GAUGE,
     ),
 ]
