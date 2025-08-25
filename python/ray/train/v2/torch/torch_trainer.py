@@ -1,4 +1,5 @@
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
+import logging
 
 from ray.train import Checkpoint, DataConfig
 from ray.train.trainer import GenDataset
@@ -11,6 +12,44 @@ if TYPE_CHECKING:
     # with a circular import error if the TorchTrainer class is captured
     # in the scope of a Ray task.
     from ray.train.torch.config import TorchConfig
+
+logger = logging.getLogger(__name__)
+
+
+def _auto_configure_xla_spmd(scaling_config):
+    """Auto-configure XLA SPMD settings based on scaling configuration.
+    
+    This function automatically determines optimal XLA SPMD configuration
+    based on the TPU topology and number of workers.
+    """
+    spmd_config = {}
+    
+    # Parse topology to determine mesh shape
+    if scaling_config.topology:
+        try:
+            # Parse topology like "2x2", "4x4", etc.
+            if "x" in scaling_config.topology:
+                parts = scaling_config.topology.split("x")
+                if len(parts) == 2:
+                    spmd_config["mesh_shape"] = [int(parts[0]), int(parts[1])]
+                    logger.info(f"Auto-configured mesh shape: {spmd_config['mesh_shape']}")
+        except (ValueError, IndexError):
+            logger.warning(f"Could not parse topology '{scaling_config.topology}', using default SPMD config")
+    
+    # Set data parallelism based on number of workers
+    if scaling_config.num_workers > 1:
+        spmd_config["data_parallel_size"] = scaling_config.num_workers
+        logger.info(f"Auto-configured data parallel size: {spmd_config['data_parallel_size']}")
+    
+    # Set model parallelism if mesh shape is available
+    if "mesh_shape" in spmd_config:
+        mesh_shape = spmd_config["mesh_shape"]
+        if len(mesh_shape) == 2:
+            # For 2D mesh, typically first dimension is data parallel, second is model parallel
+            spmd_config["model_parallel_size"] = mesh_shape[1]
+            logger.info(f"Auto-configured model parallel size: {spmd_config['model_parallel_size']}")
+    
+    return spmd_config
 
 
 @PublicAPI(stability="stable")
@@ -25,6 +64,11 @@ class TorchTrainer(DataParallelTrainer):
     3. Ingests the input ``datasets`` based on the ``dataset_config``.
     4. Runs the input ``train_loop_per_worker(train_loop_config)``
        on all workers.
+
+    This Trainer supports:
+    - CPU training (default)
+    - GPU training (set ``use_gpu=True`` in ``scaling_config``)
+    - TPU training (set ``use_tpu=True`` in ``scaling_config``)
 
     For more details, see:
 
@@ -198,9 +242,19 @@ class TorchTrainer(DataParallelTrainer):
         from ray.train.torch.config import TorchConfig
 
         torch_config = torch_config or TorchConfig()
+        
         if not torch_config.backend:
-            is_gpu_training = scaling_config and scaling_config.use_gpu
-            torch_config.backend = "nccl" if is_gpu_training else "gloo"
+            if scaling_config and scaling_config.use_gpu:
+                torch_config.backend = "nccl"
+            elif scaling_config and scaling_config.use_tpu:
+                logger.info("Auto-configured torch_config for TPU training with XLA SPMD")
+                torch_config.backend = "xla_tpu"
+                
+                # Auto-configure XLA SPMD for TPU training
+                if not torch_config.xla_spmd_config:
+                    torch_config.xla_spmd_config = _auto_configure_xla_spmd(scaling_config)
+            else:
+                torch_config.backend = "gloo"
 
         super(TorchTrainer, self).__init__(
             train_loop_per_worker=train_loop_per_worker,
