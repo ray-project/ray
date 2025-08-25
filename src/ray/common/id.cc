@@ -143,7 +143,6 @@ ActorID ActorID::Of(const JobID &job_id,
                                   absl::GetCurrentTimeNanos(),
                                   ActorID::kUniqueBytesLength);
   std::copy_n(job_id.Data(), JobID::kLength, std::back_inserter(data));
-  RAY_CHECK(data.size() == kLength);
   return ActorID::FromBinary(data);
 }
 
@@ -151,7 +150,6 @@ ActorID ActorID::NilFromJob(const JobID &job_id) {
   std::string data(kUniqueBytesLength, 0);
   FillNil(&data);
   std::copy_n(job_id.Data(), JobID::kLength, std::back_inserter(data));
-  RAY_CHECK(data.size() == kLength);
   return ActorID::FromBinary(data);
 }
 
@@ -166,7 +164,6 @@ TaskID TaskID::ForDriverTask(const JobID &job_id) {
   FillNil(&data);
   const auto dummy_actor_id = ActorID::NilFromJob(job_id);
   std::copy_n(dummy_actor_id.Data(), ActorID::kLength, std::back_inserter(data));
-  RAY_CHECK(data.size() == TaskID::kLength);
   return TaskID::FromBinary(data);
 }
 
@@ -181,7 +178,6 @@ TaskID TaskID::ForActorCreationTask(const ActorID &actor_id) {
   std::string data(kUniqueBytesLength, 0);
   FillNil(&data);
   std::copy_n(actor_id.Data(), ActorID::kLength, std::back_inserter(data));
-  RAY_CHECK(data.size() == TaskID::kLength);
   return TaskID::FromBinary(data);
 }
 
@@ -192,7 +188,6 @@ TaskID TaskID::ForActorTask(const JobID &job_id,
   std::string data = GenerateUniqueBytes(
       job_id, parent_task_id, parent_task_counter, 0, TaskID::kUniqueBytesLength);
   std::copy_n(actor_id.Data(), ActorID::kLength, std::back_inserter(data));
-  RAY_CHECK(data.size() == TaskID::kLength);
   return TaskID::FromBinary(data);
 }
 
@@ -203,7 +198,6 @@ TaskID TaskID::ForNormalTask(const JobID &job_id,
       job_id, parent_task_id, parent_task_counter, 0, TaskID::kUniqueBytesLength);
   const auto dummy_actor_id = ActorID::NilFromJob(job_id);
   std::copy_n(dummy_actor_id.Data(), ActorID::kLength, std::back_inserter(data));
-  RAY_CHECK(data.size() == TaskID::kLength);
   return TaskID::FromBinary(data);
 }
 
@@ -312,7 +306,6 @@ PlacementGroupID PlacementGroupID::Of(const JobID &job_id) {
   std::string data(PlacementGroupID::kUniqueBytesLength, 0);
   FillRandom(&data);
   std::copy_n(job_id.Data(), JobID::kLength, std::back_inserter(data));
-  RAY_CHECK(data.size() == kLength);
   return PlacementGroupID::FromBinary(data);
 }
 
@@ -327,7 +320,6 @@ LeaseID LeaseID::FromRandom() {
   uint32_t current_counter = counter_.fetch_add(1);
   std::memcpy(data.data(), &current_counter, sizeof(current_counter));
   std::copy_n(WorkerID::FromRandom().Data(), kUniqueIDSize, std::back_inserter(data));
-  RAY_CHECK(data.size() == kLength);
   return LeaseID::FromBinary(data);
 }
 
@@ -336,14 +328,12 @@ LeaseID LeaseID::FromWorkerId(const WorkerID &worker_id) {
   uint32_t current_counter = counter_.fetch_add(1);
   std::memcpy(data.data(), &current_counter, sizeof(current_counter));
   std::copy_n(worker_id.Data(), kUniqueIDSize, std::back_inserter(data));
-  RAY_CHECK(data.size() == kLength);
   return LeaseID::FromBinary(data);
 }
 
 LeaseID LeaseID::DriverLeaseId(const WorkerID &driver_id) {
   std::string data(kUniqueBytesLength, 0);
   std::copy_n(driver_id.Data(), kUniqueIDSize, std::back_inserter(data));
-  RAY_CHECK(data.size() == kLength);
   return LeaseID::FromBinary(data);
 }
 

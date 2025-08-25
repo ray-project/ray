@@ -615,10 +615,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                              rpc::GetSystemConfigReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `GetTaskFailureCause` request.
-  void HandleGetTaskFailureCause(rpc::GetTaskFailureCauseRequest request,
-                                 rpc::GetTaskFailureCauseReply *reply,
-                                 rpc::SendReplyCallback send_reply_callback) override;
+  /// Handle a `GetWorkerFailureCause` request.
+  void HandleGetWorkerFailureCause(rpc::GetWorkerFailureCauseRequest request,
+                                   rpc::GetWorkerFailureCauseReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
 
   void HandleRegisterMutableObject(rpc::RegisterMutableObjectRequest request,
                                    rpc::RegisterMutableObjectReply *reply,

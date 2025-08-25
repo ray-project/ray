@@ -241,10 +241,7 @@ TaskSpecification GcsActor::GetCreationTaskSpecification() const {
   return TaskSpecification(*task_spec_);
 }
 
-LeaseSpecification GcsActor::GetLeaseSpecification() const {
-  RAY_CHECK(lease_spec_ != nullptr);
-  return LeaseSpecification(*lease_spec_);
-}
+const LeaseSpecification &GcsActor::GetLeaseSpecification() const { return *lease_spec_; }
 
 const rpc::ActorTableData &GcsActor::GetActorTableData() const {
   return actor_table_data_;
@@ -289,11 +286,8 @@ void GcsActor::WriteActorExportEvent() const {
 
 rpc::TaskSpec *GcsActor::GetMutableTaskSpec() { return task_spec_.get(); }
 
-rpc::LeaseSpec *GcsActor::GetMutableLeaseSpec() { return lease_spec_.get(); }
-
-const rpc::LeaseSpec &GcsActor::GetLeaseMessage() const {
-  RAY_CHECK(lease_spec_ != nullptr);
-  return *lease_spec_;
+rpc::LeaseSpec *GcsActor::GetMutableLeaseSpec() {
+  return &lease_spec_->GetMutableMessage();
 }
 
 const ResourceRequest &GcsActor::GetAcquiredResources() const {

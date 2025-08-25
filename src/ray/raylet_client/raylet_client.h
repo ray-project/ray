@@ -56,7 +56,7 @@ class RayletClientInterface {
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) = 0;
 
   /// Requests a worker from the raylet. The callback will be sent via gRPC.
-  /// \param resource_spec Resources that should be allocated for the worker.
+  /// \param lease_spec Lease that should be granted for the owner.
   /// \param grant_or_reject: True if we we should either grant or reject the request
   ///                         but no spillback.
   /// \param callback: The callback to call when the request finishes.
@@ -108,9 +108,9 @@ class RayletClientInterface {
       const WorkerID &worker_id,
       const std::vector<rpc::WorkerBacklogReport> &backlog_reports) = 0;
 
-  virtual void GetTaskFailureCause(
+  virtual void GetWorkerFailureCause(
       const LeaseID &lease_id,
-      const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback) = 0;
+      const ray::rpc::ClientCallback<ray::rpc::GetWorkerFailureCauseReply> &callback) = 0;
 
   /// Request a raylet to prepare resources of given bundles for atomic placement group
   /// creation. This is used for the first phase of atomic placement group creation. The
@@ -256,9 +256,9 @@ class RayletClient : public RayletClientInterface {
       const ray::rpc::PrestartWorkersRequest &request,
       const ray::rpc::ClientCallback<ray::rpc::PrestartWorkersReply> &callback) override;
 
-  void GetTaskFailureCause(
+  void GetWorkerFailureCause(
       const LeaseID &lease_id,
-      const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
+      const ray::rpc::ClientCallback<ray::rpc::GetWorkerFailureCauseReply> &callback)
       override;
 
   void RegisterMutableObjectReader(

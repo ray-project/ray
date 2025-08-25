@@ -94,9 +94,9 @@ class FakeRayletClient : public RayletClientInterface {
       void *metadata,
       const rpc::ClientCallback<rpc::PushMutableObjectReply> &callback) override {}
 
-  void GetTaskFailureCause(
+  void GetWorkerFailureCause(
       const LeaseID &lease_id,
-      const rpc::ClientCallback<rpc::GetTaskFailureCauseReply> &callback) override {}
+      const rpc::ClientCallback<rpc::GetWorkerFailureCauseReply> &callback) override {}
 
   void GetSystemConfig(
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) override {}

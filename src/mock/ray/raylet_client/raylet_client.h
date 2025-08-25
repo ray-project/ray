@@ -25,7 +25,7 @@ class MockRayletClientInterface : public RayletClientInterface {
   MOCK_METHOD(
       void,
       RequestWorkerLease,
-      (const rpc::LeaseSpec &resource_spec,
+      (const rpc::LeaseSpec &lease_spec,
        bool grant_or_reject,
        const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
        const int64_t backlog_size,
@@ -40,9 +40,9 @@ class MockRayletClientInterface : public RayletClientInterface {
                bool worker_exiting),
               (override));
   MOCK_METHOD(void,
-              GetTaskFailureCause,
+              GetWorkerFailureCause,
               (const LeaseID &lease_id,
-               const rpc::ClientCallback<rpc::GetTaskFailureCauseReply> &callback),
+               const rpc::ClientCallback<rpc::GetWorkerFailureCauseReply> &callback),
               (override));
   MOCK_METHOD(void,
               PrestartWorkers,

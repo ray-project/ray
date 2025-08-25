@@ -105,9 +105,9 @@ void GcsActorScheduler::ScheduleByGcs(std::shared_ptr<GcsActor> actor) {
       actor->GetLeaseSpecification(),
       owner_node.has_value() ? actor->GetOwnerNodeID().Binary() : std::string());
   cluster_lease_manager_.QueueAndScheduleLease(std::move(lease),
-                                               /*grant_or_reject*/ false,
-                                               /*is_selected_based_on_locality*/ false,
-                                               /*reply*/ reply.get(),
+                                               /*grant_or_reject=*/false,
+                                               /*is_selected_based_on_locality=*/false,
+                                               /*reply=*/reply.get(),
                                                send_reply_callback);
 }
 
@@ -332,7 +332,7 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
   // backlog in GCS.
   actor->GetMutableLeaseSpec()->set_lease_id(LeaseID::FromRandom().Binary());
   raylet_client->RequestWorkerLease(
-      actor->GetLeaseMessage(),
+      actor->GetLeaseSpecification().GetMessage(),
       actor->GetGrantOrReject(),
       [this, actor, node](const Status &status,
                           const rpc::RequestWorkerLeaseReply &reply) {

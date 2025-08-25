@@ -241,22 +241,22 @@ class MockRayletClient : public FakeRayletClient {
     return Status::OK();
   }
 
-  void GetTaskFailureCause(
+  void GetWorkerFailureCause(
       const LeaseID &lease_id,
-      const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
+      const ray::rpc::ClientCallback<ray::rpc::GetWorkerFailureCauseReply> &callback)
       override {
     std::lock_guard<std::mutex> lock(mu_);
     get_task_failure_cause_callbacks.push_back(callback);
     num_get_task_failure_causes += 1;
   }
 
-  bool ReplyGetTaskFailureCause() {
+  bool ReplyGetWorkerFailureCause() {
     if (get_task_failure_cause_callbacks.size() == 0) {
       return false;
     }
     auto callback = std::move(get_task_failure_cause_callbacks.front());
     get_task_failure_cause_callbacks.pop_front();
-    rpc::GetTaskFailureCauseReply reply;
+    rpc::GetWorkerFailureCauseReply reply;
     callback(Status::OK(), std::move(reply));
     return true;
   }
@@ -269,8 +269,8 @@ class MockRayletClient : public FakeRayletClient {
     reported_backlogs.clear();
     for (const auto &backlog_report : backlog_reports) {
       reported_backlog_size += backlog_report.backlog_size();
-      const LeaseSpecification resource_spec(backlog_report.resource_spec());
-      const SchedulingClass scheduling_class = resource_spec.GetSchedulingClass();
+      const LeaseSpecification lease_spec(backlog_report.lease_spec());
+      const SchedulingClass scheduling_class = lease_spec.GetSchedulingClass();
       reported_backlogs[scheduling_class] = backlog_report.backlog_size();
     }
   }
@@ -401,7 +401,7 @@ class MockRayletClient : public FakeRayletClient {
   std::map<SchedulingClass, int64_t> reported_backlogs;
   std::list<rpc::ClientCallback<rpc::RequestWorkerLeaseReply>> callbacks = {};
   std::list<rpc::ClientCallback<rpc::CancelWorkerLeaseReply>> cancel_callbacks = {};
-  std::list<rpc::ClientCallback<rpc::GetTaskFailureCauseReply>>
+  std::list<rpc::ClientCallback<rpc::GetWorkerFailureCauseReply>>
       get_task_failure_cause_callbacks = {};
 };
 
@@ -661,7 +661,7 @@ TEST_F(NormalTaskSubmitterTest, TestHandleTaskFailure) {
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
   // Simulate a system failure, i.e., worker died unexpectedly.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("oops")));
-  ASSERT_TRUE(raylet_client->ReplyGetTaskFailureCause());
+  ASSERT_TRUE(raylet_client->ReplyGetWorkerFailureCause());
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
@@ -678,7 +678,7 @@ TEST_F(NormalTaskSubmitterTest, TestHandleTaskFailure) {
 
 TEST_F(NormalTaskSubmitterTest, TestCancellationWhileHandlingTaskFailure) {
   // This test is a regression test for a bug where a crash happens when
-  // the task cancellation races between ReplyPushTask and ReplyGetTaskFailureCause.
+  // the task cancellation races between ReplyPushTask and ReplyGetWorkerFailureCause.
   // For an example of a python integration test, see
   // https://github.com/ray-project/ray/blob/2b6807f4d9c4572e6309f57bc404aa641bc4b185/python/ray/tests/test_cancel.py#L35
   auto submitter =
@@ -688,13 +688,13 @@ TEST_F(NormalTaskSubmitterTest, TestCancellationWhileHandlingTaskFailure) {
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
   // Simulate a system failure, i.e., worker died unexpectedly so that
-  // GetTaskFailureCause is called.
+  // GetWorkerFailureCause is called.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("oops")));
-  // Cancel the task while GetTaskFailureCause has not been completed.
+  // Cancel the task while GetWorkerFailureCause has not been completed.
   ASSERT_TRUE(submitter.CancelTask(task, true, false).ok());
-  // Completing the GetTaskFailureCause call. Check that the reply runs without error
+  // Completing the GetWorkerFailureCause call. Check that the reply runs without error
   // and FailPendingTask is not called.
-  ASSERT_TRUE(raylet_client->ReplyGetTaskFailureCause());
+  ASSERT_TRUE(raylet_client->ReplyGetWorkerFailureCause());
   ASSERT_EQ(task_manager->num_fail_pending_task_calls, 0);
 }
 
@@ -1279,7 +1279,7 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerNotReusedOnError) {
 
   // Task 1 finishes with failure; the worker is returned.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("worker dead")));
-  ASSERT_TRUE(raylet_client->ReplyGetTaskFailureCause());
+  ASSERT_TRUE(raylet_client->ReplyGetWorkerFailureCause());
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
@@ -1700,7 +1700,7 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerLeaseTimeout) {
   // Task 1 finishes with failure; the worker is returned due to the error even though
   // it hasn't timed out.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("worker dead")));
-  ASSERT_TRUE(raylet_client->ReplyGetTaskFailureCause());
+  ASSERT_TRUE(raylet_client->ReplyGetWorkerFailureCause());
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
 
@@ -1740,7 +1740,7 @@ TEST_F(NormalTaskSubmitterTest, TestKillExecutingTask) {
   ASSERT_TRUE(submitter.CancelTask(task, true, false).ok());
   ASSERT_EQ(worker_client->kill_requests.front().intended_task_id(), task.TaskIdBinary());
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("workerdying"), true));
-  ASSERT_TRUE(raylet_client->ReplyGetTaskFailureCause());
+  ASSERT_TRUE(raylet_client->ReplyGetWorkerFailureCause());
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_returned_exiting, 0);

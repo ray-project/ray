@@ -300,12 +300,12 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
     request.set_worker_id(worker_id.Binary());
     auto backlog_report_1 = request.add_backlog_reports();
     auto lease_spec_1 = BuildLeaseSpec({{"CPU", 1}});
-    backlog_report_1->mutable_resource_spec()->CopyFrom(lease_spec_1.GetMessage());
+    backlog_report_1->mutable_lease_spec()->CopyFrom(lease_spec_1.GetMessage());
     backlog_report_1->set_backlog_size(1);
 
     auto backlog_report_2 = request.add_backlog_reports();
     auto lease_spec_2 = BuildLeaseSpec({{"GPU", 2}});
-    backlog_report_2->mutable_resource_spec()->CopyFrom(lease_spec_2.GetMessage());
+    backlog_report_2->mutable_lease_spec()->CopyFrom(lease_spec_2.GetMessage());
     backlog_report_2->set_backlog_size(3);
     rpc::ReportWorkerBacklogReply reply;
 
@@ -344,12 +344,12 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
     request.set_worker_id(worker_id.Binary());
     auto backlog_report_1 = request.add_backlog_reports();
     auto lease_spec_1 = BuildLeaseSpec({{"CPU", 1}});
-    backlog_report_1->mutable_resource_spec()->CopyFrom(lease_spec_1.GetMessage());
+    backlog_report_1->mutable_lease_spec()->CopyFrom(lease_spec_1.GetMessage());
     backlog_report_1->set_backlog_size(1);
 
     auto backlog_report_2 = request.add_backlog_reports();
     auto lease_spec_2 = BuildLeaseSpec({{"GPU", 2}});
-    backlog_report_2->mutable_resource_spec()->CopyFrom(lease_spec_2.GetMessage());
+    backlog_report_2->mutable_lease_spec()->CopyFrom(lease_spec_2.GetMessage());
     backlog_report_2->set_backlog_size(3);
     rpc::ReportWorkerBacklogReply reply;
 
@@ -611,7 +611,7 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedWorker) {
   std::promise<Status> promise;
   rpc::RequestWorkerLeaseReply reply;
   rpc::RequestWorkerLeaseRequest request;
-  request.mutable_resource_spec()->CopyFrom(lease_spec.GetMessage());
+  request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
   node_manager_->HandleRequestWorkerLease(
       request,
       &reply,
@@ -688,7 +688,7 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
   std::promise<Status> promise;
   rpc::RequestWorkerLeaseReply reply;
   rpc::RequestWorkerLeaseRequest request;
-  request.mutable_resource_spec()->CopyFrom(lease_spec.GetMessage());
+  request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
   node_manager_->HandleRequestWorkerLease(
       request,
       &reply,

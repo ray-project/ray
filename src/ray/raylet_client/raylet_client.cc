@@ -48,7 +48,7 @@ void RayletClient::RequestWorkerLease(
   // lease_spec is longer than request.
   // Request will be sent before the end of this call, and after that, it won't be
   // used any more.
-  request->unsafe_arena_set_allocated_resource_spec(
+  request->unsafe_arena_set_allocated_lease_spec(
       const_cast<rpc::LeaseSpec *>(&lease_spec));
   request->set_grant_or_reject(grant_or_reject);
   request->set_backlog_size(backlog_size);
@@ -98,13 +98,13 @@ Status RayletClient::ReturnWorkerLease(int worker_port,
   return Status::OK();
 }
 
-void RayletClient::GetTaskFailureCause(
+void RayletClient::GetWorkerFailureCause(
     const LeaseID &lease_id,
-    const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback) {
-  rpc::GetTaskFailureCauseRequest request;
+    const ray::rpc::ClientCallback<ray::rpc::GetWorkerFailureCauseReply> &callback) {
+  rpc::GetWorkerFailureCauseRequest request;
   request.set_lease_id(lease_id.Binary());
-  grpc_client_->GetTaskFailureCause(
-      request, [callback](const Status &status, rpc::GetTaskFailureCauseReply &&reply) {
+  grpc_client_->GetWorkerFailureCause(
+      request, [callback](const Status &status, rpc::GetWorkerFailureCauseReply &&reply) {
         RAY_LOG_IF_ERROR(INFO, status) << "Error getting task result: " << status;
         callback(status, std::move(reply));
       });

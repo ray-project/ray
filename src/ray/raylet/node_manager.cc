@@ -594,11 +594,13 @@ void NodeManager::HandleGetObjectsInfo(rpc::GetObjectsInfoRequest request,
       /*on_all_replied*/ [total, reply]() { reply->set_total(*total); });
 }
 
-void NodeManager::HandleGetTaskFailureCause(rpc::GetTaskFailureCauseRequest request,
-                                            rpc::GetTaskFailureCauseReply *reply,
-                                            rpc::SendReplyCallback send_reply_callback) {
+void NodeManager::HandleGetWorkerFailureCause(
+    rpc::GetWorkerFailureCauseRequest request,
+    rpc::GetWorkerFailureCauseReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   const LeaseID lease_id = LeaseID::FromBinary(request.lease_id());
-  RAY_LOG(DEBUG) << "Received a HandleGetTaskFailureCause request for lease " << lease_id;
+  RAY_LOG(DEBUG) << "Received a HandleGetWorkerFailureCause request for lease "
+                 << lease_id;
 
   auto it = task_failure_reasons_.find(lease_id);
   if (it != task_failure_reasons_.end()) {
@@ -1632,8 +1634,8 @@ void NodeManager::HandleReportWorkerBacklog(
   local_lease_manager.ClearWorkerBacklog(worker_id);
   std::unordered_set<SchedulingClass> seen;
   for (const auto &backlog_report : request.backlog_reports()) {
-    const LeaseSpecification resource_spec(backlog_report.resource_spec());
-    const SchedulingClass scheduling_class = resource_spec.GetSchedulingClass();
+    const LeaseSpecification lease_spec(backlog_report.lease_spec());
+    const SchedulingClass scheduling_class = lease_spec.GetSchedulingClass();
     RAY_CHECK(seen.find(scheduling_class) == seen.end());
     local_lease_manager.SetWorkerBacklog(
         scheduling_class, worker_id, backlog_report.backlog_size());
@@ -1644,7 +1646,7 @@ void NodeManager::HandleReportWorkerBacklog(
 void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest request,
                                            rpc::RequestWorkerLeaseReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
-  RayLease lease{std::move(*request.mutable_resource_spec())};
+  RayLease lease{std::move(*request.mutable_lease_spec())};
   const auto caller_worker =
       WorkerID::FromBinary(lease.GetLeaseSpecification().CallerAddress().worker_id());
   const auto caller_node =

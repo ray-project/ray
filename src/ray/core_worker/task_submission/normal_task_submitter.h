@@ -229,14 +229,14 @@ class NormalTaskSubmitter {
                       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>
                           &assigned_resources);
 
-  /// Handles result from GetTaskFailureCause.
+  /// Handles result from GetWorkerFailureCause.
   /// \return true if the task should be retried, false otherwise.
-  bool HandleGetTaskFailureCause(
+  bool HandleGetWorkerFailureCause(
       const Status &task_execution_status,
       const TaskID &task_id,
       const rpc::Address &addr,
       const Status &get_task_failure_cause_reply_status,
-      const rpc::GetTaskFailureCauseReply &get_task_failure_cause_reply);
+      const rpc::GetWorkerFailureCauseReply &get_task_failure_cause_reply);
 
   /// Address of our RPC server.
   rpc::Address rpc_address_;

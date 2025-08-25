@@ -63,8 +63,9 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     const SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
                                        task_spec.GetDependencyIds(),
                                        task_spec.GetRuntimeEnvHash());
-    bool new_scheduling_key_entry = !scheduling_key_entries_.contains(scheduling_key);
-    auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+    auto [scheduler_key_entry_iter, new_scheduling_key_entry] =
+        scheduling_key_entries_.try_emplace(scheduling_key, SchedulingKeyEntry{});
+    auto &scheduling_key_entry = scheduler_key_entry_iter->second;
 
     // Only set lease_spec if this is a new scheduling key entry
     if (new_scheduling_key_entry) {
@@ -256,7 +257,7 @@ void NormalTaskSubmitter::ReportWorkerBacklogInternal() {
   std::vector<rpc::WorkerBacklogReport> backlog_reports;
   for (const auto &backlog : backlogs) {
     rpc::WorkerBacklogReport backlog_report;
-    backlog_report.mutable_resource_spec()->CopyFrom(backlog.second.first.GetMessage());
+    backlog_report.mutable_lease_spec()->CopyFrom(backlog.second.first.GetMessage());
     backlog_report.set_backlog_size(backlog.second.second);
     backlog_reports.emplace_back(backlog_report);
   }
@@ -566,16 +567,17 @@ void NormalTaskSubmitter::PushNormalTask(
           if (!status.ok()) {
             failed_tasks_pending_failure_cause_.insert(task_id);
             RAY_LOG(DEBUG) << "Getting error from raylet for task " << task_id;
-            const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> callback =
-                [this, status, task_id, addr](
-                    const Status &get_task_failure_cause_reply_status,
-                    const rpc::GetTaskFailureCauseReply &get_task_failure_cause_reply) {
+            const ray::rpc::ClientCallback<ray::rpc::GetWorkerFailureCauseReply>
+                callback = [this, status, task_id, addr](
+                               const Status &get_task_failure_cause_reply_status,
+                               const rpc::GetWorkerFailureCauseReply
+                                   &get_task_failure_cause_reply) {
                   bool will_retry =
-                      HandleGetTaskFailureCause(status,
-                                                task_id,
-                                                addr,
-                                                get_task_failure_cause_reply_status,
-                                                get_task_failure_cause_reply);
+                      HandleGetWorkerFailureCause(status,
+                                                  task_id,
+                                                  addr,
+                                                  get_task_failure_cause_reply_status,
+                                                  get_task_failure_cause_reply);
                   absl::MutexLock task_submission_state_lock(&mu_);
                   if (!will_retry) {
                     // Task submission and task cancellation are the only two other code
@@ -588,8 +590,8 @@ void NormalTaskSubmitter::PushNormalTask(
                 };
             auto &cur_lease_entry = worker_to_lease_entry_[addr];
             RAY_CHECK(cur_lease_entry.raylet_client);
-            cur_lease_entry.raylet_client->GetTaskFailureCause(cur_lease_entry.lease_id,
-                                                               callback);
+            cur_lease_entry.raylet_client->GetWorkerFailureCause(cur_lease_entry.lease_id,
+                                                                 callback);
           }
           OnWorkerIdle(addr,
                        scheduling_key,
@@ -620,12 +622,12 @@ void NormalTaskSubmitter::PushNormalTask(
       });
 }
 
-bool NormalTaskSubmitter::HandleGetTaskFailureCause(
+bool NormalTaskSubmitter::HandleGetWorkerFailureCause(
     const Status &task_execution_status,
     const TaskID &task_id,
     const rpc::Address &addr,
     const Status &get_task_failure_cause_reply_status,
-    const rpc::GetTaskFailureCauseReply &get_task_failure_cause_reply) {
+    const rpc::GetWorkerFailureCauseReply &get_task_failure_cause_reply) {
   rpc::ErrorType task_error_type = rpc::ErrorType::WORKER_DIED;
   std::unique_ptr<rpc::RayErrorInfo> error_info;
   bool fail_immediately = false;

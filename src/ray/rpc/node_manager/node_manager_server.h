@@ -55,7 +55,7 @@ namespace rpc {
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ShutdownRaylet)                 \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(DrainRaylet)                    \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetObjectsInfo)                 \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetTaskFailureCause)            \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetWorkerFailureCause)          \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RegisterMutableObject)          \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PushMutableObject)
 
@@ -170,9 +170,9 @@ class NodeManagerServiceHandler {
                                     GetObjectsInfoReply *reply,
                                     SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGetTaskFailureCause(GetTaskFailureCauseRequest request,
-                                         GetTaskFailureCauseReply *reply,
-                                         SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleGetWorkerFailureCause(GetWorkerFailureCauseRequest request,
+                                           GetWorkerFailureCauseReply *reply,
+                                           SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleRegisterMutableObject(RegisterMutableObjectRequest request,
                                            RegisterMutableObjectReply *reply,

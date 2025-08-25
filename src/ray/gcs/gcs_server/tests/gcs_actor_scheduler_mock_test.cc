@@ -65,7 +65,7 @@ class GcsActorSchedulerMockTest : public Test {
           return node.has_value() ? node.value().get() : nullptr;
         },
         /*announce_infeasible_lease=*/nullptr,
-        /*local_lease_manager=*/*local_lease_manager_);
+        *local_lease_manager_);
     counter.reset(
         new CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>());
     worker_client_pool_ = std::make_unique<rpc::CoreWorkerClientPool>(

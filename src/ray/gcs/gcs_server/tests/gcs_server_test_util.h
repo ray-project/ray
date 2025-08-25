@@ -91,11 +91,11 @@ struct GcsServerMocker {
       return Status::OK();
     }
 
-    void GetTaskFailureCause(
+    void GetWorkerFailureCause(
         const LeaseID &lease_id,
-        const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
+        const ray::rpc::ClientCallback<ray::rpc::GetWorkerFailureCauseReply> &callback)
         override {
-      ray::rpc::GetTaskFailureCauseReply reply;
+      ray::rpc::GetWorkerFailureCauseReply reply;
       callback(Status::OK(), std::move(reply));
       num_get_task_failure_causes += 1;
     }

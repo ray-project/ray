@@ -76,8 +76,7 @@ class GcsActor {
         task_spec_(std::make_unique<rpc::TaskSpec>(std::move(task_spec))),
         counter_(std::move(counter)),
         export_event_write_enabled_(IsExportAPIEnabledActor()) {
-    lease_spec_ = std::make_unique<rpc::LeaseSpec>(
-        LeaseSpecification(*task_spec_, true).GetMessage());
+    lease_spec_ = std::make_unique<LeaseSpecification>(*task_spec_, true);
     RAY_CHECK(actor_table_data_.state() != rpc::ActorTableData::DEAD);
     RefreshMetrics();
   }
@@ -156,8 +155,7 @@ class GcsActor {
           task_spec_->label_selector().begin(), task_spec_->label_selector().end());
     }
 
-    lease_spec_ = std::make_unique<rpc::LeaseSpec>(
-        LeaseSpecification(*task_spec_, true).GetMessage());
+    lease_spec_ = std::make_unique<LeaseSpecification>(*task_spec_, true);
     RefreshMetrics();
   }
 
@@ -206,7 +204,7 @@ class GcsActor {
   std::string GetRayNamespace() const;
   /// Get the task specification of this actor.
   TaskSpecification GetCreationTaskSpecification() const;
-  LeaseSpecification GetLeaseSpecification() const;
+  const LeaseSpecification &GetLeaseSpecification() const;
   /// Get the immutable ActorTableData of this actor.
   const rpc::ActorTableData &GetActorTableData() const;
   /// Get the mutable ActorTableData of this actor.
@@ -275,7 +273,7 @@ class GcsActor {
   /// the gcs actor and so on (see gcs.proto).
   rpc::ActorTableData actor_table_data_;
   const std::unique_ptr<rpc::TaskSpec> task_spec_;
-  std::unique_ptr<rpc::LeaseSpec> lease_spec_;
+  std::unique_ptr<LeaseSpecification> lease_spec_;
   /// Resources acquired by this actor.
   ResourceRequest acquired_resources_;
   /// Reference to the counter to use for actor state metrics tracking.
