@@ -240,9 +240,6 @@ ray_cc_library(
     hdrs = [
         "grpc_services.h",
     ],
-    implementation_deps = [
-        "//src/ray/common:ray_config",
-    ],
     visibility = ["//visibility:private"],
     deps = [
         ":grpc_service_interfaces",
