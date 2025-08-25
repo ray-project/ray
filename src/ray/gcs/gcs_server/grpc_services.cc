@@ -16,14 +16,7 @@
 #include <memory>
 #include <vector>
 
-#include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/id.h"
 #include "ray/common/ray_config.h"
-#include "ray/rpc/grpc_server.h"
-#include "ray/rpc/server_call.h"
-#include "src/ray/protobuf/autoscaler.grpc.pb.h"
-#include "src/ray/protobuf/events_event_aggregator_service.pb.h"
-#include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
 namespace rpc {
