@@ -500,8 +500,8 @@ service NodeManagerService {
   // [State API] Get the all object information of the node.
   // Failure: State API user can retry.
   rpc GetObjectsInfo(GetObjectsInfoRequest) returns (GetObjectsInfoReply);
-  // Gets the task execution result. May contain a result if
-  // the task completed in error.
+  // Gets the worker failure cause. May contain a result if
+  // the worker executing the task failed.
   // Failure: Gives user error message on failure.
   rpc GetWorkerFailureCause(GetWorkerFailureCauseRequest) returns (GetWorkerFailureCauseReply);
   // Failure: TODO: Handle network failure for cgraphs.

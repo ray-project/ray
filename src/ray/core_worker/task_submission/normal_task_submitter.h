@@ -230,13 +230,13 @@ class NormalTaskSubmitter {
                           &assigned_resources);
 
   /// Handles result from GetWorkerFailureCause.
-  /// \return true if the task should be retried, false otherwise.
+  /// \return true if the task executing on the worker should be retried, false otherwise.
   bool HandleGetWorkerFailureCause(
       const Status &task_execution_status,
       const TaskID &task_id,
       const rpc::Address &addr,
-      const Status &get_task_failure_cause_reply_status,
-      const rpc::GetWorkerFailureCauseReply &get_task_failure_cause_reply);
+      const Status &get_worker_failure_cause_reply_status,
+      const rpc::GetWorkerFailureCauseReply &get_worker_failure_cause_reply);
 
   /// Address of our RPC server.
   rpc::Address rpc_address_;

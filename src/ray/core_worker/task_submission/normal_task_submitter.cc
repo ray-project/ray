@@ -626,27 +626,27 @@ bool NormalTaskSubmitter::HandleGetWorkerFailureCause(
     const Status &task_execution_status,
     const TaskID &task_id,
     const rpc::Address &addr,
-    const Status &get_task_failure_cause_reply_status,
-    const rpc::GetWorkerFailureCauseReply &get_task_failure_cause_reply) {
+    const Status &get_worker_failure_cause_reply_status,
+    const rpc::GetWorkerFailureCauseReply &get_worker_failure_cause_reply) {
   rpc::ErrorType task_error_type = rpc::ErrorType::WORKER_DIED;
   std::unique_ptr<rpc::RayErrorInfo> error_info;
   bool fail_immediately = false;
-  if (get_task_failure_cause_reply_status.ok()) {
+  if (get_worker_failure_cause_reply_status.ok()) {
     RAY_LOG(WARNING) << "Task failure cause for task " << task_id << ": "
                      << ray::gcs::RayErrorInfoToString(
-                            get_task_failure_cause_reply.failure_cause())
+                            get_worker_failure_cause_reply.failure_cause())
                      << " fail immedediately: "
-                     << get_task_failure_cause_reply.fail_task_immediately();
-    if (get_task_failure_cause_reply.has_failure_cause()) {
-      task_error_type = get_task_failure_cause_reply.failure_cause().error_type();
+                     << get_worker_failure_cause_reply.fail_task_immediately();
+    if (get_worker_failure_cause_reply.has_failure_cause()) {
+      task_error_type = get_worker_failure_cause_reply.failure_cause().error_type();
       error_info = std::make_unique<rpc::RayErrorInfo>(
-          get_task_failure_cause_reply.failure_cause());
+          get_worker_failure_cause_reply.failure_cause());
       // TODO(clarng): track and append task retry history to the error message.
     }
-    fail_immediately = get_task_failure_cause_reply.fail_task_immediately();
+    fail_immediately = get_worker_failure_cause_reply.fail_task_immediately();
   } else {
-    RAY_LOG(WARNING) << "Failed to fetch task result with status "
-                     << get_task_failure_cause_reply_status.ToString()
+    RAY_LOG(WARNING) << "Failed to fetch task failure cause with status "
+                     << get_worker_failure_cause_reply_status.ToString()
                      << " node id: " << NodeID::FromBinary(addr.node_id())
                      << " ip: " << addr.ip_address();
     task_error_type = rpc::ErrorType::NODE_DIED;

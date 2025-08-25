@@ -56,7 +56,7 @@ class RayletClientInterface {
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) = 0;
 
   /// Requests a worker from the raylet. The callback will be sent via gRPC.
-  /// \param lease_spec Lease that should be granted for the owner.
+  /// \param lease_spec Lease that is requested by the owner.
   /// \param grant_or_reject: True if we we should either grant or reject the request
   ///                         but no spillback.
   /// \param callback: The callback to call when the request finishes.
