@@ -53,12 +53,12 @@ PYTHON_VERSIONS=(
 ./ci/build/build-manylinux-ray.sh
 
 # Extract prebuilt dashboard into expected location, only if it exists
-if [[ -f "$HOME"/dashboard_build.tar.gz ]]; then
-  echo "Extracting $HOME/dashboard_build.tar.gz..."
+if [[ -f /ray/dashboard_build.tar.gz ]]; then
+  echo "Extracting /ray/dashboard_build.tar.gz..."
   mkdir -p /ray/python/ray/dashboard/client/build  # ensure target exists
-  tar -xzf "$HOME"/dashboard_build.tar.gz -C /ray/python/ray/dashboard/client/build
+  tar -xzf /ray/dashboard_build.tar.gz -C /ray/python/ray/dashboard/client/build
 else
-  echo "ERROR: $HOME/dashboard_build.tar.gz not found. Aborting." >&2
+  echo "ERROR: /ray/dashboard_build.tar.gz not found. Aborting." >&2
   exit 1
 fi
 
@@ -78,13 +78,13 @@ for PYTHON_VERSIONS in "${PYTHON_VERSIONS[@]}" ; do
   # and the -e flag ensures that we don't remove the .whl directory, the
   # dashboard directory and jars directory, as well as the compiled
   # dependency constraints.
-  git clean -f -f -x -d -e .whl -e python/ray/dashboard/client -e dashboard/client -e python/ray/jars -e python/requirements_compiled.txt
+  git clean -f -f -x -d -e .whl -e python/ray/dashboard/client -e dashboard/client -e python/ray/jars -e python/requirements_compiled.txt -e dashboard_build.tar.gz
 
   ./ci/build/build-manylinux-wheel.sh "${PYTHON}"
 done
 
 # Clean the build output so later operations is on a clean directory.
-git clean -f -f -x -d -e .whl -e python/ray/dashboard/client -e python/requirements_compiled.txt
+git clean -f -f -x -d -e .whl -e python/ray/dashboard/client -e python/requirements_compiled.txt -e dashboard_build.tar.gz
 bazel clean
 
 # Build ray jar

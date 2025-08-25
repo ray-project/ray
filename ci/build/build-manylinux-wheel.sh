@@ -1,6 +1,16 @@
 #!/bin/bash
 set -exuo pipefail
 
+# Extract prebuilt dashboard into expected location, only if it exists
+if [[ -f /ray/dashboard_build.tar.gz ]]; then
+  echo "Extracting /ray/dashboard_build.tar.gz..."
+  mkdir -p /ray/python/ray/dashboard/client/build  # ensure target exists
+  tar -xzf /ray/dashboard_build.tar.gz -C /ray/python/ray/dashboard/client/build
+else
+  echo "ERROR: /ray/dashboard_build.tar.gz not found. Aborting." >&2
+  exit 1
+fi
+
 PYTHON="$1"
 TRAVIS_COMMIT="${TRAVIS_COMMIT:-$BUILDKITE_COMMIT}"
 
@@ -24,7 +34,11 @@ export BAZEL_PATH="$HOME"/bin/bazel
 
 # Pointing a default python3 symlink to the desired python version.
 # This is required for building with bazel.
-sudo ln -sf "/opt/python/${PYTHON}/bin/python3" /usr/local/bin/python3
+if [[ "$EUID" -ne 0 && -x "$(command -v sudo)" ]]; then
+  sudo ln -sf "/opt/python/${PYTHON}/bin/python3" /usr/local/bin/python3
+else
+  ln -sf "/opt/python/${PYTHON}/bin/python3" /usr/local/bin/python3
+fi
 
 # build ray wheel
 PATH="/opt/python/${PYTHON}/bin:$PATH" RAY_INSTALL_JAVA=0 \
