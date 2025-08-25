@@ -195,28 +195,31 @@ class InMemoryMetricsStore:
             and the second element is the number of valid keys used.
             Returns (None, 0) if no valid keys have data.
         """
-        report_count = 0
+        valid_key_count = 0
 
-        # This is used to count the number of valid keys that have data without
-        # iterating over the keys multiple times.
-        def _count_valid_keys():
-            nonlocal report_count
+        def _values_generator():
+            """Generator that yields values from valid keys without storing them all in memory."""
+            nonlocal valid_key_count
             for key in keys:
-                series = self.data.get(key, ())
+                series = self.data.get(key, [])
                 if not series:
                     continue
-                report_count += 1
-                for ts in series:
-                    yield ts.value
+                
+                valid_key_count += 1
+                for timestamp_value in series:
+                    yield timestamp_value.value
 
-        it = _count_valid_keys()
-        _empty = object()
-        first = next(it, _empty)
-        if first is _empty:
+        # Create the generator and check if it has any values
+        values_gen = _values_generator()
+        try:
+            first_value = next(values_gen)
+        except StopIteration:
+            # No valid data found
             return None, 0
 
-        agg_result = aggregate_fn(chain((first,), it))
-        return agg_result, report_count
+        # Apply aggregation to the generator (memory efficient)
+        aggregated_result = aggregate_fn(chain([first_value], values_gen))
+        return aggregated_result, valid_key_count
 
     def get_latest(
         self,
