@@ -57,13 +57,11 @@ if TYPE_CHECKING:
 @dataclasses.dataclass
 class ColAgg:
     present_count: int = 0
-    # type collections / flags
     is_object: bool = False
     is_tensor: bool = False
     is_struct: bool = False
     tensor_types: list = dataclasses.field(default_factory=list)
     struct_schemas: list = dataclasses.field(default_factory=list)
-    # list<null> fixup
     saw_null_list: bool = False
     first_nonnull_list_type: Optional[pyarrow.DataType] = None
 
@@ -202,7 +200,7 @@ def unify_schemas(
     num_schemas = len(schemas)
 
     for schema in schemas:
-        # # Fast duplicate detection. This part is needed because arrow allows duplicate field names.
+        # Duplicate detection. This part is needed because arrow allows duplicate field names.
         if len(schema.names) != len(set(schema.names)):
             name_counts = Counter(schema.names)
             duplicates = [name for name, count in name_counts.items() if count > 1]
@@ -301,7 +299,6 @@ def unify_schemas(
     else:
         schemas_to_unify = schemas
 
-    # ---- 4) Final unify (keep your version gate + promote_options semantics)
     try:
         if get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION:
             return pyarrow.unify_schemas(schemas_to_unify)
