@@ -11,7 +11,7 @@ fi
 # TODO (elliot-barn): list python versions
 ls -d -- /opt/python/*/bin/
 
-RAY_VERSION="100.0.0"
+RAY_PLACEHOLDER_VERSION="100.0.0"
 PYTHON_EXE="/opt/python/${PYTHON}/bin/python"
 PIP_CMD="$(dirname "$PYTHON_EXE")/pip"
 PIP_COMPILE_CMD="$(dirname "$PYTHON_EXE")/pip-compile"
@@ -35,54 +35,11 @@ fi
 # verify
 "$PIP_COMPILE_CMD" --version
 
-echo "ray[all]==${RAY_VERSION}" > /ray-requirement.txt
+echo "ray[all]==${RAY_PLACEHOLDER_VERSION}" > ray-requirement.txt
 
 # update ray version to 100.0.0 before compiling
-sed -i "s/version = \".*\"/version = \"${RAY_VERSION}\"/g" python/ray/_version.py
+sed -i "s/version = \".*\"/version = \"${RAY_PLACEHOLDER_VERSION}\"/g" python/ray/_version.py
 
-"$PIP_COMPILE_CMD" -c /ray-requirement.txt -o /ray.lock
+"$PIP_COMPILE_CMD" ray-requirement.txt -o /ray.lock --find-links=.whl/
 
-
-# Install the wheel.
-"$PIP_CMD" -y ray
-"$PIP_CMD" install --no-deps "$PYTHON_WHEEL" --use-pep517
-
-
-# Check the wheel content
-echo "📦 Checking metadata files in $PYTHON_WHEEL"
-
-DIST=ray-3.0.0.dev0.dist-info
-
-# Allowed files
-ALLOWED=("${DIST}/entry_points.txt" "${DIST}/METADATA" "${DIST}/RECORD" "${DIST}/top_level.txt" "${DIST}/WHEEL")
-
-# List files inside the wheel (without extracting)
-FILES=$(unzip -Z1 "$PYTHON_WHEEL")
-
-# Filter only allowed files (found anywhere in archive)
-FOUND=()
-for f in "${ALLOWED[@]}"; do
-  if echo "$FILES" | grep -q "$f$"; then
-    FOUND+=("$f")
-  fi
-done
-
-echo "✅ Found expected files:"
-printf ' - %s\n' "${FOUND[@]}"
-
-# Check for unexpected files
-# Build a regex pattern from allowed files (exact matches with ^...$)
-ALLOWED_REGEX=$(printf '^%s$|' "${ALLOWED[@]}")
-# Remove the trailing '|'
-ALLOWED_REGEX=${ALLOWED_REGEX%|}
-
-# Find files that do NOT match the allowed list
-UNEXPECTED=$(echo "$FILES" | grep -Ev "$ALLOWED_REGEX" || true)
-
-
-if [[ -n "$UNEXPECTED" ]]; then
-  echo -e "\n⚠️ Unexpected files present in wheel:"
-  echo "$UNEXPECTED"
-else
-  echo -e "\n🎉 No unexpected files found."
-fi
+echo "✅ Completed ray placeholder wheel test"

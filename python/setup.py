@@ -88,6 +88,8 @@ class SetupSpec:
             self.version: str = f"{version}+asan"
         elif build_type == BuildType.TSAN:
             self.version: str = f"{version}+tsan"
+        elif PLACEHOLDER_WHEEL:
+            self.version: str = "100.0.0"
         else:
             self.version = version
         self.description: str = description
