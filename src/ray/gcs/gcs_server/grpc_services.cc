@@ -40,15 +40,11 @@ void JobInfoGrpcService::InitServerCallFactories(
     const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
     const ClusterID &cluster_id) {
-  // XXX: inject?
-  auto max_active_rpcs_per_handler =
-      RayConfig::instance().gcs_max_active_rpcs_per_handler();
-
-  RPC_SERVICE_HANDLER(JobInfoGcsService, AddJob, max_active_rpcs_per_handler)
-  RPC_SERVICE_HANDLER(JobInfoGcsService, MarkJobFinished, max_active_rpcs_per_handler)
-  RPC_SERVICE_HANDLER(JobInfoGcsService, GetAllJobInfo, max_active_rpcs_per_handler)
-  RPC_SERVICE_HANDLER(JobInfoGcsService, ReportJobError, max_active_rpcs_per_handler)
-  RPC_SERVICE_HANDLER(JobInfoGcsService, GetNextJobID, max_active_rpcs_per_handler)
+  RPC_SERVICE_HANDLER(JobInfoGcsService, AddJob, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(JobInfoGcsService, MarkJobFinished, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(JobInfoGcsService, GetAllJobInfo, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(JobInfoGcsService, ReportJobError, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(JobInfoGcsService, GetNextJobID, max_active_rpcs_per_handler_)
 }
 
 }  // namespace rpc
