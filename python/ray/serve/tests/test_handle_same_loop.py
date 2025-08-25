@@ -24,7 +24,7 @@ def _skip_test_if_router_running_in_separate_loop():
 
 @pytest.mark.asyncio
 async def test_deployment_handle_works_with_await_when_router_in_same_loop(
-    serve_instance, _skip_test_if_router_running_in_separate_loop
+    serve_instance_async, _skip_test_if_router_running_in_separate_loop
 ):
     @serve.deployment
     class F:
@@ -50,7 +50,7 @@ def test_deployment_handle_result_fails_when_driver_not_in_async_loop(
 
 @pytest.mark.asyncio
 async def test_deployment_handle_result_fails_in_async_context_but_await_succeeds(
-    serve_instance, _skip_test_if_router_running_in_separate_loop
+    serve_instance_async, _skip_test_if_router_running_in_separate_loop
 ):
     @serve.deployment
     class F:
@@ -81,7 +81,9 @@ def test_http_proxy_requests_work_when_router_in_same_loop(
 
 
 @pytest.mark.asyncio
-async def test_deployment_handle_configured_for_same_loop_via_init(serve_instance):
+async def test_deployment_handle_configured_for_same_loop_via_init(
+    serve_instance_async,
+):
     @serve.deployment
     class F:
         def __call__(self):
@@ -119,7 +121,7 @@ def test_child_deployment_handle_configured_for_same_loop_communication(serve_in
 
 @pytest.mark.asyncio
 async def test_deployment_handle_exception_propagation_in_same_loop(
-    serve_instance, _skip_test_if_router_running_in_separate_loop
+    serve_instance_async, _skip_test_if_router_running_in_separate_loop
 ):
     """Test that exceptions are properly propagated when router runs in same loop."""
 
@@ -136,7 +138,7 @@ async def test_deployment_handle_exception_propagation_in_same_loop(
 
 @pytest.mark.asyncio
 async def test_streaming_response_generator_in_same_loop(
-    serve_instance, _skip_test_if_router_running_in_separate_loop
+    serve_instance_async, _skip_test_if_router_running_in_separate_loop
 ):
     """Test that streaming responses work correctly when router runs in same loop."""
 
@@ -159,7 +161,7 @@ async def test_streaming_response_generator_in_same_loop(
 
 @pytest.mark.asyncio
 async def test_concurrent_requests_in_same_loop(
-    serve_instance, _skip_test_if_router_running_in_separate_loop
+    serve_instance_async, _skip_test_if_router_running_in_separate_loop
 ):
     """Test that multiple concurrent requests work correctly in same loop mode."""
 
@@ -185,7 +187,7 @@ async def test_concurrent_requests_in_same_loop(
 
 @pytest.mark.asyncio
 async def test_request_cancellation_in_same_loop(
-    serve_instance, _skip_test_if_router_running_in_separate_loop
+    serve_instance_async, _skip_test_if_router_running_in_separate_loop
 ):
     """Test that request cancellation works correctly when router runs in same loop."""
     signal_actor = SignalActor.remote()
