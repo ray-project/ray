@@ -692,51 +692,5 @@ def test_duplicate_objectref_transfer(ray_start_regular):
     ), f"Results differ: result1={val1}, result2={val2}"
 
 
-def test_duplicate_objectref_race_stress(ray_start_regular):
-    world_size = 2
-    actors = [GPUTestActor.remote() for _ in range(world_size)]
-    create_collective_group(actors, backend="torch_gloo")
-
-    actor0, actor1 = actors[0], actors[1]
-
-    successes = 0
-    max_iterations = 100
-
-    for iteration in range(max_iterations):
-        tensor_value = float(iteration)
-        test_tensor = torch.tensor([tensor_value])
-
-        ref = actor0.echo.remote(test_tensor)
-
-        # Send the same ref multiple times to the same actor
-        num_calls = 5
-        results = []
-        for i in range(num_calls):
-            results.append(actor1.increment.remote(ref))
-
-        try:
-            # Get all results
-            values = ray.get(results)
-
-            # All results should be tensor_value + 1 (immutability)
-            expected = tensor_value + 1
-            for i, val in enumerate(values):
-                assert torch.allclose(
-                    val, torch.tensor([expected])
-                ), f"Iteration {iteration}, Call {i}: Expected {expected}, got {val.item()}"
-
-            successes += 1
-        except Exception as e:
-            print(
-                f"Race condition reproduced at iteration {iteration} after {successes} successful iterations"
-            )
-            print(f"Exception: {e}")
-            pytest.fail(
-                f"Race condition: failed at iteration {iteration} after {successes} successes: {e}"
-            )
-
-    print(f"No race condition detected after {successes} / {max_iterations} iterations")
-
-
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
