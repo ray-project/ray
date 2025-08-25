@@ -274,7 +274,9 @@ def unify_schemas(
     # 2b) Objects and null list overrides - with validation
     for col, agg in per_col.items():
         # Validate type compatibility for list/non-list mixing
-        if agg.saw_null_list and agg.saw_non_list_type:
+        # Only raise an error if we have a non-null list type mixed with non-list types
+        # Empty lists (list<null>) are allowed to mix with non-list types
+        if agg.saw_non_list_type and agg.first_nonnull_list_type is not None:
             raise ValueError(
                 f"Column '{col}' has incompatible types: found both list and non-list types. "
                 f"Cannot unify schemas with fundamentally different type categories for the same column."
