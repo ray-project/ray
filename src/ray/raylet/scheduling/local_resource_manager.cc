@@ -24,6 +24,7 @@
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
+#include "ray/stats/metric_defs.h"
 
 namespace ray {
 
