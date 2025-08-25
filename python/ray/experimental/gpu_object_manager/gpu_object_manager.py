@@ -1,3 +1,4 @@
+import warnings
 from typing import TYPE_CHECKING, Any, Dict, NamedTuple, Optional, Tuple, List
 import threading
 
@@ -224,6 +225,10 @@ class GPUObjectManager:
                     obj_id,
                     tensor_transport_meta,
                     communicator_meta,
+                )
+                warnings.warn(
+                    f"GPU object ref {obj_id} is being passed from actor {src_actor._actor_id} to actor {dst_actor._actor_id}."
+                    "If the GPU object was modified by the first actor, the second actor will recieve the updated copy instead of the original."
                 )
             tensor_transport_manager.recv_object(
                 dst_actor,
