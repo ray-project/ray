@@ -22,7 +22,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/id.h"
-#include "ray/rpc/gcs/gcs_rpc_server.h"
+#include "ray/gcs/gcs_server/grpc_service_interfaces.h"
 #include "ray/util/event.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/ray_syncer.pb.h"
@@ -43,7 +43,7 @@ class GcsTableStorage;
 /// GcsNodeManager is responsible for managing and monitoring nodes as well as handing
 /// node and resource related rpc requests.
 /// This class is not thread-safe.
-class GcsNodeManager : public rpc::NodeInfoHandler {
+class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
  public:
   /// Create a GcsNodeManager.
   ///
