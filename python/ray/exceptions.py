@@ -48,19 +48,16 @@ class RayError(Exception):
         if ray_exception.language == PYTHON:
             try:
                 return pickle.loads(ray_exception.serialized_exception)
-            except Exception as e:
-                msg = "Failed to unpickle serialized exception"
-                # Include a fallback string/stacktrace to aid debugging.
-                #  formatted_exception_string is set in to_bytes() above by calling
+            except Exception:
+                # formatted_exception_string is set in to_bytes() above by calling
                 # traceback.format_exception() on the original exception. It contains
                 # the string representation and stack trace of the original error.
-                formatted = getattr(
+                original_stacktrace = getattr(
                     ray_exception,
                     "formatted_exception_string",
                     "No formatted exception string available.",
                 )
-                msg += f"\nOriginal exception (string repr):\n{formatted}"
-                raise RuntimeError(msg) from e
+                return UnpickleableException(original_stacktrace)
         else:
             return CrossLanguageError(ray_exception)
 
@@ -909,6 +906,26 @@ class RayCgraphCapacityExceeded(RaySystemError):
 
     pass
 
+@PublicAPI(stability="alpha")
+class UnpickleableException(RayError):
+    """Raised when attempting to unpickle a serialized exception fails.
+    
+    This occurs when deserializing (unpickling) a previously serialized exception
+    fails. In this case, we fall back to raising the string representation of 
+    the original exception along with its stack trace that was captured at the
+    time of serialization.
+    """
+
+    def __init__(self, original_stack_trace: str):
+        self.original_stack_trace = original_stack_trace
+
+    def __str__(self):
+        return (
+            "Failed to unpickle serialized exception\n"
+            "Original exception (string repr):\n"
+            f"{self.original_stack_trace}"
+        )
+
 
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
@@ -939,4 +956,5 @@ RAY_EXCEPTION_TYPES = [
     RayChannelTimeoutError,
     OufOfBandObjectRefSerializationException,
     RayCgraphCapacityExceeded,
+    UnpickleableException
 ]
