@@ -88,7 +88,7 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
           .WithField(node_id)
           .WithField("node_name", node_info.node_name())
           .WithField("node_address", node_info.node_manager_address())
-      << "Registering new node.";
+      << "Registering new node. ";
 
   auto on_done = [this, node_id, node_info_copy = node_info, reply, send_reply_callback](
                      const Status &status) mutable {

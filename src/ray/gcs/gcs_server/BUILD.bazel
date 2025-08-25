@@ -240,7 +240,6 @@ ray_cc_library(
         "grpc_services.h",
     ],
     implementation_deps = [
-        ":gcs_node_manager",
         "//src/ray/common:ray_config",
     ],
     visibility = ["//visibility:private"],
