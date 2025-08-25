@@ -68,7 +68,7 @@ class NodeResourceInfoGrpcService : public GrpcService {
                                        int64_t max_active_rpcs_per_handler)
       : GrpcService(io_service),
         service_handler_(handler),
-        max_active_rpcs_per_handler_(max_active_rpcs_per_handler_){};
+        max_active_rpcs_per_handler_(max_active_rpcs_per_handler){};
 
  protected:
   grpc::Service &GetGrpcService() override { return service_; }
