@@ -39,7 +39,7 @@ class GcsStateTest;
 /// GcsNodeManager is responsible for managing and monitoring nodes as well as handing
 /// node and resource related rpc requests.
 /// This class is not thread-safe.
-class GcsNodeManager {
+class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
  public:
   /// Create a GcsNodeManager.
   ///
@@ -54,32 +54,32 @@ class GcsNodeManager {
   /// Handle register rpc request come from raylet.
   void HandleGetClusterId(rpc::GetClusterIdRequest request,
                           rpc::GetClusterIdReply *reply,
-                          rpc::SendReplyCallback send_reply_callback);
+                          rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle register rpc request come from raylet.
   void HandleRegisterNode(rpc::RegisterNodeRequest request,
                           rpc::RegisterNodeReply *reply,
-                          rpc::SendReplyCallback send_reply_callback);
+                          rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle unregister rpc request come from raylet.
   void HandleUnregisterNode(rpc::UnregisterNodeRequest request,
                             rpc::UnregisterNodeReply *reply,
-                            rpc::SendReplyCallback send_reply_callback);
+                            rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle unregister rpc request come from raylet.
   void HandleDrainNode(rpc::DrainNodeRequest request,
                        rpc::DrainNodeReply *reply,
-                       rpc::SendReplyCallback send_reply_callback);
+                       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle get all node info rpc request.
   void HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
                             rpc::GetAllNodeInfoReply *reply,
-                            rpc::SendReplyCallback send_reply_callback);
+                            rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle check alive request for GCS.
   void HandleCheckAlive(rpc::CheckAliveRequest request,
                         rpc::CheckAliveReply *reply,
-                        rpc::SendReplyCallback send_reply_callback);
+                        rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a node failure. This will mark the failed node as dead in gcs
   /// node table.
