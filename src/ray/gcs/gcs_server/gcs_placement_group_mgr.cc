@@ -166,10 +166,6 @@ bool GcsPlacementGroup::IsDetached() const {
   return placement_group_table_data_.is_detached();
 }
 
-double GcsPlacementGroup::GetMaxCpuFractionPerNode() const {
-  return placement_group_table_data_.max_cpu_fraction_per_node();
-}
-
 NodeID GcsPlacementGroup::GetSoftTargetNodeID() const {
   return NodeID::FromBinary(placement_group_table_data_.soft_target_node_id());
 }

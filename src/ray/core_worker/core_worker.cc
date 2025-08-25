@@ -2219,7 +2219,6 @@ Status CoreWorker::CreatePlacementGroup(
       placement_group_creation_options.bundles_,
       placement_group_creation_options.strategy_,
       placement_group_creation_options.is_detached_,
-      placement_group_creation_options.max_cpu_fraction_per_node_,
       placement_group_creation_options.soft_target_node_id_,
       worker_context_->GetCurrentJobID(),
       worker_context_->GetCurrentActorID(),
