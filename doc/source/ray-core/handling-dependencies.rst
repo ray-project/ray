@@ -39,7 +39,7 @@ Preparing an environment using the Ray Cluster launcher
 
 The first way to set up dependencies is to prepare a single environment across the cluster before starting the Ray runtime.
 
-- You can build all your files and dependencies into a container image and specify this in your your :ref:`Cluster YAML Configuration <cluster-config>`.
+- You can build all your files and dependencies into a container image and specify this in your :ref:`Cluster YAML Configuration <cluster-config>`.
 
 - You can also install packages using ``setup_commands`` in the Ray Cluster configuration file (:ref:`reference <cluster-configuration-setup-commands>`); these commands will be run as each node joins the cluster.
   Note that for production settings, it is recommended to build any necessary packages into a container image instead.
@@ -613,7 +613,7 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 
   - Example: ``{"LD_LIBRARY_PATH": "${LD_LIBRARY_PATH}:/home/admin/my_lib"}``
 
-  - Non-existant variable example: ``{"ENV_VAR_NOT_EXIST": "${ENV_VAR_NOT_EXIST}:/home/admin/my_lib"}`` -> ``ENV_VAR_NOT_EXIST=":/home/admin/my_lib"``.
+  - Non-existent variable example: ``{"ENV_VAR_NOT_EXIST": "${ENV_VAR_NOT_EXIST}:/home/admin/my_lib"}`` -> ``ENV_VAR_NOT_EXIST=":/home/admin/my_lib"``.
 
 - ``nsight`` (Union[str, Dict[str, str]]): specifies the config for the Nsight System Profiler. The value is either (1) "default", which refers to the `default config <https://github.com/ray-project/ray/blob/master/python/ray/_private/runtime_env/nsight.py#L20>`_, or (2) a dict of Nsight System Profiler options and their values.
   See :ref:`here <profiling-nsight-profiler>` for more details on setup and usage.
