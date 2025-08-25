@@ -15,6 +15,13 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
+from ray.serve.schema import (
+    DeploymentAutoscalerView,
+    MetricsHealth,
+    ScalingDecision,
+    ScalingSource,
+    ScalingStatus,
+)
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -366,6 +373,52 @@ class AutoscalingState:
 
         return total_requests
 
+    # === Skeleton observability builders ===
+    def build_deployment_view(self) -> DeploymentAutoscalerView:
+        """Build a single DeploymentAutoscalerView from current in-memory state.
+        Unknowns are filled with placeholders so end-to-end wiring works now.
+        """
+        current_replicas = len(self._running_replicas)
+        target_replicas = self.apply_bounds(current_replicas)
+
+        # Simple heuristic for status
+        if target_replicas > current_replicas:
+            scaling_status = ScalingStatus.SCALING_UP
+        elif target_replicas < current_replicas:
+            scaling_status = ScalingStatus.SCALING_DOWN
+        else:
+            scaling_status = ScalingStatus.STABLE
+
+        # Minimal decision entry (skeleton)
+        decision = ScalingDecision(
+            timestamp_s=time.time(),
+            source=ScalingSource.DEFAULT,
+            reason="skeleton",
+            from_replicas=current_replicas,
+            to_replicas=target_replicas,
+            policy=getattr(self._config, "policy", None),
+            metrics={"total_requests": self.get_total_num_requests()},
+        )
+
+        name = (
+            f"{self._deployment_id.app_name}.{self._deployment_id.name}"
+            if self._deployment_id.app_name
+            else self._deployment_id.name
+        )
+        return DeploymentAutoscalerView(
+            name=name,
+            current_replicas=current_replicas,
+            target_replicas=target_replicas,
+            min_replicas=self.get_num_replicas_lower_bound(),
+            max_replicas=self.get_num_replicas_upper_bound(),
+            scaling_status=scaling_status,
+            decisions=[decision],
+            metrics={"total_requests": self.get_total_num_requests()},
+            lookback_period_s=None,
+            metrics_health=MetricsHealth.HEALTHY,
+            errors=[],
+        )
+
 
 class AutoscalingStateManager:
     """Manages all things autoscaling related.
@@ -476,3 +529,67 @@ class AutoscalingStateManager:
 
         for autoscaling_state in self._autoscaling_states.values():
             autoscaling_state.drop_stale_handle_metrics(alive_serve_actor_ids)
+
+    # === Skeleton snapshot builders ===
+    def build_deployment_views(self) -> List[DeploymentAutoscalerView]:
+        return [
+            state.build_deployment_view() for state in self._autoscaling_states.values()
+        ]
+
+    def build_application_views_summary(self) -> Dict[str, Dict[str, Dict[str, int]]]:
+        """Return {app_name: {deployment_name: {current, target}}}."""
+        out: Dict[str, Dict[str, Dict[str, int]]] = {}
+        for state in self._autoscaling_states.values():
+            dep_view = state.build_deployment_view()
+            # name might be 'app.dep' or 'dep' (1.x)
+            app_name = state._deployment_id.app_name or ""
+            dep_name = state._deployment_id.name
+            out.setdefault(app_name, {})[dep_name] = {
+                "current": dep_view.current_replicas,
+                "target": dep_view.target_replicas,
+            }
+        return out
+
+    def build_external_scalers(self) -> list:
+        """Placeholder: external/webhook scaler observability."""
+        return []
+
+    def build_deployment_view(
+        self, deployment_id: DeploymentID, curr_target_num_replicas: int
+    ) -> DeploymentAutoscalerView:
+        state = self._autoscaling_states.get(deployment_id)
+        if state is not None:
+            return state.build_deployment_view()
+
+        current = 0
+        target = curr_target_num_replicas
+        if target > current:
+            scaling_status = ScalingStatus.SCALING_UP
+        elif target < current:
+            scaling_status = ScalingStatus.SCALING_DOWN
+        else:
+            scaling_status = ScalingStatus.STABLE
+
+        decision = ScalingDecision(
+            timestamp_s=time.time(),
+            source=ScalingSource.DEFAULT,
+            reason="no_state",
+            from_replicas=current,
+            to_replicas=target,
+            policy=None,
+            metrics=None,
+        )
+
+        return DeploymentAutoscalerView(
+            name=deployment_id.name,
+            current_replicas=current,
+            target_replicas=target,
+            min_replicas=None,
+            max_replicas=None,
+            scaling_status=scaling_status,
+            decisions=[decision],
+            metrics=None,
+            lookback_period_s=None,
+            metrics_health=MetricsHealth.HEALTHY,
+            errors=[],
+        )

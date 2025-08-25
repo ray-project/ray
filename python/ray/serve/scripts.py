@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import json
 import os
 import pathlib
 import re
@@ -693,8 +694,41 @@ def config(address: str, name: Optional[str]):
         "specified application."
     ),
 )
-def status(address: str, name: Optional[str]):
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    help="Show verbose status.",
+)
+def status(address: str, name: Optional[str], verbose: bool):
     warn_if_agent_address_set()
+
+    if verbose:
+        # Try the controller-backed autoscaler observability first.
+        try:
+            # New SDK method (implemented server-side) expected to return a JSON-serializable dict.
+            observability = ServeSubmissionClient(address).get_autoscaler_observability(
+                name=name
+            )
+            # If the SDK returns a Pydantic model, convert to dict.
+            if hasattr(observability, "dict"):
+                observability = observability.dict()
+            print(json.dumps(observability, indent=2))
+            return
+        except Exception:
+            # Fallback to a stable skeleton so the CLI remains usable before server wiring exists.
+            skeleton = {
+                "schema_version": "serve-status.v0",
+                "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "cluster": {"dashboard_address": address},
+                "applications": [],  # To be populated with real data.
+                "events": {"summary": ["<placeholder: aggregated event summary>"]},
+                "metrics": {
+                    "external": {}
+                },  # Placeholder for external metrics hook-in.
+            }
+            print(json.dumps(skeleton, indent=2))
+            return
 
     serve_details = ServeInstanceDetails(
         **ServeSubmissionClient(address).get_serve_details()

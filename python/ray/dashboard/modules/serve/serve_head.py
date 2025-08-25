@@ -14,6 +14,7 @@ from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.exceptions import RayTaskError
+import time
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -219,3 +220,26 @@ class ServeHead(SubprocessModule):
                 )
 
             return self._controller
+
+    @routes.get("/api/serve/autoscaler/observability")
+    @dashboard_optional_utils.init_ray_and_catch_exceptions()
+    @validate_endpoint()
+    async def get_autoscaler_observability(self, req: Request) -> Response:
+        controller = await self.get_serve_controller()
+        from ray.serve.schema import ServeAutoscalerObservability
+
+        if controller is None:
+            empty = ServeAutoscalerObservability(
+                timestamp_s=time.time(),
+                deployments=[],
+                applications=[],
+                external_scalers=[],
+            ).dict()
+            return Response(text=json.dumps(empty), content_type="application/json")
+
+        name = req.rel_url.query.get("name")
+        try:
+            result = await controller.get_autoscaler_observability.remote(name=name)
+        except ray.exceptions.RayTaskError as e:
+            return Response(status=503, text=f"Controller unavailable: {e}")
+        return Response(text=json.dumps(result), content_type="application/json")

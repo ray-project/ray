@@ -64,13 +64,20 @@ from ray.serve.generated.serve_pb2 import (
     EndpointSet,
 )
 from ray.serve.schema import (
+    ApplicationAutoscalerView,
     ApplicationDetails,
+    DeploymentAutoscalerView,
     DeploymentDetails,
     HTTPOptionsSchema,
     LoggingConfig,
     ProxyDetails,
+    ScalingDecision,
+    ScalingSource,
+    ScalingStatus,
     ServeActorDetails,
     ServeApplicationSchema,
+    # === Autoscaler Observability (alpha) ===
+    ServeAutoscalerObservability,
     ServeDeploySchema,
     ServeInstanceDetails,
     TargetGroup,
@@ -650,6 +657,52 @@ class ServeController:
             return gRPCOptions()
         return self.proxy_state_manager.get_grpc_config()
 
+    # === Autoscaler Observability (alpha, skeleton) ===
+    def get_autoscaler_observability(self, name: Optional[str] = None) -> Dict:
+        """Return autoscaler observability snapshot for SDK/CLI.
+        Skeleton version that wires deployment-level + app-level summaries.
+        """
+        # Deployment-level views from autoscaling manager
+        deployment_views = self.autoscaling_state_manager.build_deployment_views()
+        if name:
+            prefix = f"{name}."  # app-scoped deployment string
+            deployment_views = [
+                dv
+                for dv in deployment_views
+                if dv.name == name or dv.name.startswith(prefix)
+            ]
+
+        # Application-level aggregation
+        app_summary = self.autoscaling_state_manager.build_application_views_summary()
+        application_views: List[ApplicationAutoscalerView] = []
+        for app_name, dep_map in app_summary.items():
+            if name and app_name != name:
+                continue
+            application_views.append(
+                ApplicationAutoscalerView(
+                    application=app_name or "default",
+                    policy=None,
+                    scaling_status=ScalingStatus.STABLE,
+                    decisions=[],
+                    metrics=None,
+                    lookback_period_s=None,
+                    errors=[],
+                    deployments={
+                        dname: {"current": vals["current"], "target": vals["target"]}
+                        for dname, vals in dep_map.items()
+                    },
+                )
+            )
+
+        snapshot = ServeAutoscalerObservability(
+            timestamp_s=time.time(),
+            version="v1",
+            deployments=deployment_views,
+            applications=application_views,
+            external_scalers=self.autoscaling_state_manager.build_external_scalers(),
+        )
+        return snapshot.dict()
+
     def get_root_url(self):
         """Return the root url for the serve instance."""
         if self.proxy_state_manager is None:
@@ -978,6 +1031,84 @@ class ServeController:
             applications=applications,
             target_groups=self.get_target_groups(),
         )._get_user_facing_json_serializable_dict(exclude_unset=True)
+
+    def _build_deployment_views(self) -> List[DeploymentAutoscalerView]:
+        views: List[DeploymentAutoscalerView] = []
+        app_statuses = self.application_state_manager.list_app_statuses()
+
+        for app_name in app_statuses.keys():
+            dep_details = self.application_state_manager.list_deployment_details(
+                app_name
+            )
+            for dep_name, dd in dep_details.items():
+                dep_id = DeploymentID(name=dep_name, app_name=app_name)
+                curr_target = dd.target_num_replicas
+                views.append(
+                    self.autoscaling_state_manager.build_deployment_view(
+                        dep_id, curr_target
+                    )
+                )
+        return views
+
+    def _build_application_views(self) -> List[ApplicationAutoscalerView]:
+        views: List[ApplicationAutoscalerView] = []
+        app_statuses = self.application_state_manager.list_app_statuses()
+
+        for app_name in app_statuses.keys():
+            dep_details = self.application_state_manager.list_deployment_details(
+                app_name
+            )
+
+            deployments_summary: Dict[str, Dict[str, int]] = {}
+            sum_current = 0
+            sum_target = 0
+            any_up = False
+            any_down = False
+
+            for dep_name, dd in dep_details.items():
+                current = len(dd.replicas)
+                target = dd.target_num_replicas
+                deployments_summary[dep_name] = {"current": current, "target": target}
+                sum_current += current
+                sum_target += target
+
+                if target > current:
+                    any_up = True
+                elif target < current:
+                    any_down = True
+
+            if any_up and not any_down:
+                scaling_status = ScalingStatus.SCALING_UP
+            elif any_down and not any_up:
+                scaling_status = ScalingStatus.SCALING_DOWN
+            else:
+                scaling_status = ScalingStatus.STABLE
+
+            decisions = [
+                ScalingDecision(
+                    timestamp_s=time.time(),
+                    source=ScalingSource.CUSTOM,
+                    reason="placeholder",
+                    from_replicas=sum_current,
+                    to_replicas=sum_target,
+                    policy=None,
+                    metrics=None,
+                )
+            ]
+
+            views.append(
+                ApplicationAutoscalerView(
+                    application=app_name,
+                    policy=None,
+                    scaling_status=scaling_status,
+                    decisions=decisions,
+                    metrics=None,
+                    lookback_period_s=None,
+                    errors=[],
+                    deployments=deployments_summary,
+                )
+            )
+        return views
 
     def get_target_groups(self, app_name: Optional[str] = None) -> List[TargetGroup]:
         """Target groups contains information about IP
