@@ -23,7 +23,8 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
-#include "ray/ipc/raylet_ipc_client.h"
+#include "ray/ipc/raylet_ipc_client_interface.h"
+#include "ray/util/time.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
@@ -62,7 +63,7 @@ BufferTracker::UsedObjects() const {
 
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     const std::string &store_socket,
-    const std::shared_ptr<ipc::RayletIpcClient> raylet_ipc_client,
+    const std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
     ReferenceCounter &reference_counter,
     std::function<Status()> check_signals,
     bool warmup,
@@ -255,18 +256,19 @@ Status CoreWorkerPlasmaStoreProvider::GetExperimentalMutableObject(
   return store_client_->GetExperimentalMutableObject(object_id, mutable_object);
 }
 
-Status UnblockIfNeeded(const std::shared_ptr<ipc::RayletIpcClient> &client,
-                       const WorkerContext &ctx) {
+Status UnblockIfNeeded(
+    const std::shared_ptr<ipc::RayletIpcClientInterface> &raylet_client,
+    const WorkerContext &ctx) {
   if (ctx.CurrentTaskIsDirectCall()) {
     // NOTE: for direct call actors, we still need to issue an unblock IPC to release
     // get subscriptions, even if the worker isn't blocked.
     if (ctx.ShouldReleaseResourcesOnBlockingCalls() || ctx.CurrentActorIsDirectCall()) {
-      return client->NotifyDirectCallTaskUnblocked();
+      return raylet_client->NotifyDirectCallTaskUnblocked();
     } else {
       return Status::OK();  // We don't need to release resources.
     }
   } else {
-    return client->CancelGetRequest();
+    return raylet_client->CancelGetRequest();
   }
 }
 

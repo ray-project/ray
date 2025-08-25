@@ -1469,7 +1469,7 @@ def start_gcs_server(
             If None, stdout is not redirected.
         stderr_filepath: The file path to dump gcs server stderr.
             If None, stderr is not redirected.
-        session_name: The session name (cluster id) of this cluster.
+        session_name: The current Ray session name.
         redis_username: The username of the Redis server.
         redis_password: The password of the Redis server.
         config: Optional configuration that will
@@ -1606,7 +1606,7 @@ def start_raylet(
         fallback_directory: A directory where the Object store fallback files will be created.
         object_store_memory: The amount of memory (in bytes) to start the
             object store with.
-        session_name: The session name (cluster id) of this cluster.
+        session_name: The current Ray session name.
         resource_isolation_config: Resource isolation configuration for reserving
             memory and cpu resources for ray system processes through cgroupv2
         is_head_node: whether this node is the head node.
@@ -1792,7 +1792,7 @@ def start_raylet(
         os.path.join(RAY_PATH, "dashboard", "agent.py"),
         f"--node-ip-address={node_ip_address}",
         f"--metrics-export-port={metrics_export_port}",
-        f"--dashboard-agent-port={metrics_agent_port}",
+        f"--grpc-port={metrics_agent_port}",
         f"--listen-port={dashboard_agent_listen_port}",
         "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
         f"--object-store-name={plasma_store_name}",

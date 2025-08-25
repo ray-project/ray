@@ -67,6 +67,7 @@ py_test_module_list(
         "test_reference_counting_2.py",
         "test_reference_counting_standalone.py",
         "test_runtime_env_agent.py",
+        "test_util_helpers.py",
     ],
     tags = [
         "exclusive",
@@ -82,8 +83,7 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     env = {
-        "RAY_experimental_enable_open_telemetry_on_agent": "1",
-        "RAY_experimental_enable_open_telemetry_on_core": "1",
+        "RAY_enable_open_telemetry": "1",
     },
     files = [
         "test_metric_cardinality.py",
@@ -510,6 +510,7 @@ py_test_module_list(
         "test_async_compat.py",
         "test_asyncio_cluster.py",
         "test_autoscaling_policy.py",
+        "test_baseexceptionandgroup.py",
         "test_bounded_unix_sockets.py",
         "test_component_failures.py",
         "test_concurrency_group.py",
@@ -519,7 +520,6 @@ py_test_module_list(
         "test_distributed_sort.py",
         "test_environ.py",
         "test_error_ray_not_initialized.py",
-        "test_exceptiongroup.py",
         "test_gcs_pubsub.py",
         "test_get_or_create_actor.py",
         "test_grpc_client_credentials.py",
@@ -630,6 +630,7 @@ py_test_module_list(
     env = {"RAY_PYTEST_USE_GPU": "1"},
     files = [
         "test_gpu_objects_nccl.py",
+        "test_gpu_objects_nixl.py",
     ],
     tags = [
         "exclusive",
@@ -874,6 +875,7 @@ py_test_module_list(
         "test_actor_failures.py",
         "test_cancel.py",
         "test_chaos.py",
+        "test_core_worker_fault_tolerance.py",
         "test_failure.py",
         "test_failure_2.py",
         "test_generators.py",
@@ -1088,8 +1090,8 @@ py_test(
     size = "large",
     srcs = ["test_runtime_env_container.py"],
     tags = [
-        "container",
         "exclusive",
+        "runtime_env_container",
         "team:core",
     ],
     deps = [

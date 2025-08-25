@@ -15,7 +15,11 @@
 #include "ray/common/task/task_spec.h"
 
 #include <boost/functional/hash.hpp>
+#include <memory>
 #include <sstream>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
@@ -491,7 +495,7 @@ std::string TaskSpecification::CallerWorkerIdBinary() const {
 }
 
 NodeID TaskSpecification::CallerNodeId() const {
-  return NodeID::FromBinary(message_->caller_address().raylet_id());
+  return NodeID::FromBinary(message_->caller_address().node_id());
 }
 
 // === Below are getter methods specific to actor tasks.

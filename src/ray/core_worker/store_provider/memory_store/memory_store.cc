@@ -21,7 +21,7 @@
 #include <vector>
 
 #include "ray/common/ray_config.h"
-#include "ray/ipc/raylet_ipc_client.h"
+#include "ray/ipc/raylet_ipc_client_interface.h"
 
 namespace ray {
 namespace core {
@@ -136,7 +136,7 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
 CoreWorkerMemoryStore::CoreWorkerMemoryStore(
     instrumented_io_context &io_context,
     ReferenceCounter *counter,
-    std::shared_ptr<ipc::RayletIpcClient> raylet_ipc_client,
+    std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
     std::function<Status()> check_signals,
     std::function<void(const RayObject &)> unhandled_exception_handler,
     std::function<std::shared_ptr<ray::RayObject>(
@@ -237,6 +237,8 @@ void CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
 
     if (!async_callbacks.empty()) {
       object_entry->SetAccessed();
+    } else {
+      return;
     }
   }
 

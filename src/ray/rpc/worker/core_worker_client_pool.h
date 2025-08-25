@@ -40,7 +40,7 @@ class CoreWorkerClientPool {
       : core_worker_client_factory_(std::move(client_factory)){};
 
   /// Default unavailable_timeout_callback for retryable rpc's used by client factories on
-  /// core worker and node manager.
+  /// core worker.
   static std::function<void()> GetDefaultUnavailableTimeoutCallback(
       gcs::GcsClient *gcs_client,
       rpc::CoreWorkerClientPool *worker_client_pool,
@@ -90,13 +90,13 @@ class CoreWorkerClientPool {
     CoreWorkerClientEntry(WorkerID worker_id,
                           NodeID node_id,
                           std::shared_ptr<CoreWorkerClientInterface> core_worker_client)
-        : worker_id(std::move(worker_id)),
-          node_id(std::move(node_id)),
-          core_worker_client(std::move(core_worker_client)) {}
+        : worker_id_(std::move(worker_id)),
+          node_id_(std::move(node_id)),
+          core_worker_client_(std::move(core_worker_client)) {}
 
-    WorkerID worker_id;
-    NodeID node_id;
-    std::shared_ptr<CoreWorkerClientInterface> core_worker_client;
+    WorkerID worker_id_;
+    NodeID node_id_;
+    std::shared_ptr<CoreWorkerClientInterface> core_worker_client_;
   };
 
   /// A list of open connections from the most recent accessed to the least recent
