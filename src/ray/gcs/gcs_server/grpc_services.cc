@@ -16,8 +16,6 @@
 #include <memory>
 #include <vector>
 
-#include "ray/common/ray_config.h"
-
 namespace ray {
 namespace rpc {
 
@@ -25,26 +23,17 @@ void NodeInfoGrpcService::InitServerCallFactories(
     const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
     const ClusterID &cluster_id) {
-  // XXX: inject?
-  auto max_active_rpcs_per_handler =
-      RayConfig::instance().gcs_max_active_rpcs_per_handler();
-
   // We only allow one cluster ID in the lifetime of a client.
   // So, if a client connects, it should not have a pre-existing different ID.
   RPC_SERVICE_HANDLER_CUSTOM_AUTH(NodeInfoGcsService,
                                   GetClusterId,
-                                  max_active_rpcs_per_handler,
+                                  max_active_rpcs_per_handler_,
                                   AuthType::EMPTY_AUTH);
-
-  RPC_SERVICE_HANDLER(NodeInfoGcsService, RegisterNode, max_active_rpcs_per_handler)
-
-  RPC_SERVICE_HANDLER(NodeInfoGcsService, UnregisterNode, max_active_rpcs_per_handler)
-
-  RPC_SERVICE_HANDLER(NodeInfoGcsService, DrainNode, max_active_rpcs_per_handler)
-
-  RPC_SERVICE_HANDLER(NodeInfoGcsService, GetAllNodeInfo, max_active_rpcs_per_handler)
-
-  RPC_SERVICE_HANDLER(NodeInfoGcsService, CheckAlive, max_active_rpcs_per_handler)
+  RPC_SERVICE_HANDLER(NodeInfoGcsService, RegisterNode, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(NodeInfoGcsService, UnregisterNode, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(NodeInfoGcsService, DrainNode, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(NodeInfoGcsService, GetAllNodeInfo, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(NodeInfoGcsService, CheckAlive, max_active_rpcs_per_handler_)
 }
 
 void NodeResourceInfoGrpcService::InitServerCallFactories(

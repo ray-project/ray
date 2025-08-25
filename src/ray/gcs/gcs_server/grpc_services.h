@@ -38,8 +38,11 @@ namespace rpc {
 class NodeInfoGrpcService : public GrpcService {
  public:
   explicit NodeInfoGrpcService(instrumented_io_context &io_service,
-                               NodeInfoGcsServiceHandler &service_handler)
-      : GrpcService(io_service), service_handler_(service_handler){};
+                               NodeInfoGcsServiceHandler &service_handler,
+                               int64_t max_active_rpcs_per_handler)
+      : GrpcService(io_service),
+        service_handler_(service_handler),
+        max_active_rpcs_per_handler_(max_active_rpcs_per_handler){};
 
  protected:
   grpc::Service &GetGrpcService() override { return service_; }
@@ -52,6 +55,7 @@ class NodeInfoGrpcService : public GrpcService {
  private:
   NodeInfoGcsService::AsyncService service_;
   NodeInfoGcsServiceHandler &service_handler_;
+  int64_t max_active_rpcs_per_handler_;
 };
 
 class NodeResourceInfoGrpcService : public GrpcService {
