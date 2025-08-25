@@ -73,16 +73,23 @@ struct StatsHandle {
   const std::shared_ptr<GuardedGlobalStats> global_stats;
   // Whether RecordEnd or RecordExecution is called.
   std::atomic<bool> end_or_execution_recorded;
+  // Metric emission specific configurations
+  const bool emit_stats;
+  const std::optional<std::string> context_name;
 
   StatsHandle(std::string event_name_,
-              int64_t start_time_,
+              const int64_t start_time_,
               std::shared_ptr<GuardedEventStats> handler_stats_,
-              std::shared_ptr<GuardedGlobalStats> global_stats_)
+              std::shared_ptr<GuardedGlobalStats> global_stats_,
+              const bool emit_stats_,
+              std::optional<std::string> context_name)
       : event_name(std::move(event_name_)),
         start_time(start_time_),
         handler_stats(std::move(handler_stats_)),
         global_stats(std::move(global_stats_)),
-        end_or_execution_recorded(false) {}
+        end_or_execution_recorded(false),
+        emit_stats(emit_stats_),
+        context_name(context_name){}
 
   ~StatsHandle() {
     if (!end_or_execution_recorded) {
@@ -116,8 +123,8 @@ class EventTracker {
   /// \return An opaque stats handle, to be given to RecordExecution() or RecordEnd().
   std::shared_ptr<StatsHandle> RecordStart(
       std::string name,
-      int64_t expected_queueing_delay_ns = 0,
       bool emit_metrics = false,
+      int64_t expected_queueing_delay_ns = 0,
       const std::optional<std::string> &context_name = std::nullopt);
 
   /// Records stats about the provided function's execution. This is used in conjunction
@@ -125,25 +132,15 @@ class EventTracker {
   ///
   /// \param fn The function to execute and instrument.
   /// \param handle An opaque stats handle returned by RecordStart().
-  /// \param emit_metrics Emit the underlying stat as a service metric
-  ///  \param context_name A human-readable name to which collected stats will be
-  ///  associated for metrics.
   static void RecordExecution(
       const std::function<void()> &fn,
-      std::shared_ptr<StatsHandle> handle,
-      bool emit_metrics = false,
-      const std::optional<std::string> &context_name = std::nullopt);
+      std::shared_ptr<StatsHandle> handle);
 
   /// Records the end of an event. This is used in conjunction
   /// with RecordStart() to manually instrument an event.
   ///
   /// \param handle An opaque stats handle returned by RecordStart().
-  /// \param emit_metrics Emit the underlying stat as a service metric
-  ///  \param context_name A human-readable name to which collected stats will be
-  ///  associated for metrics.
-  static void RecordEnd(std::shared_ptr<StatsHandle> handle,
-                        bool emit_metrics = false,
-                        const std::optional<std::string> &context_name = std::nullopt);
+  static void RecordEnd(std::shared_ptr<StatsHandle> handle);
 
   /// Returns a snapshot view of the global count, queueing, and execution statistics
   /// across all handlers.
