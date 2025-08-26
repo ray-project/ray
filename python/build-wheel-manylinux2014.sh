@@ -10,7 +10,6 @@ if [[ "$EUID" -eq 0 ]]; then
   yum -y install sudo
 
   GROUP_NAME="builduser"
-  declare -a UID_FLAG=()
 
   # --- Ensure group exists ---
   if ! getent group "$GROUP_NAME" >/dev/null; then
