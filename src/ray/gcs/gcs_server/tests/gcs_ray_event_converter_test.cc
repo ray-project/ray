@@ -34,10 +34,10 @@ class GcsRayEventConverterTest : public ::testing::Test {
 TEST_F(GcsRayEventConverterTest, TestConvertToTaskEventData) {
   rpc::events::AddEventsRequest request;
   GcsRayEventConverter converter;
-  std::vector<rpc::AddTaskEventDataRequest> task_event_data_requests;
 
   // Convert empty request
-  converter.ConvertToTaskEventDataRequests(std::move(request), task_event_data_requests);
+  auto task_event_data_requests =
+      converter.ConvertToTaskEventDataRequests(std::move(request));
 
   // Test empty request
   EXPECT_EQ(task_event_data_requests.size(), 0);
@@ -46,7 +46,6 @@ TEST_F(GcsRayEventConverterTest, TestConvertToTaskEventData) {
 TEST_F(GcsRayEventConverterTest, TestConvertTaskDefinitionEvent) {
   rpc::events::AddEventsRequest request;
   GcsRayEventConverter converter;
-  std::vector<rpc::AddTaskEventDataRequest> task_event_data_requests;
 
   // Create a task definition event
   auto *event = request.mutable_events_data()->add_events();
@@ -80,7 +79,8 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskDefinitionEvent) {
   runtime_env->set_serialized_runtime_env("test_env");
 
   // Convert
-  converter.ConvertToTaskEventDataRequests(std::move(request), task_event_data_requests);
+  auto task_event_data_requests =
+      converter.ConvertToTaskEventDataRequests(std::move(request));
 
   // Verify conversion
   ASSERT_EQ(task_event_data_requests.size(), 1);
@@ -110,7 +110,6 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskDefinitionEvent) {
 
 TEST_F(GcsRayEventConverterTest, TestConvertWithDroppedTaskAttempts) {
   rpc::events::AddEventsRequest request;
-  std::vector<rpc::AddTaskEventDataRequest> task_event_data_requests;
   GcsRayEventConverter converter;
 
   // Create a proper TaskID for testing
@@ -127,7 +126,8 @@ TEST_F(GcsRayEventConverterTest, TestConvertWithDroppedTaskAttempts) {
   dropped_attempt->set_attempt_number(2);
 
   // Convert
-  converter.ConvertToTaskEventDataRequests(std::move(request), task_event_data_requests);
+  auto task_event_data_requests =
+      converter.ConvertToTaskEventDataRequests(std::move(request));
 
   // Verify dropped task attempts are copied
   ASSERT_FALSE(task_event_data_requests.empty());
@@ -140,7 +140,6 @@ TEST_F(GcsRayEventConverterTest, TestConvertWithDroppedTaskAttempts) {
 
 TEST_F(GcsRayEventConverterTest, TestMultipleJobIds) {
   rpc::events::AddEventsRequest request;
-  std::vector<rpc::AddTaskEventDataRequest> task_event_data_requests;
   GcsRayEventConverter converter;
 
   // Create events with different job IDs
@@ -191,7 +190,8 @@ TEST_F(GcsRayEventConverterTest, TestMultipleJobIds) {
   dropped_attempt_2->set_attempt_number(4);
 
   // Convert
-  converter.ConvertToTaskEventDataRequests(std::move(request), task_event_data_requests);
+  auto task_event_data_requests =
+      converter.ConvertToTaskEventDataRequests(std::move(request));
 
   // Verify that we get two separate requests (one for each job ID)
   ASSERT_EQ(task_event_data_requests.size(), 2);
@@ -227,7 +227,6 @@ TEST_F(GcsRayEventConverterTest, TestMultipleJobIds) {
 
 TEST_F(GcsRayEventConverterTest, TestSameJobIdGrouping) {
   rpc::events::AddEventsRequest request;
-  std::vector<rpc::AddTaskEventDataRequest> task_event_data_requests;
   GcsRayEventConverter converter;
 
   // Create multiple events with the same job ID
@@ -256,7 +255,8 @@ TEST_F(GcsRayEventConverterTest, TestSameJobIdGrouping) {
   task_def_event2->set_task_name("task_2_name");
 
   // Convert
-  converter.ConvertToTaskEventDataRequests(std::move(request), task_event_data_requests);
+  auto task_event_data_requests =
+      converter.ConvertToTaskEventDataRequests(std::move(request));
 
   // Verify that we get one request with both events grouped together
   ASSERT_EQ(task_event_data_requests.size(), 1);
