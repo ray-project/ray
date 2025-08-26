@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "absl/synchronization/mutex.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
 class FakeCoreWorkerClient : public rpc::CoreWorkerClientInterface {

@@ -514,7 +514,10 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   std::list<std::pair<NodeID, std::shared_ptr<const BundleSpecification>>>
       waiting_removed_bundles_;
 
+  friend class GcsPlacementGroupSchedulerTest;
   FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestCheckingWildcardResource);
+  FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestWaitingRemovedBundles);
+  FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestBundlesRemovedWhenNodeDead);
 };
 
 }  // namespace gcs

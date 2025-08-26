@@ -22,6 +22,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/gcs/gcs_server/gcs_actor_manager.h"
@@ -31,7 +32,6 @@
 #include "mock/ray/rpc/worker/core_worker_client.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
-#include "ray/gcs/gcs_server/tests/gcs_server_test_util.h"
 #include "ray/gcs/tests/gcs_test_util.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 
@@ -52,7 +52,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
  protected:
   static constexpr char kRayletConfig[] = R"({"raylet_config":"this is a config"})";
   instrumented_io_context io_service_;
-  std::shared_ptr<GcsServerMocker::MockRayletClient> raylet_client_;
+  std::shared_ptr<FakeRayletClient> raylet_client_;
   std::shared_ptr<rpc::RayletClientPool> client_pool_;
   std::unique_ptr<ClusterResourceManager> cluster_resource_manager_;
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
@@ -66,7 +66,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
   std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
 
   void SetUp() override {
-    raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
+    raylet_client_ = std::make_shared<FakeRayletClient>();
     client_pool_ = std::make_unique<rpc::RayletClientPool>(
         [this](const rpc::Address &) { return raylet_client_; });
     cluster_resource_manager_ = std::make_unique<ClusterResourceManager>(io_service_);

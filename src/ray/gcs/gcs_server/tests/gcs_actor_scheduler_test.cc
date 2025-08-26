@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
+
 #include <gtest/gtest.h>
 
 #include <memory>
@@ -20,13 +22,12 @@
 #include <utility>
 #include <vector>
 
-// clang-format off
+#include "fakes/ray/rpc/raylet/raylet_client.h"
+#include "fakes/ray/rpc/worker/core_worker_client.h"
+#include "mock/ray/pubsub/publisher.h"
 #include "ray/common/asio/asio_util.h"
-#include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/tests/gcs_server_test_util.h"
 #include "ray/gcs/tests/gcs_test_util.h"
-#include "mock/ray/pubsub/publisher.h"
-// clang-format on
 
 namespace ray {
 using raylet::NoopLocalTaskManager;
@@ -61,10 +62,10 @@ class MockedGcsActorScheduler : public gcs::GcsActorScheduler {
   int num_retry_creating_count_ = 0;
 };
 
-class MockedGcsActorTable : public gcs::GcsActorTable {
+class FakeGcsActorTable : public gcs::GcsActorTable {
  public:
   // The store_client and io_context args are NOT used.
-  explicit MockedGcsActorTable(std::shared_ptr<gcs::StoreClient> store_client)
+  explicit FakeGcsActorTable(std::shared_ptr<gcs::StoreClient> store_client)
       : GcsActorTable(store_client) {}
 
   Status Put(const ActorID &key,
@@ -85,10 +86,10 @@ class GcsActorSchedulerTest : public ::testing::Test {
   void SetUp() override {
     io_context_ =
         std::make_unique<InstrumentedIOContextWithThread>("GcsActorSchedulerTest");
-    raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
+    raylet_client_ = std::make_shared<FakeRayletClient>();
     raylet_client_pool_ = std::make_shared<rpc::RayletClientPool>(
         [this](const rpc::Address &addr) { return raylet_client_; });
-    worker_client_ = std::make_shared<GcsServerMocker::MockWorkerClient>();
+    worker_client_ = std::make_shared<FakeCoreWorkerClient>();
     gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>();
@@ -99,8 +100,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
                                                               io_context_->GetIoService(),
                                                               raylet_client_pool_.get(),
                                                               ClusterID::Nil());
-    gcs_actor_table_ =
-        std::make_shared<GcsServerMocker::MockedGcsActorTable>(store_client_);
+    gcs_actor_table_ = std::make_shared<FakeGcsActorTable>(store_client_);
     local_node_id_ = NodeID::FromRandom();
     cluster_resource_scheduler_ = std::make_unique<ClusterResourceScheduler>(
         io_context_->GetIoService(),
@@ -129,7 +129,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
         local_node_id_);
     worker_client_pool_ = std::make_unique<rpc::CoreWorkerClientPool>(
         [this](const rpc::Address &address) { return worker_client_; });
-    gcs_actor_scheduler_ = std::make_shared<GcsServerMocker::MockedGcsActorScheduler>(
+    gcs_actor_scheduler_ = std::make_shared<MockedGcsActorScheduler>(
         io_context_->GetIoService(),
         *gcs_actor_table_,
         *gcs_node_manager_,
@@ -205,15 +205,15 @@ class GcsActorSchedulerTest : public ::testing::Test {
  protected:
   std::unique_ptr<InstrumentedIOContextWithThread> io_context_;
   std::shared_ptr<gcs::StoreClient> store_client_;
-  std::shared_ptr<GcsServerMocker::MockedGcsActorTable> gcs_actor_table_;
-  std::shared_ptr<GcsServerMocker::MockRayletClient> raylet_client_;
-  std::shared_ptr<GcsServerMocker::MockWorkerClient> worker_client_;
+  std::shared_ptr<FakeGcsActorTable> gcs_actor_table_;
+  std::shared_ptr<FakeRayletClient> raylet_client_;
+  std::shared_ptr<FakeCoreWorkerClient> worker_client_;
   std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
   std::unique_ptr<raylet::ILocalTaskManager> local_task_manager_;
   std::unique_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
-  std::shared_ptr<GcsServerMocker::MockedGcsActorScheduler> gcs_actor_scheduler_;
+  std::shared_ptr<MockedGcsActorScheduler> gcs_actor_scheduler_;
   std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
       counter;
   std::vector<std::shared_ptr<gcs::GcsActor>> failure_actors_;
