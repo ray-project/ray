@@ -204,20 +204,21 @@ ray_cc_library(
     name = "gcs_job_manager",
     srcs = ["gcs_job_manager.cc"],
     hdrs = ["gcs_job_manager.h"],
-    deps = [
+    implementation_deps = [
         ":gcs_function_manager",
         ":gcs_init_data",
         ":gcs_table_storage",
-        "//src/ray/common:runtime_env",
         "//src/ray/gcs:gcs_pb_util",
         "//src/ray/gcs/pubsub:gcs_pub_sub_lib",
-        "//src/ray/rpc:core_worker_client",
-        "//src/ray/rpc:gcs_server",
         "//src/ray/stats:stats_metric",
+    ],
+    deps = [
+        ":grpc_service_interfaces",
+        "//src/ray/common:runtime_env",
+        "//src/ray/rpc:core_worker_client",
         "//src/ray/util:event",
         "//src/ray/util:thread_checker",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
