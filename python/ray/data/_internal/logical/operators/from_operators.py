@@ -2,13 +2,16 @@ import abc
 import functools
 from typing import TYPE_CHECKING, List, Optional, Union
 
+from python.ray.data._internal.util import (
+    unify_ref_bundles_schema,
+)
+
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalOperator, SourceOperator
 from ray.data.block import (
     Block,
     BlockMetadata,
     BlockMetadataWithSchema,
-    _take_first_non_empty_schema,
 )
 from ray.types import ObjectRef
 
@@ -32,14 +35,11 @@ class AbstractFrom(LogicalOperator, SourceOperator, metaclass=abc.ABCMeta):
             len(input_metadata),
         )
         # `owns_blocks` is False because this op may be shared by multiple Datasets.
-        self._schema = _take_first_non_empty_schema(
-            metadata.schema for metadata in input_metadata
-        )
         self._input_data = [
             RefBundle(
                 [(input_blocks[i], input_metadata[i])],
                 owns_blocks=False,
-                schema=self._schema,
+                schema=input_metadata[i].schema,
             )
             for i in range(len(input_blocks))
         ]
@@ -77,7 +77,8 @@ class AbstractFrom(LogicalOperator, SourceOperator, metaclass=abc.ABCMeta):
         return self._cached_output_metadata
 
     def infer_schema(self):
-        return self._schema
+        # NOTE: unification was done in this step before.
+        return unify_ref_bundles_schema(bundle.schema for bundle in self._input_data)
 
     def is_lineage_serializable(self) -> bool:
         # This operator isn't serializable because it contains ObjectRefs.

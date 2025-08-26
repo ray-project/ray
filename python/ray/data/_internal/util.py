@@ -41,6 +41,7 @@ if TYPE_CHECKING:
     import pandas
 
     from ray.data._internal.compute import ComputeStrategy
+    from ray.data._internal.execution.interfaces import RefBundle
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
     from ray.data.block import (
         Block,
@@ -724,6 +725,32 @@ def get_table_block_metadata_schema(
     return BlockMetadataWithSchema.from_block(table, stats=stats.build())
 
 
+def unify_block_metadata_schema(
+    block_metadata_with_schemas: List["BlockMetadataWithSchema"],
+) -> Optional["Schema"]:
+    """For the input list of BlockMetadata, return a unified schema of the
+    corresponding blocks. If the metadata have no valid schema, returns None.
+
+    Args:
+        block_metadata_with_schemas: List of BlockMetadata to unify
+
+    Returns:
+        A unified schema of the input list of schemas, or None if no valid schemas
+        are provided.
+    """
+    # Some blocks could be empty, in which case we cannot get their schema.
+    # TODO(ekl) validate schema is the same across different blocks.
+
+    # First check if there are blocks with computed schemas, then unify
+    # valid schemas from all such blocks.
+
+    schemas_to_unify = []
+    for m in block_metadata_with_schemas:
+        if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
+            schemas_to_unify.append(m.schema)
+    return unify_schemas_with_validation(schemas_to_unify)
+
+
 def unify_schemas_with_validation(
     schemas_to_unify: Iterable["Schema"],
 ) -> Optional["Schema"]:
@@ -742,6 +769,18 @@ def unify_schemas_with_validation(
         # return the first schema.
         return schemas_to_unify[0]
     return None
+
+
+def unify_ref_bundles_schema(
+    ref_bundles: List["RefBundle"],
+) -> Optional["Schema"]:
+    schemas_to_unify = []
+    for bundle in ref_bundles:
+        if bundle.schema is not None and (
+            bundle.num_rows() is None or bundle.num_rows() > 0
+        ):
+            schemas_to_unify.append(bundle.schema)
+    return unify_schemas_with_validation(schemas_to_unify)
 
 
 def find_partition_index(
