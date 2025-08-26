@@ -234,7 +234,8 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
         continue;
       }
     }
-
+    // NOTE: sched_cls_info.running_tasks.size() can be greater than
+    // sched_cls_info.capacity at this point due to oversubscription
     bool is_infeasible = false;
     for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end();) {
       auto &work = *work_it;
