@@ -203,6 +203,10 @@ class CoreWorkerPlasmaStoreProvider {
 
   std::shared_ptr<plasma::PlasmaClient> &store_client() { return store_client_; }
 
+  // Test-only hook to override the plasma client used for IO in tests.
+  void SetPlasmaClientForTest(
+      const std::shared_ptr<plasma::PlasmaClientInterface> &client);
+
  private:
   /// Ask the raylet to pull a set of objects and then attempt to get them
   /// from the local plasma store. Successfully fetched objects will be removed
@@ -237,6 +241,12 @@ class CoreWorkerPlasmaStoreProvider {
 
   const std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client_;
   std::shared_ptr<plasma::PlasmaClient> store_client_;
+  // Test-only override to hook PlasmaClientInterface calls.
+  std::shared_ptr<plasma::PlasmaClientInterface> test_store_client_;
+
+  inline plasma::PlasmaClientInterface &PlasmaClientForIO() {
+    return test_store_client_ ? *test_store_client_ : *store_client_;
+  }
   /// Used to look up a plasma object's owner.
   ReferenceCounter &reference_counter_;
   std::function<Status()> check_signals_;
