@@ -1,4 +1,4 @@
-load("//bazel:ray.bzl", "ray_cc_library", "ray_cc_test")
+load("//bazel:ray.bzl", "ray_cc_library")
 
 ray_cc_library(
     name = "compat",
@@ -19,12 +19,23 @@ ray_cc_library(
         ":id",
         ":ray_object",
         "//src/ray/protobuf:common_cc_proto",
-        "//src/ray/util",
         "//src/ray/util:cmd_line_utils",
         "//src/ray/util:network_util",
         "//src/ray/util:path_utils",
+        "//src/ray/util:process",
+        "//src/ray/util:time",
         "@boost//:optional",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+ray_cc_library(
+    name = "buffer",
+    hdrs = ["buffer.h"],
+    deps = [
+        ":status",
+        "//src/ray/thirdparty:aligned_alloc",
+        "//src/ray/util:logging",
     ],
 )
 
@@ -32,17 +43,16 @@ ray_cc_library(
     name = "ray_object",
     srcs = ["ray_object.cc"],
     hdrs = [
-        "buffer.h",
         "ray_object.h",
     ],
     deps = [
+        ":buffer",
         ":id",
-        ":status",
         "//src/ray/protobuf:gcs_cc_proto",
-        "//src/ray/thirdparty:aligned_alloc",
-        "//src/ray/util",
+        "//src/ray/util:logging",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
+        "@msgpack",
     ],
 )
 
@@ -52,7 +62,6 @@ ray_cc_library(
     deps = [
         ":ray_config",
         ":status",
-        "//src/ray/util",
         "//src/ray/util:logging",
         "//src/ray/util:type_traits",
         "@com_github_grpc_grpc//:grpc++",
@@ -71,7 +80,7 @@ ray_cc_library(
     deps = [
         ":asio",
         ":ray_config",
-        "//src/ray/util",
+        "//src/ray/util:process",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_prod",
@@ -85,7 +94,6 @@ ray_cc_library(
     hdrs = ["file_system_monitor.h"],
     deps = [
         ":asio",
-        "//src/ray/util",
         "//src/ray/util:event",
         "@com_google_googletest//:gtest_prod",
     ],
@@ -124,7 +132,7 @@ ray_cc_library(
         ":status",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:gcs_cc_proto",
-        "//src/ray/util",
+        "//src/ray/thirdparty:sha256",
         "//src/ray/util:random",
         "@com_github_google_flatbuffers//:flatbuffers",
         "@msgpack",
@@ -171,7 +179,6 @@ ray_cc_library(
         ":ray_object",
         ":runtime_env",
         "//src/ray/flatbuffers:node_manager_generated",
-        "//src/ray/util",
         "//src/ray/util:container_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -200,7 +207,6 @@ ray_cc_library(
     deps = [
         ":event_stats",
         ":ray_config",
-        "//src/ray/util",
         "//src/ray/util:array",
         "//src/ray/util:function_traits",
         "@boost//:asio",
@@ -220,7 +226,6 @@ ray_cc_library(
     deps = [
         ":ray_config",
         "//src/ray/stats:stats_metric",
-        "//src/ray/util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
     ],
@@ -235,8 +240,8 @@ ray_cc_library(
         "ray_internal_flag_def.h",
     ],
     deps = [
-        "//src/ray/util",
-        "@com_google_absl//absl/algorithm",
+        "//src/ray/util:logging",
+        "@boost//:algorithm",
         "@com_google_absl//absl/strings",
         "@nlohmann_json",
     ],
@@ -273,7 +278,9 @@ ray_cc_library(
     srcs = ["status.cc"],
     hdrs = ["status.h"],
     deps = [
+        ":macros",
         ":source_location",
+        "//src/ray/util:logging",
         "//src/ray/util:macros",
         "//src/ray/util:visibility",
         "@boost//:system",
@@ -302,15 +309,4 @@ ray_cc_library(
     name = "source_location",
     srcs = ["source_location.cc"],
     hdrs = ["source_location.h"],
-)
-
-ray_cc_test(
-    name = "source_location_test",
-    size = "small",
-    srcs = ["source_location_test.cc"],
-    tags = ["team:core"],
-    deps = [
-        ":source_location",
-        "@com_google_googletest//:gtest_main",
-    ],
 )

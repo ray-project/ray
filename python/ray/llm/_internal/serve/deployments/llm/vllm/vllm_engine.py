@@ -1,6 +1,5 @@
 import argparse
 import os
-import uuid
 from typing import TYPE_CHECKING, AsyncGenerator, Optional, Tuple, Union
 
 from starlette.datastructures import State
@@ -118,41 +117,14 @@ class VLLMEngine(LLMEngine):
             raise ImportError(
                 "vLLM is not installed. Please install it with `pip install ray[llm]`."
             )
-        from vllm import envs as vllm_envs, utils as vllm_utils
+        from vllm import envs as vllm_envs
 
         if not vllm_envs.VLLM_USE_V1:
             logger.warning(
                 "vLLM v0 is getting fully deprecated. As a result in Ray Serve LLM only v1 is supported. Only when you know what you are doing, you can set VLLM_USE_V1=0"
             )
 
-        # TODO (Kourosh): This validation logic belongs to the PDProxy module.
-        # Pick a random port in P/D case.
-        kv_transfer_config = llm_config.engine_kwargs.get("kv_transfer_config", None)
-        if kv_transfer_config is not None:
-            connector_type = getattr(kv_transfer_config, "kv_connector", "")
-            if connector_type != "NixlConnector":
-                raise ValueError("Only NixlConnector is supported for kv transfer.")
-            if (
-                "VLLM_NIXL_SIDE_CHANNEL_PORT" not in vllm_envs.environment_variables
-                or "VLLM_NIXL_SIDE_CHANNEL_HOST" not in vllm_envs.environment_variables
-            ):
-                raise ValueError(
-                    "This vLLM version does not support VLLM_NIXL_SIDE_CHANNEL_PORT"
-                    "or VLLM_NIXL_SIDE_CHANNEL_HOST environment variable. It's likely"
-                    "that you are using an older version of vLLM."
-                )
-
-            if not vllm_envs.is_set("VLLM_NIXL_SIDE_CHANNEL_PORT"):
-                port: int = vllm_utils.get_open_port()
-                os.environ["VLLM_NIXL_SIDE_CHANNEL_PORT"] = str(port)
-            if not vllm_envs.is_set("VLLM_NIXL_SIDE_CHANNEL_HOST"):
-                os.environ["VLLM_NIXL_SIDE_CHANNEL_HOST"] = vllm_utils.get_ip()
-
-            # We need to overwrite the engine_id to make it unique across replicas.
-            engine_id = getattr(kv_transfer_config, "engine_id", str(uuid.uuid4()))
-            host = vllm_envs.VLLM_NIXL_SIDE_CHANNEL_HOST
-            port = vllm_envs.VLLM_NIXL_SIDE_CHANNEL_PORT
-            kv_transfer_config.engine_id = "-".join([engine_id, host, str(port)])
+        self.llm_config.setup_engine_backend()
 
         self._running = False
 
@@ -328,7 +300,7 @@ class VLLMEngine(LLMEngine):
         """Creates an async LLM engine from the engine arguments."""
         from vllm import envs as vllm_envs
 
-        # NOTE: This is a temporary solution untill vLLM v1 supports embeddings.
+        # NOTE: This is a temporary solution until vLLM v1 supports embeddings.
         if not vllm_envs.VLLM_USE_V1:
             return self._start_async_llm_engine_v0(
                 vllm_engine_args, vllm_engine_config, placement_group
@@ -478,3 +450,15 @@ class VLLMEngine(LLMEngine):
         except BaseException as e:
             logger.error("Healthcheck failed. The replica will be restarted")
             raise e from None
+
+    async def reset_prefix_cache(self) -> None:
+        assert self._engine_client is not None, "engine_client is not initialized"
+        await self._engine_client.reset_prefix_cache()
+
+    async def start_profile(self) -> None:
+        assert self._engine_client is not None, "engine_client is not initialized"
+        await self._engine_client.start_profile()
+
+    async def stop_profile(self) -> None:
+        assert self._engine_client is not None, "engine_client is not initialized"
+        await self._engine_client.stop_profile()

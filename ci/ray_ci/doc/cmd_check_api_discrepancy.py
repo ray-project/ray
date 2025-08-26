@@ -1,8 +1,8 @@
 import click
 
-from ci.ray_ci.doc.module import Module
-from ci.ray_ci.doc.autodoc import Autodoc
 from ci.ray_ci.doc.api import API
+from ci.ray_ci.doc.autodoc import Autodoc
+from ci.ray_ci.doc.module import Module
 from ci.ray_ci.utils import logger
 
 TEAM_API_CONFIGS = {
