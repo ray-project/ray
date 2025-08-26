@@ -301,7 +301,7 @@ void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
 
   absl::flat_hash_map<std::string, std::string> labels(node.labels().begin(),
                                                        node.labels().end());
-  cluster_resource_manager_.SetNodeLabels(scheduling_node_id, labels);
+  cluster_resource_manager_.SetNodeLabels(scheduling_node_id, std::move(labels));
 
   rpc::ResourcesData data;
   data.set_node_id(node_id.Binary());
