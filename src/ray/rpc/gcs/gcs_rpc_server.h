@@ -544,34 +544,6 @@ class InternalKVGrpcService : public GrpcService {
   InternalKVGcsServiceHandler &service_handler_;
 };
 
-class RuntimeEnvGcsServiceHandler {
- public:
-  virtual ~RuntimeEnvGcsServiceHandler() = default;
-  virtual void HandlePinRuntimeEnvURI(PinRuntimeEnvURIRequest request,
-                                      PinRuntimeEnvURIReply *reply,
-                                      SendReplyCallback send_reply_callback) = 0;
-};
-
-class RuntimeEnvGrpcService : public GrpcService {
- public:
-  explicit RuntimeEnvGrpcService(instrumented_io_context &io_service,
-                                 RuntimeEnvGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler) {}
-
- protected:
-  grpc::Service &GetGrpcService() override { return service_; }
-  void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id) override {
-    RUNTIME_ENV_SERVICE_RPC_HANDLER(PinRuntimeEnvURI);
-  }
-
- private:
-  RuntimeEnvGcsService::AsyncService service_;
-  RuntimeEnvGcsServiceHandler &service_handler_;
-};
-
 class TaskInfoGcsServiceHandler {
  public:
   virtual ~TaskInfoGcsServiceHandler() = default;
