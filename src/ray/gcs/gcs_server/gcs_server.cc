@@ -715,7 +715,9 @@ void GcsServer::InitRuntimeEnvManager() {
                              std::chrono::milliseconds(delay_ms));
       });
   rpc_server_.RegisterService(std::make_unique<rpc::RuntimeEnvGrpcService>(
-      io_context_provider_.GetDefaultIOContext(), *runtime_env_handler_));
+      io_context_provider_.GetDefaultIOContext(),
+      *runtime_env_handler_,
+      /*max_active_rpcs_per_handler=*/-1));
 }
 
 void GcsServer::InitGcsWorkerManager() {
