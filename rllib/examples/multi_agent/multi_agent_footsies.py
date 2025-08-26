@@ -1,8 +1,23 @@
-"""Multi-agent RLlib example for Footsies
-Example is based on the Footsies environment (https://github.com/chasemcd/FootsiesGym).
+"""
+Multi-agent RLlib Footsies Example (PPO)
 
-Footsies is a two-player fighting game where each player controls a character
-and tries to hit the opponent while avoiding being hit.
+About:
+    - Example is based on the Footsies environment (https://github.com/chasemcd/FootsiesGym).
+    - Footsies is a two-player fighting game where each player controls a character and tries to hit the opponent while avoiding being hit.
+    - Footsies is a zero-sum game, when one player wins (+1 reward) the other loses (-1 reward).
+
+Summary:
+    - Main policy is an LSTM-based policy.
+    - Training algorithm is PPO.
+
+Training progression:
+    - Training is governed by adding new, more complex opponents to the mix as the main policy reaches a certain win rate threshold against the current opponent.
+    - Current opponent is always the last opponent added to the mix.
+    - Training starts with a very simple opponent: "noop" (does nothing), then progresses to "back" (only moves backwards), then "attack" (only attacks), then "random" (takes random actions). These are the fixed (very simple) policies that are used to kick off the training.
+    - After "random", new opponents are frozen copies of the main policy at different training stages. They will be added to the mix as "lstm_v0", "lstm_v1", "lstm_v2", etc.
+    - In this way - after kick-starting the training with fixed simple opponents - the main policy will play against a version of itself from an earlier training stage.
+    - The main policy has to achieve the win rate threshold against the current opponent to add a new opponent to the mix.
+    - Training concludes when the target mix size is reached.
 """
 import functools
 from pathlib import Path
@@ -36,18 +51,27 @@ from ray.rllib.utils.test_utils import (
 from ray.tune.registry import register_env
 from ray.tune.result import TRAINING_ITERATION
 
-parser = add_rllib_example_script_args()
+# setting two default stopping criteria:
+#    1. training_iteration (via "stop_iters")
+#    2. num_env_steps_sampled_lifetime (via "default_timesteps")
+# ...values very high to make sure that the test passes by adding all required policies to the mix, not by hitting the iteration limit.
+# Our main stopping criterion is "target_mix_size" (see an argument below).
+parser = add_rllib_example_script_args(
+    default_iters=500,
+    default_timesteps=5_000_000,
+)
+
 parser.add_argument(
     "--train-start-port",
     type=int,
     default=45001,
-    help="First port number for environment server (default: 45001)",
+    help="First port number for the Footsies training environment server (default: 45001). Each server gets its own port.",
 )
 parser.add_argument(
     "--eval-start-port",
     type=int,
     default=55001,
-    help="First port number for evaluation environment server (default: 55001)",
+    help="First port number for the Footsies evaluation environment server (default: 55001) Each server gets its own port.",
 )
 parser.add_argument(
     "--binary-download-dir",
@@ -66,15 +90,19 @@ parser.add_argument(
     type=str,
     choices=["linux_server", "linux_windowed", "mac_headless", "mac_windowed"],
     default="linux_server",
-    help="Target binary for Footsies environment (default: linux_server)",
+    help="Target binary for Footsies environment (default: linux_server). Linux and Mac machines are supported. "
+    "'linux_server' and 'mac_headless' choices are the default options for the training. Game will run in the batchmode, without initializing the graphics. "
+    "'linux_windowed' and 'mac_windowed' choices are for the local run only, because "
+    "game will be rendered in the OS window. To use this option effectively, set up: "
+    "num_env_runners=0 and evaluation_num_env_runners=0.",
 )
 parser.add_argument(
     "--win-rate-threshold",
     type=float,
     default=0.9,
-    help="The main policy should have at least 'win-rate-threshold' win rate against "
+    help="The main policy should have at least 'win-rate-threshold' win rate against the "
     "other policy to advance to the next level. Moving to the next level "
-    "means adding a new policy to the mix. The initial mix size is 2: 'main policy' vs 'other'.",
+    "means adding a new policy to the mix.",
 )
 parser.add_argument(
     "--target-mix-size",
@@ -83,17 +111,20 @@ parser.add_argument(
     help="Target number of policies (RLModules) in the mix to consider the test passed. "
     "The initial mix size is 2: 'main policy' vs. 'other'. "
     "`--target-mix-size=9` means that 7 new policies will be added to the mix. "
-    "Whether to add new policy is decided by checking the '--win-rate-threshold' ",
+    "Whether to add new policy is decided by checking the '--win-rate-threshold' condition. ",
 )
 parser.add_argument(
     "--rollout-fragment-length",
     type=int,
     default=256,
-    help="The length of each rollout fragment to be collected by the EnvRunners.",
+    help="The length of each rollout fragment to be collected by the EnvRunners when sampling.",
 )
 
 
 def env_creator(env_config: EnvContext) -> FootsiesEnv:
+    """Creates the Footsies environment.
+    Ensure that each game server runs on a unique port. Training and evaluation env runners have separate port ranges.
+    """
     if env_config.get("env-for-evaluation", False):
         port = (
             env_config["eval_start_port"]
@@ -119,7 +150,7 @@ if __name__ == "__main__":
     config = (
         PPOConfig()
         .reporting(
-            min_time_s_per_iteration=60,
+            min_time_s_per_iteration=30,
         )
         .environment(
             env="FootsiesEnv",
@@ -144,7 +175,7 @@ if __name__ == "__main__":
         .env_runners(
             env_runner_cls=MultiAgentEnvRunner,
             num_env_runners=args.num_env_runners or 1,
-            num_cpus_per_env_runner=1,
+            num_cpus_per_env_runner=0.5,
             num_envs_per_env_runner=1,
             batch_mode="truncate_episodes",
             rollout_fragment_length=args.rollout_fragment_length,
@@ -166,9 +197,11 @@ if __name__ == "__main__":
                 "attack",
                 "random",
             },
+            # this is a starting policy_mapping_fn. It will be updated by the WinratesCallback during training.
             policy_mapping_fn=Matchmaker(
                 [Matchup(main_policy, "noop", 1.0)]
             ).agent_to_module_mapping_fn,
+            # we only train the main policy, this doesn't change during training.
             policies_to_train=[main_policy],
         )
         .rl_module(
@@ -182,6 +215,9 @@ if __name__ == "__main__":
                             "max_seq_len": 64,
                         },
                     ),
+                    # for simplicity, all fixed RLModules are added to the config at the start.
+                    # However, only "noop" is used at the start of training,
+                    # the others are added to the mix later by the WinratesCallback.
                     "noop": RLModuleSpec(module_class=NoopFixedRLModule),
                     "back": RLModuleSpec(module_class=BackFixedRLModule),
                     "attack": RLModuleSpec(module_class=AttackFixedRLModule),
@@ -192,31 +228,32 @@ if __name__ == "__main__":
         .evaluation(
             evaluation_num_env_runners=1,
             evaluation_interval=1,
-            # Evaluation duration in episodes is greater than 100 because some episodes may end with both players dead or alive.
-            # In this case, the winrates are not logged, and we need to ensure that we have enough episodes to compute the winrates.
-            evaluation_duration=100,
+            evaluation_duration=20,  # 20 episodes is enough to get a good win rate estimate
             evaluation_duration_unit="episodes",
-            evaluation_parallel_to_training=False,  # True,
+            evaluation_parallel_to_training=False,  # we may add new RLModules to the mix at the end of the evaluation stage. Running evaluation in parallel may result in training for one more iteration on the old mix.
             evaluation_force_reset_envs_before_iteration=True,
             evaluation_config={
                 "env_config": {"env-for-evaluation": True},
-            },
+            },  # evaluation_config is used to add an argument to the env creator.
         )
         .callbacks(
-            functools.partial(
-                WinratesCallback,
-                win_rate_threshold=args.win_rate_threshold,
-                target_mix_size=args.target_mix_size,
-                main_policy=main_policy,
-                starting_modules=[main_policy, "noop"],
-            )
+            [
+                functools.partial(
+                    WinratesCallback,
+                    win_rate_threshold=args.win_rate_threshold,
+                    main_policy=main_policy,
+                    starting_modules=[main_policy, "noop"],
+                ),
+            ]
         )
     )
 
+    # creating stopping criteria to be passed to Ray Tune. The main stopping criterion is "mix_size".
+    # "mix_size" is reported at the end of each training iteration by the WinratesCallback.
     stop = {
         NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
         TRAINING_ITERATION: args.stop_iters,
-        "target_mix_size": args.target_mix_size,
+        "mix_size": args.target_mix_size,
     }
 
     # Run the experiment
