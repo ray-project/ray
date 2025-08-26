@@ -56,6 +56,16 @@ class MockVLLMEngine(LLMEngine):
         if not self.started:
             raise RuntimeError("Engine not started")
 
+    async def start_profile(self) -> None:
+        """Start profiling of the mock engine."""
+        if not self.started:
+            raise RuntimeError("Engine not started")
+
+    async def stop_profile(self) -> None:
+        """Stop profiling of the mock engine."""
+        if not self.started:
+            raise RuntimeError("Engine not started")
+
     async def chat(
         self, request: ChatCompletionRequest
     ) -> AsyncGenerator[Union[str, ChatCompletionResponse, ErrorResponse], None]:
