@@ -83,7 +83,7 @@ def test_profiler_endpoints(ray_start_with_dashboard, native, node_info):
 
     def get_actor_flamegraph():
         response = requests.get(
-            f"{webui_url}/worker/cpu_profile?pid={pid}&node_id={node_id}&native={native}"
+            f"{webui_url}/worker/cpu_profile?pid={pid}&{get_node_info()}&native={native}"
         )
         response.raise_for_status()
         assert response.headers["Content-Type"] == "image/svg+xml", response.headers
@@ -174,7 +174,7 @@ def test_memory_profiler_endpoint(ray_start_with_dashboard, leaks, node_info):
 
     def get_actor_memory_multiple_flamegraphs():
         response = requests.get(
-            f"{webui_url}/memory_profile?pid={pid}&node_id={node_id}&leaks={leaks}&duration=5"
+            f"{webui_url}/memory_profile?pid={pid}&{get_node_info()}&leaks={leaks}&duration=5"
         )
         response.raise_for_status()
 
