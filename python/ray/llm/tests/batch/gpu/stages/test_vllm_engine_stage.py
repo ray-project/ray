@@ -171,7 +171,7 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
         task=vLLMTaskType.GENERATE,
         max_num_seqs=100,
         dynamic_lora_loading_path=None,
-        disable_log_requests=True,
+        enable_log_requests=False,
     )
 
 
