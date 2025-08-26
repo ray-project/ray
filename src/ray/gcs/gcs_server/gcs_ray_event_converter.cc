@@ -17,6 +17,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/id.h"
 #include "ray/util/logging.h"
+#include "src/ray/common/grpc_util.h"
 
 namespace ray {
 namespace gcs {
@@ -152,7 +153,7 @@ void GcsRayEventConverter::ConvertToTaskEvents(rpc::events::TaskExecutionEvent &
   task_state_update->mutable_error_info()->Swap(event.mutable_ray_error_info());
 
   for (const auto &[state, timestamp] : event.task_state()) {
-    int64_t ns = timestamp.seconds() * 1000000000LL + timestamp.nanos();
+    int64_t ns = ProtoTimestampToAbslTimeNanos(timestamp);
     (*task_state_update->mutable_state_ts_ns())[state] = ns;
   }
 }
