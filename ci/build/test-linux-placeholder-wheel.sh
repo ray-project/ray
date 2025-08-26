@@ -23,22 +23,15 @@ if [[ -z "$PYTHON_WHEEL" ]]; then
   exit 1
 fi
 
-# Print some env info
 "$PYTHON_EXE" --version
 
-# Update pip
 "$PIP_CMD" install --upgrade pip
 
-# Install pip-tools
 "$PIP_CMD" install pip-tools
 
-# verify
 "$PIP_COMPILE_CMD" --version
 
 echo "ray[all]==${RAY_PLACEHOLDER_VERSION}" > ray-requirement.txt
-
-# update ray version to 100.0.0 before compiling
-sed -i "s/version = \".*\"/version = \"${RAY_PLACEHOLDER_VERSION}\"/g" python/ray/_version.py
 
 "$PIP_COMPILE_CMD" ray-requirement.txt -o /ray.lock --find-links=.whl/
 
