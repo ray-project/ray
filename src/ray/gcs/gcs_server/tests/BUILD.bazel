@@ -197,7 +197,6 @@ ray_cc_test(
         "//src/fakes/ray/rpc/raylet:fake_raylet_client",
         "//src/fakes/ray/rpc/worker:fake_core_worker_client",
         "//src/mock/ray/pubsub:mock_publisher",
-        "//src/ray/gcs/gcs_server:gcs_actor_manager",
         "//src/ray/gcs/gcs_server:gcs_node_manager",
         "//src/ray/gcs/gcs_server:gcs_resource_manager",
         "//src/ray/gcs/gcs_server:gcs_server_lib",
