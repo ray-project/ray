@@ -820,31 +820,34 @@ class _PerBlockLimitTransformFn(MapTransformFn):
             MapTransformFnDataType.Block,
             category=MapTransformFnCategory.PostProcess,
         )
+        # This is used to track the number of rows processed within this task.
+        # It is used to implement the per-block limit.
+        self._processed_rows = 0
 
     def __call__(self, input: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
         """Apply per-block limit to the input blocks."""
         from ray.data.block import BlockAccessor
 
         for block in input:
-            if ctx._processed_rows >= self._per_block_limit:
+            if self._processed_rows >= self._per_block_limit:
                 # We've hit the limit, stop processing
                 break
 
             block_accessor = BlockAccessor.for_block(block)
             block_rows = block_accessor.num_rows()
 
-            if ctx._processed_rows + block_rows <= self._per_block_limit:
+            if self._processed_rows + block_rows <= self._per_block_limit:
                 # Entire block fits within limit
-                ctx._processed_rows += block_rows
+                self._processed_rows += block_rows
                 yield block
             else:
                 # Need to truncate this block
-                remaining_rows = self._per_block_limit - ctx._processed_rows
+                remaining_rows = self._per_block_limit - self._processed_rows
                 if remaining_rows > 0:
                     truncated_block = block_accessor.slice(
                         0, remaining_rows, copy=False
                     )
-                    ctx._processed_rows += remaining_rows
+                    self._processed_rows += remaining_rows
                     yield truncated_block
                 break
 
