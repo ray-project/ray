@@ -187,8 +187,12 @@ class DataType:
             DataType: A DataType wrapping the given PyArrow type
 
         Examples:
+            >>> import pyarrow as pa
+            >>> from ray.data.datatype import DataType
             >>> DataType.from_arrow(pa.timestamp('s'))
-            >>> DataType.from_arrow(pa.list_(pa.int64()))
+            DataType(arrow:timestamp[s])
+            >>> DataType.from_arrow(pa.int64())
+            DataType(arrow:int64)
         """
         return cls(internal_type=arrow_type)
 
@@ -203,9 +207,12 @@ class DataType:
             DataType: A DataType wrapping the given NumPy dtype
 
         Examples:
+            >>> import numpy as np
+            >>> from ray.data.datatype import DataType
             >>> DataType.from_numpy(np.dtype('int32'))
+            DataType(numpy:int32)
             >>> DataType.from_numpy('float64')
-            >>> DataType.from_numpy(np.int16)
+            DataType(numpy:float64)
         """
         if isinstance(numpy_dtype, str):
             numpy_dtype = np.dtype(numpy_dtype)
@@ -222,9 +229,11 @@ class DataType:
             DataType: A DataType wrapping the given Python type
 
         Examples:
+            >>> from ray.data.datatype import DataType
             >>> DataType.from_python(int)
+            DataType(python:int)
             >>> DataType.from_python(str)
-            >>> DataType.from_python(list)
+            DataType(python:str)
         """
         return cls(internal_type=python_type)
 
@@ -239,9 +248,14 @@ class DataType:
             DataType: The inferred data type
 
         Examples:
-            >>> DataType.infer_dtype(5)  # DataType(arrow:int64)
-            >>> DataType.infer_dtype(np.int32(5))  # DataType(numpy:int32)
-            >>> DataType.infer_dtype("hello")  # DataType(arrow:string)
+            >>> import numpy as np
+            >>> from ray.data.datatype import DataType
+            >>> DataType.infer_dtype(5)
+            DataType(arrow:int64)
+            >>> DataType.infer_dtype("hello")
+            DataType(arrow:string)
+            >>> DataType.infer_dtype(np.int32(42))
+            DataType(numpy:int32)
         """
         # 1. Handle numpy arrays and scalars
         if isinstance(value, np.ndarray):
