@@ -49,6 +49,7 @@ Examples:
 """
 
 import sys
+import types
 
 from ray.data.sql.config import LogLevel, SQLConfig, SQLDialect
 from ray.data.sql.core import (
@@ -129,38 +130,71 @@ __version__ = "1.0.0"
 __author__ = "Ray Data Team"
 
 # Module-level properties for easy access
-@property
-def dialect():
+def _get_dialect():
     """Get the current SQL dialect."""
     from .core import get_dialect
 
     return get_dialect()
 
 
-@dialect.setter
-def dialect(value):
+def _set_dialect(value):
     """Set the SQL dialect."""
     from .core import set_dialect
 
     set_dialect(value)
 
 
-@property
-def log_level():
+def _get_log_level():
     """Get the current logging level."""
     from .core import get_log_level
 
     return get_log_level()
 
 
-@log_level.setter
-def log_level(value):
+def _set_log_level(value):
     """Set the logging level."""
     from .core import set_log_level
 
     set_log_level(value)
 
 
-# Add properties to module
-sys.modules[__name__].dialect = dialect
-sys.modules[__name__].log_level = log_level
+# Create a custom callable module class
+class CallableSQLModule(types.ModuleType):
+    """A callable module that forwards calls to the sql function."""
+
+    def __call__(self, query, *args, **kwargs):
+        """Make the module callable by forwarding to the sql function."""
+        return sql(query, *args, **kwargs)
+
+    @property
+    def dialect(self):
+        """Get the current SQL dialect."""
+        return get_dialect()
+
+    @dialect.setter
+    def dialect(self, value):
+        """Set the SQL dialect."""
+        set_dialect(value)
+
+    @property
+    def log_level(self):
+        """Get the current logging level."""
+        return get_log_level()
+
+    @log_level.setter
+    def log_level(self, value):
+        """Set the logging level."""
+        set_log_level(value)
+
+
+# Replace the current module with our callable version
+current_module = sys.modules[__name__]
+callable_module = CallableSQLModule(__name__, current_module.__doc__)
+
+# Copy all attributes from the current module, but skip properties that we define ourselves
+for attr_name in dir(current_module):
+    if not attr_name.startswith("_") and attr_name not in ["dialect", "log_level"]:
+        setattr(callable_module, attr_name, getattr(current_module, attr_name))
+
+# Replace the module in sys.modules
+sys.modules[__name__] = callable_module

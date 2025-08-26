@@ -1,15 +1,9 @@
 """Base SQL validator class for Ray Data SQL API."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Set
+from typing import List, Set
 
-import sqlglot
 from sqlglot import exp
-
-from ray.data.sql.exceptions import (
-    SQLParseError,
-    UnsupportedOperationError,
-)
 
 
 class SQLValidator(ABC):

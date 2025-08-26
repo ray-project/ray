@@ -1,10 +1,9 @@
 """Base table registry for Ray Data SQL API."""
 
 import logging
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional
 
 from ray.data import Dataset
-
 from ray.data.sql.exceptions import TableNotFoundError
 
 
@@ -129,7 +128,6 @@ class TableRegistry:
         "set",
         "declare",
         "begin",
-        "end",
         "loop",
         "while",
         "repeat",

@@ -6,7 +6,6 @@ for malformed queries.
 
 from typing import List, Set
 
-import sqlglot
 from sqlglot import exp
 
 from ray.data.sql.exceptions import SQLParseError

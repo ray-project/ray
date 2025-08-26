@@ -5,21 +5,15 @@ into Ray Dataset operations and executes them efficiently.
 """
 
 import logging
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union, Set
 from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
 
-import ray.data
-from ray.data import Dataset
-import sqlglot
 from sqlglot import exp
 
-from ..exceptions import (
-    SQLExecutionError,
-    TableNotFoundError,
-    ColumnNotFoundError,
-)
+import ray.data
 from ..compiler.expressions import ExpressionCompiler
 from ..registry.base import TableRegistry
+from ray.data import Dataset
 
 
 @dataclass
@@ -190,7 +184,7 @@ class JoinHandler:
                 left_column, right_column = right_column, left_column
             else:
                 raise ValueError(
-                    f"Invalid join condition: columns not found in expected tables"
+                    "Invalid join condition: columns not found in expected tables"
                 )
 
         if not left_column or not right_column:

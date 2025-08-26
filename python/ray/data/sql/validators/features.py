@@ -4,6 +4,7 @@ This module validates SQL queries against supported and unsupported features.
 """
 
 from typing import Set
+
 from sqlglot import exp
 
 from .base import SQLValidator

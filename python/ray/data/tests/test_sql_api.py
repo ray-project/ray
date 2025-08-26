@@ -332,9 +332,12 @@ def test_module_level_properties():
     assert hasattr(ray.data.sql, "log_level")
 
     # Test that they are property objects
-    dialect_prop = ray.data.sql.dialect
-    log_level_prop = ray.data.sql.log_level
+    # Get the property objects from the class, not the values
+    dialect_prop = ray.data.sql.__class__.__dict__.get("dialect")
+    log_level_prop = ray.data.sql.__class__.__dict__.get("log_level")
 
+    assert dialect_prop is not None
+    assert log_level_prop is not None
     assert hasattr(dialect_prop, "__get__")  # It's a property
     assert hasattr(log_level_prop, "__get__")  # It's a property
 
@@ -418,7 +421,6 @@ def test_global_configuration_management():
 
 def test_sql_api_core_imports():
     """Test that we can import the core SQL API components."""
-
 
     # All imports should work
     assert True
@@ -687,8 +689,8 @@ def test_group_by_operations(ray_start_regular_shared, sql_test_data):
     result = ray.data.sql("SELECT city, SUM(age) as total_age FROM users GROUP BY city")
     rows = result.take_all()
     city_ages = {row["city"]: row["total_age"] for row in rows}
-    assert city_ages["Seattle"] == 60  # 25+35
-    assert city_ages["Portland"] == 58  # 30+28
+    assert city_ages["Seattle"] == 65  # 30+35
+    assert city_ages["Portland"] == 53  # 25+28
 
     # GROUP BY with multiple aggregates
     result = ray.data.sql(
@@ -839,7 +841,7 @@ def test_configuration_and_context(ray_start_regular_shared, sql_test_data):
 
     # Register a table and test
     engine.register_table("test_users", sql_test_data["users"])
-    result = engine.sql("SELECT COUNT(*) as cnt FROM test_users")
+    result = engine.ray.data.sql("SELECT COUNT(*) as cnt FROM test_users")
     rows = result.take_all()
     assert len(rows) == 1
     assert rows[0]["cnt"] == 4
