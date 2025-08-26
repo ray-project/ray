@@ -79,6 +79,7 @@ class JobInfoGrpcService : public GrpcService {
   JobInfoGcsService::AsyncService service_;
   JobInfoGcsServiceHandler &service_handler_;
   int64_t max_active_rpcs_per_handler_;
+};
 
 class RuntimeEnvGrpcService : public GrpcService {
  public:
