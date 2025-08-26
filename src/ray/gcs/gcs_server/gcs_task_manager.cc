@@ -661,9 +661,8 @@ void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request
 void GcsTaskManager::HandleAddEvents(rpc::events::AddEventsRequest request,
                                      rpc::events::AddEventsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
-  std::vector<rpc::AddTaskEventDataRequest> task_event_data_requests;
-  ray_event_converter_->ConvertToTaskEventDataRequests(std::move(request),
-                                                       task_event_data_requests);
+  auto task_event_data_requests =
+      ray_event_converter_->ConvertToTaskEventDataRequests(std::move(request));
 
   for (auto &task_event_data : task_event_data_requests) {
     RecordTaskEventData(task_event_data);
