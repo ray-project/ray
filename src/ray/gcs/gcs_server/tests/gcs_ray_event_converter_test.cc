@@ -271,7 +271,6 @@ TEST_F(GcsRayEventConverterTest, TestSameJobIdGrouping) {
 
 TEST_F(GcsRayEventConverterTest, TestConvertTaskProfileEvents) {
   rpc::events::AddEventsRequest request;
-  std::vector<rpc::AddTaskEventDataRequest> task_event_data_requests;
   GcsRayEventConverter converter;
 
   // Create a task profile event
@@ -301,7 +300,8 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskProfileEvents) {
   ProfileEventEntry->set_event_name("test_event");
 
   // Convert
-  converter.ConvertToTaskEventDataRequests(std::move(request), task_event_data_requests);
+  auto task_event_data_requests =
+      converter.ConvertToTaskEventDataRequests(std::move(request));
 
   // Verify conversion
   EXPECT_EQ(task_event_data_requests.size(), 1);
