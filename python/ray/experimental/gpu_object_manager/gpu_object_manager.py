@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
 import threading
+import warnings
 
 import ray
 from ray._private.custom_types import TensorTransportEnum
@@ -105,17 +106,25 @@ class GPUObjectManager:
         )
         if src_dev >= 0 and dst_dev >= 0 and src_dev == dst_dev:
             obj_id = obj_ref.hex()
-            metas = ray.get(
-                src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
-                    __ray_cuda_ipc_export__, obj_id
+            try:
+                metas = ray.get(
+                    src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
+                        __ray_cuda_ipc_export__, obj_id
+                    )
                 )
-            )
-            ray.get(
-                dst_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
-                    __ray_cuda_ipc_import__, obj_id, metas
+                ray.get(
+                    dst_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
+                        __ray_cuda_ipc_import__, obj_id, metas
+                    )
                 )
-            )
-            return True
+                return True
+            except (ray.exceptions.RayActorError, RuntimeError) as e:
+                # Source actor died or IPC import failed
+                warnings.warn(
+                    f"CUDA IPC transfer failed for {obj_id}: {e}. "
+                    f"Falling back to network transfer."
+                )
+                return False
         return False
 
     def _get_tensor_meta(
@@ -294,12 +303,9 @@ class GPUObjectManager:
             tensor_meta = gpu_object_meta.tensor_meta
 
             # Same-GPU fast path using CUDA IPC.
-            try:
-                if self._try_ipc_transfer_same_gpu(src_actor, dst_actor, obj_ref):
-                    # Done for this object; skip network transfer.
-                    continue
-            except Exception as e:
-                raise ValueError(f"IPC transfer failed for {obj_ref.hex()}: {e}")
+            if self._try_ipc_transfer_same_gpu(src_actor, dst_actor, obj_ref):
+                # Done for this object; skip network transfer.
+                continue
 
             communicators = get_collective_groups(
                 [src_actor, dst_actor], backend=gpu_object_meta.tensor_transport_backend

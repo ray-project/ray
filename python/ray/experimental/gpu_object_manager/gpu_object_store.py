@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple, Set
 import threading
 from collections import defaultdict
+import warnings
 
 import ray.util.collective as collective
 from ray._private.custom_types import TensorTransportEnum
@@ -174,9 +175,25 @@ def __ray_cuda_ipc_import__(self, obj_id: str, metas):
     from torch.multiprocessing.reductions import rebuild_cuda_tensor
 
     tensors = []
-    for meta in metas:
-        t = rebuild_cuda_tensor(**meta)
-        tensors.append(t)
+    for i, meta in enumerate(metas):
+        try:
+            t = rebuild_cuda_tensor(**meta)
+            # Validate tensor is accessible by trying to get its device
+            # This will trigger an error if the memory is invalid
+            _ = t.device
+            tensors.append(t)
+        except (RuntimeError, OSError, Exception) as e:
+            warnings.warn(
+                f"Failed to import CUDA IPC tensor {i+1}/{len(metas)} for object {obj_id}. "
+                f"The source actor may have crashed or been terminated. "
+                f"Error: {str(e)}. "
+                f"Falling back to network transfer if possible."
+            )
+            raise RuntimeError(
+                f"CUDA IPC import failed for object {obj_id}. "
+                f"Source actor appears to be dead or memory is invalid. "
+                f"Original error: {e}"
+            ) from e
 
     from ray._private.worker import global_worker
 
