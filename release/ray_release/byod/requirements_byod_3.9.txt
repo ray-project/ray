@@ -1263,9 +1263,9 @@ gsutil==5.27 \
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_byod_3.9.in
-gymnasium[atari]==1.0.0 \
-    --hash=sha256:9d2b66f30c1b34fe3c2ce7fae65ecf365d0e9982d2b3d860235e773328a3b403 \
-    --hash=sha256:b6f40e1e24c5bd419361e1a5b86a9117d2499baecc3a660d44dfff4c465393ad
+gymnasium[atari]==1.1.1 \
+    --hash=sha256:8bd9ea9bdef32c950a444ff36afc785e1d81051ec32d30435058953c20d2456d \
+    --hash=sha256:9c167ec0a2b388666e37f63b2849cd2552f7f5b71938574c637bb36487eb928a
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_byod_3.9.in
@@ -1815,7 +1815,7 @@ opt-einsum==3.3.0 \
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   tensorflow
-orjson==3.9.10 \
+orjson==3.9.15 \
     --hash=sha256:06ad5543217e0e46fd7ab7ea45d506c76f878b87b1b4e369006bdb01acc05a83 \
     --hash=sha256:0a73160e823151f33cdc05fe2cea557c5ef12fdf276ce29bb4f1c571c8368a60 \
     --hash=sha256:1234dc92d011d3554d929b6cf058ac4a24d188d97be5e04355f1b9223e98bbe9 \

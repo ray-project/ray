@@ -2310,7 +2310,7 @@ openskill==6.0.0 \
     --hash=sha256:eee2d0b3c1648663a480cf4680654dfd12bdc749a96d611b1904e191f2632f62 \
     --hash=sha256:f89b18930c2befd580407e7cf80a480bc69c3b25d2841346be6d875c8c4bc92e
     # via -r release/ray_release/byod/requirements_ml_byod_3.9.in
-orjson==3.9.10 \
+orjson==3.9.15 \
     --hash=sha256:06ad5543217e0e46fd7ab7ea45d506c76f878b87b1b4e369006bdb01acc05a83 \
     --hash=sha256:0a73160e823151f33cdc05fe2cea557c5ef12fdf276ce29bb4f1c571c8368a60 \
     --hash=sha256:1234dc92d011d3554d929b6cf058ac4a24d188d97be5e04355f1b9223e98bbe9 \
