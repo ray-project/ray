@@ -5,6 +5,7 @@ from sklearn.datasets import load_breast_cancer
 from sklearn.model_selection import train_test_split
 
 import ray
+import ray.train
 from ray.train import ScalingConfig
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train.v2._internal.constants import is_v2_enabled

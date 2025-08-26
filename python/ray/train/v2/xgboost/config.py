@@ -1,10 +1,10 @@
 from contextlib import contextmanager
 
+from ray.train._internal.xgboost.xgboost_config_impl import XGBoostConfigImpl
 from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
-from ray.train.xgboost.config import XGBoostConfig as XGBoostConfigV1
 
 
-class XGBoostConfig(XGBoostConfigV1):
+class XGBoostConfig(XGBoostConfigImpl):
     @property
     def train_func_context(self):
         parent_context = super(XGBoostConfig, self).train_func_context
