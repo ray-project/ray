@@ -256,18 +256,6 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
         continue;
       }
 
-      // Check if the scheduling class is at capacity now.
-      RAY_CHECK(sched_cls_info.running_tasks.size() <= sched_cls_info.capacity);
-      if (sched_cls_info.running_tasks.size() == sched_cls_info.capacity &&
-          work->GetState() == internal::WorkStatus::WAITING) {
-        bool did_spill = TrySpillback(work, is_infeasible);
-        if (did_spill) {
-          work_it = dispatch_queue.erase(work_it);
-          continue;
-        }
-        break;
-      }
-
       bool args_missing = false;
       bool success = PinTaskArgsIfMemoryAvailable(spec, &args_missing);
       // An argument was evicted since this task was added to the dispatch
