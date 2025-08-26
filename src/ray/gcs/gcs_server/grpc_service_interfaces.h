@@ -64,5 +64,35 @@ class NodeInfoGcsServiceHandler {
                                     SendReplyCallback send_reply_callback) = 0;
 };
 
+class WorkerInfoGcsServiceHandler {
+ public:
+  virtual ~WorkerInfoGcsServiceHandler() = default;
+
+  virtual void HandleReportWorkerFailure(ReportWorkerFailureRequest request,
+                                         ReportWorkerFailureReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetWorkerInfo(GetWorkerInfoRequest request,
+                                   GetWorkerInfoReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllWorkerInfo(GetAllWorkerInfoRequest request,
+                                      GetAllWorkerInfoReply *reply,
+                                      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleAddWorkerInfo(AddWorkerInfoRequest request,
+                                   AddWorkerInfoReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleUpdateWorkerDebuggerPort(UpdateWorkerDebuggerPortRequest request,
+                                              UpdateWorkerDebuggerPortReply *reply,
+                                              SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleUpdateWorkerNumPausedThreads(
+      UpdateWorkerNumPausedThreadsRequest request,
+      UpdateWorkerNumPausedThreadsReply *reply,
+      SendReplyCallback send_reply_callback) = 0;
+};
+
 }  // namespace rpc
 }  // namespace ray

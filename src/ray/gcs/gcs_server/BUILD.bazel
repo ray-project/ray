@@ -143,8 +143,8 @@ ray_cc_library(
         ":gcs_kv_manager",
         ":gcs_table_storage",
         ":gcs_usage_stats_client",
+        ":grpc_service_interfaces",
         "//src/ray/gcs/pubsub:gcs_pub_sub_lib",
-        "//src/ray/rpc:gcs_server",
         "//src/ray/stats:stats_metric",
     ],
 )

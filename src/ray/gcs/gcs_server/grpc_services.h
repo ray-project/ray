@@ -58,5 +58,28 @@ class NodeInfoGrpcService : public GrpcService {
   int64_t max_active_rpcs_per_handler_;
 };
 
+class WorkerInfoGrpcService : public GrpcService {
+ public:
+  explicit WorkerInfoGrpcService(instrumented_io_context &io_service,
+                                 WorkerInfoGcsServiceHandler &handler,
+                                 int64_t max_active_rpcs_per_handler)
+      : GrpcService(io_service),
+        service_handler_(handler),
+        max_active_rpcs_per_handler_(max_active_rpcs_per_handler){};
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      const ClusterID &cluster_id) override;
+
+ private:
+  WorkerInfoGcsService::AsyncService service_;
+  WorkerInfoGcsServiceHandler &service_handler_;
+  int64_t max_active_rpcs_per_handler_;
+};
+
 }  // namespace rpc
 }  // namespace ray
