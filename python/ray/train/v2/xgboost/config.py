@@ -11,7 +11,7 @@ class XGBoostConfig(XGBoostConfigV1):
 
         @contextmanager
         def collective_communication_context():
-            if get_train_fn_utils().is_running_in_distributed_mode():
+            if get_train_fn_utils().is_distributed():
                 with parent_context():
                     yield
             else:

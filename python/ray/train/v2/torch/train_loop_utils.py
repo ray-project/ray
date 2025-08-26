@@ -43,7 +43,7 @@ def get_device() -> torch.device:
 
 
 def get_devices() -> List[torch.device]:
-    if get_train_fn_utils().is_running_in_distributed_mode():
+    if get_train_fn_utils().is_distributed():
         return get_devices_v1()
     else:
         # Local mode, we defer to torch.cuda

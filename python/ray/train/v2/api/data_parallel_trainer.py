@@ -88,6 +88,9 @@ class DataParallelTrainer:
         self.data_config = dataset_config or DataConfig()
 
         self.running_in_local_mode = self.scaling_config.num_workers == 0
+        self.local_controller = None
+        if self.running_in_local_mode:
+            self.local_controller = self._get_local_controller()
 
         self.train_run_context = TrainRunContext(
             run_config=self.run_config,
@@ -149,8 +152,11 @@ class DataParallelTrainer:
 
             return result
 
-    def _get_local_mode_controller(self) -> LocalController:
-        return LocalController(datasets=self.datasets)
+    def _get_local_controller(self) -> LocalController:
+        return LocalController(
+            experiment_name=self.run_config.name,
+            datasets=self.datasets,
+        )
 
     def _create_default_callbacks(self) -> List[RayTrainCallback]:
         # Initialize callbacks from environment variable
@@ -209,9 +215,7 @@ class DataParallelTrainer:
     def _initialize_and_run_local_controller(
         self, train_func: Callable[[], None]
     ) -> Result:
-        return self._get_local_mode_controller().initialize_and_run_local_controller(
-            train_func
-        )
+        return self.local_controller.run(train_func)
 
     def _initialize_and_run_controller(self, **controller_init_kwargs) -> Result:
         # Attach the controller to the node running the driver script.

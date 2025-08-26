@@ -1,3 +1,4 @@
+import logging
 import threading
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
@@ -10,8 +11,11 @@ from ray.train.v2._internal.execution.context import (
 )
 from ray.train.v2.api.context import (
     DistributedTrainContext,
+    LocalTrainContext,
     TrainContext as ExternalTrainContext,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class TrainFnUtils(ABC):
@@ -78,7 +82,7 @@ class TrainFnUtils(ABC):
         pass
 
     @abstractmethod
-    def is_running_in_distributed_mode(self) -> bool:
+    def is_distributed(self) -> bool:
         pass
 
     @abstractmethod
@@ -128,7 +132,7 @@ class DistributedTrainFnUtils(TrainFnUtils):
     def get_context(self) -> ExternalTrainContext:
         return DistributedTrainContext()
 
-    def is_running_in_distributed_mode(self) -> bool:
+    def is_distributed(self) -> bool:
         return True
 
     def barrier(self) -> None:
@@ -136,6 +140,61 @@ class DistributedTrainFnUtils(TrainFnUtils):
 
     def broadcast_from_rank_zero(self, data: Any) -> Any:
         return collective_impl.broadcast_from_rank_zero(data)
+
+
+class LocalTrainFnUtils(TrainFnUtils):
+    def __init__(
+        self,
+        experiment_name: str,
+        local_world_size: int,
+        local_rank: int,
+        dataset_shards: Optional[Dict[str, DataIterator]] = None,
+    ):
+        self._context = LocalTrainContext(
+            experiment_name=experiment_name,
+            local_world_size=local_world_size,
+            local_rank=local_rank,
+        )
+        self._dataset_shards = dataset_shards
+        self._last_metrics = None
+        self._last_checkpoint = None
+
+    def report(
+        self,
+        metrics: Dict[str, Any],
+        checkpoint: Optional[Checkpoint] = None,
+        checkpoint_dir_name: Optional[str] = None,
+    ) -> None:
+        self._last_metrics = metrics
+        self._last_checkpoint = checkpoint
+        logger.info(f"Reported metrics: {metrics}")
+
+    def get_checkpoint(self) -> Optional[Checkpoint]:
+        return self._last_checkpoint
+
+    def get_dataset_shard(self, dataset_name: str) -> DataIterator:
+        assert (
+            self._dataset_shards is not None and dataset_name in self._dataset_shards
+        ), f"Dataset shard {dataset_name} not found."
+        return self._dataset_shards[dataset_name]
+
+    def get_context(self) -> ExternalTrainContext:
+        return self._context
+
+    def is_distributed(self) -> bool:
+        return False
+
+    def barrier(self) -> None:
+        pass
+
+    def broadcast_from_rank_zero(self, data: Any) -> Any:
+        return data
+
+    def _get_last_metrics(self) -> Optional[Dict[str, Any]]:
+        """Return the last metrics reported by the training function.
+        This function should only be called by LocalController
+        """
+        return self._last_metrics
 
 
 _train_fn_utils: Optional[TrainFnUtils] = None

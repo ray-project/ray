@@ -247,7 +247,7 @@ class DistributedTrainContext(TrainContext):
         return get_internal_train_context().get_storage()
 
 
-class LocalModeTrainContext(TrainContext):
+class LocalTrainContext(TrainContext):
     """Implementation of TrainContext for local mode."""
 
     def __init__(
