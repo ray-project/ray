@@ -277,7 +277,7 @@ RayLease CreateLease(
     std::vector<ObjectID> args = {},
     const std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr,
     rpc::SchedulingStrategy scheduling_strategy = rpc::SchedulingStrategy(),
-    const LeaseID &lease_id = LeaseID::FromRandom()) {
+    const LeaseID &lease_id = LeaseID::FromRandom(1)) {
   TaskSpecBuilder spec_builder;
   TaskID id = RandomTaskId();
   JobID job_id = RandomJobId();
@@ -707,8 +707,8 @@ TEST_F(ClusterLeaseManagerTest, BlockedWorkerDiesTest) {
 
   WorkerID worker_id1 = WorkerID::FromRandom();
   WorkerID worker_id2 = WorkerID::FromRandom();
-  LeaseID lease_id1 = LeaseID::FromWorkerId(worker_id1);
-  LeaseID lease_id2 = LeaseID::FromWorkerId(worker_id2);
+  LeaseID lease_id1 = LeaseID::FromWorkerId(worker_id1, 1);
+  LeaseID lease_id2 = LeaseID::FromWorkerId(worker_id2, 1);
   RayLease lease1 = CreateLease({{ray::kCPU_ResourceLabel, 4}},
                                 0,
                                 {},
@@ -2276,7 +2276,7 @@ TEST_F(ClusterLeaseManagerTest, PinnedArgsMemoryTest) {
   };
 
   // This lease can run.
-  auto lease_id1 = LeaseID::FromWorkerId(worker_id1);
+  auto lease_id1 = LeaseID::FromWorkerId(worker_id1, 1);
   default_arg_size_ = 600;
   auto lease1 = CreateLease({{ray::kCPU_ResourceLabel, 1}},
                             1,
@@ -2292,7 +2292,7 @@ TEST_F(ClusterLeaseManagerTest, PinnedArgsMemoryTest) {
   AssertPinnedLeaseArgumentsPresent(lease1);
 
   // This lease cannot run because it would put us over the memory threshold.
-  auto lease_id2 = LeaseID::FromWorkerId(worker_id2);
+  auto lease_id2 = LeaseID::FromWorkerId(worker_id2, 1);
   auto lease2 = CreateLease({{ray::kCPU_ResourceLabel, 1}},
                             1,
                             {},

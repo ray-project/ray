@@ -60,6 +60,7 @@ ray_cc_library(
     visibility = [":__subpackages__"],
     deps = [
         "//src/ray/common:id",
+        "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//src/ray/raylet/scheduling:cluster_resource_scheduler",
         "//src/ray/util:container_util",
         "@com_google_absl//absl/container:flat_hash_map",

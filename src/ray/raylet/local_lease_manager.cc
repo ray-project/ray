@@ -1204,7 +1204,7 @@ void LocalLeaseManager::DebugStr(std::stringstream &buffer) const {
         || worker->IsBlocked()  // worker is blocked by blocking Ray API
         || (worker->GetGrantedLeaseId().IsNil() &&
             worker->GetActorId().IsNil())) {  // Lease not assigned
-      // TODO(joshlee) probably don't need to above check for ActorId since LeaseId is not
+      // TODO(#55923) probably don't need to above check for ActorId since LeaseId is not
       // reset for actors either
       // Then this shouldn't have allocated resources.
       continue;

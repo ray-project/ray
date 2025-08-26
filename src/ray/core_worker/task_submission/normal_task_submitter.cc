@@ -306,8 +306,9 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
     // All tasks have corresponding pending leases, no need to request more
     return;
   }
-
-  const LeaseID lease_id = LeaseID::FromWorkerId(worker_id_);
+  // Counter for generating unique lease IDs.
+  static uint32_t lease_id_counter = 1;
+  const LeaseID lease_id = LeaseID::FromWorkerId(worker_id_, lease_id_counter++);
   rpc::LeaseSpec lease_spec_msg = scheduling_key_entry.lease_spec.GetMessage();
   lease_spec_msg.set_lease_id(lease_id.Binary());
   const LeaseSpecification lease_spec = LeaseSpecification(std::move(lease_spec_msg));

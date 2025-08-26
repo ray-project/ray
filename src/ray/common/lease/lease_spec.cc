@@ -1,4 +1,4 @@
-// Copyright 2017-2025 The Ray Authors.
+// Copyright 2025 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -45,13 +45,11 @@ LeaseSpecification::LeaseSpecification(const rpc::TaskSpec &task_spec,
   message_->set_language(task_spec.language());
   message_->mutable_runtime_env_info()->CopyFrom(task_spec.runtime_env_info());
   message_->set_task_name(task_spec.name());
-  message_->set_attempt_number(task_spec.attempt_number());
+  message_->set_is_retry(task_spec.attempt_number() > 0);
   message_->set_root_detached_actor_id(task_spec.root_detached_actor_id());
   if (is_actor_creation_task) {
     message_->set_type(TaskType::ACTOR_CREATION_TASK);
     message_->set_actor_id(task_spec.actor_creation_task_spec().actor_id());
-    message_->set_max_actor_restarts(
-        task_spec.actor_creation_task_spec().max_actor_restarts());
     message_->set_is_detached_actor(task_spec.actor_creation_task_spec().is_detached());
     for (const auto &option :
          task_spec.actor_creation_task_spec().dynamic_worker_options()) {
@@ -59,8 +57,15 @@ LeaseSpecification::LeaseSpecification(const rpc::TaskSpec &task_spec,
     }
   } else {
     message_->set_type(TaskType::NORMAL_TASK);
-    message_->set_max_retries(task_spec.max_retries());
   }
+  bool is_retriable = true;
+  if (IsActorCreationTask() &&
+      task_spec.actor_creation_task_spec().max_actor_restarts() == 0) {
+    is_retriable = false;
+  } else if (IsNormalTask() && task_spec.max_retries() == 0) {
+    is_retriable = false;
+  }
+  message_->set_is_retriable(is_retriable);
   ComputeResources();
 }
 
@@ -82,10 +87,6 @@ const rpc::Address &LeaseSpecification::CallerAddress() const {
   return message_->caller_address();
 }
 
-bool LeaseSpecification::IsDriverTask() const {
-  return message_->type() == TaskType::DRIVER_TASK;
-}
-
 Language LeaseSpecification::GetLanguage() const { return message_->language(); }
 
 bool LeaseSpecification::IsNormalTask() const {
@@ -94,10 +95,6 @@ bool LeaseSpecification::IsNormalTask() const {
 
 bool LeaseSpecification::IsActorCreationTask() const {
   return message_->type() == TaskType::ACTOR_CREATION_TASK;
-}
-
-bool LeaseSpecification::IsActorTask() const {
-  return message_->type() == TaskType::ACTOR_TASK;
 }
 
 bool LeaseSpecification::IsNodeAffinitySchedulingStrategy() const {
@@ -134,20 +131,14 @@ std::vector<rpc::ObjectReference> LeaseSpecification::GetDependencies() const {
 }
 
 WorkerID LeaseSpecification::CallerWorkerId() const {
-  if (message_->caller_address().worker_id().empty()) {
-    return WorkerID::Nil();
-  }
   return WorkerID::FromBinary(message_->caller_address().worker_id());
 }
 
 NodeID LeaseSpecification::CallerNodeId() const {
-  if (message_->caller_address().node_id().empty()) {
-    return NodeID::Nil();
-  }
   return NodeID::FromBinary(message_->caller_address().node_id());
 }
 
-const BundleID LeaseSpecification::PlacementGroupBundleId() const {
+BundleID LeaseSpecification::PlacementGroupBundleId() const {
   if (GetSchedulingStrategy().scheduling_strategy_case() !=
       rpc::SchedulingStrategy::kPlacementGroupSchedulingStrategy) {
     return std::make_pair(PlacementGroupID::Nil(), -1);
@@ -157,29 +148,9 @@ const BundleID LeaseSpecification::PlacementGroupBundleId() const {
                         pg.placement_group_bundle_index());
 }
 
-int64_t LeaseSpecification::MaxActorRestarts() const {
-  RAY_CHECK(IsActorCreationTask());
-  return message_->max_actor_restarts();
-}
+bool LeaseSpecification::IsRetriable() const { return message_->is_retriable(); }
 
-int32_t LeaseSpecification::MaxRetries() const { return message_->max_retries(); }
-
-bool LeaseSpecification::IsRetriable() const {
-  if (IsActorTask()) {
-    return false;
-  }
-  if (IsActorCreationTask() && MaxActorRestarts() == 0) {
-    return false;
-  }
-  if (IsNormalTask() && MaxRetries() == 0) {
-    return false;
-  }
-  return true;
-}
-
-uint64_t LeaseSpecification::AttemptNumber() const { return message_->attempt_number(); }
-
-bool LeaseSpecification::IsRetry() const { return AttemptNumber() > 0; }
+bool LeaseSpecification::IsRetry() const { return message_->is_retry(); }
 
 std::string LeaseSpecification::GetTaskName() const { return message_->task_name(); }
 
@@ -217,7 +188,7 @@ std::string LeaseSpecification::DebugString() const {
     stream << ", Resources: {";
 
     // Print resource description.
-    for (auto entry : GetRequiredResources().GetResourceMap()) {
+    for (const auto &entry : GetRequiredResources().GetResourceMap()) {
       stream << entry.first << ": " << entry.second << ", ";
     }
     stream << "}";
@@ -226,11 +197,7 @@ std::string LeaseSpecification::DebugString() const {
   if (IsActorCreationTask()) {
     // Print actor creation task spec.
     stream << ", actor_creation_task_spec={actor_id=" << ActorId()
-           << ", max_restarts=" << MaxActorRestarts()
            << ", is_detached=" << IsDetachedActor() << "}";
-  } else if (IsActorTask()) {
-    // Print actor task spec.
-    stream << ", actor_id=" << ActorId();
   }
 
   // Print non-sensitive runtime env info.
@@ -307,28 +274,23 @@ void LeaseSpecification::ComputeResources() {
     dependencies_.push_back(message_->dependencies(i));
   }
 
-  if (!IsActorTask()) {
-    // There is no need to compute `SchedulingClass` for actor tasks since
-    // the actor tasks need not be scheduled.
-    const bool is_actor_creation_task = IsActorCreationTask();
-    const bool should_report_placement_resources =
-        RayConfig::instance().report_actor_placement_resources();
-    const auto &resource_set =
-        (is_actor_creation_task && should_report_placement_resources)
-            ? GetRequiredPlacementResources()
-            : GetRequiredResources();
-    auto depth = GetDepth();
-    auto label_selector = GetLabelSelector();
-    const auto &function_descriptor = FunctionDescriptor();
-    auto sched_cls_desc = SchedulingClassDescriptor(resource_set,
-                                                    label_selector,
-                                                    function_descriptor,
-                                                    depth,
-                                                    GetSchedulingStrategy());
-    // Map the scheduling class descriptor to an integer for performance.
-    sched_cls_id_ = TaskSpecification::GetSchedulingClass(sched_cls_desc);
-    RAY_CHECK_GT(sched_cls_id_, 0);
-  }
+  // There is no need to compute `SchedulingClass` for actor tasks since
+  // the actor tasks need not be scheduled.
+  const bool is_actor_creation_task = IsActorCreationTask();
+  const bool should_report_placement_resources =
+      RayConfig::instance().report_actor_placement_resources();
+  const auto &resource_set = (is_actor_creation_task && should_report_placement_resources)
+                                 ? GetRequiredPlacementResources()
+                                 : GetRequiredResources();
+  auto depth = GetDepth();
+  auto label_selector = GetLabelSelector();
+  const auto &function_descriptor = FunctionDescriptor();
+  auto sched_cls_desc = SchedulingClassDescriptor(
+      resource_set, label_selector, function_descriptor, depth, GetSchedulingStrategy());
+  // Map the scheduling class descriptor to an integer for performance.
+  sched_cls_id_ = TaskSpecification::GetSchedulingClass(sched_cls_desc);
+  RAY_CHECK_GT(sched_cls_id_, 0);
+
   runtime_env_hash_ = CalculateRuntimeEnvHash(SerializedRuntimeEnv());
 }
 

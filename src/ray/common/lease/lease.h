@@ -1,4 +1,4 @@
-// Copyright 2019-2020 The Ray Authors.
+// Copyright 2025 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ class RayLease {
  public:
   /// Construct an empty lease. This should only be used to pass a lease
   /// as an out parameter to a function or method.
-  // TODO(joshlee): Remove this constructor and refactor worker.h to use unique_ptr
+  // TODO(#55923): Remove this constructor and refactor worker.h to use unique_ptr
   RayLease() = default;
 
   /// Construct a `RayLease` object from a protobuf message.

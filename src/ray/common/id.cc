@@ -315,18 +315,13 @@ JobID PlacementGroupID::JobId() const {
       reinterpret_cast<const char *>(this->Data() + kUniqueBytesLength), JobID::kLength));
 }
 
-LeaseID LeaseID::FromRandom() {
-  std::string data(kUniqueBytesLength, 0);
-  uint32_t current_counter = counter_.fetch_add(1);
-  std::memcpy(data.data(), &current_counter, sizeof(current_counter));
-  std::copy_n(WorkerID::FromRandom().Data(), kUniqueIDSize, std::back_inserter(data));
-  return LeaseID::FromBinary(data);
+LeaseID LeaseID::FromRandom(uint32_t counter) {
+  return LeaseID::FromWorkerId(WorkerID::FromRandom(), counter);
 }
 
-LeaseID LeaseID::FromWorkerId(const WorkerID &worker_id) {
+LeaseID LeaseID::FromWorkerId(const WorkerID &worker_id, uint32_t counter) {
   std::string data(kUniqueBytesLength, 0);
-  uint32_t current_counter = counter_.fetch_add(1);
-  std::memcpy(data.data(), &current_counter, sizeof(current_counter));
+  std::memcpy(data.data(), &counter, sizeof(counter));
   std::copy_n(worker_id.Data(), kUniqueIDSize, std::back_inserter(data));
   return LeaseID::FromBinary(data);
 }

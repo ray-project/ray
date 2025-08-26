@@ -343,10 +343,11 @@ class LeaseID : public BaseID<LeaseID> {
 
   /// Creates a `LeaseID` from a specific worker ID.
   ///
-  /// \param worker_id The worker ID to which this lease belongs.
+  /// \param worker_id The worker ID from which this lease is requested.
+  /// \param counter An externally generated counter value for uniqueness.
   ///
   /// \return The `LeaseID` for the worker lease.
-  static LeaseID FromWorkerId(const WorkerID &worker_id);
+  static LeaseID FromWorkerId(const WorkerID &worker_id, uint32_t counter);
 
   /// Creates a `LeaseID` from a driver ID. The counter bits are nulled out only for
   /// driver as we need a predetermined lease value that can be calculated indepently by
@@ -357,9 +358,14 @@ class LeaseID : public BaseID<LeaseID> {
   /// \return The `LeaseID` for the worker lease.
   static LeaseID DriverLeaseId(const WorkerID &driver_id);
 
-  // Warning: this can duplicate IDs after a fork() call. We assume this never happens.
-  // Currently it's only used in the GCS so not a problem.
-  static LeaseID FromRandom();
+  /// Creates a random `LeaseID`.
+  ///
+  /// \param counter An externally generated counter value for uniqueness.
+  ///
+  /// \return A random `LeaseID`.
+  /// Warning: this can duplicate IDs after a fork() call. We assume this never happens.
+  /// Currently it's only used in the GCS so not a problem.
+  static LeaseID FromRandom(uint32_t counter);
 
   LeaseID() : BaseID() {}
 
@@ -369,8 +375,6 @@ class LeaseID : public BaseID<LeaseID> {
 
  private:
   uint8_t id_[kLength];
-  // 0 is reserved for the Driver lease ID.
-  static inline std::atomic<uint32_t> counter_{1};
 };
 
 static_assert(sizeof(JobID) == JobID::kLength + sizeof(size_t),

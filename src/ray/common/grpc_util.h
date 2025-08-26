@@ -32,7 +32,7 @@ namespace ray {
 
 /// Wrap a protobuf message.
 template <class Message>
-// TODO(joshlee): Remove MessageWrapper class and clean up LeaseSpec/TaskSpec classes
+// TODO(#55921): Remove MessageWrapper class and clean up LeaseSpec/TaskSpec classes
 class MessageWrapper {
  public:
   /// Construct an empty message wrapper. This should not be used directly.

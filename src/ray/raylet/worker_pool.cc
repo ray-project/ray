@@ -1362,9 +1362,6 @@ void WorkerPool::StartNewWorker(
 
 void WorkerPool::PopWorker(const LeaseSpecification &lease_spec,
                            const PopWorkerCallback &callback) {
-  // Code path of actor task.
-  RAY_CHECK(!lease_spec.IsActorTask()) << "Direct call shouldn't reach here.";
-
   auto pop_worker_request = std::make_shared<PopWorkerRequest>(
       lease_spec.GetLanguage(),
       rpc::WorkerType::WORKER,

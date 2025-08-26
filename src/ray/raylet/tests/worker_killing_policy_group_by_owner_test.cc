@@ -40,12 +40,12 @@ class WorkerKillingGroupByOwnerTest : public ::testing::Test {
   GroupByOwnerIdWorkerKillingPolicy worker_killing_policy_;
 
   std::shared_ptr<WorkerInterface> CreateActorCreationWorker(TaskID owner_id,
-                                                             int32_t max_restarts) {
+                                                             bool is_retriable) {
     rpc::LeaseSpec message;
-    message.set_lease_id(LeaseID::FromRandom().Binary());
+    message.set_lease_id(LeaseID::FromRandom(1).Binary());
     message.set_parent_task_id(owner_id.Binary());
-    message.set_max_actor_restarts(max_restarts);
     message.set_type(ray::rpc::TaskType::ACTOR_CREATION_TASK);
+    message.set_is_retriable(is_retriable);
     LeaseSpecification lease_spec(message);
     RayLease lease(lease_spec);
     auto worker = std::make_shared<MockWorker>(ray::WorkerID::FromRandom(), port_);
@@ -54,13 +54,12 @@ class WorkerKillingGroupByOwnerTest : public ::testing::Test {
     return worker;
   }
 
-  std::shared_ptr<WorkerInterface> CreateTaskWorker(TaskID owner_id,
-                                                    int32_t max_retries) {
+  std::shared_ptr<WorkerInterface> CreateTaskWorker(TaskID owner_id, bool is_retriable) {
     rpc::LeaseSpec message;
-    message.set_lease_id(LeaseID::FromRandom().Binary());
+    message.set_lease_id(LeaseID::FromRandom(1).Binary());
     message.set_parent_task_id(owner_id.Binary());
-    message.set_max_retries(max_retries);
     message.set_type(ray::rpc::TaskType::NORMAL_TASK);
+    message.set_is_retriable(is_retriable);
     LeaseSpecification lease_spec(message);
     RayLease lease(lease_spec);
     auto worker = std::make_shared<MockWorker>(ray::WorkerID::FromRandom(), port_);
