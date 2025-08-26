@@ -3,7 +3,7 @@
 ARG BASE_IMAGE
 FROM "$BASE_IMAGE"
 
-COPY python/requirements_*.txt ./
+COPY python/deplocks/llm/rayllm_*.lock ./
 
 ARG KVER="5.15.0-139-generic"
 ARG ROOT_DIR="/usr/local"
@@ -28,7 +28,7 @@ fi
 
 uv pip install --system --no-cache-dir --no-deps \
     --index-strategy unsafe-best-match \
-    -r "requirements_compiled_rayllm_${PYTHON_CODE}_${CUDA_CODE}.txt"
+    -r "rayllm_${PYTHON_CODE}_${CUDA_CODE}.lock"
 
 # Export installed packages
 $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
