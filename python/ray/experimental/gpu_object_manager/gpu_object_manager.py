@@ -211,9 +211,9 @@ class GPUObjectManager:
                 if src_actor == dst_actor:
                     obj_id = obj_ref.hex()
                     warnings.warn(
-                        f"GPU object ref {obj_id} is being passed back to the same actor {src_actor} and will be treated as a mutable tensor. "
-                        "If the tensor is modified, Ray's internal copy will also be updated, and subsequent passes to other actors "
-                        "will receive the updated version instead of the original.",
+                        f"GPU object ref {obj_id} is being passed back to the same actor {src_actor}. "
+                        "If the actor modifies the tensor, Ray's internal copy will also be updated, and subsequent passes to other actors "
+                        "may receive an updated or inconsistent version instead of the original.",
                         UserWarning,
                     )
                 continue
