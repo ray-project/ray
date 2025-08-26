@@ -370,12 +370,11 @@ struct GcsServerMocker {
     explicit MockedGcsActorTable(std::shared_ptr<gcs::StoreClient> store_client)
         : GcsActorTable(store_client) {}
 
-    Status Put(const ActorID &key,
-               const rpc::ActorTableData &value,
-               Postable<void(Status)> callback) override {
-      auto status = Status::OK();
+    void Put(const ActorID &key,
+             const rpc::ActorTableData &value,
+             Postable<void(Status)> callback) override {
+      Status status = Status::OK();
       std::move(callback).Post("FakeGcsActorTable.Put", status);
-      return status;
     }
 
    private:
