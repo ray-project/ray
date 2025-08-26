@@ -9,6 +9,7 @@ from networkx import DiGraph, topological_sort
 import tempfile
 import difflib
 import shutil
+import sys
 
 from ci.raydepsets.workspace import Depset, Workspace
 
@@ -80,14 +81,14 @@ def build(
 
 
 def copy_lock_files_to_temp_dir(manager: "DependencySetManager"):
-    """Test the dependency set manager."""
-    # TODO: verify the compiled dependencies are valid
+    """Copy the lock files to a temp directory."""
     # create temp directory
     manager.temp_dir = tempfile.mkdtemp()
+    print(f"Temp directory: {manager.temp_dir}")
     # copy existing lock files to temp directory
     for depset in manager.config.depsets:
-        existing_lock_file_path = Path(depset.output)
-        new_lock_file_path = manager.temp_dir / existing_lock_file_path
+        existing_lock_file_path = manager.get_path(depset.output)
+        new_lock_file_path = Path(manager.temp_dir) / depset.output
         new_lock_file_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(existing_lock_file_path, new_lock_file_path)
 
@@ -96,9 +97,9 @@ def diff_lock_files(manager: "DependencySetManager"):
     """Diff the lock files."""
     for depset in manager.config.depsets:
         current_lock_file_path = depset.output
-        if not Path(current_lock_file_path).exists():
+        if not Path(manager.get_path(current_lock_file_path)).exists():
             raise RuntimeError(f"Lock file {current_lock_file_path} does not exist")
-        with open(current_lock_file_path, "r") as f:
+        with open(manager.get_path(current_lock_file_path), "r") as f:
             current_lock_file_contents = f.read()
         new_lock_file_path = Path(manager.temp_dir) / depset.output
         if not new_lock_file_path.exists():
@@ -111,8 +112,9 @@ def diff_lock_files(manager: "DependencySetManager"):
         )
         diffs = list(diff)
         if len(diffs) > 0:
+            click.echo(f"Lock file {current_lock_file_path} is not up to date.")
             click.echo("".join(diffs))
-            return
+            sys.exit(1)
         else:
             click.echo(f"Lock file {current_lock_file_path} is the same.")
 
