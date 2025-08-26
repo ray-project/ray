@@ -9,7 +9,6 @@ from networkx import DiGraph, topological_sort
 import tempfile
 import difflib
 import shutil
-import sys
 
 from ci.raydepsets.workspace import Depset, Workspace
 
@@ -71,54 +70,13 @@ def build(
         uv_cache_dir=uv_cache_dir,
     )
     if verify:
-        copy_lock_files_to_temp_dir(manager)
+        _copy_lock_files_to_temp_dir(manager)
     if name:
         manager.execute_single(_get_depset(manager.config.depsets, name))
     else:
         manager.execute()
     if verify:
-        diff_lock_files(manager)
-
-
-def copy_lock_files_to_temp_dir(manager: "DependencySetManager"):
-    """Copy the lock files to a temp directory."""
-    # create temp directory
-    manager.temp_dir = tempfile.mkdtemp()
-    # copy existing lock files to temp directory
-    for depset in manager.config.depsets:
-        existing_lock_file_path = manager.get_path(depset.output)
-        new_lock_file_path = Path(manager.temp_dir) / depset.output
-        new_lock_file_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(existing_lock_file_path, new_lock_file_path)
-
-
-def diff_lock_files(manager: "DependencySetManager"):
-    """Diff the lock files."""
-    for depset in manager.config.depsets:
-        current_lock_file_path = depset.output
-        if not Path(manager.get_path(current_lock_file_path)).exists():
-            raise RuntimeError(f"Lock file {current_lock_file_path} does not exist")
-        with open(manager.get_path(current_lock_file_path), "r") as f:
-            current_lock_file_contents = f.read()
-        new_lock_file_path = Path(manager.temp_dir) / depset.output
-        if not new_lock_file_path.exists():
-            raise RuntimeError(f"Lock file {new_lock_file_path} does not exist")
-        with open(new_lock_file_path, "r") as f:
-            new_lock_file_contents = f.read()
-        diff = difflib.unified_diff(
-            current_lock_file_contents.splitlines(),
-            new_lock_file_contents.splitlines(),
-        )
-        diffs = list(diff)
-        if len(diffs) > 0:
-            click.echo(f"Lock file {current_lock_file_path} is not up to date.")
-            click.echo("".join(diffs))
-            sys.exit(1)
-        else:
-            click.echo(f"Lock file {current_lock_file_path} is the same.")
-
-    click.echo("Verification complete.")
-    shutil.rmtree(manager.temp_dir)
+        _diff_lock_files(manager)
 
 
 class DependencySetManager:
@@ -318,6 +276,52 @@ def _override_uv_flags(flags: List[str], args: List[str]) -> List[str]:
         new_args.append(arg)
 
     return new_args + _flatten_flags(flags)
+
+
+def _copy_lock_files_to_temp_dir(manager: "DependencySetManager"):
+    """Copy the lock files to a temp directory."""
+    # create temp directory
+    manager.temp_dir = tempfile.mkdtemp()
+    # copy existing lock files to temp directory
+    for depset in manager.config.depsets:
+        existing_lock_file_path = manager.get_path(depset.output)
+        new_lock_file_path = Path(manager.temp_dir) / depset.output
+        new_lock_file_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(existing_lock_file_path, new_lock_file_path)
+
+
+def _diff_lock_files(manager: "DependencySetManager"):
+    """Diff the lock files."""
+    diffs = []
+    for depset in manager.config.depsets:
+        old_lock_file_path = manager.get_path(depset.output)
+        new_lock_file_path = (Path(manager.temp_dir) / depset.output).as_posix()
+        old_lock_file_contents = _read_lock_file(manager, old_lock_file_path)
+        new_lock_file_contents = _read_lock_file(manager, new_lock_file_path)
+        for diff in difflib.unified_diff(
+            old_lock_file_contents,
+            new_lock_file_contents,
+            fromfile=old_lock_file_path,
+            tofile=new_lock_file_path,
+            lineterm="",
+        ):
+            print(diff)
+            diffs.append(diff)
+    if len(diffs) > 0:
+        click.echo("".join(diffs))
+        shutil.rmtree(manager.temp_dir)
+        raise RuntimeError(
+            "Lock files are not up to date. Please update lock files and push the changes."
+        )
+    click.echo("Lock files are up to date.")
+    shutil.rmtree(manager.temp_dir)
+
+
+def _read_lock_file(manager: "DependencySetManager", file_path: str) -> List[str]:
+    if not Path(manager.get_path(file_path)).exists():
+        raise RuntimeError(f"Lock file {file_path} does not exist")
+    with open(Path(manager.get_path(file_path)), "r") as f:
+        return f.readlines()
 
 
 def _uv_binary():

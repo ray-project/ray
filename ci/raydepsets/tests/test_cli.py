@@ -14,6 +14,8 @@ from networkx import topological_sort
 from ci.raydepsets.cli import (
     DEFAULT_UV_FLAGS,
     DependencySetManager,
+    _copy_lock_files_to_temp_dir,
+    _diff_lock_files,
     _flatten_flags,
     _get_depset,
     _override_uv_flags,
@@ -558,6 +560,65 @@ depsets:
             )
             with self.assertRaises(KeyError):
                 _get_depset(manager.config.depsets, "build_args_test_depset_py311")
+
+    def test_copy_lock_files_to_temp_dir(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.config.depsets = [manager.config.depsets[0]]
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt"],
+                append_flags=["--no-annotate", "--no-header"],
+                name="ray_base_test_depset",
+                output="requirements_compiled.txt",
+            )
+            _copy_lock_files_to_temp_dir(manager)
+            assert manager.temp_dir is not None
+            assert (Path(manager.temp_dir) / "requirements_compiled.txt").exists()
+            assert (Path(manager.workspace.dir) / "requirements_compiled.txt").exists()
+
+    def test_diff_lock_files(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.config.depsets = [manager.config.depsets[0]]
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt"],
+                append_flags=["--no-annotate", "--no-header"],
+                name="ray_base_test_depset",
+                output="requirements_compiled.txt",
+            )
+            _copy_lock_files_to_temp_dir(manager)
+            assert manager.temp_dir is not None
+            replace_in_file(
+                Path(manager.temp_dir) / "requirements_compiled.txt",
+                "emoji==2.9.0",
+                "emoji==2.8.0",
+            )
+            with self.assertRaises(RuntimeError) as e:
+                _diff_lock_files(manager)
+            assert (
+                "Lock files are not up to date. Please update lock files and push the changes."
+                in str(e.exception)
+            )
+
+    def test_diff_lock_files_up_to_date(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.config.depsets = [manager.config.depsets[0]]
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt"],
+                append_flags=["--no-annotate", "--no-header"],
+                name="ray_base_test_depset",
+                output="requirements_compiled.txt",
+            )
+            _copy_lock_files_to_temp_dir(manager)
+            assert manager.temp_dir is not None
+            _diff_lock_files(manager)
 
 
 if __name__ == "__main__":
