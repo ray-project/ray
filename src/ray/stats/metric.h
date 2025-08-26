@@ -163,7 +163,11 @@ class Gauge : public Metric {
         const std::string &description,
         const std::string &unit,
         const std::vector<std::string> &tag_keys = {})
-      : Metric(name, description, unit, tag_keys) {}
+      : Metric(name, description, unit, tag_keys) {
+    if (::RayConfig::instance().enable_open_telemetry()) {
+      RegisterOpenTelemetryMetric();
+    }
+  }
 
  private:
   void RegisterView() override;
@@ -178,7 +182,11 @@ class Histogram : public Metric {
             const std::string &unit,
             const std::vector<double> &boundaries,
             const std::vector<std::string> &tag_keys = {})
-      : Metric(name, description, unit, tag_keys), boundaries_(boundaries) {}
+      : Metric(name, description, unit, tag_keys), boundaries_(boundaries) {
+    if (::RayConfig::instance().enable_open_telemetry()) {
+      RegisterOpenTelemetryMetric();
+    }
+  }
 
  private:
   void RegisterView() override;
@@ -195,7 +203,11 @@ class Count : public Metric {
         const std::string &description,
         const std::string &unit,
         const std::vector<std::string> &tag_keys = {})
-      : Metric(name, description, unit, tag_keys) {}
+      : Metric(name, description, unit, tag_keys) {
+    if (::RayConfig::instance().enable_open_telemetry()) {
+      RegisterOpenTelemetryMetric();
+    }
+  }
 
  private:
   void RegisterView() override;
@@ -209,7 +221,11 @@ class Sum : public Metric {
       const std::string &description,
       const std::string &unit,
       const std::vector<std::string> &tag_keys = {})
-      : Metric(name, description, unit, tag_keys) {}
+      : Metric(name, description, unit, tag_keys) {
+    if (::RayConfig::instance().enable_open_telemetry()) {
+      RegisterOpenTelemetryMetric();
+    }
+  }
 
  private:
   void RegisterView() override;
