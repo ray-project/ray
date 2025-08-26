@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 import asyncio
+from dataclasses import dataclass
 import logging
 import random
 import json
@@ -44,18 +45,14 @@ PUBLISHER_JITTER_RATIO = ray_constants.env_float(
 )
 
 
+@dataclass
 class PublishStats:
     """Data class that represents stats of publishing a batch of events."""
 
-    def __init__(
-        self,
-        publish_status: bool,
-        num_events_published: int,
-        num_events_filtered_out: int,
-    ):
-        self.publish_status = publish_status
-        self.num_events_published = num_events_published
-        self.num_events_filtered_out = num_events_filtered_out
+    publish_status: bool
+    num_events_published: int
+    num_events_filtered_out: int
+    should_retry: bool = True
 
 
 class PublisherClientInterface(ABC):
