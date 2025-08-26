@@ -10,8 +10,7 @@ import logging
 from urllib3.util import Retry
 from requests import Session
 from requests.adapters import HTTPAdapter
-
-from google.protobuf.json_format import MessageToJson
+from ray._private.protobuf_compat import message_to_json
 
 try:
     import prometheus_client
@@ -77,7 +76,11 @@ METRICS_UPDATE_INTERVAL_SECONDS = ray_constants.env_float(
 # Valid values: TASK_DEFINITION_EVENT, TASK_EXECUTION_EVENT, ACTOR_TASK_DEFINITION_EVENT, ACTOR_TASK_EXECUTION_EVENT
 # The list of all supported event types can be found in src/ray/protobuf/events_base_event.proto (EventType enum)
 # By default TASK_PROFILE_EVENT is not exposed to external services
-DEFAULT_EXPOSABLE_EVENT_TYPES = "TASK_DEFINITION_EVENT,TASK_EXECUTION_EVENT,ACTOR_TASK_DEFINITION_EVENT,ACTOR_TASK_EXECUTION_EVENT"
+DEFAULT_EXPOSABLE_EVENT_TYPES = (
+    "TASK_DEFINITION_EVENT,TASK_EXECUTION_EVENT,"
+    "ACTOR_TASK_DEFINITION_EVENT,ACTOR_TASK_EXECUTION_EVENT,"
+    "DRIVER_JOB_DEFINITION_EVENT,DRIVER_JOB_EXECUTION_EVENT"
+)
 EXPOSABLE_EVENT_TYPES = os.environ.get(
     f"{env_var_prefix}_EXPOSABLE_EVENT_TYPES", DEFAULT_EXPOSABLE_EVENT_TYPES
 )
@@ -269,7 +272,10 @@ class AggregatorAgent(
 
         # Convert protobuf objects to JSON dictionaries for HTTP POST
         filtered_event_batch_json = [
-            json.loads(MessageToJson(event)) for event in filtered_event_batch
+            json.loads(
+                message_to_json(event, always_print_fields_with_no_presence=True)
+            )
+            for event in filtered_event_batch
         ]
 
         try:
