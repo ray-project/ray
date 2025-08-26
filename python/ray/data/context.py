@@ -633,6 +633,10 @@ class DataContext:
                 # ds2's target_max_block_size will be 1MB
                 ds2.take_all()
 
+        Returns:
+            DataContext: The current global DataContext instance. If no context
+                exists, a new one is created with default settings.
+
         Developer notes: Avoid using `DataContext.get_current()` in data
         internal components, use the DataContext object captured in the
         Dataset and pass it around as arguments.
@@ -683,7 +687,9 @@ class DataContext:
         Args:
             key: The key of the config.
             default: The default value to return if the key is not found.
-        Returns: The value for the key, or the default value if the key is not found.
+
+        Returns:
+            Any: The value for the key, or the default value if the key is not found.
         """
         return self._kv_configs.get(key, default)
 

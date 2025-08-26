@@ -288,6 +288,9 @@ class BlockAccessor:
         Args:
             public_row_format: Whether to cast rows into the public Dict row
                 format (this incurs extra copy conversions).
+
+        Returns:
+            Iterator: An iterator over individual rows in the block.
         """
         raise NotImplementedError
 
@@ -338,6 +341,9 @@ class BlockAccessor:
 
         Args:
             columns: Name of columns to convert, or None if converting all columns.
+
+        Returns:
+            numpy.ndarray: The block data converted to a NumPy array format.
         """
         raise NotImplementedError
 
