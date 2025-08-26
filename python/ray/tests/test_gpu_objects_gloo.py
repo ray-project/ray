@@ -687,7 +687,7 @@ def test_trigger_out_of_band_tensor_transfer(ray_start_regular):
     # Test warning when object is sent back to the src actor and to dst actors
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
-    create_collective_group(actors, backend="gloo")
+    create_collective_group(actors, backend="torch_gloo")
 
     src_actor, dst_actor = actors[0], actors[1]
 
