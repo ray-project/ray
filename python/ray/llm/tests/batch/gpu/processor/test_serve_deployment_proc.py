@@ -9,7 +9,7 @@ from ray.llm._internal.batch.processor import ProcessorBuilder
 from ray.llm._internal.batch.processor.serve_deployment_proc import (
     ServeDeploymentProcessorConfig,
 )
-from ray.serve.llm import ChatCompletionRequest, CompletionRequest
+from ray.serve.llm.openai_api_models import ChatCompletionRequest, CompletionRequest
 
 
 @pytest.mark.parametrize(
@@ -49,7 +49,7 @@ def test_serve_deployment_processor(dtype_mapping):
 def test_simple_serve_deployment(serve_cleanup):
     @serve.deployment
     class SimpleServeDeployment:
-        # ServeDeploymentStageUDF expects a generator
+        # ServeDeploymentStageUDF expects an async generator.
         async def add(self, request: Dict[str, Any]):
             yield {"result": request["x"] + 1}
 

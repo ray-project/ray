@@ -1,9 +1,5 @@
 from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
-from ray.llm._internal.serve.configs.openai_api_models import (
-    ChatCompletionRequest as _ChatCompletionRequest,
-    CompletionRequest as _CompletionRequest,
-)
 from ray.llm._internal.serve.configs.server_models import (
     CloudMirrorConfig as _CloudMirrorConfig,
     LLMConfig as _LLMConfig,
@@ -65,20 +61,6 @@ class CloudMirrorConfig(_CloudMirrorConfig):
 @PublicAPI(stability="alpha")
 class LoraConfig(_LoraConfig):
     """The configuration for loading an LLM model with LoRA."""
-
-    pass
-
-
-@PublicAPI(stability="alpha")
-class ChatCompletionRequest(_ChatCompletionRequest):
-    """The request for a chat completion."""
-
-    pass
-
-
-@PublicAPI(stability="alpha")
-class CompletionRequest(_CompletionRequest):
-    """The request for a completion."""
 
     pass
 

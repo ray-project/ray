@@ -6,7 +6,7 @@ import pytest
 from ray.llm._internal.batch.stages.serve_deployment_stage import (
     ServeDeploymentStageUDF,
 )
-from ray.serve.llm import ChatCompletionRequest, CompletionRequest
+from ray.serve.llm.openai_api_models import ChatCompletionRequest, CompletionRequest
 
 
 @pytest.fixture

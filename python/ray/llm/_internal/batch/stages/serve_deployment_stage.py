@@ -22,6 +22,7 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
         self,
         data_column: str,
         expected_input_keys: List[str],
+        *,
         deployment_name: str,
         app_name: str,
         dtype_mapping: Dict[str, Type[Any]],
@@ -34,10 +35,13 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
             expected_input_keys: The expected input keys of the stage.
             deployment_name: The name of the deployment.
             app_name: The name of the deployment app.
+            dtype_mapping: The mapping of the request class name to the request class.
         """
         super().__init__(data_column, expected_input_keys)
         self._dtype_mapping = dtype_mapping
 
+        # Using stream=True as LLM serve deployments return async generators.
+        # TODO (Kourosh): Generalize this to support non-streaming deployments.
         self._dh = serve.get_deployment_handle(deployment_name, app_name).options(
             stream=True
         )
@@ -91,11 +95,7 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
             The response from the serve deployment.
         """
         request, dtype, method = self._prepare_request(row)
-
-        if dtype is not None:
-            request_obj = dtype(**request)
-        else:
-            request_obj = request
+        request_obj = dtype(**request) if dtype else request
 
         if getattr(self._dh, method) is None:
             raise ValueError(f"Method {method} not found in the serve deployment.")
@@ -117,6 +117,9 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
 
         Args:
             batch: A list of rows to run the serve deployment on.
+
+        Yields:
+            The response of the serve deployment and processing metadata.
         """
         batch_uuid = uuid.uuid4()
         t = time.perf_counter()

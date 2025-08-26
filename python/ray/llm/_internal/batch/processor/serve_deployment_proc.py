@@ -24,6 +24,7 @@ class ServeDeploymentProcessorConfig(ProcessorConfig):
     )
     app_name: str = Field(
         description="The name of the serve application to use.",
+        default="default",
     )
     dtype_mapping: Dict[str, Type[Any]] = Field(
         description="A dictionary mapping data type names to their corresponding request classes for the serve deployment.",

@@ -260,9 +260,10 @@ class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
             On the other hand, small batch sizes are more fault-tolerant and could
             reduce bubbles in the data pipeline. You can tune the batch size to balance
             the throughput and fault-tolerance based on your use case.
-        accelerator_type: The accelerator type used by the serve deployment stage in a processor.
-            Default to None, meaning that only the CPU will be used.
-        concurrency: The number of workers for data parallelism. Default to 1.
+        dtype_mapping: The mapping of the request class name to the request class. If this is
+            not provided, the serve deployment is expected to accept a dict as the request.
+        concurrency: The number of workers for data parallelism. Default to 1. Note that this is
+            not the concurrency of the underlying serve deployment.
 
     Examples:
 
@@ -272,7 +273,12 @@ class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
             import ray
             from ray import serve
             from ray.data.llm import ServeDeploymentProcessorConfig, build_llm_processor
-            from ray.serve.llm import CompletionRequest, LLMConfig, ModelLoadingConfig
+            from ray.serve.llm import (
+                LLMConfig,
+                ModelLoadingConfig,
+                build_llm_deployment,
+            )
+            from ray.serve.llm.openai_api_models import CompletionRequest
 
             llm_config = LLMConfig(
                 model_loading_config=ModelLoadingConfig(
@@ -298,10 +304,12 @@ class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
             DEPLOYMENT_NAME = "facebook_deployment"
             override_serve_options = dict(name=DEPLOYMENT_NAME)
 
-            llm_app = build_llm_deployment(llm_config, override_serve_options=override_serve_options)
+            llm_app = build_llm_deployment(
+                llm_config, override_serve_options=override_serve_options
+            )
             app = serve.run(llm_app, name=APP_NAME)
 
-            config=ServeDeploymentProcessorConfig(
+            config = ServeDeploymentProcessorConfig(
                 deployment_name=DEPLOYMENT_NAME,
                 app_name=APP_NAME,
                 dtype_mapping={
@@ -317,9 +325,9 @@ class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
                     dtype="CompletionRequest",
                     request_kwargs=dict(
                         model="facebook/opt-1.3b",
-                        prompt=row["prompt"],
-                        stream=False
-                    )
+                        prompt=f"This is a prompt for {row['id']}",
+                        stream=False,
+                    ),
                 ),
                 postprocess=lambda row: dict(
                     resp=row["choices"][0]["text"],
@@ -331,7 +339,7 @@ class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
             # the required input columns:
             processor.log_input_column_names()
 
-            ds = ray.data.range(300)
+            ds = ray.data.range(10)
             ds = processor(ds)
             for row in ds.take_all():
                 print(row)
