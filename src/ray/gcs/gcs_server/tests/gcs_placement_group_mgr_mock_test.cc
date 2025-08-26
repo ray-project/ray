@@ -77,7 +77,7 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule) {
   SchedulePgRequest request;
   std::unique_ptr<Postable<void(bool)>> put_cb;
   EXPECT_CALL(*store_client_, AsyncPut(_, _, _, _, _))
-      .WillOnce(DoAll(SaveArgToUniquePtr<4>(&put_cb), Return(Status::OK())));
+      .WillOnce(DoAll(SaveArgToUniquePtr<4>(&put_cb)));
   EXPECT_CALL(*gcs_placement_group_scheduler_, ScheduleUnplacedBundles(_))
       .WillOnce(DoAll(SaveArg<0>(&request)));
   auto now = absl::GetCurrentTimeNanos();
@@ -104,7 +104,7 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed) {
   SchedulePgRequest request;
   std::unique_ptr<Postable<void(bool)>> put_cb;
   EXPECT_CALL(*store_client_, AsyncPut(_, _, _, _, _))
-      .WillOnce(DoAll(SaveArgToUniquePtr<4>(&put_cb), Return(Status::OK())));
+      .WillOnce(DoAll(SaveArgToUniquePtr<4>(&put_cb)));
   EXPECT_CALL(*gcs_placement_group_scheduler_, ScheduleUnplacedBundles(_))
       .Times(2)
       .WillRepeatedly(DoAll(SaveArg<0>(&request)));
@@ -162,7 +162,7 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityOrder) {
   std::unique_ptr<Postable<void(bool)>> put_cb;
   EXPECT_CALL(*store_client_, AsyncPut(_, _, _, _, _))
       .Times(2)
-      .WillRepeatedly(DoAll(SaveArgToUniquePtr<4>(&put_cb), Return(Status::OK())));
+      .WillRepeatedly(DoAll(SaveArgToUniquePtr<4>(&put_cb)));
   EXPECT_CALL(*gcs_placement_group_scheduler_, ScheduleUnplacedBundles(_))
       .Times(2)
       .WillRepeatedly(DoAll(SaveArg<0>(&request)));
