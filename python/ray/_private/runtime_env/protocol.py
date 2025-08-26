@@ -136,12 +136,11 @@ class ProtocolsProvider:
             ValueError: If required environment variables are not set.
         """
         try:
+            import pyarrow.fs as fs
             from azure.identity import DefaultAzureCredential
-            from azure.storage.blob import BlobServiceClient  # noqa: F401
-            from smart_open import open as open_file
         except ImportError:
             raise ImportError(
-                "You must `pip install azure-storage-blob azure-identity smart_open[azure]` "
+                "You must `pip install pyarrow azure-identity` "
                 "to fetch URIs in Azure Blob File System Secure. "
                 + cls._MISSING_DEPENDENCIES_WARNING
             )
@@ -155,14 +154,33 @@ class ProtocolsProvider:
                 "AZURE_STORAGE_ACCOUNT environment variable to be set."
             )
 
-        account_url = f"https://{azure_storage_account_name}.dfs.core.windows.net/"
-        transport_params = {
-            "client": BlobServiceClient(
-                account_url=account_url, credential=DefaultAzureCredential()
-            )
-        }
+        # Create PyArrow ADLS Gen2 filesystem
+        filesystem = fs.AdlsGen2FileSystem(
+            account_name=azure_storage_account_name,
+            credential=DefaultAzureCredential()
+        )
 
-        return open_file, transport_params
+        def open_file(uri, mode, *, transport_params=None):
+            # Parse ABFSS URI: abfss://container@account.dfs.core.windows.net/path/file
+            from urllib.parse import urlparse
+            parsed = urlparse(uri)
+
+            # Extract container and path from ABFSS URL
+            container = parsed.username  # container name is before @
+            path = parsed.path.lstrip("/")  # remove leading slash
+
+            full_path = f"{container}/{path}"
+
+            if "r" in mode:
+                # PyArrow's input file has read() method compatible with the expected interface
+                return filesystem.open_input_file(full_path)
+            elif "w" in mode:
+                # PyArrow's output stream has write() method
+                return filesystem.open_output_stream(full_path)
+            else:
+                raise ValueError(f"Unsupported mode: {mode}")
+
+        return open_file, None
 
     @classmethod
     def download_remote_uri(cls, protocol: str, source_uri: str, dest_file: str):
@@ -206,7 +224,7 @@ class ProtocolsProvider:
                 )
 
         with open_file(source_uri, "rb", transport_params=tp) as fin:
-            with open_file(dest_file, "wb") as fout:
+            with open(dest_file, "wb") as fout:
                 fout.write(fin.read())
 
 
