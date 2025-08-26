@@ -13,6 +13,8 @@ from ray.rllib.env import EnvContext
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.examples.envs.classes.multi_agent.footsies.fixed_rlmodules import (
     NoopFixedRLModule,
+    BackFixedRLModule,
+    AttackFixedRLModule,
 )
 from ray.rllib.examples.envs.classes.multi_agent.footsies.footsies_env import (
     FootsiesEnv,
@@ -25,6 +27,7 @@ from ray.rllib.examples.envs.classes.multi_agent.footsies.utils import (
 from ray.rllib.examples.rl_modules.classes.lstm_containing_rlm import (
     LSTMContainingRLModule,
 )
+from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
@@ -33,11 +36,9 @@ from ray.rllib.utils.test_utils import (
 from ray.tune.registry import register_env
 from ray.tune.result import TRAINING_ITERATION
 
-eval_policies = []
-
 parser = add_rllib_example_script_args()
 parser.add_argument(
-    "--start-port",
+    "--train-start-port",
     type=int,
     default=45001,
     help="First port number for environment server (default: 45001)",
@@ -78,10 +79,10 @@ parser.add_argument(
 parser.add_argument(
     "--target-mix-size",
     type=int,
-    default=6,
+    default=9,
     help="Target number of policies (RLModules) in the mix to consider the test passed. "
     "The initial mix size is 2: 'main policy' vs. 'other'. "
-    "`--target-mix-size=6` means that 4 new policies will be added to the mix. "
+    "`--target-mix-size=9` means that 7 new policies will be added to the mix. "
     "Whether to add new policy is decided by checking the '--win-rate-threshold' ",
 )
 parser.add_argument(
@@ -93,7 +94,7 @@ parser.add_argument(
 
 
 def env_creator(env_config: EnvContext) -> FootsiesEnv:
-    if env_config.get("evaluation", False):
+    if env_config.get("env-for-evaluation", False):
         port = (
             env_config["eval_start_port"]
             - 1  # "-1" to start with eval_start_port as the first port (worker index starts at 1)
@@ -102,7 +103,7 @@ def env_creator(env_config: EnvContext) -> FootsiesEnv:
         )
     else:
         port = (
-            env_config["start_port"]
+            env_config["train_start_port"]
             + int(env_config.worker_index) * env_config.get("num_envs_per_worker", 1)
             + env_config.get("vector_index", 0)
         )
@@ -126,7 +127,7 @@ if __name__ == "__main__":
                 "max_t": 1000,
                 "frame_skip": 4,
                 "observation_delay": 16,
-                "start_port": args.start_port,
+                "train_start_port": args.train_start_port,
                 "eval_start_port": args.eval_start_port,
                 "host": "localhost",
                 "binary_download_dir": args.binary_download_dir,
@@ -161,6 +162,9 @@ if __name__ == "__main__":
             policies={
                 main_policy,
                 "noop",
+                "back",
+                "attack",
+                "random",
             },
             policy_mapping_fn=Matchmaker(
                 [Matchup(main_policy, "noop", 1.0)]
@@ -179,6 +183,9 @@ if __name__ == "__main__":
                         },
                     ),
                     "noop": RLModuleSpec(module_class=NoopFixedRLModule),
+                    "back": RLModuleSpec(module_class=BackFixedRLModule),
+                    "attack": RLModuleSpec(module_class=AttackFixedRLModule),
+                    "random": RLModuleSpec(module_class=RandomRLModule),
                 },
             )
         )
@@ -187,17 +194,12 @@ if __name__ == "__main__":
             evaluation_interval=1,
             # Evaluation duration in episodes is greater than 100 because some episodes may end with both players dead or alive.
             # In this case, the winrates are not logged, and we need to ensure that we have enough episodes to compute the winrates.
-            evaluation_duration=1000,
+            evaluation_duration=100,
             evaluation_duration_unit="episodes",
-            evaluation_parallel_to_training=True,
+            evaluation_parallel_to_training=False, #True,
             evaluation_force_reset_envs_before_iteration=True,
             evaluation_config={
-                "env_config": {"evaluation": True},
-                "multiagent": {
-                    "policy_mapping_fn": Matchmaker(
-                        [Matchup(main_policy, "noop", 1.0)]
-                    ).agent_to_module_mapping_fn,
-                },
+                "env_config": {"env-for-evaluation": True},
             },
         )
         .callbacks(
