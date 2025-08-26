@@ -196,7 +196,7 @@ if __name__ == "__main__":
             # In this case, the winrates are not logged, and we need to ensure that we have enough episodes to compute the winrates.
             evaluation_duration=100,
             evaluation_duration_unit="episodes",
-            evaluation_parallel_to_training=False, #True,
+            evaluation_parallel_to_training=False,  # True,
             evaluation_force_reset_envs_before_iteration=True,
             evaluation_config={
                 "env_config": {"env-for-evaluation": True},

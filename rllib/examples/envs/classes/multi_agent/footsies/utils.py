@@ -96,11 +96,11 @@ class WinratesCallback(RLlibCallback):
             last_game_state = env.envs[env_index].unwrapped.last_game_state
             p1_dead = last_game_state.player1.is_dead
             p2_dead = last_game_state.player2.is_dead
-    
+
             # get the ModuleID for each agent
             p1_module = episode.module_for("p1")
             p2_module = episode.module_for("p2")
-    
+
             if self.main_policy == p1_module:
                 opponent_id = p2_module
                 main_policy_win = p2_dead
@@ -115,7 +115,7 @@ class WinratesCallback(RLlibCallback):
                     f"Metrics logging for this episode will be skipped."
                 )
                 return
-    
+
             if p1_dead and p2_dead:
                 metrics_logger.log_value(
                     key=f"footsies/eval/both_dead/{self.main_policy}/vs_{opponent_id}",
@@ -141,7 +141,7 @@ class WinratesCallback(RLlibCallback):
                     window=100,
                     clear_on_reduce=True,
                 )
-    
+
                 # log the win rate "globally", without specifying the opponent
                 # this metric will be used to decide whether to add a new opponent
                 # at the current level, the main policy ('self.main_policy') should have
@@ -166,7 +166,9 @@ class WinratesCallback(RLlibCallback):
         new_module_id = None
         new_module_spec = None
 
-        win_rate = evaluation_metrics[ENV_RUNNER_RESULTS][f"footsies/eval/win_rates/{self.main_policy}/vs_any"]
+        win_rate = evaluation_metrics[ENV_RUNNER_RESULTS][
+            f"footsies/eval/win_rates/{self.main_policy}/vs_any"
+        ]
 
         if win_rate > self.win_rate_threshold:
             logger.info(
@@ -237,7 +239,7 @@ class WinratesCallback(RLlibCallback):
                                     new_module_id: _main_module.get_state(),
                                 }
                             }
-                        }
+                        },
                     }
                 )
             # we added a new RL Module to the mix, so we need to update the current mix size and the modules ids in the mix
