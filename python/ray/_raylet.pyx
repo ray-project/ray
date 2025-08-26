@@ -598,7 +598,7 @@ class SerializedRayObject(NamedTuple):
 
 
 cdef RayObjectsToSerializedRayObjects(
-        const c_vector[shared_ptr[CRayObject]] objects):
+        const c_vector[shared_ptr[CRayObject]] &objects):
     serialized_ray_objects = []
     for i in range(objects.size()):
         # core_worker will return a nullptr for objects that couldn't be
@@ -987,7 +987,7 @@ cdef prepare_args_internal(
                     unique_ptr[CTaskArg](new CTaskArgByValue(
                         make_shared[CRayObject](
                             arg_data, string_to_buffer(metadata),
-                            inlined_refs))))
+                            move(inlined_refs)))))
                 inlined_ids.clear()
                 total_inlined += <int64_t>size
             else:
@@ -4310,16 +4310,24 @@ cdef class CoreWorker:
                            int64_t *task_output_inlined_bytes,
                            shared_ptr[CRayObject] *return_ptr):
         """Store a task return value in plasma or as an inlined object."""
+
+        is_raw_object = isinstance(serialized_object, RawSerializedObject)
         with nogil:
             check_status(
                 CCoreWorkerProcess.GetCoreWorker().AllocateReturnObject(
                     return_id, data_size, metadata, contained_id, caller_address,
-                    task_output_inlined_bytes, return_ptr))
+                    task_output_inlined_bytes, return_ptr,
+                    is_raw_object))
 
         if return_ptr.get() != NULL:
-            if return_ptr.get().HasData():
+            if return_ptr.get().HasString():
+                (<SerializedObject>serialized_object).write_to_str(
+                    &return_ptr.get().GetString()
+                )
+            elif return_ptr.get().HasData():
                 (<SerializedObject>serialized_object).write_to(
-                    Buffer.make(return_ptr.get().GetData()))
+                    Buffer.make(return_ptr.get().GetData())
+                )
             if self.is_local_mode:
                 check_status(
                     CCoreWorkerProcess.GetCoreWorker().Put(

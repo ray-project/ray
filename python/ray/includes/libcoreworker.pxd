@@ -172,7 +172,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[CObjectID] &contained_object_id,
             const CAddress &caller_address,
             int64_t *task_output_inlined_bytes,
-            shared_ptr[CRayObject] *return_object)
+            shared_ptr[CRayObject] *return_object,
+            c_bool is_raw_object)
         CRayStatus SealReturnObject(
             const CObjectID &return_id,
             const shared_ptr[CRayObject] &return_object,

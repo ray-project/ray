@@ -193,7 +193,6 @@ class ServerCallImpl : public ServerCall {
         cluster_id_(cluster_id),
         start_time_(0),
         record_metrics_(record_metrics) {
-    reply_ = google::protobuf::Arena::CreateMessage<Reply>(&arena_);
     // TODO(Yi Cheng) call_name_ sometimes get corrunpted due to memory issues.
     RAY_CHECK(!call_name_.empty()) << "Call name is empty";
     if (record_metrics_) {
@@ -281,7 +280,7 @@ class ServerCallImpl : public ServerCall {
     } else {
       (service_handler_.*handle_request_function_)(
           std::move(request_),
-          reply_,
+          &reply_,
           /*send_reply_callback=*/
           [this](Status status,
                  std::function<void()> success,
@@ -342,7 +341,7 @@ class ServerCallImpl : public ServerCall {
       return;
     }
     state_ = ServerCallState::SENDING_REPLY;
-    response_writer_.Finish(*reply_, RayStatusToGrpcStatus(status), this);
+    response_writer_.Finish(reply_, RayStatusToGrpcStatus(status), this);
   }
 
   /// The memory pool for this request. It's used for reply.
@@ -380,7 +379,7 @@ class ServerCallImpl : public ServerCall {
 
   /// The reply message. This one is owned by arena. It's not valid beyond
   /// the life-cycle of this call.
-  Reply *reply_;
+  Reply reply_;
 
   /// Human-readable name for this RPC call.
   std::string call_name_;

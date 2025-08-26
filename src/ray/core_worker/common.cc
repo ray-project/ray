@@ -56,6 +56,10 @@ std::string GenerateCachedActorName(const std::string &ns,
   return ns + "-" + actor_name;
 }
 
+struct SerializeReturnObjectState {
+  std::atomic<double> total_duration = 0;
+};
+
 void SerializeReturnObject(const ObjectID &object_id,
                            const std::shared_ptr<RayObject> &return_object,
                            rpc::ReturnObject *return_object_proto) {
@@ -72,7 +76,9 @@ void SerializeReturnObject(const ObjectID &object_id,
   if (return_object->GetData() != nullptr && return_object->GetData()->IsPlasmaBuffer()) {
     return_object_proto->set_in_plasma(true);
   } else {
-    if (return_object->GetData() != nullptr) {
+    if (return_object->HasString()) {
+      return_object_proto->set_data(std::move(return_object->GetString()));
+    } else if (return_object->HasData()) {
       return_object_proto->set_data(return_object->GetData()->Data(),
                                     return_object->GetData()->Size());
     }

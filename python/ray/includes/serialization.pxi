@@ -1,5 +1,6 @@
 from libc.string cimport memcpy
 from libc.stdint cimport uintptr_t, uint64_t, INT32_MAX
+from libcpp.string cimport string as c_string
 import contextlib
 import cython
 
@@ -60,6 +61,7 @@ cdef extern from "src/ray/protobuf/serialization.pb.h" nogil:
         int GetCachedSize() const
         uint8_t *SerializeWithCachedSizesToArray(uint8_t *target)
         c_bool ParseFromArray(void* data, int size)
+        c_string SerializeAsString() const
 
 
 cdef int64_t padded_length(int64_t offset, int64_t alignment):
@@ -385,6 +387,53 @@ cdef class Pickle5Writer:
                 else:
                     memcpy(ptr + buffer_addr, self.buffers[i].buf, buffer_len)
 
+    @cython.boundscheck(False)
+    @cython.wraparound(False)
+    cdef void write_to_str(self, const uint8_t[:] inband, c_string* buffer) nogil:
+        cdef:
+            int64_t inband_len = 0
+            int64_t protobuf_size = self.python_object.GetCachedSize()
+            uintptr_t u_addr
+            uintptr_t diff_ptr
+            uintptr_t diff_len
+            uint64_t buffer_addr
+            uint64_t buffer_len
+            c_string python_object_str
+            char zero_char
+
+        with gil:
+            print("shoudln't be called")
+            zero_char = '0'.encode('utf-8')
+
+        if self._total_bytes < 0:
+            raise ValueError("Must call 'get_total_bytes()' first "
+                             "to get the actual size")
+
+        inband_len = <int64_t>(len(inband))
+        with nogil:
+            buffer[0].append(<const char*>(&inband_len), sizeof(int64_t))
+            buffer[0].append(<const char*>(&protobuf_size), sizeof(int64_t))
+            buffer[0].append(<const char*>(&inband[0]), inband_len)
+
+        python_object_str = self.python_object.SerializeAsString()
+        buffer[0].append(python_object_str)
+
+        if self._curr_buffer_addr <= 0:
+            # End of serialization. Writing more stuff will corrupt the memory.
+            return
+
+        u_addr = <uintptr_t>(buffer[0].data()) + buffer[0].size()
+        diff_ptr = (u_addr + kMajorBufferAlign - 1) // kMajorBufferAlign * kMajorBufferAlign
+        diff_len = diff_ptr - u_addr
+        buffer[0].append(diff_len, zero_char)
+
+        for i in range(self.python_object.buffer_size()):
+            buffer_addr = self.python_object.buffer(i).address()
+            buffer_len = self.python_object.buffer(i).length()
+            with nogil:
+                buffer[0].append(buffer_addr, zero_char)
+                buffer[0].append(<const char*>(self.buffers[i].buf), buffer_len)
+
 
 cdef class SerializedObject(object):
     cdef:
@@ -414,6 +463,12 @@ cdef class SerializedObject(object):
         raise NotImplementedError("{}.write_to not implemented.".format(
                 type(self).__name__))
 
+    @cython.boundscheck(False)
+    @cython.wraparound(False)
+    cdef void write_to_str(self, c_string* buffer) nogil:
+        raise NotImplementedError("{}.write_to_str not implemented.".format(
+                type(self).__name__))
+
 
 cdef class Pickle5SerializedObject(SerializedObject):
     cdef:
@@ -439,7 +494,16 @@ cdef class Pickle5SerializedObject(SerializedObject):
     @cython.boundscheck(False)
     @cython.wraparound(False)
     cdef void write_to(self, uint8_t[:] buffer) nogil:
+        with gil:
+            print("calling pickle5 serialized object write_to")
         self.writer.write_to(self.inband, buffer, MEMCOPY_THREADS)
+
+    @cython.boundscheck(False)
+    @cython.wraparound(False)
+    cdef void write_to_str(self, c_string* buffer) nogil:
+        with gil:
+            print("shouldn't be called")
+        self.writer.write_to_str(self.inband, buffer)
 
 
 cdef class MessagePackSerializedObject(SerializedObject):
@@ -495,6 +559,9 @@ cdef class MessagePackSerializedObject(SerializedObject):
     cdef void write_to(self, uint8_t[:] buffer) nogil:
         cdef uint8_t *ptr = &buffer[0]
 
+        with gil:
+            print("calling msgpack serialized object")
+
         # Write msgpack data first.
         with nogil:
             memcpy(ptr, self.msgpack_header_ptr, self._msgpack_header_bytes)
@@ -504,6 +571,19 @@ cdef class MessagePackSerializedObject(SerializedObject):
         if self.nest_serialized_object is not None:
             self.nest_serialized_object.write_to(
                 buffer[kMessagePackOffset + self._msgpack_data_bytes:])
+
+    @cython.boundscheck(False)
+    @cython.wraparound(False)
+    cdef void write_to_str(self, c_string* buffer) nogil:
+        with nogil:
+            buffer[0].append(<const char*>(self.msgpack_header_ptr), self._msgpack_header_bytes)
+            buffer[0].append(<const char*>(self.msgpack_data_ptr), self._msgpack_data_bytes)
+
+        with gil:
+            print("shouldn't be called")
+
+        if self.nest_serialized_object is not None:
+            self.nest_serialized_object.write_to_str(buffer)
 
 
 cdef class RawSerializedObject(SerializedObject):
@@ -526,6 +606,8 @@ cdef class RawSerializedObject(SerializedObject):
     @cython.boundscheck(False)
     @cython.wraparound(False)
     cdef void write_to(self, uint8_t[:] buffer) nogil:
+        with gil:
+            print("calling raw serialized object")
         with nogil:
             if (MEMCOPY_THREADS > 1 and
                     self._total_bytes > kMemcopyDefaultThreshold):
@@ -535,3 +617,9 @@ cdef class RawSerializedObject(SerializedObject):
                                  MEMCOPY_THREADS)
             else:
                 memcpy(&buffer[0], self.value_ptr, self._total_bytes)
+
+    @cython.boundscheck(False)
+    @cython.wraparound(False)
+    cdef void write_to_str(self, c_string* buffer) nogil:
+        with nogil:
+            buffer[0].append(<const char*>(self.value_ptr), self._total_bytes)

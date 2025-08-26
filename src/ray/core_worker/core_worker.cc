@@ -2662,11 +2662,13 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
                                         const std::vector<ObjectID> &contained_object_ids,
                                         const rpc::Address &caller_address,
                                         int64_t *task_output_inlined_bytes,
-                                        std::shared_ptr<RayObject> *return_object) {
+                                        std::shared_ptr<RayObject> *return_object,
+                                        bool is_raw_object) {
   rpc::Address owner_address(options_.is_local_mode ? rpc::Address() : caller_address);
 
   bool object_already_exists = false;
   std::shared_ptr<Buffer> data_buffer;
+  std::optional<std::string> underlying_string;
   if (data_size > 0) {
     RAY_LOG(DEBUG).WithField(object_id) << "Creating return object";
     // Mark this object as containing other object IDs. The ref counter will
@@ -2682,8 +2684,13 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
          // ensure we don't exceed the limit if we allocate this object inline.
          (*task_output_inlined_bytes + static_cast<int64_t>(data_size) <=
           RayConfig::instance().task_rpc_inlined_bytes_limit()))) {
-      data_buffer = std::make_shared<LocalMemoryBuffer>(data_size);
-      *task_output_inlined_bytes += static_cast<int64_t>(data_size);
+      if (is_raw_object) {
+        underlying_string.emplace();
+        underlying_string->reserve(data_size);
+      } else {
+        data_buffer = std::make_shared<LocalMemoryBuffer>(data_size);
+        *task_output_inlined_bytes += static_cast<int64_t>(data_size);
+      }
     } else {
       RAY_RETURN_NOT_OK(CreateExisting(metadata,
                                        data_size,
@@ -2697,8 +2704,13 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
   // Leave the return object as a nullptr if the object already exists.
   if (!object_already_exists) {
     auto contained_refs = GetObjectRefs(contained_object_ids);
-    *return_object =
-        std::make_shared<RayObject>(data_buffer, metadata, std::move(contained_refs));
+    if (underlying_string.has_value()) {
+      *return_object = std::make_shared<RayObject>(
+          std::move(*underlying_string), metadata, std::move(contained_refs));
+    } else {
+      *return_object =
+          std::make_shared<RayObject>(data_buffer, metadata, std::move(contained_refs));
+    }
   }
 
   return Status::OK();
@@ -3078,6 +3090,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
 
   if (!dynamic_return_object.first.IsNil()) {
     auto return_object_proto = request.add_dynamic_return_objects();
+    // RAY_LOG(ERROR) << "SerializeReturnObject in ReportGeneratorItemReturns";
     SerializeReturnObject(
         dynamic_return_object.first, dynamic_return_object.second, return_object_proto);
     std::vector<ObjectID> deleted;

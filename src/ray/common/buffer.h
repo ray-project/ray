@@ -41,7 +41,7 @@ class Buffer {
 
   virtual bool IsPlasmaBuffer() const = 0;
 
-  virtual ~Buffer(){};
+  virtual ~Buffer() = default;
 
   bool operator==(const Buffer &rhs) const {
     if (this->Size() != rhs.Size()) {
