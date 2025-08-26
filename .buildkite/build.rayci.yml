@@ -37,7 +37,6 @@ steps:
       - "3.10"
       - "3.11"
       - "3.12"
-      - "3.13"
     depends_on:
       - manylinux
       - forge
