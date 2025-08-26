@@ -156,13 +156,13 @@ class ProtocolsProvider:
 
         # Create PyArrow ADLS Gen2 filesystem
         filesystem = fs.AdlsGen2FileSystem(
-            account_name=azure_storage_account_name,
-            credential=DefaultAzureCredential()
+            account_name=azure_storage_account_name, credential=DefaultAzureCredential()
         )
 
         def open_file(uri, mode, *, transport_params=None):
             # Parse ABFSS URI: abfss://container@account.dfs.core.windows.net/path/file
             from urllib.parse import urlparse
+
             parsed = urlparse(uri)
 
             # Extract container and path from ABFSS URL
