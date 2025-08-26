@@ -413,20 +413,27 @@ def _get_ippr_status_from_pod(
     if not ippr_group_spec:
         return (None, None)
 
-    container_status = {}
-    for status in pod.get("status", {}).get("containerStatuses", []):
-        if status["name"] == pod["spec"]["containers"][0]["name"]:
-            container_status = status
-            break
-
     pod_spec_requests = (
         pod["spec"]["containers"][0].get("resources", {}).get("requests", {})
     )
     pod_spec_limits = (
         pod["spec"]["containers"][0].get("resources", {}).get("limits", {})
     )
-    pod_status_requests = container_status.get("resources", {}).get("requests", {})
-    pod_status_limits = container_status.get("resources", {}).get("limits", {})
+    container_status = {}
+    other_container_resources = []
+    for status in pod.get("status", {}).get("containerStatuses", []):
+        if status["name"] == pod["spec"]["containers"][0]["name"]:
+            container_status = status
+        else:
+            requests = status.get("resources", {}).get("requests")
+            if requests:
+                other_container_resources.append(requests)
+    pod_status_requests = container_status.get("resources", {}).get(
+        "requests", pod_spec_requests
+    )
+    pod_status_limits = container_status.get("resources", {}).get(
+        "limits", pod_spec_limits
+    )
 
     spec_cpu = float(
         parse_quantity(pod_spec_limits.get("cpu") or pod_spec_requests.get("cpu", 0))
@@ -512,15 +519,15 @@ def _get_ippr_status_from_pod(
                     diff = parse_quantity(
                         pod_status_limits.get("cpu") or pod_status_requests.get("cpu")
                     ) - parse_quantity(pod_status_requests.get("cpu"))
-                    ippr_status.suggested_max_cpu = float(
-                        Decimal(str(max_request / 1000)) + diff
+                    other_container_cpu_requests = sum(
+                        parse_quantity(requests.get("cpu", "0"))
+                        for requests in other_container_resources
                     )
-                    if ippr_status.queue_resize_request(
-                        desired_cpu=ippr_status.suggested_max_cpu,
-                    ):
-                        logger.info(
-                            f"Apply CPU suggestion for {ippr_status.cloud_instance_id} to {ippr_status.suggested_max_cpu}"
-                        )
+                    ippr_status.suggested_max_cpu = float(
+                        Decimal(str(max_request / 1000))
+                        + diff
+                        - other_container_cpu_requests
+                    )
                 else:
                     diff = int(
                         parse_quantity(
@@ -528,13 +535,22 @@ def _get_ippr_status_from_pod(
                             or pod_status_requests.get("memory")
                         )
                     ) - int(parse_quantity(pod_status_requests.get("memory")))
-                    ippr_status.suggested_max_memory = max_request + diff
-                    if ippr_status.queue_resize_request(
-                        desired_memory=ippr_status.suggested_max_memory,
-                    ):
-                        logger.info(
-                            f"Apply memory suggestion for {ippr_status.cloud_instance_id} to {ippr_status.suggested_max_memory}"
+                    other_container_memory_requests = int(
+                        sum(
+                            parse_quantity(requests.get("memory", "0"))
+                            for requests in other_container_resources
                         )
+                    )
+                    ippr_status.suggested_max_memory = (
+                        max_request + diff - other_container_memory_requests
+                    )
+                if ippr_status.queue_resize_request(
+                    desired_cpu=ippr_status.suggested_max_cpu,
+                    desired_memory=ippr_status.suggested_max_memory,
+                ):
+                    logger.info(
+                        f"Apply resize suggestions for {ippr_status.cloud_instance_id} to cpu={ippr_status.suggested_max_cpu} memory={ippr_status.suggested_max_memory}"
+                    )
             break
         elif (
             condition["type"] == "PodResizeInProgress" and condition["status"] == "True"

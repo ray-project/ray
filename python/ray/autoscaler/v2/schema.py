@@ -360,7 +360,7 @@ class IPPRStatus:
             desired_memory: Optional new desired memory in bytes.
         """
         updated = False
-        if raylet_id is not None and raylet_id != self.raylet_id:
+        if raylet_id and raylet_id != self.raylet_id:
             self.raylet_id = raylet_id
             updated = True
         if desired_cpu is not None and desired_cpu != self.desired_cpu:
@@ -380,7 +380,7 @@ class IPPRStatus:
 
         Returns True if there is a Raylet id, the status is marked as "new".
         """
-        return self.raylet_id is not None and self.resized_status == "new"
+        return self.raylet_id and self.resized_status == "new"
 
     def is_in_progress(self) -> bool:
         """Whether a resize is on going or about to be issued.
@@ -412,7 +412,7 @@ class IPPRStatus:
         resource instances and then clear ``resized_at`` on the pod annotation.
         """
         return (
-            self.raylet_id is not None
+            self.raylet_id
             and self.resized_at is not None
             and self.resized_status is None
             and self.desired_cpu == self.current_cpu
