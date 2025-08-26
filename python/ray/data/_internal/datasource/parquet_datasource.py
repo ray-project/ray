@@ -828,4 +828,7 @@ def _infer_data_and_partition_columns(
         partition_columns = [
             column for column in user_specified_columns if column in partitions
         ]
+    else:
+        partition_columns = []
+
     return data_columns, partition_columns
