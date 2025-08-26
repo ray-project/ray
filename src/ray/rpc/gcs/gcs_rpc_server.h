@@ -109,11 +109,6 @@ using AutoscalerStateHandler = AutoscalerStateServiceHandler;
 namespace ray {
 namespace rpc {
 
-#define JOB_INFO_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(JobInfoGcsService,      \
-                      HANDLER,                \
-                      RayConfig::instance().gcs_max_active_rpcs_per_handler())
-
 #define ACTOR_INFO_SERVICE_RPC_HANDLER(HANDLER, MAX_ACTIVE_RPCS) \
   RPC_SERVICE_HANDLER(ActorInfoGcsService, HANDLER, MAX_ACTIVE_RPCS)
 
@@ -158,66 +153,6 @@ namespace rpc {
   reply->mutable_status()->set_code(static_cast<int>(status.code())); \
   reply->mutable_status()->set_message(status.message());             \
   send_reply_callback(ray::Status::OK(), nullptr, nullptr)
-
-class JobInfoGcsServiceHandler {
- public:
-  using JobFinishListenerCallback = std::function<void(const rpc::JobTableData &)>;
-
-  virtual ~JobInfoGcsServiceHandler() = default;
-
-  virtual void HandleAddJob(AddJobRequest request,
-                            AddJobReply *reply,
-                            SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleMarkJobFinished(MarkJobFinishedRequest request,
-                                     MarkJobFinishedReply *reply,
-                                     SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetAllJobInfo(GetAllJobInfoRequest request,
-                                   GetAllJobInfoReply *reply,
-                                   SendReplyCallback send_reply_callback) = 0;
-
-  virtual void AddJobFinishedListener(JobFinishListenerCallback listener) = 0;
-
-  virtual void HandleReportJobError(ReportJobErrorRequest request,
-                                    ReportJobErrorReply *reply,
-                                    SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetNextJobID(GetNextJobIDRequest request,
-                                  GetNextJobIDReply *reply,
-                                  SendReplyCallback send_reply_callback) = 0;
-};
-
-/// The `GrpcService` for `JobInfoGcsService`.
-class JobInfoGrpcService : public GrpcService {
- public:
-  /// Constructor.
-  ///
-  /// \param[in] handler The service handler that actually handle the requests.
-  explicit JobInfoGrpcService(instrumented_io_context &io_service,
-                              JobInfoGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler){};
-
- protected:
-  grpc::Service &GetGrpcService() override { return service_; }
-
-  void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id) override {
-    JOB_INFO_SERVICE_RPC_HANDLER(AddJob);
-    JOB_INFO_SERVICE_RPC_HANDLER(MarkJobFinished);
-    JOB_INFO_SERVICE_RPC_HANDLER(GetAllJobInfo);
-    JOB_INFO_SERVICE_RPC_HANDLER(ReportJobError);
-    JOB_INFO_SERVICE_RPC_HANDLER(GetNextJobID);
-  }
-
- private:
-  /// The grpc async service object.
-  JobInfoGcsService::AsyncService service_;
-  /// The service handler that actually handle the requests.
-  JobInfoGcsServiceHandler &service_handler_;
-};
 
 class ActorInfoGcsServiceHandler {
  public:
@@ -595,7 +530,6 @@ class InternalPubSubGrpcService : public GrpcService {
   InternalPubSubGcsServiceHandler &service_handler_;
 };
 
-using JobInfoHandler = JobInfoGcsServiceHandler;
 using ActorInfoHandler = ActorInfoGcsServiceHandler;
 using NodeResourceInfoHandler = NodeResourceInfoGcsServiceHandler;
 using PlacementGroupInfoHandler = PlacementGroupInfoGcsServiceHandler;
