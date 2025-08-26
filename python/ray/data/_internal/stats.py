@@ -567,17 +567,12 @@ class _StatsActor:
         self.update_dataset_metadata_operator_states(dataset_tag, operator_states)
 
         # Evict the oldest finished datasets to ensure the `max_stats` limit is enforced.
-        if (
-            state["state"] == DatasetState.FINISHED.name
-            or state["state"] == DatasetState.FAILED.name
-        ):
+        if state["state"] in {DatasetState.FINISHED.name, DatasetState.FAILED.name}:
             self.finished_datasets_queue.append(dataset_tag)
             while len(self.datasets) > self.max_stats and self.finished_datasets_queue:
                 tag_to_evict = self.finished_datasets_queue.popleft()
-                if tag_to_evict in self.datasets:
-                    del self.datasets[tag_to_evict]
-                if tag_to_evict in self.dataset_metadatas:
-                    del self.dataset_metadatas[tag_to_evict]
+                self.datasets.pop(tag_to_evict, None)
+                self.dataset_metadatas.pop(tag_to_evict, None)
 
     def get_datasets(self, job_id: Optional[str] = None):
         if not job_id:
