@@ -61,7 +61,7 @@ class TensorTransportMetadata:
 
     Args:
         tensor_meta: A list of tuples, each containing the shape and dtype of a tensor.
-        tensor_device: The device of the tensor. Currently, we assume all tensors in the
+        tensor_device: The device of the tensor. Currently, we require all tensors in the
         list have the same device type.
     """
 
