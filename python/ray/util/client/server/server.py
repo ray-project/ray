@@ -27,7 +27,7 @@ from ray._private.ray_constants import env_integer
 from ray._private.ray_logging import setup_logger
 from ray._private.services import canonicalize_bootstrap_address_or_die
 from ray._private.tls_utils import add_port_to_grpc_server
-from ray._common.network_utils import build_address
+from ray._common.network_utils import build_address, is_localhost
 from ray.job_config import JobConfig
 from ray.util.client.common import (
     CLIENT_SERVER_MAX_THREADS,
@@ -787,7 +787,7 @@ def serve(host: str, port: int, ray_connect_handler=None):
     ray_client_pb2_grpc.add_RayletDriverServicer_to_server(task_servicer, server)
     ray_client_pb2_grpc.add_RayletDataStreamerServicer_to_server(data_servicer, server)
     ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(logs_servicer, server)
-    if host != "127.0.0.1" and host != "localhost":
+    if not is_localhost(host):
         add_port_to_grpc_server(server, f"127.0.0.1:{port}")
     add_port_to_grpc_server(server, f"{host}:{port}")
     current_handle = ClientServerHandle(
