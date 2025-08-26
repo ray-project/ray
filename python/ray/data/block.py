@@ -343,7 +343,7 @@ class BlockAccessor:
             columns: Name of columns to convert, or None if converting all columns.
 
         Returns:
-            numpy.ndarray: The block data converted to a NumPy array format.
+            Union[numpy.ndarray, Dict[str, numpy.ndarray]]: The block data converted to a NumPy array format.
         """
         raise NotImplementedError
 
