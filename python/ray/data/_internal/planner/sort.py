@@ -40,7 +40,6 @@ def generate_sort_fn(
 
         if len(blocks) == 0:
             return (blocks, {})
-        # alexey: this was here before, do you want me to change?
         sort_key.validate_schema(schema)
 
         num_mappers = len(blocks)
