@@ -253,38 +253,6 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "grpc_service_interfaces",
-    hdrs = [
-        "grpc_service_interfaces.h",
-    ],
-    visibility = ["//visibility:private"],
-    deps = [
-        "//src/ray/common:status",
-        "//src/ray/protobuf:gcs_service_cc_grpc",
-    ],
-)
-
-ray_cc_library(
-    name = "grpc_services",
-    srcs = [
-        "grpc_services.cc",
-    ],
-    hdrs = [
-        "grpc_services.h",
-    ],
-    visibility = ["//visibility:private"],
-    deps = [
-        ":grpc_service_interfaces",
-        "//src/ray/common:asio",
-        "//src/ray/common:id",
-        "//src/ray/protobuf:gcs_service_cc_grpc",
-        "//src/ray/rpc:grpc_server",
-        "//src/ray/rpc:server_call",
-        "@com_github_grpc_grpc//:grpc++",
-    ],
-)
-
-ray_cc_library(
     name = "gcs_server_lib",
     srcs = [
         "gcs_actor_manager.cc",
