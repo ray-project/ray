@@ -64,6 +64,32 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "gcs_node_manager",
+    srcs = ["gcs_node_manager.cc"],
+    hdrs = ["gcs_node_manager.h"],
+    implementation_deps = [
+        "//src/ray/gcs:gcs_pb_util",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+    deps = [
+        ":gcs_init_data",
+        ":gcs_table_storage",
+        ":grpc_service_interfaces",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/common:ray_config",
+        "//src/ray/gcs/pubsub:gcs_pub_sub_lib",
+        "//src/ray/protobuf:gcs_service_cc_proto",
+        "//src/ray/protobuf:ray_syncer_cc_proto",
+        "//src/ray/rpc:node_manager_client",
+        "//src/ray/util:event",
+        "//src/ray/util:logging",
+        "//src/ray/util:time",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
     name = "gcs_usage_stats_client",
     srcs = ["usage_stats_client.cc"],
     hdrs = ["usage_stats_client.h"],
@@ -194,12 +220,43 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "grpc_service_interfaces",
+    hdrs = [
+        "grpc_service_interfaces.h",
+    ],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//src/ray/common:status",
+        "//src/ray/protobuf:gcs_service_cc_grpc",
+    ],
+)
+
+ray_cc_library(
+    name = "grpc_services",
+    srcs = [
+        "grpc_services.cc",
+    ],
+    hdrs = [
+        "grpc_services.h",
+    ],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":grpc_service_interfaces",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/protobuf:gcs_service_cc_grpc",
+        "//src/ray/rpc:grpc_server",
+        "//src/ray/rpc:server_call",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+ray_cc_library(
     name = "gcs_server_lib",
     srcs = [
         "gcs_actor_manager.cc",
         "gcs_actor_scheduler.cc",
         "gcs_autoscaler_state_manager.cc",
-        "gcs_node_manager.cc",
         "gcs_placement_group_mgr.cc",
         "gcs_placement_group_scheduler.cc",
         "gcs_resource_manager.cc",
@@ -209,7 +266,6 @@ ray_cc_library(
         "gcs_actor_manager.h",
         "gcs_actor_scheduler.h",
         "gcs_autoscaler_state_manager.h",
-        "gcs_node_manager.h",
         "gcs_placement_group_mgr.h",
         "gcs_placement_group_scheduler.h",
         "gcs_resource_manager.h",
@@ -221,6 +277,7 @@ ray_cc_library(
         ":gcs_init_data",
         ":gcs_job_manager",
         ":gcs_kv_manager",
+        ":gcs_node_manager",
         ":gcs_pubsub_handler",
         ":gcs_runtime_env_handler",
         ":gcs_server_io_context_policy",
@@ -230,6 +287,8 @@ ray_cc_library(
         ":gcs_task_manager",
         ":gcs_usage_stats_client",
         ":gcs_worker_manager",
+        ":grpc_service_interfaces",
+        ":grpc_services",
         "//src/ray/gcs/pubsub:gcs_pub_sub_lib",
         "//src/ray/gcs/store_client",
         "//src/ray/gcs/store_client:in_memory_store_client",
