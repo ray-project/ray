@@ -229,9 +229,9 @@ ray_cc_library(
     deps = [
         "//src/ray/common:id",
         "//src/ray/common:task_common",
+        "//src/ray/protobuf:gcs_service_cc_proto",
         "//src/ray/util:counter_map",
         "//src/ray/util:time",
-        "//src/ray/protobuf:gcs_service_cc_proto",
     ],
 )
 
@@ -248,9 +248,9 @@ ray_cc_library(
         "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/common:task_common",
-        "//src/ray/raylet_client:raylet_client_lib",
         "//src/ray/raylet/scheduling:cluster_resource_scheduler",
         "//src/ray/raylet/scheduling:scheduling_context",
+        "//src/ray/raylet_client:raylet_client_lib",
         "//src/ray/rpc:core_worker_client",
         "//src/ray/rpc:node_manager_client",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -311,13 +311,13 @@ ray_cc_library(
         "gcs_server.h",
     ],
     deps = [
-        ":gcs_placement_group",
         ":gcs_function_manager",
         ":gcs_health_check_manager",
         ":gcs_init_data",
         ":gcs_job_manager",
         ":gcs_kv_manager",
         ":gcs_node_manager",
+        ":gcs_placement_group",
         ":gcs_pubsub_handler",
         ":gcs_runtime_env_handler",
         ":gcs_server_io_context_policy",
