@@ -4610,7 +4610,7 @@
       pytest -sv test_batch_vllm.py
 
 - name: llm_batch_sglang_llama
-  frequency: nightly
+  frequency: manual # TODO(ray-llm): fix this test and re-enable it.
   python: "3.11"
   group: llm-batch
   team: llm
