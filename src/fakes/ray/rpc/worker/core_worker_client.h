@@ -17,6 +17,8 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
+namespace ray {
+
 class FakeCoreWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
   void PushNormalTask(std::unique_ptr<rpc::PushTaskRequest> request,
@@ -52,3 +54,5 @@ class FakeCoreWorkerClient : public rpc::CoreWorkerClientInterface {
   std::list<rpc::ClientCallback<rpc::PushTaskReply>> callbacks_ ABSL_GUARDED_BY(mutex_);
   absl::Mutex mutex_;
 };
+
+} // namespace ray
