@@ -196,6 +196,7 @@ class LiteralExpr(Expr):
 
     Example:
         >>> from ray.data.expressions import lit
+        >>> import numpy as np
         >>> # Create a literal value
         >>> five = lit(5) # Creates LiteralExpr(value=5)
         >>> name = lit("John") # Creates LiteralExpr(value="John")
