@@ -25,6 +25,30 @@ class LogLevel(Enum):
     WARNING = "WARNING"
     ERROR = "ERROR"
 
+
+class SQLDialect(Enum):
+    """SQL dialects supported by the Ray Data SQL engine.
+
+    Attributes:
+        DUCKDB: DuckDB SQL dialect (default, most permissive).
+        POSTGRES: PostgreSQL SQL dialect.
+        MYSQL: MySQL SQL dialect.
+        SQLITE: SQLite SQL dialect.
+        SPARK: Apache Spark SQL dialect.
+        BIGQUERY: Google BigQuery SQL dialect.
+        SNOWFLAKE: Snowflake SQL dialect.
+        REDSHIFT: Amazon Redshift SQL dialect.
+    """
+
+    DUCKDB = "duckdb"
+    POSTGRES = "postgres"
+    MYSQL = "mysql"
+    SQLITE = "sqlite"
+    SPARK = "spark"
+    BIGQUERY = "bigquery"
+    SNOWFLAKE = "snowflake"
+    REDSHIFT = "redshift"
+
     def to_logging_level(self) -> int:
         """Convert to Python logging level.
 
@@ -49,6 +73,7 @@ class SQLConfig:
 
     Attributes:
         log_level: Logging level for SQL operations.
+        dialect: SQL dialect to use for parsing and validation.
         case_sensitive: Whether column and table names are case-sensitive.
         strict_mode: Whether to enable strict error checking.
         enable_optimization: Whether to enable query optimization.
@@ -56,10 +81,15 @@ class SQLConfig:
         enable_predicate_pushdown: Whether to push WHERE clauses down to data sources.
         enable_projection_pushdown: Whether to push SELECT columns down to data sources.
         query_timeout_seconds: Maximum time allowed for query execution.
+        enable_sqlglot_optimizer: Whether to enable SQLGlot query optimization.
 
     Examples:
         Basic configuration:
             >>> config = SQLConfig(log_level=LogLevel.DEBUG, case_sensitive=False)
+            >>> engine = RaySQL(config)
+
+        Dialect configuration:
+            >>> config = SQLConfig(dialect=SQLDialect.POSTGRES, strict_mode=True)
             >>> engine = RaySQL(config)
 
         Performance tuning:
@@ -71,6 +101,7 @@ class SQLConfig:
     """
 
     log_level: LogLevel = LogLevel.INFO
+    dialect: SQLDialect = SQLDialect.DUCKDB
     case_sensitive: bool = True
     strict_mode: bool = False
     enable_optimization: bool = True
@@ -78,6 +109,7 @@ class SQLConfig:
     enable_predicate_pushdown: bool = True
     enable_projection_pushdown: bool = True
     query_timeout_seconds: Optional[int] = None
+    enable_sqlglot_optimizer: bool = False
 
     def __post_init__(self):
         """Validate configuration parameters."""

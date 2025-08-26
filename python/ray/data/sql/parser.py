@@ -217,7 +217,12 @@ class SQLParser:
             ValueError: If parsing fails or unsupported features are found.
         """
         try:
-            ast = sqlglot.parse_one(sql, read="duckdb")
+            # Use the configured dialect from config
+            dialect = getattr(self.config, "dialect", "duckdb")
+            if hasattr(dialect, "value"):
+                dialect = dialect.value
+
+            ast = sqlglot.parse_one(sql, read=dialect)
             if getattr(self.config, "enable_sqlglot_optimizer", False):
                 before = ast
                 ast = sqlglot_optimize(ast) if sqlglot_optimize else ast

@@ -1,304 +1,447 @@
-"""
-Expression compilation for Ray Data SQL API.
+"""Expression compilation for Ray Data SQL API.
 
-This module provides the ExpressionCompiler class for converting SQLGlot
-expressions into Python callables that can evaluate expressions against row data.
+This module compiles SQLGlot expressions into executable Python functions
+that can be used with Ray Dataset operations.
 """
 
-from typing import Any, Callable, Dict
+import operator
+from typing import Any, Callable, Dict, Mapping
 
 from sqlglot import exp
 
-from ray.data.sql.config import SQLConfig
-from ray.data.sql.utils import (
-    parse_literal_value,
-    safe_divide,
-    safe_get_column,
-    setup_logger,
-)
+from ray.data.sql.exceptions import SchemaError, UnsupportedOperationError
 
 
 class ExpressionCompiler:
-    """Compiles SQLGlot expressions into Python callables for row evaluation.
+    """Compiles SQLGlot expressions into executable Python functions.
 
-    The ExpressionCompiler is a critical component that bridges SQL expressions
-    and Ray Dataset operations. It takes SQLGlot AST expressions and converts them
-    into Python lambda functions that can be applied to dataset rows.
-
-    This compiler handles a wide range of SQL expression types:
-    - Column references (name, table.name)
-    - Literal values (strings, numbers, booleans, null)
-    - Arithmetic operations (+, -, *, /, %)
-    - Comparison operations (=, <>, <, >, <=, >=)
-    - Logical operations (AND, OR, NOT)
-    - String functions (UPPER, LOWER, LENGTH, etc.)
-    - Conditional expressions (CASE WHEN)
-    - Null checking (IS NULL, IS NOT NULL)
-
-    The compiled functions operate on row dictionaries and return the computed
-    values, enabling efficient distributed expression evaluation in Ray.
+    This class converts SQL expressions into Python callables that can be
+    used with Ray Dataset operations like map(), filter(), and aggregate().
     """
 
-    def __init__(self, config: SQLConfig):
-        """Initialize the expression compiler with configuration.
+    # Comparison operators mapping
+    COMPARISON_OPS = {
+        exp.EQ: operator.eq,
+        exp.NEQ: operator.ne,
+        exp.GT: operator.gt,
+        exp.LT: operator.lt,
+        exp.GTE: operator.ge,
+        exp.LTE: operator.le,
+        exp.Is: lambda a, b: a is b,
+        exp.Null: lambda a, b: a is None,
+    }
 
-        Args:
-            config: SQL configuration affecting compilation behavior (case sensitivity, etc.).
-        """
-        # Store configuration for expression compilation behavior
-        self.config = config
+    # Arithmetic operators mapping
+    ARITHMETIC_OPS = {
+        exp.Add: operator.add,
+        exp.Sub: operator.sub,
+        exp.Mul: operator.mul,
+        exp.Div: lambda a, b: float(a) / float(b) if b != 0 else None,
+        exp.Mod: operator.mod,
+    }
 
-        # Logger for debugging expression compilation issues
-        self._logger = setup_logger("ExpressionCompiler")
+    # Logical operators mapping
+    LOGICAL_OPS = {
+        exp.And: lambda a, b: bool(a and b),
+        exp.Or: lambda a, b: bool(a or b),
+        exp.Not: operator.not_,
+    }
 
-    def compile(self, expr: exp.Expression) -> Callable[[Dict[str, Any]], Any]:
-        """Compile a SQLGlot expression into a Python callable function.
+    # String functions mapping
+    STRING_FUNCTIONS = {
+        exp.Upper: str.upper,
+        exp.Lower: str.lower,
+    }
 
-        This is the main public interface for expression compilation. It takes
-        any SQLGlot expression and returns a function that can evaluate that
-        expression against row data.
+    # Date/time functions mapping
+    DATETIME_FUNCTIONS = {
+        exp.Year: lambda d: d.year if hasattr(d, "year") else None,
+        exp.Month: lambda d: d.month if hasattr(d, "month") else None,
+        exp.Day: lambda d: d.day if hasattr(d, "day") else None,
+    }
 
-        Args:
-            expr: SQLGlot expression AST node to compile.
-
-        Returns:
-            Python callable that takes a row dictionary and returns the computed value.
-        """
-        return self._compile_expression(expr)
-
-    def _compile_expression(
-        self, expr: exp.Expression
-    ) -> Callable[[Dict[str, Any]], Any]:
-        """Main expression compilation method with comprehensive coverage.
-
-        This method dispatches different expression types to specialized compilation
-        methods. It handles the full spectrum of SQL expressions by pattern matching
-        on SQLGlot AST node types and calling appropriate compilation handlers.
+    @classmethod
+    def compile(cls, expr: exp.Expression) -> Callable[[Mapping[str, Any]], Any]:
+        """Compile a SQLGlot expression into a Python function.
 
         Args:
             expr: SQLGlot expression to compile.
 
         Returns:
-            Callable function that evaluates the expression on row data.
+            Callable function that takes a row dict and returns the computed value.
+
+        Raises:
+            UnsupportedOperationError: If the expression type is not supported.
         """
-        # Column reference (e.g., "name", "users.id")
+        expr_type = type(expr)
+
+        # Column references
         if isinstance(expr, exp.Column):
-            return self._compile_column(expr)
+            col_name = str(expr.name)
+            return lambda row: row.get(col_name)
 
-        # Literal values (strings, numbers, booleans, null)
-        if self._is_literal(expr):
-            return self._compile_literal(expr)
+        # Table-qualified column references
+        if isinstance(expr, exp.Column) and expr.table:
+            col_name = str(expr.name)
+            return lambda row: row.get(col_name)  # For now, ignore table qualification
 
-        # Arithmetic operations (+, -, *, /, %)
-        if self._is_arithmetic_operation(expr):
-            return self._compile_arithmetic(expr)
+        # Literal values
+        if isinstance(expr, exp.Literal):
+            value = expr.this
+            return lambda _: value
 
-        # Comparison operations (=, <>, <, >, <=, >=)
-        if self._is_comparison_operation(expr):
-            return self._compile_comparison(expr)
+        # Comparison operators
+        if expr_type in cls.COMPARISON_OPS:
+            return cls._compile_comparison(expr)
 
-        # Logical operations (AND, OR)
-        if self._is_logical_operation(expr):
-            return self._compile_logical(expr)
+        # Arithmetic operators
+        if expr_type in cls.ARITHMETIC_OPS:
+            return cls._compile_arithmetic(expr)
 
-        # String functions (UPPER, LOWER, LENGTH, etc.)
-        if self._is_string_function(expr):
-            return self._compile_string_function(expr)
+        # Logical operators
+        if expr_type in cls.LOGICAL_OPS:
+            return cls._compile_logical(expr)
 
-        # CASE WHEN expressions (conditional logic)
-        if isinstance(expr, exp.Case):
-            return self._compile_case(expr)
+        # String functions
+        if expr_type in cls.STRING_FUNCTIONS:
+            return cls._compile_string_function(expr)
 
-        # IS NULL / IS NOT NULL checks
-        if isinstance(expr, exp.Is):
-            return self._compile_is_null(expr)
+        # Date/time functions
+        if expr_type in cls.DATETIME_FUNCTIONS:
+            return cls._compile_datetime_function(expr)
 
-        # NOT expressions (logical negation)
-        if isinstance(expr, exp.Not):
-            # Compile the inner expression and negate its result
-            inner = self._compile_expression(expr.this)
-            return lambda row: not inner(row)
+        # Aggregate functions
+        if expr_type in {exp.Count, exp.Sum, exp.Avg, exp.Min, exp.Max}:
+            return cls._compile_aggregate(expr)
 
-        # Parenthesized expressions (just compile the inner expression)
+        # Special expressions
+        if isinstance(expr, exp.Between):
+            return cls._compile_between(expr)
+
+        if isinstance(expr, exp.In):
+            return cls._compile_in(expr)
+
+        if isinstance(expr, exp.Like):
+            return cls._compile_like(expr)
+
+        if isinstance(expr, exp.Cast):
+            return cls._compile_cast(expr)
+
+        # Parenthesized expressions
         if isinstance(expr, exp.Paren):
-            return self._compile_expression(expr.this)
+            return cls.compile(expr.this)
 
-        # Fallback for unsupported expressions - log warning and return null function
-        self._logger.warning(f"Unsupported expression type: {type(expr).__name__}")
-        return lambda row: None
-
-    def _compile_column(self, expr: exp.Column) -> Callable[[Dict[str, Any]], Any]:
-        """Compile column reference expressions."""
-        col_name = str(expr.name)
-        # Handle qualified column names (table.column) by extracting just the column part
-        if "." in col_name:
-            col_name = col_name.split(".")[-1]
-        return lambda row: safe_get_column(row, col_name, self.config.case_sensitive)
-
-    def _is_literal(self, expr: exp.Expression) -> bool:
-        """Check if expression is a literal value."""
-        return isinstance(expr, (exp.Literal, exp.Boolean)) or (
-            hasattr(exp, "Null") and isinstance(expr, exp.Null)
+        # Unsupported expression
+        raise UnsupportedOperationError(
+            f"Expression type {expr_type.__name__}",
+            suggestion="Check the documentation for supported SQL constructs",
         )
 
-    def _compile_literal(self, expr: exp.Expression) -> Callable[[Dict[str, Any]], Any]:
-        """Compile literal values."""
-        if isinstance(expr, exp.Literal):
-            value = parse_literal_value(expr)
-            return lambda row: value
-        elif hasattr(exp, "Boolean") and isinstance(expr, exp.Boolean):
-            value = str(expr.name).lower() == "true"
-            return lambda row: value
-        elif hasattr(exp, "Null") and isinstance(expr, exp.Null):
-            return lambda row: None
-        else:
-            raise NotImplementedError(
-                f"Unsupported literal type: {type(expr).__name__}"
-            )
-
-    def _is_arithmetic_operation(self, expr: exp.Expression) -> bool:
-        """Check if expression is an arithmetic operation."""
-        return isinstance(expr, (exp.Add, exp.Sub, exp.Mul, exp.Div, exp.Mod))
-
-    def _compile_arithmetic(
-        self, expr: exp.Expression
-    ) -> Callable[[Dict[str, Any]], Any]:
-        """Compile arithmetic operations."""
-        left_func = self._compile_expression(expr.left)
-        right_func = self._compile_expression(expr.right)
-
-        if isinstance(expr, exp.Add):
-            return lambda row: left_func(row) + right_func(row)
-        elif isinstance(expr, exp.Sub):
-            return lambda row: left_func(row) - right_func(row)
-        elif isinstance(expr, exp.Mul):
-            return lambda row: left_func(row) * right_func(row)
-        elif isinstance(expr, exp.Div):
-            return lambda row: safe_divide(left_func(row), right_func(row))
-        elif isinstance(expr, exp.Mod):
-            return lambda row: (
-                left_func(row) % right_func(row) if right_func(row) != 0 else None
-            )
-        else:
-            raise NotImplementedError(
-                f"Unsupported arithmetic operation: {type(expr).__name__}"
-            )
-
-    def _is_comparison_operation(self, expr: exp.Expression) -> bool:
-        """Check if expression is a comparison operation."""
-        return isinstance(expr, (exp.EQ, exp.NEQ, exp.GT, exp.GTE, exp.LT, exp.LTE))
-
+    @classmethod
     def _compile_comparison(
-        self, expr: exp.Expression
-    ) -> Callable[[Dict[str, Any]], Any]:
-        """Compile comparison operations."""
-        left_func = self._compile_expression(expr.left)
-        right_func = self._compile_expression(expr.right)
+        cls, expr: exp.Expression
+    ) -> Callable[[Mapping[str, Any]], bool]:
+        """Compile comparison expressions.
 
-        if isinstance(expr, exp.EQ):
-            return lambda row: left_func(row) == right_func(row)
-        elif isinstance(expr, exp.NEQ):
-            return lambda row: left_func(row) != right_func(row)
-        elif isinstance(expr, exp.GT):
-            return lambda row: left_func(row) > right_func(row)
-        elif isinstance(expr, exp.GTE):
-            return lambda row: left_func(row) >= right_func(row)
-        elif isinstance(expr, exp.LT):
-            return lambda row: left_func(row) < right_func(row)
-        elif isinstance(expr, exp.LTE):
-            return lambda row: left_func(row) <= right_func(row)
+        Args:
+            expr: Comparison expression.
+
+        Returns:
+            Function that performs the comparison.
+        """
+        left_func = cls.compile(expr.left)
+        right_func = cls.compile(expr.right)
+        op = cls.COMPARISON_OPS[type(expr)]
+
+        def compare_func(row: Mapping[str, Any]) -> bool:
+            left_val = left_func(row)
+            right_val = right_func(row)
+
+            # Handle NULL comparisons
+            if left_val is None or right_val is None:
+                return False
+
+            try:
+                return op(left_val, right_val)
+            except TypeError:
+                raise SchemaError(
+                    f"Cannot compare {type(left_val).__name__} and {type(right_val).__name__}"
+                )
+
+        return compare_func
+
+    @classmethod
+    def _compile_arithmetic(
+        cls, expr: exp.Expression
+    ) -> Callable[[Mapping[str, Any]], Any]:
+        """Compile arithmetic expressions.
+
+        Args:
+            expr: Arithmetic expression.
+
+        Returns:
+            Function that performs the arithmetic operation.
+        """
+        left_func = cls.compile(expr.left)
+        right_func = cls.compile(expr.right)
+        op = cls.ARITHMETIC_OPS[type(expr)]
+
+        def arithmetic_func(row: Mapping[str, Any]) -> Any:
+            left_val = left_func(row)
+            right_val = right_func(row)
+
+            # Handle NULL values
+            if left_val is None or right_val is None:
+                return None
+
+            try:
+                return op(left_val, right_val)
+            except (TypeError, ValueError, ZeroDivisionError) as e:
+                if isinstance(expr, exp.Div) and right_val == 0:
+                    return None  # Division by zero returns NULL
+                raise SchemaError(f"Arithmetic error: {str(e)}")
+
+        return arithmetic_func
+
+    @classmethod
+    def _compile_logical(
+        cls, expr: exp.Expression
+    ) -> Callable[[Mapping[str, Any]], bool]:
+        """Compile logical expressions.
+
+        Args:
+            expr: Logical expression.
+
+        Returns:
+            Function that performs the logical operation.
+        """
+        if isinstance(expr, exp.Not):
+            func = cls.compile(expr.this)
+            op = cls.LOGICAL_OPS[type(expr)]
+
+            def not_func(row: Mapping[str, Any]) -> bool:
+                val = func(row)
+                return op(val)
+
+            return not_func
         else:
-            raise NotImplementedError(
-                f"Unsupported comparison operation: {type(expr).__name__}"
-            )
+            left_func = cls.compile(expr.left)
+            right_func = cls.compile(expr.right)
+            op = cls.LOGICAL_OPS[type(expr)]
 
-    def _is_logical_operation(self, expr: exp.Expression) -> bool:
-        """Check if expression is a logical operation."""
-        return isinstance(expr, (exp.And, exp.Or))
+            def logical_func(row: Mapping[str, Any]) -> bool:
+                left_val = left_func(row)
+                right_val = right_func(row)
+                return op(left_val, right_val)
 
-    def _compile_logical(self, expr: exp.Expression) -> Callable[[Dict[str, Any]], Any]:
-        """Compile logical operations."""
-        if isinstance(expr, exp.And):
-            left_func = self._compile_expression(expr.left)
-            right_func = self._compile_expression(expr.right)
-            return lambda row: left_func(row) and right_func(row)
-        elif isinstance(expr, exp.Or):
-            left_func = self._compile_expression(expr.left)
-            right_func = self._compile_expression(expr.right)
-            return lambda row: left_func(row) or right_func(row)
-        else:
-            raise NotImplementedError(
-                f"Unsupported logical operation: {type(expr).__name__}"
-            )
+            return logical_func
 
-    def _is_string_function(self, expr: exp.Expression) -> bool:
-        """Check if expression is a string function."""
-        return isinstance(expr, (exp.Upper, exp.Lower))
-
+    @classmethod
     def _compile_string_function(
-        self, expr: exp.Expression
-    ) -> Callable[[Dict[str, Any]], Any]:
-        """Compile string functions."""
-        if isinstance(expr, exp.Upper):
-            operand_func = self._compile_expression(expr.this)
-            return lambda row: (
-                str(operand_func(row)).upper()
-                if operand_func(row) is not None
-                else None
-            )
-        elif isinstance(expr, exp.Lower):
-            operand_func = self._compile_expression(expr.this)
-            return lambda row: (
-                str(operand_func(row)).lower()
-                if operand_func(row) is not None
-                else None
-            )
+        cls, expr: exp.Expression
+    ) -> Callable[[Mapping[str, Any]], Any]:
+        """Compile string function expressions.
+
+        Args:
+            expr: String function expression.
+
+        Returns:
+            Function that performs the string operation.
+        """
+        func_type = type(expr)
+        func = cls.STRING_FUNCTIONS[func_type]
+
+        if hasattr(expr, "this"):
+            arg_func = cls.compile(expr.this)
+
+            def string_func(row: Mapping[str, Any]) -> Any:
+                arg = arg_func(row)
+                if arg is None:
+                    return None
+                return func(arg)
+
+            return string_func
         else:
-            raise NotImplementedError(
-                f"Unsupported string function: {type(expr).__name__}"
-            )
+            return lambda _: None
 
-    def _compile_case(self, case_expr: exp.Case) -> Callable[[Dict[str, Any]], Any]:
-        """Compile a CASE expression into a Python function."""
-        conditions = []
-        for when_clause in case_expr.args.get("ifs", []):
-            condition_func = self._compile_expression(when_clause.this)
-            value_func = self._compile_expression(when_clause.args["true"])
-            conditions.append((condition_func, value_func))
+    @classmethod
+    def _compile_datetime_function(
+        cls, expr: exp.Expression
+    ) -> Callable[[Mapping[str, Any]], Any]:
+        """Compile date/time function expressions.
 
-        else_func = None
-        if case_expr.args.get("default"):
-            else_func = self._compile_expression(case_expr.args["default"])
+        Args:
+            expr: Date/time function expression.
 
-        def evaluate_case(row: Dict[str, Any]) -> Any:
-            for condition_func, value_func in conditions:
-                if condition_func(row):
-                    return value_func(row)
-            return else_func(row) if else_func else None
+        Returns:
+            Function that performs the date/time operation.
+        """
+        func_type = type(expr)
+        func = cls.DATETIME_FUNCTIONS[func_type]
 
-        return evaluate_case
+        if hasattr(expr, "this"):
+            arg_func = cls.compile(expr.this)
 
-    def _compile_is_null(self, is_expr: exp.Is) -> Callable[[Dict[str, Any]], Any]:
-        """Compile IS NULL / IS NOT NULL expressions."""
-        operand_func = self._compile_expression(is_expr.this)
-        is_not = bool(is_expr.args.get("not"))
+            def datetime_func(row: Mapping[str, Any]) -> Any:
+                arg = arg_func(row)
+                if arg is None:
+                    return None
+                return func(arg)
 
-        def evaluate_is_null(row: Dict[str, Any]) -> bool:
-            value = operand_func(row)
-            is_null = value is None
-            return not is_null if is_not else is_null
+            return datetime_func
+        else:
+            return lambda _: None
 
-        return evaluate_is_null
+    @classmethod
+    def _compile_aggregate(
+        cls, expr: exp.Expression
+    ) -> Callable[[Mapping[str, Any]], Any]:
+        """Compile aggregate function expressions.
 
-    # Backward compatibility method
-    def _compile_lambda(self, expr: exp.Expression):
-        """Legacy method for backward compatibility."""
-        return self._compile_expression(expr)
+        Args:
+            expr: Aggregate function expression.
 
-    def _parse_literal(self, literal: exp.Literal) -> Any:
-        """Legacy method for backward compatibility."""
-        return parse_literal_value(literal)
+        Returns:
+            Function that returns the aggregate function name for later processing.
+        """
+        func_name = type(expr).__name__.lower()
 
-    def _safe_divide(self, a: Any, b: Any) -> float:
-        """Legacy method for backward compatibility."""
-        return safe_divide(a, b)
+        if hasattr(expr, "this"):
+            arg_func = cls.compile(expr.this)
+
+            def aggregate_func(row: Mapping[str, Any]) -> Dict[str, Any]:
+                arg = arg_func(row)
+                return {"function": func_name, "argument": arg, "type": "aggregate"}
+
+            return aggregate_func
+        else:
+            return lambda _: {
+                "function": func_name,
+                "argument": None,
+                "type": "aggregate",
+            }
+
+    @classmethod
+    def _compile_between(cls, expr: exp.Between) -> Callable[[Mapping[str, Any]], bool]:
+        """Compile BETWEEN expressions.
+
+        Args:
+            expr: BETWEEN expression.
+
+        Returns:
+            Function that checks if a value is between two bounds.
+        """
+        value_func = cls.compile(expr.this)
+        low_func = cls.compile(expr.args.get("low"))
+        high_func = cls.compile(expr.args.get("high"))
+
+        def between_func(row: Mapping[str, Any]) -> bool:
+            value = value_func(row)
+            low = low_func(row)
+            high = high_func(row)
+
+            if any(v is None for v in [value, low, high]):
+                return False
+
+            try:
+                return low <= value <= high
+            except TypeError:
+                raise SchemaError("Cannot compare values in BETWEEN clause")
+
+        return between_func
+
+    @classmethod
+    def _compile_in(cls, expr: exp.In) -> Callable[[Mapping[str, Any]], bool]:
+        """Compile IN expressions.
+
+        Args:
+            expr: IN expression.
+
+        Returns:
+            Function that checks if a value is in a list.
+        """
+        value_func = cls.compile(expr.this)
+
+        # Extract the list of values from the IN clause
+        if hasattr(expr, "expressions"):
+            values = [cls.compile(e) for e in expr.expressions]
+        else:
+            values = []
+
+        def in_func(row: Mapping[str, Any]) -> bool:
+            value = value_func(row)
+            if value is None:
+                return False
+
+            try:
+                return any(val_func(row) == value for val_func in values)
+            except TypeError:
+                return False
+
+        return in_func
+
+    @classmethod
+    def _compile_like(cls, expr: exp.Like) -> Callable[[Mapping[str, Any]], bool]:
+        """Compile LIKE expressions.
+
+        Args:
+            expr: LIKE expression.
+
+        Returns:
+            Function that performs pattern matching.
+        """
+        value_func = cls.compile(expr.this)
+        pattern_func = cls.compile(expr.args.get("pattern"))
+
+        def like_func(row: Mapping[str, Any]) -> bool:
+            value = value_func(row)
+            pattern = pattern_func(row)
+
+            if value is None or pattern is None:
+                return False
+
+            try:
+                # Convert SQL LIKE pattern to regex
+                import re
+
+                regex_pattern = pattern.replace("%", ".*").replace("_", ".")
+                return bool(re.match(regex_pattern, str(value)))
+            except (TypeError, re.error):
+                return False
+
+        return like_func
+
+    @classmethod
+    def _compile_cast(cls, expr: exp.Cast) -> Callable[[Mapping[str, Any]], Any]:
+        """Compile CAST expressions.
+
+        Args:
+            expr: CAST expression.
+
+        Returns:
+            Function that performs type casting.
+        """
+        value_func = cls.compile(expr.this)
+        target_type = str(expr.args.get("to")).upper()
+
+        def cast_func(row: Mapping[str, Any]) -> Any:
+            value = value_func(row)
+            if value is None:
+                return None
+
+            try:
+                if target_type == "INTEGER" or target_type == "INT":
+                    return int(value)
+                elif target_type == "FLOAT" or target_type == "DOUBLE":
+                    return float(value)
+                elif target_type == "STRING" or target_type == "VARCHAR":
+                    return str(value)
+                elif target_type == "BOOLEAN" or target_type == "BOOL":
+                    return bool(value)
+                else:
+                    # For unsupported types, return the original value
+                    return value
+            except (ValueError, TypeError):
+                return None
+
+        return cast_func
