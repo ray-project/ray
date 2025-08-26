@@ -1918,9 +1918,6 @@ cdef void execute_task(
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
                 actor_id = core_worker.get_actor_id()
                 actor = worker.actors[actor_id]
-                class_name = actor.__class__.__name__
-                actor_title = f"{class_name}({args!r}, {kwargs!r})"
-                core_worker.set_actor_title(actor_title.encode("utf-8"))
 
             worker.record_task_log_start(task_id, attempt_number)
 
@@ -2972,47 +2969,6 @@ cdef class GcsLogSubscriber(_GcsSubscriber):
         return result
 
 
-# This class should only be used for tests
-cdef class _TestOnly_GcsActorSubscriber(_GcsSubscriber):
-    """Subscriber to actor updates. Thread safe.
-
-    Usage example:
-        subscriber = GcsActorSubscriber()
-        # Subscribe to the actor channel.
-        subscriber.subscribe()
-        ...
-        while running:
-            actor_data = subscriber.poll()
-            ......
-        # Unsubscribe from the channel.
-        subscriber.close()
-    """
-
-    def __init__(self, address, worker_id=None):
-        self._construct(address, GCS_ACTOR_CHANNEL, worker_id)
-
-    def poll(self, timeout=None):
-        """Polls for new actor messages.
-
-        Returns:
-            A byte string of function key.
-            None if polling times out or subscriber closed.
-        """
-        cdef:
-            CActorTableData actor_data
-            c_string key_id
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-
-        with nogil:
-            check_status(self.inner.get().PollActor(
-                &key_id, timeout_ms, &actor_data))
-
-        info = ActorTableData.FromString(
-            actor_data.SerializeAsString())
-
-        return [(key_id, info)]
-
-
 cdef class CoreWorker:
 
     def __cinit__(self, worker_type, store_socket, raylet_socket,
@@ -3235,9 +3191,6 @@ cdef class CoreWorker:
 
     def set_webui_display(self, key, message):
         CCoreWorkerProcess.GetCoreWorker().SetWebuiDisplay(key, message)
-
-    def set_actor_title(self, title):
-        CCoreWorkerProcess.GetCoreWorker().SetActorTitle(title)
 
     def set_actor_repr_name(self, repr_name):
         CCoreWorkerProcess.GetCoreWorker().SetActorReprName(repr_name)
@@ -3927,7 +3880,6 @@ cdef class CoreWorker:
                             c_vector[unordered_map[c_string, double]] bundles,
                             c_string strategy,
                             c_bool is_detached,
-                            double max_cpu_fraction_per_node,
                             soft_target_node_id,
                             c_vector[unordered_map[c_string, c_string]] bundle_label_selector):
         cdef:
@@ -3959,7 +3911,6 @@ cdef class CoreWorker:
                                 c_strategy,
                                 bundles,
                                 is_detached,
-                                max_cpu_fraction_per_node,
                                 c_soft_target_node_id,
                                 bundle_label_selector),
                             &c_placement_group_id))

@@ -42,18 +42,12 @@ def cli():
     help="The name of the dependency set to load. If not specified, all dependency sets will be loaded.",
 )
 @click.option(
-    "--build-arg-set",
-    default=None,
-    help="The name of the build arg set to use. If not specified, a depset matching the name with no build arg set will be loaded.",
-)
-@click.option(
     "--uv-cache-dir", default=None, help="The directory to cache uv dependencies"
 )
 def build(
     config_path: str,
     workspace_dir: Optional[str],
     name: Optional[str],
-    build_arg_set: Optional[str],
     uv_cache_dir: Optional[str],
 ):
     """
@@ -274,8 +268,11 @@ def _override_uv_flags(flags: List[str], args: List[str]) -> List[str]:
 def _uv_binary():
     r = runfiles.Create()
     system = platform.system()
-    if system != "Linux" or platform.processor() != "x86_64":
-        raise RuntimeError(
-            f"Unsupported platform/processor: {system}/{platform.processor()}"
-        )
-    return r.Rlocation("uv_x86_64/uv-x86_64-unknown-linux-gnu/uv")
+    processor = platform.processor()
+
+    if system == "Linux" and processor == "x86_64":
+        return r.Rlocation("uv_x86_64-linux/uv-x86_64-unknown-linux-gnu/uv")
+    elif system == "Darwin" and (processor == "arm" or processor == "aarch64"):
+        return r.Rlocation("uv_aarch64-darwin/uv-aarch64-apple-darwin/uv")
+    else:
+        raise RuntimeError(f"Unsupported platform/processor: {system}/{processor}")
