@@ -144,6 +144,7 @@ ray_cc_library(
     srcs = ["gcs_ray_event_converter.cc"],
     hdrs = ["gcs_ray_event_converter.h"],
     deps = [
+        "//src/ray/common:grpc_util",
         "//src/ray/common:id",
         "//src/ray/protobuf:events_event_aggregator_service_cc_proto",
         "//src/ray/protobuf:gcs_service_cc_proto",

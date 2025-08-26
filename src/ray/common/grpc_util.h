@@ -243,4 +243,9 @@ inline google::protobuf::Timestamp AbslTimeNanosToProtoTimestamp(int64_t nanos) 
   return timestamp;
 }
 
+inline int64_t ProtoTimestampToAbslTimeNanos(
+    const google::protobuf::Timestamp &timestamp) {
+  return timestamp.seconds() * 1000000000LL + timestamp.nanos();
+}
+
 }  // namespace ray
