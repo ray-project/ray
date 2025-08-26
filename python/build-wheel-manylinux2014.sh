@@ -53,12 +53,12 @@ PYTHON_VERSIONS=(
 ./ci/build/build-manylinux-ray.sh
 
 # Extract prebuilt dashboard into expected location, only if it exists
-if [[ -f /ray/dashboard_build.tar.gz ]]; then
-  echo "Extracting /ray/dashboard_build.tar.gz..."
-  mkdir -p /ray/python/ray/dashboard/client/build  # ensure target exists
-  tar -xzf /ray/dashboard_build.tar.gz -C /ray/python/ray/dashboard/client/build
+if [[ -f "$(dirname "$0")/../dashboard_build.tar.gz" ]]; then
+  echo "Extracting $(dirname "$0")/../dashboard_build.tar.gz..."
+  mkdir -p "$(dirname "$0")/ray/dashboard/client/build"  # ensure target exists
+  tar -xzf "$(dirname "$0")/../dashboard_build.tar.gz" -C "$(dirname "$0")/ray/dashboard/client/build"
 else
-  echo "ERROR: /ray/dashboard_build.tar.gz not found. Aborting." >&2
+  echo "ERROR: $(dirname "$0")/../dashboard_build.tar.gz not found. Aborting." >&2
   exit 1
 fi
 
