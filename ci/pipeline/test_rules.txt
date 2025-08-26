@@ -18,7 +18,7 @@ python/ray/llm/
 doc/source/llm/
 .buildkite/llm.rayci.yml
 ci/docker/llm.build.Dockerfile
-python/requirements_compiled_*.txt
+python/deplocks/llm/*.lock
 @ llm
 ;
 
