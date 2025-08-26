@@ -20,10 +20,12 @@
 #include <utility>
 #include <vector>
 
+#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group.h"
+#include "ray/gcs/tests/gcs_test_util.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/util/counter_map.h"
 
@@ -43,7 +45,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
       io_service_.run();
     }));
     for (int index = 0; index < 3; ++index) {
-      raylet_clients_.push_back(std::make_shared<GcsServerMocker::MockRayletClient>());
+      raylet_clients_.push_back(std::make_shared<FakeRayletClient>());
     }
     gcs_table_storage_ = std::make_unique<gcs::GcsTableStorage>(
         std::make_unique<gcs::InMemoryStoreClient>());
@@ -70,12 +72,12 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>();
     raylet_client_pool_ = std::make_unique<rpc::RayletClientPool>(
         [this](const rpc::Address &addr) { return raylet_clients_[addr.port()]; });
-    scheduler_ = std::make_shared<GcsServerMocker::MockedGcsPlacementGroupScheduler>(
-        io_service_,
-        *gcs_table_storage_,
-        *gcs_node_manager_,
-        *cluster_resource_scheduler_,
-        *raylet_client_pool_);
+    scheduler_ =
+        std::make_unique<gcs::GcsPlacementGroupScheduler>(io_service_,
+                                                          *gcs_table_storage_,
+                                                          *gcs_node_manager_,
+                                                          *cluster_resource_scheduler_,
+                                                          *raylet_client_pool_);
     counter_.reset(new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());
   }
 
@@ -295,7 +297,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
-  std::shared_ptr<GcsServerMocker::MockedGcsPlacementGroupScheduler> scheduler_;
+  std::unique_ptr<gcs::GcsPlacementGroupScheduler> scheduler_;
   std::vector<std::shared_ptr<gcs::GcsPlacementGroup>> success_placement_groups_
       ABSL_GUARDED_BY(placement_group_requests_mutex_);
   std::vector<std::shared_ptr<gcs::GcsPlacementGroup>> failure_placement_groups_
@@ -1417,7 +1419,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestWaitingRemovedBundles) {
   ASSERT_TRUE(raylet_clients_[0]->GrantCancelResourceReserve());
 
   // Because actors have not released the bundle resources, bundles have to keep waiting.
-  ASSERT_EQ(scheduler_->GetWaitingRemovedBundlesSize(), 2);
+  ASSERT_EQ(scheduler_->waiting_removed_bundles_.size(), 2);
   const auto &node_resources =
       cluster_resource_scheduler_->GetClusterResourceManager().GetNodeResources(
           scheduling::NodeID(node->node_id()));
@@ -1436,7 +1438,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestWaitingRemovedBundles) {
 
   scheduler_->HandleWaitingRemovedBundles();
   // The waiting bundles are removed, and resources are successfully returned to node.
-  ASSERT_EQ(scheduler_->GetWaitingRemovedBundlesSize(), 0);
+  ASSERT_EQ(scheduler_->waiting_removed_bundles_.size(), 0);
   ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID::CPU()),
             node_resources.total.Get(scheduling::ResourceID::CPU()));
 }
@@ -1478,7 +1480,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestBundlesRemovedWhenNodeDead) {
 
   // There shouldn't be any remaining bundles to be removed since the node is
   // already removed. The bundles are already removed when the node is removed.
-  ASSERT_EQ(scheduler_->GetWaitingRemovedBundlesSize(), 0);
+  ASSERT_EQ(scheduler_->waiting_removed_bundles_.size(), 0);
 }
 
 }  // namespace ray

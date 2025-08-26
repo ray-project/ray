@@ -513,6 +513,8 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// The bundles that waiting to be destroyed and release resources.
   std::list<std::pair<NodeID, std::shared_ptr<const BundleSpecification>>>
       waiting_removed_bundles_;
+
+  FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestCheckingWildcardResource);
 };
 
 }  // namespace gcs

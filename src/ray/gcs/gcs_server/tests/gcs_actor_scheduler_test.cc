@@ -32,6 +32,54 @@ namespace ray {
 using raylet::NoopLocalTaskManager;
 namespace gcs {
 
+class MockedGcsActorScheduler : public gcs::GcsActorScheduler {
+ public:
+  using gcs::GcsActorScheduler::GcsActorScheduler;
+
+  void TryLeaseWorkerFromNodeAgain(std::shared_ptr<gcs::GcsActor> actor,
+                                   std::shared_ptr<rpc::GcsNodeInfo> node) {
+    DoRetryLeasingWorkerFromNode(std::move(actor), std::move(node));
+  }
+
+ protected:
+  void RetryLeasingWorkerFromNode(std::shared_ptr<gcs::GcsActor> actor,
+                                  std::shared_ptr<rpc::GcsNodeInfo> node) override {
+    ++num_retry_leasing_count_;
+    if (num_retry_leasing_count_ <= 1) {
+      DoRetryLeasingWorkerFromNode(actor, node);
+    }
+  }
+
+  void RetryCreatingActorOnWorker(std::shared_ptr<gcs::GcsActor> actor,
+                                  std::shared_ptr<GcsLeasedWorker> worker) override {
+    ++num_retry_creating_count_;
+    DoRetryCreatingActorOnWorker(actor, worker);
+  }
+
+ public:
+  int num_retry_leasing_count_ = 0;
+  int num_retry_creating_count_ = 0;
+};
+
+class MockedGcsActorTable : public gcs::GcsActorTable {
+ public:
+  // The store_client and io_context args are NOT used.
+  explicit MockedGcsActorTable(std::shared_ptr<gcs::StoreClient> store_client)
+      : GcsActorTable(store_client) {}
+
+  Status Put(const ActorID &key,
+             const rpc::ActorTableData &value,
+             Postable<void(Status)> callback) override {
+    auto status = Status::OK();
+    std::move(callback).Post("FakeGcsActorTable.Put", status);
+    return status;
+  }
+
+ private:
+  std::shared_ptr<gcs::StoreClient> store_client_ =
+      std::make_shared<gcs::InMemoryStoreClient>();
+};
+
 class GcsActorSchedulerTest : public ::testing::Test {
  public:
   void SetUp() override {
