@@ -44,5 +44,21 @@ void RuntimeEnvGrpcService::InitServerCallFactories(
       RuntimeEnvGcsService, PinRuntimeEnvURI, max_active_rpcs_per_handler_);
 }
 
+void WorkerInfoGrpcService::InitServerCallFactories(
+    const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+    std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+    const ClusterID &cluster_id) {
+  RPC_SERVICE_HANDLER(
+      WorkerInfoGcsService, ReportWorkerFailure, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(WorkerInfoGcsService, GetWorkerInfo, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      WorkerInfoGcsService, GetAllWorkerInfo, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(WorkerInfoGcsService, AddWorkerInfo, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      WorkerInfoGcsService, UpdateWorkerDebuggerPort, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      WorkerInfoGcsService, UpdateWorkerNumPausedThreads, max_active_rpcs_per_handler_)
+}
+
 }  // namespace rpc
 }  // namespace ray
