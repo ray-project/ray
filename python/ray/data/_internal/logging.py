@@ -284,7 +284,7 @@ def register_dataset_logger(dataset_id: str) -> Optional[int]:
         dataset_id: The ID of the dataset.
 
     Returns:
-        Optional[int]: The number of active dataset loggers after registration, or None if registration failed.
+        Optional[str]: The ID of the active dataset logger, or None if no logger is active after registration.
     """
     global _DATASET_LOGGER_HANDLER
     global _ACTIVE_DATASET
@@ -320,7 +320,7 @@ def unregister_dataset_logger(dataset_id: str) -> Optional[int]:
         dataset_id: The ID of the dataset.
 
     Returns:
-        Optional[int]: The number of remaining active dataset loggers after removal, or None if the dataset ID was not found.
+        Optional[str]: The ID of the active dataset logger after unregistering, or None if no logger is active.
     """
     global _DATASET_LOGGER_HANDLER
     global _ACTIVE_DATASET
