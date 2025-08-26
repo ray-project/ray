@@ -861,7 +861,7 @@ def serve_proxier(
     ray_client_pb2_grpc.add_RayletDataStreamerServicer_to_server(data_servicer, server)
     ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(logs_servicer, server)
     if not is_localhost(host):
-        add_port_to_grpc_server(server, f"localhost:{port}")
+        add_port_to_grpc_server(server, f"127.0.0.1:{port}")
     add_port_to_grpc_server(server, f"{host}:{port}")
     server.start()
     return ClientServerHandle(
