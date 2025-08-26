@@ -115,9 +115,9 @@ ray_cc_library(
     srcs = ["pubsub_handler.cc"],
     hdrs = ["pubsub_handler.h"],
     deps = [
+        "//src/ray/gcs/gcs_server:grpc_service_interfaces",
         "//src/ray/gcs/pubsub:gcs_pub_sub_lib",
         "//src/ray/protobuf:gcs_service_cc_proto",
-        "//src/ray/gcs/gcs_server:grpc_service_interfaces",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
