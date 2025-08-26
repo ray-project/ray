@@ -623,15 +623,6 @@ def test_get_deployment_scale(ray_start_stop):
         else:
             serve.run(deployment_class.bind(), name=app_name)
 
-        # Wait for deployment to be ready
-        wait_for_condition(
-            lambda: requests.get(SERVE_HEAD_URL).json()["applications"][app_name][
-                "status"
-            ]
-            == "RUNNING",
-            timeout=10,
-        )
-
         # Test the scale endpoint
         url = SERVE_DEPLOYMENT_SCALE_URL.format(
             application_name=app_name, deployment_name=deployment_name
