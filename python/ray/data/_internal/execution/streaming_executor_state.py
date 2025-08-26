@@ -284,7 +284,10 @@ class OpState:
         """Move a bundle produced by the operator to its outqueue."""
 
         ref, diverged = dedupe_schemas_with_validation(
-            self._schema, ref, warn=not self._warned_on_schema_divergence
+            self._schema,
+            ref,
+            warn=not self._warned_on_schema_divergence,
+            allow_divergent=self.op.data_context.allow_divergent_schemas,
         )
         self._schema = ref.schema
         self._warned_on_schema_divergence |= diverged

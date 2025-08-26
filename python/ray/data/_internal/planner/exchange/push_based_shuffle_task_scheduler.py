@@ -14,7 +14,6 @@ from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import (
     convert_bytes_to_human_readable_str,
-    unify_schemas_with_validation,
     unzip,
 )
 from ray.data.block import (
@@ -726,10 +725,11 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         stats = BlockExecStats.builder()
         if not reduce_args:
             reduce_args = []
+        from ray.data.block import _is_empty_schema
 
         num_rows = 0
         size_bytes = 0
-        schemas = []
+        schema = None
         for i, mapper_outputs in enumerate(zip(*all_mapper_outputs)):
             block_meta_with_schema: Tuple[Block, "BlockMetadataWithSchema"] = reduce_fn(
                 *reduce_args, *mapper_outputs, partial_reduce=True
@@ -741,7 +741,8 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             num_rows += block.num_rows()
             size_bytes += block.size_bytes()
             del block
-            schemas.append(meta_with_schema.schema)
+            if schema is None and not _is_empty_schema(meta_with_schema.schema):
+                schema = meta_with_schema.schema
 
         meta = BlockMetadata(
             num_rows=num_rows,
@@ -749,7 +750,6 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             input_files=None,
             exec_stats=stats.build(),
         )
-        schema = unify_schemas_with_validation(schemas)
         meta_with_schema = BlockMetadataWithSchema(metadata=meta, schema=schema)
         yield meta_with_schema
 

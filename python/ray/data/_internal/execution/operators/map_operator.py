@@ -48,13 +48,14 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.stats import StatsDict
-from ray.data._internal.util import MemoryProfiler, unify_ref_bundles_schema
+from ray.data._internal.util import MemoryProfiler
 from ray.data.block import (
     Block,
     BlockAccessor,
     BlockExecStats,
     BlockMetadataWithSchema,
     BlockStats,
+    _take_first_non_empty_schema,
     to_stats,
 )
 from ray.data.context import DataContext
@@ -541,8 +542,6 @@ def _map_task(
         A generator of blocks, followed by the list of BlockMetadata for the blocks
         as the last generator return.
     """
-    from ray.data.block import BlockMetadataWithSchema
-
     logger.debug(
         "Executing map task of operator %s with task index %d",
         ctx.op_name,
@@ -669,7 +668,9 @@ def _merge_ref_bundles(*bundles: RefBundle) -> RefBundle:
         )
     )
     owns_blocks = all(bundle.owns_blocks for bundle in bundles if bundle is not None)
-    schema = unify_ref_bundles_schema(bundles)
+    schema = _take_first_non_empty_schema(
+        bundle.schema for bundle in bundles if bundle is not None
+    )
     return RefBundle(blocks, owns_blocks=owns_blocks, schema=schema)
 
 

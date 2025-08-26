@@ -3,7 +3,11 @@ from typing import Any, Dict, Optional, Union
 
 from ray.data._internal.logical.interfaces import SourceOperator
 from ray.data._internal.logical.operators.map_operator import AbstractMap
-from ray.data.block import BlockMetadata, BlockMetadataWithSchema
+from ray.data.block import (
+    BlockMetadata,
+    BlockMetadataWithSchema,
+    _take_first_non_empty_schema,
+)
 from ray.data.datasource.datasource import Datasource, Reader
 
 
@@ -101,12 +105,11 @@ class Read(AbstractMap, SourceOperator):
         schemas = [
             read_task.schema for read_task in read_tasks if read_task.schema is not None
         ]
-        from ray.data._internal.util import unify_schemas_with_validation
 
-        schema = None
-        if schemas:
-            schema = unify_schemas_with_validation(schemas)
-        return BlockMetadataWithSchema(metadata=meta, schema=schema)
+        # NOTE: unify was here before. I think this should just return
+        # the first non empty schema.
+        inferred_schema = _take_first_non_empty_schema(iter(schemas))
+        return BlockMetadataWithSchema(metadata=meta, schema=inferred_schema)
 
     def can_modify_num_rows(self) -> bool:
         # NOTE: Returns true, since most of the readers expands its input

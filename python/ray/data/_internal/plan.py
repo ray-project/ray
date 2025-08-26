@@ -14,7 +14,6 @@ from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.interfaces.operator import Operator
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.stats import DatasetStats
-from ray.data._internal.util import unify_ref_bundles_schema
 from ray.data.block import BlockMetadataWithSchema
 from ray.data.context import DataContext
 from ray.data.exceptions import omit_traceback_stdout
@@ -518,7 +517,6 @@ class ExecutionPlan:
                 output_bundles = self._logical_plan.dag.output_data()
                 schema = self._logical_plan.dag.infer_schema()
                 owns_blocks = all(bundle.owns_blocks for bundle in output_bundles)
-                schema = unify_ref_bundles_schema(output_bundles)
                 bundle = RefBundle(
                     [
                         (block, metadata)
