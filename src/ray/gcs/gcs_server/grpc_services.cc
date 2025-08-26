@@ -47,5 +47,13 @@ void JobInfoGrpcService::InitServerCallFactories(
   RPC_SERVICE_HANDLER(JobInfoGcsService, GetNextJobID, max_active_rpcs_per_handler_)
 }
 
+void RuntimeEnvGrpcService::InitServerCallFactories(
+    const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+    std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+    const ClusterID &cluster_id) {
+  RPC_SERVICE_HANDLER(
+      RuntimeEnvGcsService, PinRuntimeEnvURI, max_active_rpcs_per_handler_)
+}
+
 }  // namespace rpc
 }  // namespace ray
