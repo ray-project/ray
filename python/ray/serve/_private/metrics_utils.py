@@ -328,7 +328,7 @@ def _bucket_latest_by_window(
     return buckets
 
 
-def merge_timeseries(
+def _merge_two_timeseries(
     t1: List[TimeStampedValue], t2: List[TimeStampedValue], window_ms: int
 ) -> List[TimeStampedValue]:
     """
