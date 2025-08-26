@@ -383,6 +383,9 @@ class Dataset:
             ray_remote_args: Additional resource requirements to request from
                 Ray for each map worker. See :func:`ray.remote` for details.
 
+        Returns:
+            Dataset: A new dataset with the function applied to each row.
+
         .. seealso::
 
             :meth:`~Dataset.flat_map`
@@ -644,6 +647,9 @@ class Dataset:
             ray_remote_args: Additional resource requirements to request from
                 Ray for each map worker. See :func:`ray.remote` for details.
 
+        Returns:
+            Dataset: A new dataset with the function applied to batches of data.
+
         .. note::
 
             The size of the batches provided to ``fn`` might be smaller than the
@@ -876,6 +882,9 @@ class Dataset:
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
+
+        Returns:
+            Dataset: A new dataset with the specified column added.
         """
         # Check that batch_format
         accepted_batch_formats = ["pandas", "pyarrow", "numpy"]
@@ -983,6 +992,9 @@ class Dataset:
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
+
+        Returns:
+            Dataset: A new dataset with the specified columns removed.
         """  # noqa: E501
 
         if len(cols) != len(set(cols)):
@@ -1046,6 +1058,9 @@ class Dataset:
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
+
+        Returns:
+            Dataset: A new dataset containing only the specified columns.
         """  # noqa: E501
         if isinstance(cols, str):
             cols = [cols]
@@ -1138,6 +1153,9 @@ class Dataset:
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
+
+        Returns:
+            Dataset: A new dataset with the specified column names changed.
         """  # noqa: E501
 
         if isinstance(names, dict):
@@ -1316,6 +1334,9 @@ class Dataset:
             ray_remote_args: Additional resource requirements to request from
                 Ray for each map worker. See :func:`ray.remote` for details.
 
+        Returns:
+            Dataset: A new dataset with the function applied to each row and results flattened into individual rows.
+
         .. seealso::
 
             :meth:`~Dataset.map_batches`
@@ -1434,6 +1455,9 @@ class Dataset:
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
+
+        Returns:
+            Dataset: A new dataset containing only the rows that satisfy the predicate condition. The original dataset is unchanged.
         """
         # Ensure exactly one of fn or expr is provided
         resolved_expr = None
@@ -5874,6 +5898,9 @@ class Dataset:
                 in the cluster by four. As a rule of thumb, you can expect each worker
                 to provide ~3000 records / second via ``get_async()``, and
                 ~10000 records / second via ``multiget()``.
+
+        Returns:
+            RandomAccessDataset: A dataset that supports random access operations by index.
         """
         if num_workers is None:
             num_workers = 4 * len(ray.nodes())
@@ -5960,6 +5987,8 @@ class Dataset:
             * Output size bytes: 0 min, 8 max, 4 mean, 80 total
             * Tasks per node: 20 min, 20 max, 20 mean; 1 nodes used
 
+        Returns:
+            str: Statistics about this dataset including execution timing, memory usage, and data lineage information.
         """
         if self._current_executor:
             return self._current_executor.get_stats().to_summary().to_string()
@@ -6060,6 +6089,9 @@ class Dataset:
             False
             >>> ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv").has_serializable_lineage()
             True
+
+        Returns:
+            bool: True if the dataset's lineage can be serialized and reconstructed later, False otherwise.
         """  # noqa: E501
         return all(
             op.is_lineage_serializable()
