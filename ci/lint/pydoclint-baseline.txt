@@ -2092,14 +2092,14 @@ python/ray/train/v2/xgboost/xgboost_trainer.py
     DOC101: Method `XGBoostTrainer.__init__`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `XGBoostTrainer.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [label_column: Optional[str], num_boost_round: Optional[int], params: Optional[Dict[str, Any]]].
 --------------------
-python/ray/train/xgboost/v2.py
+python/ray/train/v1/xgboost/v2.py
     DOC104: Method `XGBoostTrainer.__init__`: Arguments are the same in the docstring and the function signature, but are in a different order.
     DOC105: Method `XGBoostTrainer.__init__`: Argument names match, but type hints in these args do not match: train_loop_per_worker, train_loop_config, xgboost_config, scaling_config, run_config, datasets, dataset_config, metadata, resume_from_checkpoint
 --------------------
-python/ray/train/xgboost/xgboost_predictor.py
+python/ray/train/v1/xgboost/xgboost_predictor.py
     DOC201: Method `XGBoostPredictor.from_checkpoint` does not have a return section in docstring
 --------------------
-python/ray/train/xgboost/xgboost_trainer.py
+python/ray/train/v1/xgboost/xgboost_trainer.py
     DOC104: Method `XGBoostTrainer.__init__`: Arguments are the same in the docstring and the function signature, but are in a different order.
     DOC105: Method `XGBoostTrainer.__init__`: Argument names match, but type hints in these args do not match: train_loop_per_worker, train_loop_config, xgboost_config, scaling_config, run_config, datasets, dataset_config, resume_from_checkpoint, metadata, label_column, params, num_boost_round
 --------------------

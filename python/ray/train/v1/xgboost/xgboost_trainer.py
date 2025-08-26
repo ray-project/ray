@@ -9,8 +9,8 @@ import ray.train
 from ray.train import Checkpoint
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train.trainer import GenDataset
+from ray.train.v1.xgboost.v2 import XGBoostTrainer as SimpleXGBoostTrainer
 from ray.train.xgboost import RayTrainReportCallback, XGBoostConfig
-from ray.train.xgboost.v2 import XGBoostTrainer as SimpleXGBoostTrainer
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
