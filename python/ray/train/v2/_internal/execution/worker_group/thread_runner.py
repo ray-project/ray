@@ -1,7 +1,6 @@
 import logging
 import queue
 import threading
-import time
 from typing import Callable, Optional, TypeVar
 
 from ray.train.v2._internal.exceptions import UserExceptionWithTraceback
@@ -51,6 +50,9 @@ class ThreadRunner:
                     construct_user_exception_with_traceback(e, exclude_frames=2)
                 )
 
+            with self._lock:
+                self._is_running = False
+
         self._thread = threading.Thread(
             target=_run_target,
             daemon=True,
@@ -62,7 +64,6 @@ class ThreadRunner:
             exc = self._exc_queue.get()
             with self._lock:
                 self._exc = exc
-                self._is_running = False
 
         self._monitor_thread = threading.Thread(
             target=_monitor_target,
@@ -72,13 +73,7 @@ class ThreadRunner:
         self._monitor_thread.start()
 
     def is_running(self) -> bool:
-        """Returns False if we have a result or exception.
-
-        If True, both _monitor_thread and _thread are running.
-        If False, _monitor_thread is not running.
-        If False, _thread might be running if it kicked off a nested thread
-            that raised an exception and populated the shared exception queue.
-        """
+        """Returns whether the target function is still running."""
         with self._lock:
             return self._is_running
 
@@ -93,25 +88,3 @@ class ThreadRunner:
     def get_exception_queue(self) -> queue.SimpleQueue:
         """Returns a queue that nested threads can add exceptions to."""
         return self._exc_queue
-
-    def join(self, timeout: Optional[float] = None) -> T:
-        """Join both the target thread and the monitor thread.
-
-        Note that unless the target function has some special exiting logic,
-        if it creates a thread that raises an exception, the target function
-        will not exit, and join will hang.
-
-        However, calling join is optional. Because the target function is run
-        as a daemon thread, the controller can shut down the worker even if
-        the target function is still running.
-        """
-        if self._monitor_thread is None or self._thread is None:
-            raise RuntimeError("Must call `run` before trying to `join`.")
-
-        start_time = time.time()
-        self._monitor_thread.join(timeout=timeout)
-        elapsed_time = time.time() - start_time
-        remaining_timeout = timeout - elapsed_time if timeout else None
-        self._thread.join(timeout=remaining_timeout)
-
-        return self.get_return_value()

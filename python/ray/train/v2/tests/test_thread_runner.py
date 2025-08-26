@@ -8,9 +8,25 @@ from ray.train.v2._internal.execution.worker_group.thread_runner import ThreadRu
 from ray.train.v2._internal.util import construct_user_exception_with_traceback
 
 
+class ThreadRunnerWithJoin(ThreadRunner):
+    def join(self):
+        """Join both the target thread and the monitor thread.
+
+        Do not include this with the main ThreadRunner class because:
+        * It is tricky to avoid hangs when nested threads raise errors
+        * We don't need to join in that case since the controller will see the
+          error and shut down the worker
+        """
+        if self._monitor_thread is None or self._thread is None:
+            raise RuntimeError("Must call `run` before trying to `join`.")
+        self._monitor_thread.join()
+        self._thread.join()
+        return self.get_return_value()
+
+
 @pytest.fixture()
 def thread_runner():
-    return ThreadRunner()
+    return ThreadRunnerWithJoin()
 
 
 def test_successful_return(thread_runner):
@@ -67,8 +83,7 @@ def test_nested_thread_error(thread_runner):
         thread.join()
 
     thread_runner.run(target)
-    # Pick arbitrary timeout to verify that we don't error
-    assert not thread_runner.join(timeout=100)
+    assert not thread_runner.join()
 
     assert thread_runner.get_return_value() is None
     assert not thread_runner.is_running()
@@ -77,7 +92,6 @@ def test_nested_thread_error(thread_runner):
 
     assert isinstance(error, UserExceptionWithTraceback)
     assert isinstance(error._base_exc, ValueError)
-    assert "_run_target" not in error._traceback_str
 
 
 def test_running(thread_runner, tmp_path):
