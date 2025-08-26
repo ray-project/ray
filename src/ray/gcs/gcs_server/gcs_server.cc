@@ -622,7 +622,7 @@ void GcsServer::InitPubSubHandler() {
   auto &io_context = io_context_provider_.GetIOContext<GcsPublisher>();
   pubsub_handler_ = std::make_unique<InternalPubSubHandler>(io_context, *gcs_publisher_);
 
-  // This gRPC service is used to handle long poll requests, so we allow unlimited active RPCs.
+  // This service is used to handle long poll requests, so we don't limit active RPCs.
   rpc_server_.RegisterService(std::make_unique<rpc::InternalPubSubGrpcService>(
       io_context, *pubsub_handler_, /*max_active_rpcs_per_handler_=*/-1));
 }
