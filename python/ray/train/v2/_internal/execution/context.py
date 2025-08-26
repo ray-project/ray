@@ -2,6 +2,7 @@ import logging
 import sys
 import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from queue import Queue
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
@@ -106,9 +107,8 @@ class TrainContext:
     num_reported_checkpoints: int = 0
     num_attempted_reported_checkpoints: int = 0
     report_order_condition: threading.Condition = threading.Condition()
-    max_uploads_condition: threading.Condition = threading.Condition()
-    ordered_checkpoint_upload_threads: Dict[int, threading.Thread] = field(
-        default_factory=dict
+    checkpoint_uploads: ThreadPoolExecutor = ThreadPoolExecutor(
+        max_workers=MAX_CHECKPOINT_UPLOAD_THREADS
     )
 
     dataset_manager: Optional[ActorHandle["DatasetManager"]] = None
@@ -344,31 +344,14 @@ class TrainContext:
                     self._wait_then_report(
                         training_result, current_report_attempt_number
                     )
-                    with self.max_uploads_condition:
-                        del self.ordered_checkpoint_upload_threads[
-                            current_report_attempt_number
-                        ]
-                        self.max_uploads_condition.notify_all()
 
-                with self.max_uploads_condition:
-                    self.max_uploads_condition.wait_for(
-                        lambda: len(self.ordered_checkpoint_upload_threads)
-                        < MAX_CHECKPOINT_UPLOAD_THREADS
-                    )
-                    self.ordered_checkpoint_upload_threads[
-                        current_report_attempt_number
-                    ] = threading.Thread(
-                        target=_upload_checkpoint_and_report,
-                        args=(
-                            checkpoint_dir_name,
-                            metrics,
-                            checkpoint,
-                            current_report_attempt_number,
-                        ),
-                    )
-                    self.ordered_checkpoint_upload_threads[
-                        current_report_attempt_number
-                    ].start()
+                self.checkpoint_uploads.submit(
+                    _upload_checkpoint_and_report,
+                    checkpoint_dir_name,
+                    metrics,
+                    checkpoint,
+                    current_report_attempt_number,
+                )
             else:
                 raise ValueError(
                     f"Invalid checkpoint upload mode: {checkpoint_upload_mode}"

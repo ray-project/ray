@@ -1,5 +1,4 @@
 import queue
-import threading
 import time
 from unittest.mock import create_autospec
 
@@ -46,15 +45,9 @@ def test_worker_finished_after_all_threads_finish(monkeypatch, created_nested_th
             # for nested threads to finish
             time.sleep(0.1)
             global_queue.put("nested")
-            with tc.max_uploads_condition:
-                del tc.ordered_checkpoint_upload_threads[0]
-                tc.max_uploads_condition.notify_all()
 
         if created_nested_threads:
-            with tc.max_uploads_condition:
-                thread = threading.Thread(target=target)
-                tc.ordered_checkpoint_upload_threads[0] = thread
-                thread.start()
+            tc.checkpoint_uploads.submit(target)
         else:
             global_queue.put("main")
 

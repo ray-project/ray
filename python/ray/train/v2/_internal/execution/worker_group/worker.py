@@ -136,12 +136,7 @@ class RayTrainWorker:
 
         def train_fn_that_waits_for_threads():
             train_fn()
-            condition = get_train_context().max_uploads_condition
-            with condition:
-                condition.wait_for(
-                    lambda: len(get_train_context().ordered_checkpoint_upload_threads)
-                    == 0
-                )
+            get_train_context().checkpoint_uploads.shutdown()
 
         # Create and start the training thread.
         get_train_context().execution_context.training_thread_runner.run(
