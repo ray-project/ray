@@ -39,4 +39,4 @@ Exceptions
     ray.exceptions.CrossLanguageError
     ray.exceptions.RaySystemError
     ray.exceptions.NodeDiedError
-    ray.exceptions.UnpickleableException
+    ray.exceptions.UnserializableException

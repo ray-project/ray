@@ -5,7 +5,7 @@ import threading
 import pytest
 
 import ray
-from ray.exceptions import RayTaskError, RayActorError, UnpickleableException
+from ray.exceptions import RayTaskError, RayActorError, UnserializableException
 
 """This module tests stacktrace of Ray.
 
@@ -301,7 +301,7 @@ def test_actor_repr_in_traceback(ray_start_regular):
 
 
 def test_unpickleable_stacktrace(shutdown_only):
-    expected_output = """Failed to unpickle serialized exception. This can happen when the original exception contains special characters that interfere with pickle deserialization.
+    expected_output = """Failed to deserialize exception. This can happen when the original exception contains special characters that interfere with deserialization.
 Original exception:
 ray.exceptions.RayTaskError: ray::f() (pid=XXX, ip=YYY)
   File "FILE", line ZZ, in f
@@ -327,7 +327,7 @@ test_traceback.NoPickleError"""
     try:
         ray.get(f.remote())
     except Exception as ex:
-        assert isinstance(ex, UnpickleableException)
+        assert isinstance(ex, UnserializableException)
         assert clean_noqa(expected_output) == scrub_traceback(str(ex))
 
 

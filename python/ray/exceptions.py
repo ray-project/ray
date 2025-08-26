@@ -57,7 +57,7 @@ class RayError(Exception):
                     "formatted_exception_string",
                     "No formatted exception string available.",
                 )
-                return UnpickleableException(original_stacktrace)
+                return UnserializableException(original_stacktrace)
         else:
             return CrossLanguageError(ray_exception)
 
@@ -908,7 +908,7 @@ class RayCgraphCapacityExceeded(RaySystemError):
 
 
 @PublicAPI(stability="alpha")
-class UnpickleableException(RayError):
+class UnserializableException(RayError):
     """Raised when there is an error deserializing the serialized exception.
 
     This occurs when deserializing (unpickling) a previously serialized exception
@@ -922,7 +922,7 @@ class UnpickleableException(RayError):
 
     def __str__(self):
         return (
-            "Failed to unpickle serialized exception. This can happen when the original exception contains special characters that interfere with pickle deserialization.\n"
+            "Failed to deserialize exception. This can happen when the original exception contains special characters that interfere with deserialization.\n"
             "Original exception:\n"
             f"{self.original_stack_trace}"
         )
@@ -957,5 +957,5 @@ RAY_EXCEPTION_TYPES = [
     RayChannelTimeoutError,
     OufOfBandObjectRefSerializationException,
     RayCgraphCapacityExceeded,
-    UnpickleableException,
+    UnserializableException,
 ]
