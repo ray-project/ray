@@ -13,20 +13,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <gtest/gtest.h>
+
 #include <list>
 #include <memory>
 #include <utility>
 #include <vector>
 
-// clang-format off
-#include "gtest/gtest.h"
+#include "mock/ray/pubsub/publisher.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/gcs/gcs_server/tests/gcs_server_test_util.h"
-#include "ray/gcs/tests/gcs_test_util.h"
+#include "ray/gcs/gcs_server/gcs_node_manager.h"
+#include "ray/gcs/gcs_server/gcs_placement_group.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/util/counter_map.h"
-#include "mock/ray/pubsub/publisher.h"
-// clang-format on
 
 namespace ray {
 

@@ -21,8 +21,8 @@
 #include <vector>
 
 #include "ray/common/asio/asio_util.h"
-#include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
-#include "src/ray/protobuf/gcs.pb.h"
+#include "ray/gcs/gcs_server/gcs_node_manager.h"
+#include "ray/gcs/gcs_server/gcs_table_storage.h"
 
 namespace ray {
 namespace gcs {
