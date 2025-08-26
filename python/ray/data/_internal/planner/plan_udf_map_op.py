@@ -315,6 +315,7 @@ def plan_download_op(
     input_physical_dag = physical_children[0]
     compute = get_compute(op._compute)
     uri_column_name = op.uri_column_name
+    output_bytes_column_name = op.output_bytes_column_name
 
     # PartitionActor is a callable class, so we need ActorPoolStrategy
     from ray.data._internal.compute import ActorPoolStrategy
@@ -324,14 +325,7 @@ def plan_download_op(
     fn, init_fn = _get_udf(PartitionActor, (), {}, (uri_column_name,), {})
     partition_transform_fn = _generate_transform_fn_for_map_batches(fn)
     partition_transform_fns = [
-        # Convert input blocks to batches.
-        BlocksToBatchesMapTransformFn(
-            batch_size=None,  # TODO: Should we use op._batch_size here?
-            batch_format="pyarrow",
-            zero_copy_batch=True,
-        ),
-        # Apply the PartitionActor function.
-        BatchMapTransformFn(partition_transform_fn),
+        BlockMapTransformFn(partition_transform_fn),
     ]
     partition_map_transformer = MapTransformer(partition_transform_fns, init_fn)
     partition_map_operator = MapOperator.create(
@@ -344,13 +338,16 @@ def plan_download_op(
         ray_remote_args_fn=op._ray_remote_args_fn,
     )
 
-    fn, init_fn = _get_udf(download_images_threaded, (uri_column_name,), {}, None, None)
+    fn, init_fn = _get_udf(
+        download_bytes_threaded,
+        (uri_column_name, output_bytes_column_name),
+        {},
+        None,
+        None,
+    )
     download_transform_fn = _generate_transform_fn_for_map_batches(fn)
     transform_fns = [
-        # Apply the download function.
-        BatchMapTransformFn(download_transform_fn),
-        # Convert output batches to blocks.
-        BuildOutputBlocksMapTransformFn.for_batches(),
+        BlockMapTransformFn(download_transform_fn),
     ]
     download_map_transformer = MapTransformer(transform_fns, init_fn)
     download_map_operator = MapOperator.create(
@@ -371,17 +368,22 @@ def uri_to_path(uri: str) -> str:
     return parsed.netloc + parsed.path
 
 
-def download_images_threaded(batch, uri_column_name, max_workers=16):
+def download_bytes_threaded(
+    block, uri_column_name, output_bytes_column_name, max_workers=16
+):
     """Optimized version that uses make_async_gen for concurrent downloads."""
     from pyarrow.fs import FileSystem as pafs
 
     from ray.data._internal.util import make_async_gen
 
+    if not isinstance(block, pa.Table):
+        block = BlockAccessor.for_block(block).to_arrow()
+
     # Extract URIs from PyArrow table
-    uris = batch.column(uri_column_name).to_pylist()
+    uris = block.column(uri_column_name).to_pylist()
 
     if len(uris) == 0:
-        return batch
+        return block
 
     fs, _ = pafs.from_uri(uris[0])  # from_uri returns (filesystem, path)
 
@@ -397,7 +399,7 @@ def download_images_threaded(batch, uri_column_name, max_workers=16):
 
     # Use make_async_gen to download URIs concurrently
     # This preserves the order of results to match the input URIs
-    images = list(
+    uri_bytes = list(
         make_async_gen(
             base_iterator=iter(uris),
             fn=download_uris,
@@ -407,7 +409,9 @@ def download_images_threaded(batch, uri_column_name, max_workers=16):
     )
 
     # Add the new column to the PyArrow table
-    return batch.add_column(len(batch.column_names), "image_bytes", pa.array(images))
+    return block.add_column(
+        len(block.column_names), output_bytes_column_name, pa.array(uri_bytes)
+    )
 
 
 class PartitionActor:
@@ -459,12 +463,15 @@ class PartitionActor:
             print(f"Yielding batch with len(batch): {batch_table.num_rows}")
             yield batch_table
 
-    def __call__(self, batch):
+    def __call__(self, block):
+        if not isinstance(block, pa.Table):
+            block = BlockAccessor.for_block(block).to_arrow()
+
         import math
 
         if self._batch_size_estimate is None:
             # Extract URIs from PyArrow table for sampling
-            uris = batch.column(self._uri_column_name).to_pylist()
+            uris = block.column(self._uri_column_name).to_pylist()
             sample_uris = uris[: self.INIT_SAMPLE_BATCH_SIZE]
             file_sizes = self._sample_sizes(sample_uris)
             file_size_estimate = sum(file_sizes) / len(file_sizes)
@@ -473,8 +480,8 @@ class PartitionActor:
             self._batch_size_estimate = math.floor(max_bytes / file_size_estimate)
             print(f"Batch size estimate: {self._batch_size_estimate}")
 
-        print(f"len(batch): {batch.num_rows}")
-        yield from self._arrow_batcher(batch, self._batch_size_estimate)
+        print(f"len(block): {block.num_rows}")
+        yield from self._arrow_batcher(block, self._batch_size_estimate)
 
 
 def _get_udf(

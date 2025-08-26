@@ -326,7 +326,6 @@ def download(uri_column_name: str) -> DownloadExpr:
 
     Args:
         uri_column_name: The name of the column containing URIs to download from
-
     Returns:
         A DownloadExpr that will download content from the specified URI column
 
@@ -339,7 +338,7 @@ def download(uri_column_name: str) -> DownloadExpr:
         ...     {"uri": "s3://bucket/file2.jpg", "id": "2"}
         ... ])
         >>> # Add downloaded bytes column
-        >>> ds_with_bytes = ds.add_column("bytes", download("uri"))
+        >>> ds_with_bytes = ds.with_column("bytes", download("uri"))
     """
     return DownloadExpr(uri_column_name=uri_column_name)
 

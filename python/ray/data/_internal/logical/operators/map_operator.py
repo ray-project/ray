@@ -369,9 +369,11 @@ class Download(AbstractMap):
         self,
         input_op: LogicalOperator,
         uri_column_name: str,
+        output_bytes_column_name: str,
     ):
         super().__init__("Download", input_op)
         self._uri_column_name = uri_column_name
+        self._output_bytes_column_name = output_bytes_column_name
 
     def can_modify_num_rows(self) -> bool:
         return False
@@ -379,3 +381,7 @@ class Download(AbstractMap):
     @property
     def uri_column_name(self) -> str:
         return self._uri_column_name
+
+    @property
+    def output_bytes_column_name(self) -> str:
+        return self._output_bytes_column_name

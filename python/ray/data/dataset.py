@@ -818,6 +818,7 @@ class Dataset:
             download_op = Download(
                 self._logical_plan.dag,
                 uri_column_name=expr.uri_column_name,
+                output_bytes_column_name=column_name,
             )
             logical_plan = LogicalPlan(download_op, self.context)
         else:
