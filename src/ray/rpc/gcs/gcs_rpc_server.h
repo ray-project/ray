@@ -145,10 +145,6 @@ namespace rpc {
 #define INTERNAL_KV_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(InternalKVGcsService, HANDLER, -1)
 
-// Unlimited max active RPCs, because of long poll.
-#define INTERNAL_PUBSUB_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(InternalPubSubGcsService, HANDLER, -1)
-
 #define GCS_RPC_SEND_REPLY(send_reply_callback, reply, status)        \
   reply->mutable_status()->set_code(static_cast<int>(status.code())); \
   reply->mutable_status()->set_message(status.message());             \
@@ -486,55 +482,10 @@ class RayEventExportGrpcService : public GrpcService {
   RayEventExportGcsServiceHandler &service_handler_;
 };
 
-class InternalPubSubGcsServiceHandler {
- public:
-  virtual ~InternalPubSubGcsServiceHandler() = default;
-
-  virtual void HandleGcsPublish(GcsPublishRequest request,
-                                GcsPublishReply *reply,
-                                SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGcsSubscriberPoll(GcsSubscriberPollRequest request,
-                                       GcsSubscriberPollReply *reply,
-                                       SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGcsSubscriberCommandBatch(GcsSubscriberCommandBatchRequest request,
-                                               GcsSubscriberCommandBatchReply *reply,
-                                               SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGcsUnregisterSubscriber(GcsUnregisterSubscriberRequest request,
-                                             GcsUnregisterSubscriberReply *reply,
-                                             SendReplyCallback send_reply_callback) = 0;
-};
-
-class InternalPubSubGrpcService : public GrpcService {
- public:
-  InternalPubSubGrpcService(instrumented_io_context &io_service,
-                            InternalPubSubGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler) {}
-
- protected:
-  grpc::Service &GetGrpcService() override { return service_; }
-  void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id) override {
-    INTERNAL_PUBSUB_SERVICE_RPC_HANDLER(GcsPublish);
-    INTERNAL_PUBSUB_SERVICE_RPC_HANDLER(GcsSubscriberPoll);
-    INTERNAL_PUBSUB_SERVICE_RPC_HANDLER(GcsSubscriberCommandBatch);
-    INTERNAL_PUBSUB_SERVICE_RPC_HANDLER(GcsUnregisterSubscriber);
-  }
-
- private:
-  InternalPubSubGcsService::AsyncService service_;
-  InternalPubSubGcsServiceHandler &service_handler_;
-};
-
 using ActorInfoHandler = ActorInfoGcsServiceHandler;
 using NodeResourceInfoHandler = NodeResourceInfoGcsServiceHandler;
 using PlacementGroupInfoHandler = PlacementGroupInfoGcsServiceHandler;
 using InternalKVHandler = InternalKVGcsServiceHandler;
-using InternalPubSubHandler = InternalPubSubGcsServiceHandler;
 using TaskInfoHandler = TaskInfoGcsServiceHandler;
 using RayEventExportHandler = RayEventExportGcsServiceHandler;
 
