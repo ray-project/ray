@@ -19,7 +19,13 @@
 #include <utility>
 
 #include "ray/common/ray_config.h"
-#include "ray/stats/metric_defs.h"
+#include "ray/common/scheduling/cluster_resource_data.h"
+#include "ray/gcs/gcs_server/gcs_init_data.h"
+#include "ray/gcs/gcs_server/gcs_node_manager.h"
+#include "ray/gcs/gcs_server/state_util.h"
+#include "ray/raylet/scheduling/cluster_resource_manager.h"
+#include "ray/raylet/scheduling/cluster_task_manager.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 namespace gcs {
@@ -28,7 +34,7 @@ GcsResourceManager::GcsResourceManager(instrumented_io_context &io_context,
                                        ClusterResourceManager &cluster_resource_manager,
                                        GcsNodeManager &gcs_node_manager,
                                        NodeID local_node_id,
-                                       ClusterTaskManager *cluster_task_manager)
+                                       raylet::ClusterTaskManager *cluster_task_manager)
     : io_context_(io_context),
       cluster_resource_manager_(cluster_resource_manager),
       gcs_node_manager_(gcs_node_manager),
@@ -36,7 +42,7 @@ GcsResourceManager::GcsResourceManager(instrumented_io_context &io_context,
       cluster_task_manager_(cluster_task_manager) {}
 
 void GcsResourceManager::ConsumeSyncMessage(
-    std::shared_ptr<const syncer::RaySyncMessage> message) {
+    std::shared_ptr<const rpc::syncer::RaySyncMessage> message) {
   // ConsumeSyncMessage is called by ray_syncer which might not run
   // in a dedicated thread for performance.
   // GcsResourceManager is a module always run in the main thread, so we just

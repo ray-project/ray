@@ -64,5 +64,94 @@ class NodeInfoGcsServiceHandler {
                                     SendReplyCallback send_reply_callback) = 0;
 };
 
+class NodeResourceInfoGcsServiceHandler {
+ public:
+  virtual ~NodeResourceInfoGcsServiceHandler() = default;
+
+  virtual void HandleGetAllAvailableResources(GetAllAvailableResourcesRequest request,
+                                              GetAllAvailableResourcesReply *reply,
+                                              SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllTotalResources(GetAllTotalResourcesRequest request,
+                                          GetAllTotalResourcesReply *reply,
+                                          SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetDrainingNodes(GetDrainingNodesRequest request,
+                                      GetDrainingNodesReply *reply,
+                                      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllResourceUsage(GetAllResourceUsageRequest request,
+                                         GetAllResourceUsageReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
+};
+
+class JobInfoGcsServiceHandler {
+ public:
+  using JobFinishListenerCallback = std::function<void(const rpc::JobTableData &)>;
+
+  virtual ~JobInfoGcsServiceHandler() = default;
+
+  virtual void HandleAddJob(AddJobRequest request,
+                            AddJobReply *reply,
+                            SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleMarkJobFinished(MarkJobFinishedRequest request,
+                                     MarkJobFinishedReply *reply,
+                                     SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllJobInfo(GetAllJobInfoRequest request,
+                                   GetAllJobInfoReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
+
+  virtual void AddJobFinishedListener(JobFinishListenerCallback listener) = 0;
+
+  virtual void HandleReportJobError(ReportJobErrorRequest request,
+                                    ReportJobErrorReply *reply,
+                                    SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetNextJobID(GetNextJobIDRequest request,
+                                  GetNextJobIDReply *reply,
+                                  SendReplyCallback send_reply_callback) = 0;
+};
+
+class RuntimeEnvGcsServiceHandler {
+ public:
+  virtual ~RuntimeEnvGcsServiceHandler() = default;
+
+  virtual void HandlePinRuntimeEnvURI(PinRuntimeEnvURIRequest request,
+                                      PinRuntimeEnvURIReply *reply,
+                                      SendReplyCallback send_reply_callback) = 0;
+};
+
+class WorkerInfoGcsServiceHandler {
+ public:
+  virtual ~WorkerInfoGcsServiceHandler() = default;
+
+  virtual void HandleReportWorkerFailure(ReportWorkerFailureRequest request,
+                                         ReportWorkerFailureReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetWorkerInfo(GetWorkerInfoRequest request,
+                                   GetWorkerInfoReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllWorkerInfo(GetAllWorkerInfoRequest request,
+                                      GetAllWorkerInfoReply *reply,
+                                      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleAddWorkerInfo(AddWorkerInfoRequest request,
+                                   AddWorkerInfoReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleUpdateWorkerDebuggerPort(UpdateWorkerDebuggerPortRequest request,
+                                              UpdateWorkerDebuggerPortReply *reply,
+                                              SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleUpdateWorkerNumPausedThreads(
+      UpdateWorkerNumPausedThreadsRequest request,
+      UpdateWorkerNumPausedThreadsReply *reply,
+      SendReplyCallback send_reply_callback) = 0;
+};
+
 }  // namespace rpc
 }  // namespace ray

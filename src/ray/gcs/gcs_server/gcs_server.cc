@@ -25,12 +25,22 @@
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
+#include "ray/gcs/gcs_server/gcs_function_manager.h"
+#include "ray/gcs/gcs_server/gcs_health_check_manager.h"
+#include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
+#include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/gcs_server/gcs_task_manager.h"
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/grpc_services.h"
+#include "ray/gcs/gcs_server/pubsub_handler.h"
+#include "ray/gcs/gcs_server/runtime_env_handler.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
+#include "ray/gcs/gcs_server/usage_stats_client.h"
+#include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/observable_store_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
@@ -235,59 +245,31 @@ void GcsServer::GetOrGenerateClusterId(
        io_context});
 }
 
+void GcsServer::UpdateGcsResourceManagerInTest(
+    const NodeID &node_id,
+    const syncer::ResourceViewSyncMessage &resource_view_sync_message) {
+  RAY_CHECK(gcs_resource_manager_ != nullptr);
+  gcs_resource_manager_->UpdateFromResourceView(node_id, resource_view_sync_message);
+}
+
 void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
-  // Init cluster resource scheduler.
   InitClusterResourceScheduler();
-
-  // Init gcs node manager.
   InitGcsNodeManager(gcs_init_data);
-
-  // Init cluster task manager.
   InitClusterTaskManager();
-
-  // Init gcs resource manager.
   InitGcsResourceManager(gcs_init_data);
-
-  // Init gcs health check manager.
   InitGcsHealthCheckManager(gcs_init_data);
-
-  // Init synchronization service
   InitRaySyncer(gcs_init_data);
-
-  // Init KV service.
   InitKVService();
-
-  // Init function manager
   InitFunctionManager();
-
-  // Init Pub/Sub handler
   InitPubSubHandler();
-
-  // Init RuntimeEnv manager
   InitRuntimeEnvManager();
-
-  // Init gcs job manager.
   InitGcsJobManager(gcs_init_data);
-
-  // Init gcs placement group manager.
   InitGcsPlacementGroupManager(gcs_init_data);
-
-  // Init gcs actor manager.
   InitGcsActorManager(gcs_init_data);
-
-  // Init gcs worker manager.
   InitGcsWorkerManager();
-
-  // Init GCS task manager.
   InitGcsTaskManager();
-
-  // Install event listeners.
   InstallEventListeners();
-
-  // Init autoscaling manager
   InitGcsAutoscalerStateManager(gcs_init_data);
-
-  // Init usage stats client.
   InitUsageStatsClient();
 
   // Init OpenTelemetry exporter.
@@ -397,7 +379,9 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
   // Initialize by gcs tables data.
   gcs_resource_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::NodeResourceInfoGrpcService>(
-      io_context_provider_.GetDefaultIOContext(), *gcs_resource_manager_));
+      io_context_provider_.GetDefaultIOContext(),
+      *gcs_resource_manager_,
+      RayConfig::instance().gcs_max_active_rpcs_per_handler()));
 
   periodical_runner_->RunFnPeriodically(
       [this] {
@@ -483,7 +467,9 @@ void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
   gcs_job_manager_->Initialize(gcs_init_data);
 
   rpc_server_.RegisterService(std::make_unique<rpc::JobInfoGrpcService>(
-      io_context_provider_.GetDefaultIOContext(), *gcs_job_manager_));
+      io_context_provider_.GetDefaultIOContext(),
+      *gcs_job_manager_,
+      RayConfig::instance().gcs_max_active_rpcs_per_handler()));
 }
 
 void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
@@ -697,14 +683,18 @@ void GcsServer::InitRuntimeEnvManager() {
                              std::chrono::milliseconds(delay_ms));
       });
   rpc_server_.RegisterService(std::make_unique<rpc::RuntimeEnvGrpcService>(
-      io_context_provider_.GetDefaultIOContext(), *runtime_env_handler_));
+      io_context_provider_.GetDefaultIOContext(),
+      *runtime_env_handler_,
+      /*max_active_rpcs_per_handler=*/-1));
 }
 
 void GcsServer::InitGcsWorkerManager() {
   gcs_worker_manager_ = std::make_unique<GcsWorkerManager>(
       *gcs_table_storage_, io_context_provider_.GetDefaultIOContext(), *gcs_publisher_);
   rpc_server_.RegisterService(std::make_unique<rpc::WorkerInfoGrpcService>(
-      io_context_provider_.GetDefaultIOContext(), *gcs_worker_manager_));
+      io_context_provider_.GetDefaultIOContext(),
+      *gcs_worker_manager_,
+      RayConfig::instance().gcs_max_active_rpcs_per_handler()));
 }
 
 void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) {

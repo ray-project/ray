@@ -109,11 +109,6 @@ using AutoscalerStateHandler = AutoscalerStateServiceHandler;
 namespace ray {
 namespace rpc {
 
-#define JOB_INFO_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(JobInfoGcsService,      \
-                      HANDLER,                \
-                      RayConfig::instance().gcs_max_active_rpcs_per_handler())
-
 #define ACTOR_INFO_SERVICE_RPC_HANDLER(HANDLER, MAX_ACTIVE_RPCS) \
   RPC_SERVICE_HANDLER(ActorInfoGcsService, HANDLER, MAX_ACTIVE_RPCS)
 
@@ -132,18 +127,8 @@ namespace rpc {
                       HANDLER,                        \
                       RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
-#define NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(NodeResourceInfoGcsService,       \
-                      HANDLER,                          \
-                      RayConfig::instance().gcs_max_active_rpcs_per_handler())
-
 #define OBJECT_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(ObjectInfoGcsService,      \
-                      HANDLER,                   \
-                      RayConfig::instance().gcs_max_active_rpcs_per_handler())
-
-#define WORKER_INFO_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(WorkerInfoGcsService,      \
                       HANDLER,                   \
                       RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
@@ -155,9 +140,6 @@ namespace rpc {
 #define INTERNAL_KV_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(InternalKVGcsService, HANDLER, -1)
 
-#define RUNTIME_ENV_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(RuntimeEnvGcsService, HANDLER, -1)
-
 // Unlimited max active RPCs, because of long poll.
 #define INTERNAL_PUBSUB_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(InternalPubSubGcsService, HANDLER, -1)
@@ -166,66 +148,6 @@ namespace rpc {
   reply->mutable_status()->set_code(static_cast<int>(status.code())); \
   reply->mutable_status()->set_message(status.message());             \
   send_reply_callback(ray::Status::OK(), nullptr, nullptr)
-
-class JobInfoGcsServiceHandler {
- public:
-  using JobFinishListenerCallback = std::function<void(const rpc::JobTableData &)>;
-
-  virtual ~JobInfoGcsServiceHandler() = default;
-
-  virtual void HandleAddJob(AddJobRequest request,
-                            AddJobReply *reply,
-                            SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleMarkJobFinished(MarkJobFinishedRequest request,
-                                     MarkJobFinishedReply *reply,
-                                     SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetAllJobInfo(GetAllJobInfoRequest request,
-                                   GetAllJobInfoReply *reply,
-                                   SendReplyCallback send_reply_callback) = 0;
-
-  virtual void AddJobFinishedListener(JobFinishListenerCallback listener) = 0;
-
-  virtual void HandleReportJobError(ReportJobErrorRequest request,
-                                    ReportJobErrorReply *reply,
-                                    SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetNextJobID(GetNextJobIDRequest request,
-                                  GetNextJobIDReply *reply,
-                                  SendReplyCallback send_reply_callback) = 0;
-};
-
-/// The `GrpcService` for `JobInfoGcsService`.
-class JobInfoGrpcService : public GrpcService {
- public:
-  /// Constructor.
-  ///
-  /// \param[in] handler The service handler that actually handle the requests.
-  explicit JobInfoGrpcService(instrumented_io_context &io_service,
-                              JobInfoGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler){};
-
- protected:
-  grpc::Service &GetGrpcService() override { return service_; }
-
-  void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id) override {
-    JOB_INFO_SERVICE_RPC_HANDLER(AddJob);
-    JOB_INFO_SERVICE_RPC_HANDLER(MarkJobFinished);
-    JOB_INFO_SERVICE_RPC_HANDLER(GetAllJobInfo);
-    JOB_INFO_SERVICE_RPC_HANDLER(ReportJobError);
-    JOB_INFO_SERVICE_RPC_HANDLER(GetNextJobID);
-  }
-
- private:
-  /// The grpc async service object.
-  JobInfoGcsService::AsyncService service_;
-  /// The service handler that actually handle the requests.
-  JobInfoGcsServiceHandler &service_handler_;
-};
 
 class ActorInfoGcsServiceHandler {
  public:
@@ -312,120 +234,6 @@ class ActorInfoGrpcService : public GrpcService {
   ActorInfoGcsService::AsyncService service_;
   /// The service handler that actually handle the requests.
   ActorInfoGcsServiceHandler &service_handler_;
-};
-
-class NodeResourceInfoGcsServiceHandler {
- public:
-  virtual ~NodeResourceInfoGcsServiceHandler() = default;
-
-  virtual void HandleGetAllAvailableResources(
-      rpc::GetAllAvailableResourcesRequest request,
-      rpc::GetAllAvailableResourcesReply *reply,
-      rpc::SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetAllTotalResources(rpc::GetAllTotalResourcesRequest request,
-                                          rpc::GetAllTotalResourcesReply *reply,
-                                          rpc::SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetDrainingNodes(rpc::GetDrainingNodesRequest request,
-                                      rpc::GetDrainingNodesReply *reply,
-                                      rpc::SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetAllResourceUsage(GetAllResourceUsageRequest request,
-                                         GetAllResourceUsageReply *reply,
-                                         SendReplyCallback send_reply_callback) = 0;
-};
-
-/// The `GrpcService` for `NodeResourceInfoGcsService`.
-class NodeResourceInfoGrpcService : public GrpcService {
- public:
-  /// Constructor.
-  ///
-  /// \param[in] handler The service handler that actually handle the requests.
-  explicit NodeResourceInfoGrpcService(instrumented_io_context &io_service,
-                                       NodeResourceInfoGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler){};
-
- protected:
-  grpc::Service &GetGrpcService() override { return service_; }
-
-  void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id) override {
-    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllAvailableResources);
-    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllTotalResources);
-    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetDrainingNodes);
-    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllResourceUsage);
-  }
-
- private:
-  /// The grpc async service object.
-  NodeResourceInfoGcsService::AsyncService service_;
-  /// The service handler that actually handle the requests.
-  NodeResourceInfoGcsServiceHandler &service_handler_;
-};
-
-class WorkerInfoGcsServiceHandler {
- public:
-  virtual ~WorkerInfoGcsServiceHandler() = default;
-
-  virtual void HandleReportWorkerFailure(ReportWorkerFailureRequest request,
-                                         ReportWorkerFailureReply *reply,
-                                         SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetWorkerInfo(GetWorkerInfoRequest request,
-                                   GetWorkerInfoReply *reply,
-                                   SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetAllWorkerInfo(GetAllWorkerInfoRequest request,
-                                      GetAllWorkerInfoReply *reply,
-                                      SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleAddWorkerInfo(AddWorkerInfoRequest request,
-                                   AddWorkerInfoReply *reply,
-                                   SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleUpdateWorkerDebuggerPort(UpdateWorkerDebuggerPortRequest request,
-                                              UpdateWorkerDebuggerPortReply *reply,
-                                              SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleUpdateWorkerNumPausedThreads(
-      UpdateWorkerNumPausedThreadsRequest request,
-      UpdateWorkerNumPausedThreadsReply *reply,
-      SendReplyCallback send_reply_callback) = 0;
-};
-
-/// The `GrpcService` for `WorkerInfoGcsService`.
-class WorkerInfoGrpcService : public GrpcService {
- public:
-  /// Constructor.
-  ///
-  /// \param[in] handler The service handler that actually handle the requests.
-  explicit WorkerInfoGrpcService(instrumented_io_context &io_service,
-                                 WorkerInfoGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler){};
-
- protected:
-  grpc::Service &GetGrpcService() override { return service_; }
-
-  void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id) override {
-    WORKER_INFO_SERVICE_RPC_HANDLER(ReportWorkerFailure);
-    WORKER_INFO_SERVICE_RPC_HANDLER(GetWorkerInfo);
-    WORKER_INFO_SERVICE_RPC_HANDLER(GetAllWorkerInfo);
-    WORKER_INFO_SERVICE_RPC_HANDLER(AddWorkerInfo);
-    WORKER_INFO_SERVICE_RPC_HANDLER(UpdateWorkerDebuggerPort);
-    WORKER_INFO_SERVICE_RPC_HANDLER(UpdateWorkerNumPausedThreads);
-  }
-
- private:
-  /// The grpc async service object.
-  WorkerInfoGcsService::AsyncService service_;
-  /// The service handler that actually handle the requests.
-  WorkerInfoGcsServiceHandler &service_handler_;
 };
 
 class PlacementGroupInfoGcsServiceHandler {
@@ -548,34 +356,6 @@ class InternalKVGrpcService : public GrpcService {
   InternalKVGcsServiceHandler &service_handler_;
 };
 
-class RuntimeEnvGcsServiceHandler {
- public:
-  virtual ~RuntimeEnvGcsServiceHandler() = default;
-  virtual void HandlePinRuntimeEnvURI(PinRuntimeEnvURIRequest request,
-                                      PinRuntimeEnvURIReply *reply,
-                                      SendReplyCallback send_reply_callback) = 0;
-};
-
-class RuntimeEnvGrpcService : public GrpcService {
- public:
-  explicit RuntimeEnvGrpcService(instrumented_io_context &io_service,
-                                 RuntimeEnvGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler) {}
-
- protected:
-  grpc::Service &GetGrpcService() override { return service_; }
-  void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id) override {
-    RUNTIME_ENV_SERVICE_RPC_HANDLER(PinRuntimeEnvURI);
-  }
-
- private:
-  RuntimeEnvGcsService::AsyncService service_;
-  RuntimeEnvGcsServiceHandler &service_handler_;
-};
-
 class TaskInfoGcsServiceHandler {
  public:
   virtual ~TaskInfoGcsServiceHandler() = default;
@@ -693,14 +473,10 @@ class InternalPubSubGrpcService : public GrpcService {
   InternalPubSubGcsServiceHandler &service_handler_;
 };
 
-using JobInfoHandler = JobInfoGcsServiceHandler;
 using ActorInfoHandler = ActorInfoGcsServiceHandler;
-using NodeResourceInfoHandler = NodeResourceInfoGcsServiceHandler;
-using WorkerInfoHandler = WorkerInfoGcsServiceHandler;
 using PlacementGroupInfoHandler = PlacementGroupInfoGcsServiceHandler;
 using InternalKVHandler = InternalKVGcsServiceHandler;
 using InternalPubSubHandler = InternalPubSubGcsServiceHandler;
-using RuntimeEnvHandler = RuntimeEnvGcsServiceHandler;
 using TaskInfoHandler = TaskInfoGcsServiceHandler;
 using RayEventExportHandler = RayEventExportGcsServiceHandler;
 

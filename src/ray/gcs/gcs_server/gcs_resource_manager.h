@@ -20,27 +20,28 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
-#include "ray/common/scheduling/cluster_resource_data.h"
-#include "ray/gcs/gcs_server/gcs_init_data.h"
-#include "ray/gcs/gcs_server/gcs_node_manager.h"
-#include "ray/gcs/gcs_server/gcs_table_storage.h"
-#include "ray/gcs/gcs_server/state_util.h"
-#include "ray/raylet/scheduling/cluster_resource_manager.h"
-#include "ray/raylet/scheduling/cluster_task_manager.h"
-#include "ray/rpc/client_call.h"
-#include "ray/rpc/gcs/gcs_rpc_server.h"
+#include "ray/gcs/gcs_server/grpc_service_interfaces.h"
+#include "ray/stats/metric_defs.h"
 #include "src/ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/ray_syncer.pb.h"
 
 namespace ray {
 
-using raylet::ClusterTaskManager;
+class ClusterResourceManager;
+
+namespace raylet {
+
+class ClusterTaskManager;
+
+}  // namespace raylet
 
 namespace gcs {
+
+class GcsInitData;
 class GcsNodeManager;
-class GcsServer;
 
 /// Ideally, the logic related to resource calculation should be moved from
 /// `gcs_resource_manager` to `cluster_resource_manager`, and all logic related to
@@ -60,7 +61,7 @@ class GcsServer;
 /// It is responsible for handing node resource related rpc requests and it is used for
 /// actor and placement group scheduling. It obtains the available resources of nodes
 /// through heartbeat reporting. Non-thread safe.
-class GcsResourceManager : public rpc::NodeResourceInfoHandler,
+class GcsResourceManager : public rpc::NodeResourceInfoGcsServiceHandler,
                            public syncer::ReceiverInterface {
  public:
   /// Create a GcsResourceManager.
@@ -68,12 +69,13 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
                               ClusterResourceManager &cluster_resource_manager,
                               GcsNodeManager &gcs_node_manager,
                               NodeID local_node_id,
-                              ClusterTaskManager *cluster_task_manager = nullptr);
+                              raylet::ClusterTaskManager *cluster_task_manager = nullptr);
 
   virtual ~GcsResourceManager() = default;
 
   /// Handle the resource update.
-  void ConsumeSyncMessage(std::shared_ptr<const syncer::RaySyncMessage> message) override;
+  void ConsumeSyncMessage(
+      std::shared_ptr<const rpc::syncer::RaySyncMessage> message) override;
 
   /// Handle get available resources of all nodes.
   /// Autoscaler-specific RPC called from Python.
@@ -202,7 +204,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   ClusterResourceManager &cluster_resource_manager_;
   GcsNodeManager &gcs_node_manager_;
   NodeID local_node_id_;
-  ClusterTaskManager *cluster_task_manager_;
+  raylet::ClusterTaskManager *cluster_task_manager_;
   /// Num of alive nodes in the cluster.
   size_t num_alive_nodes_ = 0;
 };

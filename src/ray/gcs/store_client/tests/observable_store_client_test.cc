@@ -29,8 +29,6 @@ class ObservableStoreClientTest : public StoreClientTestBase {
     store_client_ =
         std::make_shared<ObservableStoreClient>(std::make_unique<InMemoryStoreClient>());
   }
-
-  void DisconnectStoreClient() override {}
 };
 
 TEST_F(ObservableStoreClientTest, AsyncPutAndAsyncGetTest) { TestAsyncPutAndAsyncGet(); }
