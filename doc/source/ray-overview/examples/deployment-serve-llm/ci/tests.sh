@@ -2,7 +2,7 @@
 
 # Don't use nbconvert or jupytext unless you're willing
 # to check each subprocess unit and validate that errors
-# aren't being consumed/hidden.
+# aren't being consumed/hidden
 
 set -exo pipefail
 
