@@ -2,12 +2,9 @@ import abc
 import functools
 from typing import TYPE_CHECKING, List, Optional, Union
 
-from python.ray.data._internal.util import (
-    unify_ref_bundles_schema,
-)
-
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalOperator, SourceOperator
+from ray.data._internal.util import unify_ref_bundles_schema
 from ray.data.block import (
     Block,
     BlockMetadata,
