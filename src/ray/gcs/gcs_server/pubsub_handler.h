@@ -17,6 +17,7 @@
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "ray/gcs/gcs_server/grpc_service_interfaces.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 
