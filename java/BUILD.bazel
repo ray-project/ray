@@ -6,7 +6,7 @@ load("@rules_java//java:java_binary.bzl", "java_binary")
 load("@rules_java//java:java_import.bzl", "java_import")
 load("@rules_java//java:java_library.bzl", "java_library")
 load("@rules_java//java:java_test.bzl", "java_test")
-load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
+load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_files")
 load("@rules_pkg//pkg:zip.bzl", "pkg_zip")
 load("@rules_proto_grpc//java:defs.bzl", "java_proto_compile")
 load("@rules_python//python:defs.bzl", "py_binary")
@@ -401,37 +401,36 @@ py_binary(
     deps = ["//bazel:gen_extract"],
 )
 
-# Generates the dependencies needed by maven.
-genrule(
-    name = "gen_maven_deps",
+pkg_files(
+    name = "maven_deps_files",
     srcs = [
-        ":pom_files.zip",
-        ":proto_files.zip",
         ":java_native_deps",
     ],
-    outs = ["gen_maven_deps.out"],
-    cmd = """
-        WORK_DIR="$${PWD}"
-        # Copy native dependencies.
-        OS_NAME=""
-        case "$${OSTYPE}" in
-          linux*) OS_NAME="linux";;
-          darwin*) OS_NAME="darwin";;
-          *) echo "$${OSTYPE} is not supported currently"; exit 1;;
-        esac
-        NATIVE_DEPS_DIR="$$WORK_DIR/java/runtime/native_dependencies/native/$$OS_NAME"
-        rm -rf "$$NATIVE_DEPS_DIR"
-        mkdir -p "$$NATIVE_DEPS_DIR"
-        echo "# gen_maven_deps" > $@
-        for f in $(locations //java:java_native_deps); do
-            chmod +w "$$f"
-            cp "$$f" "$$NATIVE_DEPS_DIR"
-            if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum "$$f" >> $@ ; else sha1sum "$$f" >> $@ ; fi
-        done
-    """,
-    local = 1,
-    tags = ["no-cache"],
+    attributes = pkg_attributes(mode = "755"),
+    prefix = select(
+        {
+            "@platforms//os:linux": "runtime/native_dependencies/native/linux",
+            "@platforms//os:macos": "runtime/native_dependencies/native/darwin",
+        },
+        no_match_error = "Unsupported platform",
+    ),
     visibility = ["//visibility:private"],
+)
+
+pkg_zip(
+    name = "maven_deps",
+    srcs = [
+        ":maven_deps_files",
+    ],
+    visibility = ["//visibility:private"],
+)
+
+py_binary(
+    name = "gen_maven_deps",
+    srcs = ["gen_maven_deps.py"],
+    data = [":maven_deps.zip"],
+    visibility = ["//visibility:private"],
+    deps = ["//bazel:gen_extract"],
 )
 
 java_binary(
