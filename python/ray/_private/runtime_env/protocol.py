@@ -30,13 +30,15 @@ class ProtocolsProvider:
             "gs",
             # Remote azure blob storage path, assumes everything packed in one zip file.
             "azure",
+            # Remote Azure Blob File System Secure path, assumes everything packed in one zip file.
+            "abfss",
             # File storage path, assumes everything packed in one zip file.
             "file",
         }
 
     @classmethod
     def get_remote_protocols(cls):
-        return {"https", "s3", "gs", "azure", "file"}
+        return {"https", "s3", "gs", "azure", "abfss", "file"}
 
     @classmethod
     def _handle_s3_protocol(cls):
@@ -123,6 +125,46 @@ class ProtocolsProvider:
         return open_file, transport_params
 
     @classmethod
+    def _handle_abfss_protocol(cls):
+        """Set up Azure Blob File System Secure (ABFSS) protocol handling.
+
+        Returns:
+            tuple: (open_file function, transport_params)
+
+        Raises:
+            ImportError: If required dependencies are not installed.
+            ValueError: If required environment variables are not set.
+        """
+        try:
+            from azure.identity import DefaultAzureCredential
+            from azure.storage.blob import BlobServiceClient  # noqa: F401
+            from smart_open import open as open_file
+        except ImportError:
+            raise ImportError(
+                "You must `pip install azure-storage-blob azure-identity smart_open[azure]` "
+                "to fetch URIs in Azure Blob File System Secure. "
+                + cls._MISSING_DEPENDENCIES_WARNING
+            )
+
+        # Define authentication variable
+        azure_storage_account_name = os.getenv("AZURE_STORAGE_ACCOUNT")
+
+        if not azure_storage_account_name:
+            raise ValueError(
+                "Azure Blob File System Secure authentication requires "
+                "AZURE_STORAGE_ACCOUNT environment variable to be set."
+            )
+
+        account_url = f"https://{azure_storage_account_name}.dfs.core.windows.net/"
+        transport_params = {
+            "client": BlobServiceClient(
+                account_url=account_url, credential=DefaultAzureCredential()
+            )
+        }
+
+        return open_file, transport_params
+
+    @classmethod
     def download_remote_uri(cls, protocol: str, source_uri: str, dest_file: str):
         """Download file from remote URI to destination file.
 
@@ -151,6 +193,8 @@ class ProtocolsProvider:
             open_file, tp = cls._handle_gs_protocol()
         elif protocol == "azure":
             open_file, tp = cls._handle_azure_protocol()
+        elif protocol == "abfss":
+            open_file, tp = cls._handle_abfss_protocol()
         else:
             try:
                 from smart_open import open as open_file
