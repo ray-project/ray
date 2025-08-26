@@ -19,6 +19,7 @@ from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler impor
 )
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
 from ray.data.aggregate import AggregateFn
+from ray.data.block import _take_first_non_empty_schema
 from ray.data.context import DataContext, ShuffleStrategy
 
 
@@ -48,11 +49,10 @@ def generate_aggregate_fn(
         metadata = []
         # NOTE: unify was here before. I think all should be
         # valid schemas, so taking any
-        schema = None
+        schema = _take_first_non_empty_schema(ref_bundle.schema for ref_bundle in refs)
         for ref_bundle in refs:
             blocks.extend(ref_bundle.block_refs)
             metadata.extend(ref_bundle.metadata)
-            schema = ref_bundle.schema
         if len(blocks) == 0:
             return (blocks, {})
         for agg_fn in aggs:

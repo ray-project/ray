@@ -22,6 +22,7 @@ from ray.data.block import (
     BlockExecStats,
     BlockMetadata,
     BlockMetadataWithSchema,
+    _take_first_non_empty_schema,
     to_stats,
 )
 from ray.data.context import DataContext
@@ -725,11 +726,10 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         stats = BlockExecStats.builder()
         if not reduce_args:
             reduce_args = []
-        from ray.data.block import _is_empty_schema
 
         num_rows = 0
         size_bytes = 0
-        schema = None
+        schemas = []
         for i, mapper_outputs in enumerate(zip(*all_mapper_outputs)):
             block_meta_with_schema: Tuple[Block, "BlockMetadataWithSchema"] = reduce_fn(
                 *reduce_args, *mapper_outputs, partial_reduce=True
@@ -741,8 +741,9 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             num_rows += block.num_rows()
             size_bytes += block.size_bytes()
             del block
-            if schema is None and not _is_empty_schema(meta_with_schema.schema):
-                schema = meta_with_schema.schema
+            schemas.append(meta_with_schema.schema)
+
+        schema = _take_first_non_empty_schema(iter(schemas))
 
         meta = BlockMetadata(
             num_rows=num_rows,
