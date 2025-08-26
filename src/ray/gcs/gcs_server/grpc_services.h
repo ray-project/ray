@@ -42,7 +42,7 @@ class NodeInfoGrpcService : public GrpcService {
                                int64_t max_active_rpcs_per_handler)
       : GrpcService(io_service),
         service_handler_(service_handler),
-        max_active_rpcs_per_handler_(max_active_rpcs_per_handler){};
+        max_active_rpcs_per_handler_(max_active_rpcs_per_handler) {}
 
  protected:
   grpc::Service &GetGrpcService() override { return service_; }
@@ -55,6 +55,28 @@ class NodeInfoGrpcService : public GrpcService {
  private:
   NodeInfoGcsService::AsyncService service_;
   NodeInfoGcsServiceHandler &service_handler_;
+  int64_t max_active_rpcs_per_handler_;
+};
+
+class RuntimeEnvGrpcService : public GrpcService {
+ public:
+  explicit RuntimeEnvGrpcService(instrumented_io_context &io_service,
+                                 RuntimeEnvGcsServiceHandler &handler,
+                                 int64_t max_active_rpcs_per_handler)
+      : GrpcService(io_service),
+        service_handler_(handler),
+        max_active_rpcs_per_handler_(max_active_rpcs_per_handler) {}
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      const ClusterID &cluster_id) override;
+
+ private:
+  RuntimeEnvGcsService::AsyncService service_;
+  RuntimeEnvGcsServiceHandler &service_handler_;
   int64_t max_active_rpcs_per_handler_;
 };
 
