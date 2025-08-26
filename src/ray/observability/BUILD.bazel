@@ -16,3 +16,11 @@ ray_cc_library(
         "@io_opentelemetry_cpp//sdk/src/metrics",
     ],
 )
+
+ray_cc_library(
+    name = "metric_interface",
+    hdrs = ["metric_interface.h"],
+    deps = [
+        "@io_opencensus_cpp//opencensus/stats",
+    ],
+)
