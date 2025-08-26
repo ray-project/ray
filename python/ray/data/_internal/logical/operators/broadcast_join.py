@@ -118,10 +118,14 @@ class BroadcastJoinFunction:
             else:
                 self.small_table = ray.get(arrow_refs[0])
         except Exception as e:
-            raise UserWarning(
+            import warnings
+            warnings.warn(
                 f"Warning: {e}. \nThe dataset being broadcast is likely too large "
                 f"to fit in memory."
             )
+            # Create an empty table as fallback
+            import pyarrow as pa
+            self.small_table = pa.table({})
 
     def __call__(self, batch: DataBatch) -> DataBatch:
         """Perform PyArrow join on a batch from the large table.
@@ -136,8 +140,9 @@ class BroadcastJoinFunction:
         Returns:
             Joined batch containing the result of the join operation.
 
-        Raises:
-            UserWarning: If the small dataset cannot be materialized due to size.
+        Note:
+            If the small dataset cannot be materialized, a warning will be logged
+            and an empty table will be used as fallback.
         """
         import pyarrow as pa
 
