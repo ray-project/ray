@@ -11,6 +11,7 @@ HIP_VISIBLE_DEVICES_ENV_VAR = "HIP_VISIBLE_DEVICES"
 NOSET_HIP_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_HIP_VISIBLE_DEVICES"
 
 amd_product_dict = {
+    "0x66a1": "AMD-Instinct-MI50",
     "0x738c": "AMD-Instinct-MI100",
     "0x7408": "AMD-Instinct-MI250X",
     "0x740c": "AMD-Instinct-MI250X-MI250",
@@ -20,6 +21,8 @@ amd_product_dict = {
     "0x74a2": "AMD-Instinct-MI308X-OAM",
     "0x74a9": "AMD-Instinct-MI300X-HF",
     "0x74a5": "AMD-Instinct-MI325X-OAM",
+    "0x75a0": "AMD-Instinct-MI350X-OAM",
+    "0x75a3": "AMD-Instinct-MI355X-OAM",
     "0x6798": "AMD-Radeon-R9-200-HD-7900",
     "0x6799": "AMD-Radeon-HD-7900",
     "0x679A": "AMD-Radeon-HD-7900",

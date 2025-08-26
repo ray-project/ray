@@ -140,22 +140,7 @@ RedisStoreClient::RedisStoreClient(instrumented_io_context &io_service,
   RAY_CHECK(!absl::StrContains(external_storage_namespace_, kClusterSeparator))
       << "Storage namespace (" << external_storage_namespace_ << ") shouldn't contain "
       << kClusterSeparator << ".";
-
-  // Health check Redis periodically and crash if it becomes unavailable.
-  periodic_health_check_runner_ = PeriodicalRunner::Create(io_service_);
-  periodic_health_check_runner_->RunFnPeriodically(
-      [this] {
-        AsyncCheckHealth({[](const Status &status) {
-                            RAY_CHECK_OK(status)
-                                << "Redis connection failed unexpectedly.";
-                          },
-                          io_service_});
-      },
-      options.heartbeat_interval_ms,
-      "RedisStoreClient.redis_health_check");
 }
-
-RedisStoreClient::~RedisStoreClient() { periodic_health_check_runner_.reset(); }
 
 Status RedisStoreClient::AsyncPut(const std::string &table_name,
                                   const std::string &key,
@@ -427,9 +412,9 @@ void RedisStoreClient::RedisScanner::Scan() {
 
   // Scan by prefix from Redis.
   RedisCommand command = {"HSCAN", redis_key_, {std::to_string(cursor_.value())}};
-  if (match_pattern_.escaped != "*") {
+  if (match_pattern_.escaped_ != "*") {
     command.args.push_back("MATCH");
-    command.args.push_back(match_pattern_.escaped);
+    command.args.push_back(match_pattern_.escaped_);
   }
   command.args.push_back("COUNT");
   command.args.push_back(std::to_string(batch_count));
@@ -567,7 +552,7 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   // Delete all such keys by using empty table name.
   RedisKey redis_key{external_storage_namespace, /*table_name=*/""};
   std::vector<std::string> cmd{"KEYS",
-                               RedisMatchPattern::Prefix(redis_key.ToString()).escaped};
+                               RedisMatchPattern::Prefix(redis_key.ToString()).escaped_};
   std::promise<std::shared_ptr<CallbackReply>> promise;
   context->RunArgvAsync(cmd, [&promise](const std::shared_ptr<CallbackReply> &reply) {
     promise.set_value(reply);
@@ -581,12 +566,12 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   }
   auto delete_one_sync = [&context](const std::string &key) {
     auto del_cmd = std::vector<std::string>{"DEL", key};
-    std::promise<std::shared_ptr<CallbackReply>> promise;
+    std::promise<std::shared_ptr<CallbackReply>> prom;
     context->RunArgvAsync(del_cmd,
-                          [&promise](const std::shared_ptr<CallbackReply> &reply) {
-                            promise.set_value(reply);
+                          [&prom](const std::shared_ptr<CallbackReply> &callback_reply) {
+                            prom.set_value(callback_reply);
                           });
-    auto del_reply = promise.get_future().get();
+    auto del_reply = prom.get_future().get();
     return del_reply->ReadAsInteger() > 0;
   };
   size_t num_deleted = 0;
