@@ -280,8 +280,8 @@ pyx_library(
         "//src/ray/gcs/store_client:redis_store_client",
         "//src/ray/protobuf:serialization_cc_proto",
         "//src/ray/thirdparty/setproctitle",
-        "//src/ray/util",
         "//src/ray/util:memory",
+        "//src/ray/util:raii",
         "//src/ray/util:stream_redirection",
         "//src/ray/util:stream_redirection_options",
     ],
@@ -457,6 +457,7 @@ genrule(
 
         # NOTE(hchen): Protobuf doesn't allow specifying Python package name. So we use this `sed`
         # command to change the import path in the generated file.
+        sed -i -E 's/from src.ray.protobuf.public/from ./' "$${files[@]}"
         sed -i -E 's/from src.ray.protobuf/from ./' "$${files[@]}"
         # Help the generated serve files to have the correct module
         serve_files=($$(ls "$$tmpdir"/ray/serve/generated/*_pb2*.py))
