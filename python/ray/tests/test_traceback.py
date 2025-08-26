@@ -301,8 +301,8 @@ def test_actor_repr_in_traceback(ray_start_regular):
 
 
 def test_unpickleable_stacktrace(shutdown_only):
-    expected_output = """Failed to unpickle serialized exception
-Original exception (string repr):
+    expected_output = """Failed to unpickle serialized exception. This can happen when the original exception contains special characters that interfere with pickle deserialization.
+Original exception:
 ray.exceptions.RayTaskError: ray::f() (pid=XXX, ip=YYY)
   File "FILE", line ZZ, in f
     return g(c)

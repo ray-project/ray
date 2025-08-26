@@ -909,7 +909,7 @@ class RayCgraphCapacityExceeded(RaySystemError):
 
 @PublicAPI(stability="alpha")
 class UnpickleableException(RayError):
-    """Raised when attempting to unpickle a serialized exception fails.
+    """Raised when there is an error deserializing the serialized exception.
 
     This occurs when deserializing (unpickling) a previously serialized exception
     fails. In this case, we fall back to raising the string representation of
@@ -922,8 +922,8 @@ class UnpickleableException(RayError):
 
     def __str__(self):
         return (
-            "Failed to unpickle serialized exception\n"
-            "Original exception (string repr):\n"
+            "Failed to unpickle serialized exception. This can happen when the original exception contains special characters that interfere with pickle deserialization.\n"
+            "Original exception:\n"
             f"{self.original_stack_trace}"
         )
 
