@@ -101,12 +101,12 @@ void LocalDependencyResolver::ResolveDependencies(
     if (task.ArgByRef(i)) {
       local_dependency_ids.insert(task.ArgObjectId(i));
     }
-    for (const auto &in : task.ArgInlinedRefs(i)) {
-      auto object_id = ObjectID::FromBinary(in.object_id());
+    for (const auto &inlined_ref : task.ArgInlinedRefs(i)) {
+      const auto object_id = ObjectID::FromBinary(inlined_ref.object_id());
       if (ObjectID::IsActorID(object_id)) {
-        auto actor_id = ObjectID::ToActorID(object_id);
+        const auto actor_id = ObjectID::ToActorID(object_id);
         if (actor_creator_.IsActorInRegistering(actor_id)) {
-          actor_dependency_ids.insert(ObjectID::ToActorID(object_id));
+          actor_dependency_ids.insert(actor_id);
         }
       }
     }
@@ -165,7 +165,7 @@ void LocalDependencyResolver::ResolveDependencies(
                                                     contained_ids);
           }
           if (resolved_task_state) {
-            resolved_task_state->on_dependencies_resolved(resolved_task_state->status);
+            resolved_task_state->on_dependencies_resolved_(resolved_task_state->status);
           }
         });
   }
@@ -195,7 +195,7 @@ void LocalDependencyResolver::ResolveDependencies(
           }
 
           if (resolved_task_state) {
-            resolved_task_state->on_dependencies_resolved(resolved_task_state->status);
+            resolved_task_state->on_dependencies_resolved_(resolved_task_state->status);
           }
         });
   }
