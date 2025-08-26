@@ -2473,7 +2473,6 @@ class Dataset:
         partition_size_hint: Optional[int] = None,
         aggregator_ray_remote_args: Optional[Dict[str, Any]] = None,
         validate_schemas: bool = False,
-
     ) -> "Dataset":
         """Join :class:`Datasets <ray.data.Dataset>` on join keys.
 
@@ -2632,13 +2631,18 @@ class Dataset:
 
         if broadcast:
             # Validate that the join type is supported for broadcast joins
-            supported_broadcast_join_types = {"inner", "left_outer", "right_outer", "full_outer"}
+            supported_broadcast_join_types = {
+                "inner",
+                "left_outer",
+                "right_outer",
+                "full_outer",
+            }
             if join_type not in supported_broadcast_join_types:
                 raise ValueError(
                     f"Join type '{join_type}' is not supported in broadcast joins. "
                     f"Supported types are: {list(supported_broadcast_join_types)}"
                 )
-            
+
             # Create the broadcast join callable class
             from ray.data._internal.logical.operators.broadcast_join import (
                 BroadcastJoinFunction,
@@ -2683,7 +2687,6 @@ class Dataset:
                     left_suffix if datasets_swapped else right_suffix
                 ),
                 datasets_swapped=datasets_swapped,
-
             )
 
             # Use PyArrow's native join functionality for the supported join types
@@ -5909,9 +5912,9 @@ class Dataset:
         import pyarrow as pa
 
         ref_bundles: Iterator[RefBundle] = self.iter_internal_ref_bundles()
-        block_refs: List[ObjectRef["pyarrow.Table"]] = (
-            _ref_bundles_iterator_to_block_refs_list(ref_bundles)
-        )
+        block_refs: List[
+            ObjectRef["pyarrow.Table"]
+        ] = _ref_bundles_iterator_to_block_refs_list(ref_bundles)
         # Schema is safe to call since we have already triggered execution with
         # iter_internal_ref_bundles.
         schema = self.schema(fetch_if_missing=True)

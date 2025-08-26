@@ -449,7 +449,6 @@ def test_default_shuffle_aggregator_args():
         (10, 5),  # Small datasets
     ],
 )
-
 def test_broadcast_join_basic(
     ray_start_regular_shared_2_cpus,
     join_type,
