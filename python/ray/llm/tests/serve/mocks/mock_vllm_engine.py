@@ -13,6 +13,8 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     EmbeddingRequest,
     EmbeddingResponse,
     ErrorResponse,
+    ScoreRequest,
+    ScoreResponse,
 )
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
@@ -121,6 +123,41 @@ class MockVLLMEngine(LLMEngine):
             usage={
                 "prompt_tokens": len(str(request.input).split()),
                 "total_tokens": len(str(request.input).split()),
+            },
+        )
+        yield response
+
+    async def score(
+        self, request: ScoreRequest
+    ) -> AsyncGenerator[Union[str, ScoreResponse, ErrorResponse], None]:
+        """Mock score generation for text pairs."""
+        if not self.started:
+            raise RuntimeError("Engine not started")
+
+        # Extract text_1 and text_2 from the request
+        text_1 = getattr(request, "text_1", "")
+        text_2 = getattr(request, "text_2", "")
+
+        # Convert to lists if they aren't already
+        text_1_list = text_1 if isinstance(text_1, list) else [text_1]
+        text_2_list = text_2 if isinstance(text_2, list) else [text_2]
+
+        # Generate mock scores for each pair
+        score_data = []
+        for i, (t1, t2) in enumerate(zip(text_1_list, text_2_list)):
+            # Generate a random score (can be any float value)
+            score = random.uniform(-10.0, 10.0)
+
+            score_data.append({"object": "score", "score": score, "index": i})
+
+        # Create the response
+        response = ScoreResponse(
+            object="list",
+            data=score_data,
+            model=getattr(request, "model", "mock-model"),
+            usage={
+                "prompt_tokens": len(str(text_1).split()) + len(str(text_2).split()),
+                "total_tokens": len(str(text_1).split()) + len(str(text_2).split()),
             },
         )
         yield response

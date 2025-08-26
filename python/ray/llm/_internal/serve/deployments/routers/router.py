@@ -313,7 +313,9 @@ class LLMRouter:
     async def _get_response(
         self,
         *,
-        body: Union[CompletionRequest, ChatCompletionRequest, EmbeddingRequest],
+        body: Union[
+            CompletionRequest, ChatCompletionRequest, EmbeddingRequest, ScoreRequest
+        ],
         call_method: str,
     ) -> AsyncGenerator[
         Union[
