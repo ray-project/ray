@@ -155,9 +155,6 @@ namespace rpc {
 #define INTERNAL_KV_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(InternalKVGcsService, HANDLER, -1)
 
-#define RUNTIME_ENV_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(RuntimeEnvGcsService, HANDLER, -1)
-
 #define GCS_RPC_SEND_REPLY(send_reply_callback, reply, status)        \
   reply->mutable_status()->set_code(static_cast<int>(status.code())); \
   reply->mutable_status()->set_message(status.message());             \
@@ -623,7 +620,6 @@ using NodeResourceInfoHandler = NodeResourceInfoGcsServiceHandler;
 using WorkerInfoHandler = WorkerInfoGcsServiceHandler;
 using PlacementGroupInfoHandler = PlacementGroupInfoGcsServiceHandler;
 using InternalKVHandler = InternalKVGcsServiceHandler;
-using RuntimeEnvHandler = RuntimeEnvGcsServiceHandler;
 using TaskInfoHandler = TaskInfoGcsServiceHandler;
 using RayEventExportHandler = RayEventExportGcsServiceHandler;
 
