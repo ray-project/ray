@@ -683,7 +683,7 @@ def test_wait_tensor_freed_double_tensor(ray_start_regular):
     assert not gpu_object_store.has_object(obj_id2)
 
 
-def test_trigger_out_of_band_tensor_transfer(ray_start_regular):
+def test_send_back_and_dst_warning(ray_start_regular):
     # Test warning when object is sent back to the src actor and to dst actors
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
