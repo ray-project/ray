@@ -1,4 +1,3 @@
-import dataclasses
 import logging
 from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
@@ -51,20 +50,6 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-
-
-@dataclasses.dataclass
-class ColAgg:
-    present_count: int = 0
-    is_object: bool = False
-    is_tensor: bool = False
-    is_struct: bool = False
-    tensor_types: list = dataclasses.field(default_factory=list)
-    struct_schemas: list = dataclasses.field(default_factory=list)
-    saw_null_list: bool = False
-    first_nonnull_list_type: Optional[pyarrow.DataType] = None
-    # Add this field to track non-list types
-    saw_non_list_type: bool = False
 
 
 def sort(table: "pyarrow.Table", sort_key: "SortKey") -> "pyarrow.Table":
@@ -230,14 +215,13 @@ def unify_schemas(
 
     # Single pass to collect all metadata
     for schema in schemas_to_unify:
-        for col_name in schema.names:
-            # Check for duplicate field names in this schema
-            if schema.names.count(col_name) > 1:
-                # This is broken for Pandas blocks and broken with the logic here
-                raise ValueError(
-                    f"Schema {schema} has multiple fields with the same name: {col_name}"
-                )
+        # Check for duplicate field names in this schema
+        if len(schema.names) != len(set(schema.names)):
+            raise ValueError(
+                f"Schema {schema} has multiple fields with the same name: {schema.names}"
+            )
 
+        for col_name in schema.names:
             col_type = schema.field(col_name).type
             all_columns.add(col_name)
 

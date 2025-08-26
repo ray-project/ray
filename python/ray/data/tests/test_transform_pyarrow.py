@@ -2783,12 +2783,6 @@ def unify_schemas_object_types_schemas():
 
 
 @pytest.fixture
-def unify_schemas_duplicate_fields_schema():
-    """Fixture for duplicate fields unify schemas test data."""
-    return pa.schema([("col", pa.int32()), ("col", pa.int64())])  # Duplicate name
-
-
-@pytest.fixture
 def unify_schemas_incompatible_tensor_schemas():
     """Fixture for incompatible tensor dtypes unify schemas test data."""
     schema1 = pa.schema([("tensor", ArrowTensorType((2, 2), pa.int32()))])
