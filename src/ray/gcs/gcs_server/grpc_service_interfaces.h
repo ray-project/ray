@@ -64,6 +64,15 @@ class NodeInfoGcsServiceHandler {
                                     SendReplyCallback send_reply_callback) = 0;
 };
 
+class RuntimeEnvGcsServiceHandler {
+ public:
+  virtual ~RuntimeEnvGcsServiceHandler() = default;
+
+  virtual void HandlePinRuntimeEnvURI(PinRuntimeEnvURIRequest request,
+                                      PinRuntimeEnvURIReply *reply,
+                                      SendReplyCallback send_reply_callback) = 0;
+};
+
 class WorkerInfoGcsServiceHandler {
  public:
   virtual ~WorkerInfoGcsServiceHandler() = default;
