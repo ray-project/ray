@@ -353,7 +353,12 @@ class MockKubernetesHttpApiClient(IKubernetesHttpApiClient):
 
         raise NotImplementedError(f"get {path}")
 
-    def patch(self, path: str, patches: List[Dict[str, Any]]):
+    def patch(
+        self,
+        path: str,
+        patches: List[Dict[str, Any]],
+        content_type: str = "application/json-patch+json",
+    ):
         self._patches[path] = patches
         return {path: patches}
 
@@ -377,6 +382,7 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
                 "namespace": "default",
                 "head_node_type": "headgroup",
             },
+            gcs_client=MagicMock(),
             k8s_api_client=self.mock_client,
         )
 
@@ -647,6 +653,7 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
                 "namespace": "default",
                 "head_node_type": "headgroup",
             },
+            gcs_client=MagicMock(),
             k8s_api_client=mock_client,
         )
 
@@ -693,6 +700,7 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
                 "namespace": "default",
                 "head_node_type": "headgroup",
             },
+            gcs_client=MagicMock(),
             k8s_api_client=mock_client,
         )
 
@@ -786,6 +794,7 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
                 "namespace": "default",
                 "head_node_type": "headgroup",
             },
+            gcs_client=MagicMock(),
             k8s_api_client=mock_client,
         )
 
