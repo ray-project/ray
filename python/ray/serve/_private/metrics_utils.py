@@ -361,8 +361,10 @@ def merge_timeseries(
     return merged
 
 
-def merge_metrics_stores(
-    *stores: InMemoryMetricsStore, window_ms: int
+Timeseries = List[TimestampedValue]
+
+def merge_timeseries(
+    *timeseries: Dict[str, Timeseries], window_ms: int
 ) -> InMemoryMetricsStore:
     """
     Merge multiple metrics stores. For the same key across stores,
