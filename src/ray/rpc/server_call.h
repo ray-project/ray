@@ -236,6 +236,23 @@ class ServerCallImpl : public ServerCall {
     if (record_metrics_) {
       ray::stats::STATS_grpc_server_req_handling.Record(1.0, call_name_);
     }
+    if constexpr (std::is_base_of_v<DelayedServiceHandler, ServiceHandler>) {
+      if (!service_handler_initialized_) {
+        service_handler_.WaitUntilInitialized();
+        service_handler_initialized_ = true;
+      }
+    }
+    state_ = ServerCallState::PROCESSING;
+    // NOTE(hchen): This `factory` local variable is needed. Because `SendReply` runs in
+    // a different thread, and will cause `this` to be deleted.
+    const auto &factory = factory_;
+    if (factory.GetMaxActiveRPCs() == -1) {
+      // Create a new `ServerCall` to accept the next incoming request.
+      // We create this before handling the request only when no back pressure limit is
+      // set. So that the it can be populated by the completion queue in the background if
+      // a new request comes in.
+      factory.CreateCall();
+    }
     if (!io_service_.stopped()) {
       io_service_.post([this, auth_success] { HandleRequestImpl(auth_success); },
                        call_name_ + ".HandleRequestImpl",
@@ -255,23 +272,6 @@ class ServerCallImpl : public ServerCall {
   }
 
   void HandleRequestImpl(bool auth_success) {
-    if constexpr (std::is_base_of_v<DelayedServiceHandler, ServiceHandler>) {
-      if (!service_handler_initialized_) {
-        service_handler_.WaitUntilInitialized();
-        service_handler_initialized_ = true;
-      }
-    }
-    state_ = ServerCallState::PROCESSING;
-    // NOTE(hchen): This `factory` local variable is needed. Because `SendReply` runs in
-    // a different thread, and will cause `this` to be deleted.
-    const auto &factory = factory_;
-    if (factory.GetMaxActiveRPCs() == -1) {
-      // Create a new `ServerCall` to accept the next incoming request.
-      // We create this before handling the request only when no back pressure limit is
-      // set. So that the it can be populated by the completion queue in the background if
-      // a new request comes in.
-      factory.CreateCall();
-    }
     if (!auth_success) {
       boost::asio::post(GetServerCallExecutor(), [this]() {
         SendReply(
