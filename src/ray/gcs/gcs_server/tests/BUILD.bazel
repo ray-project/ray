@@ -21,8 +21,8 @@ ray_cc_test(
     deps = [
         "//:ray_mock",
         "//src/ray/gcs/gcs_server:gcs_server_lib",
-        "//src/ray/util:counter_map",
         "//src/ray/gcs/tests:gcs_test_util_lib",
+        "//src/ray/util:counter_map",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -154,8 +154,8 @@ ray_cc_test(
         "//:ray_mock",
         "//src/mock/ray/pubsub:mock_publisher",
         "//src/ray/gcs/gcs_server:gcs_server_lib",
-        "//src/ray/util:counter_map",
         "//src/ray/gcs/tests:gcs_test_util_lib",
+        "//src/ray/util:counter_map",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -174,7 +174,6 @@ ray_cc_test(
         "//src/fakes/ray/rpc/raylet:fake_raylet_client",
         "//src/fakes/ray/rpc/worker:fake_core_worker_client",
         "//src/mock/ray/pubsub:mock_publisher",
-        "//src/ray/util:counter_map",
         "//src/ray/gcs/gcs_server:gcs_node_manager",
         "//src/ray/gcs/gcs_server:gcs_placement_group",
         "//src/ray/gcs/gcs_server:gcs_placement_group_scheduler",
@@ -182,6 +181,7 @@ ray_cc_test(
         "//src/ray/gcs/gcs_server:gcs_table_storage",
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/tests:gcs_test_util_lib",
+        "//src/ray/util:counter_map",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -199,11 +199,12 @@ ray_cc_test(
         "//src/mock/ray/pubsub:mock_publisher",
         "//src/ray/gcs/gcs_server:gcs_node_manager",
         "//src/ray/gcs/gcs_server:gcs_server_lib",
-        "//src/ray/util:counter_map",
+        "//src/ray/gcs/gcs_server:gcs_resource_manager",
         "//src/ray/gcs/gcs_server:gcs_table_storage",
         "//src/ray/gcs/store_client",
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/tests:gcs_test_util_lib",
+        "//src/ray/util:counter_map",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -218,8 +219,8 @@ ray_cc_test(
     deps = [
         "//:ray_mock",
         "//src/ray/common:test_util",
-        "//src/ray/util:counter_map",
         "//src/ray/gcs/gcs_server:gcs_server_lib",
+        "//src/ray/util:counter_map",
         "@com_google_googletest//:gtest_main",
     ],
 )
