@@ -247,8 +247,10 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       std::move(raylet_address),
       *client_call_manager,
       /*raylet_unavailable_timeout_callback=*/[] {});
-  auto core_worker_server = std::make_unique<rpc::GrpcServer>(
-      WorkerTypeString(options.worker_type), assigned_port, options.node_ip_address);
+  auto core_worker_server =
+      std::make_unique<rpc::GrpcServer>(WorkerTypeString(options.worker_type),
+                                        assigned_port,
+                                        options.node_ip_address == "127.0.0.1");
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
   core_worker_server->RegisterService(
