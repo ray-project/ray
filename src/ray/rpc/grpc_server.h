@@ -96,13 +96,11 @@ class GrpcServer {
   GrpcServer(std::string name,
              const uint32_t port,
              std::string ip_address,
-             const ClusterID &cluster_id = ClusterID::Nil(),
              int num_threads = 1,
              int64_t keepalive_time_ms = 7200000 /*2 hours, grpc default*/)
       : name_(std::move(name)),
         port_(port),
         ip_address_(std::move(ip_address)),
-        cluster_id_(cluster_id),
         is_shutdown_(true),
         num_threads_(num_threads),
         keepalive_time_ms_(keepalive_time_ms) {

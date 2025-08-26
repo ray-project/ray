@@ -116,20 +116,8 @@ alias(
 # https://github.com/hedronvision/bazel-compile-commands-extractor?tab=readme-ov-file#vscode - directions for clangd config
 refresh_compile_commands(
     name = "refresh_compile_commands",
-    exclude_external_sources = True,  # removed below to have lsp index external cc files at the cost of 2x index time
-    # Specify the targets of interest.
-    # For example, specify a dict of targets and any flags required to build.
     targets = {
-        "//:ray_pkg_zip": "",
-    },
-    # No need to add flags already in .bazelrc. They're automatically picked up.
-)
-
-# bazel run :refresh_compile_commands_external_sources for generation with external source files (cc files)
-refresh_compile_commands(
-    name = "refresh_compile_commands_external_sources",
-    targets = {
-        "//:ray_pkg_zip": "",
+        "//:ray_pkg": "",
     },
 )
 
