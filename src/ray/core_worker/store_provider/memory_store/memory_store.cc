@@ -445,37 +445,141 @@ Status CoreWorkerMemoryStore::Get(
   return Status::OK();
 }
 
-Status CoreWorkerMemoryStore::Wait(const absl::flat_hash_set<ObjectID> &object_ids,
+Status CoreWorkerMemoryStore::Wait(const std::vector<ObjectID> &id_vector,
                                    int num_objects,
                                    int64_t timeout_ms,
                                    const WorkerContext &ctx,
                                    absl::flat_hash_set<ObjectID> *ready,
                                    absl::flat_hash_set<ObjectID> *plasma_object_ids) {
-  std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
   std::vector<std::shared_ptr<RayObject>> result_objects;
-  RAY_CHECK(object_ids.size() == id_vector.size());
-  auto status = GetImpl(id_vector,
-                        num_objects,
-                        timeout_ms,
-                        ctx,
-                        false,
-                        &result_objects,
-                        /*abort_if_any_object_is_exception=*/false,
-                        /*at_most_num_objects=*/false);
-  // Ignore TimedOut statuses since we return ready objects explicitly.
-  if (!status.IsTimedOut()) {
-    RAY_RETURN_NOT_OK(status);
+
+  std::shared_ptr<GetRequest> get_request;
+  int num_found = 0;
+
+  absl::flat_hash_set<ObjectID> remaining_ids;
+  absl::flat_hash_set<ObjectID> ids_to_remove;
+  bool done_with_num_objects = false;
+  {
+    absl::MutexLock lock(&mu_);
+    // Check for existing objects and see if this get request can be fullfilled.
+    for (size_t i = 0; i < id_vector.size(); i++) {
+      const auto &object_id = id_vector[i];
+      auto iter = objects_.find(object_id);
+      if (iter != objects_.end()) {
+        ++num_found;
+        auto &obj = iter->second;
+        obj->SetAccessed();
+        if (obj->IsInPlasmaError()) {
+          plasma_object_ids->insert(object_id);
+        } else if (done_with_num_objects) {
+          continue;
+        } else {
+          ready->insert(object_id);
+        }
+        done_with_num_objects = num_found >= num_objects;
+      } else {
+        remaining_ids.insert(object_id);
+      }
+    }
+
+    // Return if all the objects are obtained, or any existing objects are known to have
+    // exception.
+    if (num_found >= num_objects) {
+      return Status::OK();
+    }
+
+    size_t required_objects = num_objects - num_found;
+
+    // Otherwise, create a GetRequest to track remaining objects.
+    get_request =
+        std::make_shared<GetRequest>(std::move(remaining_ids),
+                                     required_objects,
+                                     /*remove_after_get=*/false,
+                                     /*abort_if_any_object_is_exception=*/false);
+    for (const auto &object_id : get_request->ObjectIds()) {
+      object_get_requests_[object_id].push_back(get_request);
+    }
   }
-  for (size_t i = 0; i < id_vector.size(); i++) {
-    if (result_objects[i] != nullptr) {
-      if (result_objects[i]->IsInPlasmaError()) {
-        plasma_object_ids->insert(id_vector[i]);
-      } else if (ready->size() < static_cast<size_t>(num_objects)) {
-        ready->insert(id_vector[i]);
+
+  // Only send block/unblock IPCs for non-actor tasks on the main thread.
+  bool should_notify_raylet =
+      (raylet_ipc_client_ != nullptr && ctx.ShouldReleaseResourcesOnBlockingCalls());
+  // Wait for remaining objects (or timeout).
+  if (should_notify_raylet) {
+    RAY_CHECK_OK(raylet_ipc_client_->NotifyDirectCallTaskBlocked());
+  }
+
+  bool done = false;
+  bool timed_out = false;
+  Status signal_status = Status::OK();
+  int64_t remaining_timeout = timeout_ms;
+  int64_t iteration_timeout =
+      timeout_ms == -1
+          ? RayConfig::instance().get_check_signal_interval_milliseconds()
+          : std::min(timeout_ms,
+                     RayConfig::instance().get_check_signal_interval_milliseconds());
+
+  // Repeatedly call Wait() on a shorter timeout so we can check for signals between
+  // calls. If timeout_ms == -1, this should run forever until all objects are
+  // ready or a signal is received. Else it should run repeatedly until that timeout
+  // is reached.
+  while (!timed_out && signal_status.ok() &&
+         !(done = get_request->Wait(iteration_timeout))) {
+    if (check_signals_) {
+      signal_status = check_signals_();
+    }
+
+    if (remaining_timeout >= 0) {
+      remaining_timeout -= iteration_timeout;
+      iteration_timeout = std::min(remaining_timeout, iteration_timeout);
+      timed_out = remaining_timeout <= 0;
+    }
+  }
+
+  if (should_notify_raylet) {
+    RAY_CHECK_OK(raylet_ipc_client_->NotifyDirectCallTaskUnblocked());
+  }
+
+  {
+    absl::MutexLock lock(&mu_);
+    // Populate results.
+    for (const auto &object_id : get_request->ObjectIds()) {
+      if (!ready->contains(object_id) && !plasma_object_ids->contains(object_id)) {
+        auto obj = get_request->Get(object_id);
+        ++num_found;
+        if (obj == nullptr) {
+          continue;
+        } else if (obj->IsInPlasmaError()) {
+          plasma_object_ids->insert(object_id);
+        } else {
+          ready->insert(object_id);
+        }
+        if (num_found >= num_objects) {
+          break;
+        }
+      }
+    }
+
+    // Remove get request.
+    for (const auto &object_id : get_request->ObjectIds()) {
+      auto object_request_iter = object_get_requests_.find(object_id);
+      if (object_request_iter != object_get_requests_.end()) {
+        auto &get_requests = object_request_iter->second;
+        get_requests.erase(
+            std::remove(get_requests.begin(), get_requests.end(), get_request),
+            get_requests.end());
+        if (get_requests.empty()) {
+          object_get_requests_.erase(object_request_iter);
+        }
       }
     }
   }
-  return Status::OK();
+
+  if (!signal_status.ok()) {
+    return signal_status;
+  } else {
+    return Status::OK();
+  }
 }
 
 void CoreWorkerMemoryStore::Delete(const absl::flat_hash_set<ObjectID> &object_ids,
