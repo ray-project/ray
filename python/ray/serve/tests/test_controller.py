@@ -177,7 +177,6 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                                     "downscaling_factor": None,
                                     "downscale_delay_s": 600.0,
                                     "upscale_delay_s": 30.0,
-                                    "agg_function": "mean",
                                     "prometheus_custom_metrics": None,
                                 },
                                 "graceful_shutdown_wait_loop_s": 2.0,

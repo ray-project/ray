@@ -228,10 +228,6 @@ class AutoscalingConfig(BaseModel):
         default=30.0, description="How long to wait before scaling up replicas."
     )
 
-    # The method to aggregate metrics within look_back_period_s on the controller for autoscaling, defaults to "mean"
-    # May be one of "mean", "min", "max", "sum"
-    agg_function: Optional[str] = "mean"
-
     # Prometheus metrics which will be collected at each replica, which will be available in the custom AutoscalingPolicy function
     # Tuple of (metric_name, promql_query)
     prometheus_custom_metrics: Optional[List[Tuple[str, Optional[str]]]] = None

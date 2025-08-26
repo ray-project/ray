@@ -183,7 +183,7 @@ class ReplicaMetricsManager:
         # Autoscaling metrics and fetching intervals
         self._autoscaling_metrics: Dict[str, Any] = {}
         self._last_record_autoscaling_metrics_time: float = 0.0
-        self._autoscaling_metrics_period_s: float = (
+        self._autoscaling_metrics_fetch_interval_s: float = (
             RAY_SERVE_METRICS_FETCH_INTERVAL_MS / 1000
         )
         self._autoscaling_metrics_timeout_s: float = (
@@ -361,13 +361,15 @@ class ReplicaMetricsManager:
         """Determines if a new record autoscaling metrics should be kicked off. If it has been longer than autoscaling_metrics_period_s since the previous record autoscaling metrics was called."""
         # Add randomn delay to avoid overloading metrics_source with spike of requests
         time_since_last = time.time() - self._last_record_autoscaling_metrics_time
-        randomized_period = self._autoscaling_metrics_period_s * random.uniform(
+        randomized_period = self._autoscaling_metrics_fetch_interval_s * random.uniform(
             0.9, 1.1
         )
         return time_since_last > randomized_period
 
     async def get_autoscaling_metrics(
-        self, prometheus_metrics: Optional[List[Tuple[str, Optional[str]]]]
+        self,
+        prometheus_metrics: Optional[List[Tuple[str, Optional[str]]]],
+        user_defined_metrics: Optional[List[Tuple[str, Callable]]],
     ) -> Dict[str, Any]:
         if self._should_record_autoscaling_metrics():
             self._last_record_autoscaling_metrics_time = time.time()
@@ -379,9 +381,8 @@ class ReplicaMetricsManager:
                 )
                 # Merge the prometheus results with existing metrics
                 self._autoscaling_metrics.update(prometheus_result)
-            else:
-                # If no prometheus metrics, we could potentially start a remote task here
-                # For now, we'll just use the existing metrics
+            if user_defined_metrics:
+                # TODO: user-defined metrics
                 pass
 
         return self._autoscaling_metrics
@@ -452,19 +453,20 @@ class ReplicaMetricsManager:
         """Add autoscaling metrics point using periodic fetching mechanism."""
 
         prometheus_metrics = self._autoscaling_config.prometheus_custom_metrics
-        # TODO arcyleung: external_metrics = self._autoscaling_config.external_metrics
+        user_defined_metrics = self._autoscaling_config.user_defined_metrics
 
         # Get the prometheus metrics from using the periodic fetching mechanism
-        if prometheus_metrics:
-            autoscaling_metrics = await self.get_autoscaling_metrics(prometheus_metrics)
+        if prometheus_metrics or user_defined_metrics:
+            metrics_results = await self.get_autoscaling_metrics(
+                prometheus_metrics, user_defined_metrics
+            )
         else:
-            autoscaling_metrics = {}
+            metrics_results = {}
 
-        # Merge the ongoing_requests metrics with the results fetched using anyio
+        # Merge the ongoing_requests metrics with autoscaling metrics
         all_metrics = {
             **{self._replica_id: self._num_ongoing_requests},
-            **autoscaling_metrics,
-            # TODO arcyleung: **external_metrics
+            **metrics_results,
         }
 
         # Add the collected metrics to the metrics store
