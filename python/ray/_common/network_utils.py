@@ -42,3 +42,15 @@ def build_address(host: str, port: Union[int, str]) -> str:
         return f"[{host}]:{port}"
     # IPv4 address or hostname
     return f"{host}:{port}"
+
+
+def is_localhost(host: str) -> bool:
+    """Check if the given host string represents a localhost address.
+
+    Args:
+        host: The hostname or IP address to check.
+
+    Returns:
+        True if the host is a localhost address, False otherwise.
+    """
+    return host in ("localhost", "127.0.0.1", "::1")
