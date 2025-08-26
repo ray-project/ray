@@ -173,6 +173,9 @@ def _find_diverging_fields(schemas: List["pyarrow.Schema"]) -> Dict[str, FieldIn
     """
     Identify fields whose presence or types differ across the provided schemas.
 
+    Args:
+        schemas: A list of pyarrow.Schema objects.
+
     Returns:
         Mapping from field name to FieldInfo for fields that diverge.
     """
