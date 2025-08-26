@@ -491,7 +491,11 @@ class TestParseUri:
             ("https://test.com/file.zip", Protocol.HTTPS, "https_test_com_file.zip"),
             ("gs://bucket/file.zip", Protocol.GS, "gs_bucket_file.zip"),
             ("azure://container/file.zip", Protocol.AZURE, "azure_container_file.zip"),
-            ("abfss://container@account.dfs.core.windows.net/file.zip", Protocol.ABFSS, "abfss_container_account_dfs_core_windows_net_file.zip"),
+            (
+                "abfss://container@account.dfs.core.windows.net/file.zip",
+                Protocol.ABFSS,
+                "abfss_container_account_dfs_core_windows_net_file.zip",
+            ),
             (
                 "https://test.com/package-0.0.1-py2.py3-none-any.whl?param=value",
                 Protocol.HTTPS,
