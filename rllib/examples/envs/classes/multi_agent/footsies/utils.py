@@ -8,13 +8,8 @@ import numpy as np
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.callbacks import RLlibCallback
 from ray.rllib.core.rl_module import RLModuleSpec
+from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
-from ray.rllib.examples.envs.classes.multi_agent.footsies.fixed_rlmodules import (
-    NoopFixedRLModule,
-    BackFixedRLModule,
-    AttackFixedRLModule,
-)
-from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
 from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.typing import EpisodeType
@@ -74,22 +69,13 @@ class WinratesCallback(RLlibCallback):
         self.win_rate_threshold = win_rate_threshold
         self.target_mix_size = target_mix_size
         self.main_policy = main_policy
-        self.beginner_modules_progression_sequence = (
+        self.fixed_modules_progression_sequence = (
             "noop",
             "back",
             "attack",
             "random",
         )  # Order of RL modules to be added to the mix
-        self.beginner_modules = {
-            "noop": NoopFixedRLModule,
-            "back": BackFixedRLModule,
-            "attack": AttackFixedRLModule,
-            "random": RandomRLModule,
-        }
         self.modules_in_mix = list(starting_modules)  # Initial RL modules in the mix
-        self._current_mix_size = (
-            2  # Initial size with two RL modules for agent p1 and p2
-        )
         self._trained_policy_idx = (
             0  # We will use this to create new opponents of the main policy
         )
@@ -98,88 +84,90 @@ class WinratesCallback(RLlibCallback):
         self,
         *,
         episode: MultiAgentEpisode,
+        env_runner: Optional[EnvRunner] = None,
         metrics_logger: Optional[MetricsLogger] = None,
         env: Optional[gym.Env] = None,
         env_index: int,
         **kwargs,
     ) -> None:
-        # check status of "p1" and "p2"
-        last_game_state = env.envs[env_index].unwrapped.last_game_state
-        p1_dead = last_game_state.player1.is_dead
-        p2_dead = last_game_state.player2.is_dead
+        """Evaluation only: Log win rates of the main policy against its opponent(s) at the end of each episode."""
+        if env_runner.config.in_evaluation:
+            # check status of "p1" and "p2"
+            last_game_state = env.envs[env_index].unwrapped.last_game_state
+            p1_dead = last_game_state.player1.is_dead
+            p2_dead = last_game_state.player2.is_dead
+    
+            # get the ModuleID for each agent
+            p1_module = episode.module_for("p1")
+            p2_module = episode.module_for("p2")
+    
+            if self.main_policy == p1_module:
+                opponent_id = p2_module
+                main_policy_win = p2_dead
+            elif self.main_policy == p2_module:
+                opponent_id = p1_module
+                main_policy_win = p1_dead
+            else:
+                logger.info(
+                    f"RLlib {self.__class__.__name__}: Main policy: '{self.main_policy}' not found in this episode. "
+                    f"Policies in this episode are: '{p1_module}' and '{p2_module}'. "
+                    f"Check your multi_agent 'policy_mapping_fn'. "
+                    f"Metrics logging for this episode will be skipped."
+                )
+                return
+    
+            if p1_dead and p2_dead:
+                metrics_logger.log_value(
+                    key=f"footsies/eval/both_dead/{self.main_policy}/vs_{opponent_id}",
+                    value=1,
+                    reduce="mean",
+                    window=100,
+                    clear_on_reduce=True,
+                )
+            elif not p1_dead and not p2_dead:
+                metrics_logger.log_value(
+                    key=f"footsies/eval/both_alive/{self.main_policy}/vs_{opponent_id}",
+                    value=1,
+                    reduce="mean",
+                    window=100,
+                    clear_on_reduce=True,
+                )
+            else:
+                # log the win rate against the opponent with an 'opponent_id'
+                metrics_logger.log_value(
+                    key=f"footsies/eval/win_rates/{self.main_policy}/vs_{opponent_id}",
+                    value=int(main_policy_win),
+                    reduce="mean",
+                    window=100,
+                    clear_on_reduce=True,
+                )
+    
+                # log the win rate "globally", without specifying the opponent
+                # this metric will be used to decide whether to add a new opponent
+                # at the current level, the main policy ('self.main_policy') should have
+                # a specified 'win_rate_threshold' performance against any opponent in the mix
+                metrics_logger.log_value(
+                    key=f"footsies/eval/win_rates/{self.main_policy}/vs_any",
+                    value=int(main_policy_win),
+                    reduce="mean",
+                    window=100,
+                    clear_on_reduce=True,
+                )
 
-        # get the ModuleID for each agent
-        p1_module = episode.module_for("p1")
-        p2_module = episode.module_for("p2")
-
-        if self.main_policy == p1_module:
-            opponent_id = p2_module
-            main_policy_win = p2_dead
-        elif self.main_policy == p2_module:
-            opponent_id = p1_module
-            main_policy_win = p1_dead
-        else:
-            logger.info(
-                f"RLlib {self.__class__.__name__}: Main policy: '{self.main_policy}' not found in this episode. "
-                f"Policies in this episode are: '{p1_module}' and '{p2_module}'. "
-                f"Check your multi_agent 'policy_mapping_fn'. "
-                f"Metrics logging for this episode will be skipped."
-            )
-            return
-
-        if p1_dead and p2_dead:
-            metrics_logger.log_value(
-                key=f"footsies/both_dead/{self.main_policy}/vs_{opponent_id}",
-                value=1,
-                reduce="mean",
-                window=100,
-                clear_on_reduce=True,
-            )
-        elif not p1_dead and not p2_dead:
-            metrics_logger.log_value(
-                key=f"footsies/both_alive/{self.main_policy}/vs_{opponent_id}",
-                value=1,
-                reduce="mean",
-                window=100,
-                clear_on_reduce=True,
-            )
-        else:
-            # log the win rate against the opponent with an 'opponent_id'
-            metrics_logger.log_value(
-                key=f"footsies/win_rates/{self.main_policy}/vs_{opponent_id}",
-                value=int(main_policy_win),
-                reduce="mean",
-                window=100,
-                clear_on_reduce=True,
-            )
-
-            # log the win rate "globally", without specifying the opponent
-            # this metric will be used to decide whether to add a new opponent
-            # at the current level, the main policy ('self.main_policy') should have
-            # a specified 'win_rate_threshold' performance against any opponent in the mix
-            metrics_logger.log_value(
-                key=f"footsies/win_rates/{self.main_policy}/vs_any",
-                value=int(main_policy_win),
-                reduce="mean",
-                window=100,
-                clear_on_reduce=True,
-            )
-
-    def on_train_result(
+    def on_evaluate_end(
         self,
         *,
         algorithm: Algorithm,
         metrics_logger: Optional[MetricsLogger] = None,
-        result: Dict,
+        evaluation_metrics: dict,
         **kwargs,
     ) -> None:
         _main_module = algorithm.get_module(self.main_policy)
         new_module_id = None
         new_module_spec = None
 
-        win_rate = result[ENV_RUNNER_RESULTS][
-            f"footsies/win_rates/{self.main_policy}/vs_any"
-        ]
+        win_rate = evaluation_metrics[ENV_RUNNER_RESULTS][f"footsies/eval/win_rates/{self.main_policy}/vs_any"]
+
         if win_rate > self.win_rate_threshold:
             logger.info(
                 f"RLlib {self.__class__.__name__}: Win rate for main policy '{self.main_policy}' "
@@ -187,29 +175,19 @@ class WinratesCallback(RLlibCallback):
                 f" Adding new RL Module to the mix..."
             )
 
-            # check if beginner RL module should be added to the mix, and if so, add it.
-            for module_id in self.beginner_modules_progression_sequence:
+            # check if fixed RL module (back, attack, random) should be added to the mix,
+            # and if so, create new_module_id and new_module_spec for it
+            for module_id in self.fixed_modules_progression_sequence:
                 if module_id not in self.modules_in_mix:
                     new_module_id = module_id
-                    new_module_spec = RLModuleSpec(
-                        module_class=self.beginner_modules[new_module_id],
-                        observation_space=_main_module.observation_space,
-                    )
                     break
 
-            # in case that all beginner RL Modules are already in the mix (together with the main policy),
+            # in case that all fixed RL Modules are already in the mix (together with the main policy),
             # we will add a new RL Module by taking main policy and adding an instance of it to the mix
-            if set(self.modules_in_mix) == set(
-                self.beginner_modules_progression_sequence
-            ).union([self.main_policy]):
+            if new_module_id is None:
                 new_module_id = f"{self.main_policy}_v{self._trained_policy_idx}"
                 new_module_spec = RLModuleSpec.from_module(_main_module)
                 self._trained_policy_idx += 1
-
-            assert new_module_id is not None, f"New RL Module_id should not be None."
-            assert (
-                new_module_spec is not None
-            ), f"New RL Module_spec should not be None."
 
             # create new policy mapping function, to ensure that the main policy plays against newly added policy
             new_mapping_fn = Matchmaker(
@@ -222,26 +200,47 @@ class WinratesCallback(RLlibCallback):
                 ]
             ).agent_to_module_mapping_fn
 
-            algorithm.add_module(
-                module_id=new_module_id,
-                module_spec=new_module_spec,
-                new_agent_to_module_mapping_fn=new_mapping_fn,
-                add_to_learners=False,
+            # update env runners with the new mapping function
+            algorithm.env_runner_group.foreach_env_runner(
+                lambda er: er.config.multi_agent(policy_mapping_fn=new_mapping_fn),
+                local_env_runner=True,
             )
-            algorithm.set_state(
-                {
-                    "learner_group": {
-                        "learner": {
+
+            # also update eval env runners with the new mapping function
+            algorithm.eval_env_runner_group.foreach_env_runner(
+                lambda er: er.config.multi_agent(policy_mapping_fn=new_mapping_fn),
+                local_env_runner=True,
+            )
+
+            if new_module_id not in self.fixed_modules_progression_sequence:
+                algorithm.add_module(
+                    module_id=new_module_id,
+                    module_spec=new_module_spec,
+                    new_agent_to_module_mapping_fn=new_mapping_fn,
+                )
+                # newly added trained policy should be initialized with the state of the main policy
+                algorithm.set_state(
+                    {
+                        "env_runner": {
                             "rl_module": {
                                 new_module_id: _main_module.get_state(),
+                            },
+                        },
+                        "eval_env_runner": {
+                            "rl_module": {
+                                new_module_id: _main_module.get_state(),
+                            },
+                        },
+                        "learner_group": {
+                            "learner": {
+                                "rl_module": {
+                                    new_module_id: _main_module.get_state(),
+                                }
                             }
                         }
                     }
-                }
-            )
-
+                )
             # we added a new RL Module to the mix, so we need to update the current mix size and the modules ids in the mix
-            self._current_mix_size += 1
             self.modules_in_mix.append(new_module_id)
 
         else:
@@ -250,4 +249,14 @@ class WinratesCallback(RLlibCallback):
                 f"did not exceed threshold ({win_rate} <= {self.win_rate_threshold})."
             )
 
-        result["target_mix_size"] = self._current_mix_size
+    def on_train_result(
+        self,
+        *,
+        algorithm: Algorithm,
+        metrics_logger: Optional[MetricsLogger] = None,
+        result: Dict,
+        **kwargs,
+    ) -> None:
+        """Log the current mix size at the end of each training iteration.
+        That will tell Ray Tune, whether to stop training or not (once the target mix size has been reached)."""
+        result["target_mix_size"] = len(self.modules_in_mix)
