@@ -493,12 +493,15 @@ class LLMRouter:
     async def score(self, body: ScoreRequest) -> Response:
         """Create scores for the provided text pairs.
 
+        Note: This is vLLM specific endpoint. vLLM v1 does not support score, must use v0.
+
         Args:
             body: The score request containing input text pairs to score.
 
         Returns:
             A response object with scores.
         """
+
         async with timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
             results = self._get_response(body=body, call_method="score")
             result = await results.__anext__()

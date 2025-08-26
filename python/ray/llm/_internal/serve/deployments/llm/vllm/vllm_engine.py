@@ -227,9 +227,12 @@ class VLLMEngine(LLMEngine):
         ), "oai_serving_embedding must have a create_embedding attribute"
 
     def _validate_openai_serving_scores(self):
+        from vllm import envs as vllm_envs
+
         assert hasattr(
             self._oai_serving_scores, "create_score"
         ), "oai_serving_scores must have a create_score attribute"
+        assert not vllm_envs.VLLM_USE_V1, "vLLM v1 does not support score, must use v0"
 
     def _validate_engine_client(self):
         assert hasattr(
@@ -459,12 +462,9 @@ class VLLMEngine(LLMEngine):
     ) -> AsyncGenerator[Union[ScoreResponse, ErrorResponse], None]:
         self._validate_openai_serving_scores()
 
-        # TODO (Kourosh): Remove when we upstream request_id attribute to vLLM.
-        # Create a fake starlette.Request object with the x-request-id header
-        # so that the create_score API can assign the request_id properly.
         raw_request = self._create_raw_request(request, "/score")
 
-        score_response = await self._oai_serving_scores.create_score(  # type: ignore[attr-defined]
+        score_response = await self._oai_serving_scores.create_score(
             request, raw_request=raw_request
         )
 
