@@ -6,32 +6,32 @@ Each tutorial includes development and production setups, tips for configuring y
 
 ## Tutorial Categories
 
-**[Small size LLM deployment](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/small-size-llm/notebook.html)**  
+**[Small size LLM deployment](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/small-size-llm/README.html)**  
 Deploy small size models on a single GPU, such as Llama 3 8&nbsp;B, Mistral 7&nbsp;B, or Phi-2.  
 
 ---
 
-**[Medium size LLM deployment](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/medium-size-llm/notebook.html)**  
+**[Medium size LLM deployment](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/medium-size-llm/README.html)**  
 Deploy medium size models using tensor parallelism across 4—8 GPUs on a single node, such as Llama 3 70&nbsp;B, Qwen 14&nbsp;B, Mixtral 8x7&nbsp;B.  
 
 ---
 
-**[Large size LLM deployment](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/large-size-llm/notebook.html)**  
+**[Large size LLM deployment](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/large-size-llm/README.html)**  
 Deploy massive models using pipeline parallelism across a multi-node cluster, such as Deepseek-R1 or Llama-Nemotron-253&nbsp;B.  
 
 ---
 
-**[Vision LLM deployment](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/vision-llm/notebook.html)**  
+**[Vision LLM deployment](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/vision-llm/README.html)**  
 Deploy models with image + text input such as Qwen 2.5-VL-7&nbsp;B-Instruct, MiniGPT-4, or Pixtral-12&nbsp;B.  
 
 ---
 
-**[Reasoning LLM deployment](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/reasoning-llm/notebook.html)**  
+**[Reasoning LLM deployment](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/reasoning-llm/README.html)**  
 Deploy models with reasoning capabilities designed for long-context tasks, coding, or tool use, such as QwQ-32&nbsp;B.  
 
 ---
 
-**[Hybrid Thinking LLM deployment](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/notebooks/hybrid-reasoning-llm.html)**  
+**[Hybrid Thinking LLM deployment](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/hybrid-reasoning-llm/README.html)**  
 Deploy models that can switch between reasoning and non-reasoning modes for flexible usage, such as Qwen-3.
 
 ```{toctree}

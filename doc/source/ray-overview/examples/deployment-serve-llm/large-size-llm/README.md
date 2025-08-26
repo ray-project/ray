@@ -2,7 +2,7 @@
 
 A large-size LLM typically runs on multiple nodes with multiple GPUs, prioritizing peak quality and capability: stronger reasoning, broader knowledge, longer context windows, more robust generalization. It’s the right choice when state-of-the-art results are required and higher latency, complexity, and cost are acceptable trade-offs.
 
-This tutorial walks you through deploying a large-size LLM like DeepSeek-R1 (685&nbsp;B parameters) using Ray Serve LLM. For smaller model, see [Deploying a small-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/small-size-llm/notebook.html) or [Deploying a medium-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/medium-size-llm/notebook.html).
+This tutorial walks you through deploying a large-size LLM like DeepSeek-R1 (685&nbsp;B parameters) using Ray Serve LLM. For smaller model, see [Deploying a small-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/small-size-llm/README.html) or [Deploying a medium-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/medium-size-llm/README.html).
 
 ---
 
@@ -293,7 +293,7 @@ applications:
 
 ## Improving Concurrency
 
-Ray Serve LLM uses [vLLM](https://docs.vllm.ai/en/latest/) as its backend engine, which logs the *maximum concurrency* it can support based on your configuration.  
+Ray Serve LLM uses [vLLM](https://docs.vllm.ai/en/stable/) as its backend engine, which logs the *maximum concurrency* it can support based on your configuration.  
 
 Example log:
 ```console
@@ -327,7 +327,7 @@ deployment_config:
     max_replicas: 4
 ```
 
-*For more details on tuning strategies and hardware guidance, see this [GPU Selection Guide for LLM Serving](https://docs.anyscale.com/overview).*
+*For more details on tuning strategies, hardware guidance, and serving configurations, see the [GPU Selection Guide for LLM Serving](https://docs.anyscale.com/overview) and [Tuning vLLM and Ray Serve Parameters for LLM Deployment](https://docs.anyscale.com/overview).*
 
 ---
 

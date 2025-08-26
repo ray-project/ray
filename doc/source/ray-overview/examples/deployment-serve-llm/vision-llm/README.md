@@ -195,13 +195,13 @@ serve shutdown -y
 
 ### Production Deployment with Anyscale Service
 
-For production, it's recommended to use Anyscale Services to deploy your Ray Serve app on a dedicated cluster without code changes. Anyscale provides scalability, fault tolerance, and load balancing, ensuring resilience against node failures, high traffic, and rolling updates. See [Deploying a small-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/small-size-llm/notebook.html) for an example with a small-size model like the *Qwen2.5-VL-7&nbsp;B-Instruct* used here.
+For production, it's recommended to use Anyscale Services to deploy your Ray Serve app on a dedicated cluster without code changes. Anyscale provides scalability, fault tolerance, and load balancing, ensuring resilience against node failures, high traffic, and rolling updates. See [Deploying a small-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/small-size-llm/README.html#production-deployment-with-anyscale-service) for an example with a small-size model like the *Qwen2.5-VL-7&nbsp;B-Instruct* used here.
 
 ---
 
 ## Limiting Images per Prompt
 
-Ray Serve LLM uses [vLLM](https://docs.vllm.ai/en/latest/) as its backend engine. You can configure vLLM by passing parameters through the `engine_kwargs` section of your Serve LLM configuration. For a full list of supported options, see the [vLLM documentation](https://docs.vllm.ai/en/latest/configuration/engine_args.html#multimodalconfig).  
+Ray Serve LLM uses [vLLM](https://docs.vllm.ai/en/stable/) as its backend engine. You can configure vLLM by passing parameters through the `engine_kwargs` section of your Serve LLM configuration. For a full list of supported options, see the [vLLM documentation](https://docs.vllm.ai/en/stable/configuration/engine_args.html#multimodalconfig).  
 
 In particular, you can limit the number of images per request by setting `limit_mm_per_prompt` in your configuration.  
 ```yaml

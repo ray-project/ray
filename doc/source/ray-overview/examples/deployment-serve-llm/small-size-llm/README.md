@@ -2,7 +2,7 @@
 
 A small-size LLM typically runs on a single node with 1 or 2 GPUs and is ideal when speed, cost, and simplicity matter most. It’s cheaper to run, faster to deploy, and easier to experiment with, making it well-suited for prototyping, lightweight applications, and scenarios where low latency or limited resources are more important than peak accuracy.  
 
-This tutorial walks you through deploying a small-size LLM using Ray Serve LLM. For larger models, see [Deploying a medium-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/medium-size-llm/notebook.html) or [Deploying a large-size LLM](https://github.com/anyscale/templates/tree/main/templates/ray_serve_llm/end-to-end-examples/gargantuan_model).
+This tutorial walks you through deploying a small-size LLM using Ray Serve LLM. For larger models, see [Deploying a medium-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/medium-size-llm/README.html) or [Deploying a large-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/medium-size-llm/README.html).
 
 ---
 
@@ -258,7 +258,7 @@ applications:
 
 ## Improving Concurrency
 
-Ray Serve LLM uses [vLLM](https://docs.vllm.ai/en/latest/) as its backend engine, which logs the *maximum concurrency* it can support based on your configuration.  
+Ray Serve LLM uses [vLLM](https://docs.vllm.ai/en/stable/) as its backend engine, which logs the *maximum concurrency* it can support based on your configuration.  
 
 Example log:
 ```console
@@ -296,7 +296,7 @@ deployment_config:
     max_replicas: 4
 ```
 
-*For more details on tuning strategies and hardware guidance, see this [GPU Selection Guide for LLM Serving](https://docs.anyscale.com/overview).*
+*For more details on tuning strategies, hardware guidance, and serving configurations, see the [GPU Selection Guide for LLM Serving](https://docs.anyscale.com/overview) and [Tuning vLLM and Ray Serve Parameters for LLM Deployment](https://docs.anyscale.com/overview).*
 
 ---
 
