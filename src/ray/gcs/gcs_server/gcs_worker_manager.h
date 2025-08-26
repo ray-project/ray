@@ -25,8 +25,7 @@
 namespace ray {
 namespace gcs {
 
-/// This implementation class of `WorkerInfoHandler`.
-class GcsWorkerManager : public rpc::WorkerInfoHandler {
+class GcsWorkerManager : public rpc::WorkerInfoGcsServiceHandler {
  public:
   GcsWorkerManager(gcs::GcsTableStorage &gcs_table_storage,
                    instrumented_io_context &io_context,
