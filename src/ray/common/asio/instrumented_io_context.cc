@@ -126,7 +126,7 @@ void instrumented_io_context::dispatch(std::function<void()> handler, std::strin
     return boost::asio::post(*this, std::move(handler));
   }
   auto stats_handle =
-      event_stats_->RecordStart(std::move(name),, emit_metrics_, 0, context_name_);
+      event_stats_->RecordStart(std::move(name), emit_metrics_, 0, context_name_);
   // References are only invalidated upon deletion of the corresponding item from the
   // table, which we won't do until this io_context is deleted. Provided that
   // GuardedHandlerStats synchronizes internal access, we can concurrently write to the
