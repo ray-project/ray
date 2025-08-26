@@ -60,69 +60,172 @@ class DataType:
     # Factory methods for Arrow types
     @classmethod
     def int8(cls) -> "DataType":
+        """Create a DataType representing an 8-bit signed integer.
+
+        Returns:
+            DataType: A DataType with PyArrow int8 type
+        """
         return cls(internal_type=pa.int8())
 
     @classmethod
     def int16(cls) -> "DataType":
+        """Create a DataType representing a 16-bit signed integer.
+
+        Returns:
+            DataType: A DataType with PyArrow int16 type
+        """
         return cls(internal_type=pa.int16())
 
     @classmethod
     def int32(cls) -> "DataType":
+        """Create a DataType representing a 32-bit signed integer.
+
+        Returns:
+            DataType: A DataType with PyArrow int32 type
+        """
         return cls(internal_type=pa.int32())
 
     @classmethod
     def int64(cls) -> "DataType":
+        """Create a DataType representing a 64-bit signed integer.
+
+        Returns:
+            DataType: A DataType with PyArrow int64 type
+        """
         return cls(internal_type=pa.int64())
 
     @classmethod
     def uint8(cls) -> "DataType":
+        """Create a DataType representing an 8-bit unsigned integer.
+
+        Returns:
+            DataType: A DataType with PyArrow uint8 type
+        """
         return cls(internal_type=pa.uint8())
 
     @classmethod
     def uint16(cls) -> "DataType":
+        """Create a DataType representing a 16-bit unsigned integer.
+
+        Returns:
+            DataType: A DataType with PyArrow uint16 type
+        """
         return cls(internal_type=pa.uint16())
 
     @classmethod
     def uint32(cls) -> "DataType":
+        """Create a DataType representing a 32-bit unsigned integer.
+
+        Returns:
+            DataType: A DataType with PyArrow uint32 type
+        """
         return cls(internal_type=pa.uint32())
 
     @classmethod
     def uint64(cls) -> "DataType":
+        """Create a DataType representing a 64-bit unsigned integer.
+
+        Returns:
+            DataType: A DataType with PyArrow uint64 type
+        """
         return cls(internal_type=pa.uint64())
 
     @classmethod
     def float32(cls) -> "DataType":
+        """Create a DataType representing a 32-bit floating point number.
+
+        Returns:
+            DataType: A DataType with PyArrow float32 type
+        """
         return cls(internal_type=pa.float32())
 
     @classmethod
     def float64(cls) -> "DataType":
+        """Create a DataType representing a 64-bit floating point number.
+
+        Returns:
+            DataType: A DataType with PyArrow float64 type
+        """
         return cls(internal_type=pa.float64())
 
     @classmethod
     def string(cls) -> "DataType":
+        """Create a DataType representing a variable-length string.
+
+        Returns:
+            DataType: A DataType with PyArrow string type
+        """
         return cls(internal_type=pa.string())
 
     @classmethod
     def bool(cls) -> "DataType":
+        """Create a DataType representing a boolean value.
+
+        Returns:
+            DataType: A DataType with PyArrow boolean type
+        """
         return cls(internal_type=pa.bool_())
 
     @classmethod
     def binary(cls) -> "DataType":
+        """Create a DataType representing variable-length binary data.
+
+        Returns:
+            DataType: A DataType with PyArrow binary type
+        """
         return cls(internal_type=pa.binary())
 
     # Factory methods from external systems
     @classmethod
     def from_arrow(cls, arrow_type: pa.DataType) -> "DataType":
+        """Create a DataType from a PyArrow DataType.
+
+        Args:
+            arrow_type: A PyArrow DataType to wrap
+
+        Returns:
+            DataType: A DataType wrapping the given PyArrow type
+
+        Examples:
+            >>> DataType.from_arrow(pa.timestamp('s'))
+            >>> DataType.from_arrow(pa.list_(pa.int64()))
+        """
         return cls(internal_type=arrow_type)
 
     @classmethod
     def from_numpy(cls, numpy_dtype: Union[np.dtype, str]) -> "DataType":
+        """Create a DataType from a NumPy dtype.
+
+        Args:
+            numpy_dtype: A NumPy dtype object or string representation
+
+        Returns:
+            DataType: A DataType wrapping the given NumPy dtype
+
+        Examples:
+            >>> DataType.from_numpy(np.dtype('int32'))
+            >>> DataType.from_numpy('float64')
+            >>> DataType.from_numpy(np.int16)
+        """
         if isinstance(numpy_dtype, str):
             numpy_dtype = np.dtype(numpy_dtype)
         return cls(internal_type=numpy_dtype)
 
     @classmethod
     def from_python(cls, python_type: type) -> "DataType":
+        """Create a DataType from a Python type.
+
+        Args:
+            python_type: A Python type object
+
+        Returns:
+            DataType: A DataType wrapping the given Python type
+
+        Examples:
+            >>> DataType.from_python(int)
+            >>> DataType.from_python(str)
+            >>> DataType.from_python(list)
+        """
         return cls(internal_type=python_type)
 
     @classmethod
@@ -178,4 +281,4 @@ class DataType:
         return self.internal_type == other.internal_type
 
     def __hash__(self) -> int:
-        return hash(repr(self))
+        return hash(self.internal_type)
