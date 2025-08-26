@@ -503,7 +503,8 @@ service NodeManagerService {
   // Gets the worker failure cause. May contain a result if
   // the worker executing the task failed.
   // Failure: Gives user error message on failure.
-  rpc GetWorkerFailureCause(GetWorkerFailureCauseRequest) returns (GetWorkerFailureCauseReply);
+  rpc GetWorkerFailureCause(GetWorkerFailureCauseRequest)
+      returns (GetWorkerFailureCauseReply);
   // Failure: TODO: Handle network failure for cgraphs.
   rpc RegisterMutableObject(RegisterMutableObjectRequest)
       returns (RegisterMutableObjectReply);
