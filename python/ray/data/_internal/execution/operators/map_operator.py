@@ -207,6 +207,9 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
             ray_remote_args: Customize the :func:`ray.remote` args for this op's tasks.
+
+        Returns:
+            MapOperator: A new MapOperator instance configured according to the compute strategy.
         """
         if compute_strategy is None:
             compute_strategy = TaskPoolStrategy()

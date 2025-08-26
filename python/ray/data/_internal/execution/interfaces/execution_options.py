@@ -63,6 +63,9 @@ class ExecutionResources:
             gpu: Amount of logical GPU slots.
             object_store_memory: Amount of object store memory.
             memory: Amount of logical memory in bytes.
+
+        Returns:
+            ExecutionResources: A new ExecutionResources object configured with the specified resource limits.
         """
         return ExecutionResources(
             cpu=safe_or(cpu, float("inf")),
@@ -220,6 +223,9 @@ class ExecutionResources:
             limit: The resource limits to check against.
             ignore_object_store_memory: If True, ignore the object store memory
                 limit when checking if this resource struct meets the limits.
+
+        Returns:
+            bool: True if this resource struct satisfies all the specified limits, False otherwise.
         """
         return (
             self.cpu <= limit.cpu

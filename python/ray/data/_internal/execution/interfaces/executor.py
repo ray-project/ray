@@ -25,6 +25,9 @@ class OutputIterator(Iterator[RefBundle], ABC):
             output_split_idx: The output split index to get results for. This arg is
                 only allowed for iterators created by `Dataset.streaming_split()`.
 
+        Returns:
+            RefBundle: The next bundle of output data from the execution.
+
         Raises:
             StopIteration: If there are no more outputs to return.
         """
@@ -56,6 +59,9 @@ class Executor(ContextManager, ABC):
             dag: The operator graph to execute.
             initial_stats: The DatasetStats to prepend to the stats returned by the
                 executor. These stats represent actions done to compute inputs.
+
+        Returns:
+            OutputIterator: An iterator over the execution results.
         """
         ...
 

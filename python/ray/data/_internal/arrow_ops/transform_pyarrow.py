@@ -793,6 +793,9 @@ def combine_chunks(table: "pyarrow.Table", copy: bool = False) -> "pyarrow.Table
     Args:
         table: Table with chunked columns to be combined into contiguous arrays.
         copy: Skip copying when copy is False and there is exactly 1 chunk.
+
+    Returns:
+        pyarrow.Table: A new table with combined chunks for all columns.
     """
 
     new_column_values_arrays = []
@@ -822,6 +825,9 @@ def combine_chunked_array(
         array: The chunked array to be combined into a single contiguous array.
         ensure_copy: Skip copying when ensure_copy is False and there's exactly
            1 chunk.
+
+    Returns:
+        Union[pyarrow.Array, pyarrow.ChunkedArray]: A combined array or chunked array depending on the input type and safety constraints.
     """
 
     import pyarrow as pa

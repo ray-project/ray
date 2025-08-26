@@ -336,6 +336,9 @@ class Preprocessor(abc.ABC):
         Checks if the columns are explicitly set, otherwise defaulting to
         the input columns.
 
+        Returns:
+            List[str]: The validated output column names, either from output_columns or derived from input columns.
+
         Raises:
             ValueError: If the length of the output columns does not match the
                 length of the input columns.

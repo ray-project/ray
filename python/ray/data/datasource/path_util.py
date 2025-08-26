@@ -26,6 +26,9 @@ def _has_file_extension(path: str, extensions: Optional[List[str]]) -> bool:
         path: The path to check.
         extensions: A list of extensions to check against. If `None`, any extension is
             considered valid.
+
+    Returns:
+        bool: True if the path has one of the specified extensions, False otherwise.
     """
     assert extensions is None or isinstance(extensions, list), type(extensions)
 
@@ -53,6 +56,9 @@ def _resolve_paths_and_filesystem(
             None, the provided filesystem will still be validated against all
             filesystems inferred from the provided paths to ensure
             compatibility.
+
+    Returns:
+        Tuple[List[str], pyarrow.fs.FileSystem]: A tuple containing the normalized paths and the resolved filesystem.
     """
     import pyarrow as pa
     from pyarrow.fs import (

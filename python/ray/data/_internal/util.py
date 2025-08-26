@@ -284,6 +284,9 @@ def _estimate_avail_cpus(cur_pg: Optional["PlacementGroup"]) -> int:
 
     Args:
         cur_pg: The current placement group, if any.
+
+    Returns:
+        int: The estimated number of available CPUs for dataset operations.
     """
     cluster_cpus = int(ray.cluster_resources().get("CPU", 1))
     cluster_gpus = int(ray.cluster_resources().get("GPU", 0))
@@ -1424,6 +1427,9 @@ def call_with_retry(
             example, "open the file".
         max_attempts: The maximum number of attempts to retry.
         max_backoff_s: The maximum number of seconds to backoff.
+
+    Returns:
+        Any: The return value of the function f if it succeeds within the retry limit.
     """
     assert max_attempts >= 1, f"`max_attempts` must be positive. Got {max_attempts}."
 

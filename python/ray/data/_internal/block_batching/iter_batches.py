@@ -287,6 +287,9 @@ def _format_in_threadpool(
             as batches.
         collate_fn: A function to apply to each data batch before returning it.
         num_threadpool_workers: The number of threads to use in the threadpool.
+
+    Returns:
+        Iterator[Batch]: An iterator over formatted and collated batches.
     """
 
     def threadpool_computations_format_collate(
