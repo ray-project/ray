@@ -15,9 +15,9 @@
 #include "ray/gcs/gcs_server/gcs_ray_event_converter.h"
 
 #include "absl/container/flat_hash_map.h"
+#include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/util/logging.h"
-#include "ray/common/grpc_util.h"
 
 namespace ray {
 namespace gcs {
