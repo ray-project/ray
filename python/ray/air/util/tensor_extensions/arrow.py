@@ -1130,6 +1130,9 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
         data_buffer = raw_values.buffers()[1]
         return _to_ndarray_helper(shape, value_type, offset, data_buffer)
 
+    def __hash__(self) -> int:
+        return hash((type(self), self.extension_name, self.storage_type, self._ndim))
+
 
 # NOTE: We need to inherit from the mixin before pa.ExtensionArray to ensure that the
 # mixin's overriding methods appear first in the MRO.
