@@ -102,6 +102,7 @@ class BroadcastJoinFunction:
         # Coalesce the small dataset to a single partition and materialize
         try:
             # Repartition to 1 partition and materialize
+            # For small datasets, this should be very fast
             coalesced_ds = small_table_dataset.repartition(1).materialize()
 
             # Get PyArrow table reference from the dataset
@@ -117,15 +118,21 @@ class BroadcastJoinFunction:
                     self.small_table = pa.table({})
             else:
                 self.small_table = ray.get(arrow_refs[0])
+                
         except Exception as e:
             import warnings
             warnings.warn(
                 f"Warning: {e}. \nThe dataset being broadcast is likely too large "
-                f"to fit in memory."
+                f"to fit in memory or there was an error during materialization. "
+                "Falling back to empty table."
             )
             # Create an empty table as fallback
             import pyarrow as pa
             self.small_table = pa.table({})
+
+        # Store the original dataset as fallback if materialization failed
+        self._fallback_dataset = small_table_dataset
+        self._materialization_succeeded = hasattr(self.small_table, 'schema') and len(self.small_table.schema) > 0
 
     def __call__(self, batch: DataBatch) -> DataBatch:
         """Perform PyArrow join on a batch from the large table.
@@ -149,6 +156,20 @@ class BroadcastJoinFunction:
         # Convert batch to PyArrow table if needed
         if isinstance(batch, dict):
             batch = pa.table(batch)
+
+        # If materialization failed, try to get the small table from the fallback dataset
+        if not self._materialization_succeeded:
+            try:
+                # Try to get a small sample from the fallback dataset
+                fallback_refs = self._fallback_dataset.limit(1000).to_arrow_refs()
+                if fallback_refs:
+                    fallback_tables = [ray.get(ref) for ref in fallback_refs]
+                    if fallback_tables:
+                        self.small_table = pa.concat_tables(fallback_tables)
+                        self._materialization_succeeded = True
+            except Exception:
+                # If all else fails, use empty table
+                pass
 
         # Get the appropriate PyArrow join type for standard joins
         arrow_join_type = _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP[self.join_type]

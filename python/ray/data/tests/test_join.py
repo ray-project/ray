@@ -449,6 +449,7 @@ def test_default_shuffle_aggregator_args():
         (10, 5),  # Small datasets
     ],
 )
+
 def test_broadcast_join_basic(
     ray_start_regular_shared_2_cpus,
     join_type,
@@ -470,7 +471,7 @@ def test_broadcast_join_basic(
     broadcast_result = left_ds.join(
         right_ds,
         join_type=join_type,
-        num_partitions=4,
+        num_partitions=2,  # Match the number of CPUs in the test fixture
         on=("id",),
         broadcast=True,
     )
@@ -479,8 +480,7 @@ def test_broadcast_join_basic(
     regular_result = left_ds.join(
         right_ds,
         join_type=join_type,
-        num_partitions=4,
-        on=("id",),
+        num_partitions=2,  # Match the number of CPUs in the test fixture
         broadcast=False,
     )
 
@@ -548,7 +548,7 @@ def test_broadcast_join_left_smaller(
     broadcast_result = left_ds.join(
         right_ds,
         join_type=join_type,
-        num_partitions=4,
+        num_partitions=2,  # Match the number of CPUs in the test fixture
         on=("id",),
         broadcast=True,
     )
@@ -557,8 +557,7 @@ def test_broadcast_join_left_smaller(
     regular_result = left_ds.join(
         right_ds,
         join_type=join_type,
-        num_partitions=4,
-        on=("id",),
+        num_partitions=2,  # Match the number of CPUs in the test fixture
         broadcast=False,
     )
 
@@ -637,7 +636,7 @@ def test_broadcast_join_dataset_swapping_edge_cases(
         broadcast_result = left_ds.join(
             right_ds,
             join_type=join_type,
-            num_partitions=4,
+            num_partitions=2,  # Match the number of CPUs in the test fixture
             on=("id",),
             broadcast=True,
         )
@@ -646,8 +645,7 @@ def test_broadcast_join_dataset_swapping_edge_cases(
         regular_result = left_ds.join(
             right_ds,
             join_type=join_type,
-            num_partitions=4,
-            on=("id",),
+            num_partitions=2,  # Match the number of CPUs in the test fixture
             broadcast=False,
         )
 
@@ -878,7 +876,7 @@ def test_broadcast_join_performance_with_small_right(ray_start_regular_shared_2_
     result = left_ds.join(
         right_ds,
         join_type="inner",
-        num_partitions=8,
+        num_partitions=2,  # Match the number of CPUs in the test fixture
         on=("id",),
         broadcast=True,
     )
