@@ -312,12 +312,29 @@ class InMemoryMetricsStore:
         return self._aggregate_reduce(keys, statistics.mean)
 
 
+def _bucket_latest_by_window(
+    series: List[TimeStampedValue],
+    start: int,
+    window_ms: int,
+) -> Dict[int, float]:
+    """
+    Map each window index -> latest value seen in that window.
+    Assumes series is sorted by timestamp ascending.
+    """
+    buckets: Dict[int, float] = {}
+    for p in series:
+        w = (p.timestamp - start) // window_ms
+        buckets[w] = p.value  # overwrite keeps the latest within the window
+    return buckets
+
+
 def merge_timeseries(
     t1: List[TimeStampedValue], t2: List[TimeStampedValue], window_ms: int
 ) -> List[TimeStampedValue]:
-    """Merge two time series by summing values within a specified time window.
-    If multiple values fall within the same time-series window, the latest value
-    is used.
+    """
+    Merge two time series by summing values within a specified time window.
+    If multiple values fall within the same window in a series, the latest value is used.
+    The output contains one point per window that had at least one value, timestamped at the window center.
     """
     if not t1 and not t2:
         return []
@@ -326,56 +343,40 @@ def merge_timeseries(
     if not t2:
         return t1.copy()
 
-    start = min(t1[0].timestamp, t2[0].timestamp) - (window_ms // 2)
-    end = max(t1[-1].timestamp, t2[-1].timestamp)
-    merged = []
-    current_time = start
-    i = j = 0
-    while current_time <= end:
-        t1_temp = t2_temp = None
-        while i < len(t1) and t1[i].timestamp < current_time + window_ms:
-            t1_temp = t1[i].value
-            i += 1
-        while j < len(t2) and t2[j].timestamp < current_time + window_ms:
-            t2_temp = t2[j].value
-            j += 1
-        if t1_temp is not None or t2_temp is not None:
-            val = (0.0 if t1_temp is None else t1_temp) + (
-                0.0 if t2_temp is None else t2_temp
-            )
-            merged.append(
-                TimeStampedValue(timestamp=current_time + (window_ms // 2), value=val)
-            )
-        current_time += window_ms
+    # Align windows so each output timestamp sits at the center of its window.
+    earliest = min(t1[0].timestamp, t2[0].timestamp)
+    start = earliest - (window_ms // 2)
 
+    b1 = _bucket_latest_by_window(t1, start, window_ms)
+    b2 = _bucket_latest_by_window(t2, start, window_ms)
+
+    # Only produce windows that had at least one value (matches original).
+    windows = sorted(set(b1.keys()) | set(b2.keys()))
+
+    merged: List[TimeStampedValue] = []
+    for w in windows:
+        v = (b1.get(w, 0.0) + b2.get(w, 0.0))
+        ts_center = start + w * window_ms + (window_ms // 2)
+        merged.append(TimeStampedValue(timestamp=ts_center, value=v))
     return merged
 
 
 def merge_metrics_stores(
     *stores: InMemoryMetricsStore, window_ms: int
 ) -> InMemoryMetricsStore:
-    """Merge multiple handle metrics stores together. If the same replica/key
-    is found in multiple handles, their time series data is merged using a
-    windowed sum. If multiple values from one handle-replica pair fall within
-    the same window, only latest value is used.
-
-    Args:
-        *stores: A variable number of InMemoryMetricsStore instances to consolidate.
-        window_ms: Window size in milliseconds for merging time series data.
-    Returns:
-        A single InMemoryMetricsStore object containing the merged data.
+    """
+    Merge multiple metrics stores. For the same key across stores,
+    time series are merged with a windowed sum, where each series keeps only
+    its latest value per window before summing.
     """
     if len(stores) == 1:
         return stores[0]
-    else:
-        merged = InMemoryMetricsStore()
-        for store in stores:
-            for key, timeseries in store.data.items():
-                if key in merged.data:
-                    merged.data[key] = merge_timeseries(
-                        merged.data[key], timeseries, window_ms
-                    )
-                else:
-                    merged.data[key] = timeseries.copy()
 
+    merged = InMemoryMetricsStore()
+    for store in stores:
+        for key, ts in store.data.items():
+            if key in merged.data:
+                merged.data[key] = merge_timeseries(merged.data[key], ts, window_ms)
+            else:
+                merged.data[key] = ts.copy()
     return merged
