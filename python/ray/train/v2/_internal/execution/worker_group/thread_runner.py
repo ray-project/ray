@@ -27,7 +27,7 @@ class ThreadRunner:
         self._thread: Optional[threading.Thread] = None
         self._monitor_thread: Optional[threading.Thread] = None
         self._lock = threading.Lock()
-        self._exc_queue = queue.SimpleQueue()
+        self._exc_queue: queue.SimpleQueue[Optional[Exception]] = queue.SimpleQueue()
 
         self._is_running = False
 
@@ -77,9 +77,7 @@ class ThreadRunner:
         If True, both _monitor_thread and _thread are running.
         If False, _monitor_thread is not running.
         If False, _thread might be running if it kicked off a nested thread
-            that raised an exception. We do this because we want is_running()
-            to be False ASAP so the Ray Train controller can process the result
-            or exception ASAP.
+            that raised an exception and populated the shared exception queue.
         """
         with self._lock:
             return self._is_running

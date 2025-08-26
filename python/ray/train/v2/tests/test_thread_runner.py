@@ -55,30 +55,16 @@ def test_nested_thread_error(thread_runner):
 
     def target():
         def nested():
-            # Use dummy_condition to test the case where a nested thread raises
-            # an exception but the target function is still running.
-            dummy_condition = threading.Condition()
+            try:
+                raise ValueError
+            except ValueError as e:
+                thread_runner.get_exception_queue().put(
+                    construct_user_exception_with_traceback(e)
+                )
 
-            # Use the same target() + nested() structure as test_error to simulate
-            # `ThreadRunner._run_target` and `construct_train_func`
-            def nested_nested():
-                try:
-                    raise ValueError
-                except ValueError as e:
-                    thread_runner.get_exception_queue().put(
-                        construct_user_exception_with_traceback(e)
-                    )
-                    # If the user uses join(), it is their responsibility to ensure that
-                    # the target function exits if a nested thread raises an exception.
-                    with dummy_condition:
-                        dummy_condition.notify_all()
-                    raise e
-
-            with dummy_condition:
-                threading.Thread(target=nested_nested).start()
-                dummy_condition.wait()
-
-        nested()
+        thread = threading.Thread(target=nested)
+        thread.start()
+        thread.join()
 
     thread_runner.run(target)
     # Pick arbitrary timeout to verify that we don't error
