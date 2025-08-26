@@ -41,18 +41,12 @@ def cli():
     help="The name of the dependency set to load. If not specified, all dependency sets will be loaded.",
 )
 @click.option(
-    "--build-arg-set",
-    default=None,
-    help="The name of the build arg set to use. If not specified, a depset matching the name with no build arg set will be loaded.",
-)
-@click.option(
     "--uv-cache-dir", default=None, help="The directory to cache uv dependencies"
 )
 def build(
     config_path: str,
     workspace_dir: Optional[str],
     name: Optional[str],
-    build_arg_set: Optional[str],
     uv_cache_dir: Optional[str],
 ):
     """

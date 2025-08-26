@@ -13,26 +13,18 @@ from transformers import CLIPModel, CLIPProcessor
 
 from ray import serve
 
-# Define app
-api = FastAPI(
-    title="doggos",
-    description="classify your dog",
-    version="0.1",
-)
-
 
 @serve.deployment(
     num_replicas="1",
     ray_actor_options={
-        "num_cpus": 4,
         "num_gpus": 1,
-        "accelerator_type": "L4",
+        "accelerator_type": "T4",
     },
 )
 class ClassPredictor:
     def __init__(self, model_id, artifacts_dir, device="cuda"):
         """Initialize the model."""
-        # Embdding model
+        # Embedding model
         self.processor = CLIPProcessor.from_pretrained(model_id)
         self.model = CLIPModel.from_pretrained(model_id)
         self.model.to(device=device)
@@ -49,13 +41,21 @@ class ClassPredictor:
         )
         with torch.inference_mode():
             embedding = self.model.get_image_features(**inputs).cpu().numpy()
-        probabilities = self.predictor.predict_probabilities(
+        outputs = self.predictor.predict_probabilities(
             collate_fn({"embedding": embedding})
         )
-        return probabilities
+        return {"probabilities": outputs["probabilities"][0]}
 
 
-@serve.deployment(num_replicas="1", ray_actor_options={"num_cpus": 2})
+# Define app
+api = FastAPI(
+    title="doggos",
+    description="classify your dog",
+    version="0.1",
+)
+
+
+@serve.deployment
 @serve.ingress(api)
 class Doggos:
     def __init__(self, classifier):
@@ -65,27 +65,28 @@ class Doggos:
     async def predict(self, request: Request):
         data = await request.json()
         probabilities = await self.classifier.get_probabilities.remote(url=data["url"])
-        return {
-            "probabilities": probabilities,
-        }
+        return probabilities
 
 
-# Model registry
+# Model registry.
 model_registry = "/mnt/user_storage/mlflow/doggos"
 experiment_name = "doggos"
 mlflow.set_tracking_uri(f"file:{model_registry}")
 
-# Best run
+# Get best_run's artifact_dir.
 sorted_runs = mlflow.search_runs(
-    experiment_names=[experiment_name],
-    order_by=["metrics.val_loss ASC"],
+    experiment_names=[experiment_name], order_by=["metrics.val_loss ASC"]
 )
 best_run = sorted_runs.iloc[0]
 artifacts_dir = urlparse(best_run.artifact_uri).path
 
 # Define app
 app = Doggos.bind(
-    classifier=ClassPredictor.bind(artifacts_dir=artifacts_dir),
+    classifier=ClassPredictor.bind(
+        model_id="openai/clip-vit-base-patch32",
+        artifacts_dir=artifacts_dir,
+        device="cuda",
+    )
 )
 
 if __name__ == "__main__":

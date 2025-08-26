@@ -389,6 +389,8 @@ class NodeManagerTest : public ::testing::Test {
     })");
 
     NodeManagerConfig node_manager_config{};
+    node_manager_config.node_manager_address = "127.0.0.1";
+    node_manager_config.node_manager_port = 0;
     node_manager_config.maximum_startup_concurrency = 1;
     node_manager_config.store_socket_name = "test_store_socket";
 
@@ -745,6 +747,33 @@ TEST_F(NodeManagerTest, TestPinningAnObjectPendingDeletionFails) {
 
   EXPECT_EQ(failed_pin_reply.successes_size(), 1);
   EXPECT_FALSE(failed_pin_reply.successes(0));
+}
+
+TEST_F(NodeManagerTest, TestConsumeSyncMessage) {
+  // Create and wrap a mock resource view sync message.
+  syncer::ResourceViewSyncMessage payload;
+  payload.mutable_resources_total()->insert({"CPU", 10.0});
+  payload.mutable_resources_available()->insert({"CPU", 10.0});
+  payload.mutable_labels()->insert({"label1", "value1"});
+
+  std::string serialized;
+  ASSERT_TRUE(payload.SerializeToString(&serialized));
+
+  auto node_id = NodeID::FromRandom();
+  syncer::RaySyncMessage msg;
+  msg.set_node_id(node_id.Binary());
+  msg.set_message_type(syncer::MessageType::RESOURCE_VIEW);
+  msg.set_sync_message(serialized);
+
+  node_manager_->ConsumeSyncMessage(std::make_shared<syncer::RaySyncMessage>(msg));
+
+  // Verify node resources and labels were updated.
+  const auto &node_resources =
+      cluster_resource_scheduler_->GetClusterResourceManager().GetNodeResources(
+          scheduling::NodeID(node_id.Binary()));
+  EXPECT_EQ(node_resources.labels.at("label1"), "value1");
+  EXPECT_EQ(node_resources.total.Get(scheduling::ResourceID("CPU")).Double(), 10.0);
+  EXPECT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU")).Double(), 10.0);
 }
 
 TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesSuccessful) {
