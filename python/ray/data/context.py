@@ -536,6 +536,9 @@ class DataContext:
         default_factory=_issue_detectors_config_factory
     )
 
+    downstream_capacity_backpressure_ratio: float = None
+    downstream_capacity_backpressure_max_queued_bundles: int = None
+
     allow_divergent_schemas: bool = DEFAULT_ALLOW_DIVERGENT_SCHEMAS
 
     def __post_init__(self):
