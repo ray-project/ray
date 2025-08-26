@@ -454,3 +454,11 @@ class VLLMEngine(LLMEngine):
     async def reset_prefix_cache(self) -> None:
         assert self._engine_client is not None, "engine_client is not initialized"
         await self._engine_client.reset_prefix_cache()
+
+    async def start_profile(self) -> None:
+        assert self._engine_client is not None, "engine_client is not initialized"
+        await self._engine_client.start_profile()
+
+    async def stop_profile(self) -> None:
+        assert self._engine_client is not None, "engine_client is not initialized"
+        await self._engine_client.stop_profile()

@@ -108,6 +108,14 @@ class _LLMServerBase(ABC):
     async def reset_prefix_cache(self) -> None:
         """Reset the prefix cache of the underlying engine"""
 
+    @abstractmethod
+    async def start_profile(self) -> None:
+        """Start profiling"""
+
+    @abstractmethod
+    async def stop_profile(self) -> None:
+        """Stop profiling"""
+
     # TODO (Kourosh): This does not belong here.
     async def llm_config(self) -> Optional[LLMConfig]:
         return None
@@ -408,6 +416,28 @@ class LLMServer(_LLMServerBase):
                 "Engine reset prefix cache failed in LLMServer.reset_prefix_cache: %s",
                 e,
             )
+            raise e
+
+    async def start_profile(self) -> None:
+        """Start profiling"""
+        if self.engine is None:
+            return
+        try:
+            await self.engine.start_profile()
+        except Exception as e:
+            logger.error(
+                "Engine start profile failed in LLMServer.start_profile: %s", e
+            )
+            raise e
+
+    async def stop_profile(self) -> None:
+        """Stop profiling"""
+        if self.engine is None:
+            return
+        try:
+            await self.engine.stop_profile()
+        except Exception as e:
+            logger.error("Engine stop profile failed in LLMServer.stop_profile: %s", e)
             raise e
 
     async def llm_config(self) -> Optional[LLMConfig]:
