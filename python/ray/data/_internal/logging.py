@@ -275,7 +275,7 @@ def update_dataset_logger_for_worker(dataset_id: Optional[str]) -> None:
         logger.addHandler(log_handler)
 
 
-def register_dataset_logger(dataset_id: str) -> Optional[int]:
+def register_dataset_logger(dataset_id: str) -> Optional[str]:
     """Create a log handler for a dataset with the given ID. Activate the handler if
     this is the only active dataset. Otherwise, print a warning to that handler and
     keep it inactive until it becomes the only active dataset.
@@ -313,7 +313,7 @@ def register_dataset_logger(dataset_id: str) -> Optional[int]:
     return _ACTIVE_DATASET
 
 
-def unregister_dataset_logger(dataset_id: str) -> Optional[int]:
+def unregister_dataset_logger(dataset_id: str) -> Optional[str]:
     """Remove the logger for a dataset with the given ID.
 
     Args:
