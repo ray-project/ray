@@ -29,6 +29,7 @@
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/store_client.h"
 #include "ray/gcs/tests/gcs_test_util.h"
+#include "ray/util/counter_map.h"
 
 namespace ray {
 using raylet::NoopLocalTaskManager;
