@@ -185,7 +185,10 @@ def unify_schemas(
             return schemas[0]
     except Exception:
         # Unsure if there are cases where schemas are NOT hashable
-        pass
+        logger.warning(
+            "Skipping schema deduplication because they are not hashable. "
+            "This can hurt performance if the schemas are large."
+        )
 
     schemas_to_unify = []
     schema_field_overrides = {}

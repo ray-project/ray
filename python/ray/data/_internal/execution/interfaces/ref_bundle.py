@@ -63,6 +63,11 @@ class RefBundle:
                     "The size in bytes of the block must be known: {}".format(b)
                 )
 
+        import pyarrow as pa
+
+        if isinstance(self.schema, pa.lib.Schema):
+            self.schema = self.schema.remove_metadata()
+
     def __setattr__(self, key, value):
         if hasattr(self, key) and key in ["blocks", "owns_blocks"]:
             raise ValueError(f"The `{key}` field of RefBundle cannot be updated.")

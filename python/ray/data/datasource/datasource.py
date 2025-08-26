@@ -151,15 +151,9 @@ class ReadTask(Callable[[], Iterable[Block]]):
         metadata: BlockMetadata,
         schema: Optional["Schema"] = None,
     ):
-        import pyarrow as pa
-
         self._metadata = metadata
         self._read_fn = read_fn
-        if isinstance(schema, pa.lib.Schema):
-            # We remove the metadata because it is not hashable.
-            self._schema = schema.remove_metadata()
-        else:
-            self._schema = schema
+        self._schema = schema
 
     @property
     def metadata(self) -> BlockMetadata:
