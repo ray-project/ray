@@ -155,11 +155,7 @@ class GPUObjectStore:
 
     def get_object(self, obj_id: str) -> Optional[List["torch.Tensor"]]:
         with self._lock:
-            if self.has_object(obj_id):
-                # For primary copies, we peek at the front without removing
-                # For non-primary, we also peek (pop happens separately)
-                return self._gpu_object_store[obj_id][0].data
-            return None
+            return self._gpu_object_store[obj_id][0].data
 
     def add_object(
         self,
