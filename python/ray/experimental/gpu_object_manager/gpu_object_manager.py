@@ -66,6 +66,10 @@ class GPUObjectManager:
         self._gpu_object_store: Optional["GPUObjectStore"] = None
         # Lock to ensure we only create the GPU object store once.
         self.gpu_object_store_lock = threading.Lock()
+        # Dictionary to track the actors that an object has been sent to
+        self._object_dest_actors: Dict[str, set] = {}
+        # Set to track which object IDs have already triggered a warning
+        self._warned_object_ids = set()
 
     @property
     def gpu_object_store(self) -> "ray.experimental.GPUObjectStore":
@@ -208,17 +212,29 @@ class GPUObjectManager:
                 # If the source and destination actors are the same, the tensors can
                 # be transferred intra-process, so we skip the out-of-band tensor
                 # transfer.
-                if src_actor == dst_actor:
-                    obj_id = obj_ref.hex()
-                    warnings.warn(
-                        f"GPU object ref {obj_id} is being passed back to the same actor {src_actor}. "
-                        "If the actor modifies the tensor, Ray's internal copy will also be updated, and subsequent passes to other actors "
-                        "may receive an updated or inconsistent version instead of the original.",
-                        UserWarning,
-                    )
                 continue
 
             obj_id = obj_ref.hex()
+
+            # Track which actors this object has been sent to
+            if obj_id not in self._object_dest_actors:
+                self._object_dest_actors[obj_id] = set()
+            self._object_dest_actors[obj_id].add(dst_actor._actor_id)
+
+            # Check if this object is being sent to both the src actor and other actors
+            if (
+                src_actor._actor_id in self._object_dest_actors[obj_id]
+                and len(self._object_dest_actors[obj_id]) > 1
+                and obj_id not in self._warned_object_ids
+            ):
+                self._warned_object_ids.add(obj_id)
+                warnings.warn(
+                    f"GPU object ref {obj_id} is being passed back to the same actor {src_actor} and will be treated as a mutable tensor. "
+                    "If the tensor is modified, Ray's internal copy will also be updated, and subsequent passes to other actors "
+                    "will receive the updated version instead of the original.",
+                    UserWarning,
+                )
+
             tensor_transport_manager = get_tensor_transport_manager(
                 gpu_object_meta.tensor_transport_backend
             )

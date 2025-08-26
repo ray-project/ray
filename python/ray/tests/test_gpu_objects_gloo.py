@@ -683,5 +683,29 @@ def test_wait_tensor_freed_double_tensor(ray_start_regular):
     assert not gpu_object_store.has_object(obj_id2)
 
 
+def test_trigger_out_of_band_tensor_transfer(ray_start_regular):
+    # Test warning when object is sent back to the src actor and to dst actors
+    world_size = 2
+    actors = [GPUTestActor.remote() for _ in range(world_size)]
+    create_collective_group(actors, backend="gloo")
+
+    src_actor, dst_actor = actors[0], actors[1]
+
+    tensor = torch.tensor([1, 2, 3])
+    t = src_actor.echo.remote(tensor)
+    t1 = src_actor.echo.remote(t)  # Sent back to the src actor
+    t2 = dst_actor.echo.remote(t)  # Also sent to another actor
+
+    warning_message = (
+        f"GPU object ref [a-f0-9]+ is being passed back to the same actor {src_actor} "
+        "and will be treated as a mutable tensor. If the tensor is modified, Ray's internal copy "
+        "will also be updated, and subsequent passes to other actors will receive the updated "
+        "version instead of the original."
+    )
+
+    with pytest.warns(UserWarning, match=warning_message):
+        result1, result2 = ray.get([t1, t2])
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
