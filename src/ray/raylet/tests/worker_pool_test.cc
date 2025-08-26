@@ -1511,7 +1511,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCapping) {
     auto lease_spec =
         ExampleLeaseSpec(/*actor_id=*/ActorID::Nil(), Language::PYTHON, job_id);
     auto worker = worker_pool_->PopWorkerSync(lease_spec, false);
-    // Simulate granting the lease and finish. This is to set lease_granted_time_.
+    // Simulate granting the lease and finish. This is to set lease_grant_time_.
     RayLease lease(lease_spec);
     worker->GrantLease(lease);
     worker->GrantLeaseId(LeaseID::Nil());

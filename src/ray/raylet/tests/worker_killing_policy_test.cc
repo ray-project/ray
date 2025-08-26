@@ -31,20 +31,9 @@ class WorkerKillerTest : public ::testing::Test {
   int32_t port_ = 2389;
   RetriableLIFOWorkerKillingPolicy worker_killing_policy_;
 
-  std::shared_ptr<WorkerInterface> CreateActorWorker(int32_t max_restarts) {
+  std::shared_ptr<WorkerInterface> CreateActorCreationWorker(bool is_retriable) {
     rpc::LeaseSpec message;
-    message.set_max_actor_restarts(max_restarts);
-    message.set_type(ray::rpc::TaskType::ACTOR_TASK);
-    LeaseSpecification lease_spec(message);
-    RayLease lease(lease_spec);
-    auto worker = std::make_shared<MockWorker>(ray::WorkerID::FromRandom(), port_);
-    worker->GrantLease(lease);
-    return worker;
-  }
-
-  std::shared_ptr<WorkerInterface> CreateActorCreationWorker(int32_t max_restarts) {
-    rpc::LeaseSpec message;
-    message.set_max_actor_restarts(max_restarts);
+    message.set_is_retriable(is_retriable);
     message.set_type(ray::rpc::TaskType::ACTOR_CREATION_TASK);
     LeaseSpecification lease_spec(message);
     RayLease lease(lease_spec);
@@ -53,9 +42,9 @@ class WorkerKillerTest : public ::testing::Test {
     return worker;
   }
 
-  std::shared_ptr<WorkerInterface> CreateTaskWorker(int32_t max_retries) {
+  std::shared_ptr<WorkerInterface> CreateTaskWorker(bool is_retriable) {
     rpc::LeaseSpec message;
-    message.set_max_retries(max_retries);
+    message.set_is_retriable(is_retriable);
     message.set_type(ray::rpc::TaskType::NORMAL_TASK);
     LeaseSpecification lease_spec(message);
     RayLease lease(lease_spec);
@@ -76,14 +65,15 @@ TEST_F(WorkerKillerTest, TestEmptyWorkerPoolSelectsNullWorker) {
 TEST_F(WorkerKillerTest,
        TestPreferRetriableOverNonRetriableAndOrderByTimestampDescending) {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
-  auto first_submitted = WorkerKillerTest::CreateActorWorker(7 /* max_restarts */);
+  auto first_submitted =
+      WorkerKillerTest::CreateActorCreationWorker(false /* is_retriable */);
   auto second_submitted =
-      WorkerKillerTest::CreateActorCreationWorker(5 /* max_restarts */);
-  auto third_submitted = WorkerKillerTest::CreateTaskWorker(0 /* max_restarts */);
-  auto fourth_submitted = WorkerKillerTest::CreateTaskWorker(11 /* max_restarts */);
+      WorkerKillerTest::CreateActorCreationWorker(true /* is_retriable */);
+  auto third_submitted = WorkerKillerTest::CreateTaskWorker(false /* is_retriable */);
+  auto fourth_submitted = WorkerKillerTest::CreateTaskWorker(true /* is_retriable */);
   auto fifth_submitted =
-      WorkerKillerTest::CreateActorCreationWorker(0 /* max_restarts */);
-  auto sixth_submitted = WorkerKillerTest::CreateActorWorker(0 /* max_restarts */);
+      WorkerKillerTest::CreateActorCreationWorker(false /* is_retriable */);
+  auto sixth_submitted = WorkerKillerTest::CreateTaskWorker(true /* is_retriable */);
 
   workers.push_back(first_submitted);
   workers.push_back(second_submitted);
@@ -93,9 +83,9 @@ TEST_F(WorkerKillerTest,
   workers.push_back(sixth_submitted);
 
   std::vector<std::shared_ptr<WorkerInterface>> expected_order;
+  expected_order.push_back(sixth_submitted);
   expected_order.push_back(fourth_submitted);
   expected_order.push_back(second_submitted);
-  expected_order.push_back(sixth_submitted);
   expected_order.push_back(fifth_submitted);
   expected_order.push_back(third_submitted);
   expected_order.push_back(first_submitted);

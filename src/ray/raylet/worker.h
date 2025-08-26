@@ -239,7 +239,7 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
     root_detached_actor_id_ = granted_lease.GetLeaseSpecification().RootDetachedActorId();
   }
 
-  absl::Time GetGrantedLeaseTime() const { return lease_assign_time_; };
+  absl::Time GetGrantedLeaseTime() const { return lease_grant_time_; };
 
   bool IsRegistered() { return rpc_client_ != nullptr; }
 
@@ -319,8 +319,8 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   std::shared_ptr<TaskResourceInstances> lifetime_allocated_instances_;
   /// RayLease being assigned to this worker.
   RayLease granted_lease_;
-  /// Time when the last lease was assigned to this worker.
-  absl::Time lease_assign_time_;
+  /// Time when the last lease was granted to this worker.
+  absl::Time lease_grant_time_;
   /// Whether this worker ever holded a GPU resource. Once it holds a GPU or non-GPU lease
   /// it can't switch to the other type.
   std::optional<bool> is_gpu_ = std::nullopt;
