@@ -356,6 +356,7 @@ ray_cc_binary(
     deps = [
         ":gcs_server_lib",
         "//src/ray/stats:stats_lib",
+        "//src/ray/util:event",
         "//src/ray/util:raii",
         "//src/ray/util:stream_redirection",
         "//src/ray/util:stream_redirection_options",
