@@ -1402,6 +1402,25 @@ class ExternalScalerView(BaseModel):
 
 
 @PublicAPI(stability="alpha")
+class ApplicationDeploymentStatus(BaseModel):
+    """A summary of a deployment's status within an application."""
+
+    class Config:
+        extra = Extra.forbid
+
+    current_replicas: int = Field(
+        ..., ge=0, description="Current number of live replicas."
+    )
+    target_replicas: int = Field(..., ge=0, description="Target number of replicas.")
+    min_replicas: Optional[int] = Field(
+        None, ge=0, description="Effective min replicas."
+    )
+    max_replicas: Optional[int] = Field(
+        None, ge=0, description="Effective max replicas."
+    )
+
+
+@PublicAPI(stability="alpha")
 class ApplicationAutoscalerView(BaseModel):
     """Application-level autoscaler observability."""
 
@@ -1427,10 +1446,9 @@ class ApplicationAutoscalerView(BaseModel):
     errors: List[str] = Field(
         default_factory=list, description="Recent errors/abnormal events."
     )
-    # e.g. {"frontend": {"current": 4, "target": 4}, "backend": {"current": 6, "target": 6}}
-    deployments: Dict[str, Dict[str, int]] = Field(
+    deployments: Dict[str, ApplicationDeploymentStatus] = Field(
         default_factory=dict,
-        description='Per-deployment summary, keys like "current"/"target".',
+        description="Per-deployment summary status keyed by deployment name.",
     )
 
 
