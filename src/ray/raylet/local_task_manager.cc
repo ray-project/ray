@@ -41,9 +41,7 @@ LocalTaskManager::LocalTaskManager(
     std::function<bool(const std::vector<ObjectID> &object_ids,
                        std::vector<std::unique_ptr<RayObject>> *results)>
         get_task_arguments,
-    size_t max_pinned_task_arguments_bytes,
-    std::function<int64_t(void)> get_time_ms,
-    int64_t sched_cls_cap_interval_ms)
+    size_t max_pinned_task_arguments_bytes)
     : self_node_id_(self_node_id),
       self_scheduling_node_id_(self_node_id.Binary()),
       cluster_resource_scheduler_(cluster_resource_scheduler),
@@ -54,10 +52,7 @@ LocalTaskManager::LocalTaskManager(
       worker_pool_(worker_pool),
       leased_workers_(leased_workers),
       get_task_arguments_(get_task_arguments),
-      max_pinned_task_arguments_bytes_(max_pinned_task_arguments_bytes),
-      get_time_ms_(get_time_ms),
-      sched_cls_cap_interval_ms_(sched_cls_cap_interval_ms),
-      sched_cls_cap_max_ms_(RayConfig::instance().worker_cap_max_backoff_delay_ms()) {}
+      max_pinned_task_arguments_bytes_(max_pinned_task_arguments_bytes) {}
 
 void LocalTaskManager::QueueAndScheduleTask(std::shared_ptr<internal::Work> work) {
   // If the local node is draining, the cluster task manager will
@@ -240,11 +235,6 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
       }
     }
 
-    /// We cap the maximum running tasks of a scheduling class to avoid
-    /// scheduling too many tasks of a single type/depth, when there are
-    /// deeper/other functions that should be run. We need to apply back
-    /// pressure to limit the number of worker processes started in scenarios
-    /// with nested tasks.
     bool is_infeasible = false;
     for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end();) {
       auto &work = *work_it;

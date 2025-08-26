@@ -152,18 +152,9 @@ RAY_CONFIG(int64_t, max_lineage_bytes, 1024 * 1024 * 1024)
 /// See also: https://github.com/ray-project/ray/issues/14182
 RAY_CONFIG(bool, preallocate_plasma_memory, false)
 
-/// We place a soft cap on the number of tasks of a given scheduling class that
-/// can run at once to limit the total number of worker processes. After the
-/// specified interval, the new task above that cap is allowed to run. The time
-/// before the next tasks (above the cap) are allowed to run increases
-/// exponentially. The soft cap is needed to prevent deadlock in the case where
-/// a task begins to execute and tries to `ray.get` another task of the same
-/// class.
-RAY_CONFIG(int64_t, worker_cap_initial_backoff_delay_ms, 1000)
-
-/// After reaching the worker cap, the backoff delay will grow exponentially,
-/// until it hits a maximum delay.
-RAY_CONFIG(int64_t, worker_cap_max_backoff_delay_ms, 1000 * 10)
+/// The interval at which the raylet will check to see if there are any
+/// tasks it can dispatch.
+RAY_CONFIG(int64_t, raylet_schedule_and_dispatch_tasks_interval_ms, 1000)
 
 /// The fraction of resource utilization on a node after which the scheduler starts
 /// to prefer spreading tasks to other nodes. This balances between locality and

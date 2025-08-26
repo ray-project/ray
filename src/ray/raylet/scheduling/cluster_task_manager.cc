@@ -33,8 +33,7 @@ ClusterTaskManager::ClusterTaskManager(
     ClusterResourceScheduler &cluster_resource_scheduler,
     internal::NodeInfoGetter get_node_info,
     std::function<void(const RayTask &)> announce_infeasible_task,
-    ILocalTaskManager &local_task_manager,
-    std::function<int64_t(void)> get_time_ms)
+    ILocalTaskManager &local_task_manager)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       get_node_info_(std::move(get_node_info)),
@@ -42,8 +41,7 @@ ClusterTaskManager::ClusterTaskManager(
       local_task_manager_(local_task_manager),
       scheduler_resource_reporter_(
           tasks_to_schedule_, infeasible_tasks_, local_task_manager_),
-      internal_stats_(*this, local_task_manager_),
-      get_time_ms_(std::move(get_time_ms)) {}
+      internal_stats_(*this, local_task_manager_) {}
 
 void ClusterTaskManager::QueueAndScheduleTask(
     RayTask task,

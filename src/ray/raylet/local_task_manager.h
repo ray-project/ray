@@ -69,11 +69,6 @@ class LocalTaskManager : public ILocalTaskManager {
   /// \param get_task_arguments: A callback for getting a tasks' arguments by
   ///                            their ids.
   /// \param max_pinned_task_arguments_bytes: The cap on pinned arguments.
-  /// \param get_time_ms: A callback which returns the current time in milliseconds.
-  /// \param sched_cls_cap_interval_ms: The time before we increase the cap
-  ///                                   on the number of tasks that can run per
-  ///                                   scheduling class. If set to 0, there is no
-  ///                                   cap. If it's a large number, the cap is hard.
   LocalTaskManager(
       const NodeID &self_node_id,
       ClusterResourceScheduler &cluster_resource_scheduler,
@@ -84,11 +79,7 @@ class LocalTaskManager : public ILocalTaskManager {
       std::function<bool(const std::vector<ObjectID> &object_ids,
                          std::vector<std::unique_ptr<RayObject>> *results)>
           get_task_arguments,
-      size_t max_pinned_task_arguments_bytes,
-      std::function<int64_t(void)> get_time_ms =
-          []() { return static_cast<int64_t>(absl::GetCurrentTimeNanos() / 1e6); },
-      int64_t sched_cls_cap_interval_ms =
-          RayConfig::instance().worker_cap_initial_backoff_delay_ms());
+      size_t max_pinned_task_arguments_bytes);
 
   /// Queue task and schedule.
   void QueueAndScheduleTask(std::shared_ptr<internal::Work> work) override;
@@ -366,11 +357,6 @@ class LocalTaskManager : public ILocalTaskManager {
 
   /// Returns the current time in milliseconds.
   std::function<int64_t()> get_time_ms_;
-
-  /// The initial interval before the cap on the number of worker processes is increased.
-  const int64_t sched_cls_cap_interval_ms_;
-
-  const int64_t sched_cls_cap_max_ms_;
 
   size_t num_task_spilled_ = 0;
   size_t num_waiting_task_spilled_ = 0;

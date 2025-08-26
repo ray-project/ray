@@ -1,4 +1,3 @@
-import asyncio
 import os
 import pytest
 import sys
@@ -19,10 +18,6 @@ def test_nested_tasks(shutdown_only):
 
         def inc(self):
             self.count += 1
-            # Since we relex the cap after a timeout we can have slightly more
-            # than 1 task. We should never have 20 though since that takes 2^20
-            # * 10ms time.
-            assert self.count < 20
 
         def dec(self):
             self.count -= 1
@@ -104,16 +99,14 @@ def test_limit_concurrency(shutdown_only):
 
     block_driver_refs = [block_driver.acquire.remote() for _ in range(20)]
 
-    # Some of the tasks will run since we relax the cap, but not all because it
-    # should take exponentially long for the cap to be increased.
+    # All of the block driver refs should be ready since we allow oversubscription
+    # without limit. Each foo task will remain blocked but increment the block driver
+    # counter hence all block driver tasks will be ready
     ready, not_ready = ray.wait(block_driver_refs, timeout=10, num_returns=20)
-    assert len(not_ready) >= 1
+    assert len(not_ready) == 0
 
     # Now the first instance of foo finishes, so the second starts to run.
     ray.get([block_task.release.remote() for _ in range(19)])
-
-    ready, not_ready = ray.wait(block_driver_refs, timeout=10, num_returns=20)
-    assert len(not_ready) == 0
 
     ready, not_ready = ray.wait(refs, num_returns=20, timeout=15)
     assert len(ready) == 19
@@ -144,53 +137,12 @@ def test_zero_cpu_scheduling(shutdown_only):
     assert len(not_ready) == 0
 
 
-def test_exponential_wait(shutdown_only):
-    ray.init(num_cpus=2)
-
-    num_tasks = 6
-
-    @ray.remote(num_cpus=0)
-    class Barrier:
-        def __init__(self, limit):
-            self.i = 0
-            self.limit = limit
-
-        async def join(self):
-            self.i += 1
-            while self.i < self.limit:
-                await asyncio.sleep(1)
-
-    b = Barrier.remote(num_tasks)
-
-    @ray.remote
-    def f(i, start):
-        delta = time.time() - start
-        print("Launch", i, delta)
-        ray.get(b.join.remote())
-        return delta
-
-    start = time.time()
-    results = ray.get([f.remote(i, start) for i in range(num_tasks)])
-
-    last_wait = results[-1] - results[-2]
-    second_last = results[-2] - results[-3]
-
-    # Assert that last_wwait / second_last ~= 2, with a healthy buffer since ci
-    # is noisy.
-    assert second_last < last_wait < 4 * second_last
-    assert 7 < last_wait
-
-
 def test_spillback(ray_start_cluster):
     """Ensure that we can spillback without waiting for the worker cap to be lifed"""
     cluster = ray_start_cluster
     cluster.add_node(
         num_cpus=1,
         resources={"head": 1},
-        _system_config={
-            "worker_cap_initial_backoff_delay_ms": 36000_000,
-            "worker_cap_max_backoff_delay_ms": 36000_000,
-        },
     )
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
@@ -231,7 +183,7 @@ def test_spillback(ray_start_cluster):
 
     # A new node is added,
     # the second task should be spilled back to it
-    # instead of waiting for the cap to be lifted on the head node after 10h.
+    # instead of waiting for the cap to be lifted on the head node.
     cluster.add_node(
         num_cpus=1,
         resources={"worker": 1},

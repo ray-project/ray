@@ -50,16 +50,11 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param announce_infeasible_task: Callback that informs the user if a task
   ///                                  is infeasible.
   /// \param local_task_manager: Manages local tasks.
-  /// \param get_time_ms: A callback which returns the current time in milliseconds.
-  ClusterTaskManager(
-      const NodeID &self_node_id,
-      ClusterResourceScheduler &cluster_resource_scheduler,
-      internal::NodeInfoGetter get_node_info,
-      std::function<void(const RayTask &)> announce_infeasible_task,
-      ILocalTaskManager &local_task_manager,
-      std::function<int64_t(void)> get_time_ms = []() {
-        return static_cast<int64_t>(absl::GetCurrentTimeNanos() / 1e6);
-      });
+  ClusterTaskManager(const NodeID &self_node_id,
+                     ClusterResourceScheduler &cluster_resource_scheduler,
+                     internal::NodeInfoGetter get_node_info,
+                     std::function<void(const RayTask &)> announce_infeasible_task,
+                     ILocalTaskManager &local_task_manager);
 
   /// Queue task and schedule. This happens when processing the worker lease request.
   ///
@@ -211,9 +206,6 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
 
   const SchedulerResourceReporter scheduler_resource_reporter_;
   mutable SchedulerStats internal_stats_;
-
-  /// Returns the current time in milliseconds.
-  std::function<int64_t()> get_time_ms_;
 
   friend class SchedulerStats;
   friend class ClusterTaskManagerTest;

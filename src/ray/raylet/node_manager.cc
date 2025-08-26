@@ -189,7 +189,7 @@ NodeManager::NodeManager(
 
   periodical_runner_->RunFnPeriodically(
       [this]() { cluster_task_manager_.ScheduleAndDispatchTasks(); },
-      RayConfig::instance().worker_cap_initial_backoff_delay_ms(),
+      RayConfig::instance().raylet_schedule_and_dispatch_tasks_interval_ms(),
       "NodeManager.ScheduleAndDispatchTasks");
 
   periodical_runner_->RunFnPeriodically(
