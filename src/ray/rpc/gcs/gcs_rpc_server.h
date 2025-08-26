@@ -122,11 +122,6 @@ namespace rpc {
                       HANDLER,               \
                       RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
-#define NODE_INFO_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(NodeInfoGcsService,      \
-                      HANDLER,                 \
-                      RayConfig::instance().gcs_max_active_rpcs_per_handler())
-
 #define TASK_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(TaskInfoGcsService,      \
                       HANDLER,                 \
@@ -317,73 +312,6 @@ class ActorInfoGrpcService : public GrpcService {
   ActorInfoGcsService::AsyncService service_;
   /// The service handler that actually handle the requests.
   ActorInfoGcsServiceHandler &service_handler_;
-};
-
-class NodeInfoGcsServiceHandler {
- public:
-  virtual ~NodeInfoGcsServiceHandler() = default;
-
-  virtual void HandleGetClusterId(rpc::GetClusterIdRequest request,
-                                  rpc::GetClusterIdReply *reply,
-                                  rpc::SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleRegisterNode(RegisterNodeRequest request,
-                                  RegisterNodeReply *reply,
-                                  SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleUnregisterNode(UnregisterNodeRequest request,
-                                    UnregisterNodeReply *reply,
-                                    SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleCheckAlive(CheckAliveRequest request,
-                                CheckAliveReply *reply,
-                                SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleDrainNode(DrainNodeRequest request,
-                               DrainNodeReply *reply,
-                               SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetAllNodeInfo(GetAllNodeInfoRequest request,
-                                    GetAllNodeInfoReply *reply,
-                                    SendReplyCallback send_reply_callback) = 0;
-};
-
-/// The `GrpcService` for `NodeInfoGcsService`.
-class NodeInfoGrpcService : public GrpcService {
- public:
-  /// Constructor.
-  ///
-  /// \param[in] handler The service handler that actually handle the requests.
-  explicit NodeInfoGrpcService(instrumented_io_context &io_service,
-                               NodeInfoGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler){};
-
- protected:
-  grpc::Service &GetGrpcService() override { return service_; }
-
-  void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id) override {
-    // We only allow one cluster ID in the lifetime of a client.
-    // So, if a client connects, it should not have a pre-existing different ID.
-    RPC_SERVICE_HANDLER_CUSTOM_AUTH(
-        NodeInfoGcsService,
-        GetClusterId,
-        RayConfig::instance().gcs_max_active_rpcs_per_handler(),
-        AuthType::EMPTY_AUTH);
-    NODE_INFO_SERVICE_RPC_HANDLER(RegisterNode);
-    NODE_INFO_SERVICE_RPC_HANDLER(UnregisterNode);
-    NODE_INFO_SERVICE_RPC_HANDLER(DrainNode);
-    NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo);
-    NODE_INFO_SERVICE_RPC_HANDLER(CheckAlive);
-  }
-
- private:
-  /// The grpc async service object.
-  NodeInfoGcsService::AsyncService service_;
-  /// The service handler that actually handle the requests.
-  NodeInfoGcsServiceHandler &service_handler_;
 };
 
 class NodeResourceInfoGcsServiceHandler {
@@ -767,7 +695,6 @@ class InternalPubSubGrpcService : public GrpcService {
 
 using JobInfoHandler = JobInfoGcsServiceHandler;
 using ActorInfoHandler = ActorInfoGcsServiceHandler;
-using NodeInfoHandler = NodeInfoGcsServiceHandler;
 using NodeResourceInfoHandler = NodeResourceInfoGcsServiceHandler;
 using WorkerInfoHandler = WorkerInfoGcsServiceHandler;
 using PlacementGroupInfoHandler = PlacementGroupInfoGcsServiceHandler;
