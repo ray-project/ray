@@ -23,6 +23,10 @@ from ray.autoscaler._private.kuberay.node_provider import (
     worker_delete_patch,
     worker_replica_patch,
 )
+from ray._raylet import GcsClient
+from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.ippr_provider import (
+    KubeRayIPPRProvider,
+)
 from ray.autoscaler.v2.instance_manager.node_provider import (
     CloudInstance,
     CloudInstanceId,
@@ -32,7 +36,7 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
     NodeKind,
     TerminateNodeError,
 )
-from ray.autoscaler.v2.schema import NodeType
+from ray.autoscaler.v2.schema import IPPRSpecs, IPPRStatus, NodeType
 
 logger = logging.getLogger(__name__)
 
@@ -50,14 +54,19 @@ class KubeRayProvider(ICloudInstanceProvider):
         self,
         cluster_name: str,
         provider_config: Dict[str, Any],
+        gcs_client: Optional[GcsClient] = None,
         k8s_api_client: Optional[IKubernetesHttpApiClient] = None,
     ):
         """
+        Initializes a new KubeRayProvider.
+
         Args:
             cluster_name: The name of the RayCluster resource.
-            provider_config: The namespace of the RayCluster.
-            k8s_api_client: The client to the Kubernetes API server.
-                This could be used to mock the Kubernetes API server for testing.
+            provider_config: The configuration dictionary
+                for the RayCluster (e.g., namespace and provider-specific settings).
+            gcs_client: The client to the GCS server.
+            k8s_api_client: The client to the Kubernetes
+                API server. This can be used to mock the Kubernetes API server for testing.
         """
         self._cluster_name = cluster_name
         self._namespace = provider_config["namespace"]
@@ -74,6 +83,9 @@ class KubeRayProvider(ICloudInstanceProvider):
         # Below are states that are fetched from the Kubernetes API server.
         self._ray_cluster = None
         self._cached_instances: Dict[CloudInstanceId, CloudInstance]
+        self._ippr_provider = KubeRayIPPRProvider(
+            gcs_client=gcs_client, k8s_api_client=self._k8s_api_client
+        )
 
     @dataclass
     class ScaleRequest:
@@ -181,6 +193,31 @@ class KubeRayProvider(ICloudInstanceProvider):
         self._launch_errors_queue = []
         self._terminate_errors_queue = []
         return errors
+
+    def get_ippr_specs(self) -> IPPRSpecs:
+        """Return the cached, validated IPPR specs for the cluster.
+
+        The IPPR specs are refreshed during the provider's periodic sync with the
+        API server by reading the RayCluster annotation and validating it against
+        the IPPR schema.
+        """
+        return self._ippr_provider.get_ippr_specs()
+
+    def get_ippr_statuses(self) -> Dict[str, IPPRStatus]:
+        """Return the latest per-pod IPPR statuses keyed by pod name.
+
+        These statuses are refreshed from the current pod list during the provider's
+        periodic sync with the API server.
+        """
+        return self._ippr_provider.get_ippr_statuses()
+
+    def do_ippr_requests(self, resizes: List[IPPRStatus]) -> None:
+        """Execute IPPR resize requests via the underlying IPPR provider.
+
+        Args:
+            resizes: The list of per-pod IPPR actions produced by the scheduler.
+        """
+        self._ippr_provider.do_ippr_requests(resizes)
 
     ############################
     # Private
@@ -393,7 +430,9 @@ class KubeRayProvider(ICloudInstanceProvider):
     def _sync_with_api_server(self) -> None:
         """Fetches the RayCluster resource from the Kubernetes API server."""
         self._ray_cluster = self._get(f"rayclusters/{self._cluster_name}")
+        self._ippr_provider.validate_and_set_ippr_specs(self._ray_cluster)
         self._cached_instances = self._fetch_instances()
+        self._ippr_provider.sync_with_raylets()
 
     @property
     def ray_cluster(self) -> Dict[str, Any]:
@@ -499,6 +538,9 @@ class KubeRayProvider(ICloudInstanceProvider):
             cloud_instance = self._cloud_instance_from_pod(pod)
             if cloud_instance:
                 cloud_instances[pod_name] = cloud_instance
+
+        self._ippr_provider.sync_ippr_status_from_pods(pod_list["items"])
+
         return cloud_instances
 
     @staticmethod
