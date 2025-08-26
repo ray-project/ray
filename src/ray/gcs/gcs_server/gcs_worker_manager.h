@@ -18,15 +18,14 @@
 
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/gcs_server/grpc_service_interfaces.h"
 #include "ray/gcs/gcs_server/usage_stats_client.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/rpc/gcs/gcs_rpc_server.h"
 
 namespace ray {
 namespace gcs {
 
-/// This implementation class of `WorkerInfoHandler`.
-class GcsWorkerManager : public rpc::WorkerInfoHandler {
+class GcsWorkerManager : public rpc::WorkerInfoGcsServiceHandler {
  public:
   GcsWorkerManager(gcs::GcsTableStorage &gcs_table_storage,
                    instrumented_io_context &io_context,
