@@ -440,8 +440,8 @@ def test_e2e_hf_data_local_mode(ray_start_4_cpus, config_id):
 
 
 @pytest.mark.parametrize("config_id,num_workers", [("steps_cpu_local", 0)])
-def test_e2e_ray_data_local_mode(ray_start_4_cpus, config_id, num_workers):
-    """Test local mode (NUM_WORKERS=0) with Ray datasets."""
+def test_e2e_hf_ray_data_local_mode(ray_start_4_cpus, config_id, num_workers):
+    """Test local mode (NUM_WORKERS=0) with huggingface and Ray datasets."""
 
     def train_func(config):
         # Datasets

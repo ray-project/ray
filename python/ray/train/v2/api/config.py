@@ -1,5 +1,4 @@
 import logging
-import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional, Union
@@ -123,7 +122,7 @@ class ScalingConfig(ScalingConfigV1):
                 )
 
         if self.num_workers == 0:
-            warnings.warn(
+            logger.info(
                 "Running in local mode. The training function will run in the same process. "
                 "If you are using it and running into issues please file a report at "
                 "https://github.com/ray-project/ray/issues."

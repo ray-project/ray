@@ -1,29 +1,20 @@
 from contextlib import contextmanager
 
 from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
+from ray.train.xgboost.config import XGBoostConfig as XGBoostConfigV1
 
 
-def _create_xgboost_config_class():
-    # Import here to avoid circular import when v2 is enabled
-    from ray.train.xgboost.config import XGBoostConfig as XGBoostConfigV1
+class XGBoostConfig(XGBoostConfigV1):
+    @property
+    def train_func_context(self):
+        parent_context = super(XGBoostConfig, self).train_func_context
 
-    class XGBoostConfig(XGBoostConfigV1):
-        @property
-        def train_func_context(self):
-            parent_context = super(XGBoostConfig, self).train_func_context
-
-            @contextmanager
-            def collective_communication_context():
-                if get_train_fn_utils().is_running_in_distributed_mode():
-                    with parent_context():
-                        yield
-                else:
+        @contextmanager
+        def collective_communication_context():
+            if get_train_fn_utils().is_running_in_distributed_mode():
+                with parent_context():
                     yield
+            else:
+                yield
 
-            return collective_communication_context
-
-    return XGBoostConfig
-
-
-# Create the class at module level
-XGBoostConfig = _create_xgboost_config_class()
+        return collective_communication_context
