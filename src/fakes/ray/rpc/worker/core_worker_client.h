@@ -55,4 +55,4 @@ class FakeCoreWorkerClient : public rpc::CoreWorkerClientInterface {
   absl::Mutex mutex_;
 };
 
-} // namespace ray
+}  // namespace ray
