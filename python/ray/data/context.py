@@ -534,6 +534,9 @@ class DataContext:
         default_factory=_issue_detectors_config_factory
     )
 
+    downstream_capacity_backpressure_ratio: float = None
+    downstream_capacity_backpressure_max_queued_bundles: int = None
+
     def __post_init__(self):
         # The additonal ray remote args that should be added to
         # the task-pool-based data tasks.
