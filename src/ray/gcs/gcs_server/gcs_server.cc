@@ -62,7 +62,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       storage_type_(GetStorageType()),
       rpc_server_(config.grpc_server_name,
                   config.grpc_server_port,
-                  config.node_ip_address,
+                  config.node_ip_address == "127.0.0.1",
                   ClusterID::Nil(),
                   config.grpc_server_thread_num,
                   /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms()),
@@ -621,8 +621,10 @@ void GcsServer::InitKVService() {
 void GcsServer::InitPubSubHandler() {
   auto &io_context = io_context_provider_.GetIOContext<GcsPublisher>();
   pubsub_handler_ = std::make_unique<InternalPubSubHandler>(io_context, *gcs_publisher_);
-  rpc_server_.RegisterService(
-      std::make_unique<rpc::InternalPubSubGrpcService>(io_context, *pubsub_handler_));
+
+  // This service is used to handle long poll requests, so we don't limit active RPCs.
+  rpc_server_.RegisterService(std::make_unique<rpc::InternalPubSubGrpcService>(
+      io_context, *pubsub_handler_, /*max_active_rpcs_per_handler_=*/-1));
 }
 
 void GcsServer::InitRuntimeEnvManager() {
