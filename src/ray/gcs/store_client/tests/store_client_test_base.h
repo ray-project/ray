@@ -48,16 +48,12 @@ class StoreClientTestBase : public ::testing::Test {
   }
 
   void TearDown() override {
-    DisconnectStoreClient();
-
     io_service_pool_->Stop();
 
     key_to_value_.clear();
   }
 
   virtual void InitStoreClient() = 0;
-
-  virtual void DisconnectStoreClient() = 0;
 
  protected:
   void Put() {

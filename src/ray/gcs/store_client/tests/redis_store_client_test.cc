@@ -79,8 +79,6 @@ class RedisStoreClientTest : public StoreClientTestBase {
     store_client_ = std::make_shared<RedisStoreClient>(io_context, options);
   }
 
-  void DisconnectStoreClient() override { store_client_.reset(); }
-
  protected:
   std::unique_ptr<std::thread> t_;
   std::atomic<bool> stopped_ = false;
