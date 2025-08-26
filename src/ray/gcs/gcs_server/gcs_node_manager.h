@@ -24,8 +24,8 @@
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/gcs_server/grpc_service_interfaces.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/rpc/gcs/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/raylet_client_pool.h"
 #include "ray/util/event.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -39,7 +39,7 @@ class GcsStateTest;
 /// GcsNodeManager is responsible for managing and monitoring nodes as well as handing
 /// node and resource related rpc requests.
 /// This class is not thread-safe.
-class GcsNodeManager : public rpc::NodeInfoHandler {
+class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
  public:
   /// Create a GcsNodeManager.
   ///
