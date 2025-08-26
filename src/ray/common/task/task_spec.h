@@ -81,12 +81,12 @@ struct SchedulingClassDescriptor {
                                      LabelSelector ls,
                                      FunctionDescriptor fd,
                                      int64_t d,
-                                     rpc::SchedulingStrategy scheduling_strategy)
+                                     rpc::SchedulingStrategy sched_strategy)
       : resource_set(std::move(rs)),
         label_selector(std::move(ls)),
         function_descriptor(std::move(fd)),
         depth(d),
-        scheduling_strategy(std::move(scheduling_strategy)) {}
+        scheduling_strategy(std::move(sched_strategy)) {}
   ResourceSet resource_set;
   LabelSelector label_selector;
   FunctionDescriptor function_descriptor;
@@ -155,17 +155,17 @@ namespace std {
 template <>
 struct hash<ray::rpc::LabelOperator> {
   size_t operator()(const ray::rpc::LabelOperator &label_operator) const {
-    size_t hash = std::hash<size_t>()(label_operator.label_operator_case());
+    size_t hash_value = std::hash<size_t>()(label_operator.label_operator_case());
     if (label_operator.has_label_in()) {
       for (const auto &value : label_operator.label_in().values()) {
-        hash ^= std::hash<std::string>()(value);
+        hash_value ^= std::hash<std::string>()(value);
       }
     } else if (label_operator.has_label_not_in()) {
       for (const auto &value : label_operator.label_not_in().values()) {
-        hash ^= std::hash<std::string>()(value);
+        hash_value ^= std::hash<std::string>()(value);
       }
     }
-    return hash;
+    return hash_value;
   }
 };
 
@@ -239,25 +239,25 @@ namespace ray {
 /// a executing thread pool.
 struct ConcurrencyGroup {
   // Name of this group.
-  std::string name;
+  std::string name_;
   // Max concurrency of this group.
-  uint32_t max_concurrency;
+  uint32_t max_concurrency_;
   // Function descriptors of the actor methods in this group.
-  std::vector<ray::FunctionDescriptor> function_descriptors;
+  std::vector<ray::FunctionDescriptor> function_descriptors_;
 
   ConcurrencyGroup() = default;
 
   ConcurrencyGroup(const std::string &name,
                    uint32_t max_concurrency,
                    const std::vector<ray::FunctionDescriptor> &fds)
-      : name(name), max_concurrency(max_concurrency), function_descriptors(fds) {}
+      : name_(name), max_concurrency_(max_concurrency), function_descriptors_(fds) {}
 
-  std::string GetName() const { return name; }
+  std::string GetName() const { return name_; }
 
-  uint32_t GetMaxConcurrency() const { return max_concurrency; }
+  uint32_t GetMaxConcurrency() const { return max_concurrency_; }
 
   std::vector<ray::FunctionDescriptor> GetFunctionDescriptors() const {
-    return function_descriptors;
+    return function_descriptors_;
   }
 };
 

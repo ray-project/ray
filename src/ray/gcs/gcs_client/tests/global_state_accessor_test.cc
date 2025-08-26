@@ -24,6 +24,7 @@
 #include "ray/gcs/tests/gcs_test_util.h"
 #include "ray/rpc/gcs/gcs_rpc_client.h"
 #include "ray/util/path_utils.h"
+#include "ray/util/raii.h"
 
 namespace ray {
 
