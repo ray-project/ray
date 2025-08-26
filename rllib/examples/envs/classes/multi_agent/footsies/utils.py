@@ -33,17 +33,17 @@ class Matchmaker:
     def agent_to_module_mapping_fn(
         self, agent_id: str, episode: EpisodeType, **kwargs
     ) -> str:
-        """Mapping function that retrieves from the current matchup"""
+        """Mapping function that retrieves policy_id from the sampled matchup"""
         id_ = episode.env_id if hasattr(episode, "env_id") else episode.id_
         if self.current_matchups.get(id_) is None:
-            # Sample a matchup
+            # step 1: sample a matchup according to the specified probabilities
             sampled_matchup = np.random.choice(a=self.matchups, p=self.probs)
 
-            # Randomize who is player 1 and player 2
+            # step 2: Randomize who is player 1 and player 2
             policies = [sampled_matchup.p1, sampled_matchup.p2]
             p1, p2 = np.random.choice(policies, size=2, replace=False)
 
-            # Set this as the current episodes mapping
+            # step 3: Set as the current matchup for the episode in question (id_)
             self.current_matchups[id_]["p1"] = p1
             self.current_matchups[id_]["p2"] = p2
 
@@ -60,14 +60,12 @@ class WinratesCallback(RLlibCallback):
     def __init__(
         self,
         win_rate_threshold: float,
-        target_mix_size: int,
         main_policy: str,
         starting_modules=list[str],  # default is ["lstm", "noop"]
     ) -> None:
-        """Callback to track win rates and manage mix of opponents for the main policy being trained."""
+        """Track win rates and manage mix of opponents"""
         super().__init__()
         self.win_rate_threshold = win_rate_threshold
-        self.target_mix_size = target_mix_size
         self.main_policy = main_policy
         self.fixed_modules_progression_sequence = (
             "noop",
@@ -75,7 +73,9 @@ class WinratesCallback(RLlibCallback):
             "attack",
             "random",
         )  # Order of RL modules to be added to the mix
-        self.modules_in_mix = list(starting_modules)  # Initial RL modules in the mix
+        self.modules_in_mix = list(
+            starting_modules
+        )  # RLModules that are currently in the mix
         self._trained_policy_idx = (
             0  # We will use this to create new opponents of the main policy
         )
@@ -90,7 +90,10 @@ class WinratesCallback(RLlibCallback):
         env_index: int,
         **kwargs,
     ) -> None:
-        """Evaluation only: Log win rates of the main policy against its opponent(s) at the end of each episode."""
+        """Log win rates
+
+        Log win rates of the main policy against its opponent at the end of the (training or evaluation) episode.
+        """
         if env_runner.config.in_evaluation:
             # check status of "p1" and "p2"
             last_game_state = env.envs[env_index].unwrapped.last_game_state
@@ -144,8 +147,7 @@ class WinratesCallback(RLlibCallback):
 
                 # log the win rate "globally", without specifying the opponent
                 # this metric will be used to decide whether to add a new opponent
-                # at the current level, the main policy ('self.main_policy') should have
-                # a specified 'win_rate_threshold' performance against any opponent in the mix
+                # at the current level.
                 metrics_logger.log_value(
                     key=f"footsies/eval/win_rates/{self.main_policy}/vs_any",
                     value=int(main_policy_win),
@@ -162,6 +164,13 @@ class WinratesCallback(RLlibCallback):
         evaluation_metrics: dict,
         **kwargs,
     ) -> None:
+        """Check win rates and add new opponent if necessary.
+
+        Check the win rate of the main policy against its current opponent.
+        If the win rate exceeds the specified threshold, add a new opponent to the mix, by modifying:
+        1. update the policy_mapping_fn for (training and evaluation) env runners
+        2. if the new policy is a trained one (not a fixed RL module), modify Algorithm's state (initialize the state of the newly added RLModule by using the main policy)
+        """
         _main_module = algorithm.get_module(self.main_policy)
         new_module_id = None
         new_module_spec = None
@@ -202,13 +211,13 @@ class WinratesCallback(RLlibCallback):
                 ]
             ).agent_to_module_mapping_fn
 
-            # update env runners with the new mapping function
+            # update (training) env runners with the new mapping function
             algorithm.env_runner_group.foreach_env_runner(
                 lambda er: er.config.multi_agent(policy_mapping_fn=new_mapping_fn),
                 local_env_runner=True,
             )
 
-            # also update eval env runners with the new mapping function
+            # update (eval) env runners with the new mapping function
             algorithm.eval_env_runner_group.foreach_env_runner(
                 lambda er: er.config.multi_agent(policy_mapping_fn=new_mapping_fn),
                 local_env_runner=True,
@@ -242,7 +251,7 @@ class WinratesCallback(RLlibCallback):
                         },
                     }
                 )
-            # we added a new RL Module to the mix, so we need to update the current mix size and the modules ids in the mix
+            # we added a new RL Module, so we need to update the current mix list.
             self.modules_in_mix.append(new_module_id)
 
         else:
@@ -259,6 +268,8 @@ class WinratesCallback(RLlibCallback):
         result: Dict,
         **kwargs,
     ) -> None:
-        """Log the current mix size at the end of each training iteration.
-        That will tell Ray Tune, whether to stop training or not (once the target mix size has been reached)."""
-        result["target_mix_size"] = len(self.modules_in_mix)
+        """Report the current mix size at the end of training iteration.
+
+        That will tell Ray Tune, whether to stop training (once the 'target_mix_size' has been reached).
+        """
+        result["mix_size"] = len(self.modules_in_mix)
