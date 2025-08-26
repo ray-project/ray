@@ -2,6 +2,7 @@ import asyncio
 import sys
 
 import pytest
+from toolz.tests.test_dicttoolz import defaultdict
 
 from ray._common.test_utils import async_wait_for_condition
 from ray.serve._private.metrics_utils import (
@@ -9,7 +10,7 @@ from ray.serve._private.metrics_utils import (
     InMemoryMetricsStore,
     MetricsPusher,
     TimeStampedValue,
-    merge_metrics_stores,
+    merge_timeseries_dicts,
 )
 from ray.serve._private.test_utils import MockAsyncTimer
 
@@ -216,15 +217,15 @@ class TestInMemoryMetricsStore:
         )
         s2.add_metrics_point({"m1": 2, "m2": 2, QUEUED_REQUESTS_KEY: 1}, timestamp=2)
         s3.add_metrics_point({"m2": 10, QUEUED_REQUESTS_KEY: 10}, timestamp=2)
-        merged = merge_metrics_stores(s1, s2, s3, window_ms=1)
+        merged = merge_timeseries_dicts(s1.data, s2.data, s3.data, window_s=1)
 
-        assert merged.data["m1"] == [TimeStampedValue(1, 1), TimeStampedValue(2, 2)]
-        assert merged.data["m2"] == [
+        assert merged["m1"] == [TimeStampedValue(1, 1), TimeStampedValue(2, 2)]
+        assert merged["m2"] == [
             TimeStampedValue(1, 2),
             TimeStampedValue(2, 12),
         ]
-        assert merged.data["m3"] == [TimeStampedValue(1, 3)]
-        assert merged.data[QUEUED_REQUESTS_KEY] == [
+        assert merged["m3"] == [TimeStampedValue(1, 3)]
+        assert merged[QUEUED_REQUESTS_KEY] == [
             TimeStampedValue(1, 1),
             TimeStampedValue(2, 11),
         ]
@@ -233,31 +234,38 @@ class TestInMemoryMetricsStore:
         s4.add_metrics_point(
             {"m1": 100, "m2": 100, "m3": 100, QUEUED_REQUESTS_KEY: 10}, timestamp=0
         )
-        merged = merge_metrics_stores(s1, s2, s3, s4, window_ms=2)
-        assert merged.data["m1"] == [
+        merged = merge_timeseries_dicts(s1.data, s2.data, s3.data, s4.data, window_s=2)
+        assert merged["m1"] == [
             TimeStampedValue(0, 101),
             TimeStampedValue(2, 1),
             TimeStampedValue(4, 2),
         ]
-        assert merged.data["m2"] == [
+        assert merged["m2"] == [
             TimeStampedValue(0, 100),
             TimeStampedValue(2, 2),
             TimeStampedValue(4, 12),
         ]
-        assert merged.data["m3"] == [TimeStampedValue(0, 100), TimeStampedValue(2, 3)]
-        assert merged.data[QUEUED_REQUESTS_KEY] == [
+        assert merged["m3"] == [TimeStampedValue(0, 100), TimeStampedValue(2, 3)]
+        assert merged[QUEUED_REQUESTS_KEY] == [
             TimeStampedValue(0, 10),
             TimeStampedValue(2, 1),
             TimeStampedValue(4, 11),
         ]
 
-        s1_s2 = merge_metrics_stores(s1, s2, window_ms=1)
-        s2_s1 = merge_metrics_stores(s2, s1, window_ms=1)
-        s1_s2_s3_s4 = merge_metrics_stores(s1, s2, s3, s4, window_ms=1)
-        s4_s1_s3_s2 = merge_metrics_stores(s4, s1, s3, s2, window_ms=1)
+        s1_s2 = merge_timeseries_dicts(s1.data, s2.data, window_s=1)
+        s2_s1 = merge_timeseries_dicts(s2.data, s1.data, window_s=1)
+        s1_s2_s3_s4 = merge_timeseries_dicts(
+            s1.data, s2.data, s3.data, s4.data, window_s=1
+        )
+        s4_s1_s3_s2 = merge_timeseries_dicts(
+            s4.data, s1.data, s3.data, s2.data, window_s=1
+        )
 
-        assert s1_s2.data == s2_s1.data
-        assert s1_s2_s3_s4.data == s4_s1_s3_s2.data
+        assert s1_s2 == s2_s1
+        assert s1_s2_s3_s4 == s4_s1_s3_s2
+
+        a1_none = merge_timeseries_dicts(s1.data, defaultdict(list), window_s=1)
+        assert a1_none == s1.data
 
 
 if __name__ == "__main__":

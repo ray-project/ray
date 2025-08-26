@@ -196,8 +196,8 @@ class InMemoryMetricsStore:
 
         Example:
         Suppose the store contains:
-
-        >>> self.data = defaultdict[
+        >>> store = InMemoryMetricsStore()
+        >>> store.data = defaultdict[
         ...     "a": [TimeStampedValue(0, 1.0), TimeStampedValue(1, 2.0)],
         ...     "b": [],
         ...     "c": [TimeStampedValue(0, 10.0)],
@@ -314,8 +314,8 @@ class InMemoryMetricsStore:
 
 def _bucket_latest_by_window(
     series: List[TimeStampedValue],
-    start: int,
-    window_ms: int,
+    start: float,
+    window_s: float,
 ) -> Dict[int, float]:
     """
     Map each window index -> latest value seen in that window.
@@ -323,62 +323,59 @@ def _bucket_latest_by_window(
     """
     buckets: Dict[int, float] = {}
     for p in series:
-        w = (p.timestamp - start) // window_ms
+        w = int((p.timestamp - start) // window_s)
         buckets[w] = p.value  # overwrite keeps the latest within the window
     return buckets
 
 
 def _merge_two_timeseries(
-    t1: List[TimeStampedValue], t2: List[TimeStampedValue], window_ms: int
+    t1: List[TimeStampedValue], t2: List[TimeStampedValue], window_s: float
 ) -> List[TimeStampedValue]:
     """
-    Merge two time series by summing values within a specified time window.
+    Merge two ascending time series by summing values within a specified time window.
     If multiple values fall within the same window in a series, the latest value is used.
-    The output contains one point per window that had at least one value, timestamped at the window center.
+    The output contains one point per window that had at least one value, timestamped
+    at the window center.
     """
     if not t1 and not t2:
         return []
-    if not t1:
-        return t2.copy()
-    if not t2:
-        return t1.copy()
 
     # Align windows so each output timestamp sits at the center of its window.
-    earliest = min(t1[0].timestamp, t2[0].timestamp)
-    start = earliest - (window_ms // 2)
+    earliest = min(x[0].timestamp for x in (t1, t2) if x)
+    start = earliest - (window_s / 2.0)
 
-    b1 = _bucket_latest_by_window(t1, start, window_ms)
-    b2 = _bucket_latest_by_window(t2, start, window_ms)
+    b1 = _bucket_latest_by_window(t1, start, window_s)
+    b2 = _bucket_latest_by_window(t2, start, window_s)
 
-    # Only produce windows that had at least one value (matches original).
     windows = sorted(set(b1.keys()) | set(b2.keys()))
 
     merged: List[TimeStampedValue] = []
     for w in windows:
-        v = (b1.get(w, 0.0) + b2.get(w, 0.0))
-        ts_center = start + w * window_ms + (window_ms // 2)
+        v = b1.get(w, 0.0) + b2.get(w, 0.0)
+        ts_center = start + w * window_s + (window_s / 2.0)
         merged.append(TimeStampedValue(timestamp=ts_center, value=v))
     return merged
 
 
-Timeseries = List[TimestampedValue]
-
-def merge_timeseries(
-    *timeseries: Dict[str, Timeseries], window_ms: int
-) -> InMemoryMetricsStore:
+def merge_timeseries_dicts(
+    *timeseries_dicts: DefaultDict[Hashable, List[TimeStampedValue]],
+    window_s: float,
+) -> DefaultDict[Hashable, List[TimeStampedValue]]:
     """
-    Merge multiple metrics stores. For the same key across stores,
-    time series are merged with a windowed sum, where each series keeps only
-    its latest value per window before summing.
+    Merge multiple time-series dictionaries, typically contained within
+    InMemoryMetricsStore().data. For the same key across stores, time series
+    are merged with a windowed sum, where each series keeps only its latest
+    value per window before summing.
     """
-    if len(stores) == 1:
-        return stores[0]
+    if len(timeseries_dicts) == 1:
+        return timeseries_dicts[0]
 
-    merged = InMemoryMetricsStore()
-    for store in stores:
-        for key, ts in store.data.items():
-            if key in merged.data:
-                merged.data[key] = merge_timeseries(merged.data[key], ts, window_ms)
+    merged: DefaultDict[Hashable, List[TimeStampedValue]] = defaultdict(list)
+    for timeseries_dict in timeseries_dicts:
+        for key, ts in timeseries_dict.items():
+            if key in merged:
+                merged[key] = _merge_two_timeseries(merged[key], ts, window_s)
             else:
-                merged.data[key] = ts.copy()
+                # Keep raw data for unique keys
+                merged[key] = ts.copy()
     return merged
