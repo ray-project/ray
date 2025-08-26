@@ -84,7 +84,6 @@ def copy_lock_files_to_temp_dir(manager: "DependencySetManager"):
     """Copy the lock files to a temp directory."""
     # create temp directory
     manager.temp_dir = tempfile.mkdtemp()
-    print(f"Temp directory: {manager.temp_dir}")
     # copy existing lock files to temp directory
     for depset in manager.config.depsets:
         existing_lock_file_path = manager.get_path(depset.output)
