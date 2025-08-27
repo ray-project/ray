@@ -61,7 +61,12 @@ class Matchmaker:
 
 class MetricsLoggerCallback(RLlibCallback):
     def __init__(self, main_policy: str) -> None:
-        """Log experiment metrics"""
+        """Log experiment metrics
+
+        Logs metrics after each episode step and at the end of each (train or eval) episode.
+        Metrics logged at the end of each episode will be later used by MixManagerCallback
+        to decide whether to add a new opponent to the mix.
+        """
         super().__init__()
         self.main_policy = main_policy
         self.action_id_to_str = {
@@ -79,7 +84,10 @@ class MetricsLoggerCallback(RLlibCallback):
         env_index: int,
         **kwargs,
     ) -> None:
-        """Log action usage frequency"""
+        """Log action usage frequency
+
+        Log actions performed by both players at each step of the (training or evaluation) episode.
+        """
         stage = "eval" if env_runner.config.in_evaluation else "train"
 
         # get the ModuleID for each agent
@@ -197,7 +205,8 @@ class MixManagerCallback(RLlibCallback):
         main_policy: str,
         starting_modules=list[str],  # default is ["lstm", "noop"]
     ) -> None:
-        """Track win rates and manage mix of opponents"""
+        """Track win rates and manage mix of opponents
+        """
         super().__init__()
         self.win_rate_threshold = win_rate_threshold
         self.main_policy = main_policy
