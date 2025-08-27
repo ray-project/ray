@@ -28,22 +28,10 @@
 
 static constexpr size_t kCgroupNameLength = 6;
 
-// Generates an ASCII string of the given length.
 std::string GenerateRandomFilename(size_t len);
 
-/**
-  Scoped CgroupDirectory with a randomly generated name.
-*/
 class TempCgroupDirectory {
  public:
-  /**
-    Factory function that creates a cgroup directory with a random name.
-
-    @param base_path the absolute path of the parent cgroup.
-    @param mode defaults to rwx for everyone.
-
-    @return
-  */
   static ray::StatusOr<std::unique_ptr<TempCgroupDirectory>> Create(
       const std::string &base_path, mode_t mode = 0777);
 
@@ -66,10 +54,6 @@ class TempCgroupDirectory {
   std::string path_;
 };
 
-/**
-  RAII style class for creating and destroying temporary directory for testing.
-  TODO(irabbani): add full documentation once complete.
-  */
 class TempDirectory {
  public:
   static ray::StatusOr<std::unique_ptr<TempDirectory>> Create();
@@ -88,10 +72,6 @@ class TempDirectory {
   const std::string path_;
 };
 
-/**
-  RAII wrapper that creates a file that can be written to.
-  TODO(irabbani): Add full documentation once the API is complete.
-*/
 class TempFile {
  public:
   explicit TempFile(std::string path);
@@ -113,28 +93,40 @@ class TempFile {
   int fd_;
 };
 
-//// Starts a process in the cgroup and returns the pid of the started process.
-//// Returns -1 if there's an error.
-//// Note: clone3 supports creating a process inside a cgroup instead of creating
-//// and then moving. However, clone3 does not have a glibc wrapper and
-//// must be called directly using syscall syscall (see man 2 syscall).
-//// This function needs linux kernel >= 5.7 to use the CLONE_INTO_CGROUP flag.
-//// It is the caller's responsibility to terminate the child process and
-//// wait for the pid. Use TerminateChildProcessAndWaitForTimeout.
-//// Returns a process_fd. See the CLONE_PIDFD section in "man 2 clone"
+/**
+  Starts a process in the given cgroup. Assumes the cgroup already exists and
+  that the caller has read-write the lowest-common ancestor of the cgroup
+  the current process is running in and the target cgroup.
+
+  The spawned process will wait forever for the parent to unblock it and then
+  reap it.
+
+  @param target_cgroup_path target cgroup to create a process in.
+  @return Status::OK with a pair of the processfd and pid if successful
+  @return Status::InvalidArgument if target cgroup does exist or current process
+  has insufficient permissions.
+  @return Status::Invalid if process cannot be forked/cloned or processfd cannot
+  be obtained.
+*/
 ray::StatusOr<std::pair<pid_t, int>> StartChildProcessInCgroup(
-    const std::string &cgroup_path);
+    const std::string &target_cgroup_path);
 
 /**
+  Kills the specified process and polls its processfd to reap it with a timeout.
+
+  @param pid
   @param process_fd can be used as a fd and as a pid. It can be created using
-  clone or pidfd_open.
-  @param timeout_ms time used to poll for the process_fd to detect the process
-  has been killed.
-  @return ok if successfully terminated the process and reaped it. Invalid otherwise
-  with the correct error message.
-  */
+  clone or pidfd_open or clone.
+  @param timeout_ms
+
+  @return Status::OK if successfully terminated the process and reaped it.
+  @return Status::InvalidArgument if could not send SIGKILL to the process or poll its fd.
+  @return Status::Invalid if could not reap the process within the timeout.
+*/
 ray::Status TerminateChildProcessAndWaitForTimeout(pid_t pid, int fd, int timeout_ms);
 
+// Convenience methods so you can print the TempCgroupDirectory's path directly
+// instead of calling temp_cgroup_dir.GetPath() everytime.
 std::ostream &operator<<(std::ostream &os, const TempCgroupDirectory &temp_cgroup_dir) {
   return os << temp_cgroup_dir.GetPath();
 }

@@ -394,8 +394,6 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
   ASSERT_TRUE(nested_cgroup_dir_or_status.ok()) << nested_cgroup_dir_or_status.ToString();
   auto nested_cgroup_dir = std::move(nested_cgroup_dir_or_status.value());
   // Make sure that the cgroup has 0 available controllers.
-  // TODO(irabbani): I think it's okay to call the GetAvailableControllers function
-  // from here.
   SysFsCgroupDriver driver;
   auto available_controllers_s =
       driver.GetAvailableControllers(nested_cgroup_dir->GetPath());

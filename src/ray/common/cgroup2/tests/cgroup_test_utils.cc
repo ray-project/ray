@@ -110,54 +110,18 @@ TempDirectory::~TempDirectory() {
       error_code.message());
 }
 
-ray::Status TerminateChildProcessAndWaitForTimeout(pid_t pid, int fd, int timeout_ms) {
-  if (kill(pid, SIGTERM) == -1) {
-    return ray::Status::Invalid(absl::StrFormat(
-        "Failed to send SIGTERM to pid: %i with error %s.", pid, strerror(errno)));
-  }
-  struct pollfd poll_fd = {
-      .fd = fd,
-      .events = POLLIN,
-  };
-
-  int poll_status = poll(&poll_fd, 1, timeout_ms);
-  if (poll_status == -1) {
-    return ray::Status::Invalid(
-        absl::StrFormat("Failed to poll process pid: %i, fd: %i with error %s. Process "
-                        "was not killed. Kill it manually to prevent a leak.",
-                        pid,
-                        fd,
-                        strerror(errno)));
-  }
-  if (poll_status == 0) {
-    return ray::Status::Invalid(
-        absl::StrFormat("Process pid: %i, fd: %i was not killed within the timeout of "
-                        "%ims. Kill it manually to prevent a leak.",
-                        pid,
-                        fd,
-                        timeout_ms));
-  }
-  siginfo_t dummy = {0};
-  int wait_id_status = waitid(P_PID, static_cast<id_t>(fd), &dummy, WEXITED);
-  if (wait_id_status == -1) {
-    if (errno != ECHILD)
-      return ray::Status::Invalid(
-          absl::StrFormat("Failed to wait for process pid: %i, fd: %i with error %s. "
-                          "Process was not reaped, but "
-                          "it will be reaped by init after program exits.",
-                          pid,
-                          fd,
-                          strerror(errno)));
-  };
-  return ray::Status::OK();
-}
-
+/**
+  Note: clone3 supports creating a process inside a cgroup instead of creating
+  and then moving. However, clone3 does not have a glibc wrapper and
+  must be called directly using syscall syscall (see man 2 syscall).
+  This function needs linux kernel >= 5.7 to use the CLONE_INTO_CGROUP flag.
+*/
 #ifdef CLONE_INTO_CGROUP
 ray::StatusOr<std::pair<pid_t, int>> StartChildProcessInCgroup(
     const std::string &cgroup_path) {
-  int cgroup_fd = open(cgroup_path.c_str(), O_RDONLY);
+  int cgroup_fd = open(cgroup_path.c_str(), O_RDWR);
   if (cgroup_fd == -1) {
-    return ray::Status::Invalid(
+    return ray::Status::InvalidArgument(
         absl::StrFormat("Unable to open fd for cgroup at %s with error %s.",
                         cgroup_path,
                         strerror(errno)));
@@ -250,6 +214,48 @@ ray::StatusOr<std::pair<pid_t, int>> StartChildProcessInCgroup(
   return std::make_pair(new_pid, child_pidfd);
 }
 #endif
+
+ray::Status TerminateChildProcessAndWaitForTimeout(pid_t pid, int fd, int timeout_ms) {
+  if (kill(pid, SIGKILL) == -1) {
+    return ray::Status::InvalidArgument(absl::StrFormat(
+        "Failed to send SIGTERM to pid: %i with error %s.", pid, strerror(errno)));
+  }
+  struct pollfd poll_fd = {
+      .fd = fd,
+      .events = POLLIN,
+  };
+
+  int poll_status = poll(&poll_fd, 1, timeout_ms);
+  if (poll_status == -1) {
+    return ray::Status::InvalidArgument(
+        absl::StrFormat("Failed to poll process pid: %i, fd: %i with error %s. Process "
+                        "was not killed. Kill it manually to prevent a leak.",
+                        pid,
+                        fd,
+                        strerror(errno)));
+  }
+  if (poll_status == 0) {
+    return ray::Status::Invalid(
+        absl::StrFormat("Process pid: %i, fd: %i was not killed within the timeout of "
+                        "%ims. Kill it manually to prevent a leak.",
+                        pid,
+                        fd,
+                        timeout_ms));
+  }
+  siginfo_t dummy = {0};
+  int wait_id_status = waitid(P_PID, static_cast<id_t>(fd), &dummy, WEXITED);
+  if (wait_id_status == -1) {
+    if (errno != ECHILD)
+      return ray::Status::Invalid(
+          absl::StrFormat("Failed to wait for process pid: %i, fd: %i with error %s. "
+                          "Process was not reaped, but "
+                          "it will be reaped by init after program exits.",
+                          pid,
+                          fd,
+                          strerror(errno)));
+  };
+  return ray::Status::OK();
+}
 
 TempFile::TempFile(std::string path) {
   path_ = path;
