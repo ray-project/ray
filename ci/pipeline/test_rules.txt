@@ -225,6 +225,13 @@ src/ray/core_worker/experimental*.cc
 @ compiled_graphs
 ;
 
+
+python/ray/experimental/gpu_object_manager/*.py
+python/ray/experimental/collective/*.py
+python/ray/tests/gpu_objects/*.py
+@ gpu_objects
+;
+
 .github/
 README.rst
 SECURITY.md

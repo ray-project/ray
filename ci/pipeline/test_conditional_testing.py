@@ -44,6 +44,8 @@ python/_raylet.pyx:
     - python dashboard linux_wheels macos_wheels java
 python/ray/dag/dag.py:
     - lint python compiled_graphs
+python/ray/experimental/gpu_object_manager/gpu_object_manager.py:
+    - lint python gpu_objects
 
 .buildkite/core.rayci.yml: lint python core_cpp
 java/ray.java: lint java
