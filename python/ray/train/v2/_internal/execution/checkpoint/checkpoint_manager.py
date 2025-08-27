@@ -83,7 +83,11 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
     ):
         self._storage_context = storage_context
         self._checkpoint_config = checkpoint_config
+
+        # This tracks the number of report calls that have been processed
+        # for the current worker group.
         self._num_report_calls = 0
+
         self._condition = asyncio.Condition()
         super().__init__(checkpoint_config)
         # If the snapshot is found, the checkpoint manager will restore its state.
