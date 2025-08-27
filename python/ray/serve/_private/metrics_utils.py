@@ -197,11 +197,11 @@ class InMemoryMetricsStore:
         Example:
         Suppose the store contains:
         >>> store = InMemoryMetricsStore()
-        >>> store.data = defaultdict[
+        >>> store.data.update({
         ...     "a": [TimeStampedValue(0, 1.0), TimeStampedValue(1, 2.0)],
         ...     "b": [],
         ...     "c": [TimeStampedValue(0, 10.0)],
-        ... ]
+        ... })
 
         Using sum across keys:
 
