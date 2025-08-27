@@ -277,6 +277,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     ref.set_object_id(return_object_id.Binary());
     ref.mutable_owner_address()->CopyFrom(caller_address);
     ref.set_call_site(call_site);
+    ref.set_tensor_transport(spec.TensorTransport());
 
     // Register the callback to free the GPU object when it is out of scope.
     auto tensor_transport = reference_counter_.GetTensorTransport(return_object_id);
