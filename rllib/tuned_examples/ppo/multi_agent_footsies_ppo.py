@@ -165,6 +165,7 @@ if __name__ == "__main__":
             batch_mode="truncate_episodes",
             rollout_fragment_length=args.rollout_fragment_length,
             episodes_to_numpy=False,
+            create_env_on_local_worker=True,
         )
         .training(
             train_batch_size_per_learner=args.rollout_fragment_length

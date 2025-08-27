@@ -352,9 +352,7 @@ class MixManagerCallback(RLlibCallback):
 
             algorithm.env_runner_group.foreach_env_runner(
                 lambda er: er.env.envs[0].unwrapped.terminate_footsies_process(),
-                local_env_runner=True,
             )
             algorithm.eval_env_runner_group.foreach_env_runner(
                 lambda er: er.env.envs[0].unwrapped.terminate_footsies_process(),
-                local_env_runner=True,
             )
