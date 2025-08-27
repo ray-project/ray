@@ -79,7 +79,7 @@ def get_working_dir(test: "Test", test_definition_root: Optional[str] = None) ->
         return os.path.join(bazel_workspace_dir, working_dir.lstrip("//"))
     if test_definition_root:
         return os.path.join(test_definition_root, working_dir)
-    return bazel_runfile("release", working_dir)
+    return os.path.join(bazel_workspace_dir, "release", working_dir)
 
 
 def load_test_cluster_compute(
