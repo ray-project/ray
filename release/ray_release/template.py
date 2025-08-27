@@ -25,6 +25,7 @@ class TestEnvironment(dict):
 
 
 _test_env = None
+bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 
 
 def get_test_environment():
@@ -75,7 +76,7 @@ def render_yaml_template(template: str, env: Optional[Dict] = None):
 def get_working_dir(test: "Test", test_definition_root: Optional[str] = None) -> str:
     working_dir = test.get("working_dir", "")
     if working_dir.startswith("//"):
-        return bazel_runfile(working_dir.lstrip("//"))
+        return os.path.join(bazel_workspace_dir, working_dir.lstrip("//"))
     if test_definition_root:
         return os.path.join(test_definition_root, working_dir)
     return bazel_runfile("release", working_dir)
