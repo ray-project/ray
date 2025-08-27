@@ -22,6 +22,8 @@ from vllm.entrypoints.openai.protocol import (
     EmbeddingCompletionRequest as vLLMEmbeddingCompletionRequest,
     EmbeddingResponse as vLLMEmbeddingResponse,
     ErrorResponse as vLLMErrorResponse,
+    ScoreRequest as vLLMScoreRequest,
+    ScoreResponse as vLLMScoreResponse,
 )
 from vllm.utils import random_uuid
 
@@ -89,10 +91,22 @@ class EmbeddingResponse(vLLMEmbeddingResponse):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
+class ScoreRequest(vLLMScoreRequest):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+class ScoreResponse(vLLMScoreResponse):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
 EmbeddingRequest = Union[EmbeddingCompletionRequest, EmbeddingChatRequest]
 
 LLMEmbeddingsResponse = Union[
     AsyncGenerator[Union[EmbeddingResponse, ErrorResponse], None],
+]
+
+LLMScoreResponse = Union[
+    AsyncGenerator[Union[ScoreResponse, ErrorResponse], None],
 ]
 
 LLMChatResponse = Union[
