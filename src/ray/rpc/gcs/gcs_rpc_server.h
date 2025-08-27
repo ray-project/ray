@@ -142,9 +142,6 @@ namespace rpc {
                       HANDLER,                            \
                       RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
-#define INTERNAL_KV_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(InternalKVGcsService, HANDLER, -1)
-
 #define GCS_RPC_SEND_REPLY(send_reply_callback, reply, status)        \
   reply->mutable_status()->set_code(static_cast<int>(status.code())); \
   reply->mutable_status()->set_message(status.message());             \
@@ -351,38 +348,6 @@ class PlacementGroupInfoGrpcService : public GrpcService {
   PlacementGroupInfoGcsServiceHandler &service_handler_;
 };
 
-class InternalKVGcsServiceHandler {
- public:
-  virtual ~InternalKVGcsServiceHandler() = default;
-  virtual void HandleInternalKVKeys(InternalKVKeysRequest request,
-                                    InternalKVKeysReply *reply,
-                                    SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleInternalKVGet(InternalKVGetRequest request,
-                                   InternalKVGetReply *reply,
-                                   SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleInternalKVMultiGet(InternalKVMultiGetRequest request,
-                                        InternalKVMultiGetReply *reply,
-                                        SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleInternalKVPut(InternalKVPutRequest request,
-                                   InternalKVPutReply *reply,
-                                   SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleInternalKVDel(InternalKVDelRequest request,
-                                   InternalKVDelReply *reply,
-                                   SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleInternalKVExists(InternalKVExistsRequest request,
-                                      InternalKVExistsReply *reply,
-                                      SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetInternalConfig(GetInternalConfigRequest request,
-                                       GetInternalConfigReply *reply,
-                                       SendReplyCallback send_reply_callback) = 0;
-};
-
 class InternalKVGrpcService : public GrpcService {
  public:
   explicit InternalKVGrpcService(instrumented_io_context &io_service,
@@ -485,7 +450,6 @@ class RayEventExportGrpcService : public GrpcService {
 using ActorInfoHandler = ActorInfoGcsServiceHandler;
 using NodeResourceInfoHandler = NodeResourceInfoGcsServiceHandler;
 using PlacementGroupInfoHandler = PlacementGroupInfoGcsServiceHandler;
-using InternalKVHandler = InternalKVGcsServiceHandler;
 using TaskInfoHandler = TaskInfoGcsServiceHandler;
 using RayEventExportHandler = RayEventExportGcsServiceHandler;
 

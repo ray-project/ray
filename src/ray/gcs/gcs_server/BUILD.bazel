@@ -47,8 +47,8 @@ ray_cc_library(
     deps = [
         "//src/ray/common:asio",
         "//src/ray/common:status",
+        "//src/ray/gcs/gcs_server:grpc_service_interfaces",
         "//src/ray/protobuf:gcs_cc_proto",
-        "//src/ray/rpc:gcs_server",
     ],
 )
 
