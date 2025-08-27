@@ -77,6 +77,24 @@
 #  alert: default
 
 #######################
+# Baseline test
+#######################
+- name: hello_world_test
+  group: hello_world_test
+  frequency: nightly
+  working_dir: hello_world_tests
+
+  cluster:
+    byod: {}
+    cluster_compute: hello_world_compute_config.yaml
+
+  run:
+    script: python hello_world.py
+
+  variations:
+    - __suffix__: aws
+
+#######################
 # Cluster scaling tests
 #######################
 - name: cluster_tune_scale_up_down
