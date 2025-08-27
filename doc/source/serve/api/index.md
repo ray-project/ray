@@ -102,6 +102,9 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.schema.ServeStatus
    serve.schema.DeploymentStatusOverview
    serve.schema.EncodingType
+   serve.schema.DeploymentAutoscalerView
+   serve.schema.ApplicationAutoscalerView
+   serve.schema.ServeAutoscalerObservability
 ```
 
 ### Request Router
