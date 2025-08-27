@@ -6,11 +6,11 @@ Using Mars on Ray
 .. _`issue on GitHub`: https://github.com/mars-project/mars/issues
 
 
-`Mars`_ is a tensor-based unified framework for large-scale data computation which scales Numpy, Pandas and Scikit-learn.
+`Mars`_ is a tensor-based unified framework for large-scale data computation which scales NumPy, pandas, and scikit-learn.
 Mars on Ray makes it easy to scale your programs with a Ray cluster. Currently Mars on Ray supports both Ray actors 
-and tasks as execution backend. The task will be scheduled by mars scheduler if Ray actors is used. This mode can reuse 
-all mars scheduler optimizations. If ray tasks mode is used, all tasks will be scheduled by ray, which can reuse failover and
-pipeline capabilities provided by ray futures.
+and tasks as an execution backend. The task will be scheduled by Mars scheduler if Ray actors are used. This mode can reuse 
+all Mars scheduler optimizations. If Ray tasks mode is used, all tasks will be scheduled by Ray, which can reuse failover and
+pipeline capabilities provided by Ray futures.
 
 
 .. _`Mars`: https://mars-project.readthedocs.io/en/latest/
@@ -75,4 +75,6 @@ Interact with Dataset:
     df2 = ds.to_mars()
     print(df2.head(5).execute())
 
-Refer to _`Mars on Ray`: https://mars-project.readthedocs.io/en/latest/installation/ray.html#mars-ray for more information.
+Refer to `Mars on Ray`_ for more information.
+
+.. _`Mars on Ray`: https://mars-project.readthedocs.io/en/latest/installation/ray.html#mars-ray
