@@ -64,6 +64,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_fakes",
+        "//fakes/ray/rpc/raylet:fake_raylet_client",
         "//:ray_mock",
         "//src/ray/common:task_common",
         "//src/ray/common:test_util",

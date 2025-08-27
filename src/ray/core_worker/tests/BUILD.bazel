@@ -67,6 +67,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_fakes",
+        "//fakes/ray/rpc/raylet:fake_raylet_client",
         "//:ray_mock",
         "//src/mock/ray/pubsub:mock_publisher",
         "//src/ray/common:task_common",
@@ -222,6 +223,7 @@ ray_cc_test(
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     deps = [
+        "//fakes/ray/rpc/raylet:fake_raylet_client",
         "//:ray_fakes",
         "//:ray_mock",
         "//src/ray/core_worker:experimental_mutable_object_provider",
@@ -243,6 +245,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_fakes",
+        "//fakes/ray/rpc/raylet:fake_raylet_client",
         "//:ray_mock",
         "//src/ray/common:test_util",
         "//src/ray/core_worker:core_worker_lib",
