@@ -32,7 +32,6 @@ ray_cc_library(
         ":reference_count",
         ":shutdown_coordinator",
         ":task_event_buffer",
-        ":metrics",
         "//src/ray/common:protobuf_utils",
         "//src/ray/common/cgroup:cgroup_context",
         "//src/ray/common/cgroup:cgroup_manager",
