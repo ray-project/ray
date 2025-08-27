@@ -731,6 +731,7 @@ py_test_module_list(
     size = "medium",
     files = [
         "test_autoscaler.py",
+        "test_symmetric_run.py",
     ],
     tags = [
         "exclusive",
