@@ -22,8 +22,6 @@
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "ray/gcs/gcs_server/gcs_init_data.h"
-#include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/util/logging.h"
 #include "ray/util/time.h"
