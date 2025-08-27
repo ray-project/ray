@@ -205,8 +205,7 @@ class MixManagerCallback(RLlibCallback):
         main_policy: str,
         starting_modules=list[str],  # default is ["lstm", "noop"]
     ) -> None:
-        """Track win rates and manage mix of opponents
-        """
+        """Track win rates and manage mix of opponents"""
         super().__init__()
         self.win_rate_threshold = win_rate_threshold
         self.main_policy = main_policy
