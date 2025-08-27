@@ -94,7 +94,7 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
 
     Args:
         model_source: The model source to use for the SGLang engine.
-        batch_size: The batch size to send to the vLLM engine. Large batch sizes are
+        batch_size: The batch size to send to the SGLang engine. Large batch sizes are
             likely to saturate the compute resources and could achieve higher throughput.
             On the other hand, small batch sizes are more fault-tolerant and could
             reduce bubbles in the data pipeline. You can tune the batch size to balance
@@ -114,7 +114,7 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
         apply_chat_template: Whether to apply chat template.
         chat_template: The chat template to use. This is usually not needed if the
             model checkpoint already contains the chat template.
-        tokenize: Whether to tokenize the input before passing it to the vLLM engine.
+        tokenize: Whether to tokenize the input before passing it to the SGLang engine.
             If not, vLLM will tokenize the prompt in the engine.
         detokenize: Whether to detokenize the output.
         accelerator_type: The accelerator type used by the LLM stage in a processor.
