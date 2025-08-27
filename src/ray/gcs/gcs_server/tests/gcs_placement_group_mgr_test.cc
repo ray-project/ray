@@ -817,8 +817,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestSchedulerReinitializeAfterGcsRestart) {
       /* cpu_num */ 1.0,
       /* job_id */ job_id);
   auto job_table_data = Mocker::GenJobTableData(job_id);
-  gcs_table_storage_->JobTable().Put(job_id, data, {on_done, io_context_});
-  std::atomic<int> registered_placement_group_count(0);
+  gcs_table_storage_->JobTable().Put(job_id, data, [](Status st) {});
+  std::atomic<int> registered_placement_group_count{0};
   RegisterPlacementGroup(request, [&registered_placement_group_count](Status status) {
     ++registered_placement_group_count;
   });
