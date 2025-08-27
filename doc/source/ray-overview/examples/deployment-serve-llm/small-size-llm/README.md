@@ -168,12 +168,12 @@ applications:
 ```
 
 
-Deploy your Service, make sure you set your HuggingFace Token first, `export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>`
+Deploy your Service, make sure you forward your HuggingFace Token to the command.
 
 
 ```bash
 %%bash
-anyscale service deploy -f service.yaml --env HF_TOKEN=$HF_TOKEN
+anyscale service deploy -f service.yaml --env HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>
 ```
 
 **Custom Dockerfile**
