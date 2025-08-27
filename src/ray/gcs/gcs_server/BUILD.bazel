@@ -267,11 +267,9 @@ ray_cc_library(
     name = "gcs_placement_group_scheduler",
     srcs = ["gcs_placement_group_scheduler.cc"],
     hdrs = ["gcs_placement_group_scheduler.h"],
-    implementation_deps = [
+    deps = [
         ":gcs_node_manager",
         ":gcs_table_storage",
-    ],
-    deps = [
         ":gcs_placement_group",
         "//src/ray/common:asio",
         "//src/ray/common:id",
