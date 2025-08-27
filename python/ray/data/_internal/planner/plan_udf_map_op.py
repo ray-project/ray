@@ -393,8 +393,7 @@ def download_bytes_threaded(
             try:
                 with fs.open_input_file(uri_to_path(uri)) as f:
                     yield f.read()
-            except Exception as e:
-                print(f"Error downloading {uri}: {e}")
+            except Exception:
                 yield None
 
     # Use make_async_gen to download URIs concurrently
@@ -430,8 +429,7 @@ class PartitionActor:
         def get_file_size(uri, fs):
             try:
                 return fs.get_file_info(uri_to_path(uri)).size
-            except Exception as e:
-                print(f"Error getting size for {uri}: {e}")
+            except Exception:
                 return None
 
         file_sizes = []
@@ -449,7 +447,7 @@ class PartitionActor:
                     if size is not None:
                         file_sizes.append(size)
                 except Exception as e:
-                    print(f"Error in thread: {e}")
+                    logger.warning(f"Error fetching file size for download: {e}")
 
         return file_sizes
 
@@ -460,7 +458,6 @@ class PartitionActor:
             end_idx = min(i + n, num_rows)
             # Use PyArrow's zero-copy slice operation
             batch_table = table.slice(i, end_idx - i)
-            print(f"Yielding batch with len(batch): {batch_table.num_rows}")
             yield batch_table
 
     def __call__(self, block):
@@ -474,13 +471,18 @@ class PartitionActor:
             uris = block.column(self._uri_column_name).to_pylist()
             sample_uris = uris[: self.INIT_SAMPLE_BATCH_SIZE]
             file_sizes = self._sample_sizes(sample_uris)
-            file_size_estimate = sum(file_sizes) / len(file_sizes)
-            ctx = ray.data.context.DatasetContext.get_current()
-            max_bytes = ctx.target_max_block_size
-            self._batch_size_estimate = math.floor(max_bytes / file_size_estimate)
-            print(f"Batch size estimate: {self._batch_size_estimate}")
+            if not file_sizes:
+                # Fallback to incoming block size if no file sizes could be determined
+                logger.warning(
+                    "No file sizes could be determined, using incoming block size"
+                )
+                self._batch_size_estimate = block.num_rows
+            else:
+                file_size_estimate = sum(file_sizes) / len(file_sizes)
+                ctx = ray.data.context.DatasetContext.get_current()
+                max_bytes = ctx.target_max_block_size
+                self._batch_size_estimate = math.floor(max_bytes / file_size_estimate)
 
-        print(f"len(block): {block.num_rows}")
         yield from self._arrow_batcher(block, self._batch_size_estimate)
 
 
