@@ -160,8 +160,9 @@ NodeManager::NodeManager(
                       RAY_UNUSED(execute_after(
                           io_service_, fn, std::chrono::milliseconds(delay_ms)));
                     }),
-      node_manager_server_(
-          "NodeManager", config.node_manager_port, config.node_manager_address),
+      node_manager_server_("NodeManager",
+                           config.node_manager_port,
+                           config.node_manager_address == "127.0.0.1"),
       local_object_manager_(local_object_manager),
       leased_workers_(leased_workers),
       high_plasma_storage_usage_(RayConfig::instance().high_plasma_storage_usage()),
@@ -2767,7 +2768,7 @@ void NodeManager::ConsumeSyncMessage(
     // Set node labels when node added.
     auto node_labels = MapFromProtobuf(resource_view_sync_message.labels());
     cluster_resource_scheduler_.GetClusterResourceManager().SetNodeLabels(
-        scheduling::NodeID(node_id.Binary()), node_labels);
+        scheduling::NodeID(node_id.Binary()), std::move(node_labels));
     ResourceRequest resources;
     for (auto &resource_entry : resource_view_sync_message.resources_total()) {
       resources.Set(scheduling::ResourceID(resource_entry.first),
