@@ -37,8 +37,8 @@ steps:
       # test placeholder wheel
       - ./ci/build/test-linux-placeholder-wheel.sh {{matrix}}
     depends_on:
-      - minbuild
-    job_env: minbuild-py{{matrix}}
+      - minbuild-core
+    job_env: minbuild-core-py{{matrix}}
     matrix:
       - "3.9"
       - "3.10"
