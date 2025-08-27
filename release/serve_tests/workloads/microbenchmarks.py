@@ -145,7 +145,7 @@ async def _main(
                     num_requests=NUM_REQUESTS,
                 )
                 perf_metrics.extend(convert_latencies_to_perf_metrics(name, latencies))
-                serve.shutdown()
+                serve.shutdown_async()
 
         if run_throughput:
             # Microbenchmark: HTTP throughput
@@ -177,7 +177,7 @@ async def _main(
                     perf_metrics.extend(
                         convert_throughput_to_perf_metrics(test_name, mean, std)
                     )
-                    serve.shutdown()
+                    serve.shutdown_async()
 
         if run_streaming:
             # Direct streaming between replica
@@ -214,7 +214,7 @@ async def _main(
             perf_metrics.extend(
                 convert_latencies_to_perf_metrics("http_streaming", latencies)
             )
-            serve.shutdown()
+            serve.shutdown_async()
 
             # Streaming with intermediate router
             serve.run(
@@ -248,7 +248,7 @@ async def _main(
                     "http_intermediate_streaming", latencies
                 )
             )
-            serve.shutdown()
+            serve.shutdown_async()
 
     # GRPC
     if run_grpc:
@@ -280,7 +280,7 @@ async def _main(
                     num_requests=NUM_REQUESTS,
                 )
                 perf_metrics.extend(convert_latencies_to_perf_metrics(name, latencies))
-                serve.shutdown()
+                serve.shutdown_async()
 
         if run_throughput:
             # Microbenchmark: GRPC throughput
@@ -315,7 +315,7 @@ async def _main(
                     perf_metrics.extend(
                         convert_throughput_to_perf_metrics(test_name, mean, std)
                     )
-                    serve.shutdown()
+                    serve.shutdown_async()
 
     # Handle
     if run_handle:
@@ -330,7 +330,7 @@ async def _main(
                     num_requests=NUM_REQUESTS, payload=payload
                 )
                 perf_metrics.extend(convert_latencies_to_perf_metrics(name, latencies))
-                serve.shutdown()
+                serve.shutdown_async()
 
         if run_throughput:
             # Microbenchmark: Handle throughput
@@ -367,7 +367,7 @@ async def _main(
                     perf_metrics.extend(
                         convert_throughput_to_perf_metrics(test_name, mean, std)
                     )
-                    serve.shutdown()
+                    serve.shutdown_async()
 
         if run_streaming:
             h: DeploymentHandle = serve.run(
@@ -394,7 +394,7 @@ async def _main(
             perf_metrics.extend(
                 convert_latencies_to_perf_metrics("handle_streaming", latencies)
             )
-            serve.shutdown()
+            serve.shutdown_async()
 
     logging.info(f"Perf metrics:\n {json.dumps(perf_metrics, indent=4)}")
     results = {"perf_metrics": perf_metrics}
