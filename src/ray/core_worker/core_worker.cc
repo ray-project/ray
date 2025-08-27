@@ -168,8 +168,8 @@ JobID GetProcessJobID(const CoreWorkerOptions &options) {
   return options.job_id;
 }
 
-TaskCounter::TaskCounter(ray::observability::MetricInterface &metric_tasks)
-    : metric_tasks_(metric_tasks) {
+TaskCounter::TaskCounter(ray::observability::MetricInterface &task_by_state_counter)
+    : task_by_state_counter_(task_by_state_counter) {
   counter_.SetOnChangeCallback(
       [this](const std::tuple<std::string, TaskStatusType, bool>
                  &key) ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) mutable {
@@ -184,7 +184,7 @@ TaskCounter::TaskCounter(ray::observability::MetricInterface &metric_tasks)
         const auto is_retry_label = is_retry ? "1" : "0";
         // RUNNING_IN_RAY_GET/WAIT are sub-states of RUNNING, so we need to subtract
         // them out to avoid double-counting.
-        metric_tasks_.Record(
+        task_by_state_counter_.Record(
             running_total - num_in_get - num_in_wait,
             {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
              {"Name"sv, func_name},
@@ -192,7 +192,7 @@ TaskCounter::TaskCounter(ray::observability::MetricInterface &metric_tasks)
              {"JobId"sv, job_id_},
              {"Source"sv, "executor"}});
         // Negate the metrics recorded from the submitter process for these tasks.
-        metric_tasks_.Record(
+        task_by_state_counter_.Record(
             -running_total,
             {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::SUBMITTED_TO_WORKER)},
              {"Name"sv, func_name},
@@ -200,7 +200,7 @@ TaskCounter::TaskCounter(ray::observability::MetricInterface &metric_tasks)
              {"JobId"sv, job_id_},
              {"Source"sv, "executor"}});
         // Record sub-state for get.
-        metric_tasks_.Record(
+        task_by_state_counter_.Record(
             num_in_get,
             {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_GET)},
              {"Name"sv, func_name},
@@ -208,7 +208,7 @@ TaskCounter::TaskCounter(ray::observability::MetricInterface &metric_tasks)
              {"JobId"sv, job_id_},
              {"Source"sv, "executor"}});
         // Record sub-state for wait.
-        metric_tasks_.Record(
+        task_by_state_counter_.Record(
             num_in_wait,
             {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_WAIT)},
              {"Name"sv, func_name},
@@ -322,7 +322,7 @@ CoreWorker::CoreWorker(
     instrumented_io_context &task_execution_service,
     std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
     uint32_t pid,
-    ray::observability::MetricInterface &metric_tasks)
+    ray::observability::MetricInterface &task_by_state_counter)
     : options_(std::move(options)),
       get_call_site_(RayConfig::instance().record_ref_creation_sites()
                          ? options_.get_lang_stack
@@ -358,15 +358,14 @@ CoreWorker::CoreWorker(
       actor_id_(ActorID::Nil()),
       task_queue_length_(0),
       num_executed_tasks_(0),
-      task_counter_(metric_tasks),
       task_execution_service_(task_execution_service),
       exiting_detail_(std::nullopt),
       max_direct_call_object_size_(RayConfig::instance().max_direct_call_object_size()),
+      task_counter_(task_by_state_counter),
       task_event_buffer_(std::move(task_event_buffer)),
       pid_(pid),
       actor_shutdown_callback_(std::move(options_.actor_shutdown_callback)),
-      runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap),
-      metric_tasks_(metric_tasks) {
+      runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap) {
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
     RAY_CHECK(options_.task_execution_callback != nullptr);
