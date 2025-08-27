@@ -493,7 +493,7 @@ class LLMRouter:
     async def score(self, body: ScoreRequest) -> Response:
         """Create scores for the provided text pairs.
 
-        Note: This is vLLM specific endpoint. vLLM v1 does not support score, must use v0.
+        Note: This is vLLM specific endpoint.
 
         Args:
             body: The score request containing input text pairs to score.

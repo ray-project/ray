@@ -227,12 +227,9 @@ class VLLMEngine(LLMEngine):
         ), "oai_serving_embedding must have a create_embedding attribute"
 
     def _validate_openai_serving_scores(self):
-        from vllm import envs as vllm_envs
-
         assert hasattr(
             self._oai_serving_scores, "create_score"
         ), "oai_serving_scores must have a create_score attribute"
-        assert not vllm_envs.VLLM_USE_V1, "vLLM v1 does not support score, must use v0"
 
     def _validate_engine_client(self):
         assert hasattr(
