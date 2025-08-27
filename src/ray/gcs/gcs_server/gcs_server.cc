@@ -234,13 +234,6 @@ void GcsServer::GetOrGenerateClusterId(
        io_context});
 }
 
-void GcsServer::UpdateGcsResourceManagerInTest(
-    const NodeID &node_id,
-    const syncer::ResourceViewSyncMessage &resource_view_sync_message) {
-  RAY_CHECK(gcs_resource_manager_ != nullptr);
-  gcs_resource_manager_->UpdateFromResourceView(node_id, resource_view_sync_message);
-}
-
 void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   InitClusterResourceScheduler();
   InitGcsNodeManager(gcs_init_data);
