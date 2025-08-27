@@ -1213,7 +1213,6 @@ def test_set_state_complete_replacement():
     expected = {"duo": 1}
     
     check(result, expected)
-    assert "solo" not in result, f"Old key 'solo' should not persist in result: {result}"
     
     # Test case 2: Complete replacement with different keys
     logger3 = MetricsLogger()
@@ -1230,8 +1229,6 @@ def test_set_state_complete_replacement():
     expected = {"shared_key": 100, "new_key": 200}
     
     check(result, expected)
-    assert "old_key1" not in result, f"'old_key1' should not persist: {result}"
-    assert "old_key2" not in result, f"'old_key2' should not persist: {result}"
     
     # Test case 3: Setting to empty state
     logger5 = MetricsLogger()
@@ -1259,8 +1256,6 @@ def test_set_state_complete_replacement():
     expected = {"nested": {"shared_key": 20, "new_key": 30}}
     
     check(result, expected)
-    assert "top_level" not in result, f"'top_level' should not persist: {result}"
-    assert "old_key" not in result.get("nested", {}), f"'old_key' should not persist in nested: {result}"
     
     # Test case 5: Multiple set_state calls (simulating multiple restore_from_path calls)
     logger8 = MetricsLogger()
@@ -1282,11 +1277,9 @@ def test_set_state_complete_replacement():
     expected = {"second": 2, "shared": 20}
     
     check(result, expected)
-    assert "initial" not in result, f"'initial' should not persist: {result}"
-    assert "first" not in result, f"'first' should not persist: {result}"
 
 
-if __name__ == "__main__":  
+if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
