@@ -134,7 +134,7 @@ def _setup_torch_process_group(
     elif backend == "hccl":
         register_custom_torch_dist_backend(backend)
     elif backend == "xla":
-        pass
+        import torch_xla.distributed.xla_backend
 
     dist.init_process_group(
         backend=backend,
