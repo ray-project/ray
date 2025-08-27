@@ -83,7 +83,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
     ):
         self._storage_context = storage_context
         self._checkpoint_config = checkpoint_config
-        self._num_reported_checkpoints = 0
+        self._num_report_calls = 0
         self._condition = asyncio.Condition()
         super().__init__(checkpoint_config)
         # If the snapshot is found, the checkpoint manager will restore its state.
@@ -143,7 +143,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             logger.debug("Deleting checkpoint: ", checkpoint)
             _delete_fs_path(fs=checkpoint.filesystem, fs_path=checkpoint.path)
 
-        self._num_reported_checkpoints += 1
+        self._num_report_calls += 1
 
         async def async_notify():
             async with self._condition:
@@ -279,6 +279,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         self, metrics: List[Dict[str, Any]], checkpoint: Optional[Checkpoint]
     ):
         if not checkpoint:
+            self._num_report_calls += 1
             return
 
         rank_0_metrics = metrics[0]
@@ -291,7 +292,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
     # --------------------------
 
     def before_init_train_context(self, workers: List[Worker]) -> Dict[str, List[Any]]:
-        self._num_reported_checkpoints = 0
+        self._num_report_calls = 0
         latest_checkpoint = (
             self.latest_checkpoint_result.checkpoint
             if self.latest_checkpoint_result
@@ -308,7 +309,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         """Once expected_num_checkpoints are reported, return the ReportedCheckpoints."""
         async with self._condition:
             await self._condition.wait_for(
-                lambda: self._num_reported_checkpoints == expected_num_checkpoints
+                lambda: self._num_report_calls == expected_num_checkpoints
             )
             # TODO: might be nice for CheckpointManager to manage ReportedCheckpoint
             # instead of _TrainingResult but that is a large refactor.

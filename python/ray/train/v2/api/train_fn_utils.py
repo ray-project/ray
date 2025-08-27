@@ -158,9 +158,6 @@ def get_all_reported_checkpoints() -> List[ReportedCheckpoint]:
 
     Blocks until Ray Train has finished processing every `ray.train.report` call.
 
-    This method hangs if all of your workers called `ray.train.report` without a
-    checkpoint at least once.
-
     Example:
 
         .. testcode::

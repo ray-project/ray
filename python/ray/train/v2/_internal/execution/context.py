@@ -101,7 +101,7 @@ class TrainContext:
     controller_actor: ActorHandle
 
     checkpoint: Optional[Checkpoint] = None
-    num_reported_checkpoints: int = 0
+    num_report_calls: int = 0
 
     dataset_manager: Optional[ActorHandle["DatasetManager"]] = None
     _cached_dataset_shards: Dict[str, DataIterator] = field(default_factory=dict)
@@ -147,7 +147,7 @@ class TrainContext:
     def get_all_reported_checkpoints(self) -> List[ReportedCheckpoint]:
         return ray.get(
             self.controller_actor.get_all_reported_checkpoints.remote(
-                self.num_reported_checkpoints
+                self.num_report_calls
             )
         )
 
@@ -300,7 +300,7 @@ class TrainContext:
             # TODO (hpguo): Add a metrics to track the blocking time waiting for the
             # training result to be consumed by the controller.
             self.get_result_queue().put(training_result)
-            self.num_reported_checkpoints += 1
+            self.num_report_calls += 1
 
 
 # The global variable holding the current TrainContext

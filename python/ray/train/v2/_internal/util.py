@@ -16,7 +16,6 @@ from typing import (
 )
 
 import ray
-from ray.actor import ActorHandle
 from ray.train._internal.utils import count_required_parameters
 from ray.types import ObjectRef
 
@@ -211,18 +210,3 @@ def get_callable_name(fn: Callable) -> str:
 
     # Fallback to the class name for objects that implement __call__
     return fn.__class__.__name__
-
-
-def get_current_actor() -> ActorHandle:
-    """Get the current actor handle.
-
-    This is its own method to simplify mocking in unit tests, which is complicated
-    because:
-    - Ray Train always creates a controller actor, but some unit tests don't
-    - ray.get_runtime_context() works inside and outside an actor, but some of the
-    returned context's attributes, such as current_actor, only work inside an actor
-    - Some unit tests rely on real attributes of ray.get_runtime_context() but still
-    need to work outside an actor, so we need to mock current_actor only. However,
-    because current_actor is a property, we can't override it directly.
-    """
-    return ray.get_runtime_context().current_actor

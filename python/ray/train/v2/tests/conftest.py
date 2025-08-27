@@ -1,13 +1,12 @@
 import logging
-from unittest.mock import create_autospec
 
 import pytest
 
 import ray
+from ray import runtime_context
 from ray.train.v2._internal.constants import (
     ENABLE_STATE_ACTOR_RECONCILIATION_ENV_VAR,
 )
-from ray.train.v2._internal.execution.worker_group import worker_group
 
 
 @pytest.fixture()
@@ -39,20 +38,23 @@ def disable_state_actor_polling(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def mock_get_current_actor(monkeypatch, request):
+def mock_runtime_context(monkeypatch):
     @ray.remote
     class DummyActor:
         pass
 
-    mock_get_current_actor = create_autospec(worker_group.get_current_actor)
-
     # Must return real actor handle so it can get passed to other actors
     # Cannot create actor here since ray has not been initialized yet
-    mock_get_current_actor.side_effect = lambda: DummyActor.remote()
+    def mock_current_actor(self):
+        return DummyActor.remote()
 
-    # Note that actors do not use mocked methods
-    # This means that if worker_group is not in in actor, it will use the dummy actor,
-    # but if it is in an actor, it will use the real actor
-    monkeypatch.setattr(worker_group, "get_current_actor", mock_get_current_actor)
+    # In unit tests where the controller is not an actor, current_actor is
+    # a DummyActor, which is ok because it won't be called in those tests.
+    # In unit tests where the controller is an actor, current_actor is the
+    # controller actor because monkeypatch doesn't propagate to the actor
+    # process. Those tests can successfully test methods on that actor.
+    monkeypatch.setattr(
+        runtime_context.RuntimeContext, "current_actor", property(mock_current_actor)
+    )
 
     yield

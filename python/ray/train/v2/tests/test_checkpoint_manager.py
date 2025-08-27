@@ -92,6 +92,8 @@ def _checkpoint_managers_equal(cm1: CheckpointManager, cm2: CheckpointManager) -
 async def test_save_load_state_equivalence(
     monkeypatch, tmp_path, checkpoint_config: CheckpointConfig
 ):
+    # Use async here because register_checkpoint creates an async task
+
     # Mock the delete function as we don't want report checkpoints to be deleted.
     monkeypatch.setattr(
         ray.train.v2._internal.execution.checkpoint.checkpoint_manager,
@@ -115,7 +117,7 @@ async def test_save_load_state_equivalence(
     # Register the training results into checkpoint manager
     for i, tr in enumerate(training_results):
         checkpoint_manager.register_checkpoint(tr)
-        assert checkpoint_manager._num_reported_checkpoints == i + 1
+        assert checkpoint_manager._num_report_calls == i + 1
         loaded_checkpoint_manager = CheckpointManager(
             storage_context=storage_context,
             checkpoint_config=checkpoint_config,

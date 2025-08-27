@@ -135,7 +135,7 @@ Ray Train Utilities
     :toctree: doc/
 
     ~train.Checkpoint
-    ~train.ReportedCheckpoint
+    ~train.v2.api.reported_checkpoint.ReportedCheckpoint
     ~train.v2.api.context.TrainContext
 
 **Functions**
