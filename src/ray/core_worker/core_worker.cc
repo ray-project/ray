@@ -3096,7 +3096,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
   waiter->IncrementObjectGenerated();
 
   client->ReportGeneratorItemReturns(
-      request,
+      std::move(request),
       [waiter, generator_id, return_id, item_index](
           const Status &status, const rpc::ReportGeneratorItemReturnsReply &reply) {
         RAY_LOG(DEBUG) << "ReportGeneratorItemReturns replied. " << generator_id

@@ -696,6 +696,9 @@ message ObjectReference {
   // Used to print debugging information if there is an error retrieving the
   // object.
   string call_site = 3;
+  // The tensor transport to use for this object. If not specified, then use the
+  // default object store.
+  optional TensorTransport tensor_transport = 4;
 }
 
 message ObjectReferenceCount {
