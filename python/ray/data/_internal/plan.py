@@ -1,3 +1,4 @@
+from ast import iter_fields
 import copy
 import itertools
 import logging
@@ -400,10 +401,9 @@ class ExecutionPlan:
                 iter_ref_bundles, _, executor = self.execute_to_iterator()
                 # Make sure executor is fully shutdown upon exiting
                 with executor:
-                    for bundle in iter_ref_bundles:
-                        if bundle.schema is not None:
-                            schema = bundle.schema
-                            break
+                    schema = _take_first_non_empty_schema(
+                        bundle.schema for bundle in iter_ref_bundles
+                    )
         self.cache_schema(schema)
         return self._schema
 
