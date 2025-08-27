@@ -239,7 +239,26 @@ class DependencySetManager:
             override_flags=override_flags,
         )
 
-    def copy_lock_files_to_temp_dir(self):
+    def get_sources(self) -> List[str]:
+        sources = []
+        for depset in self.config.depsets:
+            sources.append(depset.output)
+        return sources
+
+    def get_destinations(self, extension: str = ".txt") -> List[str]:
+        destinations = []
+        for depset in self.config.depsets:
+            destinations.append(
+                Path(self.temp_dir)
+                / depset.output.replace(".txt", extension).as_posix()
+            )
+        return destinations
+
+    def save_sources(
+        self,
+        source_fp: List[str],
+        target_fp: List[str],
+    ):
         """Copy the lock files to a temp directory."""
         # create temp directory
         self.temp_dir = tempfile.mkdtemp()
@@ -269,12 +288,12 @@ class DependencySetManager:
                 diffs.append(diff)
         if len(diffs) > 0:
             click.echo("".join(diffs))
-            shutil.rmtree(self.temp_dir)
+            self.cleanup_temp_dir()
             raise RuntimeError(
                 "Lock files are not up to date. Please update lock files and push the changes."
             )
         click.echo("Lock files are up to date.")
-        shutil.rmtree(self.temp_dir)
+        self.cleanup_temp_dir()
 
     def read_lock_file(self, file_path: str) -> List[str]:
         if not Path(self.get_path(file_path)).exists():
@@ -291,6 +310,10 @@ class DependencySetManager:
                 raise RuntimeError(
                     f"Requirement {req} is not a subset of {source_depset.name}"
                 )
+
+    def cleanup_temp_dir(self):
+        if self.temp_dir:
+            shutil.rmtree(self.temp_dir)
 
 
 def _get_depset(depsets: List[Depset], name: str) -> Depset:
