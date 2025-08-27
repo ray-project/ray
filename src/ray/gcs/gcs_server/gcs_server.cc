@@ -25,22 +25,12 @@
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
-#include "ray/gcs/gcs_server/gcs_function_manager.h"
-#include "ray/gcs/gcs_server/gcs_health_check_manager.h"
-#include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
-#include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
-#include "ray/gcs/gcs_server/gcs_table_storage.h"
-#include "ray/gcs/gcs_server/gcs_task_manager.h"
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/grpc_services.h"
-#include "ray/gcs/gcs_server/pubsub_handler.h"
-#include "ray/gcs/gcs_server/runtime_env_handler.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
-#include "ray/gcs/gcs_server/usage_stats_client.h"
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/observable_store_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
@@ -72,8 +62,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       storage_type_(GetStorageType()),
       rpc_server_(config.grpc_server_name,
                   config.grpc_server_port,
-                  config.node_ip_address,
-                  ClusterID::Nil(),
+                  config.node_ip_address == "127.0.0.1",
                   config.grpc_server_thread_num,
                   /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms()),
       client_call_manager_(main_service,
@@ -640,8 +629,10 @@ void GcsServer::InitKVService() {
 void GcsServer::InitPubSubHandler() {
   auto &io_context = io_context_provider_.GetIOContext<GcsPublisher>();
   pubsub_handler_ = std::make_unique<InternalPubSubHandler>(io_context, *gcs_publisher_);
-  rpc_server_.RegisterService(
-      std::make_unique<rpc::InternalPubSubGrpcService>(io_context, *pubsub_handler_));
+
+  // This service is used to handle long poll requests, so we don't limit active RPCs.
+  rpc_server_.RegisterService(std::make_unique<rpc::InternalPubSubGrpcService>(
+      io_context, *pubsub_handler_, /*max_active_rpcs_per_handler_=*/-1));
 }
 
 void GcsServer::InitRuntimeEnvManager() {

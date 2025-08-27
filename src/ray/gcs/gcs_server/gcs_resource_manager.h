@@ -23,25 +23,18 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
+#include "ray/common/scheduling/cluster_resource_data.h"
+#include "ray/gcs/gcs_server/gcs_init_data.h"
+#include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/grpc_service_interfaces.h"
+#include "ray/raylet/scheduling/cluster_resource_manager.h"
+#include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/stats/metric_defs.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/ray_syncer.pb.h"
 
 namespace ray {
-
-class ClusterResourceManager;
-
-namespace raylet {
-
-class ClusterTaskManager;
-
-}  // namespace raylet
-
 namespace gcs {
-
-class GcsInitData;
-class GcsNodeManager;
 
 /// Ideally, the logic related to resource calculation should be moved from
 /// `gcs_resource_manager` to `cluster_resource_manager`, and all logic related to
