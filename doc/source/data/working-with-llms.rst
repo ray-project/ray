@@ -309,7 +309,7 @@ Ray Data LLM provides the following utility to help uploading models to remote o
 
 And later you can use remote object store URI as `model_source` in the config.
 
-.. code-block:: testcode
+.. code-block:: python
 
     config = vLLMEngineProcessorConfig(
         model_source="gs://my-bucket/path/to/facebook-opt-350m",  # or s3://my-bucket/path/to/model_name

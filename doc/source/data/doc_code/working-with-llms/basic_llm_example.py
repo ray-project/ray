@@ -61,6 +61,69 @@ if __name__ != "__main__":
     ds.show(limit=1)
 # __basic_llm_example_end__
 
+# Basic vLLM configuration
+config = vLLMEngineProcessorConfig(
+    model_source="unsloth/Llama-3.1-8B-Instruct",
+    engine_kwargs={
+        "enable_chunked_prefill": True,
+        "max_num_batched_tokens": 4096,
+        "max_model_len": 16384,
+    },
+    concurrency=1,
+    batch_size=64,
+)
+
+# Create sample dataset
+
+# Model parallelism configuration
+parallel_config = vLLMEngineProcessorConfig(
+    model_source="unsloth/Llama-3.1-8B-Instruct",
+    engine_kwargs={
+        "max_model_len": 16384,
+        "tensor_parallel_size": 2,
+        "pipeline_parallel_size": 2,
+        "enable_chunked_prefill": True,
+        "max_num_batched_tokens": 2048,
+    },
+    concurrency=1,
+    batch_size=32,
+)
+
+# RunAI streamer configuration
+runai_config = vLLMEngineProcessorConfig(
+    model_source="unsloth/Llama-3.1-8B-Instruct",
+    engine_kwargs={
+        "load_format": "runai_streamer",
+        "max_model_len": 16384,
+    },
+    concurrency=1,
+    batch_size=64,
+)
+
+# S3 hosted model configuration
+s3_config = vLLMEngineProcessorConfig(
+    model_source="s3://your-bucket/your-model-path/",
+    engine_kwargs={
+        "load_format": "runai_streamer",
+        "max_model_len": 16384,
+    },
+    concurrency=1,
+    batch_size=64,
+)
+
+# Multi-LoRA configuration
+lora_config = vLLMEngineProcessorConfig(
+    model_source="unsloth/Llama-3.1-8B-Instruct",
+    engine_kwargs={
+        "enable_lora": True,
+        "max_lora_rank": 32,
+        "max_loras": 1,
+        "max_model_len": 16384,
+    },
+    concurrency=1,
+    batch_size=32,
+)
+
 # Additional configuration examples for comprehensive testing
 def create_basic_config():
     """Create basic vLLM configuration."""
