@@ -18,6 +18,7 @@
 .+\.py.*Fetching the new head node
 .+\.py.*<1/1> Setting up head node
 .+\.py.*Prepared bootstrap config
+.+\.py.*Autoscaler v2 is now enabled by default.+
 .+\.py.*AWSNodeProvider: Set tag ray-node-status=waiting-for-ssh on \['.+'\]  \[LogTimer=.+\]
 .+\.py.*New status: waiting-for-ssh
 .+\.py.*\[1/7\] Waiting for SSH to become available
