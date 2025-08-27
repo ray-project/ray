@@ -185,9 +185,7 @@ def unify_schemas(
             return schemas[0]
     except Exception as e:
         # Unsure if there are cases where schemas are NOT hashable
-        logger.warning(
-            f"Failed to hash the schemas (for deduplication): {e}"
-        )
+        logger.warning(f"Failed to hash the schemas (for deduplication): {e}")
 
     schemas_to_unify = []
     schema_field_overrides = {}
