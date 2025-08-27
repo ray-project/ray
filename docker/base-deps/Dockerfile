@@ -9,11 +9,21 @@ FROM ${BASE_IMAGE}
 ENV TZ=America/Los_Angeles
 ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
+
 # TODO(ilr) $HOME seems to point to result in "" instead of "/home/ray"
-ENV PATH "/home/ray/anaconda3/bin:$PATH"
+# Q: Why add paths like /usr/local/nvidia/lib64 and /usr/local/nvidia/bin?
+# A: The NVIDIA GPU operator version used by GKE injects these into the container
+# after it's mounted to a pod.
+# Issue is tracked here:
+# https://github.com/GoogleCloudPlatform/compute-gpu-installation/issues/46
+# More context here:
+# https://github.com/NVIDIA/nvidia-container-toolkit/issues/275
+# and here:
+# https://gitlab.com/nvidia/container-images/cuda/-/issues/27
+ENV PATH "/home/ray/anaconda3/bin:$PATH:/usr/local/nvidia/bin"
+ENV LD_LIBRARY_PATH "$LD_LIBRARY_PATH:/usr/local/nvidia/lib64"
 ARG DEBIAN_FRONTEND=noninteractive
 ARG PYTHON_VERSION=3.9
-ARG HOSTTYPE=${HOSTTYPE:-x86_64}
 
 ARG RAY_UID=1000
 ARG RAY_GID=100
@@ -65,9 +75,19 @@ RUN <<EOF
 
 set -euo pipefail
 
+# Determine the architecture of the host
+if [[ "${HOSTTYPE}" =~ ^x86_64 ]]; then
+    ARCH="x86_64"
+elif [[ "${HOSTTYPE}" =~ ^aarch64 ]]; then
+    ARCH="aarch64"
+else
+    echo "Unsupported architecture ${HOSTTYPE}" >/dev/stderr
+    exit 1
+fi
+
 # Install miniforge
 wget --quiet \
-    "https://github.com/conda-forge/miniforge/releases/download/24.11.3-0/Miniforge3-24.11.3-0-Linux-${HOSTTYPE}.sh" \
+    "https://github.com/conda-forge/miniforge/releases/download/24.11.3-0/Miniforge3-24.11.3-0-Linux-${ARCH}.sh" \
     -O /tmp/miniforge.sh
 
 /bin/bash /tmp/miniforge.sh -b -u -p $HOME/anaconda3
@@ -111,10 +131,6 @@ export PATH=$HOME/anaconda3/bin:$PATH
 uv pip install --system --no-cache-dir --index-strategy unsafe-best-match \
     -c $HOME/requirements_compiled.txt \
     "${PIP_PKGS[@]}"
-
-# To avoid the following error on Jenkins:
-# AttributeError: 'numpy.ufunc' object has no attribute '__module__'
-uv pip uninstall --system dask
 
 # We install cmake temporarily to get psutil
 sudo apt-get autoremove -y cmake zlib1g-dev

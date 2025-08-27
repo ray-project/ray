@@ -44,10 +44,19 @@ from ray.serve.exceptions import BackPressureError
 
 
 class FakeReplicaResult(ReplicaResult):
-    def __init__(self, replica_id, is_generator_object: bool):
+    def __init__(
+        self,
+        replica_id,
+        is_generator_object: bool,
+        queue_len_info: Optional[ReplicaQueueLengthInfo] = None,
+    ):
         self._replica_id = replica_id
         self._is_generator_object = is_generator_object
+        self._queue_len_info = queue_len_info
         self.cancelled = False
+
+    async def get_rejection_response(self):
+        return self._queue_len_info
 
     def get(self, timeout_s: Optional[float]):
         raise NotImplementedError
@@ -102,9 +111,9 @@ class FakeReplica(RunningReplica):
     def get_queue_len(self, *, deadline_s: float) -> int:
         raise NotImplementedError
 
-    async def send_request(
+    def try_send_request(
         self, pr: PendingRequest, with_rejection: bool
-    ) -> Tuple[Optional[FakeReplicaResult], Optional[ReplicaQueueLengthInfo]]:
+    ) -> FakeReplicaResult:
         if with_rejection:
             if self._error:
                 raise self._error
@@ -116,21 +125,16 @@ class FakeReplica(RunningReplica):
                 self._queue_len_info is not None
             ), "Must set queue_len_info to use `send_request_with_rejection`."
 
-            return (
-                FakeReplicaResult(self._replica_id, is_generator_object=True),
-                self._queue_len_info,
+            return FakeReplicaResult(
+                self._replica_id,
+                is_generator_object=True,
+                queue_len_info=self._queue_len_info,
             )
         else:
             if pr.metadata.is_streaming:
-                return (
-                    FakeReplicaResult(self._replica_id, is_generator_object=True),
-                    None,
-                )
+                return FakeReplicaResult(self._replica_id, is_generator_object=True)
             else:
-                return (
-                    FakeReplicaResult(self._replica_id, is_generator_object=False),
-                    None,
-                )
+                return FakeReplicaResult(self._replica_id, is_generator_object=False)
 
 
 class FakeRequestRouter(RequestRouter):
@@ -180,6 +184,11 @@ class FakeRequestRouter(RequestRouter):
             self._replica_queue_len_cache.update(
                 replica_id, queue_len_info.num_ongoing_requests
             )
+
+    def on_send_request(self, replica_id: ReplicaID):
+        if self._use_queue_len_cache:
+            num_ongoing_requests = self._replica_queue_len_cache.get(replica_id) or 0
+            self._replica_queue_len_cache.update(replica_id, num_ongoing_requests + 1)
 
     def on_replica_actor_unavailable(self, replica_id: ReplicaID):
         self._replica_queue_len_cache.invalidate_key(replica_id)

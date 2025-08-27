@@ -10,8 +10,7 @@ import logging
 from urllib3.util import Retry
 from requests import Session
 from requests.adapters import HTTPAdapter
-
-from google.protobuf.json_format import MessageToJson
+from ray._private.protobuf_compat import message_to_json
 
 try:
     import prometheus_client
@@ -66,12 +65,8 @@ REQUEST_BACKOFF_MAX = ray_constants.env_integer(
 REQUEST_BACKOFF_FACTOR = ray_constants.env_float(
     f"{env_var_prefix}_REQUEST_BACKOFF_FACTOR", 1.0
 )
-# Address of the external service to send events
-EVENT_SEND_ADDR = os.environ.get(
-    f"{env_var_prefix}_EVENT_SEND_ADDR", "http://127.0.0.1"
-)
-# Port of the external service to send events
-EVENT_SEND_PORT = ray_constants.env_integer(f"{env_var_prefix}_EVENT_SEND_PORT", 12345)
+# Address of the external service to send events with format of "http://<ip>:<port>"
+EVENTS_EXPORT_ADDR = os.environ.get(f"{env_var_prefix}_EVENTS_EXPORT_ADDR", "")
 # Interval to update metrics
 METRICS_UPDATE_INTERVAL_SECONDS = ray_constants.env_float(
     f"{env_var_prefix}_METRICS_UPDATE_INTERVAL_SECONDS", 0.1
@@ -81,7 +76,11 @@ METRICS_UPDATE_INTERVAL_SECONDS = ray_constants.env_float(
 # Valid values: TASK_DEFINITION_EVENT, TASK_EXECUTION_EVENT, ACTOR_TASK_DEFINITION_EVENT, ACTOR_TASK_EXECUTION_EVENT
 # The list of all supported event types can be found in src/ray/protobuf/events_base_event.proto (EventType enum)
 # By default TASK_PROFILE_EVENT is not exposed to external services
-DEFAULT_EXPOSABLE_EVENT_TYPES = "TASK_DEFINITION_EVENT,TASK_EXECUTION_EVENT,ACTOR_TASK_DEFINITION_EVENT,ACTOR_TASK_EXECUTION_EVENT"
+DEFAULT_EXPOSABLE_EVENT_TYPES = (
+    "TASK_DEFINITION_EVENT,TASK_EXECUTION_EVENT,"
+    "ACTOR_TASK_DEFINITION_EVENT,ACTOR_TASK_EXECUTION_EVENT,"
+    "DRIVER_JOB_DEFINITION_EVENT,DRIVER_JOB_EXECUTION_EVENT"
+)
 EXPOSABLE_EVENT_TYPES = os.environ.get(
     f"{env_var_prefix}_EXPOSABLE_EVENT_TYPES", DEFAULT_EXPOSABLE_EVENT_TYPES
 )
@@ -119,7 +118,9 @@ if prometheus_client:
     )
     events_filtered_out = Counter(
         f"{metrics_prefix}_events_filtered_out",
-        "Total number of events filtered out before publishing to external server.",
+        "Total number of events filtered out before publishing to external server. The "
+        "metric counts the events that are received by the aggregator agent but are "
+        "not part of the public API yet.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
@@ -164,6 +165,28 @@ class AggregatorAgent(
         self._events_dropped_at_event_aggregator_since_last_metrics_update = 0
         self._events_published_since_last_metrics_update = 0
         self._events_filtered_out_since_last_metrics_update = 0
+        self._events_export_addr = (
+            dashboard_agent.events_export_addr or EVENTS_EXPORT_ADDR
+        )
+
+        self._event_http_target_enabled = bool(self._events_export_addr)
+        if not self._event_http_target_enabled:
+            logger.info(
+                "Event HTTP target not set, skipping sending events to "
+                f"external http service. events_export_addr: {self._events_export_addr}"
+            )
+
+        self._event_processing_enabled = self._event_http_target_enabled
+        if self._event_processing_enabled:
+            logger.info("Event processing enabled")
+        else:
+            logger.info("Event processing disabled")
+
+        self._exposable_event_types = {
+            event_type.strip()
+            for event_type in EXPOSABLE_EVENT_TYPES.split(",")
+            if event_type.strip()
+        }
 
         self._orig_sigterm_handler = signal.signal(
             signal.SIGTERM, self._sigterm_handler
@@ -171,12 +194,6 @@ class AggregatorAgent(
 
         self._is_cleanup = False
         self._cleanup_finished_event = threading.Event()
-
-        self._exposable_event_types = {
-            event_type.strip()
-            for event_type in EXPOSABLE_EVENT_TYPES.split(",")
-            if event_type.strip()
-        }
 
     async def AddEvents(self, request, context) -> None:
         """
@@ -192,6 +209,9 @@ class AggregatorAgent(
         """
         Receives events from the request, adds them to the event buffer,
         """
+        if not self._event_processing_enabled:
+            return events_event_aggregator_service_pb2.AddEventsReply()
+
         # TODO(myan) #54515: Considering adding a mechanism to also send out the events
         # metadata (e.g. dropped task attempts) to help with event processing at the
         # downstream
@@ -235,7 +255,7 @@ class AggregatorAgent(
         """
         Sends a batch of events to the external service via HTTP POST request
         """
-        if not event_batch:
+        if not event_batch or not self._event_http_target_enabled:
             return
 
         filtered_event_batch = [
@@ -250,12 +270,15 @@ class AggregatorAgent(
 
         # Convert protobuf objects to JSON dictionaries for HTTP POST
         filtered_event_batch_json = [
-            json.loads(MessageToJson(event)) for event in filtered_event_batch
+            json.loads(
+                message_to_json(event, always_print_fields_with_no_presence=True)
+            )
+            for event in filtered_event_batch
         ]
 
         try:
             response = self._http_session.post(
-                f"{EVENT_SEND_ADDR}:{EVENT_SEND_PORT}", json=filtered_event_batch_json
+                f"{self._events_export_addr}", json=filtered_event_batch_json
             )
             response.raise_for_status()
             with self._lock:

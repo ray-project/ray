@@ -372,7 +372,6 @@ cdef extern from "ray/core_worker/common.h" nogil:
             CPlacementStrategy strategy,
             const c_vector[unordered_map[c_string, double]] &bundles,
             c_bool is_detached,
-            double max_cpu_fraction_per_node,
             CNodeID soft_target_node_id,
             const c_vector[unordered_map[c_string, c_string]] &bundle_label_selector,
         )
@@ -662,13 +661,10 @@ cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
         CRayStatus PollLogs(
             c_string* key_id, int64_t timeout_ms, CLogBatch* data)
 
-        CRayStatus PollActor(
-            c_string* key_id, int64_t timeout_ms, CActorTableData* data)
-
         CRayStatus Close()
 
 cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" namespace "ray::gcs" nogil:
-    c_vector[c_string] PythonGetLogBatchLines(const CLogBatch& log_batch)
+    c_vector[c_string] PythonGetLogBatchLines(CLogBatch log_batch)
 
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
     unordered_map[c_string, c_string] PythonGetNodeLabels(
