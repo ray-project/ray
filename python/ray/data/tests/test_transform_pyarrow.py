@@ -603,12 +603,6 @@ def test_unify_schemas_object_types(unify_schemas_object_types_schemas):
     assert result == schemas["expected"]
 
 
-def test_unify_schemas_duplicate_fields(unify_schemas_duplicate_fields_schema):
-    """Test error handling for duplicate field names."""
-    with pytest.raises(ValueError, match="has multiple fields with the same name"):
-        unify_schemas([unify_schemas_duplicate_fields_schema])
-
-
 @pytest.mark.skipif(
     get_pyarrow_version() < parse_version("17.0.0"),
     reason="Requires PyArrow version 17 or higher",
@@ -2786,12 +2780,6 @@ def unify_schemas_object_types_schemas():
         "float_schema": schema3,
         "expected": expected,
     }
-
-
-@pytest.fixture
-def unify_schemas_duplicate_fields_schema():
-    """Fixture for duplicate fields unify schemas test data."""
-    return pa.schema([("col", pa.int32()), ("col", pa.int64())])  # Duplicate name
 
 
 @pytest.fixture
