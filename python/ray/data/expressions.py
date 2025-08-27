@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
 
-from ray.data.datatype import DataType
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
@@ -276,7 +275,6 @@ class UDFExpr(Expr):
     fn: Callable
     args: List[Expr]
     kwargs: Dict[str, Expr]
-    return_dtype: DataType
     function_name: Optional[str] = None
 
     def structurally_equals(self, other: Any) -> bool:
@@ -295,7 +293,7 @@ class UDFExpr(Expr):
         )
 
 
-def _create_udf_callable(fn: Callable, return_dtype: DataType):
+def _create_udf_callable(fn: Callable):
     """Create a callable that generates UDFExpr when called with expressions."""
 
     def udf_callable(*args, **kwargs):
@@ -318,7 +316,6 @@ def _create_udf_callable(fn: Callable, return_dtype: DataType):
             fn=fn,
             args=expr_args,
             kwargs=expr_kwargs,
-            return_dtype=return_dtype,
             function_name=getattr(fn, "__name__", None),
         )
 
@@ -327,13 +324,12 @@ def _create_udf_callable(fn: Callable, return_dtype: DataType):
 
     # Store the original function for access if needed
     udf_callable._original_fn = fn
-    udf_callable._return_dtype = return_dtype
 
     return udf_callable
 
 
 @PublicAPI(stability="alpha")
-def udf(fn: Optional[Callable] = None, *, return_dtype: DataType) -> Callable:
+def udf(fn: Optional[Callable] = None) -> Callable:
     """
     Decorator to convert a UDF into an expression-compatible function.
 
@@ -347,24 +343,22 @@ def udf(fn: Optional[Callable] = None, *, return_dtype: DataType) -> Callable:
 
     Args:
         fn: The function to decorate (when used as @udf)
-        return_dtype: Required return data type for schema inference.
     Returns:
         A callable that creates UDFExpr instances when called with expressions
 
     Example:
         >>> from ray.data.expressions import col, udf
-        >>> from ray.data.datatype import DataType
         >>> import pyarrow as pa
         >>> import pyarrow.compute as pc
         >>> import ray
         >>>
         >>> # UDF that operates on a batch of values (PyArrow Array)
-        >>> @udf(return_dtype=DataType.int64())
+        >>> @udf()
         ... def add_one(x: pa.Array) -> pa.Array:
         ...     return pc.add(x, 1)  # Vectorized operation on the entire Array
         >>>
         >>> # UDF that combines multiple columns (each as a PyArrow Array)
-        >>> @udf(return_dtype=DataType.string())
+        >>> @udf()
         ... def format_name(first: pa.Array, last: pa.Array) -> pa.Array:
         ...     return pc.binary_join_element_wise(first, last, " ")  # Vectorized string concatenation
         >>>
@@ -385,18 +379,9 @@ def udf(fn: Optional[Callable] = None, *, return_dtype: DataType) -> Callable:
     """
 
     def decorator(func: Callable):
-        return _create_udf_callable(func, return_dtype)
+        return _create_udf_callable(func)
 
-    # Handle both @udf and @udf(...) syntax
-    if fn is not None:
-        # This is the @udf syntax without parentheses, which is no longer supported
-        # since return_dtype is mandatory
-        raise ValueError(
-            "return_dtype is required for UDF expressions. "
-            f"Please use @udf(return_dtype=DataType...) instead of @udf for function '{fn.__name__}'"
-        )
-    else:
-        return decorator
+    return decorator
 
 
 @PublicAPI(stability="beta")

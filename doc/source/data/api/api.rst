@@ -13,7 +13,6 @@ Ray Data API
     aggregate.rst
     grouped_data.rst
     expressions.rst
-    datatype.rst
     data_context.rst
     preprocessor.rst
     llm.rst
