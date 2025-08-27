@@ -17,10 +17,10 @@
 #include <string>
 
 #include "ray/common/id.h"
+#include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/event.h"
-#include "ray/common/scheduling/cluster_resource_data.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 #include "src/ray/protobuf/export_actor_data.pb.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
