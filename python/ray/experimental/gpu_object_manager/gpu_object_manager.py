@@ -228,7 +228,6 @@ class GPUObjectManager:
                 and src_actor._actor_id in updated_meta.dest_actors
                 and len(updated_meta.dest_actors) > 1
             ):
-                print("GPU ObjectRef({obj_id}) is being passed back to the ")
                 warnings.warn(
                     f"GPU ObjectRef({obj_id}) is being passed back to the same actor {src_actor} and will be treated as a mutable tensor. "
                     "If the tensor is modified, Ray's internal copy will also be updated, and subsequent passes to other actors "

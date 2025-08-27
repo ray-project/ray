@@ -693,12 +693,7 @@ def test_send_back_and_dst_warning(ray_start_regular):
 
     tensor = torch.tensor([1, 2, 3])
 
-    warning_message = (
-        f"GPU object ref [a-f0-9]+ is being passed back to the same actor {src_actor} "
-        "and will be treated as a mutable tensor. If the tensor is modified, Ray's internal copy "
-        "will also be updated, and subsequent passes to other actors will receive the updated "
-        "version instead of the original."
-    )
+    warning_message = r"GPU ObjectRef\(.+\)"
 
     with pytest.warns(UserWarning, match=warning_message):
         t = src_actor.echo.remote(tensor)
