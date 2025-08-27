@@ -4,11 +4,25 @@ load("@rules_proto//proto:defs.bzl", "proto_library")
 package(default_visibility = ["//visibility:public"])
 
 proto_library(
+    name = "events_actor_task_definition_event_proto",
+    srcs = ["events_actor_task_definition_event.proto"],
+    deps = [
+        ":runtime_environment_proto",
+        "//src/ray/protobuf:common_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "events_actor_task_definition_event_cc_proto",
+    deps = [":events_actor_task_definition_event_proto"],
+)
+
+proto_library(
     name = "events_task_definition_event_proto",
     srcs = ["events_task_definition_event.proto"],
     deps = [
-        "//src/ray/protobuf:common_proto",
         ":runtime_environment_proto",
+        "//src/ray/protobuf:common_proto",
     ],
 )
 
@@ -29,20 +43,6 @@ proto_library(
 cc_proto_library(
     name = "events_task_execution_event_cc_proto",
     deps = [":events_task_execution_event_proto"],
-)
-
-proto_library(
-    name = "events_actor_task_definition_event_proto",
-    srcs = ["events_actor_task_definition_event.proto"],
-    deps = [
-        "//src/ray/protobuf:common_proto",
-        ":runtime_environment_proto",
-    ],
-)
-
-cc_proto_library(
-    name = "events_actor_task_definition_event_cc_proto",
-    deps = [":events_actor_task_definition_event_proto"],
 )
 
 proto_library(
