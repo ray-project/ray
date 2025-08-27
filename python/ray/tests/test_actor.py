@@ -1692,8 +1692,9 @@ def test_get_actor_after_same_name_actor_dead(shutdown_only):
 
     pid = ray.get(a.get_pid.remote())
     os.kill(pid, signal.SIGKILL)
+    a_actor_id = a._actor_id.hex()
 
-    wait_for_condition(lambda: ray.state.actors(a._actor_id.hex())["State"] == "DEAD")
+    wait_for_condition(lambda: ray.state.actors(a_actor_id)["State"] == "DEAD")
 
     # When a reference is held, the name cannot be reused.
     with pytest.raises(ValueError):
