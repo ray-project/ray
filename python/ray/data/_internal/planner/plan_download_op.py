@@ -88,6 +88,8 @@ def plan_download_op(
 def uri_to_path(uri: str) -> str:
     """Convert a URI to a filesystem path."""
     parsed = urlparse(uri)
+    if parsed.scheme == "file":
+        return parsed.path
     return parsed.netloc + parsed.path
 
 
@@ -112,7 +114,8 @@ def download_bytes_threaded(
             try:
                 with fs.open_input_file(uri_to_path(uri)) as f:
                     yield f.read()
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Failed to download {uri}: {e}")
                 yield None
 
     # Use make_async_gen to download URIs concurrently
@@ -192,8 +195,9 @@ class PartitionActor:
             uris = block.column(self._uri_column_name).to_pylist()
             sample_uris = uris[: self.INIT_SAMPLE_BATCH_SIZE]
             file_sizes = self._sample_sizes(sample_uris)
-            if not file_sizes:
+            if not file_sizes or sum(file_sizes) == 0:
                 # Fallback to incoming block size if no file sizes could be determined
+                # or if the total size sampled is 0
                 logger.warning(
                     "No file sizes could be determined, using incoming block size"
                 )
