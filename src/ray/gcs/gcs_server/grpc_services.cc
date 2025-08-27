@@ -36,6 +36,20 @@ void NodeInfoGrpcService::InitServerCallFactories(
   RPC_SERVICE_HANDLER(NodeInfoGcsService, CheckAlive, max_active_rpcs_per_handler_)
 }
 
+void NodeResourceInfoGrpcService::InitServerCallFactories(
+    const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+    std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+    const ClusterID &cluster_id) {
+  RPC_SERVICE_HANDLER(
+      NodeResourceInfoGcsService, GetAllAvailableResources, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      NodeResourceInfoGcsService, GetAllTotalResources, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      NodeResourceInfoGcsService, GetDrainingNodes, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      NodeResourceInfoGcsService, GetAllResourceUsage, max_active_rpcs_per_handler_)
+}
+
 void InternalPubSubGrpcService::InitServerCallFactories(
     const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
@@ -82,6 +96,22 @@ void WorkerInfoGrpcService::InitServerCallFactories(
       WorkerInfoGcsService, UpdateWorkerDebuggerPort, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(
       WorkerInfoGcsService, UpdateWorkerNumPausedThreads, max_active_rpcs_per_handler_)
+}
+
+void InternalKVGrpcService::InitServerCallFactories(
+    const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+    std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+    const ClusterID &cluster_id) {
+  RPC_SERVICE_HANDLER(InternalKVGcsService, InternalKVGet, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      InternalKVGcsService, InternalKVMultiGet, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(InternalKVGcsService, InternalKVPut, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(InternalKVGcsService, InternalKVDel, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      InternalKVGcsService, InternalKVExists, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(InternalKVGcsService, InternalKVKeys, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      InternalKVGcsService, GetInternalConfig, max_active_rpcs_per_handler_)
 }
 
 }  // namespace rpc

@@ -127,11 +127,6 @@ namespace rpc {
                       HANDLER,                        \
                       RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
-#define NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(NodeResourceInfoGcsService,       \
-                      HANDLER,                          \
-                      RayConfig::instance().gcs_max_active_rpcs_per_handler())
-
 #define OBJECT_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(ObjectInfoGcsService,      \
                       HANDLER,                   \
@@ -141,9 +136,6 @@ namespace rpc {
   RPC_SERVICE_HANDLER(PlacementGroupInfoGcsService,       \
                       HANDLER,                            \
                       RayConfig::instance().gcs_max_active_rpcs_per_handler())
-
-#define INTERNAL_KV_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(InternalKVGcsService, HANDLER, -1)
 
 #define GCS_RPC_SEND_REPLY(send_reply_callback, reply, status)        \
   reply->mutable_status()->set_code(static_cast<int>(status.code())); \
@@ -237,58 +229,6 @@ class ActorInfoGrpcService : public GrpcService {
   ActorInfoGcsServiceHandler &service_handler_;
 };
 
-class NodeResourceInfoGcsServiceHandler {
- public:
-  virtual ~NodeResourceInfoGcsServiceHandler() = default;
-
-  virtual void HandleGetAllAvailableResources(
-      rpc::GetAllAvailableResourcesRequest request,
-      rpc::GetAllAvailableResourcesReply *reply,
-      rpc::SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetAllTotalResources(rpc::GetAllTotalResourcesRequest request,
-                                          rpc::GetAllTotalResourcesReply *reply,
-                                          rpc::SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetDrainingNodes(rpc::GetDrainingNodesRequest request,
-                                      rpc::GetDrainingNodesReply *reply,
-                                      rpc::SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetAllResourceUsage(GetAllResourceUsageRequest request,
-                                         GetAllResourceUsageReply *reply,
-                                         SendReplyCallback send_reply_callback) = 0;
-};
-
-/// The `GrpcService` for `NodeResourceInfoGcsService`.
-class NodeResourceInfoGrpcService : public GrpcService {
- public:
-  /// Constructor.
-  ///
-  /// \param[in] handler The service handler that actually handle the requests.
-  explicit NodeResourceInfoGrpcService(instrumented_io_context &io_service,
-                                       NodeResourceInfoGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler){};
-
- protected:
-  grpc::Service &GetGrpcService() override { return service_; }
-
-  void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id) override {
-    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllAvailableResources);
-    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllTotalResources);
-    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetDrainingNodes);
-    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllResourceUsage);
-  }
-
- private:
-  /// The grpc async service object.
-  NodeResourceInfoGcsService::AsyncService service_;
-  /// The service handler that actually handle the requests.
-  NodeResourceInfoGcsServiceHandler &service_handler_;
-};
-
 class PlacementGroupInfoGcsServiceHandler {
  public:
   virtual ~PlacementGroupInfoGcsServiceHandler() = default;
@@ -349,64 +289,6 @@ class PlacementGroupInfoGrpcService : public GrpcService {
   PlacementGroupInfoGcsService::AsyncService service_;
   /// The service handler that actually handle the requests.
   PlacementGroupInfoGcsServiceHandler &service_handler_;
-};
-
-class InternalKVGcsServiceHandler {
- public:
-  virtual ~InternalKVGcsServiceHandler() = default;
-  virtual void HandleInternalKVKeys(InternalKVKeysRequest request,
-                                    InternalKVKeysReply *reply,
-                                    SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleInternalKVGet(InternalKVGetRequest request,
-                                   InternalKVGetReply *reply,
-                                   SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleInternalKVMultiGet(InternalKVMultiGetRequest request,
-                                        InternalKVMultiGetReply *reply,
-                                        SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleInternalKVPut(InternalKVPutRequest request,
-                                   InternalKVPutReply *reply,
-                                   SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleInternalKVDel(InternalKVDelRequest request,
-                                   InternalKVDelReply *reply,
-                                   SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleInternalKVExists(InternalKVExistsRequest request,
-                                      InternalKVExistsReply *reply,
-                                      SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetInternalConfig(GetInternalConfigRequest request,
-                                       GetInternalConfigReply *reply,
-                                       SendReplyCallback send_reply_callback) = 0;
-};
-
-class InternalKVGrpcService : public GrpcService {
- public:
-  explicit InternalKVGrpcService(instrumented_io_context &io_service,
-                                 InternalKVGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler) {}
-
- protected:
-  grpc::Service &GetGrpcService() override { return service_; }
-  void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id) override {
-    INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVGet);
-    INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVMultiGet);
-    INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVPut);
-    INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVDel);
-    INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVExists);
-    INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVKeys);
-    INTERNAL_KV_SERVICE_RPC_HANDLER(GetInternalConfig);
-  }
-
- private:
-  InternalKVGcsService::AsyncService service_;
-  InternalKVGcsServiceHandler &service_handler_;
 };
 
 class TaskInfoGcsServiceHandler {
@@ -483,9 +365,7 @@ class RayEventExportGrpcService : public GrpcService {
 };
 
 using ActorInfoHandler = ActorInfoGcsServiceHandler;
-using NodeResourceInfoHandler = NodeResourceInfoGcsServiceHandler;
 using PlacementGroupInfoHandler = PlacementGroupInfoGcsServiceHandler;
-using InternalKVHandler = InternalKVGcsServiceHandler;
 using TaskInfoHandler = TaskInfoGcsServiceHandler;
 using RayEventExportHandler = RayEventExportGcsServiceHandler;
 
