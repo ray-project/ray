@@ -90,6 +90,7 @@
     cluster_compute: hello_world_compute_config.yaml
 
   run:
+    timeout: 1800
     script: python hello_world.py
 
   variations:
