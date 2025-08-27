@@ -190,16 +190,73 @@ def test_builder():
 
 class TestProcessorConfig:
     def test_valid_concurrency(self):
+        config = vLLMEngineProcessorConfig(
+            model_source="unsloth/Llama-3.2-1B-Instruct",
+            concurrency=(1, 2),
+        )
+        assert config.concurrency == (1, 2)
 
-        with pytest.raises(pydantic.ValidationError, match="should be a valid integer"):
-            config = vLLMEngineProcessorConfig(
-                model_source="unsloth/Llama-3.2-1B-Instruct",
-                concurrency=(1, 2),
-            )
         config = vLLMEngineProcessorConfig(
             model_source="unsloth/Llama-3.2-1B-Instruct",
         )
         assert config.concurrency == 1
+
+    def test_invalid_concurrency(self):
+        with pytest.raises(pydantic.ValidationError):
+            vLLMEngineProcessorConfig(
+                model_source="unsloth/Llama-3.2-1B-Instruct",
+                concurrency=1.1,
+            )
+
+        with pytest.raises(pydantic.ValidationError):
+            vLLMEngineProcessorConfig(
+                model_source="unsloth/Llama-3.2-1B-Instruct",
+                concurrency=[1, 2, 3],
+            )
+
+    @pytest.mark.parametrize("n", [1, 2, 10])
+    def test_positive_int_not_fail(self, n):
+        assert ProcessorConfig._validate_concurrency(n) is None
+
+    @pytest.mark.parametrize("pair", [(1, 1), (1, 2), (2, 8)])
+    def test_valid_tuple_not_fail(self, pair):
+        assert ProcessorConfig._validate_concurrency(pair) is None
+
+    @pytest.mark.parametrize(
+        "bad,msg_part",
+        [
+            (0, "positive integer"),
+            (-5, "positive integer"),
+            ((1, 2, 3), "exactly `2` items"),
+            ((0, 1), "positive integers"),
+            ((1, 0), "positive integers"),
+            ((-1, 2), "positive integers"),
+            ((1, -2), "positive integers"),
+            ((1, 2.5), "positive integers"),
+            (["1", 2], "Unexpected type"),
+            ("2", "Unexpected type"),
+            ((5, 2), "min > max"),
+        ],
+    )
+    def test_invalid_inputs_raise(self, bad, msg_part):
+        with pytest.raises(ValueError) as e:
+            ProcessorConfig._validate_concurrency(bad)
+        assert msg_part in str(e.value)
+
+    @pytest.mark.parametrize("n,expected", [(1, (1, 1)), (4, (1, 4)), (10, (1, 10))])
+    def test_with_int_concurrency_scaling(self, n, expected):
+        conf = ProcessorConfig(concurrency=n)
+        assert conf.concurrency_tuple() == expected
+
+    @pytest.mark.parametrize("n,expected", [(1, (1, 1)), (4, (4, 4)), (10, (10, 10))])
+    def test_with_int_concurrency_fixed(self, n, expected):
+        conf = ProcessorConfig(concurrency=n)
+        assert conf.concurrency_tuple(static=True) == expected
+
+    @pytest.mark.parametrize("pair", [(1, 1), (1, 3), (2, 8)])
+    def test_with_tuple_concurrency(self, pair):
+        conf = ProcessorConfig(concurrency=pair)
+        assert conf.concurrency_tuple() == pair
 
 
 if __name__ == "__main__":
