@@ -24,9 +24,10 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
+#include "ray/gcs/gcs_server/grpc_service_interfaces.h"
 #include "ray/gcs/gcs_server/usage_stats_client.h"
 #include "ray/gcs/pb_util.h"
-#include "ray/rpc/gcs/gcs_rpc_server.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/util/counter_map.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -92,7 +93,8 @@ class FinishedTaskActorTaskGcPolicy : public TaskEventsGcPolicyInterface {
 ///
 /// This class has its own io_context and io_thread, that's separate from other GCS
 /// services. All handling of all rpc should be posted to the single thread it owns.
-class GcsTaskManager : public rpc::TaskInfoHandler, public rpc::RayEventExportHandler {
+class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
+                       public rpc::RayEventExportGcsServiceHandler {
  public:
   /// Create a GcsTaskManager.
   explicit GcsTaskManager(instrumented_io_context &io_service);
