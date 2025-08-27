@@ -135,7 +135,7 @@ if __name__ == "__main__":
                     win_rate_threshold=0.5,
                     main_policy=main_policy,
                     starting_modules=[main_policy, "noop"],
-                    fixed_modules_progression_sequence=("noop", "back")
+                    fixed_modules_progression_sequence=("noop", "back"),
                 ),
             ]
         )
