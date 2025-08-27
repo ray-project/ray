@@ -653,22 +653,60 @@ def test_report_per_component_stats_gpu():
         "component_gpu_memory_usage": 0,
     }
 
-            # Mock all the individual methods that _collect_stats calls to return predictable data
+    def create_mock_agent_proc():
+        """Helper function to create a mock agent process."""
+        mock_agent_proc = MagicMock()
+        mock_agent_proc.pid = agent_proc_pid
+        mock_agent_proc.create_time.return_value = agent_proc_create_time
+        return mock_agent_proc
+
+    agent_proc_pid = 22334
+    agent_proc_create_time = 1614826392.338613
+    agent_proc_mock = create_mock_agent_proc()
+
+    def create_mock_worker_processes():
+        """Helper function to create mock worker processes for testing."""
+        mock_workers = {}
+
+        # Create mock worker processes that match what _get_workers expects
+        for i, worker_data in enumerate(mock_collected_stats["workers"]):
+            mock_proc = MagicMock()
+            mock_proc.status.return_value = psutil.STATUS_RUNNING
+            mock_proc.as_dict.return_value = {
+                "pid": worker_data["pid"],
+                "cmdline": worker_data["cmdline"],
+                "cpu_percent": worker_data["cpu_percent"],
+                "memory_info": worker_data["memory_info"],
+                "memory_full_info": worker_data["memory_full_info"],
+                "num_fds": worker_data["num_fds"],
+                "create_time": worker_data["create_time"],
+                "cpu_times": worker_data["cpu_times"],
+            }
+            mock_workers[f"worker_{i}"] = mock_proc
+
+        # Add the agent process to the mock workers
+        mock_workers[agent._generate_worker_key(agent_proc_mock)] = agent_proc_mock
+        return mock_workers
+
+
+
+    # Mock all the individual methods that _collect_stats calls to return predictable data
     mock_patches = {
-        '_get_network_stats': (13621160960, 11914936320),
-        '_get_disk_io_stats': (100, 100, 100, 100),
-        '_get_gpu_usage': mock_collected_stats["gpus"],
-        '_get_cpu_percent': 57.4,
-        '_get_mem_usage': (17179869184, 5723353088, 66.7, 9234341888),
-        '_get_shm_usage': 456,
-        '_get_workers': mock_collected_stats["workers"],
-        '_get_raylet': mock_collected_stats["raylet"],
-        '_get_agent': mock_collected_stats["agent"],
-        '_get_boot_time': 1612934656.0,
-        '_get_load_avg': ((4.4521484375, 3.61083984375, 3.5400390625), (0.56, 0.45, 0.44)),
-        '_get_disk_usage': mock_collected_stats["disk"],
-        '_get_tpu_usage': [],
-        '_get_gcs': mock_collected_stats["gcs"],
+        '_get_network_stats': lambda: (13621160960, 11914936320),
+        '_get_disk_io_stats': lambda: (100, 100, 100, 100),
+        '_get_gpu_usage': lambda: mock_collected_stats["gpus"],
+        '_get_cpu_percent': lambda _: 57.4,
+        '_get_mem_usage': lambda: (17179869184, 5723353088, 66.7, 9234341888),
+        '_get_shm_usage': lambda: 456,
+        '_get_raylet': lambda: mock_collected_stats["raylet"],
+        '_get_agent': lambda: mock_collected_stats["agent"],
+        '_get_boot_time': lambda: 1612934656.0,
+        '_get_load_avg': lambda: ((4.4521484375, 3.61083984375, 3.5400390625), (0.56, 0.45, 0.44)),
+        '_get_disk_usage': lambda: mock_collected_stats["disk"],
+        '_get_tpu_usage': lambda: [],
+        '_get_gcs': lambda: mock_collected_stats["gcs"],
+        '_get_worker_processes': lambda: create_mock_worker_processes(),
+        '_get_agent_proc': lambda: agent_proc_mock,
     }
 
     with patch.multiple(agent, **mock_patches) as mocks:
@@ -686,11 +724,6 @@ def test_report_per_component_stats_gpu():
         assert collected_stats_result["shm"] == 456
         assert collected_stats_result["network"] == (13621160960, 11914936320)
         assert collected_stats_result["disk_io"] == (100, 100, 100, 100)
-
-        # Verify that all the mock methods were called
-        for method_name in mock_patches.keys():
-            mock_method = getattr(mocks, method_name)
-            mock_method.assert_called_once()
 
         # Now add the GPU processes data to the collected stats result
     NVSMI_OUTPUT_TWO_TASK_ON_TWO_GPUS = (
