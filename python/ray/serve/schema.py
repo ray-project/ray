@@ -953,6 +953,192 @@ class ReplicaDetails(ServeActorDetails, frozen=True):
     )
 
 
+@PublicAPI(stability="alpha")
+class MetricsHealth(str, Enum):
+    HEALTHY = "healthy"
+    DELAYED = "delayed"
+    UNAVAILABLE = "unavailable"
+
+
+@PublicAPI(stability="alpha")
+class ScalingSource(str, Enum):
+    DEFAULT = "default"
+    CUSTOM = "custom"
+    EXTERNAL = "external"
+
+
+@PublicAPI(stability="alpha")
+class ScalingStatus(str, Enum):
+    SCALING_UP = "scaling_up"
+    SCALING_DOWN = "scaling_down"
+    STABLE = "stable"
+
+
+@PublicAPI(stability="alpha")
+class ScalingDecision(BaseModel):
+    """One autoscaling decision with minimal provenance."""
+
+    class Config:
+        extra = Extra.forbid
+
+    timestamp_s: float = Field(
+        ..., description="Unix time (seconds) when the decision was made."
+    )
+    source: ScalingSource = Field(
+        ..., description="Who made this decision: default/custom/external."
+    )
+    reason: str = Field(
+        ..., description="Short, human-readable reason for the decision."
+    )
+    from_replicas: int = Field(
+        ..., ge=0, description="Replica count before the decision."
+    )
+    to_replicas: int = Field(..., ge=0, description="Replica count after the decision.")
+    policy: Optional[str] = Field(
+        None, description="Policy name or identifier (if applicable)."
+    )
+    metrics: Optional[Dict[str, Any]] = Field(
+        None, description="Snapshot of metrics consulted when making the decision."
+    )
+
+
+@PublicAPI(stability="alpha")
+class DeploymentAutoscalerView(BaseModel):
+    """Deployment-level autoscaler observability."""
+
+    class Config:
+        extra = Extra.forbid
+
+    name: str = Field(..., description="Deployment name.")
+    current_replicas: int = Field(
+        ..., ge=0, description="Current number of live replicas."
+    )
+    proposed_replicas: int = Field(
+        ..., ge=0, description="Proposed number of replicas from the autoscaler policy."
+    )
+    min_replicas: Optional[int] = Field(
+        None, ge=0, description="Effective min replicas (capacity-adjusted)."
+    )
+    max_replicas: Optional[int] = Field(
+        None, ge=0, description="Effective max replicas (capacity-adjusted)."
+    )
+    scaling_status: ScalingStatus = Field(
+        ..., description="Current scaling direction or stability."
+    )
+    decisions: List[ScalingDecision] = Field(
+        default_factory=list, description="Recent scaling decisions."
+    )
+    metrics: Optional[Dict[str, Any]] = Field(
+        None, description="Aggregated metrics for this deployment."
+    )
+    lookback_period_s: Optional[int] = Field(
+        None, ge=0, description="Metrics lookback window (seconds)."
+    )
+    metrics_health: MetricsHealth = Field(
+        MetricsHealth.HEALTHY, description="Health of metrics collection pipeline."
+    )
+    errors: List[str] = Field(
+        default_factory=list, description="Recent errors/abnormal events."
+    )
+
+
+@PublicAPI(stability="alpha")
+class WebhookEvent(BaseModel):
+    """External scaler webhook delivery history."""
+
+    class Config:
+        extra = Extra.forbid
+
+    timestamp_s: float = Field(
+        ..., description="Unix time (seconds) when the webhook was attempted."
+    )
+    target: str = Field(..., description="Destination URL or identifier.")
+    action: str = Field(
+        ..., description='Human-readable action (e.g., "scale up to 5").'
+    )
+    response_status: Optional[int] = Field(
+        None, ge=100, le=599, description="HTTP status code returned."
+    )
+    response_time_ms: Optional[float] = Field(
+        None, ge=0, description="Latency in milliseconds."
+    )
+
+
+@PublicAPI(stability="alpha")
+class ExternalScalerView(BaseModel):
+    """Observability for an external/webhook-based scaler."""
+
+    class Config:
+        extra = Extra.forbid
+
+    deployment: str = Field(
+        ..., description="Deployment controlled by the external scaler."
+    )
+    decisions: List[ScalingDecision] = Field(
+        default_factory=list, description="Decisions recorded via external scaler."
+    )
+    webhook_history: List[WebhookEvent] = Field(
+        default_factory=list, description="Recent webhook call outcomes."
+    )
+    metrics: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Optional metrics snapshot if provided by the external scaler.",
+    )
+
+
+@PublicAPI(stability="alpha")
+class ApplicationDeploymentStatus(BaseModel):
+    """A summary of a deployment's status within an application."""
+
+    class Config:
+        extra = Extra.forbid
+
+    current_replicas: int = Field(
+        ..., ge=0, description="Current number of live replicas."
+    )
+    proposed_replicas: int = Field(
+        ..., ge=0, description="Proposed number of replicas from the autoscaler policy."
+    )
+    min_replicas: Optional[int] = Field(
+        None, ge=0, description="Effective min replicas."
+    )
+    max_replicas: Optional[int] = Field(
+        None, ge=0, description="Effective max replicas."
+    )
+
+
+@PublicAPI(stability="alpha")
+class ApplicationAutoscalerView(BaseModel):
+    """Application-level autoscaler observability."""
+
+    class Config:
+        extra = Extra.forbid
+
+    application: str = Field(..., description="Application name.")
+    policy: Optional[str] = Field(
+        None, description="Application-level policy (if any)."
+    )
+    scaling_status: ScalingStatus = Field(
+        ..., description="Current scaling direction or stability."
+    )
+    decisions: List[ScalingDecision] = Field(
+        default_factory=list, description="Recent application-level decisions."
+    )
+    metrics: Optional[Dict[str, Any]] = Field(
+        None, description="Aggregated metrics for the application."
+    )
+    lookback_period_s: Optional[int] = Field(
+        None, ge=0, description="Metrics lookback window (seconds)."
+    )
+    errors: List[str] = Field(
+        default_factory=list, description="Recent errors/abnormal events."
+    )
+    deployments: Dict[str, ApplicationDeploymentStatus] = Field(
+        default_factory=dict,
+        description="Per-deployment summary status keyed by deployment name.",
+    )
+
+
 @PublicAPI(stability="stable")
 class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
     """
@@ -991,6 +1177,11 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
     )
     replicas: List[ReplicaDetails] = Field(
         description="Details about the live replicas of this deployment."
+    )
+
+    autoscaler: Optional["DeploymentAutoscalerView"] = Field(
+        default=None,
+        description="[EXPERIMENTAL] Deployment-level autoscaler observability for this deployment.",
     )
 
 
@@ -1062,9 +1253,39 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
         description="Details about the deployments in this application."
     )
 
+    autoscaler: Optional["ApplicationAutoscalerView"] = Field(
+        default=None,
+        description="[EXPERIMENTAL] Application-level autoscaler observability for this application.",
+    )
+
     application_details_route_prefix_format = validator(
         "route_prefix", allow_reuse=True
     )(_route_prefix_format)
+
+
+@PublicAPI(stability="alpha")
+class ServeAutoscalerObservability(BaseModel):
+    """Top-level envelope returned by controller for `serve status -v`."""
+
+    class Config:
+        extra = Extra.forbid
+
+    timestamp_s: float = Field(
+        ..., description="Unix time (seconds) when this snapshot was generated."
+    )
+    version: str = Field("v1", description="Schema version.")
+
+    deployments: List[DeploymentDetails] = Field(
+        default_factory=list,
+        description="Deployment details including autoscaler fields.",
+    )
+    applications: List[ApplicationDetails] = Field(
+        default_factory=list,
+        description="Application details including autoscaler fields.",
+    )
+    external_scalers: List[ExternalScalerView] = Field(
+        default_factory=list, description="External scaler views."
+    )
 
 
 @PublicAPI(stability="stable")
@@ -1263,215 +1484,3 @@ class TaskResult(BaseModel):
         default=None, description="The timestamp of the task creation."
     )
     result: Any = Field(..., description="The result of the task.")
-
-
-# === BEGIN: Serve Autoscaler Observability (alpha) ===
-
-
-@PublicAPI(stability="alpha")
-class MetricsHealth(str, Enum):
-    HEALTHY = "healthy"
-    DELAYED = "delayed"
-    UNAVAILABLE = "unavailable"
-
-
-@PublicAPI(stability="alpha")
-class ScalingSource(str, Enum):
-    DEFAULT = "default"
-    CUSTOM = "custom"
-    EXTERNAL = "external"
-
-
-@PublicAPI(stability="alpha")
-class ScalingStatus(str, Enum):
-    SCALING_UP = "scaling_up"
-    SCALING_DOWN = "scaling_down"
-    STABLE = "stable"
-
-
-@PublicAPI(stability="alpha")
-class ScalingDecision(BaseModel):
-    """One autoscaling decision with minimal provenance."""
-
-    class Config:
-        extra = Extra.forbid
-
-    timestamp_s: float = Field(
-        ..., description="Unix time (seconds) when the decision was made."
-    )
-    source: ScalingSource = Field(
-        ..., description="Who made this decision: default/custom/external."
-    )
-    reason: str = Field(
-        ..., description="Short, human-readable reason for the decision."
-    )
-    from_replicas: int = Field(
-        ..., ge=0, description="Replica count before the decision."
-    )
-    to_replicas: int = Field(..., ge=0, description="Replica count after the decision.")
-    policy: Optional[str] = Field(
-        None, description="Policy name or identifier (if applicable)."
-    )
-    metrics: Optional[Dict[str, Any]] = Field(
-        None, description="Snapshot of metrics consulted when making the decision."
-    )
-
-
-@PublicAPI(stability="alpha")
-class DeploymentAutoscalerView(BaseModel):
-    """Deployment-level autoscaler observability."""
-
-    class Config:
-        extra = Extra.forbid
-
-    name: str = Field(..., description="Deployment name.")
-    current_replicas: int = Field(
-        ..., ge=0, description="Current number of live replicas."
-    )
-    target_replicas: int = Field(
-        ..., ge=0, description="Target number of replicas (autoscaler)."
-    )
-    min_replicas: Optional[int] = Field(
-        None, ge=0, description="Effective min replicas (capacity-adjusted)."
-    )
-    max_replicas: Optional[int] = Field(
-        None, ge=0, description="Effective max replicas (capacity-adjusted)."
-    )
-    scaling_status: ScalingStatus = Field(
-        ..., description="Current scaling direction or stability."
-    )
-    decisions: List[ScalingDecision] = Field(
-        default_factory=list, description="Recent scaling decisions."
-    )
-    metrics: Optional[Dict[str, Any]] = Field(
-        None, description="Aggregated metrics for this deployment."
-    )
-    lookback_period_s: Optional[int] = Field(
-        None, ge=0, description="Metrics lookback window (seconds)."
-    )
-    metrics_health: MetricsHealth = Field(
-        MetricsHealth.HEALTHY, description="Health of metrics collection pipeline."
-    )
-    errors: List[str] = Field(
-        default_factory=list, description="Recent errors/abnormal events."
-    )
-
-
-@PublicAPI(stability="alpha")
-class WebhookEvent(BaseModel):
-    """External scaler webhook delivery history."""
-
-    class Config:
-        extra = Extra.forbid
-
-    timestamp_s: float = Field(
-        ..., description="Unix time (seconds) when the webhook was attempted."
-    )
-    target: str = Field(..., description="Destination URL or identifier.")
-    action: str = Field(
-        ..., description='Human-readable action (e.g., "scale up to 5").'
-    )
-    response_status: Optional[int] = Field(
-        None, ge=100, le=599, description="HTTP status code returned."
-    )
-    response_time_ms: Optional[float] = Field(
-        None, ge=0, description="Latency in milliseconds."
-    )
-
-
-@PublicAPI(stability="alpha")
-class ExternalScalerView(BaseModel):
-    """Observability for an external/webhook-based scaler."""
-
-    class Config:
-        extra = Extra.forbid
-
-    deployment: str = Field(
-        ..., description="Deployment controlled by the external scaler."
-    )
-    decisions: List[ScalingDecision] = Field(
-        default_factory=list, description="Decisions recorded via external scaler."
-    )
-    webhook_history: List[WebhookEvent] = Field(
-        default_factory=list, description="Recent webhook call outcomes."
-    )
-    metrics: Optional[Dict[str, Any]] = Field(
-        None,
-        description="Optional metrics snapshot if provided by the external scaler.",
-    )
-
-
-@PublicAPI(stability="alpha")
-class ApplicationDeploymentStatus(BaseModel):
-    """A summary of a deployment's status within an application."""
-
-    class Config:
-        extra = Extra.forbid
-
-    current_replicas: int = Field(
-        ..., ge=0, description="Current number of live replicas."
-    )
-    target_replicas: int = Field(..., ge=0, description="Target number of replicas.")
-    min_replicas: Optional[int] = Field(
-        None, ge=0, description="Effective min replicas."
-    )
-    max_replicas: Optional[int] = Field(
-        None, ge=0, description="Effective max replicas."
-    )
-
-
-@PublicAPI(stability="alpha")
-class ApplicationAutoscalerView(BaseModel):
-    """Application-level autoscaler observability."""
-
-    class Config:
-        extra = Extra.forbid
-
-    application: str = Field(..., description="Application name.")
-    policy: Optional[str] = Field(
-        None, description="Application-level policy (if any)."
-    )
-    scaling_status: ScalingStatus = Field(
-        ..., description="Current scaling direction or stability."
-    )
-    decisions: List[ScalingDecision] = Field(
-        default_factory=list, description="Recent application-level decisions."
-    )
-    metrics: Optional[Dict[str, Any]] = Field(
-        None, description="Aggregated metrics for the application."
-    )
-    lookback_period_s: Optional[int] = Field(
-        None, ge=0, description="Metrics lookback window (seconds)."
-    )
-    errors: List[str] = Field(
-        default_factory=list, description="Recent errors/abnormal events."
-    )
-    deployments: Dict[str, ApplicationDeploymentStatus] = Field(
-        default_factory=dict,
-        description="Per-deployment summary status keyed by deployment name.",
-    )
-
-
-@PublicAPI(stability="alpha")
-class ServeAutoscalerObservability(BaseModel):
-    """Top-level envelope returned by controller for `serve status -v`."""
-
-    class Config:
-        extra = Extra.forbid
-
-    timestamp_s: float = Field(
-        ..., description="Unix time (seconds) when this snapshot was generated."
-    )
-    version: str = Field("v1", description="Schema version.")
-    deployments: List[DeploymentAutoscalerView] = Field(
-        default_factory=list, description="Deployment-level views."
-    )
-    applications: List[ApplicationAutoscalerView] = Field(
-        default_factory=list, description="Application-level views."
-    )
-    external_scalers: List[ExternalScalerView] = Field(
-        default_factory=list, description="External scaler views."
-    )
-
-
-# === END: Serve Autoscaler Observability (alpha) ===
