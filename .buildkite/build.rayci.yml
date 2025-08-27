@@ -27,6 +27,7 @@ steps:
     commands:
       # validate minimal installation
       - python ./ci/env/check_minimal_install.py --expected-python-version {{matrix}}
+      - python -m pip install --upgrade pip
       # build placeholder wheel
       - export RAYCI_DISABLE_CPP_WHEEL=1
       - export SKIP_BAZEL_BUILD=1
