@@ -19,6 +19,7 @@
 #include <string>
 
 #include "ray/core_worker/core_worker_options.h"
+#include "ray/core_worker/metrics.h"
 #include "ray/rpc/metrics_agent_client.h"
 #include "ray/util/mutex_protected.h"
 
@@ -181,6 +182,9 @@ class CoreWorkerProcessImpl {
 
   /// The client to export metrics to the metrics agent.
   std::unique_ptr<ray::rpc::MetricsAgentClient> metrics_agent_client_;
+
+  /// Metrics
+  ray::stats::Gauge metric_tasks_{GetTaskMetric()};
 };
 }  // namespace core
 }  // namespace ray
