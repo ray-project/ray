@@ -221,7 +221,7 @@ ray_cc_test(
         "//src/ray/gcs/gcs_server:gcs_actor",
         "//src/ray/gcs/gcs_server:gcs_actor_scheduler",
         "//src/ray/util:counter_map",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
