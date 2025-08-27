@@ -1,6 +1,8 @@
+import logging
 from typing import Any
 
 import numpy as np
+import psutil
 from gymnasium import spaces
 from pettingzoo.utils.env import (
     AgentID,
@@ -17,6 +19,8 @@ from ray.rllib.examples.envs.classes.multi_agent.footsies.game.footsies_binary i
 from ray.rllib.examples.envs.classes.multi_agent.footsies.game.footsies_game import (
     FootsiesGame,
 )
+
+logger = logging.getLogger("ray.rllib")
 
 
 class FootsiesEnv(MultiAgentEnv):
@@ -64,6 +68,7 @@ class FootsiesEnv(MultiAgentEnv):
             config = {}
         self.config = config
         self.port = port
+        self.footsies_process_pid = None # Store PID of the running footsies process (we assume one per env)
         self.agents: list[AgentID] = ["p1", "p2"]
         self.possible_agents: list[AgentID] = self.agents.copy()
         self._agent_ids: set[AgentID] = set(self.agents)
@@ -213,6 +218,34 @@ class FootsiesEnv(MultiAgentEnv):
 
         return observations, rewards, terminateds, truncateds, self.get_infos()
 
+    def terminate_footsies_process(self):
+        """Terminate Footsies game server process associated with this env_runner.
+
+        Run at the end of the RLlib experiment to ensure no game servers are left running.
+        """
+        timeout = 2
+        try:
+            logger.info(
+                f"RLlib {self.__class__.__name__}: Terminating Footsies "
+                f"game server process with PID: {self.footsies_process_pid}..."
+            )
+            p = psutil.Process(self.footsies_process_pid)
+            p.terminate()
+            p.wait(timeout=timeout)
+        except psutil.NoSuchProcess:
+            logger.info(
+                f"RLlib {self.__class__.__name__}: Process with PID {self.footsies_process_pid} not found, "
+                f"it might have been already terminated."
+            )
+        except psutil.TimeoutExpired:
+            logger.warning(
+                f"RLlib {self.__class__.__name__}: Process with PID {self.footsies_process_pid} did not terminate "
+                f"within {timeout} seconds. "
+                f"Sending SIGKILL signal instead.",
+            )
+            p.kill()
+            p.wait(timeout=timeout)
+
     def _build_charged_special_queue(self):
         assert self.SPECIAL_CHARGE_FRAMES % self.frame_skip == 0
         steps_to_apply_attack = int(self.SPECIAL_CHARGE_FRAMES // self.frame_skip)
@@ -220,7 +253,7 @@ class FootsiesEnv(MultiAgentEnv):
 
     def _prepare_and_start_game_server(self):
         fb = FootsiesBinary(config=self.config, port=self.port)
-        fb.start_game_server()
+        self.footsies_process_pid = fb.start_game_server()
 
 
 def env_creator(env_config: EnvContext) -> FootsiesEnv:
