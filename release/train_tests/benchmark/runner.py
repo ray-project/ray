@@ -313,7 +313,8 @@ class TrainLoopRunner:
                 self._train_epoch()
 
             if not self.benchmark_config.skip_validation_at_epoch_end:
-                self._validate_and_checkpoint()
+                validation_metrics = self._validate()
+                self._checkpoint(validation_metrics)
 
             if ray.train.get_context().get_world_rank() == 0:
                 logger.info(pprint.pformat(self.get_metrics(), indent=2))
@@ -338,7 +339,6 @@ class TrainLoopRunner:
 
         # Throughput
         # TODO: Ray Data can provide these throughput metrics automatically.
-        num_workers = ray.train.get_context().get_world_size()
         train_time = (
             metrics["train/dataset_creation_time"]
             + self._metrics["train/step"].get()
@@ -347,11 +347,8 @@ class TrainLoopRunner:
             + self._metrics["train/iter_batch"].get()
         )
         if train_time > 0:
-            metrics["train/local_throughput"] = (
-                self._metrics["train/rows_processed"].get() / train_time
-            )
             metrics["train/global_throughput"] = (
-                metrics["train/local_throughput"] * num_workers
+                self._metrics["train/rows_processed"].get() / train_time
             )
 
         validation_time = (
@@ -362,11 +359,8 @@ class TrainLoopRunner:
             + self._metrics["validation/iter_batch"].get()
         )
         if validation_time > 0:
-            metrics["validation/local_throughput"] = (
-                self._metrics["validation/rows_processed"].get() / validation_time
-            )
             metrics["validation/global_throughput"] = (
-                metrics["validation/local_throughput"] * num_workers
+                self._metrics["validation/rows_processed"].get() / validation_time
             )
 
         # Extra time that each worker spends to restore from checkpoint,
