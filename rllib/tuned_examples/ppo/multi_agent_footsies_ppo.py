@@ -134,7 +134,7 @@ def env_creator(env_config: EnvContext) -> FootsiesEnv:
     if env_config.get("env-for-evaluation", False):
         port = (
             env_config["eval_start_port"]
-            - 1  # "-1" to start with eval_start_port as the first port (worker index starts at 1)
+            - 1  # "-1" to start with eval_start_port as the first port (eval worker index starts at 1)
             + int(env_config.worker_index) * env_config.get("num_envs_per_worker", 1)
             + env_config.get("vector_index", 0)
         )
