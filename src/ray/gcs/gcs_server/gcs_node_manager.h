@@ -35,17 +35,10 @@
 #include "src/ray/protobuf/ray_syncer.pb.h"
 
 namespace ray {
-namespace rpc {
-class RayletClientPool;
-}  // namespace rpc
-
 namespace gcs {
 
 class GcsAutoscalerStateManagerTest;
 class GcsStateTest;
-class GcsPublisher;
-class GcsInitData;
-class GcsTableStorage;
 
 /// GcsNodeManager is responsible for managing and monitoring nodes as well as handing
 /// node and resource related rpc requests.
