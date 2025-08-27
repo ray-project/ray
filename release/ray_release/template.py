@@ -8,6 +8,7 @@ import yaml
 
 from ray_release.config import get_test_cloud_id
 from ray_release.exception import ReleaseTestConfigError
+from ray_release.utils import bazel_runfile
 
 if TYPE_CHECKING:
     from ray_release.config import Test
@@ -75,10 +76,15 @@ def render_yaml_template(template: str, env: Optional[Dict] = None):
 def get_working_dir(test: "Test", test_definition_root: Optional[str] = None) -> str:
     working_dir = test.get("working_dir", "")
     if working_dir.startswith("//"):
-        return os.path.join(bazel_workspace_dir, working_dir.lstrip("//"))
+        if bazel_workspace_dir:
+            return os.path.join(bazel_workspace_dir, working_dir.lstrip("//"))
+        else:
+            return bazel_runfile(working_dir.lstrip("//"))
     if test_definition_root:
         return os.path.join(test_definition_root, working_dir)
-    return os.path.join(bazel_workspace_dir, "release", working_dir)
+    if bazel_workspace_dir:
+        return os.path.join(bazel_workspace_dir, "release", working_dir)
+    return bazel_runfile("release", working_dir)
 
 
 def load_test_cluster_compute(
