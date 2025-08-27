@@ -120,7 +120,10 @@ class FootsiesBinary:
                 break
             except grpc.RpcError as e:
                 code = e.code()
-                if code in (grpc.StatusCode.UNAVAILABLE, grpc.StatusCode.DEADLINE_EXCEEDED):
+                if code in (
+                    grpc.StatusCode.UNAVAILABLE,
+                    grpc.StatusCode.DEADLINE_EXCEEDED,
+                ):
                     logger.info(f"RLlib {self.__class__.__name__}: Game not ready...")
                     time.sleep(timeout)
                     continue
@@ -139,7 +142,10 @@ class FootsiesBinary:
                     logger.info("Game ready!")
                     break
             except grpc.RpcError as e:
-                if e.code() in (grpc.StatusCode.UNAVAILABLE, grpc.StatusCode.DEADLINE_EXCEEDED):
+                if e.code() in (
+                    grpc.StatusCode.UNAVAILABLE,
+                    grpc.StatusCode.DEADLINE_EXCEEDED,
+                ):
                     time.sleep(timeout)
                     logger.info(f"RLlib {self.__class__.__name__}: Game not ready...")
                     continue
