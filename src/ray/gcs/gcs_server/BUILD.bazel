@@ -59,6 +59,7 @@ ray_cc_library(
         ":gcs_kv_manager",
         "//src/ray/common:asio",
         "//src/ray/common:constants",
+        "//src/ray/common:id",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
