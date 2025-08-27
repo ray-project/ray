@@ -108,14 +108,14 @@ class GPUObjectManager:
             obj_id = obj_ref.hex()
             try:
                 metas = ray.get(
-                    src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
-                        __ray_cuda_ipc_export__, obj_id
-                    )
+                    src_actor.__ray_call__.options(
+                        concurrency_group="_ray_system"
+                    ).remote(__ray_cuda_ipc_export__, obj_id)
                 )
                 ray.get(
-                    dst_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
-                        __ray_cuda_ipc_import__, obj_id, metas
-                    )
+                    dst_actor.__ray_call__.options(
+                        concurrency_group="_ray_system"
+                    ).remote(__ray_cuda_ipc_import__, obj_id, metas)
                 )
                 return True
             except (ray.exceptions.RayActorError, RuntimeError) as e:
