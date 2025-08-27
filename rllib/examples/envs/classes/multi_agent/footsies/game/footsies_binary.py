@@ -106,29 +106,46 @@ class FootsiesBinary:
                     str(self.port),
                 ],
             )
-        time.sleep(2)  # Initial grace period for the server to start
 
         # check if the game server is running correctly
-        _t0 = time.time()
-        _timeout_duration = 20  # seconds
-
+        timeout = 2
         channel = grpc.insecure_channel(f"localhost:{self.port}")
-        try:
-            stub = footsies_pb2_grpc.FootsiesGameServiceStub(channel)
-            stub.StartGame(footsies_pb2.Empty())
-            ready = stub.IsReady(footsies_pb2.Empty()).value
-            while not ready and time.time() - _t0 < _timeout_duration:
-                logger.info(f"RLlib {self.__class__.__name__}: Game not ready...")
-                time.sleep(2)
-                ready = stub.IsReady(footsies_pb2.Empty()).value
-                if time.time() - _t0 > _timeout_duration:
-                    raise TimeoutError(
-                        f"Game server did not become ready within {_timeout_duration} seconds."
-                    )
-            logger.info("Game ready!")
-        finally:
-            channel.close()
+        stub = footsies_pb2_grpc.FootsiesGameServiceStub(channel)
 
+        # step 1: try to start the game
+        while True:
+            try:
+                stub.StartGame(footsies_pb2.Empty())
+                logger.info("Game ready!")
+                break
+            except grpc.RpcError as e:
+                code = e.code()
+                if code in (grpc.StatusCode.UNAVAILABLE, grpc.StatusCode.DEADLINE_EXCEEDED):
+                    logger.info(f"RLlib {self.__class__.__name__}: Game not ready...")
+                    time.sleep(timeout)
+                    continue
+                raise
+
+        # step 2: check if the game is ready
+        ready = False
+        while not ready:
+            try:
+                ready = stub.IsReady(footsies_pb2.Empty()).value
+                if not ready:
+                    logger.info(f"RLlib {self.__class__.__name__}: Game not ready...")
+                    time.sleep(timeout)
+                    continue
+                else:
+                    logger.info("Game ready!")
+                    break
+            except grpc.RpcError as e:
+                if e.code() in (grpc.StatusCode.UNAVAILABLE, grpc.StatusCode.DEADLINE_EXCEEDED):
+                    time.sleep(timeout)
+                    logger.info(f"RLlib {self.__class__.__name__}: Game not ready...")
+                    continue
+                raise
+
+        channel.close()
         return process.pid
 
     def _download_game_binary(self):
