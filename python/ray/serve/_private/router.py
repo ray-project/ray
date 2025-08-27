@@ -37,6 +37,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
+    RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     SERVE_LOGGER_NAME,
 )
@@ -80,6 +81,7 @@ class RouterMetricsManager:
         router_requests_counter: metrics.Counter,
         queued_requests_gauge: metrics.Gauge,
         running_requests_gauge: metrics.Gauge,
+        event_loop: asyncio.BaseEventLoop,
     ):
         self._handle_id = handle_id
         self._deployment_id = deployment_id
@@ -138,6 +140,14 @@ class RouterMetricsManager:
         self._deployment_config: Optional[DeploymentConfig] = None
         # Track whether the metrics manager has been shutdown
         self._shutdown: bool = False
+
+        # If the interval is set to 0, eagerly sets all metrics.
+        self._cached_metrics_enabled = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS != 0
+        self._cached_metrics_interval_s = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS / 1000
+
+        if self._cached_metrics_enabled:
+            self._cached_num_router_requests = defaultdict(int)
+            event_loop.create_task(self._report_cached_metrics_forever())
 
     @contextmanager
     def wrap_request_assignment(self, request_meta: RequestMetadata):
@@ -271,30 +281,65 @@ class RouterMetricsManager:
             if self.metrics_pusher:
                 self.metrics_pusher.stop_tasks()
 
+    def _report_cached_metrics(self):
+        for route, count in self._cached_num_router_requests.items():
+            self.num_router_requests.inc(count, tags={"route": route})
+        self._cached_num_router_requests.clear()
+
+        self.num_queued_requests_gauge.set(self.num_queued_requests)
+
+        self.num_running_requests_gauge.set(
+            sum(self.num_requests_sent_to_replicas.values())
+        )
+
+    async def _report_cached_metrics_forever(self):
+        assert self._cached_metrics_interval_s > 0
+
+        consecutive_errors = 0
+        while True:
+            try:
+                await asyncio.sleep(self._cached_metrics_interval_s)
+                self._report_cached_metrics()
+                consecutive_errors = 0
+            except Exception:
+                logger.exception("Unexpected error reporting metrics.")
+
+                # Exponential backoff starting at 1s and capping at 10s.
+                backoff_time_s = min(10, 2**consecutive_errors)
+                consecutive_errors += 1
+                await asyncio.sleep(backoff_time_s)
+
     def inc_num_total_requests(self, route: str):
-        self.num_router_requests.inc(tags={"route": route})
+        if self._cached_metrics_enabled:
+            self._cached_num_router_requests[route] += 1
+        else:
+            self.num_router_requests.inc(tags={"route": route})
 
     def inc_num_queued_requests(self):
         self.num_queued_requests += 1
-        self.num_queued_requests_gauge.set(self.num_queued_requests)
+        if not self._cached_metrics_enabled:
+            self.num_queued_requests_gauge.set(self.num_queued_requests)
 
     def dec_num_queued_requests(self):
         self.num_queued_requests -= 1
-        self.num_queued_requests_gauge.set(self.num_queued_requests)
+        if not self._cached_metrics_enabled:
+            self.num_queued_requests_gauge.set(self.num_queued_requests)
 
     def inc_num_running_requests_for_replica(self, replica_id: ReplicaID):
         with self._queries_lock:
             self.num_requests_sent_to_replicas[replica_id] += 1
-            self.num_running_requests_gauge.set(
-                sum(self.num_requests_sent_to_replicas.values())
-            )
+            if not self._cached_metrics_enabled:
+                self.num_running_requests_gauge.set(
+                    sum(self.num_requests_sent_to_replicas.values())
+                )
 
     def dec_num_running_requests_for_replica(self, replica_id: ReplicaID):
         with self._queries_lock:
             self.num_requests_sent_to_replicas[replica_id] -= 1
-            self.num_running_requests_gauge.set(
-                sum(self.num_requests_sent_to_replicas.values())
-            )
+            if not self._cached_metrics_enabled:
+                self.num_running_requests_gauge.set(
+                    sum(self.num_requests_sent_to_replicas.values())
+                )
 
     def should_send_scaled_to_zero_optimized_push(self, curr_num_replicas: int) -> bool:
         return (
@@ -478,6 +523,7 @@ class AsyncioRouter:
                 ),
                 tag_keys=("deployment", "application", "handle", "actor_id"),
             ),
+            event_loop,
         )
 
         # The Router needs to stay informed about changes to the target deployment's
