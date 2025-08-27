@@ -304,13 +304,11 @@ steps:
       - "3.12"
       - "3.13"
 
-  # cpp tests
   - label: ":ray: core: cgroup tests"
-    tags: core_cpp
+    tags: core_cgroup
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --only-tags=cgroup --build-type cgroup
-        --privileged --cache-test-results
+      - ./src/ray/common/cgroup2/test/sysfs_cgroup_driver_integration_test_entrypoint.sh
 
   - label: ":ray: core: cpp tests"
     tags: core_cpp

@@ -191,9 +191,7 @@ ray::StatusOr<std::pair<pid_t, int>> StartChildProcessInCgroup(
   close(cgroup_fd);
   return std::make_pair(child_pid, static_cast<int>(child_pidfd));
 }
-
 #else
-
 // Fallback for older kernels. Uses fork/exec instead.
 ray::StatusOr<std::pair<pid_t, int>> StartChildProcessInCgroup(
     const std::string &cgroup_path) {
@@ -251,7 +249,7 @@ ray::StatusOr<std::pair<pid_t, int>> StartChildProcessInCgroup(
   }
   return std::make_pair(new_pid, child_pidfd);
 }
-
+#endif
 
 TempFile::TempFile(std::string path) {
   path_ = path;
