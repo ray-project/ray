@@ -4,9 +4,9 @@
 Joining datasets
 ================
 
-.. note:: This is a new feature released in Ray 2.46. Note, this is an experimental feature and some things might not work as expected.
+.. note:: This is a new feature released in Ray 2.46. Note that this is an experimental feature and some things might not work as expected.
 
-Ray Data allows multiple :class:`~ray.data.dataset.Dataset` instances to be joined using different join types (inner, outer, semi, anti) based on the provided key columns like following:
+Ray Data allows multiple :class:`~ray.data.dataset.Dataset` instances to be joined using different join types (inner, outer, semi, anti) based on the provided key columns as follows:
 
 .. testcode::
 
