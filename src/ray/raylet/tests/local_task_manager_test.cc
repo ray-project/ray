@@ -339,8 +339,7 @@ class LocalTaskManagerTest : public ::testing::Test {
               }
               return true;
             },
-            /*max_pinned_task_arguments_bytes=*/1000,
-            /*get_time=*/[this]() { return current_time_ms_; })) {}
+            /*max_pinned_task_arguments_bytes=*/1000)) {}
 
   void SetUp() override {
     static rpc::GcsNodeInfo node_info;
