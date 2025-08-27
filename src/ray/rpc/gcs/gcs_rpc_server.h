@@ -117,7 +117,6 @@ namespace rpc {
                       HANDLER,               \
                       RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
-
 #define OBJECT_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(ObjectInfoGcsService,      \
                       HANDLER,                   \
