@@ -323,7 +323,6 @@ ray_cc_library(
         "gcs_actor_scheduler.cc",
         "gcs_autoscaler_state_manager.cc",
         "gcs_placement_group_mgr.cc",
-        "gcs_placement_group_scheduler.cc",
         "gcs_server.cc",
     ],
     hdrs = [
@@ -331,7 +330,6 @@ ray_cc_library(
         "gcs_actor_scheduler.h",
         "gcs_autoscaler_state_manager.h",
         "gcs_placement_group_mgr.h",
-        "gcs_placement_group_scheduler.h",
         "gcs_server.h",
     ],
     deps = [
@@ -342,6 +340,7 @@ ray_cc_library(
         ":gcs_kv_manager",
         ":gcs_node_manager",
         ":gcs_placement_group",
+        ":gcs_placement_group_scheduler",
         ":gcs_pubsub_handler",
         ":gcs_resource_manager",
         ":gcs_runtime_env_handler",
