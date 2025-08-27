@@ -17,7 +17,7 @@ ray_cc_test(
     srcs = ["shutdown_coordinator_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/core_worker:core_worker_lib",
+        "//src/ray/core_worker:shutdown_coordinator",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
