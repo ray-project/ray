@@ -723,7 +723,7 @@ def test_report_per_component_stats_gpu():
         "_get_agent_proc": lambda: agent_proc_mock,
     }
 
-    with patch.multiple(agent, **mock_patches) as mocks:
+    with patch.multiple(agent, **mock_patches):
         # Call _collect_stats to actually run through the collection process
         collected_stats_result = agent._collect_stats()
 
