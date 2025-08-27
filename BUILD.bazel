@@ -504,6 +504,18 @@ genrule(
 )
 
 py_binary(
+    name = "gen_py_proto",
+    srcs = ["gen_py_proto.py"],
+    data = [
+        ":ray_py_proto_zip",
+    ],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//bazel:gen_extract",
+    ],
+)
+
+py_binary(
     name = "gen_ray_pkg",
     srcs = ["gen_ray_pkg.py"],
     data = [
