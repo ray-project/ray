@@ -1193,7 +1193,7 @@ def test_percentiles():
 
 def test_set_state_complete_replacement():
     """Test that set_state() completely replaces the logger's state.
-    
+
     This test verifies the fix for the issue where set_state() would only update
     keys present in the new state but leave old keys intact, causing stale data
     to persist after checkpoint restoration.
@@ -1202,80 +1202,80 @@ def test_set_state_complete_replacement():
     logger1 = MetricsLogger()
     logger1.log_value("solo", 0)
     logger1.log_value("duo", 0)
-    
+
     logger2 = MetricsLogger()
     logger2.log_value("duo", 1)
-    
+
     # Before fix: {'solo': 0, 'duo': 1} - 'solo' would persist
     # After fix: {'duo': 1} - only new state keys remain
     logger1.set_state(logger2.get_state())
     result = logger1.peek()
     expected = {"duo": 1}
-    
+
     check(result, expected)
-    
+
     # Test case 2: Complete replacement with different keys
     logger3 = MetricsLogger()
     logger3.log_value("old_key1", 10)
     logger3.log_value("old_key2", 20)
     logger3.log_value("shared_key", 30)
-    
+
     logger4 = MetricsLogger()
     logger4.log_value("shared_key", 100)
     logger4.log_value("new_key", 200)
-    
+
     logger3.set_state(logger4.get_state())
     result = logger3.peek()
     expected = {"shared_key": 100, "new_key": 200}
-    
+
     check(result, expected)
-    
+
     # Test case 3: Setting to empty state
     logger5 = MetricsLogger()
     logger5.log_value("key1", 1)
     logger5.log_value("key2", 2)
-    
+
     empty_logger = MetricsLogger()
     logger5.set_state(empty_logger.get_state())
     result = logger5.peek()
-    
+
     check(result, {})
-    
+
     # Test case 4: Nested keys
     logger6 = MetricsLogger()
     logger6.log_value(("nested", "old_key"), 1)
     logger6.log_value(("nested", "shared_key"), 2)
     logger6.log_value("top_level", 3)
-    
+
     logger7 = MetricsLogger()
     logger7.log_value(("nested", "shared_key"), 20)
     logger7.log_value(("nested", "new_key"), 30)
-    
+
     logger6.set_state(logger7.get_state())
     result = logger6.peek()
     expected = {"nested": {"shared_key": 20, "new_key": 30}}
-    
+
     check(result, expected)
-    
+
     # Test case 5: Multiple set_state calls (simulating multiple restore_from_path calls)
     logger8 = MetricsLogger()
     logger8.log_value("initial", 0)
-    
+
     # First set_state
     temp1 = MetricsLogger()
     temp1.log_value("first", 1)
-    temp1.log_value("shared", 10)
+    temp1.log_value("shared", 100)
     logger8.set_state(temp1.get_state())
-    
+
     # Second set_state - should completely replace first state
     temp2 = MetricsLogger()
     temp2.log_value("second", 2)
     temp2.log_value("shared", 20)
     logger8.set_state(temp2.get_state())
-    
+
     result = logger8.peek()
     expected = {"second": 2, "shared": 20}
-    
+
     check(result, expected)
 
 
