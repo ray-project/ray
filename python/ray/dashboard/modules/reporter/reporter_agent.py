@@ -937,7 +937,7 @@ class ReporterAgent(
                     processes = gpu.get("processes_pids")
                     if processes:
                         for proc in processes.values():
-                            gpu_pid_mapping[proc.pid].append(proc)
+                            gpu_pid_mapping[proc["pid"]].append(proc)
 
             result = []
             for w in self._workers.values():
@@ -1762,6 +1762,14 @@ class ReporterAgent(
                 )
 
             self._metrics_agent.clean_all_dead_worker_metrics()
+
+        # Convert processes_pids back to a list of dictionaries to maintain backwards-compatibility
+        for gpu in stats["gpus"]:
+            if gpu["processes_pids"] is not None:
+                gpu["processes_pids"] = list(gpu["processes_pids"].values())
+
+        # TODO(aguo): Add a pydantic model for this dict to maintain compatibility
+        # with the Ray Dashboard API and UI code.
 
         return jsonify_asdict(stats)
 
