@@ -692,9 +692,6 @@ def test_send_back_and_dst_warning(ray_start_regular):
     src_actor, dst_actor = actors[0], actors[1]
 
     tensor = torch.tensor([1, 2, 3])
-    t = src_actor.echo.remote(tensor)
-    t1 = src_actor.echo.remote(t)  # Sent back to the src actor
-    t2 = dst_actor.echo.remote(t)  # Also sent to another actor
 
     warning_message = (
         f"GPU object ref [a-f0-9]+ is being passed back to the same actor {src_actor} "
@@ -704,7 +701,10 @@ def test_send_back_and_dst_warning(ray_start_regular):
     )
 
     with pytest.warns(UserWarning, match=warning_message):
-        result1, result2 = ray.get([t1, t2])
+        t = src_actor.echo.remote(tensor)
+        t1 = src_actor.echo.remote(t)  # Sent back to the src actor
+        t2 = dst_actor.echo.remote(t)  # Also sent to another actor
+        ray.get([t1, t2])
 
 
 if __name__ == "__main__":
