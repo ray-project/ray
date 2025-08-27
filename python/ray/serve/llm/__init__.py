@@ -96,7 +96,6 @@ def build_llm_deployment(
     llm_config: "LLMConfig",
     *,
     name_prefix: Optional[str] = None,
-    deployment_kwargs: Optional[dict] = None,
     override_serve_options: Optional[dict] = None,
 ) -> "Application":
     """Helper to build a single vllm deployment from the given llm config.
@@ -154,7 +153,6 @@ def build_llm_deployment(
     Args:
         llm_config: The llm config to build vllm deployment.
         name_prefix: Optional prefix to be used for the deployment name.
-        deployment_kwargs: Optional kwargs to be used for the deployment.
         override_serve_options: Optional serve options to override the original serve options based on the llm_config.
 
     Returns:
@@ -165,7 +163,6 @@ def build_llm_deployment(
     return build_llm_deployment(
         llm_config=llm_config,
         name_prefix=name_prefix,
-        deployment_kwargs=deployment_kwargs,
         override_serve_options=override_serve_options,
     )
 
