@@ -464,20 +464,21 @@ message LeaseSpec {
   bytes actor_id = 5;
   bool is_detached_actor = 6;
   bytes root_detached_actor_id = 7;
-  map<string, double> required_resources = 8;
-  map<string, double> required_placement_resources = 9;
-  SchedulingStrategy scheduling_strategy = 10;
-  map<string, string> label_selector = 11;
-  int64 depth = 12;
-  RuntimeEnvInfo runtime_env_info = 13;
-  repeated ObjectReference dependencies = 14;
-  bytes parent_task_id = 15;
-  Language language = 16;
-  FunctionDescriptor function_descriptor = 17;
-  string task_name = 18;
-  bool is_retry = 19;
-  repeated string dynamic_worker_options = 20;
-  bool is_retriable = 21;
+  int64 max_actor_restarts = 8;
+  map<string, double> required_resources = 9;
+  map<string, double> required_placement_resources = 10;
+  SchedulingStrategy scheduling_strategy = 11;
+  map<string, string> label_selector = 12;
+  int64 depth = 13;
+  RuntimeEnvInfo runtime_env_info = 14;
+  repeated ObjectReference dependencies = 15;
+  bytes parent_task_id = 16;
+  Language language = 17;
+  FunctionDescriptor function_descriptor = 18;
+  repeated string dynamic_worker_options = 19;
+  int32 max_retries = 20;
+  uint64 attempt_number = 21;
+
 }
 
 /// The task specification encapsulates all immutable information about the

@@ -44,31 +44,22 @@ LeaseSpecification::LeaseSpecification(const rpc::TaskSpec &task_spec,
   message_->mutable_function_descriptor()->CopyFrom(task_spec.function_descriptor());
   message_->set_language(task_spec.language());
   message_->mutable_runtime_env_info()->CopyFrom(task_spec.runtime_env_info());
-  message_->set_task_name(task_spec.name());
-  message_->set_is_retry(task_spec.attempt_number() > 0);
+  message_->set_attempt_number(task_spec.attempt_number());
   message_->set_root_detached_actor_id(task_spec.root_detached_actor_id());
   if (is_actor_creation_task) {
     message_->set_type(TaskType::ACTOR_CREATION_TASK);
     message_->set_actor_id(task_spec.actor_creation_task_spec().actor_id());
     message_->set_is_detached_actor(task_spec.actor_creation_task_spec().is_detached());
+    message_->set_max_actor_restarts(
+        task_spec.actor_creation_task_spec().max_actor_restarts());
     for (const auto &option :
          task_spec.actor_creation_task_spec().dynamic_worker_options()) {
       message_->add_dynamic_worker_options(option);
     }
   } else {
     message_->set_type(TaskType::NORMAL_TASK);
+    message_->set_max_retries(task_spec.max_retries());
   }
-  bool is_retriable = true;
-  // TODO(#55980): Whether an actor creation task is retriable should take into
-  // account the current number of restarts, this will be incorrect when
-  // num_restarts == max_actor_restarts
-  if (IsActorCreationTask() &&
-      task_spec.actor_creation_task_spec().max_actor_restarts() == 0) {
-    is_retriable = false;
-  } else if (IsNormalTask() && task_spec.max_retries() == 0) {
-    is_retriable = false;
-  }
-  message_->set_is_retriable(is_retriable);
   ComputeResources();
 }
 
@@ -143,13 +134,39 @@ BundleID LeaseSpecification::PlacementGroupBundleId() const {
                         pg.placement_group_bundle_index());
 }
 
-bool LeaseSpecification::IsRetriable() const { return message_->is_retriable(); }
+int64_t LeaseSpecification::MaxActorRestarts() const {
+  RAY_CHECK(IsActorCreationTask());
+  return message_->max_actor_restarts();
+}
 
-bool LeaseSpecification::IsRetry() const { return message_->is_retry(); }
+int32_t LeaseSpecification::MaxRetries() const {
+  RAY_CHECK(IsNormalTask());
+  return message_->max_retries();
+}
 
-std::string LeaseSpecification::GetTaskName() const { return message_->task_name(); }
+bool LeaseSpecification::IsRetriable() const {
+  if (IsActorCreationTask() && MaxActorRestarts() == 0) {
+    return false;
+  }
+  if (IsNormalTask() && MaxRetries() == 0) {
+    return false;
+  }
+  return true;
+}
+
+uint64_t LeaseSpecification::AttemptNumber() const { return message_->attempt_number(); }
+
+bool LeaseSpecification::IsRetry() const { return AttemptNumber() > 0; }
+
+std::string LeaseSpecification::GetFunctionOrActorName() const {
+  if (IsActorCreationTask()) {
+    return FunctionDescriptor()->ClassName();
+  }
+  return FunctionDescriptor()->CallString();
+}
 
 TaskID LeaseSpecification::ParentTaskId() const {
+  // Set to Nil for driver tasks.
   if (message_->parent_task_id().empty()) {
     return TaskID::Nil();
   }
@@ -164,7 +181,7 @@ ActorID LeaseSpecification::ActorId() const {
 }
 
 ActorID LeaseSpecification::RootDetachedActorId() const {
-  if (message_->root_detached_actor_id().empty() /* e.g., empty proto default */) {
+  if (message_->root_detached_actor_id().empty()) {
     return ActorID::Nil();
   }
   return ActorID::FromBinary(message_->root_detached_actor_id());
@@ -189,15 +206,35 @@ std::string LeaseSpecification::DebugString() const {
     stream << "}";
   }
 
+  stream << ", function_descriptor=";
+
+  // Print function descriptor.
+  stream << FunctionDescriptor()->ToString();
+
+  stream << ", lease_id=" << LeaseId()
+         << ", function_or_actor_name=" << GetFunctionOrActorName()
+         << ", job_id=" << JobId() << ", depth=" << GetDepth()
+         << ", attempt_number=" << AttemptNumber();
+
   if (IsActorCreationTask()) {
     // Print actor creation task spec.
     stream << ", actor_creation_task_spec={actor_id=" << ActorId()
+           << ", max_restarts=" << MaxActorRestarts()
            << ", is_detached=" << IsDetachedActor() << "}";
+  } else {
+    stream << ", normal_task_spec={max_retries=" << MaxRetries() << "}";
   }
 
   // Print non-sensitive runtime env info.
   if (HasRuntimeEnv()) {
+    const auto &runtime_env_info = RuntimeEnvInfo();
     stream << ", runtime_env_hash=" << GetRuntimeEnvHash();
+    if (runtime_env_info.has_runtime_env_config()) {
+      stream << ", eager_install="
+             << runtime_env_info.runtime_env_config().eager_install();
+      stream << ", setup_timeout_seconds="
+             << runtime_env_info.runtime_env_config().setup_timeout_seconds();
+    }
   }
 
   return stream.str();

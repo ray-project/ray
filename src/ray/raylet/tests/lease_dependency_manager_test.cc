@@ -104,7 +104,7 @@ TEST_F(LeaseDependencyManagerTest, TestSimpleLease) {
   for (int i = 0; i < num_arguments; i++) {
     arguments.push_back(ObjectID::FromRandom());
   }
-  LeaseID lease_id = LeaseID::FromRandomWorkerId(1);
+  LeaseID lease_id = LeaseID::FromRandom();
   bool ready = lease_dependency_manager_.RequestLeaseDependencies(
       lease_id, ObjectIdsToRefs(arguments), {"foo", false});
   ASSERT_FALSE(ready);
@@ -139,7 +139,7 @@ TEST_F(LeaseDependencyManagerTest, TestMultipleLeases) {
   std::vector<LeaseID> dependent_leases;
   int num_dependent_leases = 3;
   for (int i = 0; i < num_dependent_leases; i++) {
-    LeaseID lease_id = LeaseID::FromRandomWorkerId(1);
+    LeaseID lease_id = LeaseID::FromRandom();
     dependent_leases.push_back(lease_id);
     bool ready = lease_dependency_manager_.RequestLeaseDependencies(
         lease_id, ObjectIdsToRefs({argument_id}), {"foo", false});
@@ -177,7 +177,7 @@ TEST_F(LeaseDependencyManagerTest, TestLeaseArgEviction) {
   for (int i = 0; i < num_arguments; i++) {
     arguments.push_back(ObjectID::FromRandom());
   }
-  LeaseID lease_id = LeaseID::FromRandomWorkerId(1);
+  LeaseID lease_id = LeaseID::FromRandom();
   bool ready = lease_dependency_manager_.RequestLeaseDependencies(
       lease_id, ObjectIdsToRefs(arguments), {"", false});
   ASSERT_FALSE(ready);
@@ -349,7 +349,7 @@ TEST_F(LeaseDependencyManagerTest, TestDuplicateLeaseArgs) {
   for (int i = 0; i < num_arguments; i++) {
     arguments.push_back(obj_id);
   }
-  LeaseID lease_id = LeaseID::FromRandomWorkerId(1);
+  LeaseID lease_id = LeaseID::FromRandom();
   bool ready = lease_dependency_manager_.RequestLeaseDependencies(
       lease_id, ObjectIdsToRefs(arguments), {"", false});
   ASSERT_FALSE(ready);
@@ -360,7 +360,7 @@ TEST_F(LeaseDependencyManagerTest, TestDuplicateLeaseArgs) {
   ASSERT_EQ(ready_lease_ids.front(), lease_id);
   lease_dependency_manager_.RemoveLeaseDependencies(lease_id);
 
-  LeaseID lease_id2 = LeaseID::FromRandomWorkerId(1);
+  LeaseID lease_id2 = LeaseID::FromRandom();
   ready = lease_dependency_manager_.RequestLeaseDependencies(
       lease_id2, ObjectIdsToRefs(arguments), {"", false});
   ASSERT_TRUE(ready);
@@ -378,7 +378,7 @@ TEST_F(LeaseDependencyManagerTest, TestRemoveLeaseDependenciesBeforeLocal) {
   for (int i = 0; i < num_arguments; i++) {
     arguments.push_back(ObjectID::FromRandom());
   }
-  LeaseID lease_id = LeaseID::FromRandomWorkerId(1);
+  LeaseID lease_id = LeaseID::FromRandom();
   bool ready = lease_dependency_manager_.RequestLeaseDependencies(
       lease_id, ObjectIdsToRefs(arguments), {"foo", false});
   ASSERT_FALSE(ready);

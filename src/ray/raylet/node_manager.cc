@@ -1161,6 +1161,8 @@ Status NodeManager::RegisterForNewDriver(
   // Compute a dummy driver lease id from a given driver.
   // The lease id set in the worker here should be consistent with the lease
   // id set in the core worker.
+  // TODO(#56010): We shouldn't need to have a special lease id for the driver, just check
+  // the worker type instead
   const LeaseID driver_lease_id = LeaseID::DriverLeaseId(worker->WorkerId());
   worker->GrantLeaseId(driver_lease_id);
   rpc::JobConfig job_config;
@@ -2888,13 +2890,13 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
             ray::stats::STATS_memory_manager_worker_eviction_total.Record(
                 1,
                 {{"Type", "MemoryManager.TaskEviction.Total"},
-                 {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
+                 {"Name", ray_lease.GetLeaseSpecification().GetFunctionOrActorName()}});
           } else {
             const auto &ray_lease = worker_to_kill->GetGrantedLease();
             ray::stats::STATS_memory_manager_worker_eviction_total.Record(
                 1,
                 {{"Type", "MemoryManager.ActorEviction.Total"},
-                 {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
+                 {"Name", ray_lease.GetLeaseSpecification().GetFunctionOrActorName()}});
           }
         }
       }
@@ -2930,8 +2932,8 @@ const std::string NodeManager::CreateOomKillMessageDetails(
 
   oom_kill_details_ss
       << "Memory on the node (IP: " << worker->IpAddress() << ", ID: " << node_id
-      << ") where the lease (" << worker->GetLeaseIdAsDebugString()
-      << ", name=" << worker->GetGrantedLease().GetLeaseSpecification().GetTaskName()
+      << ") where the lease (" << worker->GetLeaseIdAsDebugString() << ", name="
+      << worker->GetGrantedLease().GetLeaseSpecification().GetFunctionOrActorName()
       << ", pid=" << worker->GetProcess().GetId()
       << ", memory used=" << process_used_bytes_gb << "GB) was running was "
       << used_bytes_gb << "GB / " << total_bytes_gb << "GB (" << usage_fraction

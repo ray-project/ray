@@ -308,7 +308,7 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
   }
   // Counter for generating unique lease IDs.
   static uint32_t lease_id_counter = 1;
-  const LeaseID lease_id = LeaseID::FromWorkerId(worker_id_, lease_id_counter++);
+  const LeaseID lease_id = LeaseID::FromWorker(worker_id_, lease_id_counter++);
   rpc::LeaseSpec lease_spec_msg = scheduling_key_entry.lease_spec.GetMessage();
   lease_spec_msg.set_lease_id(lease_id.Binary());
   const LeaseSpecification lease_spec = LeaseSpecification(std::move(lease_spec_msg));
@@ -323,10 +323,10 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
   }
 
   auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(*raylet_address);
-  const std::string task_name = lease_spec.GetTaskName();
+  const std::string function_or_actor_name = lease_spec.GetFunctionOrActorName();
   RAY_LOG(DEBUG) << "Requesting lease " << lease_id << " from raylet "
-                 << NodeID::FromBinary(raylet_address->node_id()) << " for task "
-                 << task_name;
+                 << NodeID::FromBinary(raylet_address->node_id()) << " for "
+                 << function_or_actor_name;
 
   raylet_client->RequestWorkerLease(
       lease_spec.GetMessage(),
@@ -334,7 +334,7 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
       [this,
        scheduling_key,
        lease_id,
-       task_name,
+       function_or_actor_name,
        is_spillback,
        raylet_address = *raylet_address](const Status &status,
                                          const rpc::RequestWorkerLeaseReply &reply) {
@@ -387,8 +387,8 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
                     absl::StrCat(reply.scheduling_failure_message(),
                                  " lease_id=",
                                  lease_id.Hex(),
-                                 ", task_name=",
-                                 task_name));
+                                 ", name=",
+                                 function_or_actor_name));
 
                 tasks_to_fail = std::move(sched_entry.task_queue);
                 sched_entry.task_queue.clear();
@@ -429,12 +429,12 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
             } else {
               // The raylet redirected us to a different raylet to retry at.
               RAY_CHECK(!is_spillback);
-              RAY_LOG(DEBUG) << "Redirect lease for task " << lease_id << " from raylet "
+              RAY_LOG(DEBUG) << "Redirect lease " << lease_id << " from raylet "
                              << NodeID::FromBinary(raylet_address.node_id())
                              << " to raylet "
                              << NodeID::FromBinary(
                                     reply.retry_at_raylet_address().node_id())
-                             << " for task " << task_name;
+                             << " for " << function_or_actor_name;
 
               RequestNewWorkerIfNeeded(scheduling_key, &reply.retry_at_raylet_address());
             }
@@ -444,7 +444,7 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
             // TODO(swang): Fail after some number of retries?
             RAY_LOG_EVERY_MS(INFO, 30 * 1000)
                 << "Retrying attempt to schedule lease (id: " << lease_id
-                << " name: " << task_name
+                << " name: " << function_or_actor_name
                 << ") at remote node (id: " << raylet_address.node_id()
                 << " ip: " << raylet_address.ip_address()
                 << "). Try again "

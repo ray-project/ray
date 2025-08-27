@@ -333,7 +333,7 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
   // Counter for generating unique lease IDs.
   static uint32_t lease_id_counter = 1;
   actor->GetMutableLeaseSpec()->set_lease_id(
-      LeaseID::FromRandomWorkerId(lease_id_counter++).Binary());
+      LeaseID::FromWorker(WorkerID::FromRandom(), lease_id_counter++).Binary());
   raylet_client->RequestWorkerLease(
       actor->GetLeaseSpecification().GetMessage(),
       actor->GetGrantOrReject(),

@@ -89,7 +89,7 @@ void LocalLeaseManager::WaitForLeaseArgsRequests(std::shared_ptr<internal::Work>
     bool args_ready = lease_dependency_manager_.RequestLeaseDependencies(
         lease_id,
         lease.GetLeaseSpecification().GetDependencies(),
-        {lease.GetLeaseSpecification().GetTaskName(),
+        {lease.GetLeaseSpecification().GetFunctionOrActorName(),
          lease.GetLeaseSpecification().IsRetry()});
     if (args_ready) {
       RAY_LOG(DEBUG) << "Args already ready, lease can be granted " << lease_id;
