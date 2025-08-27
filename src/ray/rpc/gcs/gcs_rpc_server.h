@@ -348,32 +348,6 @@ class PlacementGroupInfoGrpcService : public GrpcService {
   PlacementGroupInfoGcsServiceHandler &service_handler_;
 };
 
-class InternalKVGrpcService : public GrpcService {
- public:
-  explicit InternalKVGrpcService(instrumented_io_context &io_service,
-                                 InternalKVGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler) {}
-
- protected:
-  grpc::Service &GetGrpcService() override { return service_; }
-  void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id) override {
-    INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVGet);
-    INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVMultiGet);
-    INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVPut);
-    INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVDel);
-    INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVExists);
-    INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVKeys);
-    INTERNAL_KV_SERVICE_RPC_HANDLER(GetInternalConfig);
-  }
-
- private:
-  InternalKVGcsService::AsyncService service_;
-  InternalKVGcsServiceHandler &service_handler_;
-};
-
 class TaskInfoGcsServiceHandler {
  public:
   virtual ~TaskInfoGcsServiceHandler() = default;
