@@ -231,6 +231,18 @@ struct hash<ray::rpc::SchedulingStrategy> {
     return hash_val;
   }
 };
+
+template <>
+struct hash<ray::SchedulingClassDescriptor> {
+  size_t operator()(const ray::SchedulingClassDescriptor &sched_cls) const {
+    size_t hash_val = std::hash<ray::ResourceSet>()(sched_cls.resource_set);
+    hash_val ^= sched_cls.function_descriptor->Hash();
+    hash_val ^= sched_cls.depth;
+    hash_val ^= std::hash<ray::rpc::SchedulingStrategy>()(sched_cls.scheduling_strategy);
+    hash_val ^= std::hash<ray::LabelSelector>()(sched_cls.label_selector);
+    return hash_val;
+  }
+};
 }  // namespace std
 
 namespace ray {

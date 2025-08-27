@@ -60,8 +60,16 @@ class LabelSelector {
  public:
   LabelSelector() = default;
 
-  explicit LabelSelector(
-      const google::protobuf::Map<std::string, std::string> &label_selector);
+  // Constructor for parsing user-input label selector string maps to LabelSelector class.
+  template <typename MapType>
+  explicit LabelSelector(const MapType &label_selector) {
+    // Label selector keys and values are validated before construction in
+    // `prepare_label_selector`.
+    // https://github.com/ray-project/ray/blob/feb1c6180655b69fc64c5e0c25cc56cbe96e0b26/python/ray/_raylet.pyx#L782C1-L784C70
+    for (const auto &[key, value] : label_selector) {
+      AddConstraint(key, value);
+    }
+  }
 
   rpc::LabelSelector ToProto() const;
 
@@ -105,3 +113,21 @@ H AbslHashValue(H h, const LabelSelector &label_selector) {
 }
 
 }  // namespace ray
+
+namespace std {
+template <>
+struct hash<ray::LabelSelector> {
+  size_t operator()(ray::LabelSelector const &label_selector) const noexcept {
+    size_t seed = label_selector.GetConstraints().size();
+    // Add constraint key, operator, and values to hash seed
+    for (auto const &constraint : label_selector.GetConstraints()) {
+      seed ^= std::hash<std::string>()(constraint.GetLabelKey());
+      seed ^= std::hash<int>()(static_cast<int>(constraint.GetOperator()));
+      for (auto const &value : constraint.GetLabelValues()) {
+        seed ^= std::hash<std::string>()(value);
+      }
+    }
+    return seed;
+  }
+};
+}  // namespace std

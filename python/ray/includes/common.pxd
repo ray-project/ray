@@ -560,7 +560,8 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
         CRayStatus RequestClusterResourceConstraint(
             int64_t timeout_ms,
             const c_vector[unordered_map[c_string, double]] &bundles,
-            const c_vector[int64_t] &count_array
+            const c_vector[int64_t] &count_array,
+            const c_vector[c_vector[unordered_map[c_string, c_string]]] &label_selectors
         )
 
         CRayStatus GetClusterResourceState(

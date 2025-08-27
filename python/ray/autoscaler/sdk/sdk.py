@@ -204,7 +204,9 @@ def get_worker_node_ips(cluster_config: Union[dict, str]) -> List[str]:
 
 @DeveloperAPI
 def request_resources(
-    num_cpus: Optional[int] = None, bundles: Optional[List[dict]] = None
+    num_cpus: Optional[int] = None,
+    bundles: Optional[List[dict]] = None,
+    bundle_label_selector: Optional[List[dict]] = None,
 ) -> None:
     """Command the autoscaler to scale to accommodate the specified requests.
 
@@ -228,6 +230,9 @@ def request_resources(
         bundles (List[ResourceDict]): Scale the cluster to ensure this set of
             resource shapes can fit. This request is persistent until another
             call to request_resources() is made to override.
+        bundle_label_selector: A parallel list of label selector for each bundle.
+            Label selectors consist of one or more key-value pairs where the key is
+            a label and the value is a operator (in, !in, etc.) and label value.
 
     Examples:
         >>> from ray.autoscaler.sdk import request_resources
@@ -239,6 +244,10 @@ def request_resources(
         >>> # Same as requesting num_cpus=3.
         >>> request_resources( # doctest: +SKIP
         ...     bundles=[{"CPU": 1}, {"CPU": 1}, {"CPU": 1}])
+        >>> request_resources( # doctest: +SKIP
+        ...     bundles=[{"CPU": 1}, {"CPU": 1}]),
+        ...     bundle_label_selector=[{"accelerator-type": "in(A100)"},
+        ...                            {"market-type": "spot"}])
     """
     if num_cpus is not None and not isinstance(num_cpus, int):
         raise TypeError("num_cpus should be of type int.")
@@ -255,8 +264,20 @@ def request_resources(
                     raise TypeError("each bundle should be a Dict.")
         else:
             raise TypeError("bundles should be of type List")
+    if bundle_label_selector is not None:
+        for label_selector in bundle_label_selector:
+            if isinstance(label_selector, Dict):
+                for key in label_selector.keys():
+                    if not (
+                        isinstance(key, str) and isinstance(label_selector[key], str)
+                    ):
+                        raise TypeError(
+                            "each label_selector key should be str and value a str."
+                        )
+            else:
+                raise TypeError("each label_selector should be a Dict.")
 
-    return commands.request_resources(num_cpus, bundles)
+    return commands.request_resources(num_cpus, bundles, bundle_label_selector)
 
 
 @DeveloperAPI
