@@ -85,6 +85,27 @@ class NodeResourceInfoGcsServiceHandler {
                                          SendReplyCallback send_reply_callback) = 0;
 };
 
+class InternalPubSubGcsServiceHandler {
+ public:
+  virtual ~InternalPubSubGcsServiceHandler() = default;
+
+  virtual void HandleGcsPublish(GcsPublishRequest request,
+                                GcsPublishReply *reply,
+                                SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGcsSubscriberPoll(GcsSubscriberPollRequest request,
+                                       GcsSubscriberPollReply *reply,
+                                       SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGcsSubscriberCommandBatch(GcsSubscriberCommandBatchRequest request,
+                                               GcsSubscriberCommandBatchReply *reply,
+                                               SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGcsUnregisterSubscriber(GcsUnregisterSubscriberRequest request,
+                                             GcsUnregisterSubscriberReply *reply,
+                                             SendReplyCallback send_reply_callback) = 0;
+};
+
 class JobInfoGcsServiceHandler {
  public:
   using JobFinishListenerCallback = std::function<void(const rpc::JobTableData &)>;
