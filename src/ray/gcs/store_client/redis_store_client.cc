@@ -140,22 +140,7 @@ RedisStoreClient::RedisStoreClient(instrumented_io_context &io_service,
   RAY_CHECK(!absl::StrContains(external_storage_namespace_, kClusterSeparator))
       << "Storage namespace (" << external_storage_namespace_ << ") shouldn't contain "
       << kClusterSeparator << ".";
-
-  // Health check Redis periodically and crash if it becomes unavailable.
-  periodic_health_check_runner_ = PeriodicalRunner::Create(io_service_);
-  periodic_health_check_runner_->RunFnPeriodically(
-      [this] {
-        AsyncCheckHealth({[](const Status &status) {
-                            RAY_CHECK_OK(status)
-                                << "Redis connection failed unexpectedly.";
-                          },
-                          io_service_});
-      },
-      options.heartbeat_interval_ms,
-      "RedisStoreClient.redis_health_check");
 }
-
-RedisStoreClient::~RedisStoreClient() { periodic_health_check_runner_.reset(); }
 
 Status RedisStoreClient::AsyncPut(const std::string &table_name,
                                   const std::string &key,

@@ -167,6 +167,7 @@ anyio==3.7.1 \
     --hash=sha256:91dee416e570e92c64041bd18b900d1d6fa78dff7048769ce5ac5ddad004fbb5
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
+    #   httpx
     #   starlette
 argcomplete==3.3.0 \
     --hash=sha256:c168c3723482c031df3c207d4ba8fa702717ccb9fc0bfe4117166c1f537b4a54 \
@@ -314,6 +315,8 @@ certifi==2025.1.31 \
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   geventhttpclient
+    #   httpcore
+    #   httpx
     #   requests
 cffi==1.16.0 \
     --hash=sha256:0c9ef6ff37e974b73c25eecc13952c55bceed9112be2d9d938ded8e856138bcc \
@@ -1263,12 +1266,18 @@ gsutil==5.27 \
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_byod_3.9.in
-gymnasium[atari]==1.0.0 \
-    --hash=sha256:9d2b66f30c1b34fe3c2ce7fae65ecf365d0e9982d2b3d860235e773328a3b403 \
-    --hash=sha256:b6f40e1e24c5bd419361e1a5b86a9117d2499baecc3a660d44dfff4c465393ad
+gymnasium[atari]==1.1.1 \
+    --hash=sha256:8bd9ea9bdef32c950a444ff36afc785e1d81051ec32d30435058953c20d2456d \
+    --hash=sha256:9c167ec0a2b388666e37f63b2849cd2552f7f5b71938574c637bb36487eb928a
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_byod_3.9.in
+h11==0.16.0 \
+    --hash=sha256:4e35b956cf45792e4caa5885e69fba00bdbc6ffafbfa020300e549b208ee5ff1 \
+    --hash=sha256:63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86
+    # via
+    #   -c release/ray_release/byod/requirements_compiled.txt
+    #   httpcore
 h5py==3.10.0 \
     --hash=sha256:012ab448590e3c4f5a8dd0f3533255bc57f80629bf7c5054cf4c87b30085063c \
     --hash=sha256:212bb997a91e6a895ce5e2f365ba764debeaef5d2dca5c6fb7098d66607adf99 \
@@ -1298,6 +1307,12 @@ h5py==3.10.0 \
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   tensorflow
+httpcore==1.0.9 \
+    --hash=sha256:2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55 \
+    --hash=sha256:6e34463af53fd2ab5d807f399a9b45ea31c3dfa2276f15a2c3f00afff6e176e8
+    # via
+    #   -c release/ray_release/byod/requirements_compiled.txt
+    #   httpx
 httplib2==0.20.4 \
     --hash=sha256:58a98e45b4b1a48273073f905d2961666ecf0fbac4250ea5b47aef259eb5c585 \
     --hash=sha256:8b6a905cb1c79eefd03f8669fd993c36dc341f7c558f056cb5a33b5c2f458543
@@ -1307,12 +1322,19 @@ httplib2==0.20.4 \
     #   google-apitools
     #   gsutil
     #   oauth2client
+httpx==0.27.2 \
+    --hash=sha256:7bb2708e112d8fdd7829cd4243970f0c223274051cb35ee80c03301ee29a3df0 \
+    --hash=sha256:f7c2be1d2f3c3c3160d441802406b206c2b76f5947b11115e6df10c6c65e66c2
+    # via
+    #   -c release/ray_release/byod/requirements_compiled.txt
+    #   -r release/ray_release/byod/requirements_byod_3.9.in
 idna==3.7 \
     --hash=sha256:028ff3aadf0609c1fd278d8ea3089299412a7a8b9bd005dd08b9f8285bcb5cfc \
     --hash=sha256:82fee1fc78add43492d3a1898bfa6d8a904cc97d8427f683ed8e798d07761aa0
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   anyio
+    #   httpx
     #   requests
     #   yarl
 importlib-metadata==6.11.0 \
@@ -2723,6 +2745,7 @@ sniffio==1.3.1 \
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   anyio
+    #   httpx
 starlette==0.46.2 \
     --hash=sha256:595633ce89f8ffa71a015caed34a5b2dc1c0cdb3f0f1fbd1e69339cf2abeec35 \
     --hash=sha256:7f7361f34eed179294600af672f565727419830b54b7b084efe44bb82d2fccd5
