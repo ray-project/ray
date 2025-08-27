@@ -11,6 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#include <gtest/gtest.h>
+
 #include <chrono>
 #include <list>
 #include <memory>
@@ -18,8 +20,6 @@
 #include <thread>
 #include <utility>
 #include <vector>
-
-#include <gtest/gtest.h>
 
 #include "mock/ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
