@@ -212,7 +212,8 @@ if __name__ == "__main__":
             )
         )
         .evaluation(
-            evaluation_num_env_runners=1,
+            evaluation_num_env_runners=2,
+            evaluation_sample_timeout_s=180,
             evaluation_interval=1,
             evaluation_duration=20,  # 20 episodes is enough to get a good win rate estimate
             evaluation_duration_unit="episodes",
