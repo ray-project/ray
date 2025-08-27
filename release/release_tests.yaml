@@ -2077,6 +2077,37 @@
       cluster:
         cluster_compute: compute_tpl_single_node_gce.yaml
 
+- name: serve_throughput_optimized_microbenchmarks
+  group: Serve tests
+  working_dir: serve_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    byod:
+      runtime_env:
+        - RAY_SERVE_THROUGHPUT_OPTIMIZED=1
+        - RAY_SERVE_DISABLE_SHUTTING_DOWN_INGRESS_REPLICAS_FORCEFULLY=0
+    cluster_compute: compute_tpl_single_node_16_cpu.yaml
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 7200
+    long_running: false
+    script: python workloads/microbenchmarks.py --run-all
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: compute_tpl_single_node_gce.yaml
+
 - name: serve_resnet_benchmark
   group: Serve tests
   working_dir: serve_tests
