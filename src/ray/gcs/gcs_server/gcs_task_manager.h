@@ -26,6 +26,7 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/gcs/gcs_server/usage_stats_client.h"
 #include "ray/gcs/pb_util.h"
+#include "ray/rpc/gcs/gcs_rpc_server.h"
 #include "ray/util/counter_map.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
