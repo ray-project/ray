@@ -37,7 +37,7 @@ using ::testing::Return;
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
   void UpdateObjectLocationBatch(
-      const rpc::UpdateObjectLocationBatchRequest &&request,
+      rpc::UpdateObjectLocationBatchRequest &&request,
       const rpc::ClientCallback<rpc::UpdateObjectLocationBatchReply> &callback) override {
     const auto &worker_id = WorkerID::FromBinary(request.intended_worker_id());
     const auto &object_location_updates = request.object_location_updates();
