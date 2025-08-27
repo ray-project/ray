@@ -7,8 +7,8 @@ proto_library(
     name = "events_driver_job_definition_event_proto",
     srcs = ["events_driver_job_definition_event.proto"],
     deps = [
+        ":runtime_environment_proto",
         "//src/ray/protobuf:common_proto",
-        "//src/ray/protobuf:runtime_env_common_proto",
         "@com_google_protobuf//:timestamp_proto",
     ],
 )
@@ -22,8 +22,6 @@ proto_library(
     name = "events_driver_job_execution_event_proto",
     srcs = ["events_driver_job_execution_event.proto"],
     deps = [
-        "//src/ray/protobuf:common_proto",
-        "//src/ray/protobuf:runtime_env_common_proto",
         "@com_google_protobuf//:timestamp_proto",
     ],
 )
@@ -31,4 +29,14 @@ proto_library(
 cc_proto_library(
     name = "events_driver_job_execution_event_cc_proto",
     deps = [":events_driver_job_execution_event_proto"],
+)
+
+proto_library(
+    name = "runtime_environment_proto",
+    srcs = ["runtime_environment.proto"],
+)
+
+cc_proto_library(
+    name = "runtime_environment_cc_proto",
+    deps = [":runtime_environment_proto"],
 )

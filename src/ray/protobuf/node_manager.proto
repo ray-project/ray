@@ -19,7 +19,7 @@ package ray.rpc;
 import "src/ray/protobuf/common.proto";
 import "src/ray/protobuf/gcs.proto";
 import "src/ray/protobuf/autoscaler.proto";
-import "src/ray/protobuf/runtime_env_common.proto";
+import "src/ray/protobuf/public/runtime_environment.proto";
 
 message WorkerBacklogReport {
   // TaskSpec indicating the scheduling class.
