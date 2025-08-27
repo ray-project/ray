@@ -147,8 +147,8 @@ message ResizeLocalResourceInstancesReply {
 message ReturnWorkerLeaseRequest {
   // Port of the leased worker that we are now returning.
   int32 worker_port = 1;
-  // The lease id of the lease we are now returning.
-  bytes lease_id = 2;
+  // The worker id of the lease we are now returning.
+  bytes worker_id = 2;
   // If true, there was some unrecoverable error and the raylet should
   // disconnect the worker.
   bool disconnect_worker = 3;

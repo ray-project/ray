@@ -66,7 +66,8 @@ An `ObjectID` contains 2 parts:
 
 #### LeaseID (32 bytes)
 A `LeaseID` contains 2 parts:
-- `unique bytes`: 4 bytes generated via a counter unique to the worker or gcs
-- `WorkerID`: 28 bytes that represent the ID of a worker, or in the case of
-the gcs it's randomly generated. Due to the possibility of GCS restarts, we
-can't simply nil them out.
+- `unique bytes`: 4 bytes generated via a counter unique to the lease requester
+(worker or gcs).
+- `WorkerID`: 28 bytes that represent the WorkerID of the lease requester.
+In the case of the gcs it's randomly generated. Due to the possibility of GCS
+restarts, we can't simply nil them out.

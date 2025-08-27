@@ -46,6 +46,7 @@ LeaseSpecification::LeaseSpecification(const rpc::TaskSpec &task_spec,
   message_->mutable_runtime_env_info()->CopyFrom(task_spec.runtime_env_info());
   message_->set_attempt_number(task_spec.attempt_number());
   message_->set_root_detached_actor_id(task_spec.root_detached_actor_id());
+  message_->set_task_name(task_spec.name());
   if (is_actor_creation_task) {
     message_->set_type(TaskType::ACTOR_CREATION_TASK);
     message_->set_actor_id(task_spec.actor_creation_task_spec().actor_id());
@@ -158,6 +159,8 @@ uint64_t LeaseSpecification::AttemptNumber() const { return message_->attempt_nu
 
 bool LeaseSpecification::IsRetry() const { return AttemptNumber() > 0; }
 
+std::string LeaseSpecification::GetTaskName() const { return message_->task_name(); }
+
 std::string LeaseSpecification::GetFunctionOrActorName() const {
   if (IsActorCreationTask()) {
     return FunctionDescriptor()->ClassName();
@@ -211,8 +214,7 @@ std::string LeaseSpecification::DebugString() const {
   // Print function descriptor.
   stream << FunctionDescriptor()->ToString();
 
-  stream << ", lease_id=" << LeaseId()
-         << ", function_or_actor_name=" << GetFunctionOrActorName()
+  stream << ", lease_id=" << LeaseId() << ", task_name=" << GetTaskName()
          << ", job_id=" << JobId() << ", depth=" << GetDepth()
          << ", attempt_number=" << AttemptNumber();
 

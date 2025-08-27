@@ -34,7 +34,7 @@ class FakeRayletClient : public RayletClientInterface {
       const bool is_selected_based_on_locality = false) override {}
 
   ray::Status ReturnWorkerLease(int worker_port,
-                                const LeaseID &lease_id,
+                                const WorkerID &worker_id,
                                 bool disconnect_worker,
                                 const std::string &disconnect_worker_error_detail,
                                 bool worker_exiting) override {

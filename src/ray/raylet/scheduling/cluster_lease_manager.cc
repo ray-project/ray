@@ -405,10 +405,10 @@ const RayLease *ClusterLeaseManager::AnyPendingLeasesForResourceAcquisition(
     }
   }
 
-  auto local_task_exemplar = local_lease_manager_.AnyPendingLeasesForResourceAcquisition(
+  auto local_lease_exemplar = local_lease_manager_.AnyPendingLeasesForResourceAcquisition(
       num_pending_actor_creation, num_pending_leases);
-  // Prefer returning the cluster task manager exemplar if it exists.
-  return exemplar == nullptr ? local_task_exemplar : exemplar;
+  // Prefer returning the cluster lease manager exemplar if it exists.
+  return exemplar == nullptr ? local_lease_exemplar : exemplar;
 }
 
 void ClusterLeaseManager::RecordMetrics() const {

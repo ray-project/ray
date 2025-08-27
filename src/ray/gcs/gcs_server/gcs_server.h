@@ -149,7 +149,7 @@ class GcsServer {
   /// Initialize cluster resource scheduler.
   void InitClusterResourceScheduler();
 
-  /// Initialize cluster task manager.
+  /// Initialize cluster lease manager.
   void InitClusterLeaseManager();
 
   /// Initialize gcs job manager.
@@ -235,11 +235,11 @@ class GcsServer {
   rpc::CoreWorkerClientPool worker_client_pool_;
   /// The cluster resource scheduler.
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
-  /// Local task manager.
+  /// Local lease manager.
   NoopLocalLeaseManager local_lease_manager_;
   /// The gcs table storage.
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  /// The cluster task manager.
+  /// The cluster lease manager.
   std::unique_ptr<ClusterLeaseManager> cluster_lease_manager_;
   /// [gcs_resource_manager_] depends on [cluster_lease_manager_].
   /// The gcs resource manager.

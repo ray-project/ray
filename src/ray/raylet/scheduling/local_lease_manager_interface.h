@@ -101,7 +101,7 @@ class NoopLocalLeaseManager : public LocalLeaseManagerInterface {
 
   void QueueAndScheduleLease(std::shared_ptr<internal::Work> work) override {
     RAY_CHECK(false)
-        << "This function should never be called by gcs' local task manager.";
+        << "This function should never be called by gcs' local lease manager.";
   }
 
   void ScheduleAndGrantLeases() override {}

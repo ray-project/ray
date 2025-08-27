@@ -127,7 +127,7 @@ NodeManager::NodeManager(
     LocalObjectManagerInterface &local_object_manager,
     LeaseDependencyManager &lease_dependency_manager,
     WorkerPoolInterface &worker_pool,
-    absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers,
+    absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
     plasma::PlasmaClientInterface &store_client,
     std::unique_ptr<core::experimental::MutableObjectProviderInterface>
         mutable_object_provider,
@@ -226,7 +226,7 @@ NodeManager::NodeManager(
 
   worker_pool_.SetRuntimeEnvAgentClient(std::move(runtime_env_agent_client));
   worker_pool_.Start();
-  periodical_runner_->RunFnPeriodically([this]() { GCTaskFailureReason(); },
+  periodical_runner_->RunFnPeriodically([this]() { GCWorkerFailureReason(); },
                                         RayConfig::instance().task_failure_entry_ttl_ms(),
                                         "NodeManager.GCTaskFailureReason");
 }
@@ -603,8 +603,8 @@ void NodeManager::HandleGetWorkerFailureCause(
   RAY_LOG(DEBUG) << "Received a HandleGetWorkerFailureCause request for lease "
                  << lease_id;
 
-  auto it = task_failure_reasons_.find(lease_id);
-  if (it != task_failure_reasons_.end()) {
+  auto it = worker_failure_reasons_.find(lease_id);
+  if (it != worker_failure_reasons_.end()) {
     RAY_LOG(DEBUG) << "lease " << lease_id << " has failure reason "
                    << ray::gcs::RayErrorInfoToString(it->second.ray_error_info_)
                    << ", fail immediately: " << !it->second.should_retry_;
@@ -1331,7 +1331,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   lease_dependency_manager_.CancelWaitRequest(worker->WorkerId());
 
   // Erase any lease metadata.
-  ReleaseWorker(worker->GetGrantedLeaseId());
+  ReleaseWorker(worker->WorkerId());
 
   if (creation_task_exception != nullptr) {
     RAY_LOG(INFO).WithField(worker->WorkerId())
@@ -1935,11 +1935,11 @@ void NodeManager::HandleReturnWorkerLease(rpc::ReturnWorkerLeaseRequest request,
                                           rpc::ReturnWorkerLeaseReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   // Read the resource spec submitted by the client.
-  auto lease_id = LeaseID::FromBinary(request.lease_id());
-  std::shared_ptr<WorkerInterface> worker = leased_workers_[lease_id];
+  auto worker_id = WorkerID::FromBinary(request.worker_id());
+  std::shared_ptr<WorkerInterface> worker = leased_workers_[worker_id];
 
   Status status;
-  ReleaseWorker(lease_id);
+  ReleaseWorker(worker_id);
   if (worker) {
     if (request.disconnect_worker()) {
       // The worker should be destroyed.
@@ -2867,13 +2867,13 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           // Rerpot the event to the dashboard.
           RAY_EVENT_EVERY_MS(ERROR, "Out of Memory", 10 * 1000) << worker_exit_message;
 
-          // Mark the task as failure and raise an exception from a caller.
-          rpc::RayErrorInfo task_failure_reason;
-          task_failure_reason.set_error_message(worker_exit_message);
-          task_failure_reason.set_error_type(rpc::ErrorType::OUT_OF_MEMORY);
-          SetTaskFailureReason(worker_to_kill->GetGrantedLeaseId(),
-                               std::move(task_failure_reason),
-                               should_retry);
+          // Mark the worker as failure and raise an exception from a caller.
+          rpc::RayErrorInfo worker_failure_reason;
+          worker_failure_reason.set_error_message(worker_exit_message);
+          worker_failure_reason.set_error_type(rpc::ErrorType::OUT_OF_MEMORY);
+          SetWorkerFailureReason(worker_to_kill->GetGrantedLeaseId(),
+                                 std::move(worker_failure_reason),
+                                 should_retry);
 
           /// since we print the process memory in the message. Destroy should be called
           /// as soon as possible to free up memory.
@@ -2891,13 +2891,13 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
             ray::stats::STATS_memory_manager_worker_eviction_total.Record(
                 1,
                 {{"Type", "MemoryManager.TaskEviction.Total"},
-                 {"Name", ray_lease.GetLeaseSpecification().GetFunctionOrActorName()}});
+                 {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
           } else {
             const auto &ray_lease = worker_to_kill->GetGrantedLease();
             ray::stats::STATS_memory_manager_worker_eviction_total.Record(
                 1,
                 {{"Type", "MemoryManager.ActorEviction.Total"},
-                 {"Name", ray_lease.GetLeaseSpecification().GetFunctionOrActorName()}});
+                 {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
           }
         }
       }
@@ -2933,8 +2933,8 @@ const std::string NodeManager::CreateOomKillMessageDetails(
 
   oom_kill_details_ss
       << "Memory on the node (IP: " << worker->IpAddress() << ", ID: " << node_id
-      << ") where the lease (" << worker->GetLeaseIdAsDebugString() << ", name="
-      << worker->GetGrantedLease().GetLeaseSpecification().GetFunctionOrActorName()
+      << ") where the lease (" << worker->GetLeaseIdAsDebugString()
+      << ", name=" << worker->GetGrantedLease().GetLeaseSpecification().GetTaskName()
       << ", pid=" << worker->GetProcess().GetId()
       << ", memory used=" << process_used_bytes_gb << "GB) was running was "
       << used_bytes_gb << "GB / " << total_bytes_gb << "GB (" << usage_fraction
@@ -2983,29 +2983,29 @@ const std::string NodeManager::CreateOomKillMessageSuggestions(
   return oom_kill_suggestions_ss.str();
 }
 
-void NodeManager::SetTaskFailureReason(const LeaseID &lease_id,
-                                       const rpc::RayErrorInfo &failure_reason,
-                                       bool should_retry) {
+void NodeManager::SetWorkerFailureReason(const LeaseID &lease_id,
+                                         const rpc::RayErrorInfo &failure_reason,
+                                         bool should_retry) {
   RAY_LOG(DEBUG).WithField(lease_id) << "set failure reason for lease ";
   ray::TaskFailureEntry entry(failure_reason, should_retry);
-  auto result = task_failure_reasons_.emplace(lease_id, std::move(entry));
+  auto result = worker_failure_reasons_.emplace(lease_id, std::move(entry));
   if (!result.second) {
     RAY_LOG(WARNING).WithField(lease_id)
         << "Trying to insert failure reason more than once for the same "
-           "task, the previous failure will be removed.";
+           "worker, the previous failure will be removed.";
   }
 }
 
-void NodeManager::GCTaskFailureReason() {
-  for (const auto &entry : task_failure_reasons_) {
+void NodeManager::GCWorkerFailureReason() {
+  for (const auto &entry : worker_failure_reasons_) {
     auto duration = static_cast<uint64_t>(
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - entry.second.creation_time_)
             .count());
     if (duration > RayConfig::instance().task_failure_entry_ttl_ms()) {
       RAY_LOG(INFO).WithField(entry.first)
-          << "Removing task failure reason since it expired";
-      task_failure_reasons_.erase(entry.first);
+          << "Removing worker failure reason since it expired";
+      worker_failure_reasons_.erase(entry.first);
     }
   }
 }

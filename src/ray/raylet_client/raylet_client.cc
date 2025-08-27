@@ -81,13 +81,13 @@ void RayletClient::ReportWorkerBacklog(
 }
 
 Status RayletClient::ReturnWorkerLease(int worker_port,
-                                       const LeaseID &lease_id,
+                                       const WorkerID &worker_id,
                                        bool disconnect_worker,
                                        const std::string &disconnect_worker_error_detail,
                                        bool worker_exiting) {
   rpc::ReturnWorkerLeaseRequest request;
   request.set_worker_port(worker_port);
-  request.set_lease_id(lease_id.Binary());
+  request.set_worker_id(worker_id.Binary());
   request.set_disconnect_worker(disconnect_worker);
   request.set_disconnect_worker_error_detail(disconnect_worker_error_detail);
   request.set_worker_exiting(worker_exiting);

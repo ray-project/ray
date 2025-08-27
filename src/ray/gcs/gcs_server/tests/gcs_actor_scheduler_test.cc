@@ -392,8 +392,8 @@ TEST_F(GcsActorSchedulerTest, TestLeasingCancelledWhenLeasing) {
   ASSERT_EQ(1, raylet_client_->callbacks.size());
 
   // Cancel the lease request.
-  LeaseID lease_id = LeaseID::FromRandom();
-  gcs_actor_scheduler_->CancelOnLeasing(node_id, actor->GetActorID(), lease_id);
+  gcs_actor_scheduler_->CancelOnLeasing(
+      node_id, actor->GetActorID(), actor->GetLeaseSpecification().LeaseId());
   ASSERT_EQ(1, raylet_client_->num_workers_requested);
   ASSERT_EQ(1, raylet_client_->callbacks.size());
 
@@ -1000,8 +1000,8 @@ TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestLeasingCancelledWhenLeasingBy
   ASSERT_EQ(1, raylet_client_->callbacks.size());
 
   // Cancel the lease request.
-  LeaseID lease_id = LeaseID::FromRandom();
-  gcs_actor_scheduler_->CancelOnLeasing(node_id, actor->GetActorID(), lease_id);
+  gcs_actor_scheduler_->CancelOnLeasing(
+      node_id, actor->GetActorID(), actor->GetLeaseSpecification().LeaseId());
   ASSERT_EQ(1, raylet_client_->num_workers_requested);
   ASSERT_EQ(1, raylet_client_->callbacks.size());
 

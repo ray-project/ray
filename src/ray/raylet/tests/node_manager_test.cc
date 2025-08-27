@@ -526,7 +526,7 @@ class NodeManagerTest : public ::testing::Test {
 
   std::unique_ptr<NodeManager> node_manager_;
   MockWorkerPool mock_worker_pool_;
-  absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> leased_workers_;
+  absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::shared_ptr<absl::flat_hash_set<ObjectID>> objects_pending_deletion_;
 };
 

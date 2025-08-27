@@ -505,7 +505,7 @@ class ClusterLeaseManagerTest : public ::testing::Test {
   NodeID id_;
   std::shared_ptr<ClusterResourceScheduler> scheduler_;
   MockWorkerPool pool_;
-  absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> leased_workers_;
+  absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::unordered_set<ObjectID> missing_objects_;
 
   int default_arg_size_ = 10;
@@ -762,8 +762,8 @@ TEST_F(ClusterLeaseManagerTest, BlockedWorkerDiesTest) {
   RayLease finished_lease1;
   RayLease finished_lease2;
   // If a resource was double-freed, we will crash in this call.
-  local_lease_manager_->CleanupLease(leased_workers_[lease_id1], &finished_lease1);
-  local_lease_manager_->CleanupLease(leased_workers_[lease_id2], &finished_lease2);
+  local_lease_manager_->CleanupLease(leased_workers_[worker_id1], &finished_lease1);
+  local_lease_manager_->CleanupLease(leased_workers_[worker_id2], &finished_lease2);
   ASSERT_EQ(finished_lease1.GetLeaseSpecification().LeaseId(),
             lease1.GetLeaseSpecification().LeaseId());
   ASSERT_EQ(finished_lease2.GetLeaseSpecification().LeaseId(),
@@ -1267,7 +1267,7 @@ TEST_F(ClusterLeaseManagerTest, NotOKPopWorkerTest) {
   ASSERT_TRUE(reply.canceled());
   ASSERT_EQ(reply.scheduling_failure_message(), runtime_env_error_msg);
 
-  // Test that local task manager handles PopWorkerStatus::JobFinished correctly.
+  // Test that local lease manager handles PopWorkerStatus::JobFinished correctly.
   callback_called = false;
   reply.Clear();
   RayLease lease3 = CreateLease({{ray::kCPU_ResourceLabel, 1}});
@@ -1276,7 +1276,7 @@ TEST_F(ClusterLeaseManagerTest, NotOKPopWorkerTest) {
   ASSERT_EQ(NumLeasesToDispatchWithStatus(internal::WorkStatus::WAITING), 0);
   ASSERT_EQ(NumRunningLeases(), 1);
   pool_.TriggerCallbacksWithNotOKStatus(PopWorkerStatus::JobFinished);
-  // The task should be removed from the dispatch queue.
+  // The lease should be removed from the leases_to_grant queue.
   ASSERT_FALSE(callback_called);
   ASSERT_EQ(NumLeasesToDispatchWithStatus(internal::WorkStatus::WAITING_FOR_WORKER), 0);
   ASSERT_EQ(NumLeasesToDispatchWithStatus(internal::WorkStatus::WAITING), 0);

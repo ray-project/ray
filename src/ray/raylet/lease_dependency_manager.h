@@ -73,20 +73,20 @@ class LeaseDependencyManager : public LeaseDependencyManagerInterface {
               {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT)},
                {"Name", key.first},
                {"IsRetry", key.second ? "1" : "0"},
-               {"Source", "lease_dependency_manager"}});
+               {"Source", "dependency_manager"}});
           ray::stats::STATS_tasks.Record(
               num_total - num_inactive,
               {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_FETCH)},
                {"Name", key.first},
                {"IsRetry", key.second ? "1" : "0"},
-               {"Source", "lease_dependency_manager"}});
+               {"Source", "dependency_manager"}});
           ray::stats::STATS_tasks.Record(
               num_inactive,
               {{"State",
                 rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_OBJ_STORE_MEM_AVAIL)},
                {"Name", key.first},
                {"IsRetry", key.second ? "1" : "0"},
-               {"Source", "lease_dependency_manager"}});
+               {"Source", "dependency_manager"}});
         });
   }
 

@@ -136,8 +136,12 @@ void NormalTaskSubmitter::ReturnWorkerLease(const rpc::Address &addr,
     scheduling_key_entries_.erase(scheduling_key);
   }
 
-  auto status = lease_entry.raylet_client->ReturnWorkerLease(
-      addr.port(), lease_entry.lease_id, was_error, error_detail, worker_exiting);
+  auto status =
+      lease_entry.raylet_client->ReturnWorkerLease(addr.port(),
+                                                   WorkerID::FromBinary(addr.worker_id()),
+                                                   was_error,
+                                                   error_detail,
+                                                   worker_exiting);
   if (!status.ok()) {
     RAY_LOG(ERROR) << "Error returning worker to raylet: " << status.ToString();
   }

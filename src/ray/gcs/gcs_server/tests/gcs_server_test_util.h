@@ -78,7 +78,7 @@ struct GcsServerMocker {
   class MockRayletClient : public FakeRayletClient {
    public:
     ray::Status ReturnWorkerLease(int worker_port,
-                                  const LeaseID &lease_id,
+                                  const WorkerID &worker_id,
                                   bool disconnect_worker,
                                   const std::string &disconnect_worker_error_detail,
                                   bool worker_exiting) override {

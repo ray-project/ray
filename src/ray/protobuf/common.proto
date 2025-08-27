@@ -478,7 +478,7 @@ message LeaseSpec {
   repeated string dynamic_worker_options = 19;
   int32 max_retries = 20;
   uint64 attempt_number = 21;
-
+  string task_name = 22;
 }
 
 /// The task specification encapsulates all immutable information about the

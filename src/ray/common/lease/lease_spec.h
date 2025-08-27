@@ -87,6 +87,7 @@ class LeaseSpecification : public MessageWrapper<rpc::LeaseSpec> {
   int32_t MaxRetries() const;
   uint64_t AttemptNumber() const;
   bool IsRetry() const;
+  std::string GetTaskName() const;
   std::string GetFunctionOrActorName() const;
   std::vector<std::string> DynamicWorkerOptionsOrEmpty() const;
   std::vector<std::string> DynamicWorkerOptions() const;

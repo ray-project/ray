@@ -176,8 +176,10 @@ bool LeaseDependencyManager::RequestLeaseDependencies(
     const LeaseID &lease_id,
     const std::vector<rpc::ObjectReference> &required_objects,
     const TaskMetricsKey &task_key) {
-  RAY_LOG(DEBUG) << "Adding dependencies for lease " << lease_id
-                 << ". Required objects length: " << required_objects.size();
+  RAY_LOG(DEBUG)
+          .WithField("lease_id", lease_id)
+          .WithField("required_objects_length", required_objects.size())
+      << "Adding dependencies for lease";
 
   const auto required_ids = ObjectRefsToIds(required_objects);
   absl::flat_hash_set<ObjectID> deduped_ids(required_ids.begin(), required_ids.end());
@@ -191,7 +193,8 @@ bool LeaseDependencyManager::RequestLeaseDependencies(
 
   for (const auto &ref : required_objects) {
     const auto obj_id = ObjectRefToId(ref);
-    RAY_LOG(DEBUG) << "Lease " << lease_id << " blocked on object " << obj_id;
+    RAY_LOG(DEBUG).WithField("lease_id", lease_id).WithField("object_id", obj_id)
+        << "Lease blocked on object";
 
     auto it = GetOrInsertRequiredObject(obj_id, ref);
     it->second.dependent_leases.insert(lease_id);

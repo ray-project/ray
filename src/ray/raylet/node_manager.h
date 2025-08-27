@@ -150,7 +150,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       LocalObjectManagerInterface &local_object_manager,
       LeaseDependencyManager &lease_dependency_manager,
       WorkerPoolInterface &worker_pool,
-      absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers,
+      absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
       plasma::PlasmaClientInterface &store_client,
       std::unique_ptr<core::experimental::MutableObjectProviderInterface>
           mutable_object_provider,
@@ -292,8 +292,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   // Warning: this does NOT release the worker's resources, or put the leased worker
   // back to the worker pool, or destroy the worker. The caller must handle the worker's
   // resources well.
-  void ReleaseWorker(const LeaseID &lease_id) {
-    leased_workers_.erase(lease_id);
+  void ReleaseWorker(const WorkerID &worker_id) {
+    leased_workers_.erase(worker_id);
     SetIdleIfLeaseEmpty();
   }
 
@@ -708,12 +708,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Stores the failure reason for the task. The entry will be cleaned up by a periodic
   /// function post TTL.
-  void SetTaskFailureReason(const LeaseID &lease_id,
-                            const rpc::RayErrorInfo &failure_reason,
-                            bool should_retry);
+  void SetWorkerFailureReason(const LeaseID &lease_id,
+                              const rpc::RayErrorInfo &failure_reason,
+                              bool should_retry);
 
-  /// Checks the expiry time of the task failures and garbage collect them.
-  void GCTaskFailureReason();
+  /// Checks the expiry time of the worker failures and garbage collect them.
+  void GCWorkerFailureReason();
 
   /// Creates a AgentManager that creates and manages a dashboard agent.
   std::unique_ptr<AgentManager> CreateDashboardAgentManager(
@@ -795,11 +795,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   absl::flat_hash_map<NodeID, std::pair<std::string, int32_t>>
       remote_node_manager_addresses_;
 
-  /// Map of workers to their lease ids.
-  absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers_;
+  /// Map of workers to their worker ids.
+  absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_;
 
-  /// Optional extra information about why the task failed.
-  absl::flat_hash_map<LeaseID, ray::TaskFailureEntry> task_failure_reasons_;
+  /// Optional extra information about why the worker failed.
+  absl::flat_hash_map<LeaseID, ray::TaskFailureEntry> worker_failure_reasons_;
 
   /// Whether to trigger global GC in the next resource usage report. This will broadcast
   /// a global GC message to all raylets except for this one.

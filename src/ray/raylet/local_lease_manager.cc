@@ -37,7 +37,7 @@ LocalLeaseManager::LocalLeaseManager(
     LeaseDependencyManagerInterface &lease_dependency_manager,
     internal::NodeInfoGetter get_node_info,
     WorkerPoolInterface &worker_pool,
-    absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers,
+    absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
     std::function<bool(const std::vector<ObjectID> &object_ids,
                        std::vector<std::unique_ptr<RayObject>> *results)>
         get_lease_arguments,
@@ -61,10 +61,10 @@ LocalLeaseManager::LocalLeaseManager(
       sched_cls_cap_max_ms_(RayConfig::instance().worker_cap_max_backoff_delay_ms()) {}
 
 void LocalLeaseManager::QueueAndScheduleLease(std::shared_ptr<internal::Work> work) {
-  // If the local node is draining, the cluster task manager will
+  // If the local node is draining, the cluster lease manager will
   // guarantee that the local node is not selected for scheduling.
   RAY_CHECK(!cluster_resource_scheduler_.GetLocalResourceManager().IsLocalNodeDraining());
-  // The local node must be feasible if the cluster task manager decides to run the task
+  // The local node must be feasible if the cluster lease manager decides to run the task
   // locally.
   RAY_CHECK(cluster_resource_scheduler_.GetClusterResourceManager().HasFeasibleResources(
       self_scheduling_node_id_,
@@ -89,7 +89,7 @@ void LocalLeaseManager::WaitForLeaseArgsRequests(std::shared_ptr<internal::Work>
     bool args_ready = lease_dependency_manager_.RequestLeaseDependencies(
         lease_id,
         lease.GetLeaseSpecification().GetDependencies(),
-        {lease.GetLeaseSpecification().GetFunctionOrActorName(),
+        {lease.GetLeaseSpecification().GetTaskName(),
          lease.GetLeaseSpecification().IsRetry()});
     if (args_ready) {
       RAY_LOG(DEBUG) << "Args already ready, lease can be granted " << lease_id;
@@ -320,8 +320,7 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
           RAY_CHECK(!granted_lease_args_.empty() && !pinned_lease_arguments_.empty())
               << "Cannot grant lease " << lease_id
               << " until another lease is returned and releases its arguments, but no "
-                 "other "
-                 "lease is granted";
+                 "other lease is granted";
           work->SetStateWaiting(
               internal::UnscheduledWorkCause::WAITING_FOR_AVAILABLE_PLASMA_MEMORY);
           work_it++;
@@ -958,7 +957,7 @@ const RayLease *LocalLeaseManager::AnyPendingLeasesForResourceAcquisition(
 
 void LocalLeaseManager::Grant(
     std::shared_ptr<WorkerInterface> worker,
-    absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers,
+    absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
     const std::shared_ptr<TaskResourceInstances> &allocated_instances,
     const RayLease &lease,
     rpc::RequestWorkerLeaseReply *reply,
@@ -980,8 +979,8 @@ void LocalLeaseManager::Grant(
   reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
   reply->mutable_worker_address()->set_node_id(self_node_id_.Binary());
 
-  RAY_CHECK(leased_workers.find(worker->GetGrantedLeaseId()) == leased_workers.end());
-  leased_workers[worker->GetGrantedLeaseId()] = worker;
+  RAY_CHECK(leased_workers.find(worker->WorkerId()) == leased_workers.end());
+  leased_workers[worker->WorkerId()] = worker;
   cluster_resource_scheduler_.GetLocalResourceManager().SetBusyFootprint(
       WorkFootprint::NODE_WORKERS);
 
