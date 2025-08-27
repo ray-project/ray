@@ -655,19 +655,19 @@ const ActorTable = ({
                       <br />
                       <CpuProfilingLink
                         pid={pid}
-                        ip={address?.ipAddress}
+                        nodeId={address?.nodeId}
                         type=""
                       />
                       <br />
                       <CpuStackTraceLink
                         pid={pid}
-                        ip={address?.ipAddress}
+                        nodeId={address?.nodeId}
                         type=""
                       />
                       <br />
                       <MemoryProfilingButton
                         pid={pid}
-                        ip={address?.ipAddress}
+                        nodeId={address?.nodeId}
                       />
                     </React.Fragment>
                   </TableCell>
