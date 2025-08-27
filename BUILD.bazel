@@ -457,6 +457,8 @@ genrule(
         sed -i -E 's/from opencensus.proto.resource.v1 import/from . import/' "$${files[@]}"
 
         $(location //bazel:pyzip) "$$tmpdir" $@
+
+        rm -rf "$$tmpdir"
     """,
     tools = [
         "//bazel:pyzip",
