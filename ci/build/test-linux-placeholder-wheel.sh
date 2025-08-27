@@ -11,7 +11,11 @@ fi
 # TODO (elliot-barn): list python versions
 ls -d -- /opt/python/*/bin/
 
-RAY_PLACEHOLDER_VERSION="100.0.0"
+which python
+
+which pip
+
+RAY_PLACEHOLDER_VERSION="100.0.0-dev"
 PYTHON_EXE="/opt/python/${PYTHON}/bin/python"
 PIP_CMD="$(dirname "$PYTHON_EXE")/pip"
 PIP_COMPILE_CMD="$(dirname "$PYTHON_EXE")/pip-compile"

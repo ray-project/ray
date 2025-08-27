@@ -56,10 +56,6 @@ class BuilderContainer(LinuxContainer):
             cmds += ["export RAY_DISABLE_EXTRA_CPP=1"]
         if os.environ.get("RAYCI_DISABLE_JAVA", "") == "true":
             cmds += ["export RAY_INSTALL_JAVA=0"]
-        if os.environ.get("BUILD_PLACEHOLDER_WHEEL", "") == "true":
-            cmds += [
-                "export PLACEHOLDER_WHEEL=1",
-            ]
 
         cmds += [
             "./ci/build/build-manylinux-ray.sh",
@@ -67,8 +63,6 @@ class BuilderContainer(LinuxContainer):
             "chown -R 2000:100 /artifact-mount",
         ]
 
-        if os.environ.get("TEST_PLACEHOLDER_WHEEL", "") == "true":
-            cmds += [f"./ci/build/test-linux-placeholder-wheel.sh {self.bin_path}"]
         if self.upload:
             cmds += ["./ci/build/copy_build_artifacts.sh wheel"]
         self.run_script(cmds)

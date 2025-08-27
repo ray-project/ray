@@ -31,6 +31,18 @@ steps:
       PYTHON: "{{matrix}}"
     depends_on: oss-ci-base_build-multipy
 
+  - name: minbuild
+    label: "wanda: minbuild-py{{matrix}}"
+    wanda: ci/docker/min.build.wanda.yaml
+    tags: cibase
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.11"
+      - "3.12"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+
   - name: minbuild-core
     label: "wanda: minbuild-core-py{{matrix}}"
     wanda: ci/docker/min.build.wanda.yaml

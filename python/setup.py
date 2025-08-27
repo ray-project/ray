@@ -39,7 +39,7 @@ THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
 RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR = os.path.join(
     "ray", "_private", "runtime_env", "agent", "thirdparty_files"
 )
-
+PLACEHOLDER_VERSION = "100.0.0-dev"
 # In automated builds, we do a few adjustments before building. For instance,
 # the bazel environment is set up slightly differently, and symlinks are
 # replaced with junctions in Windows. This variable is set in our conda-forge
@@ -89,7 +89,7 @@ class SetupSpec:
         elif build_type == BuildType.TSAN:
             self.version: str = f"{version}+tsan"
         elif PLACEHOLDER_WHEEL:
-            self.version: str = "100.0.0"
+            self.version: str = PLACEHOLDER_VERSION
         else:
             self.version = version
         self.description: str = description

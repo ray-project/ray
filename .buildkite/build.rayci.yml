@@ -19,27 +19,31 @@ steps:
       - manylinux
       - forge
 
-  - label: ":tapioca: build & test placeholderwheel {{matrix}} (x86_64)"
+  - label: ":tapioca: build & test placeholder wheel {{matrix}}"
     key: placeholder_wheels
     tags:
-      - release_wheels
-      - linux_wheels
-      - oss
-    instance_type: large
+      - python
+    instance_type: medium
     commands:
+      # validate minimal installation
+      - python ./ci/env/check_minimal_install.py --expected-python-version {{matrix}}
+      # build placeholder wheel
       - export RAYCI_DISABLE_CPP_WHEEL=true
       - export RAYCI_DISABLE_JAVA=true
       - export BUILD_PLACEHOLDER_WHEEL=true
       - export TEST_PLACEHOLDER_WHEEL=true
-      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture x86_64 --upload
+      - pip wheel python/ --no-deps -w=.whl/ #TODO: add --pep517
+      - ls .whl
+      # test placeholder wheel
+      - ./ci/build/test-linux-placeholder-wheel.sh {{matrix}}
+    depends_on:
+      - minbuild
+    job_env: minbuild-py{{matrix}}
     matrix:
       - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
-    depends_on:
-      - manylinux
-      - forge
 
   - label: ":tapioca: build: jar"
     key: java_wheels
