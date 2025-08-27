@@ -301,7 +301,7 @@ ray_cc_library(
         "gcs_placement_group_scheduler.h",
         "gcs_server.h",
     ],
-    implementation_deps = [
+    deps = [
         ":gcs_function_manager",
         ":gcs_health_check_manager",
         ":gcs_init_data",
@@ -315,8 +315,6 @@ ray_cc_library(
         ":gcs_task_manager",
         ":gcs_usage_stats_client",
         ":gcs_worker_manager",
-    ],
-    deps = [
         ":gcs_server_io_context_policy",
         ":gcs_state_util",
         ":gcs_store_client_kv",
