@@ -19,7 +19,6 @@
 #include <memory>
 
 #include "mock/ray/gcs/gcs_server/gcs_kv_manager.h"
-#include "ray/gcs/gcs_server/gcs_function_manager.h"
 
 namespace ray {
 
