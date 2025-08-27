@@ -10,6 +10,9 @@ from ray.rllib.algorithms.callbacks import RLlibCallback
 from ray.rllib.core.rl_module import RLModuleSpec
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
+from ray.rllib.examples.envs.classes.multi_agent.footsies.game.constants import (
+    FOOTSIES_ACTION_IDS,
+)
 from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.typing import EpisodeType
@@ -56,7 +59,138 @@ class Matchmaker:
         return policy_id
 
 
-class WinratesCallback(RLlibCallback):
+class MetricsLoggerCallback(RLlibCallback):
+    def __init__(self, main_policy: str) -> None:
+        """Log experiment metrics"""
+        super().__init__()
+        self.main_policy = main_policy
+        self.action_id_to_str = {
+            action_id: action_str
+            for action_str, action_id in FOOTSIES_ACTION_IDS.items()
+        }
+
+    def on_episode_step(
+        self,
+        *,
+        episode: MultiAgentEpisode,
+        env_runner: Optional[EnvRunner] = None,
+        metrics_logger: Optional[MetricsLogger] = None,
+        env: Optional[gym.Env] = None,
+        env_index: int,
+        **kwargs,
+    ) -> None:
+        """Log action usage frequency"""
+        stage = "eval" if env_runner.config.in_evaluation else "train"
+
+        # get the ModuleID for each agent
+        p1_module = episode.module_for("p1")
+        p2_module = episode.module_for("p2")
+
+        # get action string for each agent
+        p1_action_id = env.envs[
+            env_index
+        ].unwrapped.last_game_state.player1.current_action_id
+        p2_action_id = env.envs[
+            env_index
+        ].unwrapped.last_game_state.player2.current_action_id
+        p1_action_str = self.action_id_to_str[p1_action_id]
+        p2_action_str = self.action_id_to_str[p2_action_id]
+
+        metrics_logger.log_value(
+            key=f"footsies/{stage}/actions/{p1_module}/{p1_action_str}",
+            value=1,
+            reduce="sum",
+            window=100,
+            clear_on_reduce=True,
+        )
+        metrics_logger.log_value(
+            key=f"footsies/{stage}/actions/{p2_module}/{p2_action_str}",
+            value=1,
+            reduce="sum",
+            window=100,
+            clear_on_reduce=True,
+        )
+
+    def on_episode_end(
+        self,
+        *,
+        episode: MultiAgentEpisode,
+        env_runner: Optional[EnvRunner] = None,
+        metrics_logger: Optional[MetricsLogger] = None,
+        env: Optional[gym.Env] = None,
+        env_index: int,
+        **kwargs,
+    ) -> None:
+        """Log win rates
+
+        Log win rates of the main policy against its opponent at the end of the (training or evaluation) episode.
+        """
+        stage = "eval" if env_runner.config.in_evaluation else "train"
+
+        # check status of "p1" and "p2"
+        last_game_state = env.envs[env_index].unwrapped.last_game_state
+        p1_dead = last_game_state.player1.is_dead
+        p2_dead = last_game_state.player2.is_dead
+
+        # get the ModuleID for each agent
+        p1_module = episode.module_for("p1")
+        p2_module = episode.module_for("p2")
+
+        if self.main_policy == p1_module:
+            opponent_id = p2_module
+            main_policy_win = p2_dead
+        elif self.main_policy == p2_module:
+            opponent_id = p1_module
+            main_policy_win = p1_dead
+        else:
+            logger.info(
+                f"RLlib {self.__class__.__name__}: Main policy: '{self.main_policy}' not found in this episode. "
+                f"Policies in this episode are: '{p1_module}' and '{p2_module}'. "
+                f"Check your multi_agent 'policy_mapping_fn'. "
+                f"Metrics logging for this episode will be skipped."
+            )
+            return
+
+        if p1_dead and p2_dead:
+            metrics_logger.log_value(
+                key=f"footsies/{stage}/both_dead/{self.main_policy}/vs_{opponent_id}",
+                value=1,
+                reduce="mean",
+                window=100,
+                clear_on_reduce=True,
+            )
+        elif not p1_dead and not p2_dead:
+            metrics_logger.log_value(
+                key=f"footsies/{stage}/both_alive/{self.main_policy}/vs_{opponent_id}",
+                value=1,
+                reduce="mean",
+                window=100,
+                clear_on_reduce=True,
+            )
+        else:
+            # log the win rate against the opponent with an 'opponent_id'
+            metrics_logger.log_value(
+                key=f"footsies/{stage}/win_rates/{self.main_policy}/vs_{opponent_id}",
+                value=int(main_policy_win),
+                reduce="mean",
+                window=100,
+                clear_on_reduce=True,
+            )
+
+            # log the win rate, without specifying the opponent
+            # this metric collected from the eval env runner
+            # will be used to decide whether to add
+            # a new opponent at the current level.
+            metrics_logger.log_value(
+                key=f"footsies/{stage}/win_rates/{self.main_policy}/vs_any",
+                value=int(main_policy_win),
+                reduce="mean",
+                window=100,
+                clear_on_reduce=True,
+            )
+
+
+class MixManagerCallback(RLlibCallback):
     def __init__(
         self,
         win_rate_threshold: float,
@@ -79,82 +213,6 @@ class WinratesCallback(RLlibCallback):
         self._trained_policy_idx = (
             0  # We will use this to create new opponents of the main policy
         )
-
-    def on_episode_end(
-        self,
-        *,
-        episode: MultiAgentEpisode,
-        env_runner: Optional[EnvRunner] = None,
-        metrics_logger: Optional[MetricsLogger] = None,
-        env: Optional[gym.Env] = None,
-        env_index: int,
-        **kwargs,
-    ) -> None:
-        """Log win rates
-
-        Log win rates of the main policy against its opponent at the end of the (training or evaluation) episode.
-        """
-        if env_runner.config.in_evaluation:
-            # check status of "p1" and "p2"
-            last_game_state = env.envs[env_index].unwrapped.last_game_state
-            p1_dead = last_game_state.player1.is_dead
-            p2_dead = last_game_state.player2.is_dead
-
-            # get the ModuleID for each agent
-            p1_module = episode.module_for("p1")
-            p2_module = episode.module_for("p2")
-
-            if self.main_policy == p1_module:
-                opponent_id = p2_module
-                main_policy_win = p2_dead
-            elif self.main_policy == p2_module:
-                opponent_id = p1_module
-                main_policy_win = p1_dead
-            else:
-                logger.info(
-                    f"RLlib {self.__class__.__name__}: Main policy: '{self.main_policy}' not found in this episode. "
-                    f"Policies in this episode are: '{p1_module}' and '{p2_module}'. "
-                    f"Check your multi_agent 'policy_mapping_fn'. "
-                    f"Metrics logging for this episode will be skipped."
-                )
-                return
-
-            if p1_dead and p2_dead:
-                metrics_logger.log_value(
-                    key=f"footsies/eval/both_dead/{self.main_policy}/vs_{opponent_id}",
-                    value=1,
-                    reduce="mean",
-                    window=100,
-                    clear_on_reduce=True,
-                )
-            elif not p1_dead and not p2_dead:
-                metrics_logger.log_value(
-                    key=f"footsies/eval/both_alive/{self.main_policy}/vs_{opponent_id}",
-                    value=1,
-                    reduce="mean",
-                    window=100,
-                    clear_on_reduce=True,
-                )
-            else:
-                # log the win rate against the opponent with an 'opponent_id'
-                metrics_logger.log_value(
-                    key=f"footsies/eval/win_rates/{self.main_policy}/vs_{opponent_id}",
-                    value=int(main_policy_win),
-                    reduce="mean",
-                    window=100,
-                    clear_on_reduce=True,
-                )
-
-                # log the win rate "globally", without specifying the opponent
-                # this metric will be used to decide whether to add a new opponent
-                # at the current level.
-                metrics_logger.log_value(
-                    key=f"footsies/eval/win_rates/{self.main_policy}/vs_any",
-                    value=int(main_policy_win),
-                    reduce="mean",
-                    window=100,
-                    clear_on_reduce=True,
-                )
 
     def on_evaluate_end(
         self,

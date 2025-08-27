@@ -42,7 +42,8 @@ from ray.rllib.examples.envs.classes.multi_agent.footsies.footsies_env import (
 from ray.rllib.examples.envs.classes.multi_agent.footsies.utils import (
     Matchup,
     Matchmaker,
-    WinratesCallback,
+    MetricsLoggerCallback,
+    MixManagerCallback,
 )
 from ray.rllib.examples.rl_modules.classes.lstm_containing_rlm import (
     LSTMContainingRLModule,
@@ -202,7 +203,7 @@ if __name__ == "__main__":
                 "attack",
                 "random",
             },
-            # this is a starting policy_mapping_fn. It will be updated by the WinratesCallback during training.
+            # this is a starting policy_mapping_fn. It will be updated by the MixManagerCallback during training.
             policy_mapping_fn=Matchmaker(
                 [Matchup(main_policy, "noop", 1.0)]
             ).agent_to_module_mapping_fn,
@@ -222,7 +223,7 @@ if __name__ == "__main__":
                     ),
                     # for simplicity, all fixed RLModules are added to the config at the start.
                     # However, only "noop" is used at the start of training,
-                    # the others are added to the mix later by the WinratesCallback.
+                    # the others are added to the mix later by the MixManagerCallback.
                     "noop": RLModuleSpec(module_class=NoopFixedRLModule),
                     "back": RLModuleSpec(module_class=BackFixedRLModule),
                     "attack": RLModuleSpec(module_class=AttackFixedRLModule),
@@ -244,7 +245,11 @@ if __name__ == "__main__":
         .callbacks(
             [
                 functools.partial(
-                    WinratesCallback,
+                    MetricsLoggerCallback,
+                    main_policy=main_policy,
+                ),
+                functools.partial(
+                    MixManagerCallback,
                     win_rate_threshold=args.win_rate_threshold,
                     main_policy=main_policy,
                     starting_modules=[main_policy, "noop"],
@@ -254,7 +259,7 @@ if __name__ == "__main__":
     )
 
     # creating stopping criteria to be passed to Ray Tune. The main stopping criterion is "mix_size".
-    # "mix_size" is reported at the end of each training iteration by the WinratesCallback.
+    # "mix_size" is reported at the end of each training iteration by the MixManagerCallback.
     stop = {
         NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
         TRAINING_ITERATION: args.stop_iters,
