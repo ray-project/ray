@@ -66,7 +66,7 @@ fi
 echo "Build java maven deps."
 bazel run //java:gen_pom_files
 bazel run //java:gen_proto_files
-bazel build //java:gen_maven_deps
+bazel run //java:gen_maven_deps
 
 echo "Build ray core."
 bazel run //:gen_ray_pkg

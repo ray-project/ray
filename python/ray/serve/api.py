@@ -138,6 +138,26 @@ def shutdown():
     _set_global_client(None)
 
 
+@PublicAPI(stability="alpha")
+async def shutdown_async():
+    """Completely shut down Serve on the cluster asynchronously.
+
+    Deletes all applications and shuts down Serve system actors.
+    """
+
+    try:
+        client = _get_global_client()
+    except RayServeException:
+        logger.info(
+            "Nothing to shut down. There's no Serve application "
+            "running on this Ray cluster."
+        )
+        return
+
+    await client.shutdown_async()
+    _set_global_client(None)
+
+
 @DeveloperAPI
 def get_replica_context() -> ReplicaContext:
     """Returns the deployment and replica tag from within a replica at runtime.
