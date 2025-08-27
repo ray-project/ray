@@ -24,6 +24,7 @@ class FieldInfo:
     """Information about a field across multiple schemas."""
 
     name: str
+    unique_types_across_schemas: set[Optional[pyarrow.DataType]]
     types_across_schemas: List[Optional[pyarrow.DataType]]
     has_null_list: bool = False
     has_object: bool = False
@@ -190,6 +191,7 @@ def _find_diverging_fields(schemas: List["pyarrow.Schema"]) -> Dict[str, FieldIn
     # Single pass: build field info while iterating through schemas
     field_info_map: Dict[str, FieldInfo] = {}
 
+    conflicting_field_names = []
     # Process each schema once
     for schema_idx, schema in enumerate(schemas):
         # For each field we've seen so far, update or create FieldInfo
@@ -198,6 +200,7 @@ def _find_diverging_fields(schemas: List["pyarrow.Schema"]) -> Dict[str, FieldIn
                 # Initialize FieldInfo for new field
                 field_info_map[field_name] = FieldInfo(
                     name=field_name,
+                    unique_types_across_schemas=set(),
                     types_across_schemas=[None] * len(schemas),
                 )
 
@@ -209,6 +212,7 @@ def _find_diverging_fields(schemas: List["pyarrow.Schema"]) -> Dict[str, FieldIn
             except KeyError:
                 field_type = None
 
+            field_info.unique_types_across_schemas.add(field_type)
             field_info.types_across_schemas[schema_idx] = field_type
 
             # Update type flags if we have a type
@@ -223,31 +227,28 @@ def _find_diverging_fields(schemas: List["pyarrow.Schema"]) -> Dict[str, FieldIn
                     field_info.has_tensor = True
                 if pyarrow.types.is_struct(field_type):
                     field_info.has_struct = True
-
-    # Filter to only divergent fields
-    diverging_fields = {}
-    conflicting_field_names = []
-
-    for field_name, field_info in field_info_map.items():
-        types = field_info.types_across_schemas
-        non_null_types = [t for t in types if t is not None]
-
-        # Check if divergent
-        has_missing = None in types
-        has_type_differences = len({str(t) for t in non_null_types}) > 1
-
-        if not (has_missing or has_type_differences):
-            continue  # Not divergent
-
-        if field_info.has_object and field_info.has_tensor:
-            conflicting_field_names.append(field_name)
-
-        diverging_fields[field_name] = field_info
+                if field_info.has_object and field_info.has_tensor:
+                    conflicting_field_names.append(field_name)
 
     if conflicting_field_names:
         raise ValueError(
             f"Found columns with both objects and tensors: {conflicting_field_names}"
         )
+
+    # Filter to only divergent fields
+    diverging_fields = {}
+
+    # Need 2nd pass to check for missing fields and type differences across schemas
+    for field_name, field_info in field_info_map.items():
+        has_missing = None in field_info.types_across_schemas
+
+        # Check if divergent
+        has_type_differences = len(field_info.unique_types_across_schemas) > 1
+
+        if not (has_missing or has_type_differences):
+            continue  # Not divergent
+
+        diverging_fields[field_name] = field_info
 
     return diverging_fields
 
@@ -276,11 +277,14 @@ def _reconcile_field(
 
     arrow_tensor_types = get_arrow_extension_tensor_types()
     arrow_fixed_shape_tensor_types = get_arrow_extension_fixed_shape_tensor_types()
-    non_null_types = [t for t in field_info.types_across_schemas if t is not None]
 
     # Handle tensor fields
     if field_info.has_tensor:
-        tensor_types = [t for t in non_null_types if isinstance(t, arrow_tensor_types)]
+        tensor_types = [
+            t
+            for t in field_info.types_across_schemas
+            if isinstance(t, arrow_tensor_types)
+        ]
         has_missing_fields = len(tensor_types) < len(schemas)
 
         # Convert to variable-shaped if needed or if we have missing fields
@@ -309,7 +313,11 @@ def _reconcile_field(
 
     # Handle struct fields (recursive unification)
     if field_info.has_struct:
-        struct_types = [t for t in non_null_types if pyarrow.types.is_struct(t)]
+        struct_types = [
+            t
+            for t in field_info.types_across_schemas
+            if t is not None and pyarrow.types.is_struct(t)
+        ]
         struct_schemas = []
 
         for struct_type in struct_types:
@@ -327,16 +335,12 @@ def _reconcile_field(
     # Handle null-typed list fields
     if field_info.has_null_list:
         # Find first non-null list type to use as the reconciled type
-        for field_type in non_null_types:
+        for field_type in field_info.types_across_schemas:
             if not (
                 pyarrow.types.is_list(field_type)
                 and pyarrow.types.is_null(field_type.value_type)
             ):
                 return field_type
-
-    # Simple case: if all non-null types are identical, use that type
-    if non_null_types and len({str(t) for t in non_null_types}) == 1:
-        return non_null_types[0]
 
     # For other divergent fields, let PyArrow handle the unification
     return None
