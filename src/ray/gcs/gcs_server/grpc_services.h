@@ -58,6 +58,29 @@ class NodeInfoGrpcService : public GrpcService {
   int64_t max_active_rpcs_per_handler_;
 };
 
+class InternalPubSubGrpcService : public GrpcService {
+ public:
+  InternalPubSubGrpcService(instrumented_io_context &io_service,
+                            InternalPubSubGcsServiceHandler &handler,
+                            int64_t max_active_rpcs_per_handler)
+      : GrpcService(io_service),
+        service_handler_(handler),
+        max_active_rpcs_per_handler_(max_active_rpcs_per_handler) {}
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      const ClusterID &cluster_id) override;
+
+ private:
+  InternalPubSubGcsService::AsyncService service_;
+  InternalPubSubGcsServiceHandler &service_handler_;
+  int64_t max_active_rpcs_per_handler_;
+};
+
 class JobInfoGrpcService : public GrpcService {
  public:
   explicit JobInfoGrpcService(instrumented_io_context &io_service,
@@ -124,6 +147,29 @@ class WorkerInfoGrpcService : public GrpcService {
  private:
   WorkerInfoGcsService::AsyncService service_;
   WorkerInfoGcsServiceHandler &service_handler_;
+  int64_t max_active_rpcs_per_handler_;
+};
+
+class InternalKVGrpcService : public GrpcService {
+ public:
+  explicit InternalKVGrpcService(instrumented_io_context &io_service,
+                                 InternalKVGcsServiceHandler &handler,
+                                 int64_t max_active_rpcs_per_handler)
+      : GrpcService(io_service),
+        service_handler_(handler),
+        max_active_rpcs_per_handler_(max_active_rpcs_per_handler){};
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      const ClusterID &cluster_id) override;
+
+ private:
+  InternalKVGcsService::AsyncService service_;
+  InternalKVGcsServiceHandler &service_handler_;
   int64_t max_active_rpcs_per_handler_;
 };
 
