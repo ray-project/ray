@@ -287,7 +287,7 @@ class OpState:
             self._schema,
             ref,
             warn=not self._warned_on_schema_divergence,
-            allow_divergent=self.op.data_context.allow_divergent_schemas,
+            allow_divergent=self.op.data_context.enforce_schemas,
         )
         self._schema = ref.schema
         self._warned_on_schema_divergence |= diverged
