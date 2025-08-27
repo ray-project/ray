@@ -75,7 +75,7 @@ if __name__ == "__main__":
         .env_runners(
             env_runner_cls=MultiAgentEnvRunner,
             num_env_runners=1,
-            num_cpus_per_env_runner=1,
+            num_cpus_per_env_runner=0.5,
             num_envs_per_env_runner=1,
             batch_mode="truncate_episodes",
             rollout_fragment_length=256,
