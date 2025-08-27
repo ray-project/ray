@@ -172,9 +172,10 @@ def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:
 def _bundles_to_block_list(bundles: Iterator[RefBundle]) -> BlockList:
     blocks, metadata = [], []
     owns_blocks = True
-    schema = _take_first_non_empty_schema(ref_bundle.schema for ref_bundle in bundles)
+    bundle_list = list(bundles)
+    schema = _take_first_non_empty_schema(ref_bundle.schema for ref_bundle in bundle_list)
 
-    for ref_bundle in bundles:
+    for ref_bundle in bundle_list:
         if not ref_bundle.owns_blocks:
             owns_blocks = False
         blocks.extend(ref_bundle.block_refs)

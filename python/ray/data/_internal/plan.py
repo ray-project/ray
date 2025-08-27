@@ -1,4 +1,3 @@
-from ast import iter_fields
 import copy
 import itertools
 import logging

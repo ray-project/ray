@@ -74,7 +74,6 @@ class AbstractFrom(LogicalOperator, SourceOperator, metaclass=abc.ABCMeta):
         return self._cached_output_metadata
 
     def infer_schema(self):
-        # NOTE: unification was done in this step before.
         return unify_ref_bundles_schema(bundle.schema for bundle in self._input_data)
 
     def is_lineage_serializable(self) -> bool:

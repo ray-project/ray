@@ -37,7 +37,6 @@ def generate_sort_fn(
         if len(blocks) == 0:
             return (blocks, {})
 
-        # NOTE: unify was here before.
         sort_key.validate_schema(unify_ref_bundles_schema(refs))
 
         num_mappers = len(blocks)

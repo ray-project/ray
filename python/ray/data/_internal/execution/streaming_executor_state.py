@@ -769,8 +769,8 @@ def dedupe_schemas_with_validation(
             the new schema will be used as the old schema.
         bundle: The new `RefBundle` to unify with the old schema.
         warn: Raise a warning if the schemas diverge.
-        enforce_schemas: If `False`, allow the schemas to diverge and return unified schema.
-            If `True`, but keep the old schema.
+        enforce_schemas: If `True`, allow the schemas to diverge and return unified schema.
+            If `False`, but keep the old schema.
 
     Returns:
         A ref bundle with the unified schema of the two input schemas.

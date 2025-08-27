@@ -49,7 +49,6 @@ class InputData(LogicalOperator, SourceOperator):
             return None
 
     def infer_schema(self):
-        # NOTE: unify was here before.
         return unify_schemas_with_validation([data.schema for data in self.input_data])
 
     def is_lineage_serializable(self) -> bool:

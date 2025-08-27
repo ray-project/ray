@@ -108,7 +108,6 @@ class Read(AbstractMap, SourceOperator):
 
         schema = None
         if schemas:
-            # NOTE: unify was here before.
             schema = unify_schemas_with_validation(schemas)
         return BlockMetadataWithSchema(metadata=meta, schema=schema)
 
