@@ -119,7 +119,7 @@ TempDirectory::~TempDirectory() {
 #ifdef CLONE_INTO_CGROUP
 ray::StatusOr<std::pair<pid_t, int>> StartChildProcessInCgroup(
     const std::string &cgroup_path) {
-  int cgroup_fd = open(cgroup_path.c_str(), O_RDWR);
+  int cgroup_fd = open(cgroup_path.c_str(), O_RDONLY);
   if (cgroup_fd == -1) {
     return ray::Status::InvalidArgument(
         absl::StrFormat("Unable to open fd for cgroup at %s with error %s.",
