@@ -733,10 +733,14 @@ void GcsServer::InitGcsTaskManager() {
   auto &io_context = io_context_provider_.GetIOContext<GcsTaskManager>();
   gcs_task_manager_ = std::make_unique<GcsTaskManager>(io_context);
   // Register service.
-  rpc_server_.RegisterService(
-      std::make_unique<rpc::TaskInfoGrpcService>(io_context, *gcs_task_manager_, RayConfig::instance().gcs_max_active_rpcs_per_handler()));
-  rpc_server_.RegisterService(
-      std::make_unique<rpc::RayEventExportGrpcService>(io_context, *gcs_task_manager_, RayConfig::instance().gcs_max_active_rpcs_per_handler()));
+  rpc_server_.RegisterService(std::make_unique<rpc::TaskInfoGrpcService>(
+      io_context,
+      *gcs_task_manager_,
+      RayConfig::instance().gcs_max_active_rpcs_per_handler()));
+  rpc_server_.RegisterService(std::make_unique<rpc::RayEventExportGrpcService>(
+      io_context,
+      *gcs_task_manager_,
+      RayConfig::instance().gcs_max_active_rpcs_per_handler()));
 }
 
 void GcsServer::InstallEventListeners() {
