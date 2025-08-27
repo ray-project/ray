@@ -143,6 +143,17 @@ class TestMetricsPusher:
         await metrics_pusher.graceful_shutdown()
 
 
+def assert_timeseries_equal(actual, expected):
+    assert len(actual) == len(
+        expected
+    ), f"Length mismatch: {len(actual)} vs {len(expected)}"
+    for i, (a, e) in enumerate(zip(actual, expected)):
+        assert (
+            a.timestamp == e.timestamp
+        ), f"Timestamp mismatch at {i}: {a.timestamp} vs {e.timestamp}"
+        assert a.value == e.value, f"Value mismatch at {i}: {a.value} vs {e.value}"
+
+
 class TestInMemoryMetricsStore:
     def test_basics(self):
         s = InMemoryMetricsStore()
@@ -219,38 +230,40 @@ class TestInMemoryMetricsStore:
         s3.add_metrics_point({"m2": 10, QUEUED_REQUESTS_KEY: 10}, timestamp=2)
         merged = merge_timeseries_dicts(s1.data, s2.data, s3.data, window_s=1)
 
-        assert merged["m1"] == [TimeStampedValue(1, 1), TimeStampedValue(2, 2)]
-        assert merged["m2"] == [
-            TimeStampedValue(1, 2),
-            TimeStampedValue(2, 12),
-        ]
-        assert merged["m3"] == [TimeStampedValue(1, 3)]
-        assert merged[QUEUED_REQUESTS_KEY] == [
-            TimeStampedValue(1, 1),
-            TimeStampedValue(2, 11),
-        ]
+        assert_timeseries_equal(
+            merged["m1"], [TimeStampedValue(1, 1), TimeStampedValue(2, 2)]
+        )
+        assert_timeseries_equal(
+            merged["m2"], [TimeStampedValue(1, 2), TimeStampedValue(2, 12)]
+        )
+        assert_timeseries_equal(merged["m3"], [TimeStampedValue(1, 3)])
+        assert_timeseries_equal(
+            merged[QUEUED_REQUESTS_KEY],
+            [TimeStampedValue(1, 1), TimeStampedValue(2, 11)],
+        )
 
         s4 = InMemoryMetricsStore()
         s4.add_metrics_point(
             {"m1": 100, "m2": 100, "m3": 100, QUEUED_REQUESTS_KEY: 10}, timestamp=0
         )
+
         merged = merge_timeseries_dicts(s1.data, s2.data, s3.data, s4.data, window_s=2)
-        assert merged["m1"] == [
-            TimeStampedValue(0, 101),
-            TimeStampedValue(2, 1),
-            TimeStampedValue(4, 2),
-        ]
-        assert merged["m2"] == [
-            TimeStampedValue(0, 100),
-            TimeStampedValue(2, 2),
-            TimeStampedValue(4, 12),
-        ]
-        assert merged["m3"] == [TimeStampedValue(0, 100), TimeStampedValue(2, 3)]
-        assert merged[QUEUED_REQUESTS_KEY] == [
-            TimeStampedValue(0, 10),
-            TimeStampedValue(2, 1),
-            TimeStampedValue(4, 11),
-        ]
+
+        assert_timeseries_equal(
+            merged["m1"],
+            [TimeStampedValue(0, 100), TimeStampedValue(2, 1), TimeStampedValue(4, 2)],
+        )
+        assert_timeseries_equal(
+            merged["m2"],
+            [TimeStampedValue(0, 100), TimeStampedValue(2, 2), TimeStampedValue(4, 12)],
+        )
+        assert_timeseries_equal(
+            merged["m3"], [TimeStampedValue(0, 100), TimeStampedValue(2, 3)]
+        )
+        assert_timeseries_equal(
+            merged[QUEUED_REQUESTS_KEY],
+            [TimeStampedValue(0, 10), TimeStampedValue(2, 1), TimeStampedValue(4, 11)],
+        )
 
         s1_s2 = merge_timeseries_dicts(s1.data, s2.data, window_s=1)
         s2_s1 = merge_timeseries_dicts(s2.data, s1.data, window_s=1)
@@ -261,11 +274,15 @@ class TestInMemoryMetricsStore:
             s4.data, s1.data, s3.data, s2.data, window_s=1
         )
 
-        assert s1_s2 == s2_s1
-        assert s1_s2_s3_s4 == s4_s1_s3_s2
+        # dict equality -> compare per-key time series
+        for k in s1_s2:
+            assert_timeseries_equal(s1_s2[k], s2_s1[k])
+        for k in s1_s2_s3_s4:
+            assert_timeseries_equal(s1_s2_s3_s4[k], s4_s1_s3_s2[k])
 
         a1_none = merge_timeseries_dicts(s1.data, defaultdict(list), window_s=1)
-        assert a1_none == s1.data
+        for k in a1_none:
+            assert_timeseries_equal(a1_none[k], s1.data[k])
 
 
 if __name__ == "__main__":

@@ -205,7 +205,7 @@ class InMemoryMetricsStore:
 
         Using sum across keys:
 
-        >>> self._aggregate_reduce(keys=["a", "b", "c"], aggregate_fn=sum)
+        >>> store._aggregate_reduce(keys=["a", "b", "c"], aggregate_fn=sum)
         (13.0, 2)
 
         Here:
@@ -376,6 +376,6 @@ def merge_timeseries_dicts(
             if key in merged:
                 merged[key] = _merge_two_timeseries(merged[key], ts, window_s)
             else:
-                # Keep raw data for unique keys
-                merged[key] = ts.copy()
+                # Window the data, even if the key is unique.
+                merged[key] = _merge_two_timeseries(ts, [], window_s)
     return merged
