@@ -21,14 +21,18 @@ def is_torch_dist_env_set() -> bool:
 
     For torch.distributed.init_process_group with init_method="env://", these variables are required:
     - RANK: The rank of the current process
+    - LOCAL_RANK: The local rank of the current process
     - WORLD_SIZE: Total number of processes participating in the job
+    - LOCAL_WORLD_SIZE: Total number of processes participating in the job on the current node
     - MASTER_ADDR: The IP address or hostname of the master node (rank 0)
     - MASTER_PORT: A free port on the master node for communication
 
     """
     torch_dist_required_vars = {
         "RANK",
+        "LOCAL_RANK",
         "WORLD_SIZE",
+        "LOCAL_WORLD_SIZE",
         "MASTER_ADDR",
         "MASTER_PORT",
     }
@@ -39,14 +43,17 @@ def is_torch_dist_env_set() -> bool:
 class LocalTorchController(LocalController):
     def run(self, train_func: Callable[[], None]) -> Result:
         world_size = 1
-        local_rank = 0
+        world_rank = 0
         if is_torch_dist_env_set():
             assert not dist.is_initialized(), "torch.distributed is already initialized"
             torch.distributed.init_process_group(
                 backend="nccl" if torch.cuda.is_available() else "gloo"
             )
             world_size = torch.distributed.get_world_size()
-            local_rank = torch.distributed.get_rank()
+            world_rank = torch.distributed.get_rank()
+            assert os.environ["LOCAL_WORLD_SIZE"] == str(
+                world_size
+            ), "Local mode only supports 1 node, LOCAL_WORLD_SIZE should be equal to WORLD_SIZE."
         if world_size != 1:
             assert (
                 self.datasets is None or len(self.datasets) == 0
@@ -55,7 +62,7 @@ class LocalTorchController(LocalController):
             LocalTrainFnUtils(
                 experiment_name=self.experiment_name,
                 local_world_size=world_size,
-                local_rank=local_rank,
+                local_rank=world_rank,
                 dataset_shards=self.datasets,
             )
         )
