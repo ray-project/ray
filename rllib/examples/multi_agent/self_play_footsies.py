@@ -144,7 +144,7 @@ if __name__ == "__main__":
     stop = {
         NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
         TRAINING_ITERATION: args.stop_iters,
-        "mix_size": 5,
+        "mix_size": 6,
     }
 
     # Run the experiment

@@ -212,7 +212,7 @@ class MixManagerCallback(RLlibCallback):
         super().__init__()
         self.win_rate_threshold = win_rate_threshold
         self.main_policy = main_policy
-        self.fixed_modules_progression_sequence = fixed_modules_progression_sequence  # Order of RL modules to be added to the mix
+        self.fixed_modules_progression_sequence = tuple(fixed_modules_progression_sequence)  # Order of RL modules to be added to the mix
         self.modules_in_mix = list(
             starting_modules
         )  # RLModules that are currently in the mix
