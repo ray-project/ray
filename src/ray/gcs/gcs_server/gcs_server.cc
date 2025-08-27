@@ -63,7 +63,6 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       rpc_server_(config.grpc_server_name,
                   config.grpc_server_port,
                   config.node_ip_address == "127.0.0.1",
-                  ClusterID::Nil(),
                   config.grpc_server_thread_num,
                   /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms()),
       client_call_manager_(main_service,
@@ -614,7 +613,9 @@ void GcsServer::InitKVService() {
   RAY_CHECK(kv_manager_);
   rpc_server_.RegisterService(
       std::make_unique<rpc::InternalKVGrpcService>(
-          io_context_provider_.GetIOContext<GcsInternalKVManager>(), *kv_manager_),
+          io_context_provider_.GetIOContext<GcsInternalKVManager>(),
+          *kv_manager_,
+          /*max_active_rpcs_per_handler_=*/-1),
       false /* token_auth */);
 }
 
