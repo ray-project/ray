@@ -1,4 +1,5 @@
 group: forge
+sort_key: "_forge"
 steps:
   - name: forge
     wanda: ci/docker/forge.wanda.yaml
@@ -19,6 +20,7 @@ steps:
       - "3.12"
     env:
       PYTHON_VERSION: "{{matrix}}"
+      ARCH_SUFFIX: ""
 
   - name: raycpubaseextra
     label: "wanda: ray.py{{matrix}}.cpu.base-extra"
@@ -31,6 +33,7 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix}}"
       IMAGE_TYPE: "ray"
+      ARCH_SUFFIX: ""
     depends_on: raycpubase
 
   - name: raycudabase
@@ -58,6 +61,7 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
+      ARCH_SUFFIX: ""
 
   - name: raycudabaseextra
     label: "wanda: ray.py{{matrix.python}}.cu{{matrix.cuda}}.base-extra"
@@ -82,6 +86,7 @@ steps:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray"
+      ARCH_SUFFIX: ""
     depends_on: raycudabase
 
   - name: ray-llmbase
@@ -114,6 +119,7 @@ steps:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray-llm"
+      ARCH_SUFFIX: ""
     depends_on: ray-llmbase
 
   - name: ray-mlcudabase
@@ -150,7 +156,8 @@ steps:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray-ml"
-    depends_on: raycudabaseextra
+      ARCH_SUFFIX: ""
+    depends_on: ray-mlcudabase
 
   - name: ray-mlcpubase
     label: "wanda: ray-ml.py{{matrix}}.cpu.base"
@@ -176,4 +183,49 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix}}"
       IMAGE_TYPE: "ray-ml"
-    depends_on: raycpubaseextra
+      ARCH_SUFFIX: ""
+    depends_on: ray-mlcpubase
+
+  - name: ray-slimcpubase
+    label: "wanda: ray-slim.py{{matrix}}.cpu.base"
+    tags:
+      - python_dependencies
+      - docker
+    wanda: ci/docker/ray-slim.cpu.base.wanda.yaml
+    depends_on: raycpubase
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.11"
+      - "3.12"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      ARCH_SUFFIX: ""
+
+  - name: ray-slimcudabase
+    label: "wanda: ray-slim.py{{matrix.python}}.cu{{matrix.cuda}}.base"
+    tags:
+      - python_dependencies
+      - docker
+    wanda: ci/docker/ray-slim.cuda.base.wanda.yaml
+    depends_on: raycudabase
+    matrix:
+      setup:
+        python:
+          - "3.9"
+          - "3.10"
+          - "3.11"
+          - "3.12"
+        cuda:
+          - "11.7.1"
+          - "11.8.0"
+          - "12.1.1"
+          - "12.3.2"
+          - "12.4.1"
+          - "12.5.1"
+          - "12.6.3"
+          - "12.8.1"
+    env:
+      PYTHON_VERSION: "{{matrix.python}}"
+      CUDA_VERSION: "{{matrix.cuda}}"
+      ARCH_SUFFIX: ""
