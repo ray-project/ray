@@ -483,6 +483,7 @@ class WorkerGroup:
             callback.before_worker_group_abort(self._worker_group_context)
 
         self._worker_group_state.shutdown()
+        self._clear_state()
 
     #####################################################################################
     # Polling Worker Group
