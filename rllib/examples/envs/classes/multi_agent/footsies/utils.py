@@ -203,6 +203,7 @@ class MixManagerCallback(RLlibCallback):
         self,
         win_rate_threshold: float,
         main_policy: str,
+        target_mix_size: int,
         starting_modules=list[str],  # default is ["lstm", "noop"]
         fixed_modules_progression_sequence=tuple[
             str
@@ -212,6 +213,7 @@ class MixManagerCallback(RLlibCallback):
         super().__init__()
         self.win_rate_threshold = win_rate_threshold
         self.main_policy = main_policy
+        self.target_mix_size = target_mix_size
         self.fixed_modules_progression_sequence = tuple(
             fixed_modules_progression_sequence
         )  # Order of RL modules to be added to the mix
@@ -339,3 +341,20 @@ class MixManagerCallback(RLlibCallback):
         That will tell Ray Tune, whether to stop training (once the 'target_mix_size' has been reached).
         """
         result["mix_size"] = len(self.modules_in_mix)
+
+        if len(self.modules_in_mix) >= self.target_mix_size:
+            # we reached the target mix size. Experiment will be terminated.
+            # we need to terminate all running footsies binaries, associated with the experiment.
+            logger.info(
+                f"RLlib {self.__class__.__name__}: Reached target mix size of {self.target_mix_size}. "
+                f"Terminating Footsies game processes."
+            )
+
+            algorithm.env_runner_group.foreach_env_runner(
+                lambda er: er.env.envs[0].unwrapped.terminate_footsies_process(),
+                local_env_runner=True,
+            )
+            algorithm.eval_env_runner_group.foreach_env_runner(
+                lambda er: er.env.envs[0].unwrapped.terminate_footsies_process(),
+                local_env_runner=True
+            )
