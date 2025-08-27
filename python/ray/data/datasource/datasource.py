@@ -4,9 +4,8 @@ import numpy as np
 
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block, BlockMetadata, Schema
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
-
 from ray.data.datasource.util import iter_sliced_blocks
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 
 @PublicAPI

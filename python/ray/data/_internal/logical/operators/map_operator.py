@@ -65,8 +65,8 @@ class AbstractMap(AbstractOneToOne):
         self._compute = compute or TaskPoolStrategy()
         self._per_block_limit = per_block_limit
 
-        def set_per_block_limit(self, per_block_limit: int):
-            self._per_block_limit = per_block_limit
+    def set_per_block_limit(self, per_block_limit: int):
+        self._per_block_limit = per_block_limit
 
 
 class AbstractUDFMap(AbstractMap):
