@@ -80,6 +80,7 @@
 # Baseline test
 #######################
 - name: hello_world_test
+  team: reef
   group: hello_world_test
   frequency: nightly
   working_dir: hello_world_tests
