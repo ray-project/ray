@@ -777,7 +777,7 @@ def test_report_per_component_stats_gpu():
         else:
             assert record.value == 86
 
-        # Test stats with two tasks on one GPU.
+    # Test stats with two tasks on one GPU.
     NVSMI_OUTPUT_TWO_TASK_ON_ONE_GPUS = (
         "# gpu         pid   type     sm    mem    enc    dec    jpg    ofa    command \n"
         "# Idx           #    C/G      %      %      %      %      %      %    name \n"

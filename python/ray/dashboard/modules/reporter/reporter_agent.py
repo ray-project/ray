@@ -1777,6 +1777,7 @@ class ReporterAgent(
         # TODO(aguo): Add a pydantic model for this dict to maintain compatibility
         # with the Ray Dashboard API and UI code.
 
+        # NOTE: This converts keys to "Google style", (e.g: "processes_pids" -> "processesPids")
         return jsonify_asdict(stats)
 
     async def run(self, server):
