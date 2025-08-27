@@ -20,9 +20,9 @@ For more information on MyST notebooks, see the
 If you want to learn more about the MyST parser, see the
 [MyST documentation](https://myst-parser.readthedocs.io/en/latest/).
 
-MyST is common markdown compliant, so if you can use plain markdown here.
-In case you need to execute restructured text (`rSt`) directives, you can use `{eval-rst}` to execute the code.
-For instance, a here's a note written in rSt:
+MyST is CommonMark compliant, so if you can use plain markdown here.
+In case you need to execute restructured text (rST) directives, you can use `{eval-rst}` to execute the code.
+For instance, here's a note written in rST:
 
 ```{eval-rst}
 .. note::
@@ -65,10 +65,10 @@ checkpoint_path = train_ppo_model()
 
 ## Hiding and removing cells
 
-You can hide cells, so that they will toggle when you click on the cell header.
+You can hide cells, so that they toggle when you click the cell header.
 You can use different `:tags:` like `hide-cell`, `hide-input`, or `hide-output` to hide cell content,
-and you can use `remove-cell`, `remove-input`, or `remove-output` to remove the cell completely when rendered.
-Those cells will still show up in the notebook itself.
+and you can use `remove-cell`, `remove-input`, or `remove-output` to completely remove the cell when rendered.
+Those cells still show up in the notebook itself.
 
 ```{code-cell} python3
 :tags: [hide-cell]
@@ -88,7 +88,7 @@ Here's a quick tip.
 And this is a note.
 :::
 
-The following cell will be removed and not render:
+The following cell doesn't render:
 
 ```{code-cell} python3
 :tags: [remove-cell]
