@@ -2,7 +2,7 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Any, Dict, Optional
+from typing import Optional
 
 import torch
 import torch.distributed as dist
@@ -34,7 +34,7 @@ class TorchConfigContextManager:
                 if device.type == "xla":
                     # For TPU training, the device is already set up in the backend
                     # Just log that we're using TPU
-                    logger.info(f"TPU device already configured: {device}")
+                    logger.info(f"XLA device already configured: {device}")
             except Exception:
                 # If get_device fails, continue without setting device
                 pass
@@ -72,12 +72,12 @@ class TorchConfig(BackendConfig):
     init_method: str = "env"
     timeout_s: int = 1800
     use_tpu: bool = False
-    xla_spmd_config: Optional[Dict[str, Any]] = None
+    # xla_spmd_config: Optional[Dict[str, Any]] = None
 
     @property
     def backend_cls(self):
-        if self.backend == "xla_tpu":
-            return _TorchTPUBackend
+        # if self.backend == "xla_tpu":
+        #     return _TorchTPUBackend
         return _TorchBackend
 
     @property
@@ -133,6 +133,8 @@ def _setup_torch_process_group(
             os.environ[TORCH_NCCL_ASYNC_ERROR_HANDLING_ENV_VAR] = "1"
     elif backend == "hccl":
         register_custom_torch_dist_backend(backend)
+    elif backend == "xla":
+        pass
 
     dist.init_process_group(
         backend=backend,
@@ -189,6 +191,8 @@ class _TorchBackend(Backend):
             master_addr, master_port = worker_group.execute_single(
                 0, get_address_and_port
             )
+            # if backend_config.backend == 'xla':
+            #     import torch_xla.distributed.xla_backend
             if backend_config.init_method == "env":
 
                 def set_env_vars(addr, port):
@@ -245,7 +249,7 @@ class _TorchTPUBackend(Backend):
 
     def on_start(self, worker_group: WorkerGroup, backend_config: TorchConfig):
         """Logic ran right before training is started.
-        
+
         This method initializes the XLA distributed process group and sets up
         the environment, similar to how TorchBackend works.
         """
@@ -261,7 +265,7 @@ class _TorchTPUBackend(Backend):
 
         # Set the env vars on all workers.
         worker_group.execute(set_env_vars, addr=master_addr, port=master_port)
-        
+
         # Initialize XLA distributed process group (like TorchBackend does)
         # This eliminates the race condition by setting up process group before training starts
         # Run setup on each worker individually with proper rank assignment
@@ -276,21 +280,12 @@ class _TorchTPUBackend(Backend):
                 )
             )
         ray.get(setup_futures)
-        
-        # Set up XLA SPMD environment if configuration is provided
-        if (
-            hasattr(backend_config, "xla_spmd_config")
-            and backend_config.xla_spmd_config
-        ):
-            worker_group.execute(
-                _setup_xla_spmd_environment, backend_config.xla_spmd_config
-            )
 
     def on_training_start(
         self, worker_group: WorkerGroup, backend_config: BackendConfig
     ):
         """Set up environment variables for distributed training.
-        
+
         The XLA distributed process group is already initialized in on_start,
         so this method only needs to set environment variables, just like TorchBackend.
         """
@@ -311,72 +306,30 @@ def _setup_xla_torch_process_group(world_rank: int, world_size: int):
 
     This function calls dist.init_process_group("xla", init_method='xla://') to set up
     distributed training on TPU/GPU devices using the torch_xla backend.
-    
+
     Args:
         world_rank: The rank of this worker in the distributed training setup
         world_size: The total number of workers in the distributed training setup
     """
-    try:
-        import torch.distributed as dist
-        import torch_xla.core.xla_model as xm
-        import torch_xla.distributed.xla_backend
+    import torch.distributed as dist
 
-        # Use the provided rank and world_size parameters
-        rank = world_rank
-        world_size = world_size
-        
-        # Log the rank and world size for debugging
-        logger.info(f"Setting up XLA process group - rank: {rank}, world_size: {world_size}")
-        
-        # Validate rank and world size
-        if rank < 0 or rank >= world_size:
-            raise ValueError(f"Invalid rank {rank} for world_size {world_size}")
-        if world_size < 1:
-            raise ValueError(f"Invalid world_size {world_size}")
+    # Use the provided rank and world_size parameters
+    rank = world_rank
+    world_size = world_size
 
-        # Initialize the XLA distributed process group
-        # This is the key call that sets up distributed training with torch_xla
-        dist.init_process_group(
-            backend="xla", init_method="xla://", world_size=world_size, rank=rank
-        )
+    # Log the rank and world size for debugging
+    logger.info(
+        f"Setting up XLA process group - rank: {rank}, world_size: {world_size}"
+    )
 
-        logger.info(
-            f"Initialized XLA distributed process group: rank={rank}, world_size={world_size}"
-        )
+    # Initialize the XLA distributed process group
+    dist.init_process_group(
+        backend="xla", init_method="env://", world_size=world_size, rank=rank
+    )
 
-        # Set up XLA device for this worker
-        # For multi-worker training, we need to ensure proper device separation
-        # Try to use rank-based device assignment, fallback to default if needed
-        try:
-            # First try to get device by rank
-            device = xm.xla_device(rank)
-            logger.info(f"Worker {rank}: XLA device initialized: {device}")
-        except Exception as e:
-            logger.warning(f"Worker {rank}: Failed to assign device by rank {rank}, trying default: {e}")
-            try:
-                # Fallback to default device assignment
-                device = xm.xla_device()
-                logger.info(f"Worker {rank}: Using default XLA device: {device}")
-            except Exception as e2:
-                logger.error(f"Worker {rank}: Failed to get any XLA device: {e2}")
-                raise RuntimeError(f"XLA device initialization failed: {e}, fallback failed: {e2}")
-            
-        # Log device information for debugging
-        logger.info(f"Worker {rank}: XLA device: {device}")
-        logger.info(f"Worker {rank}: Device type: {device.type}")
-        
-        # Note: We don't manually set torch.cuda.set_device() because:
-        # 1. torch_xla handles GPU device assignment automatically
-        # 2. Manual CUDA device setting might interfere with XLA's device management
-        # 3. xm.xla_device(rank) already ensures proper device separation
-
-    except ImportError:
-        raise ImportError(
-            "torch_xla must be installed to use TPU backend. Install with: pip install torch_xla"
-        )
-    except Exception as e:
-        logger.error(f"Failed to initialize XLA distributed process group: {e}")
-        raise
+    logger.info(
+        f"Initialized XLA distributed process group: rank={rank}, world_size={world_size}"
+    )
 
 
 def _setup_xla_spmd_environment(spmd_config):
