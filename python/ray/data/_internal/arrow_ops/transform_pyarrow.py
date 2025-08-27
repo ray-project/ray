@@ -186,8 +186,7 @@ def unify_schemas(
     except Exception as e:
         # Unsure if there are cases where schemas are NOT hashable
         logger.warning(
-            "Skipping schema deduplication because they are not hashable. "
-            f"This can hurt performance if the schemas are large. {e}"
+            f"Failed to hash the schemas (for deduplication): {e}"
         )
 
     schemas_to_unify = []
