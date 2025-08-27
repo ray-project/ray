@@ -66,6 +66,26 @@ class JobStatus(str, Enum):
         return self.value in {"STOPPED", "SUCCEEDED", "FAILED"}
 
 
+@PublicAPI(stability="stable")
+class JobErrorType(str, Enum):
+    """An enumeration for describing the error type of a job."""
+
+    # Runtime environment failed to be set up
+    RUNTIME_ENV_SETUP_FAILURE = "RUNTIME_ENV_SETUP_FAILURE"
+    # Job supervisor actor launched, but job failed to start within timeout
+    JOB_SUPERVISOR_ACTOR_START_TIMEOUT = "JOB_SUPERVISOR_ACTOR_START_TIMEOUT"
+    # Job supervisor actor failed to start
+    JOB_SUPERVISOR_ACTOR_START_FAILURE = "JOB_SUPERVISOR_ACTOR_START_FAILURE"
+    # Job supervisor actor failed to be scheduled
+    JOB_SUPERVISOR_ACTOR_UNSCHEDULABLE = "JOB_SUPERVISOR_ACTOR_UNSCHEDULABLE"
+    # Job supervisor actor failed for unknown exception
+    JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE = "JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE"
+    # Job driver script failed to start due to exception
+    JOB_ENTRYPOINT_COMMAND_START_ERROR = "JOB_ENTRYPOINT_COMMAND_START_ERROR"
+    # Job driver script failed due to non-zero exit code
+    JOB_ENTRYPOINT_COMMAND_ERROR = "JOB_ENTRYPOINT_COMMAND_ERROR"
+
+
 # TODO(aguo): Convert to pydantic model
 @PublicAPI(stability="stable")
 @dataclass
@@ -81,9 +101,8 @@ class JobInfo:
     entrypoint: str
     #: A message describing the status in more detail.
     message: Optional[str] = None
-    # TODO(architkulkarni): Populate this field with e.g. Runtime env setup failure,
     #: Internal error, user script error
-    error_type: Optional[str] = None
+    error_type: Optional[JobErrorType] = None
     #: The time when the job was started.  A Unix timestamp in ms.
     start_time: Optional[int] = None
     #: The time when the job moved into a terminal state.  A Unix timestamp in ms.
@@ -157,6 +176,9 @@ class JobInfo:
 
         # Convert enum values to strings.
         json_dict["status"] = str(json_dict["status"])
+        json_dict["error_type"] = (
+            json_dict["error_type"].value if json_dict.get("error_type") else None
+        )
 
         # Convert runtime_env to a JSON-serialized string.
         if "runtime_env" in json_dict:
@@ -181,6 +203,11 @@ class JobInfo:
         """
         # Convert enum values to enum objects.
         json_dict["status"] = JobStatus(json_dict["status"])
+        json_dict["error_type"] = (
+            JobErrorType(json_dict["error_type"])
+            if json_dict.get("error_type")
+            else None
+        )
 
         # Convert runtime_env from a JSON-serialized string to a dictionary.
         if "runtime_env_json" in json_dict:
@@ -322,6 +349,7 @@ class JobInfoStorageClient:
         status: JobStatus,
         message: Optional[str] = None,
         driver_exit_code: Optional[int] = None,
+        error_type: Optional[JobErrorType] = None,
         jobinfo_replace_kwargs: Optional[Dict[str, Any]] = None,
     ):
         """Puts or updates job status.  Sets end_time if status is terminal."""
@@ -331,7 +359,10 @@ class JobInfoStorageClient:
         if jobinfo_replace_kwargs is None:
             jobinfo_replace_kwargs = dict()
         jobinfo_replace_kwargs.update(
-            status=status, message=message, driver_exit_code=driver_exit_code
+            status=status,
+            message=message,
+            driver_exit_code=driver_exit_code,
+            error_type=error_type,
         )
         if old_info is not None:
             if status != old_info.status and old_info.status.is_terminal():
