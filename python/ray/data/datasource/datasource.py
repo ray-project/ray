@@ -6,6 +6,8 @@ from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block, BlockMetadata, Schema
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
+from ray.data.datasource.util import iter_sliced_blocks
+
 
 @PublicAPI
 class Datasource:
@@ -200,29 +202,11 @@ class ReadTask(Callable[[], Iterable[Block]]):
                 "Probably you need to return `[block]` instead of "
                 "`block`.".format(result)
             )
-        # Apply per-block limiting if set
-        if self._per_block_limit is not None:
-            rows_read = 0
-            for block in result:
-                if rows_read >= self._per_block_limit:
-                    break
-
-                from ray.data.block import BlockAccessor
-
-                accessor = BlockAccessor.for_block(block)
-                block_rows = accessor.num_rows()
-
-                if rows_read + block_rows <= self._per_block_limit:
-                    yield block
-                    rows_read += block_rows
-                else:
-                    # Slice the block to meet the limit exactly
-                    remaining_rows = self._per_block_limit - rows_read
-                    sliced_block = accessor.slice(0, remaining_rows, copy=True)
-                    yield sliced_block
-                    break
-        else:
+        if self._per_block_limit is None:
             yield from result
+            return
+
+        yield from iter_sliced_blocks(result, self._per_block_limit)
 
 
 @DeveloperAPI

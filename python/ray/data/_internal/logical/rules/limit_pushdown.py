@@ -145,7 +145,7 @@ class LimitPushdownRule(Rule):
             current_op, limit_op._limit
         )
 
-        # Build the new operator chain: limit_input -> Limit -> recreated operators with limits
+        # Build the new operator chain: Chain non-preserving number of rows -> Limit -> Operators preserving number of rows
         new_limit = Limit(limit_input, limit_op._limit)
         result_op = new_limit
 
@@ -166,7 +166,7 @@ class LimitPushdownRule(Rule):
         """Apply per-block limit to operators that support it."""
         if isinstance(op, AbstractMap):
             new_op = copy.copy(op)
-            new_op._per_block_limit = limit
+            new_op.set_per_block_limit(limit)
             return new_op
         return op
 
@@ -178,14 +178,9 @@ class LimitPushdownRule(Rule):
         if isinstance(original_op, Limit):
             return Limit(new_input, original_op._limit)
 
-        try:
-            # Use copy and replace input dependencies approach
-            new_op = copy.copy(original_op)
-            new_op._input_dependencies = [new_input]
-            new_op._output_dependencies = []
+        # Use copy and replace input dependencies approach
+        new_op = copy.copy(original_op)
+        new_op._input_dependencies = [new_input]
+        new_op._output_dependencies = []
 
-            return new_op
-
-        except Exception:
-            # Fallback: return original if recreation fails
-            return original_op
+        return new_op
