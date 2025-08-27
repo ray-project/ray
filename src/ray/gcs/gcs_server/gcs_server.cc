@@ -615,7 +615,9 @@ void GcsServer::InitKVService() {
   RAY_CHECK(kv_manager_);
   rpc_server_.RegisterService(
       std::make_unique<rpc::InternalKVGrpcService>(
-          io_context_provider_.GetIOContext<GcsInternalKVManager>(), *kv_manager_),
+          io_context_provider_.GetIOContext<GcsInternalKVManager>(),
+          *kv_manager_,
+          /*max_active_rpcs_per_handler_=*/-1),
       false /* token_auth */);
 }
 
