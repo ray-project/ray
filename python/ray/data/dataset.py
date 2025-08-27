@@ -824,7 +824,7 @@ class Dataset:
                 Ray for the map tasks (e.g., `num_gpus=1`).
 
         Returns:
-            A new dataset with the added column.
+            A new dataset with the added column evaluated via the expression.
         """
         # TODO: update schema based on the expression AST.
         from ray.data._internal.logical.operators.map_operator import Project

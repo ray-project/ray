@@ -255,16 +255,14 @@ class UDFExpr(Expr):
         fn: The user-defined function to call
         args: List of argument expressions (positional arguments)
         kwargs: Dictionary of keyword argument expressions
-        return_dtype: Return data type for schema inference
         function_name: Optional name for the function (for debugging)
 
     Example:
         >>> from ray.data.expressions import col, udf
-        >>> from ray.data.datatype import DataType
         >>> import pyarrow as pa
         >>> import pyarrow.compute as pc
         >>>
-        >>> @udf(return_dtype=DataType.int64())
+        >>> @udf()
         ... def add_one(x: pa.Array) -> pa.Array:
         ...     return pc.add(x, 1)
         >>>
@@ -288,7 +286,6 @@ class UDFExpr(Expr):
                 self.kwargs[k].structurally_equals(other.kwargs[k])
                 for k in self.kwargs.keys()
             )
-            and self.return_dtype == other.return_dtype
             and self.function_name == other.function_name
         )
 
