@@ -339,7 +339,6 @@ CoreWorker::CoreWorker(
       actor_id_(ActorID::Nil()),
       task_queue_length_(0),
       num_executed_tasks_(0),
-      task_counter_(metric_tasks),
       task_execution_service_(task_execution_service),
       exiting_detail_(std::nullopt),
       max_direct_call_object_size_(RayConfig::instance().max_direct_call_object_size()),
