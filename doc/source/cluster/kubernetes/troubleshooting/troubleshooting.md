@@ -1,4 +1,4 @@
-(kuberay-troubleshootin-guides)=
+(kuberay-troubleshooting-guides)=
 
 # Troubleshooting guide
 
