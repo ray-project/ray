@@ -14,7 +14,7 @@ from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler impor
 )
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
 from ray.data._internal.stats import StatsDict
-from ray.data.block import _take_first_non_empty_schema
+from ray.data._internal.util import unify_ref_bundles_schema
 from ray.data.context import DataContext, ShuffleStrategy
 
 
@@ -32,15 +32,13 @@ def generate_sort_fn(
         ctx: TaskContext,
     ) -> Tuple[List[RefBundle], StatsDict]:
         blocks = []
-        # NOTE: unify was here before. I think all should be
-        # valid schemas, so taking any
-        schema = _take_first_non_empty_schema(ref_bundle.schema for ref_bundle in refs)
         for ref_bundle in refs:
             blocks.extend(ref_bundle.block_refs)
-
         if len(blocks) == 0:
             return (blocks, {})
-        sort_key.validate_schema(schema)
+
+        # NOTE: unify was here before.
+        sort_key.validate_schema(unify_ref_bundles_schema(refs))
 
         num_mappers = len(blocks)
         # Use same number of output partitions.

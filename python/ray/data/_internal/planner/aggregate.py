@@ -18,8 +18,8 @@ from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler impor
     PushBasedShuffleTaskScheduler,
 )
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
+from ray.data._internal.util import unify_ref_bundles_schema
 from ray.data.aggregate import AggregateFn
-from ray.data.block import _take_first_non_empty_schema
 from ray.data.context import DataContext, ShuffleStrategy
 
 
@@ -47,16 +47,15 @@ def generate_aggregate_fn(
     ) -> AllToAllTransformFnResult:
         blocks = []
         metadata = []
-        # NOTE: unify was here before. I think all should be
-        # valid schemas, so taking any
-        schema = _take_first_non_empty_schema(ref_bundle.schema for ref_bundle in refs)
         for ref_bundle in refs:
             blocks.extend(ref_bundle.block_refs)
             metadata.extend(ref_bundle.metadata)
         if len(blocks) == 0:
             return (blocks, {})
+        # NOTE: unify was here before.
+        unified_schema = unify_ref_bundles_schema(refs)
         for agg_fn in aggs:
-            agg_fn._validate(schema)
+            agg_fn._validate(unified_schema)
 
         num_mappers = len(blocks)
 

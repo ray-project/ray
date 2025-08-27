@@ -661,16 +661,13 @@ class _BlockRefBundler:
 def _merge_ref_bundles(*bundles: RefBundle) -> RefBundle:
     """Merge N ref bundles into a single bundle of multiple blocks."""
     # Check that at least one bundle is non-null.
-    assert any(bundle is not None for bundle in bundles)
+    bundles = [bundle is not None for bundle in bundles]
+    assert len(bundles) > 0
     blocks = list(
-        itertools.chain(
-            block for bundle in bundles if bundle is not None for block in bundle.blocks
-        )
+        itertools.chain(block for bundle in bundles for block in bundle.blocks)
     )
-    owns_blocks = all(bundle.owns_blocks for bundle in bundles if bundle is not None)
-    schema = _take_first_non_empty_schema(
-        bundle.schema for bundle in bundles if bundle is not None
-    )
+    owns_blocks = all(bundle.owns_blocks for bundle in bundles)
+    schema = _take_first_non_empty_schema(bundle.schema for bundle in bundles)
     return RefBundle(blocks, owns_blocks=owns_blocks, schema=schema)
 
 

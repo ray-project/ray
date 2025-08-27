@@ -14,7 +14,7 @@ from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.interfaces.operator import Operator
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.stats import DatasetStats
-from ray.data.block import BlockMetadataWithSchema
+from ray.data.block import BlockMetadataWithSchema, _take_first_non_empty_schema
 from ray.data.context import DataContext
 from ray.data.exceptions import omit_traceback_stdout
 from ray.util.debug import log_once
@@ -515,8 +515,10 @@ class ExecutionPlan:
                 # `List[RefBundle]` instead of `RefBundle`. Among other reasons, it'd
                 # allow us to remove the unwrapping logic below.
                 output_bundles = self._logical_plan.dag.output_data()
-                schema = self._logical_plan.dag.infer_schema()
                 owns_blocks = all(bundle.owns_blocks for bundle in output_bundles)
+                schema = _take_first_non_empty_schema(
+                    bundle.schema for bundle in output_bundles
+                )
                 bundle = RefBundle(
                     [
                         (block, metadata)
