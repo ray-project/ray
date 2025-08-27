@@ -150,10 +150,15 @@ class PartitionActor:
             except Exception:
                 return None
 
-        file_sizes = []
+        # If no URIs, return empty list
+        if not uri_list:
+            return []
+
+        # Get the filesystem from the first URI
+        fs, _ = pafs.from_uri(uri_list[0])
 
         # Use ThreadPoolExecutor for concurrent size fetching
-        fs, _ = pafs.from_uri(uri_list[0])
+        file_sizes = []
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Submit all size fetch tasks
             futures = [executor.submit(get_file_size, uri, fs) for uri in uri_list]
