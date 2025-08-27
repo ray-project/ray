@@ -11,6 +11,7 @@ gcsfs==2023.5.0
 gsutil
 gymnasium
 gymnasium[atari]
+httpx
 importlib-metadata
 jsonschema
 lightgbm
