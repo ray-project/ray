@@ -14,7 +14,7 @@
 
 syntax = "proto3";
 
-import "src/ray/protobuf/runtime_env_common.proto";
+import "src/ray/protobuf/public/runtime_environment.proto";
 import "src/ray/protobuf/common.proto";
 
 package ray.rpc.events;

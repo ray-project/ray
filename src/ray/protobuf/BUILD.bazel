@@ -13,7 +13,7 @@ proto_library(
         "//java:__subpackages__",
     ],
     deps = [
-        ":runtime_env_common_proto",
+        "//src/ray/protobuf/public:runtime_environment_proto",
     ],
 )
 
@@ -107,7 +107,7 @@ proto_library(
         ":autoscaler_proto",
         ":common_proto",
         ":gcs_proto",
-        ":runtime_env_common_proto",
+        "//src/ray/protobuf/public:runtime_environment_proto",
     ],
 )
 
@@ -402,6 +402,7 @@ proto_library(
     deps = [
         ":common_proto",
         ":runtime_env_common_proto",
+        "//src/ray/protobuf/public:runtime_environment_proto",
     ],
 )
 
@@ -425,7 +426,6 @@ proto_library(
     srcs = ["autoscaler.proto"],
     deps = [
         ":common_proto",
-        ":runtime_env_common_proto",
     ],
 )
 
@@ -449,6 +449,7 @@ proto_library(
     deps = [
         ":common_proto",
         ":runtime_env_common_proto",
+        "//src/ray/protobuf/public:runtime_environment_proto",
     ],
 )
 
@@ -463,6 +464,7 @@ proto_library(
     deps = [
         ":common_proto",
         ":runtime_env_common_proto",
+        "//src/ray/protobuf/public:runtime_environment_proto",
     ],
 )
 
@@ -559,6 +561,7 @@ python_grpc_compile(
         ":runtime_env_agent_proto",
         ":runtime_env_common_proto",
         ":usage_proto",
+        "//src/ray/protobuf/public:runtime_environment_proto",
     ],
 )
 
