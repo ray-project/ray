@@ -37,9 +37,9 @@ from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.operators.streaming_split_operator import StreamingSplit
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
+from ray.data._internal.planner.plan_download_op import plan_download_op
 from ray.data._internal.planner.plan_read_op import plan_read_op
 from ray.data._internal.planner.plan_udf_map_op import (
-    plan_download_op,
     plan_filter_op,
     plan_project_op,
     plan_streaming_repartition_op,
