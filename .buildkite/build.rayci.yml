@@ -32,6 +32,7 @@ steps:
       - export RAYCI_DISABLE_JAVA=true
       - export BUILD_PLACEHOLDER_WHEEL=true
       - export TEST_PLACEHOLDER_WHEEL=true
+      - mkdir -p .whl
       - pip wheel python/ --no-deps -w=.whl/ --pep517
       - ls .whl
       # test placeholder wheel
