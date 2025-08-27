@@ -501,7 +501,6 @@ class TrainController:
         ray.actor.exit_actor()
 
     def _build_result(self) -> Result:
-
         storage = self._checkpoint_manager._storage_context
 
         latest_checkpoint_result = self._checkpoint_manager.latest_checkpoint_result
