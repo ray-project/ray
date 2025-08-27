@@ -3,7 +3,7 @@
 Using Pandas on Ray (Modin)
 ===========================
 
-Modin_, previously Pandas on Ray, is a dataframe manipulation library that
+Modin_, previously pandas on Ray, is a dataframe manipulation library that
 allows users to speed up their pandas workloads by acting as a drop-in
 replacement. Modin also provides support for other APIs (e.g. spreadsheet)
 and libraries, like xgboost.
@@ -20,7 +20,7 @@ You can use Modin on Ray with your laptop or cluster. In this document,
 we show instructions for how to set up a Modin compatible Ray cluster
 and connect Modin to Ray.
 
-.. note:: In previous versions of Modin, you had to initialize Ray before importing Modin. As of Modin 0.9.0, This is no longer the case.
+.. note:: In previous versions of Modin, you had to initialize Ray before importing Modin. As of Modin 0.9.0, this is no longer the case.
 
 Using Modin with Ray's autoscaler
 ---------------------------------
@@ -54,7 +54,7 @@ and operate on data with Ray.
 Dataframe operations
 ''''''''''''''''''''
 
-The Modin Dataframe uses Ray tasks to perform data manipulations. Ray Tasks have
+The Modin Dataframe uses Ray Tasks to perform data manipulations. Ray Tasks have
 a number of benefits over the actor model for data manipulation:
 
 - Multiple tasks may be manipulating the same objects simultaneously
@@ -63,7 +63,7 @@ a number of benefits over the actor model for data manipulation:
 - As new workers come online the shuffling of data will happen as tasks are
   scheduled on the new node
 - Identical partitions need not be replicated, especially beneficial for operations
-  that selectively mutate the data (e.g. ``fillna``).
+  that selectively mutate the data (e.g., ``fillna``).
 - Finer grained parallelism with finer grained placement control
 
 Machine Learning
@@ -71,7 +71,7 @@ Machine Learning
 
 Modin uses Ray Actors for the machine learning support it currently provides.
 Modin's implementation of XGBoost is able to spin up one actor for each node
-and aggregate all of the partitions on that node to the XGBoost Actor. Modin
+and aggregate all of the partitions on that node to the XGBoost actor. Modin
 is able to specify precisely the node IP for each actor on creation, giving
 fine-grained control over placement - a must for distributed training
 performance.
