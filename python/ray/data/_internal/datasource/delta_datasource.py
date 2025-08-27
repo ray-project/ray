@@ -38,19 +38,19 @@ Examples:
             partition_filters=[("year", "=", "2023")],
             storage_options={"aws_region": "us-west-2"}
         )
-        
+
         # Advanced usage with CDF and statistics
         dataset = ray.data.read_datasource(datasource)
-        
+
         # Get comprehensive table statistics
         stats = datasource.get_table_statistics()
-        
+
         # Access Change Data Feed
         cdf_reader = datasource.get_change_data_feed(
             starting_version=10,
             ending_version=20
         )
-        
+
         # Get optimization hints
         hints = datasource.get_optimization_hints()
 """
@@ -62,9 +62,7 @@ from datetime import datetime
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
     Dict,
-    Iterator,
     List,
     Literal,
     Optional,
@@ -76,25 +74,17 @@ from typing import (
 DEFAULT_BYTES_PER_ROW = 1024  # Conservative estimate for row size in bytes
 MAX_RECOMMENDED_PARALLELISM = 100  # Cap for parallelism recommendations
 
-import ray
-from ray.data._internal.util import _check_pyarrow_version, _check_import
-from ray.data.block import Block, BlockMetadata
-from ray.data.context import DataContext
-from ray.data.datasource import Datasource
+from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
+from ray.data._internal.util import _check_import, _check_pyarrow_version
 from ray.data.datasource.datasource import ReadTask
-from ray.data.datasource.file_based_datasource import FileShuffleConfig
-from ray.data.datasource.file_meta_provider import DefaultFileMetadataProvider
 from ray.data.datasource.parquet_meta_provider import ParquetMetadataProvider
 from ray.data.datasource.partitioning import (
     Partitioning,
     PathPartitionFilter,
 )
-from ray.data.datasource.path_util import _resolve_paths_and_filesystem
-from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 
 if TYPE_CHECKING:
     import pyarrow
-    from pyarrow.fs import FileSystem
 
 logger = logging.getLogger(__name__)
 
@@ -108,37 +98,37 @@ class DeltaDatasource(ParquetDatasource):
     and rich metadata extraction.
 
     The datasource now takes full advantage of the deltalake Python API to provide:
-    
+
     **Advanced Deletion Vector Support:**
     - Intelligent detection of deletion vectors in tables
     - Automatic fallback strategies when deletion vectors cause issues
     - Feature-specific error handling with targeted fallback options
     - Comprehensive deletion vector metadata extraction
-    
+
     **Enhanced Partition Handling:**
     - Native deltalake partitions() API usage for better performance
     - Intelligent fallback to file-based partition extraction
     - Comprehensive partition statistics and analytics
     - Partition filter effectiveness analysis
-    
+
     **Rich Metadata Extraction:**
     - Leverages get_add_actions() for detailed file information
     - Uses history() API for transaction analysis
     - Extracts column mapping and constraint information
     - Provides comprehensive table statistics
-    
+
     **Change Data Feed (CDF) Support:**
     - Full support for tracking table changes over time
     - Version and timestamp-based change tracking
     - Automatic CDF availability detection
     - Streaming change data access
-    
+
     **Intelligent Optimization:**
     - Feature-specific optimization recommendations
     - Storage provider-specific optimization hints
     - Schema-based performance recommendations
     - Comprehensive performance metrics
-    
+
     **Robust Error Handling:**
     - Analyzes error messages to determine best fallback strategy
     - Preserves features when possible during fallback
@@ -155,22 +145,22 @@ class DeltaDatasource(ParquetDatasource):
                 partition_filters=[("year", "=", "2023")],
                 storage_options={"aws_region": "us-west-2"}
             )
-            
+
             # Advanced usage with comprehensive metadata
             dataset = ray.data.read_datasource(datasource)
-            
+
             # Get rich table statistics
             stats = datasource.get_table_statistics()
-            
+
             # Access optimization hints
             hints = datasource.get_optimization_hints()
-            
+
             # Track changes over time
             cdf_reader = datasource.get_change_data_feed(
                 starting_version=10,
                 ending_version=20
             )
-            
+
             # Get detailed partition information
             partition_stats = datasource.get_partition_statistics()
     """
@@ -290,7 +280,7 @@ class DeltaDatasource(ParquetDatasource):
 
     def _get_delta_table_paths(self) -> List[str]:
         """Get the parquet file paths from the DeltaTable with enhanced deletion vector handling.
-        
+
         This method leverages the full deltalake API to handle deletion vectors, column mapping,
         and other advanced features more intelligently.
         """
@@ -317,21 +307,23 @@ class DeltaDatasource(ParquetDatasource):
 
         # Enhanced deletion vector handling strategy
         deletion_vector_strategy = self._determine_deletion_vector_strategy()
-        
+
         # Apply the determined strategy to dt_args
         if deletion_vector_strategy:
             # Update options with the determined strategy
             if "options" not in dt_args:
                 dt_args["options"] = {}
             dt_args["options"].update(deletion_vector_strategy)
-        
+
         try:
             # First attempt: try to create DeltaTable with optimal options
             dt = DeltaTable(**dt_args)
-            
+
             # Check if table has deletion vectors and handle accordingly
             if self._has_deletion_vectors(dt):
-                logger.info("Delta table contains deletion vectors - using enhanced reading strategy")
+                logger.info(
+                    "Delta table contains deletion vectors - using enhanced reading strategy"
+                )
                 return self._get_paths_with_deletion_vector_handling(dt)
             else:
                 # Standard reading without deletion vectors
@@ -343,84 +335,86 @@ class DeltaDatasource(ParquetDatasource):
 
     def _determine_deletion_vector_strategy(self) -> Dict[str, Any]:
         """Determine the optimal strategy for handling deletion vectors and other features.
-        
+
         Returns:
             Dictionary containing the optimal options for the Delta table.
         """
         strategy = {}
-        
+
         # Check if user has explicitly configured deletion vector handling
         if "ignore_deletion_vectors" in self._options:
-            strategy["ignore_deletion_vectors"] = self._options["ignore_deletion_vectors"]
+            strategy["ignore_deletion_vectors"] = self._options[
+                "ignore_deletion_vectors"
+            ]
         else:
             # Default to intelligent handling - try to preserve deletion vectors if possible
             strategy["ignore_deletion_vectors"] = False
-            
+
         # Handle column mapping intelligently
         if "ignore_column_mapping" in self._options:
             strategy["ignore_column_mapping"] = self._options["ignore_column_mapping"]
         else:
             # Default to preserving column mapping for better data integrity
             strategy["ignore_column_mapping"] = False
-            
+
         # Handle constraints intelligently
         if "ignore_constraints" in self._options:
             strategy["ignore_constraints"] = self._options["ignore_constraints"]
         else:
             # Default to preserving constraints for data validation
             strategy["ignore_constraints"] = False
-            
+
         return strategy
 
     def _has_deletion_vectors(self, dt: "DeltaTable") -> bool:
         """Check if the Delta table contains deletion vectors.
-        
+
         Args:
             dt: The DeltaTable instance to check.
-            
+
         Returns:
             True if the table has deletion vectors, False otherwise.
         """
         try:
             # Check metadata for deletion vector information
             metadata = dt.metadata()
-            
+
             # Look for deletion vector related configuration
             config = metadata.configuration or {}
-            
+
             # Check if deletion vectors are enabled
             if "delta.enableDeletionVectors" in config:
                 return config["delta.enableDeletionVectors"].lower() == "true"
-                
+
             # Check if any files have deletion vectors by examining add actions
             try:
                 add_actions = dt.get_add_actions(flatten=True)
                 # Look for deletion vector files in the add actions
-                if hasattr(add_actions, 'to_pandas'):
+                if hasattr(add_actions, "to_pandas"):
                     df = add_actions.to_pandas()
-                    if 'deletion_vector' in df.columns:
-                        return df['deletion_vector'].notna().any()
+                    if "deletion_vector" in df.columns:
+                        return df["deletion_vector"].notna().any()
             except Exception:
                 # If we can't check add actions, assume no deletion vectors
                 pass
-                
+
             return False
-            
+
         except Exception:
             # If we can't determine, assume no deletion vectors
             return False
 
     def _get_paths_with_deletion_vector_handling(self, dt: "DeltaTable") -> List[str]:
         """Get file paths with intelligent deletion vector handling.
-        
+
         This method handles deletion vectors by:
         1. Including deletion vector files in the path list
         2. Applying deletion vector specific optimizations
         3. Ensuring proper deletion vector metadata is preserved
-        
+
         Args:
             dt: The DeltaTable instance.
-            
+
         Returns:
             List of file paths optimized for deletion vector handling.
         """
@@ -431,32 +425,34 @@ class DeltaDatasource(ParquetDatasource):
                 paths = dt.file_uris(partition_filters=self._partition_filters)
             else:
                 paths = dt.file_uris()
-                
+
             # Log deletion vector specific information
             logger.info(
                 f"Successfully extracted {len(paths)} parquet files with deletion vector support"
             )
-            
+
             # Additional logging for deletion vector tables
             try:
                 metadata = dt.metadata()
                 config = metadata.configuration or {}
                 if "delta.enableDeletionVectors" in config:
                     logger.info("Deletion vectors are enabled for this table")
-                    
+
                     # Check if we have deletion vector files
                     add_actions = dt.get_add_actions(flatten=True)
-                    if hasattr(add_actions, 'to_pandas'):
+                    if hasattr(add_actions, "to_pandas"):
                         df = add_actions.to_pandas()
-                        if 'deletion_vector' in df.columns:
-                            dv_files = df[df['deletion_vector'].notna()]
+                        if "deletion_vector" in df.columns:
+                            dv_files = df[df["deletion_vector"].notna()]
                             if len(dv_files) > 0:
-                                logger.info(f"Found {len(dv_files)} files with deletion vectors")
+                                logger.info(
+                                    f"Found {len(dv_files)} files with deletion vectors"
+                                )
             except Exception as e:
                 logger.debug(f"Could not get detailed deletion vector info: {e}")
-                
+
             return paths
-            
+
         except Exception as e:
             logger.warning(
                 f"Deletion vector reading failed, falling back to standard mode: {e}"
@@ -466,13 +462,13 @@ class DeltaDatasource(ParquetDatasource):
 
     def _get_standard_paths(self, dt: "DeltaTable") -> List[str]:
         """Get file paths using standard Delta table reading.
-        
+
         This method provides basic file path extraction without deletion vector
         specific optimizations.
-        
+
         Args:
             dt: The DeltaTable instance.
-            
+
         Returns:
             List of file paths.
         """
@@ -480,45 +476,51 @@ class DeltaDatasource(ParquetDatasource):
             paths = dt.file_uris(partition_filters=self._partition_filters)
         else:
             paths = dt.file_uris()
-            
+
         logger.info(
             f"Successfully extracted {len(paths)} parquet files using standard reading"
         )
         return paths
 
-    def _handle_delta_table_errors(self, dt_args: Dict[str, Any], original_error: Exception) -> List[str]:
+    def _handle_delta_table_errors(
+        self, dt_args: Dict[str, Any], original_error: Exception
+    ) -> List[str]:
         """Handle Delta table creation errors with intelligent fallback strategies.
-        
+
         Args:
             dt_args: The DeltaTable constructor arguments.
             original_error: The original error that occurred.
-            
+
         Returns:
             List of file paths after applying fallback strategies.
-            
+
         Raises:
             RuntimeError: If all fallback strategies fail.
         """
         error_msg = str(original_error)
-        
+
         # Analyze the error to determine the best fallback strategy
-        if any(feature in error_msg for feature in ["DeletionVectors", "deletion vectors"]):
+        if any(
+            feature in error_msg for feature in ["DeletionVectors", "deletion vectors"]
+        ):
             logger.warning(
                 "Delta table has deletion vectors causing issues, applying deletion vector fallback"
             )
             fallback_options = {
                 "ignore_deletion_vectors": True,
                 "ignore_column_mapping": False,  # Keep column mapping if possible
-                "ignore_constraints": False,     # Keep constraints if possible
+                "ignore_constraints": False,  # Keep constraints if possible
             }
-        elif any(feature in error_msg for feature in ["ColumnMapping", "column mapping"]):
+        elif any(
+            feature in error_msg for feature in ["ColumnMapping", "column mapping"]
+        ):
             logger.warning(
                 "Delta table has column mapping issues, applying column mapping fallback"
             )
             fallback_options = {
                 "ignore_deletion_vectors": False,  # Keep deletion vectors if possible
                 "ignore_column_mapping": True,
-                "ignore_constraints": False,       # Keep constraints if possible
+                "ignore_constraints": False,  # Keep constraints if possible
             }
         elif any(feature in error_msg for feature in ["Constraints", "constraints"]):
             logger.warning(
@@ -526,7 +528,7 @@ class DeltaDatasource(ParquetDatasource):
             )
             fallback_options = {
                 "ignore_deletion_vectors": False,  # Keep deletion vectors if possible
-                "ignore_column_mapping": False,    # Keep column mapping if possible
+                "ignore_column_mapping": False,  # Keep column mapping if possible
                 "ignore_constraints": True,
             }
         else:
@@ -539,29 +541,29 @@ class DeltaDatasource(ParquetDatasource):
                 "ignore_column_mapping": True,
                 "ignore_constraints": True,
             }
-        
+
         # Apply fallback options
         fallback_options.update(self._options)
         dt_args["options"] = fallback_options
-        
+
         try:
             dt = DeltaTable(**dt_args)
-            
+
             # Try to get paths with fallback options
             if self._partition_filters:
                 paths = dt.file_uris(partition_filters=self._partition_filters)
             else:
                 paths = dt.file_uris()
-                
+
             logger.info(
                 f"Successfully extracted {len(paths)} parquet files with fallback options: "
                 f"{fallback_options}"
             )
             return paths
-            
+
         except Exception as fallback_error:
             logger.error(f"Fallback attempt failed: {fallback_error}")
-            
+
             # Try one more time with the most permissive options
             final_fallback = {
                 "ignore_deletion_vectors": True,
@@ -571,19 +573,19 @@ class DeltaDatasource(ParquetDatasource):
             }
             final_fallback.update(self._options)
             dt_args["options"] = final_fallback
-            
+
             try:
                 dt = DeltaTable(**dt_args)
                 if self._partition_filters:
                     paths = dt.file_uris(partition_filters=self._partition_filters)
                 else:
                     paths = dt.file_uris()
-                    
+
                 logger.info(
                     f"Successfully extracted {len(paths)} parquet files with final fallback options"
                 )
                 return paths
-                
+
             except Exception as final_error:
                 logger.error(f"All fallback strategies failed: {final_error}")
                 raise RuntimeError(
@@ -665,7 +667,7 @@ class DeltaDatasource(ParquetDatasource):
             # Get basic metadata
             metadata = dt.metadata()
             schema = dt.schema()
-            
+
             # Enhanced metadata extraction using deltalake API
             enhanced_metadata = {
                 "table_uri": self._delta_path,
@@ -682,23 +684,23 @@ class DeltaDatasource(ParquetDatasource):
                 "storage_options": self._storage_options,
                 "unity_catalog_config": self._unity_catalog_config,
             }
-            
+
             # Add deletion vector information
             deletion_vector_info = self._extract_deletion_vector_metadata(dt, metadata)
             enhanced_metadata.update(deletion_vector_info)
-            
+
             # Add column mapping information
             column_mapping_info = self._extract_column_mapping_metadata(dt, metadata)
             enhanced_metadata.update(column_mapping_info)
-            
+
             # Add constraint information
             constraint_info = self._extract_constraint_metadata(dt, metadata)
             enhanced_metadata.update(constraint_info)
-            
+
             # Add file-level statistics
             file_stats = self._extract_file_statistics(dt)
             enhanced_metadata.update(file_stats)
-            
+
             # Add transaction history summary
             history_summary = self._extract_history_summary(dt)
             enhanced_metadata.update(history_summary)
@@ -715,13 +717,15 @@ class DeltaDatasource(ParquetDatasource):
                 "unity_catalog_config": self._unity_catalog_config,
             }
 
-    def _extract_deletion_vector_metadata(self, dt: "DeltaTable", metadata: Any) -> Dict[str, Any]:
+    def _extract_deletion_vector_metadata(
+        self, dt: "DeltaTable", metadata: Any
+    ) -> Dict[str, Any]:
         """Extract deletion vector related metadata from the Delta table.
-        
+
         Args:
             dt: The DeltaTable instance.
             metadata: The table metadata.
-            
+
         Returns:
             Dictionary containing deletion vector metadata.
         """
@@ -730,7 +734,7 @@ class DeltaDatasource(ParquetDatasource):
             "deletion_vector_files": [],
             "deletion_vector_stats": {},
         }
-        
+
         try:
             # Check configuration for deletion vector settings
             config = metadata.configuration or {}
@@ -738,39 +742,47 @@ class DeltaDatasource(ParquetDatasource):
                 deletion_vector_info["has_deletion_vectors"] = (
                     config["delta.enableDeletionVectors"].lower() == "true"
                 )
-            
+
             # Check add actions for deletion vector files
             try:
                 add_actions = dt.get_add_actions(flatten=True)
-                if hasattr(add_actions, 'to_pandas'):
+                if hasattr(add_actions, "to_pandas"):
                     df = add_actions.to_pandas()
-                    if 'deletion_vector' in df.columns:
+                    if "deletion_vector" in df.columns:
                         deletion_vector_info["has_deletion_vectors"] = True
-                        deletion_vector_info["deletion_vector_files"] = (
-                            df[df['deletion_vector'].notna()]['path'].tolist()
-                        )
-                        
+                        deletion_vector_info["deletion_vector_files"] = df[
+                            df["deletion_vector"].notna()
+                        ]["path"].tolist()
+
                         # Extract deletion vector statistics
                         deletion_vector_info["deletion_vector_stats"] = {
-                            "total_files_with_deletion_vectors": len(deletion_vector_info["deletion_vector_files"]),
-                            "deletion_vector_file_size": df[df['deletion_vector'].notna()]['size'].sum() if 'size' in df.columns else None,
+                            "total_files_with_deletion_vectors": len(
+                                deletion_vector_info["deletion_vector_files"]
+                            ),
+                            "deletion_vector_file_size": df[
+                                df["deletion_vector"].notna()
+                            ]["size"].sum()
+                            if "size" in df.columns
+                            else None,
                         }
             except Exception:
                 # If we can't access add actions, skip this part
                 pass
-                
+
         except Exception as e:
             logger.debug(f"Could not extract deletion vector metadata: {e}")
-            
+
         return deletion_vector_info
 
-    def _extract_column_mapping_metadata(self, dt: "DeltaTable", metadata: Any) -> Dict[str, Any]:
+    def _extract_column_mapping_metadata(
+        self, dt: "DeltaTable", metadata: Any
+    ) -> Dict[str, Any]:
         """Extract column mapping related metadata from the Delta table.
-        
+
         Args:
             dt: The DeltaTable instance.
             metadata: The table metadata.
-            
+
         Returns:
             Dictionary containing column mapping metadata.
         """
@@ -778,7 +790,7 @@ class DeltaDatasource(ParquetDatasource):
             "has_column_mapping": False,
             "column_mapping_details": {},
         }
-        
+
         try:
             # Check configuration for column mapping settings
             config = metadata.configuration or {}
@@ -788,29 +800,31 @@ class DeltaDatasource(ParquetDatasource):
                     "mode": config["delta.columnMapping.mode"],
                     "max_column_id": config.get("delta.columnMapping.maxColumnId"),
                 }
-                
+
             # Check if schema has column mapping information
             schema = dt.schema()
-            if hasattr(schema, 'fields'):
+            if hasattr(schema, "fields"):
                 for field in schema.fields:
-                    if hasattr(field, 'metadata') and field.metadata:
+                    if hasattr(field, "metadata") and field.metadata:
                         # Look for column mapping metadata in field metadata
-                        if any('columnMapping' in key for key in field.metadata.keys()):
+                        if any("columnMapping" in key for key in field.metadata.keys()):
                             column_mapping_info["has_column_mapping"] = True
                             break
-                            
+
         except Exception as e:
             logger.debug(f"Could not extract column mapping metadata: {e}")
-            
+
         return column_mapping_info
 
-    def _extract_constraint_metadata(self, dt: "DeltaTable", metadata: Any) -> Dict[str, Any]:
+    def _extract_constraint_metadata(
+        self, dt: "DeltaTable", metadata: Any
+    ) -> Dict[str, Any]:
         """Extract constraint related metadata from the Delta table.
-        
+
         Args:
             dt: The DeltaTable instance.
             metadata: The table metadata.
-            
+
         Returns:
             Dictionary containing constraint metadata.
         """
@@ -818,7 +832,7 @@ class DeltaDatasource(ParquetDatasource):
             "has_constraints": False,
             "constraint_details": {},
         }
-        
+
         try:
             # Check configuration for constraint settings
             config = metadata.configuration or {}
@@ -827,26 +841,28 @@ class DeltaDatasource(ParquetDatasource):
                 constraint_info["constraint_details"] = {
                     "constraints": config["delta.constraints"],
                 }
-                
+
             # Check for other constraint-related configurations
-            constraint_keys = [key for key in config.keys() if 'constraint' in key.lower()]
+            constraint_keys = [
+                key for key in config.keys() if "constraint" in key.lower()
+            ]
             if constraint_keys:
                 constraint_info["has_constraints"] = True
                 constraint_info["constraint_details"]["additional_constraints"] = {
                     key: config[key] for key in constraint_keys
                 }
-                
+
         except Exception as e:
             logger.debug(f"Could not extract constraint metadata: {e}")
-            
+
         return constraint_info
 
     def _extract_file_statistics(self, dt: "DeltaTable") -> Dict[str, Any]:
         """Extract file-level statistics from the Delta table.
-        
+
         Args:
             dt: The DeltaTable instance.
-            
+
         Returns:
             Dictionary containing file statistics.
         """
@@ -854,59 +870,75 @@ class DeltaDatasource(ParquetDatasource):
             "file_statistics": {},
             "partition_statistics": {},
         }
-        
+
         try:
             # Get file URIs and analyze them
             file_uris = dt.file_uris()
             file_stats["file_statistics"] = {
                 "total_files": len(file_uris),
-                "file_extensions": list(set([os.path.splitext(uri)[1] for uri in file_uris])),
+                "file_extensions": list(
+                    set([os.path.splitext(uri)[1] for uri in file_uris])
+                ),
             }
-            
+
             # Analyze partition structure if table is partitioned
             try:
                 partitions = dt.partitions()
                 if partitions:
                     file_stats["partition_statistics"] = {
                         "total_partitions": len(partitions),
-                        "partition_examples": partitions[:5],  # Show first 5 partitions as examples
+                        "partition_examples": partitions[
+                            :5
+                        ],  # Show first 5 partitions as examples
                     }
             except Exception:
                 # Table might not be partitioned
                 pass
-                
+
         except Exception as e:
             logger.debug(f"Could not extract file statistics: {e}")
-            
+
         return file_stats
 
     def _extract_history_summary(self, dt: "DeltaTable") -> Dict[str, Any]:
         """Extract transaction history summary from the Delta table.
-        
+
         Args:
             dt: The DeltaTable instance.
-            
+
         Returns:
             Dictionary containing history summary.
         """
         history_summary = {
             "history_summary": {},
         }
-        
+
         try:
             # Get recent history (limit to last 10 commits for performance)
             history = dt.history(limit=10)
             if history:
                 history_summary["history_summary"] = {
                     "recent_commits": len(history),
-                    "latest_operation": history[0].get("operation") if history else None,
-                    "latest_timestamp": history[0].get("timestamp") if history else None,
-                    "commit_patterns": list(set([commit.get("operation") for commit in history if commit.get("operation")])),
+                    "latest_operation": history[0].get("operation")
+                    if history
+                    else None,
+                    "latest_timestamp": history[0].get("timestamp")
+                    if history
+                    else None,
+                    "commit_patterns": list(
+                        set(
+                            [
+                                commit.get("operation")
+                                for commit in history
+                                if commit.get("operation")
+                            ]
+                        )
+                    ),
                 }
-                
+
         except Exception as e:
             logger.debug(f"Could not extract history summary: {e}")
-            
+
         return history_summary
 
     def get_partition_info(self) -> List[Dict[str, Any]]:
@@ -947,29 +979,39 @@ class DeltaDatasource(ParquetDatasource):
                             if col not in partition_values_by_column:
                                 partition_values_by_column[col] = set()
                             partition_values_by_column[col].add(value)
-                    
+
                     # Build partition info from native method
                     for partition_col in partition_columns:
                         if partition_col in partition_values_by_column:
-                            partition_info.append({
-                                "column": partition_col,
-                                "values": list(partition_values_by_column[partition_col]),
-                                "source": "native_deltalake_api",
-                                "count": len(partition_values_by_column[partition_col]),
-                            })
+                            partition_info.append(
+                                {
+                                    "column": partition_col,
+                                    "values": list(
+                                        partition_values_by_column[partition_col]
+                                    ),
+                                    "source": "native_deltalake_api",
+                                    "count": len(
+                                        partition_values_by_column[partition_col]
+                                    ),
+                                }
+                            )
                         else:
                             # Fallback for columns not found in native partitions
-                            partition_info.append({
-                                "column": partition_col,
-                                "values": [],
-                                "source": "fallback",
-                                "count": 0,
-                            })
-                    
+                            partition_info.append(
+                                {
+                                    "column": partition_col,
+                                    "values": [],
+                                    "source": "fallback",
+                                    "count": 0,
+                                }
+                            )
+
                     return partition_info
-                    
+
             except Exception as e:
-                logger.debug(f"Native partition method failed, using file-based extraction: {e}")
+                logger.debug(
+                    f"Native partition method failed, using file-based extraction: {e}"
+                )
                 # Fall back to file-based partition extraction
 
             # File-based partition extraction (fallback method)
@@ -986,12 +1028,14 @@ class DeltaDatasource(ParquetDatasource):
                         partition_value = match.group(1)
                         partition_values.add(partition_value)
 
-                partition_info.append({
-                    "column": partition_col,
-                    "values": list(partition_values),
-                    "source": "file_path_parsing",
-                    "count": len(partition_values),
-                })
+                partition_info.append(
+                    {
+                        "column": partition_col,
+                        "values": list(partition_values),
+                        "source": "file_path_parsing",
+                        "count": len(partition_values),
+                    }
+                )
 
             return partition_info
 
@@ -1047,28 +1091,44 @@ class DeltaDatasource(ParquetDatasource):
 
                 # Analyze file counts per partition
                 for partition_dict in native_partitions:
-                    partition_key = "_".join([f"{k}={v}" for k, v in sorted(partition_dict.items())])
-                    
+                    partition_key = "_".join(
+                        [f"{k}={v}" for k, v in sorted(partition_dict.items())]
+                    )
+
                     try:
                         # Get files for this specific partition
-                        partition_files = dt.file_uris(partition_filters=[(k, "=", v) for k, v in partition_dict.items()])
-                        partition_stats["partition_file_counts"][partition_key] = len(partition_files)
+                        partition_files = dt.file_uris(
+                            partition_filters=[
+                                (k, "=", v) for k, v in partition_dict.items()
+                            ]
+                        )
+                        partition_stats["partition_file_counts"][partition_key] = len(
+                            partition_files
+                        )
                     except Exception:
                         partition_stats["partition_file_counts"][partition_key] = 0
 
                 # Analyze partition sizes
                 for partition_dict in native_partitions:
-                    partition_key = "_".join([f"{k}={v}" for k, v in sorted(partition_dict.items())])
-                    
+                    partition_key = "_".join(
+                        [f"{k}={v}" for k, v in sorted(partition_dict.items())]
+                    )
+
                     try:
                         # Get add actions for this partition to estimate size
                         add_actions = dt.get_add_actions(flatten=True)
-                        if hasattr(add_actions, 'to_pandas'):
+                        if hasattr(add_actions, "to_pandas"):
                             df = add_actions.to_pandas()
                             # Filter by partition values if possible
-                            partition_stats["partition_size_analysis"][partition_key] = {
-                                "estimated_files": len(df) if 'path' in df.columns else 0,
-                                "estimated_size": df['size'].sum() if 'size' in df.columns else None,
+                            partition_stats["partition_size_analysis"][
+                                partition_key
+                            ] = {
+                                "estimated_files": len(df)
+                                if "path" in df.columns
+                                else 0,
+                                "estimated_size": df["size"].sum()
+                                if "size" in df.columns
+                                else None,
                             }
                     except Exception:
                         partition_stats["partition_size_analysis"][partition_key] = {
@@ -1080,7 +1140,9 @@ class DeltaDatasource(ParquetDatasource):
                 logger.debug(f"Could not get detailed partition statistics: {e}")
                 # Fall back to basic partition info
                 partition_info = self.get_partition_info()
-                partition_stats["total_partitions"] = sum(len(info["values"]) for info in partition_info)
+                partition_stats["total_partitions"] = sum(
+                    len(info["values"]) for info in partition_info
+                )
 
             return partition_stats
 
@@ -1238,17 +1300,19 @@ class DeltaDatasource(ParquetDatasource):
                 hints["performance_tips"].append(
                     "Partition filters applied - this will reduce data scanned"
                 )
-                
+
                 # Analyze partition filter effectiveness
                 partition_analysis = self._analyze_partition_filter_effectiveness(dt)
-                hints["feature_specific_optimizations"]["partition_filter_analysis"] = partition_analysis
+                hints["feature_specific_optimizations"][
+                    "partition_filter_analysis"
+                ] = partition_analysis
 
             # Version-based optimizations
             if self._version is not None:
                 hints["performance_tips"].append(
                     f"Reading specific version {self._version} - ensure this version exists"
                 )
-                
+
                 # Check if version exists and provide version-specific hints
                 version_hints = self._get_version_specific_hints(dt)
                 hints["feature_specific_optimizations"]["version_hints"] = version_hints
@@ -1258,20 +1322,28 @@ class DeltaDatasource(ParquetDatasource):
                 hints["performance_tips"].append(
                     "Custom storage options provided - ensure they match your cloud configuration"
                 )
-                
+
                 # Analyze storage options for optimization opportunities
                 storage_analysis = self._analyze_storage_options(dt, metadata)
                 hints["storage_optimizations"] = storage_analysis
 
             # Deletion vector optimizations
-            deletion_vector_hints = self._get_deletion_vector_optimization_hints(dt, metadata)
+            deletion_vector_hints = self._get_deletion_vector_optimization_hints(
+                dt, metadata
+            )
             if deletion_vector_hints:
-                hints["feature_specific_optimizations"]["deletion_vector"] = deletion_vector_hints
+                hints["feature_specific_optimizations"][
+                    "deletion_vector"
+                ] = deletion_vector_hints
 
             # Column mapping optimizations
-            column_mapping_hints = self._get_column_mapping_optimization_hints(dt, metadata)
+            column_mapping_hints = self._get_column_mapping_optimization_hints(
+                dt, metadata
+            )
             if column_mapping_hints:
-                hints["feature_specific_optimizations"]["column_mapping"] = column_mapping_hints
+                hints["feature_specific_optimizations"][
+                    "column_mapping"
+                ] = column_mapping_hints
 
             # Schema-based optimizations
             schema_hints = self._get_schema_based_optimization_hints(schema)
@@ -1285,7 +1357,7 @@ class DeltaDatasource(ParquetDatasource):
                     hints["performance_tips"].append(
                         f"Large table with {row_count:,} rows - consider using partition filters for better performance"
                     )
-                    
+
                 # Row group size optimization
                 if hasattr(metadata, "size") and metadata.size:
                     avg_row_size = metadata.size / row_count
@@ -1303,12 +1375,14 @@ class DeltaDatasource(ParquetDatasource):
                 "error": str(e),
             }
 
-    def _analyze_partition_filter_effectiveness(self, dt: "DeltaTable") -> Dict[str, Any]:
+    def _analyze_partition_filter_effectiveness(
+        self, dt: "DeltaTable"
+    ) -> Dict[str, Any]:
         """Analyze the effectiveness of partition filters for optimization.
-        
+
         Args:
             dt: The DeltaTable instance.
-            
+
         Returns:
             Dictionary containing partition filter analysis.
         """
@@ -1317,42 +1391,50 @@ class DeltaDatasource(ParquetDatasource):
             "estimated_data_reduction": None,
             "recommendations": [],
         }
-        
+
         try:
             if not self._partition_filters:
                 return analysis
-                
+
             # Get total files without filters
             total_files = len(dt.file_uris())
-            
+
             # Get files with partition filters
-            filtered_files = len(dt.file_uris(partition_filters=self._partition_filters))
-            
+            filtered_files = len(
+                dt.file_uris(partition_filters=self._partition_filters)
+            )
+
             if total_files > 0:
                 data_reduction = (total_files - filtered_files) / total_files
                 analysis["estimated_data_reduction"] = f"{data_reduction:.1%}"
-                
+
                 if data_reduction > 0.5:
                     analysis["filter_effectiveness"] = "excellent"
-                    analysis["recommendations"].append("Partition filters are highly effective - consider using more specific filters")
+                    analysis["recommendations"].append(
+                        "Partition filters are highly effective - consider using more specific filters"
+                    )
                 elif data_reduction > 0.2:
                     analysis["filter_effectiveness"] = "good"
-                    analysis["recommendations"].append("Partition filters provide good data reduction")
+                    analysis["recommendations"].append(
+                        "Partition filters provide good data reduction"
+                    )
                 else:
                     analysis["filter_effectiveness"] = "limited"
-                    analysis["recommendations"].append("Partition filters provide limited data reduction - consider more selective filters")
-                    
+                    analysis["recommendations"].append(
+                        "Partition filters provide limited data reduction - consider more selective filters"
+                    )
+
         except Exception as e:
             logger.debug(f"Could not analyze partition filter effectiveness: {e}")
-            
+
         return analysis
 
     def _get_version_specific_hints(self, dt: "DeltaTable") -> Dict[str, Any]:
         """Get optimization hints specific to the requested version.
-        
+
         Args:
             dt: The DeltaTable instance.
-            
+
         Returns:
             Dictionary containing version-specific hints.
         """
@@ -1361,16 +1443,21 @@ class DeltaDatasource(ParquetDatasource):
             "version_age": None,
             "recommendations": [],
         }
-        
+
         try:
             current_version = dt.version()
             requested_version = self._version
-            
-            if isinstance(requested_version, int) and requested_version > current_version:
+
+            if (
+                isinstance(requested_version, int)
+                and requested_version > current_version
+            ):
                 hints["version_exists"] = False
-                hints["recommendations"].append(f"Requested version {requested_version} is in the future")
+                hints["recommendations"].append(
+                    f"Requested version {requested_version} is in the future"
+                )
                 return hints
-                
+
             # Get version history for age analysis
             try:
                 history = dt.history(limit=50)
@@ -1381,23 +1468,27 @@ class DeltaDatasource(ParquetDatasource):
                             commit_time = commit.get("timestamp")
                             if commit_time:
                                 hints["version_age"] = commit_time
-                                hints["recommendations"].append(f"Version {requested_version} was committed at {commit_time}")
+                                hints["recommendations"].append(
+                                    f"Version {requested_version} was committed at {commit_time}"
+                                )
                             break
             except Exception:
                 pass
-                
+
         except Exception as e:
             logger.debug(f"Could not get version-specific hints: {e}")
-            
+
         return hints
 
-    def _analyze_storage_options(self, dt: "DeltaTable", metadata: Any) -> Dict[str, Any]:
+    def _analyze_storage_options(
+        self, dt: "DeltaTable", metadata: Any
+    ) -> Dict[str, Any]:
         """Analyze storage options for optimization opportunities.
-        
+
         Args:
             dt: The DeltaTable instance.
             metadata: The table metadata.
-            
+
         Returns:
             Dictionary containing storage optimization analysis.
         """
@@ -1406,48 +1497,60 @@ class DeltaDatasource(ParquetDatasource):
             "storage_class": "unknown",
             "optimization_opportunities": [],
         }
-        
+
         try:
             # Determine cloud provider from table URI
             table_uri = str(self._delta_path)
             if table_uri.startswith("s3://"):
                 analysis["cloud_provider"] = "aws"
-                analysis["optimization_opportunities"].append("Consider using S3 Select for column pruning")
+                analysis["optimization_opportunities"].append(
+                    "Consider using S3 Select for column pruning"
+                )
             elif table_uri.startswith("gs://"):
                 analysis["cloud_provider"] = "gcp"
-                analysis["optimization_opportunities"].append("Consider using BigQuery for complex analytics")
+                analysis["optimization_opportunities"].append(
+                    "Consider using BigQuery for complex analytics"
+                )
             elif table_uri.startswith("abfs://"):
                 analysis["cloud_provider"] = "azure"
-                analysis["optimization_opportunities"].append("Consider using Azure Data Lake Analytics")
-                
+                analysis["optimization_opportunities"].append(
+                    "Consider using Azure Data Lake Analytics"
+                )
+
             # Check storage configuration
             config = metadata.configuration or {}
             if "delta.targetFileSize" in config:
                 target_size = config["delta.targetFileSize"]
                 analysis["storage_class"] = f"target_file_size_{target_size}"
-                
+
                 # Provide size-based optimization hints
                 try:
                     target_size_int = int(target_size)
                     if target_size_int < 1024 * 1024:  # < 1MB
-                        analysis["optimization_opportunities"].append("Small target file size - consider increasing for better read performance")
+                        analysis["optimization_opportunities"].append(
+                            "Small target file size - consider increasing for better read performance"
+                        )
                     elif target_size_int > 100 * 1024 * 1024:  # > 100MB
-                        analysis["optimization_opportunities"].append("Large target file size - consider decreasing for better parallelism")
+                        analysis["optimization_opportunities"].append(
+                            "Large target file size - consider decreasing for better parallelism"
+                        )
                 except ValueError:
                     pass
-                    
+
         except Exception as e:
             logger.debug(f"Could not analyze storage options: {e}")
-            
+
         return analysis
 
-    def _get_deletion_vector_optimization_hints(self, dt: "DeltaTable", metadata: Any) -> Dict[str, Any]:
+    def _get_deletion_vector_optimization_hints(
+        self, dt: "DeltaTable", metadata: Any
+    ) -> Dict[str, Any]:
         """Get optimization hints specific to deletion vectors.
-        
+
         Args:
             dt: The DeltaTable instance.
             metadata: The table metadata.
-            
+
         Returns:
             Dictionary containing deletion vector optimization hints.
         """
@@ -1456,7 +1559,7 @@ class DeltaDatasource(ParquetDatasource):
             "deletion_vector_impact": "none",
             "optimization_recommendations": [],
         }
-        
+
         try:
             # Check if table has deletion vectors
             config = metadata.configuration or {}
@@ -1464,33 +1567,37 @@ class DeltaDatasource(ParquetDatasource):
                 hints["has_deletion_vectors"] = (
                     config["delta.enableDeletionVectors"].lower() == "true"
                 )
-                
+
                 if hints["has_deletion_vectors"]:
                     hints["deletion_vector_impact"] = "moderate"
-                    hints["optimization_recommendations"].extend([
-                        "Deletion vectors enable efficient row-level deletes",
-                        "Consider using ignore_deletion_vectors=True if you don't need deleted row filtering",
-                        "Monitor deletion vector file sizes for storage optimization"
-                    ])
-                    
+                    hints["optimization_recommendations"].extend(
+                        [
+                            "Deletion vectors enable efficient row-level deletes",
+                            "Consider using ignore_deletion_vectors=True if you don't need deleted row filtering",
+                            "Monitor deletion vector file sizes for storage optimization",
+                        ]
+                    )
+
                     # Check deletion vector configuration
                     if "delta.deletionVectors.persistDeletionVectorsAsSubdir" in config:
                         hints["optimization_recommendations"].append(
                             "Deletion vectors are stored in subdirectories for better organization"
                         )
-                        
+
         except Exception as e:
             logger.debug(f"Could not get deletion vector optimization hints: {e}")
-            
+
         return hints
 
-    def _get_column_mapping_optimization_hints(self, dt: "DeltaTable", metadata: Any) -> Dict[str, Any]:
+    def _get_column_mapping_optimization_hints(
+        self, dt: "DeltaTable", metadata: Any
+    ) -> Dict[str, Any]:
         """Get optimization hints specific to column mapping.
-        
+
         Args:
             dt: The DeltaTable instance.
             metadata: The table metadata.
-            
+
         Returns:
             Dictionary containing column mapping optimization hints.
         """
@@ -1499,36 +1606,40 @@ class DeltaDatasource(ParquetDatasource):
             "column_mapping_mode": "none",
             "optimization_recommendations": [],
         }
-        
+
         try:
             # Check column mapping configuration
             config = metadata.configuration or {}
             if "delta.columnMapping.mode" in config:
                 hints["has_column_mapping"] = True
                 hints["column_mapping_mode"] = config["delta.columnMapping.mode"]
-                
+
                 if hints["column_mapping_mode"] == "name":
-                    hints["optimization_recommendations"].extend([
-                        "Column mapping by name provides schema evolution flexibility",
-                        "Consider using ignore_column_mapping=True if schema is stable"
-                    ])
+                    hints["optimization_recommendations"].extend(
+                        [
+                            "Column mapping by name provides schema evolution flexibility",
+                            "Consider using ignore_column_mapping=True if schema is stable",
+                        ]
+                    )
                 elif hints["column_mapping_mode"] == "id":
-                    hints["optimization_recommendations"].extend([
-                        "Column mapping by ID provides maximum schema evolution support",
-                        "Column pruning may be less effective with ID-based mapping"
-                    ])
-                    
+                    hints["optimization_recommendations"].extend(
+                        [
+                            "Column mapping by ID provides maximum schema evolution support",
+                            "Column pruning may be less effective with ID-based mapping",
+                        ]
+                    )
+
         except Exception as e:
             logger.debug(f"Could not get column mapping optimization hints: {e}")
-            
+
         return hints
 
     def _get_schema_based_optimization_hints(self, schema: Any) -> Dict[str, Any]:
         """Get optimization hints based on schema analysis.
-        
+
         Args:
             schema: The table schema.
-            
+
         Returns:
             Dictionary containing schema-based optimization hints.
         """
@@ -1537,33 +1648,36 @@ class DeltaDatasource(ParquetDatasource):
             "nullable_columns": 0,
             "optimization_recommendations": [],
         }
-        
+
         try:
-            if hasattr(schema, 'fields'):
+            if hasattr(schema, "fields"):
                 for field in schema.fields:
                     # Check for complex types
                     field_type = str(field.type)
-                    if any(complex_type in field_type.lower() for complex_type in ["array", "map", "struct"]):
+                    if any(
+                        complex_type in field_type.lower()
+                        for complex_type in ["array", "map", "struct"]
+                    ):
                         hints["complex_types"].append(field.name)
-                        
+
                     # Count nullable columns
-                    if hasattr(field, 'nullable') and field.nullable:
+                    if hasattr(field, "nullable") and field.nullable:
                         hints["nullable_columns"] += 1
-                        
+
                 # Provide recommendations based on schema analysis
                 if hints["complex_types"]:
                     hints["optimization_recommendations"].append(
                         f"Complex types detected: {', '.join(hints['complex_types'])} - consider flattening for better performance"
                     )
-                    
+
                 if hints["nullable_columns"] > len(schema.fields) * 0.8:
                     hints["optimization_recommendations"].append(
                         "High percentage of nullable columns - consider using default values for better compression"
                     )
-                    
+
         except Exception as e:
             logger.debug(f"Could not get schema-based optimization hints: {e}")
-            
+
         return hints
 
     def get_change_data_feed(
@@ -1605,7 +1719,7 @@ class DeltaDatasource(ParquetDatasource):
                     starting_version=10,
                     ending_version=20
                 )
-                
+
                 # Get changes from a specific timestamp
                 cdf_reader = datasource.get_change_data_feed(
                     starting_timestamp="2023-01-01T00:00:00Z"
@@ -1622,7 +1736,9 @@ class DeltaDatasource(ParquetDatasource):
 
             # Check if CDF is enabled for this table
             if not self._is_cdf_enabled(dt):
-                logger.warning("Change Data Feed (CDF) is not enabled for this Delta table")
+                logger.warning(
+                    "Change Data Feed (CDF) is not enabled for this Delta table"
+                )
                 return None
 
             # Load the change data feed
@@ -1661,8 +1777,10 @@ class DeltaDatasource(ParquetDatasource):
             config = metadata.configuration or {}
 
             # Check for CDF configuration
-            cdf_enabled = config.get("delta.enableChangeDataFeed", "false").lower() == "true"
-            
+            cdf_enabled = (
+                config.get("delta.enableChangeDataFeed", "false").lower() == "true"
+            )
+
             if cdf_enabled:
                 logger.debug("Change Data Feed is enabled for this table")
             else:
@@ -1718,19 +1836,36 @@ class DeltaDatasource(ParquetDatasource):
             try:
                 file_uris = dt.file_uris()
                 add_actions = dt.get_add_actions(flatten=True)
-                
-                if hasattr(add_actions, 'to_pandas'):
+
+                if hasattr(add_actions, "to_pandas"):
                     df = add_actions.to_pandas()
-                    
+
                     stats["file_statistics"] = {
                         "total_files": len(file_uris),
-                        "total_size_bytes": df['size'].sum() if 'size' in df.columns else None,
-                        "average_file_size_bytes": df['size'].mean() if 'size' in df.columns else None,
+                        "total_size_bytes": df["size"].sum()
+                        if "size" in df.columns
+                        else None,
+                        "average_file_size_bytes": df["size"].mean()
+                        if "size" in df.columns
+                        else None,
                         "file_size_distribution": {
-                            "small_files_1mb": len(df[df['size'] <= 1024*1024]) if 'size' in df.columns else 0,
-                            "medium_files_1mb_to_100mb": len(df[(df['size'] > 1024*1024) & (df['size'] <= 100*1024*1024)]) if 'size' in df.columns else 0,
-                            "large_files_100mb_plus": len(df[df['size'] > 100*1024*1024]) if 'size' in df.columns else 0,
-                        }
+                            "small_files_1mb": len(df[df["size"] <= 1024 * 1024])
+                            if "size" in df.columns
+                            else 0,
+                            "medium_files_1mb_to_100mb": len(
+                                df[
+                                    (df["size"] > 1024 * 1024)
+                                    & (df["size"] <= 100 * 1024 * 1024)
+                                ]
+                            )
+                            if "size" in df.columns
+                            else 0,
+                            "large_files_100mb_plus": len(
+                                df[df["size"] > 100 * 1024 * 1024]
+                            )
+                            if "size" in df.columns
+                            else 0,
+                        },
                     }
             except Exception as e:
                 logger.debug(f"Could not get file statistics: {e}")
@@ -1748,8 +1883,13 @@ class DeltaDatasource(ParquetDatasource):
                 if hasattr(metadata, "num_rows") and metadata.num_rows:
                     stats["performance_metrics"] = {
                         "total_rows": metadata.num_rows,
-                        "estimated_bytes_per_row": metadata.size / metadata.num_rows if hasattr(metadata, "size") and metadata.size else None,
-                        "partition_efficiency": len(dt.partitions()) / max(1, len(file_uris)) if 'file_uris' in locals() else None,
+                        "estimated_bytes_per_row": metadata.size / metadata.num_rows
+                        if hasattr(metadata, "size") and metadata.size
+                        else None,
+                        "partition_efficiency": len(dt.partitions())
+                        / max(1, len(file_uris))
+                        if "file_uris" in locals()
+                        else None,
                     }
             except Exception as e:
                 logger.debug(f"Could not get performance metrics: {e}")
@@ -1758,7 +1898,7 @@ class DeltaDatasource(ParquetDatasource):
             try:
                 config = metadata.configuration or {}
                 feature_flags = {}
-                
+
                 # Check for key Delta Lake features
                 key_features = [
                     "delta.enableChangeDataFeed",
@@ -1768,13 +1908,13 @@ class DeltaDatasource(ParquetDatasource):
                     "delta.identityColumns",
                     "delta.invariants",
                 ]
-                
+
                 for feature in key_features:
                     if feature in config:
                         feature_flags[feature] = config[feature]
-                        
+
                 stats["feature_flags"] = feature_flags
-                
+
             except Exception as e:
                 logger.debug(f"Could not get feature flags: {e}")
 

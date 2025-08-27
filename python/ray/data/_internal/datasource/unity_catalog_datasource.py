@@ -7,14 +7,13 @@ into Ray Datasets with support for multiple data formats and cloud providers.
 import logging
 import os
 import tempfile
-import time
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 import requests
 
-from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.block import Block, BlockMetadata
+from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import DeveloperAPI
 
 # Set up logging
@@ -244,7 +243,7 @@ class UnityCatalogConnector(Datasource):
     2. Fetches temporary credentials using Unity Catalog credential vending
     3. Configures cloud provider environment variables
     4. Delegates actual data reading to the appropriate native Ray Data connector
-    
+
     The datasource requires the user to specify the data format explicitly,
     ensuring compatibility with Unity Catalog table configurations.
 
@@ -277,7 +276,7 @@ class UnityCatalogConnector(Datasource):
                 operation="READ"
             )
             dataset = ray.data.read_datasource(datasource)
-            
+
             # With specific Delta Lake options
             datasource = UnityCatalogConnector(
                 base_url="https://your-workspace.cloud.databricks.com",
@@ -339,13 +338,15 @@ class UnityCatalogConnector(Datasource):
         # Validate data_format
         data_format = data_format.lower()
         if data_format not in _FILE_FORMAT_TO_RAY_READER:
-            raise ValueError(f"Unsupported data_format '{data_format}'. Supported formats: {list(_FILE_FORMAT_TO_RAY_READER.keys())}")
+            raise ValueError(
+                f"Unsupported data_format '{data_format}'. Supported formats: {list(_FILE_FORMAT_TO_RAY_READER.keys())}"
+            )
 
         # Validate operation and map to Unity Catalog operation_name
         valid_operations = ["READ", "WRITE", "DELETE"]
         if operation not in valid_operations:
             raise ValueError(f"operation must be one of {valid_operations}")
-        
+
         # Map operation to Unity Catalog operation_name
         if operation == "READ":
             self._unity_operation = "READ"
@@ -356,7 +357,9 @@ class UnityCatalogConnector(Datasource):
         # Validate region format for cloud providers
         if region:
             if not isinstance(region, str) or len(region) < 3:
-                raise ValueError("region must be a valid string with at least 3 characters")
+                raise ValueError(
+                    "region must be a valid string with at least 3 characters"
+                )
 
         # Validate reader_kwargs
         if reader_kwargs and not isinstance(reader_kwargs, dict):
@@ -410,21 +413,21 @@ class UnityCatalogConnector(Datasource):
 
     def get_name(self) -> str:
         """Return a human-readable name for this datasource.
-        
+
         This will be used as the names of the read tasks.
         """
         return "UnityCatalog"
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         """Return an estimate of the in-memory data size, or None if unknown.
-        
+
         Note that the in-memory data size may be larger than the on-disk data size.
         """
         # Try to get table info to estimate size
         try:
             if not self._table_info:
                 self._get_table_info()
-            
+
             # For now, return None as we don't have a reliable way to estimate
             # the in-memory size without reading the data
             return None
@@ -433,17 +436,17 @@ class UnityCatalogConnector(Datasource):
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         """Execute the read and return read tasks.
-        
+
         This method:
         1. Fetches Unity Catalog table information
         2. Gets temporary credentials for table access
         3. Configures environment for cloud provider access
         4. Creates read tasks that delegate to the appropriate native Ray Data connector
-        
+
         Args:
             parallelism: The requested read parallelism. The number of read
                 tasks should equal to this value if possible.
-                
+
         Returns:
             A list of read tasks that can be executed to read blocks from the
             datasource in parallel.
@@ -452,26 +455,26 @@ class UnityCatalogConnector(Datasource):
             # Step 1: Get table information if not already available
             if not self._table_info:
                 self._get_table_info()
-            
+
             # Step 2: Get temporary credentials
             if not self._creds_response:
                 self._get_creds()
-            
+
             # Step 3: Configure environment variables
             if not self._runtime_env:
                 self._set_env()
-            
+
         except Exception as e:
             # If Unity Catalog operations fail, create a read task that will fail with
             # a clear error message when executed
             logger.warning(f"Unity Catalog setup failed, creating error task: {e}")
-            
+
             def read_with_error() -> List[Block]:
                 raise RuntimeError(
                     f"Unity Catalog setup failed: {e}. "
                     "This datasource requires valid Unity Catalog credentials and access."
                 )
-            
+
             error_task = ReadTask(
                 read_with_error,
                 BlockMetadata(
@@ -483,47 +486,53 @@ class UnityCatalogConnector(Datasource):
                 ),
             )
             return [error_task]
-        
+
         # Step 4: Create read tasks based on the specified format
         read_tasks = []
-        
+
         # For now, create a single read task that will delegate to the appropriate reader
         # In a full implementation, this could create multiple tasks based on parallelism
         # and table partitioning information
-        
+
         def read_unity_catalog_table() -> List[Block]:
             """Read function that delegates to the appropriate native Ray Data connector.
-            
+
             This function:
             1. Uses the Unity Catalog credentials and table URL
             2. Delegates to the appropriate reader based on the specified data_format
             3. Returns the data as Ray Data blocks
             """
             import ray
-            
+
             # Get the table URL from Unity Catalog credentials
             table_url = self._table_url
             if not table_url:
-                raise RuntimeError("No table URL available from Unity Catalog credentials")
-            
+                raise RuntimeError(
+                    "No table URL available from Unity Catalog credentials"
+                )
+
             # Use the explicitly specified data_format to determine the reader
             data_format = self.data_format
-            
+
             # Determine which native Ray Data connector to use based on format
             if data_format == "delta":
                 # Check if table has deletion vectors and handle them appropriately
                 has_deletion_vectors = self._check_deletion_vectors()
-                
+
                 # Prepare Delta options with deletion vector handling
                 delta_options = self.delta_options or {}
                 if has_deletion_vectors:
-                    logger.info("Table has deletion vectors - applying deletion vector handling options")
-                    delta_options.update({
-                        "deletion_vector_handling": "ignore",  # Skip deletion vectors
-                        "ignore_deletion_vectors": True,
-                        "deletion_vector_timeout": 300,  # 5 minutes
-                    })
-                
+                    logger.info(
+                        "Table has deletion vectors - applying deletion vector handling options"
+                    )
+                    delta_options.update(
+                        {
+                            "deletion_vector_handling": "ignore",  # Skip deletion vectors
+                            "ignore_deletion_vectors": True,
+                            "deletion_vector_timeout": 300,  # 5 minutes
+                        }
+                    )
+
                 # Use native Delta reader with Unity Catalog options
                 try:
                     dataset = ray.data.read_delta(
@@ -531,69 +540,71 @@ class UnityCatalogConnector(Datasource):
                         storage_options=self.storage_options,
                         unity_catalog_config=self.unity_catalog_config,
                         options=delta_options,
-                        **self.reader_kwargs
+                        **self.reader_kwargs,
                     )
                 except Exception as e:
                     if "DeletionVectors" in str(e) or "deletion" in str(e).lower():
-                        logger.warning("Deletion vector error - trying fallback options")
+                        logger.warning(
+                            "Deletion vector error - trying fallback options"
+                        )
                         # Try with more aggressive deletion vector handling
                         fallback_options = {
                             "deletion_vector_handling": "error",  # Fail fast if deletion vectors present
                             "ignore_deletion_vectors": True,
                             "deletion_vector_timeout": 0,  # No timeout
                             **(self.delta_options or {}),
-                            **self.reader_kwargs
+                            **self.reader_kwargs,
                         }
                         dataset = ray.data.read_delta(
                             table_url,
                             storage_options=self.storage_options,
                             unity_catalog_config=self.unity_catalog_config,
-                            options=fallback_options
+                            options=fallback_options,
                         )
                         logger.info("Success with fallback deletion vector options")
                     else:
                         raise e
-                
+
             elif data_format == "parquet":
                 # Use native parquet reader
                 dataset = ray.data.read_parquet(
                     table_url,
                     storage_options=self.storage_options,
-                    **self.reader_kwargs
+                    **self.reader_kwargs,
                 )
-                
+
             elif data_format == "csv":
                 # Use native CSV reader
                 dataset = ray.data.read_csv(
                     table_url,
                     storage_options=self.storage_options,
-                    **self.reader_kwargs
+                    **self.reader_kwargs,
                 )
-                
+
             elif data_format == "json":
                 # Use native JSON reader
                 dataset = ray.data.read_json(
                     table_url,
                     storage_options=self.storage_options,
-                    **self.reader_kwargs
+                    **self.reader_kwargs,
                 )
-                
+
             elif data_format == "iceberg":
                 # Use native Iceberg reader
                 dataset = ray.data.read_iceberg(
                     table_url,
                     storage_options=self.storage_options,
-                    **self.reader_kwargs
+                    **self.reader_kwargs,
                 )
-                
+
             elif data_format == "hudi":
                 # Use native Hudi reader
                 dataset = ray.data.read_hudi(
                     table_url,
                     storage_options=self.storage_options,
-                    **self.reader_kwargs
+                    **self.reader_kwargs,
                 )
-                
+
             else:
                 # For other formats, try to use the generic reader
                 if data_format in _FILE_FORMAT_TO_RAY_READER:
@@ -603,22 +614,22 @@ class UnityCatalogConnector(Datasource):
                         dataset = reader_func(
                             table_url,
                             storage_options=self.storage_options,
-                            **self.reader_kwargs
+                            **self.reader_kwargs,
                         )
                     else:
                         raise ValueError(f"Reader function '{reader_name}' not found")
                 else:
                     raise ValueError(f"Unsupported data format: {data_format}")
-            
+
             # Convert the dataset to blocks
             # Note: This is a simplified approach - in practice, we'd want to
             # handle this more efficiently without materializing the entire dataset
             blocks = []
             for block in dataset.iter_blocks():
                 blocks.append(block)
-            
+
             return blocks
-        
+
         # Create the read task
         read_task = ReadTask(
             read_unity_catalog_table,
@@ -630,17 +641,17 @@ class UnityCatalogConnector(Datasource):
                 exec_stats=None,
             ),
         )
-        
+
         read_tasks.append(read_task)
-        
+
         return read_tasks
 
     def get_table_url(self) -> Optional[str]:
         """Get the current table URL if credentials have been fetched.
-        
+
         This method is useful for debugging and integration purposes.
         Note that this is not part of the standard Datasource interface.
-        
+
         Returns:
             The table URL if available, None otherwise.
         """
@@ -648,10 +659,10 @@ class UnityCatalogConnector(Datasource):
 
     def get_table_id(self) -> Optional[str]:
         """Get the current table ID if table info has been fetched.
-        
+
         This method is useful for debugging and integration purposes.
         Note that this is not part of the standard Datasource interface.
-        
+
         Returns:
             The table ID if available, None otherwise.
         """
@@ -659,21 +670,23 @@ class UnityCatalogConnector(Datasource):
 
     def is_ready(self) -> bool:
         """Check if the datasource is ready for read operations.
-        
+
         This method is useful for debugging and integration purposes.
         Note that this is not part of the standard Datasource interface.
-        
+
         Returns:
             True if the datasource has fetched table info and credentials.
         """
         return (
-            hasattr(self, "_table_info") and self._table_info is not None
-            and hasattr(self, "_table_url") and self._table_url is not None
+            hasattr(self, "_table_info")
+            and self._table_info is not None
+            and hasattr(self, "_table_url")
+            and self._table_url is not None
         )
 
     def get_inferred_format(self) -> str:
         """Get the data format specified for this datasource.
-        
+
         Returns:
             The explicitly specified data format.
         """
@@ -681,7 +694,7 @@ class UnityCatalogConnector(Datasource):
 
     def get_table_metadata(self) -> Dict[str, Any]:
         """Get comprehensive table metadata from Unity Catalog.
-        
+
         Returns:
             Dictionary containing table metadata and Unity Catalog information.
         """
@@ -692,44 +705,50 @@ class UnityCatalogConnector(Datasource):
             "unity_operation": getattr(self, "_unity_operation", None),
             "credential_vending_info": self.get_credential_vending_info(),
         }
-        
+
         if self._table_info:
-            metadata.update({
-                "table_id": self._table_info.table_id,
-                "table_type": self._table_info.table_type,
-                "data_source_format": self._table_info.data_source_format,
-                "storage_location": self._table_info.storage_location,
-                "created_at": getattr(self._table_info, "created_at", None),
-                "updated_at": getattr(self._table_info, "updated_at", None),
-            })
-        
+            metadata.update(
+                {
+                    "table_id": self._table_info.table_id,
+                    "table_type": self._table_info.table_type,
+                    "data_source_format": self._table_info.data_source_format,
+                    "storage_location": self._table_info.storage_location,
+                    "created_at": getattr(self._table_info, "created_at", None),
+                    "updated_at": getattr(self._table_info, "updated_at", None),
+                }
+            )
+
         if self._creds_response:
-            metadata.update({
-                "has_credentials": True,
-                "table_url": self._table_url,
-                "credential_type": list(self._creds_response.keys()),
-            })
+            metadata.update(
+                {
+                    "has_credentials": True,
+                    "table_url": self._table_url,
+                    "credential_type": list(self._creds_response.keys()),
+                }
+            )
         else:
-            metadata.update({
-                "has_credentials": False,
-            })
-        
+            metadata.update(
+                {
+                    "has_credentials": False,
+                }
+            )
+
         return metadata
 
     def _parse_table_name(self):
         """Parse the table full name to extract catalog, schema, and table information."""
         if not self.table_full_name or not isinstance(self.table_full_name, str):
             raise ValueError("table_full_name must be a non-empty string")
-            
+
         parts = self.table_full_name.split(".")
-        
+
         # Validate that we have at least one part
         if not parts or not parts[0]:
             raise ValueError("table_full_name must contain at least a table name")
-            
+
         # Remove empty parts (handles cases like "catalog..table" or "..table")
         parts = [part for part in parts if part.strip()]
-        
+
         if len(parts) >= 3:
             self.catalog_name = parts[0]
             self.schema_name = parts[1]
@@ -767,7 +786,7 @@ class UnityCatalogConnector(Datasource):
 
         try:
             resp = requests.get(url, headers=headers, timeout=30)
-            
+
             if resp.status_code == 200:
                 data = resp.json()
 
@@ -780,7 +799,7 @@ class UnityCatalogConnector(Datasource):
                 self._table_id = table_info.table_id
 
                 return table_info
-                
+
             elif resp.status_code == 403:
                 # Get detailed error information
                 try:
@@ -790,18 +809,18 @@ class UnityCatalogConnector(Datasource):
                 except:
                     error_message = resp.text[:200]
                     error_code = "PARSE_ERROR"
-                
-                logger.error(f"Unity Catalog Access Denied (403)")
+
+                logger.error("Unity Catalog Access Denied (403)")
                 logger.error(f"Error Code: {error_code}")
                 logger.error(f"Error Message: {error_message}")
-                logger.error(f"Required Permissions:")
+                logger.error("Required Permissions:")
                 logger.error(f"1. EXTERNAL USE SCHEMA on schema '{self.schema_name}'")
                 logger.error(f"2. SELECT on table '{self.table_full_name}'")
                 logger.error(f"3. USE CATALOG on catalog '{self.catalog_name}'")
                 logger.error(f"4. USE SCHEMA on schema '{self.schema_name}'")
-                
+
                 raise RuntimeError(f"Unity Catalog access denied: {error_message}")
-                
+
             else:
                 resp.raise_for_status()
 
@@ -828,15 +847,15 @@ class UnityCatalogConnector(Datasource):
 
     def _get_creds(self) -> None:
         """Fetch temporary credentials using Unity Catalog credential vending.
-        
+
         This method implements Unity Catalog credential vending for external system access.
         It requests temporary credentials that inherit the privileges of the Databricks principal.
-        
+
         The credentials include:
         - Short-lived access tokens for cloud storage
         - Cloud storage location URLs
         - Operation-specific permissions (READ or READ_WRITE)
-        
+
         Requirements:
         - External data access must be enabled on the metastore
         - Principal must have EXTERNAL USE SCHEMA privilege on the schema
@@ -847,12 +866,9 @@ class UnityCatalogConnector(Datasource):
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.token}",
         }
-        
+
         # Use the operation parameter (READ or READ_WRITE)
-        payload = {
-            "table_id": self._table_id, 
-            "operation": self.operation
-        }
+        payload = {"table_id": self._table_id, "operation": self.operation}
 
         try:
             resp = requests.post(url, json=payload, headers=headers, timeout=30)
@@ -865,11 +881,11 @@ class UnityCatalogConnector(Datasource):
             # - credentials: Cloud provider specific credentials
             if "url" not in creds_data:
                 raise ValueError("Invalid credentials response: missing 'url' field")
-            
+
             # Store the full response for cloud provider setup
             self._creds_response = creds_data
             self._table_url = creds_data["url"]
-            
+
             # Log successful credential acquisition
             logger.info(
                 f"Successfully obtained Unity Catalog credentials for {self.table_full_name} "
@@ -882,7 +898,9 @@ class UnityCatalogConnector(Datasource):
                 f"Timeout while fetching Unity Catalog credentials for {self.table_full_name}"
             )
         except requests.exceptions.RequestException as e:
-            logger.error(f"Request failed while fetching Unity Catalog credentials: {e}")
+            logger.error(
+                f"Request failed while fetching Unity Catalog credentials: {e}"
+            )
             raise RuntimeError(
                 f"Failed to fetch Unity Catalog credentials for {self.table_full_name}: {e}"
             )
@@ -892,22 +910,24 @@ class UnityCatalogConnector(Datasource):
                 f"Invalid Unity Catalog credentials response for {self.table_full_name}: {e}"
             )
         except Exception as e:
-            logger.error(f"Unexpected error while processing Unity Catalog credentials: {e}")
+            logger.error(
+                f"Unexpected error while processing Unity Catalog credentials: {e}"
+            )
             raise RuntimeError(
                 f"Failed to process Unity Catalog credentials for {self.table_full_name}: {e}"
             )
 
     def _set_env(self) -> None:
         """Configure environment variables for cloud provider access using Unity Catalog credentials.
-        
+
         This method processes the Unity Catalog credential vending response to set up
         cloud provider specific environment variables and storage options.
-        
+
         The Unity Catalog credential vending response structure varies by cloud provider:
         - AWS: aws_temp_credentials with access_key_id, secret_access_key, session_token
         - Azure: azuresasuri with SAS token
         - GCP: gcp_service_account with service account JSON
-        
+
         Requirements:
         - Unity Catalog credentials must be fetched first via _get_creds()
         - Cloud provider must be accessible from the current environment
@@ -916,7 +936,9 @@ class UnityCatalogConnector(Datasource):
         creds = self._creds_response
 
         if not creds:
-            raise RuntimeError("No Unity Catalog credentials available. Call _get_creds() first.")
+            raise RuntimeError(
+                "No Unity Catalog credentials available. Call _get_creds() first."
+            )
 
         try:
             # Handle AWS credentials from Unity Catalog credential vending
@@ -926,44 +948,58 @@ class UnityCatalogConnector(Datasource):
                 if not all(key in aws for key in required_keys):
                     raise ValueError("Incomplete AWS credentials from Unity Catalog")
 
-                env_vars.update({
-                    "AWS_ACCESS_KEY_ID": aws["access_key_id"],
-                    "AWS_SECRET_ACCESS_KEY": aws["secret_access_key"],
-                    "AWS_SESSION_TOKEN": aws["session_token"],
-                })
+                env_vars.update(
+                    {
+                        "AWS_ACCESS_KEY_ID": aws["access_key_id"],
+                        "AWS_SECRET_ACCESS_KEY": aws["secret_access_key"],
+                        "AWS_SESSION_TOKEN": aws["session_token"],
+                    }
+                )
 
                 if self.region:
-                    env_vars.update({
-                        "AWS_REGION": self.region,
-                        "AWS_DEFAULT_REGION": self.region,
-                    })
+                    env_vars.update(
+                        {
+                            "AWS_REGION": self.region,
+                            "AWS_DEFAULT_REGION": self.region,
+                        }
+                    )
 
                 # Update storage options for AWS
-                self.storage_options.update({
-                    "aws_region": self.region or aws.get("region"),
-                    "aws_access_key_id": aws["access_key_id"],
-                    "aws_secret_access_key": aws["secret_access_key"],
-                    "aws_session_token": aws["session_token"],
-                })
-                
-                logger.info("Configured AWS credentials from Unity Catalog credential vending")
+                self.storage_options.update(
+                    {
+                        "aws_region": self.region or aws.get("region"),
+                        "aws_access_key_id": aws["access_key_id"],
+                        "aws_secret_access_key": aws["secret_access_key"],
+                        "aws_session_token": aws["session_token"],
+                    }
+                )
+
+                logger.info(
+                    "Configured AWS credentials from Unity Catalog credential vending"
+                )
 
             # Handle Azure credentials from Unity Catalog credential vending
             elif "azuresasuri" in creds:
                 env_vars["AZURE_STORAGE_SAS_TOKEN"] = creds["azuresasuri"]
 
                 # Update storage options for Azure
-                self.storage_options.update({
-                    "azure_storage_sas_token": creds["azuresasuri"],
-                })
-                
-                logger.info("Configured Azure SAS token from Unity Catalog credential vending")
+                self.storage_options.update(
+                    {
+                        "azure_storage_sas_token": creds["azuresasuri"],
+                    }
+                )
+
+                logger.info(
+                    "Configured Azure SAS token from Unity Catalog credential vending"
+                )
 
             # Handle GCP credentials from Unity Catalog credential vending
             elif "gcp_service_account" in creds:
                 gcp_json = creds["gcp_service_account"]
                 if not gcp_json:
-                    raise ValueError("Empty GCP service account JSON from Unity Catalog")
+                    raise ValueError(
+                        "Empty GCP service account JSON from Unity Catalog"
+                    )
 
                 with tempfile.NamedTemporaryFile(
                     prefix="gcp_sa_", suffix=".json", delete=False
@@ -973,11 +1009,15 @@ class UnityCatalogConnector(Datasource):
                     env_vars["GOOGLE_APPLICATION_CREDENTIALS"] = temp_file.name
 
                     # Update storage options for GCP
-                    self.storage_options.update({
-                        "google_application_credentials": temp_file.name,
-                    })
-                    
-                    logger.info("Configured GCP service account credentials from Unity Catalog credential vending")
+                    self.storage_options.update(
+                        {
+                            "google_application_credentials": temp_file.name,
+                        }
+                    )
+
+                    logger.info(
+                        "Configured GCP service account credentials from Unity Catalog credential vending"
+                    )
 
             else:
                 # Log available keys for debugging
@@ -987,11 +1027,11 @@ class UnityCatalogConnector(Datasource):
                     f"Available keys: {available_keys}. "
                     f"Expected: aws_temp_credentials, azuresasuri, or gcp_service_account"
                 )
-                
+
                 # Try to extract any URL or path information that might be useful
                 if "url" in creds:
                     logger.info(f"Unity Catalog provided table URL: {creds['url']}")
-                
+
                 # For unsupported credential types, we'll still try to proceed
                 # but the user may need to configure credentials manually
                 logger.warning(
@@ -1004,14 +1044,20 @@ class UnityCatalogConnector(Datasource):
                 os.environ[k] = v
 
             self._runtime_env = {"env_vars": env_vars}
-            
+
             if env_vars:
-                logger.info(f"Environment configured with {len(env_vars)} variables from Unity Catalog")
+                logger.info(
+                    f"Environment configured with {len(env_vars)} variables from Unity Catalog"
+                )
             else:
-                logger.warning("No environment variables were configured from Unity Catalog credentials")
+                logger.warning(
+                    "No environment variables were configured from Unity Catalog credentials"
+                )
 
         except Exception as e:
-            logger.error(f"Failed to configure environment variables from Unity Catalog credentials: {e}")
+            logger.error(
+                f"Failed to configure environment variables from Unity Catalog credentials: {e}"
+            )
             raise RuntimeError(f"Environment configuration failed: {e}")
 
     def _check_deletion_vectors(self) -> bool:
@@ -1019,24 +1065,30 @@ class UnityCatalogConnector(Datasource):
         try:
             if not self._table_info:
                 return False
-                
+
             # Check delta runtime properties for deletion vector info
             delta_props = self._table_info.delta_runtime_properties_kvpairs
             if delta_props:
                 # Look for deletion vector related properties
-                deletion_vector_enabled = delta_props.get("delta.enableDeletionVectors", "false").lower() == "true"
+                deletion_vector_enabled = (
+                    delta_props.get("delta.enableDeletionVectors", "false").lower()
+                    == "true"
+                )
                 if deletion_vector_enabled:
                     return True
-                    
+
             # Check table properties
             table_props = self._table_info.properties
             if table_props:
-                deletion_vector_enabled = table_props.get("delta.enableDeletionVectors", "false").lower() == "true"
+                deletion_vector_enabled = (
+                    table_props.get("delta.enableDeletionVectors", "false").lower()
+                    == "true"
+                )
                 if deletion_vector_enabled:
                     return True
-                    
+
             return False
-            
+
         except Exception as e:
             logger.warning(f"Could not check deletion vectors: {e}")
             return False
@@ -1047,20 +1099,20 @@ class UnityCatalogConnector(Datasource):
             # Test basic workspace access
             workspace_url = f"{self.base_url}/api/2.1/workspace/list"
             headers = {"Authorization": f"Bearer {self.token}"}
-            
+
             resp = requests.get(workspace_url, headers=headers, timeout=30)
             workspace_access = resp.status_code == 200
-            
+
             # Test Unity Catalog access
             uc_url = f"{self.base_url}/api/2.1/unity-catalog/catalogs"
             resp = requests.get(uc_url, headers=headers, timeout=30)
             uc_access = resp.status_code == 200
-            
+
             # Test metastore access to check external data access
             metastore_url = f"{self.base_url}/api/2.1/unity-catalog/metastores"
             resp = requests.get(metastore_url, headers=headers, timeout=30)
             metastore_access = resp.status_code == 200
-            
+
             # Check if external data access is enabled on metastore
             external_data_access_enabled = False
             if metastore_access:
@@ -1068,28 +1120,34 @@ class UnityCatalogConnector(Datasource):
                     metastore_data = resp.json()
                     if "metastores" in metastore_data and metastore_data["metastores"]:
                         metastore = metastore_data["metastores"][0]
-                        external_data_access_enabled = metastore.get("external_access_enabled", False)
+                        external_data_access_enabled = metastore.get(
+                            "external_access_enabled", False
+                        )
                 except:
                     pass
-            
+
             # Test catalog and schema access
             catalog_name = self.table_full_name.split(".")[0]
             schema_name = self.table_full_name.split(".")[1]
-            
-            catalog_url = f"{self.base_url}/api/2.1/unity-catalog/catalogs/{catalog_name}"
+
+            catalog_url = (
+                f"{self.base_url}/api/2.1/unity-catalog/catalogs/{catalog_name}"
+            )
             resp = requests.get(catalog_url, headers=headers, timeout=30)
             catalog_access = resp.status_code == 200
-            
+
             schema_url = f"{self.base_url}/api/2.1/unity-catalog/schemas/{catalog_name}.{schema_name}"
             resp = requests.get(schema_url, headers=headers, timeout=30)
             schema_access = resp.status_code == 200
-            
+
             # Test specific table access with manifest capabilities
-            table_url = f"{self.base_url}/api/2.1/unity-catalog/tables/{self.table_full_name}"
+            table_url = (
+                f"{self.base_url}/api/2.1/unity-catalog/tables/{self.table_full_name}"
+            )
             params = {"include_manifest_capabilities": "true"}
             resp = requests.get(table_url, headers=headers, params=params, timeout=30)
             table_access = resp.status_code == 200
-            
+
             # Check if table supports credential vending
             credential_vending_support = False
             if table_access:
@@ -1097,13 +1155,14 @@ class UnityCatalogConnector(Datasource):
                     table_data = resp.json()
                     if "manifest_capabilities" in table_data:
                         capabilities = table_data["manifest_capabilities"]
-                        credential_vending_support = (
-                            capabilities.get("HAS_DIRECT_EXTERNAL_ENGINE_READ_SUPPORT", False) or
-                            capabilities.get("HAS_DIRECT_EXTERNAL_ENGINE_WRITE_SUPPORT", False)
+                        credential_vending_support = capabilities.get(
+                            "HAS_DIRECT_EXTERNAL_ENGINE_READ_SUPPORT", False
+                        ) or capabilities.get(
+                            "HAS_DIRECT_EXTERNAL_ENGINE_WRITE_SUPPORT", False
                         )
                 except:
                     pass
-            
+
             return {
                 "workspace_access": workspace_access,
                 "unity_catalog_access": uc_access,
@@ -1118,15 +1177,15 @@ class UnityCatalogConnector(Datasource):
                 "table_name": self.table_full_name,
                 "catalog_name": catalog_name,
                 "schema_name": schema_name,
-                "recommendations": []
+                "recommendations": [],
             }
-            
+
         except Exception as e:
             return {
                 "error": str(e),
                 "token_starts_with": self.token[:10] + "...",
                 "base_url": self.base_url,
-                "table_name": self.table_full_name
+                "table_name": self.table_full_name,
             }
 
     def test_credential_flow(self) -> Dict[str, Any]:
@@ -1135,30 +1194,30 @@ class UnityCatalogConnector(Datasource):
             # Step 1: Get table information
             if not self._table_info:
                 self._get_table_info()
-            
+
             # Step 2: Get temporary credentials
             if not self._creds_response:
                 self._get_creds()
-            
+
             # Step 3: Configure environment variables
             if not self._runtime_env:
                 self._set_env()
-            
+
             return {
                 "success": True,
                 "table_info": self._table_info,
                 "credentials": self._creds_response,
                 "environment": self._runtime_env,
-                "table_url": self._table_url
+                "table_url": self._table_url,
             }
-            
+
         except Exception as e:
             return {
                 "success": False,
                 "error": str(e),
                 "table_info": self._table_info,
                 "credentials": self._creds_response,
-                "environment": self._runtime_env
+                "environment": self._runtime_env,
             }
 
     def _cleanup_temp_files(self) -> None:
@@ -1176,6 +1235,8 @@ class UnityCatalogConnector(Datasource):
                         )
                         # Try to remove the file reference from runtime_env
                         if "env_vars" in self._runtime_env:
-                            self._runtime_env["env_vars"].pop("GOOGLE_APPLICATION_CREDENTIALS", None)
+                            self._runtime_env["env_vars"].pop(
+                                "GOOGLE_APPLICATION_CREDENTIALS", None
+                            )
         except Exception as e:
             logger.warning(f"Error during cleanup: {e}")
