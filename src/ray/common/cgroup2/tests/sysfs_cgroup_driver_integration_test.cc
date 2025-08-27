@@ -16,6 +16,7 @@
 #include <pwd.h>
 #include <unistd.h>
 
+#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -24,7 +25,7 @@
 #include <utility>
 
 #include "ray/common/cgroup2/sysfs_cgroup_driver.h"
-#include "ray/common/cgroup2/test/cgroup_test_utils.h"
+#include "ray/common/cgroup2/tests/cgroup_test_utils.h"
 #include "ray/common/status.h"
 
 constexpr const char *ENV_VAR_TEST_CGROUP_PATH = "CGROUP_PATH";

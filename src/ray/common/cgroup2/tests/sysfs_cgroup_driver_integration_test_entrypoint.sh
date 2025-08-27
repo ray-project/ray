@@ -38,7 +38,7 @@ if ! grep -qE '\smemory\s' ${ROOT_CGROUP}/cgroup.controllers; then
 fi
 
 
-TEST_FIXTURE_SCRIPT=src/ray/common/cgroup2/test/sysfs_cgroup_driver_integration_test_fixture.sh
+TEST_FIXTURE_SCRIPT=src/ray/common/cgroup2/tests/sysfs_cgroup_driver_integration_test_fixture.sh
 BASE_CGROUP="$(mktemp -d -p "${ROOT_CGROUP}" testing.XXXXX)"
 TEST_CGROUP=${BASE_CGROUP}/test
 LEAF_CGROUP=${BASE_CGROUP}/leaf
@@ -85,6 +85,6 @@ echo "LEAF_CGROUP for the test suite is ${LEAF_CGROUP}."
 "${TEST_FIXTURE_SCRIPT}" setup "${ROOT_CGROUP}" "${BASE_CGROUP}" "${UNPRIV_USER}"
 
 su -s /bin/bash ${UNPRIV_USER} -c \
- "CGROUP_PATH=${TEST_CGROUP} bazel run //src/ray/common/cgroup2/test:sysfs_cgroup_driver_integration_test"
+ "CGROUP_PATH=${TEST_CGROUP} bazel run //src/ray/common/cgroup2/tests:sysfs_cgroup_driver_integration_test"
 
 "${TEST_FIXTURE_SCRIPT}" teardown "${ROOT_CGROUP}" "${BASE_CGROUP}" "${UNPRIV_USER}"
