@@ -72,7 +72,6 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   auto scheduling_options =
       CreateSchedulingOptions(placement_group->GetPlacementGroupID(),
                               strategy,
-                              placement_group->GetMaxCpuFractionPerNode(),
                               placement_group->GetSoftTargetNodeID());
   auto scheduling_result =
       cluster_resource_scheduler_.Schedule(resource_request_list, scheduling_options);
@@ -292,7 +291,7 @@ std::shared_ptr<RayletClientInterface>
 GcsPlacementGroupScheduler::GetRayletClientFromNode(
     const std::shared_ptr<ray::rpc::GcsNodeInfo> &node) {
   rpc::Address remote_address;
-  remote_address.set_raylet_id(node->node_id());
+  remote_address.set_node_id(node->node_id());
   remote_address.set_ip_address(node->node_manager_address());
   remote_address.set_port(node->node_manager_port());
   return GetOrConnectRayletClient(remote_address);
@@ -475,22 +474,20 @@ GcsPlacementGroupScheduler::CreateSchedulingContext(
 SchedulingOptions GcsPlacementGroupScheduler::CreateSchedulingOptions(
     const PlacementGroupID &placement_group_id,
     rpc::PlacementStrategy strategy,
-    double max_cpu_fraction_per_node,
     NodeID soft_target_node_id) {
   switch (strategy) {
   case rpc::PlacementStrategy::PACK:
-    return SchedulingOptions::BundlePack(max_cpu_fraction_per_node);
+    return SchedulingOptions::BundlePack();
   case rpc::PlacementStrategy::SPREAD:
-    return SchedulingOptions::BundleSpread(max_cpu_fraction_per_node);
+    return SchedulingOptions::BundleSpread();
   case rpc::PlacementStrategy::STRICT_PACK:
     return SchedulingOptions::BundleStrictPack(
-        max_cpu_fraction_per_node,
         soft_target_node_id.IsNil() ? scheduling::NodeID::Nil()
                                     : scheduling::NodeID(soft_target_node_id.Binary()));
 
   case rpc::PlacementStrategy::STRICT_SPREAD:
     return SchedulingOptions::BundleStrictSpread(
-        max_cpu_fraction_per_node, CreateSchedulingContext(placement_group_id));
+        CreateSchedulingContext(placement_group_id));
   default:
     RAY_LOG(FATAL) << "Unsupported scheduling type: "
                    << rpc::PlacementStrategy_Name(strategy);

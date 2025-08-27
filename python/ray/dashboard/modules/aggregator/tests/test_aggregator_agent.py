@@ -1,6 +1,7 @@
 import sys
 import json
 import base64
+from unittest.mock import MagicMock
 
 import pytest
 from google.protobuf.timestamp_pb2 import Timestamp
@@ -13,10 +14,8 @@ from ray._private.test_utils import wait_for_condition
 from ray._raylet import GcsClient
 import ray.dashboard.consts as dashboard_consts
 from ray._private.test_utils import (
-    wait_until_server_available,
     find_free_port,
 )
-from ray._common.network_utils import parse_address, build_address
 
 from ray.core.generated.events_event_aggregator_service_pb2_grpc import (
     EventAggregatorServiceStub,
@@ -27,16 +26,48 @@ from ray.core.generated.events_event_aggregator_service_pb2 import (
     TaskEventsMetadata,
 )
 from ray.core.generated.events_base_event_pb2 import RayEvent
+from ray.core.generated.events_task_definition_event_pb2 import (
+    TaskDefinitionEvent,
+)
+from ray.core.generated.events_task_execution_event_pb2 import (
+    TaskExecutionEvent,
+)
 from ray.core.generated.profile_events_pb2 import ProfileEvents, ProfileEventEntry
 from ray.core.generated.events_task_profile_events_pb2 import TaskProfileEvents
+from ray.core.generated.events_driver_job_definition_event_pb2 import (
+    DriverJobDefinitionEvent,
+)
+from ray.core.generated.events_driver_job_execution_event_pb2 import (
+    DriverJobExecutionEvent,
+)
+from ray.core.generated.runtime_env_common_pb2 import (
+    RuntimeEnvInfo,
+    RuntimeEnvUris,
+    RuntimeEnvConfig,
+)
+from ray.core.generated.common_pb2 import (
+    TaskType,
+    Language,
+    FunctionDescriptor,
+    PythonFunctionDescriptor,
+    TaskStatus,
+    ErrorType,
+    RayErrorInfo,
+)
+
+from ray.dashboard.modules.aggregator.aggregator_agent import AggregatorAgent
 
 
 _EVENT_AGGREGATOR_AGENT_TARGET_PORT = find_free_port()
+_EVENT_AGGREGATOR_AGENT_TARGET_IP = "127.0.0.1"
+_EVENT_AGGREGATOR_AGENT_TARGET_ADDR = (
+    f"http://{_EVENT_AGGREGATOR_AGENT_TARGET_IP}:{_EVENT_AGGREGATOR_AGENT_TARGET_PORT}"
+)
 
 
 @pytest.fixture(scope="module")
 def httpserver_listen_address():
-    return ("127.0.0.1", _EVENT_AGGREGATOR_AGENT_TARGET_PORT)
+    return (_EVENT_AGGREGATOR_AGENT_TARGET_IP, _EVENT_AGGREGATOR_AGENT_TARGET_PORT)
 
 
 @pytest.fixture
@@ -54,9 +85,7 @@ _with_aggregator_port = pytest.mark.parametrize(
     [
         {
             "env_vars": {
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": str(
-                    _EVENT_AGGREGATOR_AGENT_TARGET_PORT
-                ),
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
             },
         },
     ],
@@ -64,26 +93,91 @@ _with_aggregator_port = pytest.mark.parametrize(
 )
 
 
-def get_event_aggregator_grpc_stub(webui_url, gcs_address, head_node_id):
+def get_event_aggregator_grpc_stub(gcs_address, head_node_id):
     """
     An helper function to get the gRPC stub for the event aggregator agent.
     Should only be used in tests.
     """
-    ip, _ = parse_address(webui_url)
-    agent_address = build_address(ip, ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT)
-    assert wait_until_server_available(agent_address)
 
     gcs_address = gcs_address
     gcs_client = GcsClient(address=gcs_address)
-    agent_addr = gcs_client.internal_kv_get(
-        f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{head_node_id}".encode(),
-        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-        timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
-    )
-    ip, http_port, grpc_port = json.loads(agent_addr)
+
+    def get_addr():
+        return gcs_client.internal_kv_get(
+            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{head_node_id}".encode(),
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
+        )
+
+    wait_for_condition(lambda: get_addr() is not None)
+    ip, _, grpc_port = json.loads(get_addr())
     options = ray_constants.GLOBAL_GRPC_OPTIONS
     channel = init_grpc_channel(f"{ip}:{grpc_port}", options=options)
     return EventAggregatorServiceStub(channel)
+
+
+@pytest.mark.parametrize(
+    (
+        "export_addr",
+        "expected_http_target_enabled",
+        "expected_event_processing_enabled",
+    ),
+    [
+        ("", False, False),
+        ("http://127.0.0.1:" + str(_EVENT_AGGREGATOR_AGENT_TARGET_PORT), True, True),
+    ],
+)
+def test_aggregator_agent_http_target_not_enabled(
+    export_addr,
+    expected_http_target_enabled,
+    expected_event_processing_enabled,
+):
+    dashboard_agent = MagicMock()
+    dashboard_agent.events_export_addr = export_addr
+    agent = AggregatorAgent(dashboard_agent)
+    assert agent._event_http_target_enabled == expected_http_target_enabled
+    assert agent._event_processing_enabled == expected_event_processing_enabled
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_env_vars",
+    [
+        {
+            "env_vars": {
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": "",
+            },
+        },
+    ],
+    indirect=True,
+)
+def test_aggregator_agent_event_processing_disabled(
+    ray_start_cluster_head_with_env_vars, httpserver, fake_timestamp
+):
+    cluster = ray_start_cluster_head_with_env_vars
+    stub = get_event_aggregator_grpc_stub(
+        cluster.gcs_address, cluster.head_node.node_id
+    )
+
+    httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
+
+    request = AddEventsRequest(
+        events_data=RayEventsData(
+            events=[
+                RayEvent(
+                    event_id=b"1",
+                    source_type=RayEvent.SourceType.CORE_WORKER,
+                    event_type=RayEvent.EventType.TASK_DEFINITION_EVENT,
+                    timestamp=fake_timestamp[0],
+                    severity=RayEvent.Severity.INFO,
+                    message="hello",
+                ),
+            ],
+            task_events_metadata=TaskEventsMetadata(
+                dropped_task_attempts=[],
+            ),
+        )
+    )
+    stub.AddEvents(request)
 
 
 @_with_aggregator_port
@@ -92,7 +186,7 @@ def test_aggregator_agent_receive_publish_events_normally(
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
-        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
+        cluster.gcs_address, cluster.head_node.node_id
     )
 
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
@@ -136,9 +230,7 @@ def test_aggregator_agent_receive_publish_events_normally(
         {
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 1,
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": str(
-                    _EVENT_AGGREGATOR_AGENT_TARGET_PORT
-                ),
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
             },
         },
     ],
@@ -149,7 +241,7 @@ def test_aggregator_agent_receive_event_full(
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
-        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
+        cluster.gcs_address, cluster.head_node.node_id
     )
 
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
@@ -196,7 +288,7 @@ def test_aggregator_agent_receive_multiple_events(
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
-        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
+        cluster.gcs_address, cluster.head_node.node_id
     )
 
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
@@ -242,9 +334,7 @@ def test_aggregator_agent_receive_multiple_events(
         {
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 1,
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": str(
-                    _EVENT_AGGREGATOR_AGENT_TARGET_PORT
-                ),
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
             },
         },
     ],
@@ -255,7 +345,7 @@ def test_aggregator_agent_receive_multiple_events_failures(
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
-        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
+        cluster.gcs_address, cluster.head_node.node_id
     )
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
     request = AddEventsRequest(
@@ -302,7 +392,7 @@ def test_aggregator_agent_receive_empty_events(
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
-        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
+        cluster.gcs_address, cluster.head_node.node_id
     )
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
     request = AddEventsRequest(
@@ -323,7 +413,7 @@ def test_aggregator_agent_profile_events_not_exposed(
     """Test that profile events are not sent when not in exposable event types."""
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
-        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
+        cluster.gcs_address, cluster.head_node.node_id
     )
 
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
@@ -360,47 +450,174 @@ def test_aggregator_agent_profile_events_not_exposed(
     assert req_json[0]["eventType"] == "TASK_DEFINITION_EVENT"
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster_head_with_env_vars",
-    [
-        {
-            "env_vars": {
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENT_SEND_PORT": str(
-                    _EVENT_AGGREGATOR_AGENT_TARGET_PORT
+def _create_task_definition_event_proto(timestamp):
+    return RayEvent(
+        event_id=b"1",
+        source_type=RayEvent.SourceType.CORE_WORKER,
+        event_type=RayEvent.EventType.TASK_DEFINITION_EVENT,
+        timestamp=timestamp,
+        severity=RayEvent.Severity.INFO,
+        session_name="test_session",
+        task_definition_event=TaskDefinitionEvent(
+            task_id=b"1",
+            task_attempt=1,
+            task_type=TaskType.NORMAL_TASK,
+            language=Language.PYTHON,
+            task_func=FunctionDescriptor(
+                python_function_descriptor=PythonFunctionDescriptor(
+                    module_name="test_module",
+                    class_name="test_class",
+                    function_name="test_function",
+                    function_hash="test_hash",
                 ),
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES": "TASK_DEFINITION_EVENT,TASK_EXECUTION_EVENT,ACTOR_TASK_DEFINITION_EVENT,ACTOR_TASK_EXECUTION_EVENT,TASK_PROFILE_EVENT",
-            },
-        },
-    ],
-    indirect=True,
-)
-def test_aggregator_agent_receive_profile_events(
-    ray_start_cluster_head_with_env_vars, httpserver, fake_timestamp
-):
-    cluster = ray_start_cluster_head_with_env_vars
-    stub = get_event_aggregator_grpc_stub(
-        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
-    )
-
-    httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
-
-    request = AddEventsRequest(
-        events_data=RayEventsData(
-            events=[_create_profile_event_request(fake_timestamp[0])],
-            task_events_metadata=TaskEventsMetadata(
-                dropped_task_attempts=[],
             ),
-        )
+            task_name="test_task",
+            required_resources={
+                "CPU": 1.0,
+                "GPU": 0.0,
+            },
+            runtime_env_info=RuntimeEnvInfo(
+                serialized_runtime_env="{}",
+            ),
+            job_id=b"1",
+            parent_task_id=b"1",
+            placement_group_id=b"1",
+            ref_ids={
+                "key1": b"value1",
+                "key2": b"value2",
+            },
+        ),
     )
 
-    stub.AddEvents(request)
 
-    wait_for_condition(lambda: len(httpserver.log) == 1)
+def _verify_task_definition_event_json(req_json, expected_timestamp):
+    assert len(req_json) == 1
 
-    req, _ = httpserver.log[0]
-    req_json = json.loads(req.data)
+    # Verify the base event fields
+    assert req_json[0]["eventId"] == base64.b64encode(b"1").decode()
+    assert req_json[0]["sourceType"] == "CORE_WORKER"
+    assert req_json[0]["eventType"] == "TASK_DEFINITION_EVENT"
+    assert req_json[0]["timestamp"] == expected_timestamp
+    assert req_json[0]["severity"] == "INFO"
+    assert (
+        req_json[0]["message"] == ""
+    )  # Make sure the default value is included when it is not set
+    assert req_json[0]["sessionName"] == "test_session"
 
-    _verify_profile_event_json(req_json, fake_timestamp[1])
+    # Verify the task definition event specific fields
+    assert (
+        req_json[0]["taskDefinitionEvent"]["taskId"] == base64.b64encode(b"1").decode()
+    )
+    assert req_json[0]["taskDefinitionEvent"]["taskAttempt"] == 1
+    assert req_json[0]["taskDefinitionEvent"]["taskType"] == "NORMAL_TASK"
+    assert req_json[0]["taskDefinitionEvent"]["language"] == "PYTHON"
+    assert (
+        req_json[0]["taskDefinitionEvent"]["taskFunc"]["pythonFunctionDescriptor"][
+            "moduleName"
+        ]
+        == "test_module"
+    )
+    assert (
+        req_json[0]["taskDefinitionEvent"]["taskFunc"]["pythonFunctionDescriptor"][
+            "className"
+        ]
+        == "test_class"
+    )
+    assert (
+        req_json[0]["taskDefinitionEvent"]["taskFunc"]["pythonFunctionDescriptor"][
+            "functionName"
+        ]
+        == "test_function"
+    )
+    assert (
+        req_json[0]["taskDefinitionEvent"]["taskFunc"]["pythonFunctionDescriptor"][
+            "functionHash"
+        ]
+        == "test_hash"
+    )
+    assert req_json[0]["taskDefinitionEvent"]["taskName"] == "test_task"
+    assert req_json[0]["taskDefinitionEvent"]["requiredResources"] == {
+        "CPU": 1.0,
+        "GPU": 0.0,
+    }
+    assert (
+        req_json[0]["taskDefinitionEvent"]["runtimeEnvInfo"]["serializedRuntimeEnv"]
+        == "{}"
+    )
+    assert (
+        req_json[0]["taskDefinitionEvent"]["jobId"] == base64.b64encode(b"1").decode()
+    )
+    assert (
+        req_json[0]["taskDefinitionEvent"]["parentTaskId"]
+        == base64.b64encode(b"1").decode()
+    )
+    assert (
+        req_json[0]["taskDefinitionEvent"]["placementGroupId"]
+        == base64.b64encode(b"1").decode()
+    )
+    assert req_json[0]["taskDefinitionEvent"]["refIds"] == {
+        "key1": base64.b64encode(b"value1").decode(),
+        "key2": base64.b64encode(b"value2").decode(),
+    }
+
+
+def _create_task_execution_event_proto(timestamp):
+    return RayEvent(
+        event_id=b"1",
+        source_type=RayEvent.SourceType.CORE_WORKER,
+        event_type=RayEvent.EventType.TASK_EXECUTION_EVENT,
+        timestamp=timestamp,
+        severity=RayEvent.Severity.INFO,
+        session_name="test_session",
+        task_execution_event=TaskExecutionEvent(
+            task_id=b"1",
+            task_attempt=1,
+            task_state={
+                TaskStatus.RUNNING: timestamp,
+            },
+            ray_error_info=RayErrorInfo(
+                error_type=ErrorType.TASK_EXECUTION_EXCEPTION,
+            ),
+            node_id=b"1",
+            worker_id=b"1",
+            worker_pid=1,
+        ),
+    )
+
+
+def _verify_task_execution_event_json(req_json, expected_timestamp):
+    assert len(req_json) == 1
+
+    # Verify the base event fields
+    assert req_json[0]["eventId"] == base64.b64encode(b"1").decode()
+    assert req_json[0]["sourceType"] == "CORE_WORKER"
+    assert req_json[0]["eventType"] == "TASK_EXECUTION_EVENT"
+    assert req_json[0]["timestamp"] == expected_timestamp
+    assert req_json[0]["severity"] == "INFO"
+    assert (
+        req_json[0]["message"] == ""
+    )  # Make sure the default value is included when it is not set
+    assert req_json[0]["sessionName"] == "test_session"
+
+    # Verify the task execution event specific fields
+    assert (
+        req_json[0]["taskExecutionEvent"]["taskId"] == base64.b64encode(b"1").decode()
+    )
+    assert req_json[0]["taskExecutionEvent"]["taskAttempt"] == 1
+    assert req_json[0]["taskExecutionEvent"]["taskState"] == {
+        "8": expected_timestamp,
+    }
+    assert (
+        req_json[0]["taskExecutionEvent"]["rayErrorInfo"]["errorType"]
+        == "TASK_EXECUTION_EXCEPTION"
+    )
+    assert (
+        req_json[0]["taskExecutionEvent"]["nodeId"] == base64.b64encode(b"1").decode()
+    )
+    assert (
+        req_json[0]["taskExecutionEvent"]["workerId"] == base64.b64encode(b"1").decode()
+    )
+    assert req_json[0]["taskExecutionEvent"]["workerPid"] == 1
 
 
 def _create_profile_event_request(timestamp):
@@ -463,6 +680,193 @@ def _verify_profile_event_json(req_json, expected_timestamp):
     assert event_entry["startTime"] == "1751302230130000000"
     assert event_entry["endTime"] == "1751302230131000000"
     assert event_entry["extraData"] == '{"cpu_usage": 0.8}'
+
+
+# tuple: (create_event, verify)
+EVENT_TYPES_TO_TEST = [
+    pytest.param(
+        _create_task_definition_event_proto,
+        _verify_task_definition_event_json,
+        id="task_definition_event",
+    ),
+    pytest.param(
+        _create_task_execution_event_proto,
+        _verify_task_execution_event_json,
+        id="task_execution_event",
+    ),
+    pytest.param(
+        _create_profile_event_request, _verify_profile_event_json, id="profile_event"
+    ),
+]
+
+
+@pytest.mark.parametrize("create_event, verify_event", EVENT_TYPES_TO_TEST)
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_env_vars",
+    [
+        {
+            "env_vars": {
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES": "TASK_DEFINITION_EVENT,TASK_EXECUTION_EVENT,ACTOR_TASK_DEFINITION_EVENT,ACTOR_TASK_EXECUTION_EVENT,TASK_PROFILE_EVENT",
+            },
+        },
+    ],
+    indirect=True,
+)
+def test_aggregator_agent_receive_events(
+    create_event,
+    verify_event,
+    ray_start_cluster_head_with_env_vars,
+    httpserver,
+    fake_timestamp,
+):
+    cluster = ray_start_cluster_head_with_env_vars
+    stub = get_event_aggregator_grpc_stub(
+        cluster.gcs_address, cluster.head_node.node_id
+    )
+    httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
+    request = AddEventsRequest(
+        events_data=RayEventsData(
+            events=[create_event(fake_timestamp[0])],
+            task_events_metadata=TaskEventsMetadata(
+                dropped_task_attempts=[],
+            ),
+        )
+    )
+
+    stub.AddEvents(request)
+    wait_for_condition(lambda: len(httpserver.log) == 1)
+    req, _ = httpserver.log[0]
+    req_json = json.loads(req.data)
+    verify_event(req_json, fake_timestamp[1])
+
+
+@_with_aggregator_port
+def test_aggregator_agent_receive_driver_job_definition_event(
+    ray_start_cluster_head_with_env_vars, httpserver
+):
+    cluster = ray_start_cluster_head_with_env_vars
+    stub = get_event_aggregator_grpc_stub(
+        cluster.gcs_address, cluster.head_node.node_id
+    )
+    httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
+    test_time = 1751302230130457542
+    seconds, nanos = divmod(test_time, 10**9)
+    timestamp = Timestamp(seconds=seconds, nanos=nanos)
+    request = AddEventsRequest(
+        events_data=RayEventsData(
+            events=[
+                RayEvent(
+                    event_id=b"1",
+                    source_type=RayEvent.SourceType.CORE_WORKER,
+                    event_type=RayEvent.EventType.DRIVER_JOB_DEFINITION_EVENT,
+                    timestamp=timestamp,
+                    severity=RayEvent.Severity.INFO,
+                    message="driver job event",
+                    driver_job_definition_event=DriverJobDefinitionEvent(
+                        job_id=b"1",
+                        config=DriverJobDefinitionEvent.Config(
+                            runtime_env_info=RuntimeEnvInfo(
+                                serialized_runtime_env="{}",
+                                uris=RuntimeEnvUris(
+                                    working_dir_uri="file:///tmp/ray/runtime_env",
+                                    py_modules_uris=[],
+                                ),
+                                runtime_env_config=RuntimeEnvConfig(
+                                    setup_timeout_seconds=10,
+                                    eager_install=True,
+                                    log_files=[],
+                                ),
+                            ),
+                            metadata={},
+                        ),
+                    ),
+                ),
+            ],
+            task_events_metadata=TaskEventsMetadata(
+                dropped_task_attempts=[],
+            ),
+        )
+    )
+    stub.AddEvents(request)
+    wait_for_condition(lambda: len(httpserver.log) == 1)
+    req, _ = httpserver.log[0]
+    req_json = json.loads(req.data)
+    assert req_json[0]["message"] == "driver job event"
+    assert (
+        req_json[0]["driverJobDefinitionEvent"]["config"]["runtimeEnvInfo"][
+            "serializedRuntimeEnv"
+        ]
+        == "{}"
+    )
+    assert (
+        req_json[0]["driverJobDefinitionEvent"]["config"]["runtimeEnvInfo"]["uris"][
+            "workingDirUri"
+        ]
+        == "file:///tmp/ray/runtime_env"
+    )
+    assert (
+        req_json[0]["driverJobDefinitionEvent"]["config"]["runtimeEnvInfo"][
+            "runtimeEnvConfig"
+        ]["setupTimeoutSeconds"]
+        == 10.0
+    )
+
+
+@_with_aggregator_port
+def test_aggregator_agent_receive_driver_job_execution_event(
+    ray_start_cluster_head_with_env_vars, httpserver
+):
+    cluster = ray_start_cluster_head_with_env_vars
+    stub = get_event_aggregator_grpc_stub(
+        cluster.gcs_address, cluster.head_node.node_id
+    )
+    httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
+    test_time = 1751302230130457542
+    seconds, nanos = divmod(test_time, 10**9)
+    timestamp = Timestamp(seconds=seconds, nanos=nanos)
+    request = AddEventsRequest(
+        events_data=RayEventsData(
+            events=[
+                RayEvent(
+                    event_id=b"1",
+                    source_type=RayEvent.SourceType.CORE_WORKER,
+                    event_type=RayEvent.EventType.DRIVER_JOB_EXECUTION_EVENT,
+                    timestamp=timestamp,
+                    severity=RayEvent.Severity.INFO,
+                    message="driver job execution event",
+                    driver_job_execution_event=DriverJobExecutionEvent(
+                        job_id=b"1",
+                        states=[
+                            DriverJobExecutionEvent.StateTimestamp(
+                                state=DriverJobExecutionEvent.State.CREATED,
+                                timestamp=Timestamp(seconds=1234567890),
+                            ),
+                            DriverJobExecutionEvent.StateTimestamp(
+                                state=DriverJobExecutionEvent.State.FAILURE,
+                                timestamp=Timestamp(seconds=1234567890),
+                            ),
+                        ],
+                    ),
+                ),
+            ],
+            task_events_metadata=TaskEventsMetadata(
+                dropped_task_attempts=[],
+            ),
+        )
+    )
+    stub.AddEvents(request)
+    wait_for_condition(lambda: len(httpserver.log) == 1)
+    req, _ = httpserver.log[0]
+    req_json = json.loads(req.data)
+    assert req_json[0]["message"] == "driver job execution event"
+    assert (
+        req_json[0]["driverJobExecutionEvent"]["jobId"]
+        == base64.b64encode(b"1").decode()
+    )
+    assert len(req_json[0]["driverJobExecutionEvent"]["states"]) == 2
+    assert req_json[0]["driverJobExecutionEvent"]["states"][0]["state"] == "CREATED"
+    assert req_json[0]["driverJobExecutionEvent"]["states"][1]["state"] == "FAILURE"
 
 
 if __name__ == "__main__":

@@ -18,15 +18,14 @@
 
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/gcs_server/grpc_service_interfaces.h"
 #include "ray/gcs/gcs_server/usage_stats_client.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/rpc/gcs/gcs_rpc_server.h"
 
 namespace ray {
 namespace gcs {
 
-/// This implementation class of `WorkerInfoHandler`.
-class GcsWorkerManager : public rpc::WorkerInfoHandler {
+class GcsWorkerManager : public rpc::WorkerInfoGcsServiceHandler {
  public:
   GcsWorkerManager(gcs::GcsTableStorage &gcs_table_storage,
                    instrumented_io_context &io_context,
@@ -86,6 +85,14 @@ class GcsWorkerManager : public rpc::WorkerInfoHandler {
 
   /// Tracks the number of occurences of worker crash due to OOM
   int32_t worker_crash_oom_count_ = 0;
+
+  /// Ray metrics
+  ray::stats::Count ray_metric_unintentional_worker_failures_{
+      /*name=*/"unintentional_worker_failures_total",
+      /*description=*/
+      "Number of worker failures that are not intentional. For example, worker failures "
+      "due to system related errors.",
+      /*unit=*/""};
 };
 
 }  // namespace gcs

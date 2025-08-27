@@ -457,11 +457,13 @@ class MARWIL(Algorithm):
         #  the user that sth. is not right, although it is as
         #  we do not step the env.
         with self.metrics.log_time((TIMERS, OFFLINE_SAMPLING_TIMER)):
+            # If we should use an iterator in the learner(s). Note, in case of
+            # multiple learners we must always return a list of iterators.
             return_iterator = (
-                self.config.dataset_num_iters_per_learner > 1
-                if self.config.dataset_num_iters_per_learner
-                else True
+                self.config.num_learners > 0
+                or self.config.dataset_num_iters_per_learner != 1
             )
+
             # Sampling from offline data.
             batch_or_iterator = self.offline_data.sample(
                 num_samples=self.config.train_batch_size_per_learner,

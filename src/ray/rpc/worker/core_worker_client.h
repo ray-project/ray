@@ -37,11 +37,11 @@ namespace std {
 template <>
 struct hash<ray::rpc::Address> {
   size_t operator()(const ray::rpc::Address &addr) const {
-    size_t hash = std::hash<int32_t>()(addr.port());
-    hash ^= std::hash<std::string>()(addr.ip_address());
-    hash ^= std::hash<std::string>()(addr.worker_id());
-    hash ^= std::hash<std::string>()(addr.raylet_id());
-    return hash;
+    size_t hash_value = std::hash<int32_t>()(addr.port());
+    hash_value ^= std::hash<std::string>()(addr.ip_address());
+    hash_value ^= std::hash<std::string>()(addr.worker_id());
+    hash_value ^= std::hash<std::string>()(addr.node_id());
+    return hash_value;
   }
 };
 }  // namespace std
@@ -191,6 +191,8 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
 
   virtual void FreeActorObject(const FreeActorObjectRequest &request,
                                const ClientCallback<FreeActorObjectReply> &callback) {}
+
+  virtual std::string DebugString() const { return ""; }
 
   virtual ~CoreWorkerClientInterface() = default;
 };
@@ -368,6 +370,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
     INVOKE_RPC_CALL(
         CoreWorkerService, NumPendingTasks, *request, callback, grpc_client_, timeout_ms);
   }
+
+  std::string DebugString() const override { return ""; }
 
   /// Send as many pending tasks as possible. This method is thread-safe.
   ///

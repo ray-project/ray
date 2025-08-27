@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include "ray/pubsub/subscriber.h"
+#include "ray/pubsub/subscriber_interface.h"
 
 namespace ray {
 namespace pubsub {
@@ -32,39 +32,22 @@ class FakeSubscriberClient : public SubscriberClientInterface {
 
 class FakeSubscriber : public SubscriberInterface {
  public:
-  bool Subscribe(
+  void Subscribe(
       std::unique_ptr<rpc::SubMessage> sub_message,
-      const rpc::ChannelType channel_type,
+      rpc::ChannelType channel_type,
       const rpc::Address &owner_address,
-      const std::string &key_id,
+      const std::optional<std::string> &key_id,
       pubsub::SubscribeDoneCallback subscribe_done_callback,
       pubsub::SubscriptionItemCallback subscription_callback,
-      pubsub::SubscriptionFailureCallback subscription_failure_callback) override {
-    return true;
-  }
+      pubsub::SubscriptionFailureCallback subscription_failure_callback) override {}
 
-  bool SubscribeChannel(
-      std::unique_ptr<rpc::SubMessage> sub_message,
-      const rpc::ChannelType channel_type,
-      const rpc::Address &owner_address,
-      pubsub::SubscribeDoneCallback subscribe_done_callback,
-      pubsub::SubscriptionItemCallback subscription_callback,
-      pubsub::SubscriptionFailureCallback subscription_failure_callback) override {
-    return true;
-  }
-
-  bool Unsubscribe(const rpc::ChannelType channel_type,
+  bool Unsubscribe(rpc::ChannelType channel_type,
                    const rpc::Address &publisher_address,
-                   const std::string &key_id) override {
+                   const std::optional<std::string> &key_id) override {
     return true;
   }
 
-  bool UnsubscribeChannel(const rpc::ChannelType channel_type,
-                          const rpc::Address &publisher_address) override {
-    return true;
-  }
-
-  bool IsSubscribed(const rpc::ChannelType channel_type,
+  bool IsSubscribed(rpc::ChannelType channel_type,
                     const rpc::Address &publisher_address,
                     const std::string &key_id) const override {
     return false;
