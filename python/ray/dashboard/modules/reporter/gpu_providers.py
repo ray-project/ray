@@ -9,7 +9,7 @@ import enum
 import logging
 import subprocess
 import time
-from typing import  Dict, List, Optional, Union, TypedDict
+from typing import Dict, List, Optional, Union, TypedDict
 
 logger = logging.getLogger(__name__)
 
@@ -438,6 +438,7 @@ class AmdGpuProvider(GpuProvider):
             self._shutdown()
 
         return gpu_utilizations
+
 
 class GpuMetricProvider:
     """Provider class for GPU metrics collection."""

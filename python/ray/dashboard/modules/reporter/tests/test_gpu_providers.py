@@ -496,9 +496,7 @@ class TestGpuMetricProvider(unittest.TestCase):
 
     @patch.object(NvidiaGpuProvider, "is_available", return_value=False)
     @patch.object(AmdGpuProvider, "is_available", return_value=True)
-    def test_detect_gpu_provider_amd(
-        self, mock_amd_available, mock_nvidia_available
-    ):
+    def test_detect_gpu_provider_amd(self, mock_amd_available, mock_nvidia_available):
         """Test GPU provider detection when AMD is available."""
         provider = self.provider._detect_gpu_provider()
 
@@ -506,12 +504,9 @@ class TestGpuMetricProvider(unittest.TestCase):
         mock_nvidia_available.assert_called_once()
         mock_amd_available.assert_called_once()
 
-
     @patch.object(NvidiaGpuProvider, "is_available", return_value=False)
     @patch.object(AmdGpuProvider, "is_available", return_value=False)
-    def test_detect_gpu_provider_none(
-        self, mock_amd_available, mock_nvidia_available
-    ):
+    def test_detect_gpu_provider_none(self, mock_amd_available, mock_nvidia_available):
         """Test GPU provider detection when no GPUs are available."""
         provider = self.provider._detect_gpu_provider()
 
