@@ -1946,5 +1946,8 @@ class CoreWorker {
   std::mutex gcs_client_node_cache_populated_mutex_;
   std::condition_variable gcs_client_node_cache_populated_cv_;
   bool gcs_client_node_cache_populated_ = false;
+
+  // Metrics
+  ray::observability::MetricInterface &metric_tasks_;
 };
 }  // namespace ray::core
