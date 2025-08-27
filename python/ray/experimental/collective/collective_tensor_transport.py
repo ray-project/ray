@@ -40,8 +40,19 @@ class CollectiveTensorTransport(TensorTransportManager):
             # it could take arbitrarily long and we don't want to trigger a spurious
             # timeout.
             gpu_object = gpu_object_store.wait_and_get_object(obj_id)
+            tensor_meta = []
+            device = None
+            if gpu_object:
+                device = gpu_object[0].device
+                for t in gpu_object:
+                    if t.device.type != device.type:
+                        raise ValueError(
+                            "All tensors in one GPU object must be the same device type."
+                        )
+                    tensor_meta.append((t.shape, t.dtype))
             return CollectiveTransportMetadata(
-                tensor_meta=[(t.shape, t.dtype) for t in gpu_object],
+                tensor_meta=tensor_meta,
+                tensor_device=device,
             )
 
         # Submit a Ray actor task to the source actor to get the tensor metadata.
@@ -130,9 +141,10 @@ class CollectiveTensorTransport(TensorTransportManager):
     def send_multiple_tensors(
         tensors: List["torch.Tensor"],
         communicator_metadata: CollectiveCommunicatorMetadata,
-        device: "torch.device",
     ):
         import ray.util.collective as collective
+
+        device = tensor_transport_metadata.tensor_device
 
         for tensor in tensors:
             if tensor.device.type != device.type:
