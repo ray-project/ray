@@ -358,6 +358,7 @@ CoreWorker::CoreWorker(
       actor_id_(ActorID::Nil()),
       task_queue_length_(0),
       num_executed_tasks_(0),
+      task_counter_(metric_tasks),
       task_execution_service_(task_execution_service),
       exiting_detail_(std::nullopt),
       max_direct_call_object_size_(RayConfig::instance().max_direct_call_object_size()),
@@ -365,7 +366,8 @@ CoreWorker::CoreWorker(
       task_event_buffer_(std::move(task_event_buffer)),
       pid_(pid),
       actor_shutdown_callback_(std::move(options_.actor_shutdown_callback)),
-      runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap) {
+      runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap),
+      metric_tasks_(metric_tasks) {
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
     RAY_CHECK(options_.task_execution_callback != nullptr);
