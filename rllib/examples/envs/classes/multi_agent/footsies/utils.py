@@ -204,17 +204,13 @@ class MixManagerCallback(RLlibCallback):
         win_rate_threshold: float,
         main_policy: str,
         starting_modules=list[str],  # default is ["lstm", "noop"]
+        fixed_modules_progression_sequence=tuple[str],  # default is ("noop", "back", "attack", "random")
     ) -> None:
         """Track win rates and manage mix of opponents"""
         super().__init__()
         self.win_rate_threshold = win_rate_threshold
         self.main_policy = main_policy
-        self.fixed_modules_progression_sequence = (
-            "noop",
-            "back",
-            "attack",
-            "random",
-        )  # Order of RL modules to be added to the mix
+        self.fixed_modules_progression_sequence = fixed_modules_progression_sequence  # Order of RL modules to be added to the mix
         self.modules_in_mix = list(
             starting_modules
         )  # RLModules that are currently in the mix

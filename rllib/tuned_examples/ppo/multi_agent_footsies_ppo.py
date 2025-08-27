@@ -232,6 +232,12 @@ if __name__ == "__main__":
                     win_rate_threshold=args.win_rate_threshold,
                     main_policy=main_policy,
                     starting_modules=[main_policy, "noop"],
+                    fixed_modules_progression_sequence=(
+                        "noop",
+                        "back",
+                        "attack",
+                        "random",
+                    ),
                 ),
             ]
         )
