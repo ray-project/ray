@@ -206,5 +206,26 @@ class InternalKVGcsServiceHandler {
                                        SendReplyCallback send_reply_callback) = 0;
 };
 
+class TaskInfoGcsServiceHandler {
+ public:
+  virtual ~TaskInfoGcsServiceHandler() = default;
+
+  virtual void HandleAddTaskEventData(AddTaskEventDataRequest request,
+                                      AddTaskEventDataReply *reply,
+                                      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetTaskEvents(GetTaskEventsRequest request,
+                                   GetTaskEventsReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
+};
+
+class RayEventExportGcsServiceHandler {
+ public:
+  virtual ~RayEventExportGcsServiceHandler() = default;
+  virtual void HandleAddEvents(events::AddEventsRequest request,
+                               events::AddEventsReply *reply,
+                               SendReplyCallback send_reply_callback) = 0;
+};
+
 }  // namespace rpc
 }  // namespace ray
