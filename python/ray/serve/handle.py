@@ -201,7 +201,7 @@ class _DeploymentHandleBase:
             self.init_options, self.handle_options
         )
 
-        self._router.inc_handle_requests(metadata.route)
+        self._router.inc_num_handle_requests(metadata.route)
 
         return self._router.assign_request(metadata, *args, **kwargs), metadata
 

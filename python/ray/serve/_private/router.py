@@ -317,7 +317,7 @@ class RouterMetricsManager:
                 consecutive_errors += 1
                 await asyncio.sleep(backoff_time_s)
 
-    def inc_handle_requests(self, route: str):
+    def inc_num_handle_requests(self, route: str):
         if self._cached_metrics_enabled:
             self._cached_num_handle_requests[route] += 1
         else:
@@ -443,7 +443,7 @@ class Router(ABC):
         pass
 
     @abstractmethod
-    def inc_handle_requests(self, route: str):
+    def inc_num_handle_requests(self, route: str):
         pass
 
 
@@ -884,8 +884,8 @@ class AsyncioRouter:
     async def shutdown(self):
         await self._metrics_manager.shutdown()
 
-    def inc_handle_requests(self, route: str):
-        self._metrics_manager.inc_handle_requests(route)
+    def inc_num_handle_requests(self, route: str):
+        self._metrics_manager.inc_num_handle_requests(route)
 
 
 class SingletonThreadRouter(Router):
@@ -990,8 +990,8 @@ class SingletonThreadRouter(Router):
             self._asyncio_router.shutdown(), loop=self._asyncio_loop
         )
 
-    def inc_handle_requests(self, route: str):
-        self._asyncio_router.inc_handle_requests(route)
+    def inc_num_handle_requests(self, route: str):
+        self._asyncio_router.inc_num_handle_requests(route)
 
 
 class SharedRouterLongPollClient:
@@ -1109,5 +1109,5 @@ class CurrentLoopRouter(Router):
     def shutdown(self) -> asyncio.Future:
         return self._asyncio_loop.create_task(self._asyncio_router.shutdown())
 
-    def inc_handle_requests(self, route: str):
-        self._asyncio_router.inc_handle_requests(route)
+    def inc_num_handle_requests(self, route: str):
+        self._asyncio_router.inc_num_handle_requests(route)
