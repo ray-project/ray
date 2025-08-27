@@ -18,12 +18,12 @@ See the [Data-Juicer 2.0: Cloud-Scale Adaptive Data Processing for Foundation Mo
 
 ### Ray mode in Data-Juicer
 
-- For most implementations of Data-Juicer [operators](https://github.com/modelscope/data-juicer/blob/main/docs/Operators.md), the core processing functions are engine-agnostic. Operators manage interoperability is primarily in [RayDataset](https://github.com/modelscope/data-juicer/blob/main/data_juicer/core/data/ray_dataset.py) and [RayExecutor](https://github.com/modelscope/data-juicer/blob/main/data_juicer/core/executor/ray_executor.py), which are subclasses of the base `DJDataset` and `BaseExecutor`, respectively, and support both Ray [Tasks](ray-remote-functions) and [Actors](actor-guide).
-- The exception is the deduplication operators, which are challenging to scale in standalone mode. The names of these operators follow the pattern of [`ray_xx_deduplicator`](https://github.com/modelscope/data-juicer/blob/main//data_juicer/ops/deduplicator/).
+- For most implementations of Data-Juicer [operators](https://github.com/modelscope/data-juicer/blob/main/docs/Operators.md), the core processing functions are engine-agnostic. Operator interoperability is managed primarily in [RayDataset](https://github.com/modelscope/data-juicer/blob/main/data_juicer/core/data/ray_dataset.py) and [RayExecutor](https://github.com/modelscope/data-juicer/blob/main/data_juicer/core/executor/ray_executor.py), which are subclasses of the base `DJDataset` and `BaseExecutor`, respectively, and support both Ray [Tasks](ray-remote-functions) and [Actors](actor-guide).
+- The exception is the deduplication operators, which are challenging to scale in standalone mode. The names of these operators follow the pattern of [`ray_xx_deduplicator`](https://github.com/modelscope/data-juicer/blob/main/data_juicer/ops/deduplicator/).
 
 ### Subset splitting
 
-When a cluster has tens of thousands of nodes but only a few dataset files, Ray splits the dataset files according to available resources and distribute the blocks across all nodes, incurring high network communication costs and reduced CPU utilization. For more details, see [Ray's `_autodetect_parallelism` function](https://github.com/ray-project/ray/blob/2dbd08a46f7f08ea614d8dd20fd0bca5682a3078/python/ray/data/_internal/util.py#L201-L205) and [tuning output blocks for Ray](read_output_blocks).
+When a cluster has tens of thousands of nodes but only a few dataset files, Ray splits the dataset files according to available resources and distribute the blocks across all nodes, incurring high network communication costs and reducing CPU utilization. For more details, see [Ray's `_autodetect_parallelism` function](https://github.com/ray-project/ray/blob/2dbd08a46f7f08ea614d8dd20fd0bca5682a3078/python/ray/data/_internal/util.py#L201-L205) and [tuning output blocks for Ray](read_output_blocks).
 
 This default execution plan can be quite inefficient especially for scenarios with a large number of nodes. To optimize performance for such cases, Data-Juicer automatically splits the original dataset into smaller files in advance, taking into consideration the features of Ray and Arrow. When you encounter such performance issues, you can use this feature or split the dataset according to your own preferences. In this auto-split strategy, the single file size is about 128&nbsp;MB, and the result should ensure that the number of sub-files after splitting is at least twice the total number of CPU cores available in the cluster.
 
@@ -93,7 +93,7 @@ demos/process_on_ray
 
 ### Running Example of Ray Mode
 
-In the `demo.yaml` config file, it sets the executor type to "ray" and specify an automatic Ray address.
+In the `demo.yaml` config file, it sets the executor type to "ray" and specifies an automatic Ray address.
 
 ```yaml
 ...
@@ -115,11 +115,11 @@ python tools/process_data.py --config demos/process_on_ray/configs/demo.yaml
 dj-process --config demos/process_on_ray/configs/demo.yaml
 ```
 
-Data-Juicer processes the demo dataset with the demo config file and export the result datasets to the directory specified by the `export_path` argument in the config file.
+Data-Juicer processes the demo dataset with the demo config file and exports the result datasets to the directory specified by the `export_path` argument in the config file.
 
 ### Running Example of Distributed Deduplication
 
-In the `dedup.yaml` config file, it sets the executor type to "ray" and specify an automatic Ray address.
+In the `dedup.yaml` config file, it sets the executor type to "ray" and specifies an automatic Ray address.
 And it uses a dedicated distributed version of MinHash deduplication operator to deduplicate the dataset.
 
 ```yaml
@@ -147,4 +147,4 @@ python tools/process_data.py --config demos/process_on_ray/configs/dedup.yaml
 dj-process --config demos/process_on_ray/configs/dedup.yaml
 ```
 
-Data-Juicer deduplicates the demo dataset with the demo config file and export the result datasets to the directory specified by the `export_path` argument in the config file.
+Data-Juicer deduplicates the demo dataset with the demo config file and exports the result datasets to the directory specified by the `export_path` argument in the config file.
