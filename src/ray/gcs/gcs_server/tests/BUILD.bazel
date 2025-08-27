@@ -99,8 +99,8 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
-        "//src/ray/rpc:grpc_server",
         "//src/ray/gcs/gcs_server:gcs_health_check_manager",
+        "//src/ray/rpc:grpc_server",
         "//src/ray/util:network_util",
         "@boost//:thread",
         "@com_google_googletest//:gtest_main",
@@ -256,8 +256,8 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/mock/ray/pubsub:mock_publisher",
-        "//src/ray/gcs/gcs_server:gcs_worker_manager",
         "//src/ray/gcs/gcs_server:gcs_store_client_kv",
+        "//src/ray/gcs/gcs_server:gcs_worker_manager",
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/tests:gcs_test_util_lib",
         "//src/ray/util:process",
