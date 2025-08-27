@@ -41,7 +41,6 @@ from ray.llm._internal.serve.observability.usage_telemetry.usage import (
 )
 from ray.llm._internal.serve.utils.lora_serve_utils import (
     LoraModelLoader,
-    get_lora_mirror_config,
 )
 
 if TYPE_CHECKING:
@@ -104,6 +103,18 @@ class _LLMServerBase(ABC):
         Raise error when the engine is dead and needs to be restarted.
         """
         ...
+
+    @abstractmethod
+    async def reset_prefix_cache(self) -> None:
+        """Reset the prefix cache of the underlying engine"""
+
+    @abstractmethod
+    async def start_profile(self) -> None:
+        """Start profiling"""
+
+    @abstractmethod
+    async def stop_profile(self) -> None:
+        """Stop profiling"""
 
     # TODO (Kourosh): This does not belong here.
     async def llm_config(self) -> Optional[LLMConfig]:
@@ -221,12 +232,9 @@ class LLMServer(_LLMServerBase):
             )
 
             async def _load_model(lora_model_id: str) -> DiskMultiplexConfig:
-                lora_mirror_config = await get_lora_mirror_config(
-                    lora_model_id, self._llm_config
-                )
-                return await model_downloader.load_model(
+                return await model_downloader.load_model_from_config(
                     lora_model_id=lora_model_id,
-                    lora_mirror_config=lora_mirror_config,
+                    llm_config=self._llm_config,
                 )
 
             self._load_model = serve.multiplexed(
@@ -397,6 +405,41 @@ class LLMServer(_LLMServerBase):
             logger.error("Engine health check failed in LLMServer.check_health: %s", e)
             raise e
 
+    async def reset_prefix_cache(self) -> None:
+        """Reset the prefix cache of the underlying engine"""
+        if self.engine is None:
+            return
+        try:
+            await self.engine.reset_prefix_cache()
+        except Exception as e:
+            logger.error(
+                "Engine reset prefix cache failed in LLMServer.reset_prefix_cache: %s",
+                e,
+            )
+            raise e
+
+    async def start_profile(self) -> None:
+        """Start profiling"""
+        if self.engine is None:
+            return
+        try:
+            await self.engine.start_profile()
+        except Exception as e:
+            logger.error(
+                "Engine start profile failed in LLMServer.start_profile: %s", e
+            )
+            raise e
+
+    async def stop_profile(self) -> None:
+        """Stop profiling"""
+        if self.engine is None:
+            return
+        try:
+            await self.engine.stop_profile()
+        except Exception as e:
+            logger.error("Engine stop profile failed in LLMServer.stop_profile: %s", e)
+            raise e
+
     async def llm_config(self) -> Optional[LLMConfig]:
         return self._llm_config
 
@@ -432,4 +475,4 @@ class LLMDeployment(LLMServer):
     # to give developers an ability to test the implementation outside the Ray Serve.
     # But in practice we should always test the LLMDeployment class as a Serve
     # deployment to ensure all functionalities can be run remotely asynchronously.
-    ...
+    pass

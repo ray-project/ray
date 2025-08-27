@@ -18,9 +18,8 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "ray/gcs/gcs_server/grpc_service_interfaces.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/rpc/gcs_server/gcs_rpc_server.h"
-#include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
 namespace gcs {
@@ -28,7 +27,7 @@ namespace gcs {
 /// This is the implementation class of `InternalPubsubHandler`.
 /// It supports subscribing updates from GCS with long poll, and registering /
 /// de-registering subscribers.
-class InternalPubSubHandler : public rpc::InternalPubSubHandler {
+class InternalPubSubHandler : public rpc::InternalPubSubGcsServiceHandler {
  public:
   InternalPubSubHandler(instrumented_io_context &io_service,
                         gcs::GcsPublisher &gcs_publisher);

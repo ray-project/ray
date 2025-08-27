@@ -84,6 +84,20 @@ py_test(
 )
 
 py_test(
+    name = "test_issue_detection_manager",
+    size = "small",
+    srcs = ["tests/test_issue_detection_manager.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_numpy_support",
     size = "small",
     srcs = ["tests/test_numpy_support.py"],
@@ -200,9 +214,9 @@ py_test(
 )
 
 py_test(
-    name = "test_arrow_block_scaling",
+    name = "test_jumbo_arrow_block",
     size = "large",
-    srcs = ["tests/test_arrow_block_scaling.py"],
+    srcs = ["tests/test_jumbo_arrow_block.py"],
     tags = [
         "data_non_parallel",
         "exclusive",
@@ -818,7 +832,7 @@ py_test(
 
 py_test(
     name = "test_dynamic_block_split",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_dynamic_block_split.py"],
     tags = [
         "data_non_parallel",
@@ -1299,6 +1313,20 @@ py_test(
     name = "test_backpressure_policies",
     size = "medium",
     srcs = ["tests/test_backpressure_policies.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_downstream_capacity_backpressure_policy",
+    size = "medium",
+    srcs = ["tests/test_downstream_capacity_backpressure_policy.py"],
     tags = [
         "exclusive",
         "team:data",

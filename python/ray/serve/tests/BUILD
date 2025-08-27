@@ -47,6 +47,7 @@ py_test_module_list(
         "test_persistence.py",
         "test_proxy_actor_wrapper.py",
         "test_replica_request_context.py",
+        "test_task_processor.py",
         "test_util.py",
         "test_websockets.py",
     ],
@@ -81,6 +82,7 @@ py_test_module_list(
         "test_healthcheck.py",
         "test_http_headers.py",
         "test_http_routes.py",
+        "test_https_proxy.py",
         "test_max_replicas_per_node.py",
         "test_multiplex.py",
         "test_proxy.py",
@@ -432,6 +434,26 @@ py_test_module_list(
         "test_replica_sync_methods.py",
     ],
     name_suffix = "_with_run_sync_in_threadpool",
+    tags = [
+        "exclusive",
+        "no_windows",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "medium",
+    env = {"RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP": "0"},
+    files = [
+        "test_handle_same_loop.py",
+        "test_proxy.py",
+    ],
+    name_suffix = "_with_router_in_same_loop",
     tags = [
         "exclusive",
         "no_windows",

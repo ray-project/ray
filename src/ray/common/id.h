@@ -27,7 +27,6 @@
 #include "ray/common/constants.h"
 #include "ray/util/logging.h"
 #include "ray/util/random.h"
-#include "ray/util/util.h"
 #include "ray/util/visibility.h"
 
 namespace ray {
@@ -550,6 +549,11 @@ std::string BaseID<T>::Hex() const {
   }
   return result;
 }
+
+template <>
+struct DefaultLogKey<ClusterID> {
+  constexpr static std::string_view key = kLogKeyClusterID;
+};
 
 template <>
 struct DefaultLogKey<JobID> {

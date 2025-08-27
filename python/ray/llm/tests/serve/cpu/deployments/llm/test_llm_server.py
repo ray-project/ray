@@ -37,11 +37,13 @@ def multiplexed_serve_handle(mock_llm_config, stream_batching_interval_ms=0):
     mock_llm_config.experimental_configs = {
         "stream_batching_interval_ms": stream_batching_interval_ms,
     }
+    # Set minimal lora_config to enable multiplexing but avoid telemetry S3 calls
     mock_llm_config.lora_config = LoraConfig(
-        dynamic_lora_loading_path="s3://my/s3/path_here",
+        dynamic_lora_loading_path=None,  # No S3 path = no telemetry S3 calls
         download_timeout_s=60,
         max_download_tries=3,
     )
+
     app = serve.deployment(LLMServer).bind(
         mock_llm_config,
         engine_cls=MockVLLMEngine,
@@ -172,6 +174,75 @@ class TestLLMServer:
 
         # Check that the health check method was called
         assert server.engine.check_health_called
+
+    @pytest.mark.asyncio
+    async def test_reset_prefix_cache(self, mock_llm_config):
+        """Test reset prefix cache functionality."""
+
+        # Mock the engine's reset_prefix_cache method
+        class LocalMockEngine(MockVLLMEngine):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.reset_prefix_cache_called = False
+
+            async def reset_prefix_cache(self):
+                self.reset_prefix_cache_called = True
+
+        # Create a server with a mocked engine
+        server = LLMServer.sync_init(mock_llm_config, engine_cls=LocalMockEngine)
+        await server.start()
+
+        # Reset prefix cache, no exceptions should be raised
+        await server.reset_prefix_cache()
+
+        # Check that the reset prefix cache method was called
+        assert server.engine.reset_prefix_cache_called
+
+    @pytest.mark.asyncio
+    async def test_start_profile(self, mock_llm_config):
+        """Test start profile functionality."""
+
+        # Mock the engine's start_profile method
+        class LocalMockEngine(MockVLLMEngine):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.start_profile_called = False
+
+            async def start_profile(self):
+                self.start_profile_called = True
+
+        # Create a server with a mocked engine
+        server = LLMServer.sync_init(mock_llm_config, engine_cls=LocalMockEngine)
+        await server.start()
+
+        # Start profile, no exceptions should be raised
+        await server.start_profile()
+
+        # Check that the start profile method was called
+        assert server.engine.start_profile_called
+
+    @pytest.mark.asyncio
+    async def test_stop_profile(self, mock_llm_config):
+        """Test stop profile functionality."""
+
+        # Mock the engine's stop_profile method
+        class LocalMockEngine(MockVLLMEngine):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.stop_profile_called = False
+
+            async def stop_profile(self):
+                self.stop_profile_called = True
+
+        # Create a server with a mocked engine
+        server = LLMServer.sync_init(mock_llm_config, engine_cls=LocalMockEngine)
+        await server.start()
+
+        # Stop profile, no exceptions should be raised
+        await server.stop_profile()
+
+        # Check that the stop profile method was called
+        assert server.engine.stop_profile_called
 
     @pytest.mark.asyncio
     async def test_llm_config_property(self, mock_llm_config):

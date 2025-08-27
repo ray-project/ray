@@ -6,6 +6,7 @@ import time
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
+from ray._common.network_utils import build_address
 from ray._common.utils import run_background_task
 from ray._raylet import GcsClient
 from ray.actor import ActorHandle
@@ -441,8 +442,6 @@ class ServeController:
             dsm_update_start_time = time.time()
             any_recovering = self.deployment_state_manager.update()
 
-            self.deployment_state_manager.save_checkpoint()
-
             self.dsm_update_duration_gauge_s.set(time.time() - dsm_update_start_time)
             if not self.done_recovering_event.is_set() and not any_recovering:
                 self.done_recovering_event.set()
@@ -459,11 +458,6 @@ class ServeController:
         try:
             asm_update_start_time = time.time()
             self.application_state_manager.update()
-
-            self.application_state_manager.save_checkpoint()
-            # ApplicationStateManager.update() can also mutate the
-            # DeploymentStateManager so we need to checkpoint that as well
-            self.deployment_state_manager.save_checkpoint()
 
             self.asm_update_duration_gauge_s.set(time.time() - asm_update_start_time)
         except Exception:
@@ -659,7 +653,7 @@ class ServeController:
                 return os.environ[SERVE_ROOT_URL_ENV_KEY]
             else:
                 return (
-                    f"http://{http_config.host}:{http_config.port}"
+                    f"http://{build_address(http_config.host, http_config.port)}"
                     f"{http_config.root_path}"
                 )
         return http_config.root_url

@@ -7,6 +7,7 @@ from copy import deepcopy
 
 import httpx
 import pytest
+import pytest_asyncio
 
 import ray
 from ray import serve
@@ -150,6 +151,15 @@ def _shared_serve_instance():
         },
     )
     yield _get_global_client()
+
+
+@pytest_asyncio.fixture
+async def serve_instance_async(_shared_serve_instance):
+    yield _shared_serve_instance
+    # Clear all state for 2.x applications and deployments.
+    _shared_serve_instance.delete_all_apps()
+    # Clear the ServeHandle cache between tests to avoid them piling up.
+    await _shared_serve_instance.shutdown_cached_handles_async()
 
 
 @pytest.fixture

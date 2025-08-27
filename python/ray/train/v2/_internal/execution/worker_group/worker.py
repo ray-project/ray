@@ -4,13 +4,12 @@ import queue
 import socket
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Callable, Dict, List, Optional, TypeVar, Union
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, TypeVar, Union
 
 import ray
 import ray._private.ray_constants as ray_constants
 from .thread_runner import ThreadRunner
 from ray.actor import ActorHandle
-from ray.data.iterator import DataIterator
 from ray.train import Checkpoint
 from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_WORKER_LOGGING,
@@ -30,11 +29,18 @@ from ray.train.v2._internal.execution.context import (
     set_train_context,
 )
 from ray.train.v2._internal.execution.storage import StorageContext
+from ray.train.v2._internal.execution.train_fn_utils import (
+    TrainFnUtils,
+    set_train_fn_utils,
+)
 from ray.train.v2._internal.execution.worker_group.poll import WorkerStatus
-from ray.train.v2._internal.logging.logging import configure_worker_logger
+from ray.train.v2._internal.logging.logging import LoggingManager
 from ray.train.v2._internal.logging.patch_print import patch_print_function
 from ray.train.v2._internal.util import ObjectRefWrapper
 from ray.types import ObjectRef
+
+if TYPE_CHECKING:
+    from ray.train.v2._internal.data_integration.interfaces import DatasetShardProvider
 
 T = TypeVar("T")
 
@@ -188,7 +194,7 @@ class RayTrainWorker:
         synchronization_actor: SynchronizationActor,
         storage_context: StorageContext,
         worker_callbacks: List[Union[WorkerCallback, TrainContextCallback]],
-        dataset_shards: Dict[str, DataIterator] = None,
+        dataset_shard_provider: Optional["DatasetShardProvider"] = None,
         checkpoint: Optional[Checkpoint] = None,
     ):
         self._callbacks = [c for c in worker_callbacks if isinstance(c, WorkerCallback)]
@@ -207,17 +213,20 @@ class RayTrainWorker:
                 train_context_callbacks=context_callbacks_to_propagate,
             ),
             storage_context=storage_context,
-            dataset_shards=dataset_shards or {},
             checkpoint=checkpoint,
+            dataset_shard_provider=dataset_shard_provider,
         )
         # Configure the train and root logger for the worker processes.
         if ray_constants.env_bool(
             ENABLE_WORKER_STRUCTURED_LOGGING_ENV_VAR, DEFAULT_ENABLE_WORKER_LOGGING
         ):
-            configure_worker_logger(context)
+            LoggingManager.configure_worker_logger(context)
         patch_print_function()
         # Set the train context global variable for the worker.
         set_train_context(context)
+
+        # user facing train fn utils
+        set_train_fn_utils(TrainFnUtils())
 
         for callback in self._callbacks:
             callback.after_init_train_context()

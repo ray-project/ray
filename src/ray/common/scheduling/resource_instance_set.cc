@@ -16,7 +16,9 @@
 
 #include <cmath>
 #include <sstream>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "ray/common/bundle_spec.h"
 #include "ray/util/container_util.h"
@@ -97,7 +99,7 @@ NodeResourceInstanceSet &NodeResourceInstanceSet::Set(ResourceID resource_id,
     resources_[resource_id] = std::move(instances);
 
     // Popluate the pg_indexed_resources_map_
-    // TODO (myan): The parsing of the resource_id String can be costly and impact the
+    // TODO(myan): The parsing of the resource_id String can be costly and impact the
     // task creation throughput if the parting is required every time we allocate
     // resources for a task and updating the available resources. The current benchmark
     // shows no observable impact for now. But in the future, ideas of improvement are:
@@ -200,8 +202,8 @@ NodeResourceInstanceSet::TryAllocate(const ResourceSet &resource_demands) {
         allocations[resource_id] = std::move(*allocation);
       } else {
         // Allocation failed. Restore partially allocated resources.
-        for (const auto &[resource_id, allocation] : allocations) {
-          Free(resource_id, allocation);
+        for (const auto &[id, allocated] : allocations) {
+          Free(id, allocated);
         }
         return std::nullopt;
       }

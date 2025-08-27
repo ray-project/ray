@@ -78,7 +78,9 @@ def gen_expected_metrics(
             "'obj_store_mem_internal_outqueue': Z",
             "'obj_store_mem_pending_task_inputs': Z",
             "'average_bytes_inputs_per_task': N",
+            "'average_rows_inputs_per_task': N",
             "'average_bytes_outputs_per_task': N",
+            "'average_rows_outputs_per_task': N",
             "'average_max_uss_per_task': H",
             "'num_inputs_received': N",
             "'num_row_inputs_received': N",
@@ -86,6 +88,7 @@ def gen_expected_metrics(
             "'num_task_inputs_processed': N",
             "'bytes_task_inputs_processed': N",
             "'bytes_inputs_of_submitted_tasks': N",
+            "'rows_inputs_of_submitted_tasks': N",
             "'num_task_outputs_generated': N",
             "'bytes_task_outputs_generated': N",
             "'rows_task_outputs_generated': N",
@@ -95,6 +98,9 @@ def gen_expected_metrics(
             "'bytes_outputs_taken': N",
             "'num_outputs_of_finished_tasks': N",
             "'bytes_outputs_of_finished_tasks': N",
+            "'rows_outputs_of_finished_tasks': N",
+            "'num_external_inqueue_blocks': N",
+            "'num_external_inqueue_bytes': N",
             "'num_tasks_submitted': N",
             "'num_tasks_running': Z",
             "'num_tasks_have_outputs': N",
@@ -110,6 +116,10 @@ def gen_expected_metrics(
                 f"{'N' if task_output_backpressure else 'Z'}"
             ),
             ("'task_completion_time': " f"{'N' if task_backpressure else 'Z'}"),
+            (
+                "'task_completion_time_without_backpressure': "
+                f"{'N' if task_backpressure else 'Z'}"
+            ),
             "'num_alive_actors': Z",
             "'num_restarting_actors': Z",
             "'num_pending_actors': Z",
@@ -123,15 +133,41 @@ def gen_expected_metrics(
         ]
     else:
         metrics = [
+            "'average_num_outputs_per_task': None",
+            "'average_bytes_per_output': None",
             "'obj_store_mem_internal_inqueue': Z",
             "'obj_store_mem_internal_outqueue': Z",
+            "'obj_store_mem_pending_task_inputs': Z",
+            "'average_bytes_inputs_per_task': None",
+            "'average_rows_inputs_per_task': None",
+            "'average_bytes_outputs_per_task': None",
+            "'average_rows_outputs_per_task': None",
+            "'average_max_uss_per_task': H",
             "'num_inputs_received': N",
             "'num_row_inputs_received': N",
             "'bytes_inputs_received': N",
+            "'num_task_inputs_processed': Z",
+            "'bytes_task_inputs_processed': Z",
+            "'bytes_inputs_of_submitted_tasks': Z",
+            "'rows_inputs_of_submitted_tasks': Z",
+            "'num_task_outputs_generated': Z",
+            "'bytes_task_outputs_generated': Z",
+            "'rows_task_outputs_generated': Z",
             "'row_outputs_taken': N",
             "'block_outputs_taken': N",
             "'num_outputs_taken': N",
             "'bytes_outputs_taken': N",
+            "'num_outputs_of_finished_tasks': Z",
+            "'bytes_outputs_of_finished_tasks': Z",
+            "'rows_outputs_of_finished_tasks': Z",
+            "'num_external_inqueue_blocks': N",
+            "'num_external_inqueue_bytes': N",
+            "'num_tasks_submitted': Z",
+            "'num_tasks_running': Z",
+            "'num_tasks_have_outputs': Z",
+            "'num_tasks_finished': Z",
+            "'num_tasks_failed': Z",
+            "'block_generation_time': Z",
             (
                 "'task_submission_backpressure_time': "
                 f"{'N' if task_backpressure else 'Z'}"
@@ -141,11 +177,17 @@ def gen_expected_metrics(
                 f"{'N' if task_output_backpressure else 'Z'}"
             ),
             ("'task_completion_time': " f"{'N' if task_backpressure else 'Z'}"),
+            (
+                "'task_completion_time_without_backpressure': "
+                f"{'N' if task_backpressure else 'Z'}"
+            ),
             "'num_alive_actors': Z",
             "'num_restarting_actors': Z",
             "'num_pending_actors': Z",
             "'obj_store_mem_internal_inqueue_blocks': Z",
             "'obj_store_mem_internal_outqueue_blocks': Z",
+            "'obj_store_mem_freed': Z",
+            "'obj_store_mem_spilled': Z",
             "'obj_store_mem_used': A",
             "'cpu_usage': Z",
             "'gpu_usage': Z",
@@ -353,6 +395,7 @@ Dataset iterator time breakdown:
 * Total time overall: T
     * Total time in Ray Data iterator initialization code: T
     * Total time user thread is blocked by Ray Data iter_batches: T
+    * Total time spent waiting for the first batch after starting iteration: T
     * Total execution time for user thread: T
 * Batch iteration time breakdown (summed across prefetch threads):
     * In ray.get(): T min, T max, T avg, T total
@@ -535,6 +578,7 @@ def test_dataset_stats_basic(
         f"* Total time overall: T\n"
         f"    * Total time in Ray Data iterator initialization code: T\n"
         f"    * Total time user thread is blocked by Ray Data iter_batches: T\n"
+        f"    * Total time spent waiting for the first batch after starting iteration: T\n"
         f"    * Total execution time for user thread: T\n"
         f"* Batch iteration time breakdown (summed across prefetch threads):\n"
         f"    * In ray.get(): T min, T max, T avg, T total\n"
@@ -576,6 +620,7 @@ def test_block_location_nums(ray_start_regular_shared, restore_data_context):
         f"* Total time overall: T\n"
         f"    * Total time in Ray Data iterator initialization code: T\n"
         f"    * Total time user thread is blocked by Ray Data iter_batches: T\n"
+        f"    * Total time spent waiting for the first batch after starting iteration: T\n"
         f"    * Total execution time for user thread: T\n"
         f"* Batch iteration time breakdown (summed across prefetch threads):\n"
         f"    * In ray.get(): T min, T max, T avg, T total\n"
@@ -612,7 +657,9 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      obj_store_mem_internal_outqueue: Z,\n"
         "      obj_store_mem_pending_task_inputs: Z,\n"
         "      average_bytes_inputs_per_task: N,\n"
+        "      average_rows_inputs_per_task: N,\n"
         "      average_bytes_outputs_per_task: N,\n"
+        "      average_rows_outputs_per_task: N,\n"
         "      average_max_uss_per_task: H,\n"
         "      num_inputs_received: N,\n"
         "      num_row_inputs_received: N,\n"
@@ -620,6 +667,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_task_inputs_processed: N,\n"
         "      bytes_task_inputs_processed: N,\n"
         "      bytes_inputs_of_submitted_tasks: N,\n"
+        "      rows_inputs_of_submitted_tasks: N,\n"
         "      num_task_outputs_generated: N,\n"
         "      bytes_task_outputs_generated: N,\n"
         "      rows_task_outputs_generated: N,\n"
@@ -629,6 +677,9 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      bytes_outputs_taken: N,\n"
         "      num_outputs_of_finished_tasks: N,\n"
         "      bytes_outputs_of_finished_tasks: N,\n"
+        "      rows_outputs_of_finished_tasks: N,\n"
+        "      num_external_inqueue_blocks: N,\n"
+        "      num_external_inqueue_bytes: N,\n"
         "      num_tasks_submitted: N,\n"
         "      num_tasks_running: Z,\n"
         "      num_tasks_have_outputs: N,\n"
@@ -638,6 +689,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      task_submission_backpressure_time: N,\n"
         "      task_output_backpressure_time: Z,\n"
         "      task_completion_time: N,\n"
+        "      task_completion_time_without_backpressure: N,\n"
         "      num_alive_actors: Z,\n"
         "      num_restarting_actors: Z,\n"
         "      num_pending_actors: Z,\n"
@@ -735,7 +787,9 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      obj_store_mem_internal_outqueue: Z,\n"
         "      obj_store_mem_pending_task_inputs: Z,\n"
         "      average_bytes_inputs_per_task: N,\n"
+        "      average_rows_inputs_per_task: N,\n"
         "      average_bytes_outputs_per_task: N,\n"
+        "      average_rows_outputs_per_task: N,\n"
         "      average_max_uss_per_task: H,\n"
         "      num_inputs_received: N,\n"
         "      num_row_inputs_received: N,\n"
@@ -743,6 +797,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_task_inputs_processed: N,\n"
         "      bytes_task_inputs_processed: N,\n"
         "      bytes_inputs_of_submitted_tasks: N,\n"
+        "      rows_inputs_of_submitted_tasks: N,\n"
         "      num_task_outputs_generated: N,\n"
         "      bytes_task_outputs_generated: N,\n"
         "      rows_task_outputs_generated: N,\n"
@@ -752,6 +807,9 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      bytes_outputs_taken: N,\n"
         "      num_outputs_of_finished_tasks: N,\n"
         "      bytes_outputs_of_finished_tasks: N,\n"
+        "      rows_outputs_of_finished_tasks: N,\n"
+        "      num_external_inqueue_blocks: N,\n"
+        "      num_external_inqueue_bytes: N,\n"
         "      num_tasks_submitted: N,\n"
         "      num_tasks_running: Z,\n"
         "      num_tasks_have_outputs: N,\n"
@@ -761,6 +819,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      task_submission_backpressure_time: N,\n"
         "      task_output_backpressure_time: Z,\n"
         "      task_completion_time: N,\n"
+        "      task_completion_time_without_backpressure: N,\n"
         "      num_alive_actors: Z,\n"
         "      num_restarting_actors: Z,\n"
         "      num_pending_actors: Z,\n"
@@ -813,7 +872,9 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            obj_store_mem_internal_outqueue: Z,\n"
         "            obj_store_mem_pending_task_inputs: Z,\n"
         "            average_bytes_inputs_per_task: N,\n"
+        "            average_rows_inputs_per_task: N,\n"
         "            average_bytes_outputs_per_task: N,\n"
+        "            average_rows_outputs_per_task: N,\n"
         "            average_max_uss_per_task: H,\n"
         "            num_inputs_received: N,\n"
         "            num_row_inputs_received: N,\n"
@@ -821,6 +882,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            num_task_inputs_processed: N,\n"
         "            bytes_task_inputs_processed: N,\n"
         "            bytes_inputs_of_submitted_tasks: N,\n"
+        "            rows_inputs_of_submitted_tasks: N,\n"
         "            num_task_outputs_generated: N,\n"
         "            bytes_task_outputs_generated: N,\n"
         "            rows_task_outputs_generated: N,\n"
@@ -830,6 +892,9 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            bytes_outputs_taken: N,\n"
         "            num_outputs_of_finished_tasks: N,\n"
         "            bytes_outputs_of_finished_tasks: N,\n"
+        "            rows_outputs_of_finished_tasks: N,\n"
+        "            num_external_inqueue_blocks: N,\n"
+        "            num_external_inqueue_bytes: N,\n"
         "            num_tasks_submitted: N,\n"
         "            num_tasks_running: Z,\n"
         "            num_tasks_have_outputs: N,\n"
@@ -839,6 +904,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            task_submission_backpressure_time: N,\n"
         "            task_output_backpressure_time: Z,\n"
         "            task_completion_time: N,\n"
+        "            task_completion_time_without_backpressure: N,\n"
         "            num_alive_actors: Z,\n"
         "            num_restarting_actors: Z,\n"
         "            num_pending_actors: Z,\n"
@@ -1300,6 +1366,7 @@ Dataset iterator time breakdown:
 * Total time overall: T
     * Total time in Ray Data iterator initialization code: T
     * Total time user thread is blocked by Ray Data iter_batches: T
+    * Total time spent waiting for the first batch after starting iteration: T
     * Total execution time for user thread: T
 * Batch iteration time breakdown (summed across prefetch threads):
     * In ray.get(): T min, T max, T avg, T total
@@ -1470,7 +1537,9 @@ def test_per_node_metrics_basic(ray_start_regular_shared, restore_data_context):
                 sum_metrics[metric] += value
         return sum_metrics
 
-    with patch("ray.data._internal.stats.StatsManager._stats_actor") as mock_get_actor:
+    with patch(
+        "ray.data._internal.stats.StatsManager._get_or_create_stats_actor"
+    ) as mock_get_actor:
         mock_actor_handle = MagicMock()
         mock_get_actor.return_value = mock_actor_handle
 
@@ -1516,7 +1585,9 @@ def test_per_node_metrics_toggle(
     ctx = DataContext.get_current()
     ctx.enable_per_node_metrics = enable_metrics
 
-    with patch("ray.data._internal.stats.StatsManager._stats_actor") as mock_get_actor:
+    with patch(
+        "ray.data._internal.stats.StatsManager._get_or_create_stats_actor"
+    ) as mock_get_actor:
         mock_actor_handle = MagicMock()
         mock_get_actor.return_value = mock_actor_handle
 
@@ -1785,6 +1856,13 @@ def test_op_metrics_logging():
             "Operator InputDataBuffer[Input] completed. Operator Metrics:\n"
             + gen_expected_metrics(is_map=False)
         )  # .replace("'obj_store_mem_used': N", "'obj_store_mem_used': Z")
+        # InputDataBuffer has no inqueue, manually set to 0
+        input_str = input_str.replace(
+            "'num_external_inqueue_blocks': N", "'num_external_inqueue_blocks': Z"
+        )
+        input_str = input_str.replace(
+            "'num_external_inqueue_bytes': N", "'num_external_inqueue_bytes': Z"
+        )
         map_str = (
             "Operator TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)] completed. "
             "Operator Metrics:\n"
@@ -1884,6 +1962,42 @@ def test_stats_manager(shutdown_only):
     # Check that a new different thread is spawned.
     assert StatsManager._update_thread != prev_thread
     wait_for_condition(lambda: not StatsManager._update_thread.is_alive())
+
+
+def test_stats_manager_stale_actor_handle(ray_start_cluster):
+    """
+    This test asserts that StatsManager is able to handle appropriately
+    cases of StatsActor being killed upon driver disconnecting from running
+    Ray cluster
+
+    See https://github.com/ray-project/ray/issues/54841 for more details
+    """
+
+    class F:
+        def __call__(self, x):
+            return x
+
+    # First driver run
+    ray.init(ignore_reinit_error=True)
+
+    ray.data.range(1000).map_batches(
+        F,
+        concurrency=(1, 4),
+        num_cpus=1,
+    ).take_all()
+
+    ray.shutdown()
+
+    # Second driver run
+    ray.init(ignore_reinit_error=True)
+
+    ray.data.range(1000).map_batches(
+        F,
+        concurrency=(1, 4),
+        num_cpus=1,
+    ).take_all()
+
+    ray.shutdown()
 
 
 if __name__ == "__main__":

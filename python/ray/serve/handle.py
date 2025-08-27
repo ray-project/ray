@@ -9,6 +9,7 @@ import ray
 from ray import serve
 from ray._raylet import ObjectRefGenerator
 from ray.serve._private.common import (
+    OBJ_REF_NOT_SUPPORTED_ERROR,
     DeploymentHandleSource,
     DeploymentID,
     RequestMetadata,
@@ -157,6 +158,9 @@ class _DeploymentHandleBase:
         ):
             ServeUsageTag.DEPLOYMENT_HANDLE_API_USED.record("1")
 
+    def _is_router_running_in_separate_loop(self) -> bool:
+        return self.init_options._run_router_in_separate_loop
+
     def _options(self, _prefer_local_routing=DEFAULT.VALUE, **kwargs):
         if kwargs.get("stream") is True and inside_ray_client_context():
             raise RuntimeError(
@@ -211,12 +215,24 @@ class _DeploymentHandleBase:
     def shutdown(self):
         if self._router:
             shutdown_future = self._router.shutdown()
-            shutdown_future.result()
+            if self._is_router_running_in_separate_loop():
+                shutdown_future.result()
+            else:
+                logger.warning(
+                    "Synchronously shutting down a router that's running in the same "
+                    "event loop can only be done best effort. Please use "
+                    "`shutdown_async` instead."
+                )
 
     async def shutdown_async(self):
         if self._router:
-            shutdown_future = self._router.shutdown()
-            await asyncio.wrap_future(shutdown_future)
+            shutdown_future: Union[
+                asyncio.Future, concurrent.futures.Future
+            ] = self._router.shutdown()
+            if self._is_router_running_in_separate_loop:
+                await asyncio.wrap_future(shutdown_future)
+            else:
+                await shutdown_future
 
     def __repr__(self):
         return f"{self.__class__.__name__}" f"(deployment='{self.deployment_name}')"
@@ -238,13 +254,17 @@ class _DeploymentHandleBase:
 class _DeploymentResponseBase:
     def __init__(
         self,
-        replica_result_future: concurrent.futures.Future[ReplicaResult],
+        replica_result_future: Union[
+            concurrent.futures.Future[ReplicaResult], asyncio.Future[ReplicaResult]
+        ],
         request_metadata: RequestMetadata,
+        _is_router_running_in_separate_loop: bool = True,
     ):
         self._cancelled = False
         self._replica_result_future = replica_result_future
         self._replica_result: Optional[ReplicaResult] = None
         self._request_metadata: RequestMetadata = request_metadata
+        self._is_router_running_in_separate_loop = _is_router_running_in_separate_loop
 
     @property
     def request_id(self) -> str:
@@ -259,10 +279,16 @@ class _DeploymentResponseBase:
         """
 
         if self._replica_result is None:
+            if not self._is_router_running_in_separate_loop:
+                raise RuntimeError(
+                    "Sync methods should not be called from within an `asyncio` event "
+                    "loop. Use `await response` instead."
+                )
             try:
                 self._replica_result = self._replica_result_future.result(
                     timeout=_timeout_s
                 )
+
             except concurrent.futures.TimeoutError:
                 raise TimeoutError("Timed out resolving to ObjectRef.") from None
             except concurrent.futures.CancelledError:
@@ -277,11 +303,16 @@ class _DeploymentResponseBase:
         """
 
         if self._replica_result is None:
-            # Use `asyncio.wrap_future` so `self._replica_result_future` can be awaited
-            # safely from any asyncio loop.
-            self._replica_result = await asyncio.wrap_future(
-                self._replica_result_future
-            )
+            if self._is_router_running_in_separate_loop:
+                # Use `asyncio.wrap_future` so `self._replica_result_future` can be awaited
+                # safely from any asyncio loop.
+                # self._replica_result_future is a object of type concurrent.futures.Future
+                self._replica_result = await asyncio.wrap_future(
+                    self._replica_result_future
+                )
+            else:
+                # self._replica_result_future is a object of type asyncio.Future
+                self._replica_result = await self._replica_result_future
 
         return self._replica_result
 
@@ -310,6 +341,12 @@ class _DeploymentResponseBase:
 
         self._cancelled = True
         self._replica_result_future.cancel()
+        if not self._is_router_running_in_separate_loop:
+            # Given that there is a event loop running, we can't call sync methods.
+            # Hence optimistically cancel the replica result future and replica result.
+            if self._replica_result:
+                self._replica_result.cancel()
+            return
         try:
             # try to fetch the results synchronously. if it succeeds,
             # we will explicitly cancel the replica result. if it fails,
@@ -463,6 +500,9 @@ class DeploymentResponse(_DeploymentResponseBase):
 
         ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
+        if not self._request_metadata._by_reference:
+            raise OBJ_REF_NOT_SUPPORTED_ERROR
+
         replica_result = await self._fetch_future_result_async()
         return await replica_result.to_object_ref_async()
 
@@ -486,6 +526,9 @@ class DeploymentResponse(_DeploymentResponseBase):
         """
 
         ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
+
+        if not self._request_metadata._by_reference:
+            raise OBJ_REF_NOT_SUPPORTED_ERROR
 
         if not _allow_running_in_asyncio_loop and is_running_in_asyncio_loop():
             raise RuntimeError(
@@ -604,6 +647,9 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
 
         ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
+        if not self._request_metadata._by_reference:
+            raise OBJ_REF_NOT_SUPPORTED_ERROR
+
         replica_result = await self._fetch_future_result_async()
         return replica_result.to_object_ref_gen()
 
@@ -624,6 +670,9 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         """
 
         ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
+
+        if not self._request_metadata._by_reference:
+            raise OBJ_REF_NOT_SUPPORTED_ERROR
 
         if not _allow_running_in_asyncio_loop and is_running_in_asyncio_loop():
             raise RuntimeError(
@@ -749,4 +798,8 @@ class DeploymentHandle(_DeploymentHandleBase):
         else:
             response_cls = DeploymentResponse
 
-        return response_cls(future, request_metadata)
+        return response_cls(
+            future,
+            request_metadata,
+            _is_router_running_in_separate_loop=self._is_router_running_in_separate_loop(),
+        )

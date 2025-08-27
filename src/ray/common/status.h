@@ -33,6 +33,7 @@
 #include <string>
 
 #include "absl/strings/str_cat.h"
+#include "ray/common/macros.h"
 #include "ray/common/source_location.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
@@ -53,10 +54,10 @@ class error_code;
 
 // If the status is not OK, CHECK-fail immediately, appending the status to the
 // logged message. The message can be appended with <<.
-#define RAY_CHECK_OK(s)                          \
-  if (const ::ray::Status &_status_ = (s); true) \
-  RAY_CHECK_WITH_DISPLAY(_status_.ok(), #s)      \
-      << "Status not OK: " << _status_.ToString() << " "
+#define RAY_CHECK_OK(s)                                          \
+  if (const ::ray::Status & RAY_UNIQUE_VARIABLE(_s) = (s); true) \
+  RAY_CHECK_WITH_DISPLAY(RAY_UNIQUE_VARIABLE(_s).ok(), #s)       \
+      << "Status not OK: " << RAY_UNIQUE_VARIABLE(_s).ToString() << " "
 
 namespace ray {
 

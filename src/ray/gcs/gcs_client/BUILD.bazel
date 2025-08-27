@@ -11,15 +11,16 @@ ray_cc_library(
         "gcs_client.h",
     ],
     deps = [
-        "//:gcs_service_rpc",
         "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/gcs:gcs_pb_util",
         "//src/ray/gcs/pubsub:gcs_pub_sub_lib",
-        "//src/ray/gcs/store_client:gcs_redis_store_client",
+        "//src/ray/gcs/store_client:redis_store_client",
         "//src/ray/protobuf:usage_cc_proto",
-        "//src/ray/pubsub:pubsub_lib",
+        "//src/ray/pubsub:subscriber",
+        "//src/ray/rpc:gcs_client",
         "//src/ray/util:container_util",
+        "//src/ray/util:network_util",
         "//src/ray/util:sequencer",
     ],
 )
@@ -30,6 +31,7 @@ ray_cc_library(
     hdrs = ["global_state_accessor.h"],
     deps = [
         ":gcs_client_lib",
+        "//src/ray/util:time",
     ],
 )
 
