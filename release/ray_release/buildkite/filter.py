@@ -32,6 +32,7 @@ def filter_tests(
 
     tests_to_run = []
     for test in test_collection:
+        attr_mismatch = False
         # Skip kuberay tests for now.
         # TODO: (khluu) Remove this once we start running KubeRay release tests.
         if test.is_kuberay() and get_global_config()["kuberay_disabled"]:
@@ -39,7 +40,6 @@ def filter_tests(
 
         # Check if any test attributes match filters
         if test_filters:
-            attr_mismatch = False
             for attr, value in test_filters.items():
                 # Only prefix filter doesn't use regex
                 if attr == "prefix":
@@ -51,7 +51,6 @@ def filter_tests(
                     if not re.fullmatch(value, attr_value):
                         attr_mismatch = True
                         break
-
         if attr_mismatch:
             continue
 

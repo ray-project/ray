@@ -163,7 +163,7 @@ def update_settings_from_environment(settings: Dict) -> Dict:
         settings["test_filters"] = os.environ["TEST_FILTERS"]
 
     if "TEST_ATTR_REGEX_FILTERS" in os.environ:
-        settings["test_attr_regex_filters"] = get_test_filters(
+        settings["test_filters"] = get_test_filters(
             os.environ["TEST_ATTR_REGEX_FILTERS"]
         )
 

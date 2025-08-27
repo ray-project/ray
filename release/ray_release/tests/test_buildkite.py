@@ -168,8 +168,9 @@ class BuildkiteSettingsTest(unittest.TestCase):
         os.environ["TEST_ATTR_REGEX_FILTERS"] = "name:xxx\nteam:yyy\n"
         updated_settings = settings.copy()
         update_settings_from_environment(updated_settings)
+        print(updated_settings)
         self.assertDictEqual(
-            updated_settings["test_attr_regex_filters"],
+            updated_settings["test_filters"],
             {
                 "name": "xxx",
                 "team": "yyy",
@@ -191,7 +192,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
             {
                 "frequency": Frequency.NIGHTLY,
                 "prefer_smoke_tests": False,
-                "test_attr_regex_filters": {"name": "name_filter"},
+                "test_filters": {"name": "name_filter"},
                 "ray_test_repo": "https://github.com/user/ray.git",
                 "ray_test_branch": "sub/branch",
                 "priority": Priority.MANUAL,
@@ -206,7 +207,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
             {
                 "frequency": Frequency.ANY,
                 "prefer_smoke_tests": True,
-                "test_attr_regex_filters": {"name": "name_filter"},
+                "test_filters": {"name": "name_filter"},
                 "ray_test_repo": "https://github.com/user/ray.git",
                 "ray_test_branch": "sub/branch",
                 "priority": Priority.MANUAL,
@@ -353,7 +354,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 {
                     "frequency": Frequency.NIGHTLY,
                     "prefer_smoke_tests": False,
-                    "test_attr_regex_filters": {"name": "name_filter"},
+                    "test_filters": {"name": "name_filter"},
                     "ray_test_repo": "https://github.com/user/ray.git",
                     "ray_test_branch": "sub/branch",
                     "priority": Priority.MANUAL,
@@ -369,7 +370,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 {
                     "frequency": Frequency.ANY,
                     "prefer_smoke_tests": True,
-                    "test_attr_regex_filters": {"name": "name_filter"},
+                    "test_filters": {"name": "name_filter"},
                     "ray_test_repo": "https://github.com/user/ray.git",
                     "ray_test_branch": "sub/branch",
                     "priority": Priority.MANUAL,
@@ -431,7 +432,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
 
         # Test filter by prefix alone
         filtered = self._filter_names(
-            tests, frequency=Frequency.ANY, test_name_prefix_filter="test"
+            tests, frequency=Frequency.ANY, test_filters={"prefix": "test"}
         )
         self.assertSequenceEqual(
             filtered,
@@ -447,18 +448,11 @@ class BuildkiteSettingsTest(unittest.TestCase):
         filtered = self._filter_names(
             tests,
             frequency=Frequency.NIGHTLY,
-            test_name_prefix_filter="test",
-            test_attr_regex_filters={"name": "other.*"},
+            test_filters={"prefix": "test", "name": "other.*"},
         )
         self.assertSequenceEqual(
             filtered,
-            [
-                ("test_1", False),
-                ("test_2", True),
-                ("other_2", False),
-                ("test_3", False),
-                ("test_4.kuberay", False),
-            ],
+            [],
         )
 
         filtered = self._filter_names(tests, frequency=Frequency.ANY)
@@ -528,7 +522,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
         filtered = self._filter_names(
             tests,
             frequency=Frequency.NIGHTLY,
-            test_attr_regex_filters={"name": "other.*"},
+            test_filters={"name": "other.*"},
         )
         self.assertSequenceEqual(
             filtered,
@@ -540,7 +534,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
         filtered = self._filter_names(
             tests,
             frequency=Frequency.NIGHTLY,
-            test_attr_regex_filters={"name": "test.*"},
+            test_filters={"name": "test.*"},
         )
         self.assertSequenceEqual(
             filtered,
@@ -553,21 +547,21 @@ class BuildkiteSettingsTest(unittest.TestCase):
         )
 
         filtered = self._filter_names(
-            tests, frequency=Frequency.NIGHTLY, test_attr_regex_filters={"name": "test"}
+            tests, frequency=Frequency.NIGHTLY, test_filters={"name": "test"}
         )
         self.assertSequenceEqual(filtered, [])
 
         filtered = self._filter_names(
             tests,
             frequency=Frequency.NIGHTLY,
-            test_attr_regex_filters={"name": "test.*", "team": "team_1"},
+            test_filters={"name": "test.*", "team": "team_1"},
         )
         self.assertSequenceEqual(filtered, [("test_1", False)])
 
         filtered = self._filter_names(
             tests,
             frequency=Frequency.NIGHTLY,
-            test_attr_regex_filters={"name": "test_1|test_2"},
+            test_filters={"name": "test_1|test_2"},
         )
         self.assertSequenceEqual(filtered, [("test_1", False), ("test_2", True)])
 
@@ -575,7 +569,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
         filtered = self._filter_names(
             tests,
             frequency=Frequency.ANY,
-            test_attr_regex_filters={"run/type": "job"},
+            test_filters={"run/type": "job"},
         )
         self.assertSequenceEqual(
             filtered, [("test_1", False), ("other_2", False), ("test_4.kuberay", False)]
@@ -584,14 +578,14 @@ class BuildkiteSettingsTest(unittest.TestCase):
         filtered = self._filter_names(
             tests,
             frequency=Frequency.ANY,
-            test_attr_regex_filters={"run/type": "client"},
+            test_filters={"run/type": "client"},
         )
         self.assertSequenceEqual(filtered, [("test_2", False)])
 
         filtered = self._filter_names(
             tests,
             frequency=Frequency.ANY,
-            test_attr_regex_filters={"run/invalid": "xxx"},
+            test_filters={"run/invalid": "xxx"},
         )
         self.assertSequenceEqual(filtered, [])
 
