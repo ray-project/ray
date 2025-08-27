@@ -81,7 +81,6 @@ cleanup() {
 #
 # All C++ tests should only have access to the TEST_CGROUP and nothing outside of it.
 # The C++ tests will be executed as a non-root user. Setup/teardown will need root permissions.
-echo "Starting Cgroupv2 Integration Tests."
 echo "ROOT_CGROUP is ${ROOT_CGROUP}."
 echo "BASE_CGROUP for the test suite is ${BASE_CGROUP}."
 echo "TEST_CGROUP for the test suite is ${TEST_CGROUP}."
