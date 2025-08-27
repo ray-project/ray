@@ -61,7 +61,7 @@ Many Python developers use a debugger to debug Python programs, and `Python pdb 
 Ray has native integration to ``pdb``. You can simply add ``breakpoint()`` to Actors and Tasks code to enable ``pdb``. View :ref:`Ray Debugger <ray-debugger>` for more details.
 
 
-Running out of file descriptors (``Too may open files``)
+Running out of file descriptors (``Too many open files``)
 --------------------------------------------------------
 
 In a Ray cluster, arbitrary two system components can communicate with each other and make 1 or more connections.
@@ -76,7 +76,7 @@ more than 1024 connections to the component, it can raise error messages below.
 
 .. code-block:: bash
 
-  Too may open files
+  Too many open files
 
 It is especially common for the head node GCS process because it is a centralized
 component that many other components in Ray communicate with. When you see this error message,
