@@ -37,6 +37,10 @@ class GPUTestActor:
             return data.apply(lambda x: x * 2)
         return data * 2
 
+    def increment(self, data):
+        data += 1
+        return data
+
     def get_out_of_band_tensors(self, obj_id: str, timeout=None):
         gpu_object_store = (
             ray._private.worker.global_worker.gpu_object_manager.gpu_object_store
@@ -810,6 +814,41 @@ def test_wait_tensor_freed_double_tensor(ray_start_regular):
     ray.experimental.wait_tensor_freed(tensor)
     gc_thread.join()
     assert not gpu_object_store.has_object(obj_id2)
+
+
+def test_duplicate_objectref_transfer(ray_start_regular):
+    world_size = 2
+    actors = [GPUTestActor.remote() for _ in range(world_size)]
+    create_collective_group(actors, backend="torch_gloo")
+    actor0, actor1 = actors[0], actors[1]
+
+    small_tensor = torch.randn((1,))
+
+    # Store the original value for comparison
+    original_value = small_tensor
+
+    ref = actor0.echo.remote(small_tensor)
+
+    # Pass the same ref to actor1 twice
+    result1 = actor1.increment.remote(ref)
+    result2 = actor1.increment.remote(ref)
+
+    # Both should return original_value + 1 because each increment task should receive the same object value.
+    val1 = ray.get(result1)
+    val2 = ray.get(result2)
+
+    # Check for correctness
+    assert val1 == pytest.approx(
+        original_value + 1
+    ), f"Result1 incorrect: got {val1}, expected {original_value + 1}"
+    assert val2 == pytest.approx(
+        original_value + 1
+    ), f"Result2 incorrect: got {val2}, expected {original_value + 1}"
+
+    # Additional check: results should be equal (both got clean copies)
+    assert val1 == pytest.approx(
+        val2
+    ), f"Results differ: result1={val1}, result2={val2}"
 
 
 if __name__ == "__main__":
