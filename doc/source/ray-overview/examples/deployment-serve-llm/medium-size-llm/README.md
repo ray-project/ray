@@ -146,7 +146,9 @@ For production deployment, use Anyscale services to deploy the Ray Serve app to 
 
 ### Launch
 
-Write your Anyscale Service configuration, in a new `service.yaml` file, write:  
+Anyscale provides out-of-the-box images (`anyscale/ray-llm`) which comes preloaded with Ray Serve LLM, vLLM, and all required GPU/runtime dependencies. This makes it easy to get started without building a custom image.
+
+Write your Anyscale Service configuration in a new `service.yaml` file:
 ```yaml
 #service.yaml
 name: deploy-llama-3-70b
@@ -170,7 +172,7 @@ anyscale service deploy -f service.yaml --env HF_TOKEN=$HF_TOKEN
 
 **Custom Dockerfile**
 
-You can use any image from the Anyscale registry, or build your own Dockerfile on top of an Anyscale base image. Create a new `Dockerfile` and start with this minimal setup:
+The recommended image for most cases is `anyscale/ray-llm`. However, if you prefer a minimal image for more control, here’s an example `Dockerfile` based on the lighter `anyscale/ray` base image that installs only what you need to run this example.
 ```Dockerfile
 FROM anyscale/ray:2.49.0-slim-py312-cu128
 
@@ -182,14 +184,15 @@ RUN sudo apt-get update && \
 RUN pip install vllm==0.10.0
 ```
 
-In your Anyscale Service config, replace `image_uri` with `containerfile`:
+In your Anyscale Service config, point to this Dockerfile with `containerfile` instead of `image_uri`:
+
 ```yaml
-#service.yaml
+# service.yaml
 ...
-## Replace
-#image_uri: anyscale/ray-llm:2.49.0-py311-cu128
-## With
-containerfile: ./Dockerfile # path to your dockerfile
+## Recommended (default):
+# image_uri: anyscale/ray-llm:2.49.0-py311-cu128
+## Minimal example (custom):
+containerfile: ./Dockerfile  # path to your Dockerfile
 ...
 ```
 
