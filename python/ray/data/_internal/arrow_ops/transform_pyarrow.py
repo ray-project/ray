@@ -183,11 +183,11 @@ def unify_schemas(
         if len(set(schemas)) == 1:
             # Early exit because unifying can be expensive
             return schemas[0]
-    except Exception:
+    except Exception as e:
         # Unsure if there are cases where schemas are NOT hashable
         logger.warning(
             "Skipping schema deduplication because they are not hashable. "
-            "This can hurt performance if the schemas are large."
+            f"This can hurt performance if the schemas are large. {e}"
         )
 
     schemas_to_unify = []
