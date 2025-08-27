@@ -130,7 +130,7 @@ Task Timeline
 
 First, download the chrome tracing file by clicking the download button. Alternatively, you can :ref:`use CLI or SDK to export the tracing file <ray-core-timeline>`.
 
-Second, use tools like ``chrome://tracing`` or the `Perfetto UI <https://ui.perfetto.dev/>`_ and drop the downloaded chrome tracing file. We will use the Perfetto as it is the recommendation way to visualize chrome tracing files.
+Second, use tools like ``chrome://tracing`` or the `Perfetto UI <https://ui.perfetto.dev/>`_ and drop the downloaded chrome tracing file. We will use Perfetto as it is the recommended way to visualize chrome tracing files.
 
 In the timeline visualization of Ray Tasks and Actors, there are Node rows (hardware) and Worker rows (processes).
 Each Worker rows display a list of Task events (e.g., Task scheduled, Task running, input/output deserialization, etc.) happening from that Worker over time.
@@ -311,7 +311,7 @@ Additionally, users can see a snapshot of hardware utilization from the :ref:`Cl
 View the resource utilization
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray requires users to specify the number of :ref:`resources <logical-resources>` their Tasks and Actors to use through arguments such as ``num_cpus``, ``num_gpus``, ``memory``, and ``resource``.
+Ray requires users to specify the number of :ref:`resources <logical-resources>` their Tasks and Actors need to use through arguments such as ``num_cpus``, ``num_gpus``, ``memory``, and ``resource``.
 These values are used for scheduling, but may not always match the actual resource utilization (physical resource utilization).
 
 - See the logical and physical resource utilization over time from the :ref:`Metrics view <dash-metrics-view>`.
