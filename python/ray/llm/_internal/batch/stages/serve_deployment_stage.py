@@ -119,7 +119,8 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
             batch: A list of rows to run the serve deployment on.
 
         Yields:
-            The response of the serve deployment and processing metadata.
+            Dict[str, Any]: A dictionary containing the response from the serve deployment
+            along with processing metadata.
         """
         batch_uuid = uuid.uuid4()
         t = time.perf_counter()
