@@ -1,10 +1,12 @@
 from typing import Optional, List, TYPE_CHECKING
 
 import ray
+from ray.util.collective.types import Backend
 from ray.experimental.collective.tensor_transport_manager import (
     TensorTransportManager,
     TensorTransportEnum,
 )
+from ray.util.collective.collective import get_group_handle
 from ray.util.collective.types import (
     NIXL_GROUP_NAME,
     NixlTransportMetadata,
@@ -16,9 +18,29 @@ if TYPE_CHECKING:
 
 
 class NixlTensorTransport(TensorTransportManager):
+    @property
+    def tensor_transport_backend(self) -> Backend:
+        return Backend.NIXL
+
     @staticmethod
     def is_one_sided() -> bool:
         return True
+
+    def actor_has_tensor_transport(self, actor: "ray.actor.ActorHandle") -> bool:
+        def __ray_actor_has_tensor_transport__(
+            self: "ray.actor.ActorHandle",
+        ) -> bool:
+            try:
+                nixl_backend = get_group_handle(NIXL_GROUP_NAME)
+                return nixl_backend is not None
+            except:
+                return False
+
+        return ray.get(
+            actor.__ray_call__.options(concurrency_group="_ray_system").remote(
+                __ray_actor_has_tensor_transport__
+            )
+        )
 
     @staticmethod
     def get_tensor_transport_metadata(
