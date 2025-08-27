@@ -269,8 +269,8 @@ ray_cc_library(
     hdrs = ["gcs_placement_group_scheduler.h"],
     deps = [
         ":gcs_node_manager",
-        ":gcs_table_storage",
         ":gcs_placement_group",
+        ":gcs_table_storage",
         "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/common:task_common",
