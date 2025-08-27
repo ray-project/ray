@@ -25,8 +25,6 @@
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pb_util.h"
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/rpc/node_manager/raylet_client_pool.h"
 #include "ray/util/logging.h"
 #include "ray/util/time.h"
 #include "src/ray/protobuf/gcs.pb.h"
