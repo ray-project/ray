@@ -9,7 +9,6 @@ from ray.dashboard.modules.reporter.gpu_providers import (
     NvidiaGpuProvider,
     AmdGpuProvider,
     GpuMetricProvider,
-    HuaweiNpuProvider,
     ProcessGPUInfo,
     GpuUtilizationInfo,
     MB,
@@ -470,73 +469,6 @@ class TestAmdGpuProvider(unittest.TestCase):
         self.assertEqual(gpu_info["processes_pids"][5678]["gpu_memory_usage"], 512)
 
 
-class TestHuaweiNpuProvider(unittest.TestCase):
-    """Test HuaweiNpuProvider class."""
-
-    def setUp(self):
-        """Setup."""
-        self.provider = HuaweiNpuProvider()
-
-    def test_get_provider_name(self):
-        """Test provider name."""
-        self.assertEqual(self.provider.get_provider_name(), GpuProviderType.HUAWEI)
-
-    def test_is_available_success(self):
-        """Test is_available when NPU is available."""
-        # Mock the pynpudcmi module in sys.modules
-        mock_pynpudcmi = Mock()
-        mock_pynpudcmi.dcmi_init.return_value = None
-
-        with patch.dict(
-            "sys.modules", {"ray._private.thirdparty.pynpudcmi": mock_pynpudcmi}
-        ):
-            self.assertTrue(self.provider.is_available())
-            mock_pynpudcmi.dcmi_init.assert_called_once()
-
-    @patch("ray._private.thirdparty.pynpudcmi", create=True)
-    def test_get_gpu_utilization_success(self, mock_pynpudcmi):
-        """Test successful NPU utilization retrieval."""
-        mock_pynpudcmi.dcmi_get_card_list.return_value = [0]
-        mock_mem_info = Mock()
-        mock_mem_info.memory_usage = 8 * 1024  # 8 GiB
-        mock_mem_info.memory_size = 32 * 1024  # 32 GiB
-        mock_pynpudcmi.dcmi_get_device_hbm_info.return_value = mock_mem_info
-
-        mock_pynpudcmi.DCMI_UTIL_QUERY_AI_CORE = 0
-        mock_pynpudcmi.dcmi_get_device_utilization_rate.return_value = 70
-
-        mock_chip_info = Mock()
-        mock_chip_info.npu_name = b"Huawei Ascend 910B\x00"
-        mock_pynpudcmi.dcmi_get_device_chip_info_v2.return_value = mock_chip_info
-
-        mock_proc = Mock()
-        mock_proc.proc_id = 1234
-        mock_proc.proc_mem_usage = 512 * MB  # 512 MiB in bytes
-        mock_pynpudcmi.dcmi_get_device_resource_info.return_value = [mock_proc]
-
-        self.provider._pynpudcmi = mock_pynpudcmi
-        self.provider._initialized = True
-
-        result = self.provider.get_gpu_utilization()
-
-        self.assertEqual(len(result), 1)
-        gpu_info = result[0]
-
-        self.assertEqual(gpu_info["index"], 0)
-        self.assertEqual(gpu_info["name"], "Huawei Ascend 910B")
-        self.assertEqual(gpu_info["uuid"], hex(0))
-        self.assertEqual(gpu_info["utilization_gpu"], 70)
-        self.assertEqual(gpu_info["memory_used"], 8 * 1024)  # MB
-        self.assertEqual(gpu_info["memory_total"], 32 * 1024)  # MB
-
-        # Per-process checks
-        self.assertEqual(len(gpu_info["processes_pids"]), 1)
-        self.assertEqual(gpu_info["processes_pids"][1234]["pid"], 1234)
-        self.assertEqual(
-            gpu_info["processes_pids"][1234]["gpu_memory_usage"], 512
-        )  # MB
-
-
 class TestGpuMetricProvider(unittest.TestCase):
     """Test GpuMetricProvider class."""
 
@@ -548,14 +480,13 @@ class TestGpuMetricProvider(unittest.TestCase):
         """Test GpuMetricProvider initialization."""
         self.assertIsNone(self.provider._provider)
         self.assertTrue(self.provider._enable_metric_report)
-        self.assertEqual(len(self.provider._providers), 3)
+        self.assertEqual(len(self.provider._providers), 2)
         self.assertFalse(self.provider._initialized)
 
     @patch.object(NvidiaGpuProvider, "is_available", return_value=True)
     @patch.object(AmdGpuProvider, "is_available", return_value=False)
-    @patch.object(HuaweiNpuProvider, "is_available", return_value=False)
     def test_detect_gpu_provider_nvidia(
-        self, mock_huawei_available, mock_amd_available, mock_nvidia_available
+        self, mock_amd_available, mock_nvidia_available
     ):
         """Test GPU provider detection when NVIDIA is available."""
         provider = self.provider._detect_gpu_provider()
@@ -565,9 +496,8 @@ class TestGpuMetricProvider(unittest.TestCase):
 
     @patch.object(NvidiaGpuProvider, "is_available", return_value=False)
     @patch.object(AmdGpuProvider, "is_available", return_value=True)
-    @patch.object(HuaweiNpuProvider, "is_available", return_value=False)
     def test_detect_gpu_provider_amd(
-        self, mock_huawei_available, mock_amd_available, mock_nvidia_available
+        self, mock_amd_available, mock_nvidia_available
     ):
         """Test GPU provider detection when AMD is available."""
         provider = self.provider._detect_gpu_provider()
@@ -576,25 +506,11 @@ class TestGpuMetricProvider(unittest.TestCase):
         mock_nvidia_available.assert_called_once()
         mock_amd_available.assert_called_once()
 
-    @patch.object(NvidiaGpuProvider, "is_available", return_value=False)
-    @patch.object(AmdGpuProvider, "is_available", return_value=False)
-    @patch.object(HuaweiNpuProvider, "is_available", return_value=True)
-    def test_detect_gpu_provider_huawei(
-        self, mock_huawei_available, mock_amd_available, mock_nvidia_available
-    ):
-        """Test GPU provider detection when Ascend is available."""
-        provider = self.provider._detect_gpu_provider()
-
-        self.assertIsInstance(provider, HuaweiNpuProvider)
-        mock_nvidia_available.assert_called_once()
-        mock_amd_available.assert_called_once()
-        mock_huawei_available.assert_called_once()
 
     @patch.object(NvidiaGpuProvider, "is_available", return_value=False)
     @patch.object(AmdGpuProvider, "is_available", return_value=False)
-    @patch.object(HuaweiNpuProvider, "is_available", return_value=False)
     def test_detect_gpu_provider_none(
-        self, mock_huawei_available, mock_amd_available, mock_nvidia_available
+        self, mock_amd_available, mock_nvidia_available
     ):
         """Test GPU provider detection when no GPUs are available."""
         provider = self.provider._detect_gpu_provider()
