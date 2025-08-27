@@ -2,13 +2,13 @@ import platform
 import subprocess
 from pathlib import Path
 from typing import List, Optional
-
-import click
-import runfiles
-from networkx import DiGraph, topological_sort
 import tempfile
 import difflib
 import shutil
+import click
+import runfiles
+from networkx import DiGraph, topological_sort
+
 
 from ci.raydepsets.workspace import Depset, Workspace
 
@@ -48,16 +48,16 @@ def cli():
     "--uv-cache-dir", default=None, help="The directory to cache uv dependencies"
 )
 @click.option(
-    "--verify",
+    "--check",
     is_flag=True,
-    help="Verify the the compiled dependencies are valid. Only compatible with generating all dependency sets.",
+    help="Check the the compiled dependencies are valid. Only compatible with generating all dependency sets.",
 )
 def build(
     config_path: str,
     workspace_dir: Optional[str],
     name: Optional[str],
     uv_cache_dir: Optional[str],
-    verify: bool = False,
+    check: bool = False,
 ):
     """
     Build dependency sets from a config file.
@@ -68,16 +68,14 @@ def build(
         config_path=config_path,
         workspace_dir=workspace_dir,
         uv_cache_dir=uv_cache_dir,
-        verify=verify,
+        check=check,
     )
-    if verify:
-        manager.copy_lock_files_to_temp_dir()
     if name:
         manager.execute_single(_get_depset(manager.config.depsets, name))
     else:
         manager.execute()
-    if verify:
-        manager.diff_lock_files()
+    if check:
+        manager.check_lock_files()
 
 
 class DependencySetManager:
@@ -86,13 +84,14 @@ class DependencySetManager:
         config_path: str = None,
         workspace_dir: Optional[str] = None,
         uv_cache_dir: Optional[str] = None,
-        verify: bool = False,
+        check: bool = False,
     ):
         self.workspace = Workspace(workspace_dir)
         self.config = self.workspace.load_config(config_path)
-        if verify:
+        if check:
             self.temp_dir = tempfile.mkdtemp()
-            self.copy_lock_files_to_temp_dir()
+            self.old_lock_files = self.get_destinations()
+            self.save_sources(self.get_sources(), self.old_lock_files)
         else:
             self.temp_dir = None
         self.build_graph = DiGraph()
@@ -239,52 +238,63 @@ class DependencySetManager:
             override_flags=override_flags,
         )
 
-    def get_sources(self) -> List[str]:
+    def check_lock_files(self):
+        """Check the lock files are up to date."""
+        sources = self.get_sources()
+        destinations = self.get_destinations(extension="_new")
+        self.save_sources(sources, destinations)
+
+        # get tuples of old and new lock files
+        compare_tuples = self.get_compare_tuples()
+        self.diff_lock_files(compare_tuples)
+
+    def get_compare_tuples(self) -> List[tuple[Path, Path]]:
+        """Get tuples of old and new lock files."""
+        sources = self.old_lock_files
+        destinations = self.get_destinations(extension="_new")
+        return list(zip(sources, destinations))
+
+    def get_sources(self) -> List[Path]:
         sources = []
         for depset in self.config.depsets:
-            sources.append(depset.output)
+            sources.append(Path(self.get_path(depset.output)))
         return sources
 
-    def get_destinations(self, extension: str = ".txt") -> List[str]:
+    def get_destinations(self, extension: Optional[str] = None) -> List[Path]:
+        """Get the destination file paths for the lock files."""
         destinations = []
         for depset in self.config.depsets:
-            destinations.append(
-                Path(self.temp_dir)
-                / depset.output.replace(".txt", extension).as_posix()
-            )
+            depset_output_path = Path(depset.output)
+            if extension:
+                stem = Path(depset_output_path).stem
+                output_path = depset_output_path.with_stem(stem + extension)
+            else:
+                output_path = depset_output_path
+            destinations.append(self.get_path(Path(self.temp_dir) / output_path))
         return destinations
 
-    def save_sources(
-        self,
-        source_fp: List[str],
-        target_fp: List[str],
-    ):
-        """Copy the lock files to a temp directory."""
-        # create temp directory
-        self.temp_dir = tempfile.mkdtemp()
-        # copy existing lock files to temp directory
-        for depset in self.config.depsets:
-            existing_lock_file_path = self.get_path(depset.output)
-            new_lock_file_path = Path(self.temp_dir) / depset.output
-            new_lock_file_path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(existing_lock_file_path, new_lock_file_path)
+    def save_sources(self, source_fps: List[Path], target_fps: List[Path]):
+        """Copy the lock files from source file paths to target file paths."""
+        for source_fp, target_fp in zip(source_fps, target_fps):
+            target_fp.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(
+                source_fp,
+                target_fp,
+            )
 
-    def diff_lock_files(self):
+    def diff_lock_files(self, compare_tuples: List[tuple[Path, Path]]):
         """Diff the lock files."""
         diffs = []
-        for depset in self.config.depsets:
-            old_lock_file_path = self.get_path(depset.output)
-            new_lock_file_path = (Path(self.temp_dir) / depset.output).as_posix()
-            old_lock_file_contents = self.read_lock_file(old_lock_file_path)
-            new_lock_file_contents = self.read_lock_file(new_lock_file_path)
+        for source_fp, target_fp in compare_tuples:
+            old_lock_file_contents = self.read_lock_file(source_fp)
+            new_lock_file_contents = self.read_lock_file(target_fp)
             for diff in difflib.unified_diff(
                 old_lock_file_contents,
                 new_lock_file_contents,
-                fromfile=old_lock_file_path,
-                tofile=new_lock_file_path,
+                fromfile=source_fp.as_posix(),
+                tofile=target_fp.as_posix(),
                 lineterm="",
             ):
-                print(diff)
                 diffs.append(diff)
         if len(diffs) > 0:
             click.echo("".join(diffs))
@@ -295,14 +305,14 @@ class DependencySetManager:
         click.echo("Lock files are up to date.")
         self.cleanup_temp_dir()
 
-    def read_lock_file(self, file_path: str) -> List[str]:
-        if not Path(self.get_path(file_path)).exists():
+    def read_lock_file(self, file_path: Path) -> List[str]:
+        if not file_path.exists():
             raise RuntimeError(f"Lock file {file_path} does not exist")
-        with open(Path(self.get_path(file_path)), "r") as f:
+        with open(file_path, "r") as f:
             return f.readlines()
 
-    def get_path(self, path: str) -> str:
-        return (Path(self.workspace.dir) / path).as_posix()
+    def get_path(self, path: str) -> Path:
+        return Path(self.workspace.dir) / path
 
     def check_subset_exists(self, source_depset: Depset, requirements: List[str]):
         for req in requirements:
