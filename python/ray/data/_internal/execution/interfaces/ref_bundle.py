@@ -65,7 +65,7 @@ class RefBundle:
 
         import pyarrow as pa
 
-        # The schema metadat might be unhashable.
+        # The schema metadata might be unhashable.
         # We need schemas to be hashable for unification
         if isinstance(self.schema, pa.lib.Schema):
             self.schema = self.schema.remove_metadata()
