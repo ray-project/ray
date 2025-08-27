@@ -598,7 +598,7 @@ class SerializedRayObject(NamedTuple):
 
 
 cdef RayObjectsToSerializedRayObjects(
-        const c_vector[shared_ptr[CRayObject]] objects):
+        const c_vector[shared_ptr[CRayObject]] objects, object_refs: Optional[List[ObjectRef]] = None):
     serialized_ray_objects = []
     for i in range(objects.size()):
         # core_worker will return a nullptr for objects that couldn't be
@@ -614,6 +614,11 @@ cdef RayObjectsToSerializedRayObjects(
                 metadata = Buffer.make(
                     objects[i].get().GetMetadata()).to_pybytes()
             tensor_transport = TensorTransportEnum(<int>(objects[i].get().GetTensorTransport()))
+            if (
+                tensor_transport == TensorTransportEnum.OBJECT_STORE
+                and object_refs is not None
+            ):
+                tensor_transport = TensorTransportEnum(object_refs[i].tensor_transport())
             serialized_ray_objects.append(SerializedRayObject(data, metadata, tensor_transport))
     return serialized_ray_objects
 
@@ -1887,10 +1892,10 @@ cdef void execute_task(
                 if c_args.empty():
                     args, kwargs = [], {}
                 else:
-                    metadata_pairs = RayObjectsToSerializedRayObjects(c_args)
                     object_refs = VectorToObjectRefs(
                             c_arg_refs,
                             skip_adding_local_ref=False)
+                    metadata_pairs = RayObjectsToSerializedRayObjects(c_args, object_refs)
                     if core_worker.current_actor_is_asyncio():
                         # We deserialize objects in event loop thread to
                         # prevent segfaults. See #7799
