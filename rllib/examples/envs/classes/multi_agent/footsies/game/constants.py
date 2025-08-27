@@ -98,6 +98,10 @@ FOOTSIES_ACTION_IDS = {
 
 # backup file location (uploaded July 29th, 2025):
 # https://ray-example-data.s3.us-west-2.amazonaws.com/rllib/env-footsies/feature_indices.json
+# Dictionary mapping feature names to their index ranges within a flat observation vector.
+# Each key is a feature name, and its value is a dictionary with keys:
+#   "start": the starting index in the observation array.
+#   "length": it's length in bytes
 feature_indices = {
     "common_state": {"start": 0, "length": 1},
     "frame_count": {"start": 1, "length": 1},
