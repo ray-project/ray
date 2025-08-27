@@ -32,17 +32,17 @@
 namespace ray::rpc {
 
 // Define a void retryable RPC client method.
-#define VOID_RETRYABLE_RPC_CLIENT_METHOD(                                        \
-    retryable_rpc_client, SERVICE, METHOD, rpc_client, method_timeout_ms, SPECS) \
-  void METHOD(const METHOD##Request &request,                                    \
-              const ClientCallback<METHOD##Reply> &callback) SPECS {             \
-    retryable_rpc_client->CallMethod<SERVICE, METHOD##Request, METHOD##Reply>(   \
-        &SERVICE::Stub::PrepareAsync##METHOD,                                    \
-        rpc_client,                                                              \
-        #SERVICE ".grpc_client." #METHOD,                                        \
-        request,                                                                 \
-        callback,                                                                \
-        method_timeout_ms);                                                      \
+#define VOID_RETRYABLE_RPC_CLIENT_METHOD(                                               \
+    retryable_rpc_client, SERVICE, METHOD, rpc_client, method_timeout_ms, SPECS)        \
+  void METHOD(METHOD##Request &&request, const ClientCallback<METHOD##Reply> &callback) \
+      SPECS {                                                                           \
+    retryable_rpc_client->CallMethod<SERVICE, METHOD##Request, METHOD##Reply>(          \
+        &SERVICE::Stub::PrepareAsync##METHOD,                                           \
+        rpc_client,                                                                     \
+        #SERVICE ".grpc_client." #METHOD,                                               \
+        std::move(request),                                                             \
+        callback,                                                                       \
+        method_timeout_ms);                                                             \
   }
 
 /**

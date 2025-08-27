@@ -47,7 +47,7 @@ class MockCoreWorkerClientInterface : public CoreWorkerClientInterface {
               (override));
   MOCK_METHOD(void,
               GetObjectStatus,
-              (const GetObjectStatusRequest &request,
+              (GetObjectStatusRequest && request,
                const ClientCallback<GetObjectStatusReply> &callback),
               (override));
   MOCK_METHOD(void,
@@ -67,7 +67,7 @@ class MockCoreWorkerClientInterface : public CoreWorkerClientInterface {
               (override));
   MOCK_METHOD(void,
               UpdateObjectLocationBatch,
-              (const UpdateObjectLocationBatchRequest &request,
+              (UpdateObjectLocationBatchRequest && request,
                const ClientCallback<UpdateObjectLocationBatchReply> &callback),
               (override));
   MOCK_METHOD(void,
