@@ -100,7 +100,7 @@ parser.add_argument(
     "'linux_server' and 'mac_headless' choices are the default options for the training. Game will run in the batchmode, without initializing the graphics. "
     "'linux_windowed' and 'mac_windowed' choices are for the local run only, because "
     "game will be rendered in the OS window. To use this option effectively, set up: "
-    "num_env_runners=0 and evaluation_num_env_runners=0.",
+    "--no-tune --num-env-runners 0 --evaluation-num-env-runners 0",
 )
 parser.add_argument(
     "--win-rate-threshold",
