@@ -22,7 +22,12 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/runtime_env_manager.h"
+#include "ray/gcs/gcs_server/gcs_function_manager.h"
+#include "ray/gcs/gcs_server/gcs_init_data.h"
+#include "ray/gcs/gcs_server/gcs_kv_manager.h"
+#include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/grpc_service_interfaces.h"
+#include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/event.h"
@@ -44,11 +49,7 @@ inline std::string JobDataKey(const std::string &submission_id) {
 using JobFinishListenerCallback =
     rpc::JobInfoGcsServiceHandler::JobFinishListenerCallback;
 
-class GcsInitData;
-class GcsTableStorage;
 class GcsPublisher;
-class GCSFunctionManager;
-class InternalKVInterface;
 
 class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
  public:

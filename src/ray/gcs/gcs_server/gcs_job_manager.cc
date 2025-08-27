@@ -22,9 +22,6 @@
 #include <vector>
 
 #include "absl/strings/match.h"
-#include "ray/gcs/gcs_server/gcs_function_manager.h"
-#include "ray/gcs/gcs_server/gcs_init_data.h"
-#include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/stats/metric.h"
