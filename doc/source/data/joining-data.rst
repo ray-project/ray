@@ -27,7 +27,7 @@ Ray Data allows multiple :class:`~ray.data.dataset.Dataset` instances to be join
         on=("id",),
     )
 
-Ray Data supports following join types (check out `Dataset.join` docs for up-to-date list):
+Ray Data supports the following join types (check out `Dataset.join` docs for up-to-date list):
 
 **Inner/Outer Joins:**
 - Inner, Left Outer, Right Outer, Full Outer
@@ -47,7 +47,7 @@ Configuring Joins
 
 Joins are generally memory-intensive operations that require accurate memory accounting and projection and hence are sensitive to skews and imbalances in the dataset.
 
-Ray Data provides following levers to allow to tune up performance of joins for your workload:
+Ray Data provides the following levers to allow tuning the performance of joins for your workload:
 
 -   `num_partitions`: (required) specifies number of partitions both incoming datasets will be hash-partitioned into. Check out :ref:`configuring number of partitions <joins_configuring_num_partitions>` section for guidance on how to tune this up.
 -   `partition_size_hint`: (optional) Hint to joining operator about the estimated avg expected size of the individual partition (in bytes). If not specified, defaults to DataContext.target_max_block_size (128Mb by default).
