@@ -1765,7 +1765,7 @@ class ReporterAgent(
 
         # Convert processes_pids back to a list of dictionaries to maintain backwards-compatibility
         for gpu in stats["gpus"]:
-            if gpu["processes_pids"] is not None:
+            if isinstance(gpu.get("processes_pids"), dict):
                 gpu["processes_pids"] = list(gpu["processes_pids"].values())
 
         # TODO(aguo): Add a pydantic model for this dict to maintain compatibility
