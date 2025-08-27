@@ -116,7 +116,7 @@ if __name__ == "__main__":
         .evaluation(
             evaluation_num_env_runners=1,
             evaluation_interval=1,
-            evaluation_duration=20,
+            evaluation_duration=10,
             evaluation_duration_unit="episodes",
             evaluation_parallel_to_training=False,
             evaluation_force_reset_envs_before_iteration=True,
@@ -132,7 +132,7 @@ if __name__ == "__main__":
                 ),
                 functools.partial(
                     MixManagerCallback,
-                    win_rate_threshold=0.7,
+                    win_rate_threshold=0.5,
                     main_policy=main_policy,
                     starting_modules=[main_policy, "noop"],
                 ),
