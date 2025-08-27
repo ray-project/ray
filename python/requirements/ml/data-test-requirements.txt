@@ -26,4 +26,4 @@ hudi==0.4.0
 kafka-python>=2.0.0
 boto3>=1.26.76
 croniter>=1.0.0
-pyflink>=1.15.0
+
