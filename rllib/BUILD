@@ -1571,10 +1571,10 @@ py_test(
     main = "tuned_examples/ppo/multi_agent_footsies_ppo.py",
     tags = [
         "exclusive",
+        "gpu",
         "learning_tests",
         "learning_tests_discrete",
         "team:rllib",
-        "gpu",
     ],
 )
 
@@ -1613,8 +1613,8 @@ py_test(
         "exclusive",
         "learning_tests",
         "learning_tests_discrete",
-        "team:rllib",
         "multi_gpu",
+        "team:rllib",
     ],
 )
 
