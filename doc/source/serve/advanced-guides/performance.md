@@ -46,7 +46,7 @@ According to the [FastAPI documentation](https://fastapi.tiangolo.com/async/#ver
 
 Are you using `async def` in your callable? If you are using `asyncio` and
 hitting the same queuing issue mentioned above, you might want to increase
-`max_ongoing_requests`. Serve sets a low number (100) by default so the client gets
+`max_ongoing_requests`. Serve sets a low number (5) by default so the client gets
 proper backpressure. You can increase the value in the deployment decorator; e.g.,
 `@serve.deployment(max_ongoing_requests=1000)`.
 
