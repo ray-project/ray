@@ -1,7 +1,8 @@
 import logging
 import time
+from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, DefaultDict, Dict, Hashable, List, Optional, Set
 
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
@@ -16,9 +17,70 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.metrics_utils import TimeStampedValue
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+@dataclass
+class HandleMetricReport:
+    """Report from a deployment handle on queued and ongoing requests.
+
+    Args:
+        actor_id: If the deployment handle (from which this metric was
+            sent) lives on an actor, the actor ID of that actor.
+        handle_source: Describes what kind of entity holds this
+            deployment handle: a Serve proxy, a Serve replica, or
+            unknown.
+        queued_requests: The current number of queued requests at the
+            handle, i.e. requests that haven't been assigned to any
+            replica yet.
+        running_requests: A map of replica ID to the average number of
+            requests, assigned through the handle, running at that
+            replica.
+        timestamp: The time at which this report was received.
+    """
+
+    actor_id: Optional[str]
+    handle_source: DeploymentHandleSource
+    queued_requests: float
+    running_requests: Dict[ReplicaID, float]
+    timestamp: float
+
+    @property
+    def total_requests(self) -> float:
+        """Total number of queued and running requests."""
+        return self.queued_requests + sum(self.running_requests.values())
+
+    @property
+    def is_serve_component_source(self) -> bool:
+        """Whether the handle source is a Serve actor.
+
+        More specifically, this returns whether a Serve actor tracked
+        by the controller holds the deployment handle that sent this
+        report. If the deployment handle lives on a driver, a Ray task,
+        or an actor that's not a Serve replica, then this returns False.
+        """
+        return self.handle_source in [
+            DeploymentHandleSource.PROXY,
+            DeploymentHandleSource.REPLICA,
+        ]
+
+
+@dataclass
+class ReplicaMetricReport:
+    """Report from a replica on ongoing requests.
+
+    Args:
+        running_requests: Average number of running requests at the
+            replica.
+        timestamp: The time at which this report was received.
+    """
+
+    running_requests: float
+    metrics: dict
+    timestamp: float
 
 
 @dataclass
@@ -73,6 +135,8 @@ class AutoscalingState:
         # Map from replica ID to replica request metric report. Metrics
         # are removed from this dict when a replica is stopped.
         self._replica_requests: Dict[ReplicaID, ReplicaMetricReport] = dict()
+        # Prometheus + Custom metrics from each replica
+        self._replica_metrics: Dict[ReplicaID, ReplicaMetricReport] = dict()
 
         self._deployment_info = None
         self._config = None
@@ -107,6 +171,7 @@ class AutoscalingState:
     def on_replica_stopped(self, replica_id: ReplicaID):
         if replica_id in self._replica_requests:
             del self._replica_requests[replica_id]
+            del self._replica_metrics[replica_id]
 
     def get_num_replicas_lower_bound(self) -> int:
         if self._config.initial_replicas is not None and (
@@ -300,6 +365,31 @@ class AutoscalingState:
 
         return total_requests
 
+    def get_replica_metrics(self, agg_func: str) -> float:
+        """Get the raw replica metrics dict."""
+        # arcyleung TODO: pass agg_func from autoscaling policy https://github.com/ray-project/ray/pull/51905
+        # Dummy implementation of mean agg_func across all values of the same metrics key
+
+        metric_values = defaultdict(list)
+        for id in self._running_replicas:
+            if id in self._replica_metrics and self._replica_metrics[id].metrics:
+                for k, v in self._replica_metrics[id].metrics.items():
+                    metric_values[k].append(v)
+
+        agg_dict = {}
+        for k, v_list in metric_values.items():
+            # Flatten if v is a list, otherwise just use the value
+            flat_values: List[TimeStampedValue] = []
+            for v in v_list:
+                if isinstance(v, list):
+                    flat_values.extend(v)
+                else:
+                    flat_values.append(v)
+            if flat_values:
+                values = [fv.value for fv in flat_values]
+                agg_dict[k] = sum(values) / len(values)
+        return agg_dict
+
 
 class AutoscalingStateManager:
     """Manages all things autoscaling related.
@@ -344,6 +434,14 @@ class AutoscalingStateManager:
     def get_metrics(self) -> Dict[DeploymentID, float]:
         return {
             deployment_id: self.get_total_num_requests(deployment_id)
+            for deployment_id in self._autoscaling_states
+        }
+
+    def get_all_metrics(self, agg_func="mean") -> Dict[DeploymentID, float]:
+        return {
+            deployment_id: self._autoscaling_states[deployment_id].get_replica_metrics(
+                agg_func
+            )
             for deployment_id in self._autoscaling_states
         }
 
