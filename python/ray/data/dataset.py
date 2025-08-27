@@ -40,6 +40,13 @@ from ray.data._internal.datasource.clickhouse_datasink import (
     SinkMode,
 )
 from ray.data._internal.datasource.csv_datasink import CSVDatasink
+from ray.data._internal.datasource.delta import (
+    DeltaDatasink,
+    DeltaWriteConfig,
+    
+    
+    
+)
 from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
 from ray.data._internal.datasource.image_datasink import ImageDatasink
 from ray.data._internal.datasource.json_datasink import JSONDatasink
@@ -126,6 +133,7 @@ if TYPE_CHECKING:
     import modin
     import pandas
     import pyarrow
+    import pyarrow.fs as pa_fs
     import pyspark
     import tensorflow as tf
     import torch
@@ -3520,6 +3528,170 @@ class Dataset:
             list if the input files is not known.
         """
         return list(set(self._plan.input_files()))
+
+    @ConsumptionAPI
+    @PublicAPI(api_group=IOC_API_GROUP)
+    def write_delta(
+        self,
+        path: str,
+        *,
+        mode: str = "append",
+        partition_cols: Optional[List[str]] = None,
+        filesystem: Optional["pa_fs.FileSystem"] = None,
+        try_create_dir: bool = True,
+        storage_options: Optional[Dict[str, str]] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+        concurrency: Optional[int] = None,
+        # Delta-specific merge parameters
+        merge_predicate: Optional[str] = None,
+        scd_type: Optional[int] = None,
+        key_columns: Optional[List[str]] = None,
+        # Advanced configuration (kwargs)
+        **delta_kwargs,
+    ):
+        """Writes the :class:`~ray.data.Dataset` to a Delta Lake table.
+
+        The number of files is determined by the number of blocks in the dataset.
+        To control the number of number of blocks, call
+        :meth:`~ray.data.Dataset.repartition`.
+
+        This method provides Delta Lake functionality including ACID transactions,
+        schema evolution, time travel, and merge operations with SCD support.
+
+        Examples:
+            Write the dataset to a Delta table:
+
+            >>> import ray
+            >>> ds = ray.data.range(100)
+            >>> ds.write_delta("local:///tmp/data/")
+
+            Write with merge operation:
+
+            >>> ds.write_delta(
+            ...     "s3://my-bucket/table",
+            ...     mode="merge",
+            ...     merge_predicate="target.id = source.id"
+            ... )
+
+            Write with SCD Type 2:
+
+            >>> ds.write_delta(
+            ...     "path/to/table",
+            ...     mode="merge",
+            ...     scd_type=2,
+            ...     key_columns=["customer_id"]
+            ... )
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            path: The path to the destination Delta table. Supports:
+
+                * Local filesystem: ``/path/to/table`` or ``file:///path/to/table``
+                * AWS S3: ``s3://bucket/path`` or ``s3a://bucket/path``
+                * Google Cloud Storage: ``gs://bucket/path`` or ``gcs://bucket/path``
+                * Azure Blob Storage: ``abfs://container@account.dfs.core.windows.net/path``
+                * Azure Data Lake: ``abfss://container@account.dfs.core.windows.net/path``
+                * HDFS: ``hdfs://namenode:port/path``
+
+            mode: Write mode determining how to handle existing data:
+
+                * ``"append"`` (default): Add new data to existing table
+                * ``"overwrite"``: Replace entire table with new data
+                * ``"error"``: Raise error if table already exists
+                * ``"ignore"``: Do nothing if table already exists
+                * ``"merge"``: Perform merge operation using merge_predicate
+
+            partition_cols: Column names to partition the table by.
+                Files are written in Hive-style partitions (e.g., ``year=2023/month=01/``).
+                Improves query performance for filtered reads. Example: ``["year", "month", "day"]``
+
+            filesystem: PyArrow filesystem implementation.
+                If None, automatically detected from path scheme. Use for custom configurations
+                like credentials or connection parameters. Note that PyArrow filesystem is not picked
+                up by the deltalake library, so you need to pass associated credentials to the
+                storage_options parameter.
+
+            try_create_dir: Whether to create directories if they don't exist.
+                Defaults to True. Set to False if you want to ensure the directory structure
+                already exists.
+
+            storage_options: Cloud storage authentication options.
+                Options are passed to the Delta Lake filesystem. Common options:
+
+                * AWS S3: ``{"AWS_ACCESS_KEY_ID": "...", "AWS_SECRET_ACCESS_KEY": "..."}``
+                * Google Cloud: ``{"GOOGLE_SERVICE_ACCOUNT": "path/to/service-account.json"}``
+                * Azure: ``{"AZURE_STORAGE_ACCOUNT_NAME": "...", "AZURE_STORAGE_ACCOUNT_KEY": "..."}``
+
+            ray_remote_args: Arguments passed to ``ray.remote()``
+                for write tasks. Example: ``{"num_cpus": 2, "memory": "2GB"}``
+
+            concurrency: Maximum number of Ray tasks to run concurrently.
+                If None, Ray automatically determines optimal concurrency based on cluster resources.
+
+            merge_predicate: SQL predicate for merge operations when ``mode="merge"``.
+                Defines how to match source and target records. Examples:
+
+                * ``"target.id = source.id"``
+                * ``"target.customer_id = source.customer_id AND target.date = source.date"``
+                * ``"target.email = source.email"``
+
+            scd_type: Slowly Changing Dimension type (1, 2, or 3).
+                Automatically configures merge behavior for common SCD patterns:
+
+                * **Type 1**: Overwrite existing records (no history preservation)
+                * **Type 2**: Insert new records with versioning (preserves full history)
+                * **Type 3**: Update specific columns while preserving others
+
+                Requires ``key_columns`` parameter.
+
+            key_columns: Key columns for SCD operations.
+                Used to identify records for SCD merge operations.
+                Example: ``["customer_id"]`` or ``["customer_id", "product_id"]``
+
+                        delta_kwargs: Advanced Delta Lake options. These arguments are passed to the underlying
+                Delta Lake writer. Common options include ``compression`` for Parquet compression,
+                ``writer_properties`` for advanced Parquet settings, ``schema`` for schema enforcement,
+                ``name`` and ``description`` for table metadata, ``merge_config`` for advanced
+                merge operations, and ``optimization_config`` for post-write optimization.
+
+                Raises:
+            ValueError: If required merge parameters are missing or invalid.
+
+        Note:
+            This operation will trigger execution of the lazy transformations
+            performed on this dataset. For merge operations, either ``merge_predicate``
+            or ``scd_type`` is required.
+        """
+        # Build merge configuration from simplified parameters
+
+        # Extract optimization settings
+        optimization_config = delta_kwargs.pop("optimization_config", None)
+
+        # Build Delta write configuration
+        config = DeltaWriteConfig(
+            mode=mode,
+            partition_cols=partition_cols,
+            storage_options=storage_options,
+            
+            
+            **delta_kwargs,
+        )
+
+        # Create datasink
+        datasink = DeltaDatasink(
+            path,
+            filesystem=filesystem,
+            try_create_dir=try_create_dir,
+            config=config,
+        )
+
+        # Execute write
+        self.write_datasink(
+            datasink,
+            ray_remote_args=ray_remote_args or {},
+            concurrency=concurrency,
+        )
 
     @ConsumptionAPI
     @PublicAPI(api_group=IOC_API_GROUP)

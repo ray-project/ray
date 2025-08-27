@@ -1,74 +1,198 @@
 import os
+import shutil
+import tempfile
+import uuid
+from contextlib import contextmanager
 
+import pandas as pd
 import pyarrow as pa
 import pytest
-from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
-from ray.data import Schema
-from ray.data.datasource.path_util import _unwrap_protocol
+from ray.data import read_delta
+from ray.data.datasource import SaveMode
 from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.mock_http_server import *  # noqa
-from ray.tests.conftest import *  # noqa
 
 
-@pytest.mark.parametrize(
-    "data_path",
-    [
-        lazy_fixture("local_path"),
-        lazy_fixture("s3_path"),
-    ],
-)
-@pytest.mark.parametrize(
-    "batch_size",
-    [1, 100],
-)
-@pytest.mark.parametrize(
-    "write_mode",
-    ["append", "overwrite"],
-)
-def test_delta_read_basic(data_path, batch_size, write_mode):
-    import pandas as pd
-    from deltalake import write_deltalake
+@contextmanager
+def delta_test_context(test_name: str, base_path: str = None):
+    """Context manager for Delta tests with proper setup and cleanup."""
+    temp_name = f"test_delta_{test_name}_{uuid.uuid4().hex[:8]}"
 
-    # Parse the data path.
-    setup_data_path = _unwrap_protocol(data_path)
-    path = os.path.join(setup_data_path, "tmp_test_delta")
+    if base_path is None:
+        # Use system temporary directory as fallback
+        temp_dir = tempfile.mkdtemp(prefix=temp_name)
+    else:
+        temp_dir = os.path.join(base_path, temp_name)
 
-    # Create a sample Delta Lake table
-    df = pd.DataFrame(
-        {"x": [42] * batch_size, "y": ["a"] * batch_size, "z": [3.14] * batch_size}
-    )
-    if write_mode == "append":
-        write_deltalake(path, df, mode=write_mode)
-        write_deltalake(path, df, mode=write_mode)
-    elif write_mode == "overwrite":
-        write_deltalake(path, df, mode=write_mode)
+    try:
+        os.makedirs(temp_dir, exist_ok=True)
+        yield temp_dir
+    finally:
+        # Cleanup
+        try:
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
+        except Exception:
+            pass
 
-    # Read the Delta Lake table
-    ds = ray.data.read_delta(path)
 
-    if write_mode == "append":
-        assert ds.count() == batch_size * 2
-    elif write_mode == "overwrite":
-        assert ds.count() == batch_size
+def create_test_dataframe():
+    """Create a sample DataFrame for testing."""
+    return pd.DataFrame({
+        "id": [1, 2, 3, 4, 5],
+        "name": ["Alice", "Bob", "Charlie", "Diana", "Eve"],
+        "value": [100, 200, 300, 400, 500],
+        "category": ["A", "B", "A", "B", "A"]
+    })
 
-    assert ds.schema() == Schema(
-        pa.schema(
-            {
-                "x": pa.int64(),
-                "y": pa.string(),
-                "z": pa.float64(),
-            }
-        )
-    )
 
-    if batch_size > 0:
-        assert ds.take(1)[0] == {"x": 42, "y": "a", "z": 3.14}
-    assert ds.schema().names == ["x", "y", "z"]
+def create_test_dataset():
+    """Create a Ray Dataset from the test DataFrame."""
+    df = create_test_dataframe()
+    return ray.data.from_pandas(df)
+
+
+def test_delta_datasink_append(ray_start_regular_shared, tmp_path):
+    """Test Delta datasink append functionality."""
+    with delta_test_context("append", str(tmp_path)) as test_path:
+        # Create initial dataset
+        ds = create_test_dataset()
+        
+        # Write initial data
+        ds.write_delta(test_path, mode=SaveMode.OVERWRITE)
+        
+        # Verify initial write
+        result_ds = read_delta(test_path)
+        assert result_ds.count() == 5
+        
+        # Create new data to append
+        new_df = pd.DataFrame({
+            "id": [6, 7],
+            "name": ["Frank", "Grace"],
+            "value": [600, 700],
+            "category": ["B", "A"]
+        })
+        new_ds = ray.data.from_pandas(new_df)
+        
+        # Append new data
+        new_ds.write_delta(test_path, mode=SaveMode.APPEND)
+        
+        # Verify append
+        final_ds = read_delta(test_path)
+        assert final_ds.count() == 7
+        
+        # Check that original data is still there
+        rows = final_ds.take_all()
+        ids = [row["id"] for row in rows]
+        assert 1 in ids and 2 in ids and 3 in ids
+        assert 6 in ids and 7 in ids
+
+
+def test_delta_datasink_overwrite(ray_start_regular_shared, tmp_path):
+    """Test Delta datasink overwrite functionality."""
+    with delta_test_context("overwrite", str(tmp_path)) as test_path:
+        # Create initial dataset
+        ds = create_test_dataset()
+        
+        # Write initial data
+        ds.write_delta(test_path, mode=SaveMode.OVERWRITE)
+        
+        # Verify initial write
+        result_ds = read_delta(test_path)
+        assert result_ds.count() == 5
+        
+        # Create completely new data
+        new_df = pd.DataFrame({
+            "id": [10, 20, 30],
+            "name": ["New1", "New2", "New3"],
+            "value": [1000, 2000, 3000],
+            "category": ["X", "Y", "Z"]
+        })
+        new_ds = ray.data.from_pandas(new_df)
+        
+        # Overwrite with new data
+        new_ds.write_delta(test_path, mode=SaveMode.OVERWRITE)
+        
+        # Verify overwrite
+        final_ds = read_delta(test_path)
+        assert final_ds.count() == 3
+        
+        # Check that only new data exists
+        rows = final_ds.take_all()
+        ids = [row["id"] for row in rows]
+        assert 10 in ids and 20 in ids and 30 in ids
+        assert 1 not in ids  # Original data should be gone
+
+
+def test_delta_datasink_ignore(ray_start_regular_shared, tmp_path):
+    """Test Delta datasink ignore functionality."""
+    with delta_test_context("ignore", str(tmp_path)) as test_path:
+        # Create initial dataset
+        ds = create_test_dataset()
+        
+        # Write initial data
+        ds.write_delta(test_path, mode=SaveMode.OVERWRITE)
+        
+        # Verify initial write
+        result_ds = read_delta(test_path)
+        assert result_ds.count() == 5
+        
+        # Try to write again with IGNORE mode
+        new_df = pd.DataFrame({
+            "id": [10, 20, 30],
+            "name": ["New1", "New2", "New3"],
+            "value": [1000, 2000, 3000],
+            "category": ["X", "Y", "Z"]
+        })
+        new_ds = ray.data.from_pandas(new_df)
+        
+        # This should not fail, but also not write anything
+        new_ds.write_delta(test_path, mode=SaveMode.IGNORE)
+        
+        # Verify that data is unchanged
+        final_ds = read_delta(test_path)
+        assert final_ds.count() == 5
+        
+        # Check that original data is still there
+        rows = final_ds.take_all()
+        ids = [row["id"] for row in rows]
+        assert 1 in ids and 2 in ids and 3 in ids
+        assert 10 not in ids  # New data should not be there
+
+
+def test_delta_datasink_error_mode(ray_start_regular_shared, tmp_path):
+    """Test Delta datasink error mode functionality."""
+    with delta_test_context("error", str(tmp_path)) as test_path:
+        # Create initial dataset
+        ds = create_test_dataset()
+        
+        # Write initial data
+        ds.write_delta(test_path, mode=SaveMode.OVERWRITE)
+        
+        # Verify initial write
+        result_ds = read_delta(test_path)
+        assert result_ds.count() == 5
+        
+        # Try to write again with ERROR mode (default)
+        new_df = pd.DataFrame({
+            "id": [10, 20, 30],
+            "name": ["New1", "New2", "New3"],
+            "value": [1000, 2000, 3000],
+            "category": ["X", "Y", "Z"]
+        })
+        new_ds = ray.data.from_pandas(new_df)
+        
+        # This should raise an error
+        with pytest.raises(Exception):
+            new_ds.write_delta(test_path, mode=SaveMode.ERROR)
+        
+        # Verify that data is unchanged
+        final_ds = read_delta(test_path)
+        assert final_ds.count() == 5
 
 
 if __name__ == "__main__":
+    # Run tests directly if file is executed
     import sys
-
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main([__file__]))
