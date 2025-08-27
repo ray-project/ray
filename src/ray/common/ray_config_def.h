@@ -27,7 +27,7 @@ RAY_CONFIG(bool, event_stats, true)
 /// Whether to enable Ray event stats metrics for main services
 /// such as gcs and raylet (which today are the sole consumers of
 /// this config)
-RAY_CONFIG(bool, emit_main_service_metrics, false)
+RAY_CONFIG(bool, emit_main_service_metrics, true)
 
 /// Whether to enable cluster authentication.
 RAY_CONFIG(bool, enable_cluster_auth, true)

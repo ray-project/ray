@@ -63,7 +63,7 @@ std::shared_ptr<StatsHandle> EventTracker::RecordStart(
     std::string name,
     bool emit_metrics,
     const int64_t expected_queueing_delay_ns,
-    const std::optional<std::string> &context_name) {
+    const std::optional<std::string>& event_context_name) {
   auto stats = GetOrCreate(name);
   int64_t curr_count = 0;
   {
@@ -73,9 +73,9 @@ std::shared_ptr<StatsHandle> EventTracker::RecordStart(
   }
 
   if (emit_metrics) {
-    ray::stats::STATS_operation_count.Record(1, context_name.value_or(name));
+    ray::stats::STATS_operation_count.Record(1, event_context_name.value_or(name));
     ray::stats::STATS_operation_active_count.Record(curr_count,
-                                                    context_name.value_or(name));
+                                                    event_context_name.value_or(name));
   }
 
   return std::make_shared<StatsHandle>(
@@ -84,7 +84,7 @@ std::shared_ptr<StatsHandle> EventTracker::RecordStart(
       std::move(stats),
       global_stats_,
       emit_metrics,
-      context_name);
+      event_context_name);
 }
 
 void EventTracker::RecordEnd(std::shared_ptr<StatsHandle> handle) {

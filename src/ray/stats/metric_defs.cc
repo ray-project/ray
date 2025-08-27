@@ -163,12 +163,12 @@ DEFINE_stats(operation_count, "operation count", ("Name"), (), ray::stats::COUNT
 DEFINE_stats(operation_run_time_ms,
              "operation execution time",
              ("Name"),
-             (),
+             ({1, 10, 100, 1000, 10000}),
              ray::stats::HISTOGRAM);
 DEFINE_stats(operation_queue_time_ms,
              "operation queuing time",
              ("Name"),
-             (),
+             ({1, 10, 100, 1000, 10000}),
              ray::stats::HISTOGRAM);
 DEFINE_stats(
     operation_active_count, "active operation number", ("Name"), (), ray::stats::GAUGE);
