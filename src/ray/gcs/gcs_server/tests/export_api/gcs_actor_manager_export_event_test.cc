@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <gtest/gtest.h>
+
 #include <chrono>
 #include <list>
 #include <memory>
@@ -20,18 +22,15 @@
 #include <utility>
 #include <vector>
 
-// clang-format off
-#include "gtest/gtest.h"
-#include "ray/common/asio/instrumented_io_context.h"
-#include "ray/gcs/gcs_server/tests/gcs_server_test_util.h"
-#include "ray/gcs/tests/gcs_test_util.h"
-#include "ray/gcs/gcs_server/gcs_kv_manager.h"
-#include "ray/gcs/store_client/in_memory_store_client.h"
 #include "mock/ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/gcs/gcs_server/gcs_kv_manager.h"
+#include "ray/gcs/gcs_server/tests/gcs_server_test_util.h"
+#include "ray/gcs/store_client/in_memory_store_client.h"
+#include "ray/gcs/tests/gcs_test_util.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/util/event.h"
-// clang-format on
 
 namespace ray {
 

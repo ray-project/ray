@@ -64,6 +64,27 @@ class NodeInfoGcsServiceHandler {
                                     SendReplyCallback send_reply_callback) = 0;
 };
 
+class NodeResourceInfoGcsServiceHandler {
+ public:
+  virtual ~NodeResourceInfoGcsServiceHandler() = default;
+
+  virtual void HandleGetAllAvailableResources(GetAllAvailableResourcesRequest request,
+                                              GetAllAvailableResourcesReply *reply,
+                                              SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllTotalResources(GetAllTotalResourcesRequest request,
+                                          GetAllTotalResourcesReply *reply,
+                                          SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetDrainingNodes(GetDrainingNodesRequest request,
+                                      GetDrainingNodesReply *reply,
+                                      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllResourceUsage(GetAllResourceUsageRequest request,
+                                         GetAllResourceUsageReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
+};
+
 class InternalPubSubGcsServiceHandler {
  public:
   virtual ~InternalPubSubGcsServiceHandler() = default;
