@@ -11,7 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 #include <gtest/gtest.h>
 
 #include <chrono>
@@ -33,7 +32,6 @@
 #include "ray/util/event.h"
 
 namespace ray {
-
 namespace gcs {
 
 using ::testing::_;
@@ -351,5 +349,4 @@ TEST_F(GcsActorManagerTest, TestBasic) {
 }
 
 }  // namespace gcs
-
 }  // namespace ray

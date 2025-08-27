@@ -174,5 +174,37 @@ class WorkerInfoGcsServiceHandler {
       SendReplyCallback send_reply_callback) = 0;
 };
 
+class InternalKVGcsServiceHandler {
+ public:
+  virtual ~InternalKVGcsServiceHandler() = default;
+  virtual void HandleInternalKVKeys(InternalKVKeysRequest request,
+                                    InternalKVKeysReply *reply,
+                                    SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleInternalKVGet(InternalKVGetRequest request,
+                                   InternalKVGetReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleInternalKVMultiGet(InternalKVMultiGetRequest request,
+                                        InternalKVMultiGetReply *reply,
+                                        SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleInternalKVPut(InternalKVPutRequest request,
+                                   InternalKVPutReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleInternalKVDel(InternalKVDelRequest request,
+                                   InternalKVDelReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleInternalKVExists(InternalKVExistsRequest request,
+                                      InternalKVExistsReply *reply,
+                                      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetInternalConfig(GetInternalConfigRequest request,
+                                       GetInternalConfigReply *reply,
+                                       SendReplyCallback send_reply_callback) = 0;
+};
+
 }  // namespace rpc
 }  // namespace ray

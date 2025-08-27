@@ -47,8 +47,8 @@ ray_cc_library(
     deps = [
         "//src/ray/common:asio",
         "//src/ray/common:status",
+        "//src/ray/gcs/gcs_server:grpc_service_interfaces",
         "//src/ray/protobuf:gcs_cc_proto",
-        "//src/ray/rpc:gcs_server",
     ],
 )
 
@@ -59,6 +59,7 @@ ray_cc_library(
         ":gcs_kv_manager",
         "//src/ray/common:asio",
         "//src/ray/common:constants",
+        "//src/ray/common:id",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
@@ -205,6 +206,7 @@ ray_cc_library(
         "//src/ray/gcs:gcs_pb_util",
         "//src/ray/protobuf:events_event_aggregator_service_cc_proto",
         "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/rpc:gcs_server",
         "//src/ray/util:counter_map",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
