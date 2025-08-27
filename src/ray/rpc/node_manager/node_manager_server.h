@@ -48,6 +48,7 @@ namespace rpc {
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PrepareBundleResources)        \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CommitBundleResources)         \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelResourceReserve)         \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ResizeLocalResourceInstances)  \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReleaseUnusedBundles)          \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetSystemConfig)               \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(IsLocalWorkerDead)             \
@@ -134,6 +135,11 @@ class NodeManagerServiceHandler {
   virtual void HandleCancelResourceReserve(
       rpc::CancelResourceReserveRequest request,
       rpc::CancelResourceReserveReply *reply,
+      rpc::SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleResizeLocalResourceInstances(
+      rpc::ResizeLocalResourceInstancesRequest request,
+      rpc::ResizeLocalResourceInstancesReply *reply,
       rpc::SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandlePinObjectIDs(PinObjectIDsRequest request,
