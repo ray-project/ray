@@ -59,7 +59,6 @@ ds = ray.data.from_items(["Start of the haiku is: Complete this for me..."])
 if __name__ != "__main__":
     ds = processor(ds)
     ds.show(limit=1)
-# __basic_llm_example_end__
 
 # Basic vLLM configuration
 config = vLLMEngineProcessorConfig(
@@ -123,6 +122,7 @@ lora_config = vLLMEngineProcessorConfig(
     concurrency=1,
     batch_size=32,
 )
+# __basic_llm_example_end__
 
 # Additional configuration examples for comprehensive testing
 def create_basic_config():
