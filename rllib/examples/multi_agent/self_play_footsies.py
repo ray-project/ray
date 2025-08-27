@@ -5,6 +5,7 @@ About:
     - This example as a simplified version of "rllib/tuned_examples/ppo/multi_agent_footsies_ppo.py",
       which has more detailed comments and instructions. Please refer to that example for more information.
     - This example is created to test the self-play training progression with footsies.
+    - Simplified version runs with single learner (cpu), single env runner, and single eval env runner.
 """
 import functools
 
@@ -40,6 +41,7 @@ parser = add_rllib_example_script_args(
 
 
 if __name__ == "__main__":
+    mix_size = 4
     main_policy = "lstm"
     args = parser.parse_args()
 
@@ -134,6 +136,7 @@ if __name__ == "__main__":
                     MixManagerCallback,
                     win_rate_threshold=0.5,
                     main_policy=main_policy,
+                    target_mix_size=mix_size,
                     starting_modules=[main_policy, "noop"],
                     fixed_modules_progression_sequence=("noop", "back"),
                 ),
@@ -144,7 +147,7 @@ if __name__ == "__main__":
     stop = {
         NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
         TRAINING_ITERATION: args.stop_iters,
-        "mix_size": 6,
+        "mix_size": mix_size,
     }
 
     # Run the experiment
