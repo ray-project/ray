@@ -812,5 +812,24 @@ def test_wait_tensor_freed_double_tensor(ray_start_regular):
     assert not gpu_object_store.has_object(obj_id2)
 
 
+def test_send_back_and_dst_warning(ray_start_regular):
+    # Test warning when object is sent back to the src actor and to dst actors
+    world_size = 2
+    actors = [GPUTestActor.remote() for _ in range(world_size)]
+    create_collective_group(actors, backend="torch_gloo")
+
+    src_actor, dst_actor = actors[0], actors[1]
+
+    tensor = torch.tensor([1, 2, 3])
+
+    warning_message = r"GPU ObjectRef\(.+\)"
+
+    with pytest.warns(UserWarning, match=warning_message):
+        t = src_actor.echo.remote(tensor)
+        t1 = src_actor.echo.remote(t)  # Sent back to the src actor
+        t2 = dst_actor.echo.remote(t)  # Also sent to another actor
+        ray.get([t1, t2])
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
