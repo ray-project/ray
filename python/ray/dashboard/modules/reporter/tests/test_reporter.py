@@ -543,7 +543,20 @@ def test_report_per_component_stats_gpu():
                 "memory_full_info": Bunch(uss=51428381),
                 "cpu_percent": 10.0,
                 "num_fds": 5,
-                "cmdline": ["ray::TorchGPUWorker.dummy_method", "", "", "", "", "", "", "", "", "", "", ""],
+                "cmdline": [
+                    "ray::TorchGPUWorker.dummy_method",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                ],
                 "create_time": 1614826391.338613,
                 "pid": 7175,
                 "cpu_times": Bunch(
@@ -552,7 +565,7 @@ def test_report_per_component_stats_gpu():
                     children_user=0.0,
                     children_system=0.0,
                 ),
-            }
+            },
         ],
         "gcs": {
             "memory_info": Bunch(rss=18354171, vms=6921486336, pfaults=6203, pageins=2),
@@ -688,25 +701,26 @@ def test_report_per_component_stats_gpu():
         mock_workers[agent._generate_worker_key(agent_proc_mock)] = agent_proc_mock
         return mock_workers
 
-
-
     # Mock all the individual methods that _collect_stats calls to return predictable data
     mock_patches = {
-        '_get_network_stats': lambda: (13621160960, 11914936320),
-        '_get_disk_io_stats': lambda: (100, 100, 100, 100),
-        '_get_gpu_usage': lambda: mock_collected_stats["gpus"],
-        '_get_cpu_percent': lambda _: 57.4,
-        '_get_mem_usage': lambda: (17179869184, 5723353088, 66.7, 9234341888),
-        '_get_shm_usage': lambda: 456,
-        '_get_raylet': lambda: mock_collected_stats["raylet"],
-        '_get_agent': lambda: mock_collected_stats["agent"],
-        '_get_boot_time': lambda: 1612934656.0,
-        '_get_load_avg': lambda: ((4.4521484375, 3.61083984375, 3.5400390625), (0.56, 0.45, 0.44)),
-        '_get_disk_usage': lambda: mock_collected_stats["disk"],
-        '_get_tpu_usage': lambda: [],
-        '_get_gcs': lambda: mock_collected_stats["gcs"],
-        '_get_worker_processes': lambda: create_mock_worker_processes(),
-        '_get_agent_proc': lambda: agent_proc_mock,
+        "_get_network_stats": lambda: (13621160960, 11914936320),
+        "_get_disk_io_stats": lambda: (100, 100, 100, 100),
+        "_get_gpu_usage": lambda: mock_collected_stats["gpus"],
+        "_get_cpu_percent": lambda _: 57.4,
+        "_get_mem_usage": lambda: (17179869184, 5723353088, 66.7, 9234341888),
+        "_get_shm_usage": lambda: 456,
+        "_get_raylet": lambda: mock_collected_stats["raylet"],
+        "_get_agent": lambda: mock_collected_stats["agent"],
+        "_get_boot_time": lambda: 1612934656.0,
+        "_get_load_avg": lambda: (
+            (4.4521484375, 3.61083984375, 3.5400390625),
+            (0.56, 0.45, 0.44),
+        ),
+        "_get_disk_usage": lambda: mock_collected_stats["disk"],
+        "_get_tpu_usage": lambda: [],
+        "_get_gcs": lambda: mock_collected_stats["gcs"],
+        "_get_worker_processes": lambda: create_mock_worker_processes(),
+        "_get_agent_proc": lambda: agent_proc_mock,
     }
 
     with patch.multiple(agent, **mock_patches) as mocks:
@@ -720,7 +734,12 @@ def test_report_per_component_stats_gpu():
         assert len(collected_stats_result["gpus"]) == 2
         assert len(collected_stats_result["workers"]) == 2
         assert collected_stats_result["cpu"] == 57.4
-        assert collected_stats_result["mem"] == (17179869184, 5723353088, 66.7, 9234341888)
+        assert collected_stats_result["mem"] == (
+            17179869184,
+            5723353088,
+            66.7,
+            9234341888,
+        )
         assert collected_stats_result["shm"] == 456
         assert collected_stats_result["network"] == (13621160960, 11914936320)
         assert collected_stats_result["disk_io"] == (100, 100, 100, 100)
@@ -732,7 +751,9 @@ def test_report_per_component_stats_gpu():
         "    0       7175     C     84     26      -      -      -      -    ray::TorchGPUWo\n"
         "    1       7175     C     86     26      -      -      -      -    ray::TorchGPUWo\n"
     )
-    collected_stats_result["gpu_processes"] = NvidiaGpuProvider._parse_nvsmi_pmon_output(
+    collected_stats_result[
+        "gpu_processes"
+    ] = NvidiaGpuProvider._parse_nvsmi_pmon_output(
         NVSMI_OUTPUT_TWO_TASK_ON_TWO_GPUS, collected_stats_result["gpus"]
     )
 
@@ -766,7 +787,9 @@ def test_report_per_component_stats_gpu():
     )
 
     # Update the collected stats result for the second test scenario
-    collected_stats_result["gpu_processes"] = NvidiaGpuProvider._parse_nvsmi_pmon_output(
+    collected_stats_result[
+        "gpu_processes"
+    ] = NvidiaGpuProvider._parse_nvsmi_pmon_output(
         NVSMI_OUTPUT_TWO_TASK_ON_ONE_GPUS, collected_stats_result["gpus"]
     )
     # Move process from GPU 1 to GPU 0
@@ -776,13 +799,24 @@ def test_report_per_component_stats_gpu():
 
     # Add the second GPU worker to the collected stats result
     gpu_worker_2 = {
-        "memory_info": Bunch(
-            rss=55934976, vms=7026937856, pfaults=15354, pageins=0
-        ),
+        "memory_info": Bunch(rss=55934976, vms=7026937856, pfaults=15354, pageins=0),
         "memory_full_info": Bunch(uss=51428381),
         "cpu_percent": 15.0,
         "num_fds": 6,
-        "cmdline": ["ray::TorchGPUWorker.dummy_method_2", "", "", "", "", "", "", "", "", "", "", ""],
+        "cmdline": [
+            "ray::TorchGPUWorker.dummy_method_2",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         "create_time": 1614826391.338613,
         "pid": 7176,
         "cpu_times": Bunch(
