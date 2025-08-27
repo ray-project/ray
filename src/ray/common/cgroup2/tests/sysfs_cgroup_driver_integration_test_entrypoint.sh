@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ "$(uname -s)" != "Linux" ]]; then
+  echo "ERROR: Cgroup integration tests can only be run on Linux."
+  echo "  The current OS is $(uname)"
+  exit 0
+fi
+
 ROOT_CGROUP=/sys/fs/cgroup
 CURR_USER=$(whoami)
 
