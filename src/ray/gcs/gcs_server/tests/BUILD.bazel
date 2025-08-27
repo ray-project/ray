@@ -201,10 +201,12 @@ ray_cc_test(
     deps = [
         ":gcs_server_test_util",
         "//src/mock/ray/pubsub:mock_publisher",
-        "//src/ray/gcs/gcs_server:gcs_server_lib",
+        "//src/ray/common:test_util",
+        "//src/ray/gcs/gcs_server:gcs_actor",
+        "//src/ray/gcs/gcs_server:gcs_actor_scheduler",
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/tests:gcs_test_util_lib",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -218,8 +220,9 @@ ray_cc_test(
     deps = [
         "//:ray_mock",
         "//src/ray/common:test_util",
-        "//src/ray/gcs/gcs_server:gcs_server_lib",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/gcs/gcs_server:gcs_actor",
+        "//src/ray/gcs/gcs_server:gcs_actor_scheduler",
+        "@com_google_googletest//:gtest",
     ],
 )
 
