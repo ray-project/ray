@@ -509,58 +509,202 @@ def test_report_per_component_stats_gpu():
     """
     GPU_MEMORY = 22731
 
-    STATS_TEMPLATE["gpus"] = [
-        {
-            "index": 0,
-            "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b396",
-            "name": "NVIDIA A10G",
-            "utilization_gpu": 0,  # NOTE: this is a dummy value
-            "memory_used": 0,
-            "memory_total": GPU_MEMORY,
-            "processes_pids": {
-                2297322: {
-                    "pid": 2297322,
-                    "gpu_memory_usage": 26,
-                    "gpu_utilization": None,
-                }
+    # Prepare the stats data that would be collected by _collect_stats
+    mock_collected_stats = {
+        "now": 1614826393.975763,
+        "hostname": "fake_hostname.local",
+        "ip": "127.0.0.1",
+        "cpu": 57.4,
+        "cpus": (8, 4),
+        "mem": (17179869184, 5723353088, 66.7, 9234341888),
+        "shm": 456,
+        "workers": [
+            {
+                "memory_info": Bunch(
+                    rss=55934976, vms=7026937856, pfaults=15354, pageins=0
+                ),
+                "memory_full_info": Bunch(uss=51428381),
+                "cpu_percent": 0.0,
+                "num_fds": 10,
+                "cmdline": ["ray::IDLE", "", "", "", "", "", "", "", "", "", "", ""],
+                "create_time": 1614826391.338613,
+                "pid": 7174,
+                "cpu_times": Bunch(
+                    user=0.607899328,
+                    system=0.274044032,
+                    children_user=0.0,
+                    children_system=0.0,
+                ),
             },
+            {
+                "memory_info": Bunch(
+                    rss=55934976, vms=7026937856, pfaults=15354, pageins=0
+                ),
+                "memory_full_info": Bunch(uss=51428381),
+                "cpu_percent": 10.0,
+                "num_fds": 5,
+                "cmdline": ["ray::TorchGPUWorker.dummy_method", "", "", "", "", "", "", "", "", "", "", ""],
+                "create_time": 1614826391.338613,
+                "pid": 7175,
+                "cpu_times": Bunch(
+                    user=0.607899328,
+                    system=0.274044032,
+                    children_user=0.0,
+                    children_system=0.0,
+                ),
+            }
+        ],
+        "gcs": {
+            "memory_info": Bunch(rss=18354171, vms=6921486336, pfaults=6203, pageins=2),
+            "memory_full_info": Bunch(uss=51428384),
+            "cpu_percent": 5.0,
+            "num_fds": 14,
+            "cmdline": ["fake gcs cmdline"],
+            "create_time": 1614826395.274854,
+            "pid": 7154,
+            "cpu_times": Bunch(
+                user=0.01683138,
+                system=0.045913716,
+                children_user=0.0,
+                children_system=0.0,
+            ),
         },
-        {
-            "index": 1,
-            "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b397",
-            "name": "NVIDIA A10G",
-            "utilization_gpu": 1,
-            "memory_used": 1,
-            "memory_total": GPU_MEMORY,
-            "processes_pids": {
-                2297332: {
-                    "pid": 2297332,
-                    "gpu_memory_usage": 26,
-                    "gpu_utilization": None,
-                }
+        "raylet": {
+            "memory_info": Bunch(rss=18354176, vms=6921486336, pfaults=6206, pageins=3),
+            "cpu_percent": 0.0,
+            "num_fds": 10,
+            "cmdline": ["fake raylet cmdline"],
+            "create_time": 1614826390.274854,
+            "pid": 7153,
+            "cpu_times": Bunch(
+                user=0.03683138,
+                system=0.035913716,
+                children_user=0.0,
+                children_system=0.0,
+            ),
+        },
+        "agent": {
+            "memory_info": Bunch(rss=18354176, vms=6921486336, pfaults=6206, pageins=3),
+            "cpu_percent": 0.0,
+            "num_fds": 10,
+            "cmdline": ["fake raylet cmdline"],
+            "create_time": 1614826390.274854,
+            "pid": 7154,
+            "cpu_times": Bunch(
+                user=0.03683138,
+                system=0.035913716,
+                children_user=0.0,
+                children_system=0.0,
+            ),
+        },
+        "bootTime": 1612934656.0,
+        "loadAvg": ((4.4521484375, 3.61083984375, 3.5400390625), (0.56, 0.45, 0.44)),
+        "disk_io": (100, 100, 100, 100),
+        "disk_io_speed": (100, 100, 100, 100),
+        "disk": {
+            "/": Bunch(
+                total=250790436864, used=11316781056, free=22748921856, percent=33.2
+            ),
+            "/tmp": Bunch(
+                total=250790436864, used=209532035072, free=22748921856, percent=90.2
+            ),
+        },
+        "gpus": [
+            {
+                "index": 0,
+                "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b396",
+                "name": "NVIDIA A10G",
+                "utilization_gpu": 0,  # NOTE: this is a dummy value
+                "memory_used": 0,
+                "memory_total": GPU_MEMORY,
+                "processes_pids": {
+                    2297322: {
+                        "pid": 2297322,
+                        "gpu_memory_usage": 26,
+                        "gpu_utilization": None,
+                    }
+                },
             },
-        },
-    ]
-    gpu_worker = STATS_TEMPLATE["workers"][0].copy()
-    gpu_worker.update(
-        {"pid": 7175, "cmdline": ["ray::TorchGPUWorker.dummy_method", ""]}
-    )
+            {
+                "index": 1,
+                "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b397",
+                "name": "NVIDIA A10G",
+                "utilization_gpu": 1,
+                "memory_used": 1,
+                "memory_total": GPU_MEMORY,
+                "processes_pids": {
+                    2297332: {
+                        "pid": 2297332,
+                        "gpu_memory_usage": 26,
+                        "gpu_utilization": None,
+                    }
+                },
+            },
+        ],
+        "gpu_processes": {},
+        "tpus": [],
+        "network": (13621160960, 11914936320),
+        "network_speed": (8.435062128545095, 7.378462703142336),
+        "cmdline": ["fake raylet cmdline"],
+    }
+
     gpu_metrics_aggregatd = {
         "component_gpu_utilization": 0,
         "component_gpu_memory_usage": 0,
     }
-    STATS_TEMPLATE["workers"].append(gpu_worker)
 
+            # Mock all the individual methods that _collect_stats calls to return predictable data
+    mock_patches = {
+        '_get_network_stats': (13621160960, 11914936320),
+        '_get_disk_io_stats': (100, 100, 100, 100),
+        '_get_gpu_usage': mock_collected_stats["gpus"],
+        '_get_cpu_percent': 57.4,
+        '_get_mem_usage': (17179869184, 5723353088, 66.7, 9234341888),
+        '_get_shm_usage': 456,
+        '_get_workers': mock_collected_stats["workers"],
+        '_get_raylet': mock_collected_stats["raylet"],
+        '_get_agent': mock_collected_stats["agent"],
+        '_get_boot_time': 1612934656.0,
+        '_get_load_avg': ((4.4521484375, 3.61083984375, 3.5400390625), (0.56, 0.45, 0.44)),
+        '_get_disk_usage': mock_collected_stats["disk"],
+        '_get_tpu_usage': [],
+        '_get_gcs': mock_collected_stats["gcs"],
+    }
+
+    with patch.multiple(agent, **mock_patches) as mocks:
+        # Call _collect_stats to actually run through the collection process
+        collected_stats_result = agent._collect_stats()
+
+        # Verify that _collect_stats was called and returned the expected structure
+        assert "gpus" in collected_stats_result
+        assert "workers" in collected_stats_result
+        assert "gcs" in collected_stats_result  # Should be present for head node
+        assert len(collected_stats_result["gpus"]) == 2
+        assert len(collected_stats_result["workers"]) == 2
+        assert collected_stats_result["cpu"] == 57.4
+        assert collected_stats_result["mem"] == (17179869184, 5723353088, 66.7, 9234341888)
+        assert collected_stats_result["shm"] == 456
+        assert collected_stats_result["network"] == (13621160960, 11914936320)
+        assert collected_stats_result["disk_io"] == (100, 100, 100, 100)
+
+        # Verify that all the mock methods were called
+        for method_name in mock_patches.keys():
+            mock_method = getattr(mocks, method_name)
+            mock_method.assert_called_once()
+
+        # Now add the GPU processes data to the collected stats result
     NVSMI_OUTPUT_TWO_TASK_ON_TWO_GPUS = (
         "# gpu         pid   type     sm    mem    enc    dec    jpg    ofa    command \n"
         "# Idx           #    C/G      %      %      %      %      %      %    name \n"
         "    0       7175     C     84     26      -      -      -      -    ray::TorchGPUWo\n"
         "    1       7175     C     86     26      -      -      -      -    ray::TorchGPUWo\n"
     )
-    STATS_TEMPLATE["gpu_processes"] = NvidiaGpuProvider._parse_nvsmi_pmon_output(
-        NVSMI_OUTPUT_TWO_TASK_ON_TWO_GPUS, STATS_TEMPLATE["gpus"]
+    collected_stats_result["gpu_processes"] = NvidiaGpuProvider._parse_nvsmi_pmon_output(
+        NVSMI_OUTPUT_TWO_TASK_ON_TWO_GPUS, collected_stats_result["gpus"]
     )
-    records = agent._to_records(STATS_TEMPLATE, {})
+
+    # Use the collected stats result for _to_records instead of STATS_TEMPLATE
+    records = agent._to_records(collected_stats_result, {})
 
     gpu_component_records = defaultdict(list)
 
@@ -579,7 +723,7 @@ def test_report_per_component_stats_gpu():
         else:
             assert record.value == 86
 
-    # Test stats with two tasks on one GPU.
+        # Test stats with two tasks on one GPU.
     NVSMI_OUTPUT_TWO_TASK_ON_ONE_GPUS = (
         "# gpu         pid   type     sm    mem    enc    dec    jpg    ofa    command \n"
         "# Idx           #    C/G      %      %      %      %      %      %    name \n"
@@ -587,21 +731,37 @@ def test_report_per_component_stats_gpu():
         "    0       7176     C     77     22      -      -      -      -    ray::TorchGPUWo\n"
         "    1          -     -      -      -      -      -      -      -    -      \n"
     )
-    STATS_TEMPLATE["gpu_processes"] = NvidiaGpuProvider._parse_nvsmi_pmon_output(
-        NVSMI_OUTPUT_TWO_TASK_ON_ONE_GPUS, STATS_TEMPLATE["gpus"]
+
+    # Update the collected stats result for the second test scenario
+    collected_stats_result["gpu_processes"] = NvidiaGpuProvider._parse_nvsmi_pmon_output(
+        NVSMI_OUTPUT_TWO_TASK_ON_ONE_GPUS, collected_stats_result["gpus"]
     )
     # Move process from GPU 1 to GPU 0
-    gpu1_process = STATS_TEMPLATE["gpus"][1]["processes_pids"][2297332]
-    STATS_TEMPLATE["gpus"][0]["processes_pids"][2297332] = gpu1_process
-    STATS_TEMPLATE["gpus"][1]["processes_pids"] = {}
+    gpu1_process = collected_stats_result["gpus"][1]["processes_pids"][2297332]
+    collected_stats_result["gpus"][0]["processes_pids"][2297332] = gpu1_process
+    collected_stats_result["gpus"][1]["processes_pids"] = {}
 
-    gpu_worker = gpu_worker.copy()
-    gpu_worker.update(
-        {"pid": 7176, "cmdline": ["ray::TorchGPUWorker.dummy_method_2", ""]}
-    )
-    STATS_TEMPLATE["workers"].append(gpu_worker)
+    # Add the second GPU worker to the collected stats result
+    gpu_worker_2 = {
+        "memory_info": Bunch(
+            rss=55934976, vms=7026937856, pfaults=15354, pageins=0
+        ),
+        "memory_full_info": Bunch(uss=51428381),
+        "cpu_percent": 15.0,
+        "num_fds": 6,
+        "cmdline": ["ray::TorchGPUWorker.dummy_method_2", "", "", "", "", "", "", "", "", "", "", ""],
+        "create_time": 1614826391.338613,
+        "pid": 7176,
+        "cpu_times": Bunch(
+            user=0.607899328,
+            system=0.274044032,
+            children_user=0.0,
+            children_system=0.0,
+        ),
+    }
+    collected_stats_result["workers"].append(gpu_worker_2)
 
-    records = agent._to_records(STATS_TEMPLATE, {})
+    records = agent._to_records(collected_stats_result, {})
 
     gpu_component_records = defaultdict(list)
     for record in records:
