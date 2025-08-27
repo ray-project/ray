@@ -13,8 +13,6 @@
 // limitations under the License.
 #include <gtest/gtest.h>
 
-#include <gtest/gtest.h>
-
 #include <chrono>
 #include <list>
 #include <memory>
@@ -27,7 +25,6 @@
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
-#include "ray/gcs/gcs_server/tests/gcs_server_test_util.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/tests/gcs_test_util.h"
 #include "ray/pubsub/publisher.h"
