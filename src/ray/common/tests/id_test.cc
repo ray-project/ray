@@ -187,7 +187,7 @@ TEST(LeaseIDTest, TestLeaseID) {
   ASSERT_EQ(lease_id.Binary().size(), lease_id_size);
 
   // Test FromRandom and uniqueness (counter behavior)
-  const LeaseID random_lease = LeaseID::FromRandom(1);
+  const LeaseID random_lease = LeaseID::FromRandomWorkerId(1);
   const LeaseID another_lease = LeaseID::FromWorkerId(worker_id, 1);
 
   ASSERT_FALSE(random_lease.IsNil());

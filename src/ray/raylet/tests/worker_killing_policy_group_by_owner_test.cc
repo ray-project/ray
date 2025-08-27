@@ -42,7 +42,7 @@ class WorkerKillingGroupByOwnerTest : public ::testing::Test {
   std::shared_ptr<WorkerInterface> CreateActorCreationWorker(TaskID owner_id,
                                                              bool is_retriable) {
     rpc::LeaseSpec message;
-    message.set_lease_id(LeaseID::FromRandom(1).Binary());
+    message.set_lease_id(LeaseID::FromRandomWorkerId(1).Binary());
     message.set_parent_task_id(owner_id.Binary());
     message.set_type(ray::rpc::TaskType::ACTOR_CREATION_TASK);
     message.set_is_retriable(is_retriable);
@@ -56,7 +56,7 @@ class WorkerKillingGroupByOwnerTest : public ::testing::Test {
 
   std::shared_ptr<WorkerInterface> CreateTaskWorker(TaskID owner_id, bool is_retriable) {
     rpc::LeaseSpec message;
-    message.set_lease_id(LeaseID::FromRandom(1).Binary());
+    message.set_lease_id(LeaseID::FromRandomWorkerId(1).Binary());
     message.set_parent_task_id(owner_id.Binary());
     message.set_type(ray::rpc::TaskType::NORMAL_TASK);
     message.set_is_retriable(is_retriable);

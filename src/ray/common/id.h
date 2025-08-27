@@ -344,7 +344,7 @@ class LeaseID : public BaseID<LeaseID> {
   /// Creates a `LeaseID` from a specific worker ID.
   ///
   /// \param worker_id The worker ID from which this lease is requested.
-  /// \param counter An externally generated counter value for uniqueness.
+  /// \param counter The n-th lease requested by this worker, staring from 1
   ///
   /// \return The `LeaseID` for the worker lease.
   static LeaseID FromWorkerId(const WorkerID &worker_id, uint32_t counter);
@@ -360,12 +360,12 @@ class LeaseID : public BaseID<LeaseID> {
 
   /// Creates a random `LeaseID`.
   ///
-  /// \param counter An externally generated counter value for uniqueness.
+  /// \param counter The n-th lease requested by this worker, staring from 1
   ///
-  /// \return A random `LeaseID`.
+  /// \return A `LeaseID` generated with a random worker id.
   /// Warning: this can duplicate IDs after a fork() call. We assume this never happens.
   /// Currently it's only used in the GCS so not a problem.
-  static LeaseID FromRandom(uint32_t counter);
+  static LeaseID FromRandomWorkerId(uint32_t counter);
 
   LeaseID() : BaseID() {}
 

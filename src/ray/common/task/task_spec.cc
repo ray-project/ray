@@ -167,12 +167,7 @@ const std::string TaskSpecification::GetSerializedActorHandle() const {
   return message_->actor_creation_task_spec().serialized_actor_handle();
 }
 
-JobID TaskSpecification::JobId() const {
-  if (message_->job_id().empty() /* e.g., empty proto default */) {
-    return JobID::Nil();
-  }
-  return JobID::FromBinary(message_->job_id());
-}
+JobID TaskSpecification::JobId() const { return JobID::FromBinary(message_->job_id()); }
 
 const rpc::JobConfig &TaskSpecification::JobConfig() const {
   return message_->job_config();

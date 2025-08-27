@@ -38,20 +38,14 @@ class RayLease {
 
   /// Construct a `RayLease` object from a protobuf message.
   explicit RayLease(rpc::LeaseSpec lease_spec)
-      : lease_spec_(LeaseSpecification(std::move(lease_spec))) {
-    ComputeDependencies();
-  }
+      : lease_spec_(LeaseSpecification(std::move(lease_spec))) {}
 
   /// Construct a `RayLease` object from a `LeaseSpecification`.
-  explicit RayLease(LeaseSpecification lease_spec) : lease_spec_(std::move(lease_spec)) {
-    ComputeDependencies();
-  }
+  explicit RayLease(LeaseSpecification lease_spec) : lease_spec_(std::move(lease_spec)) {}
 
   RayLease(LeaseSpecification lease_spec, std::string preferred_node_id)
       : lease_spec_(std::move(lease_spec)),
-        preferred_node_id_(std::move(preferred_node_id)) {
-    ComputeDependencies();
-  }
+        preferred_node_id_(std::move(preferred_node_id)) {}
 
   /// Get the immutable specification for the lease.
   ///
@@ -63,7 +57,7 @@ class RayLease {
   ///
   /// \return The object dependencies.
   const std::vector<rpc::ObjectReference> &GetDependencies() const {
-    return dependencies_;
+    return lease_spec_.GetDependencies();
   }
 
   /// Get the lease's preferred node id for scheduling. If the returned value
@@ -77,15 +71,10 @@ class RayLease {
   }
 
  private:
-  void ComputeDependencies() { dependencies_ = lease_spec_.GetDependencies(); }
-
   /// RayLease specification object, consisting of immutable information about this
   /// lease determined at submission time. Includes resource demand, object
   /// dependencies, etc.
   LeaseSpecification lease_spec_;
-  /// A cached copy of the lease's object dependencies, including arguments from
-  /// the LeaseSpecification.
-  std::vector<rpc::ObjectReference> dependencies_;
 
   std::string preferred_node_id_;
 };

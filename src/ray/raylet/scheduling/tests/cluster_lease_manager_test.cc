@@ -277,7 +277,7 @@ RayLease CreateLease(
     std::vector<ObjectID> args = {},
     const std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr,
     rpc::SchedulingStrategy scheduling_strategy = rpc::SchedulingStrategy(),
-    const LeaseID &lease_id = LeaseID::FromRandom(1)) {
+    const LeaseID &lease_id = LeaseID::FromRandomWorkerId(1)) {
   TaskSpecBuilder spec_builder;
   TaskID id = RandomTaskId();
   JobID job_id = RandomJobId();

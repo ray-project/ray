@@ -315,11 +315,12 @@ JobID PlacementGroupID::JobId() const {
       reinterpret_cast<const char *>(this->Data() + kUniqueBytesLength), JobID::kLength));
 }
 
-LeaseID LeaseID::FromRandom(uint32_t counter) {
+LeaseID LeaseID::FromRandomWorkerId(uint32_t counter) {
   return LeaseID::FromWorkerId(WorkerID::FromRandom(), counter);
 }
 
 LeaseID LeaseID::FromWorkerId(const WorkerID &worker_id, uint32_t counter) {
+  RAY_CHECK(counter > 0);
   std::string data(kUniqueBytesLength, 0);
   std::memcpy(data.data(), &counter, sizeof(counter));
   std::copy_n(worker_id.Data(), kUniqueIDSize, std::back_inserter(data));

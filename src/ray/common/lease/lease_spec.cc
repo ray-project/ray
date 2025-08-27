@@ -59,6 +59,9 @@ LeaseSpecification::LeaseSpecification(const rpc::TaskSpec &task_spec,
     message_->set_type(TaskType::NORMAL_TASK);
   }
   bool is_retriable = true;
+  // TODO(#55980): Whether an actor creation task is retriable should take into
+  // account the current number of restarts, this will be incorrect when
+  // num_restarts == max_actor_restarts
   if (IsActorCreationTask() &&
       task_spec.actor_creation_task_spec().max_actor_restarts() == 0) {
     is_retriable = false;
@@ -70,18 +73,10 @@ LeaseSpecification::LeaseSpecification(const rpc::TaskSpec &task_spec,
 }
 
 LeaseID LeaseSpecification::LeaseId() const {
-  if (message_->lease_id().empty()) {
-    return LeaseID::Nil();
-  }
   return LeaseID::FromBinary(message_->lease_id());
 }
 
-JobID LeaseSpecification::JobId() const {
-  if (message_->job_id().empty()) {
-    return JobID::Nil();
-  }
-  return JobID::FromBinary(message_->job_id());
-}
+JobID LeaseSpecification::JobId() const { return JobID::FromBinary(message_->job_id()); }
 
 const rpc::Address &LeaseSpecification::CallerAddress() const {
   return message_->caller_address();
@@ -126,7 +121,7 @@ std::vector<ObjectID> LeaseSpecification::GetDependencyIds() const {
   return ids;
 }
 
-std::vector<rpc::ObjectReference> LeaseSpecification::GetDependencies() const {
+const std::vector<rpc::ObjectReference> &LeaseSpecification::GetDependencies() const {
   return dependencies_;
 }
 
