@@ -254,7 +254,10 @@ java_proto_compile(
 
 java_proto_compile(
     name = "runtime_env_common_java_proto",
-    deps = ["@io_ray//src/ray/protobuf:runtime_env_common_proto"],
+    deps = [
+        "@io_ray//src/ray/protobuf:runtime_env_common_proto",
+        "@io_ray//src/ray/protobuf/public:runtime_environment_proto",
+    ],
 )
 
 java_proto_compile(
