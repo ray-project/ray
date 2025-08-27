@@ -69,9 +69,9 @@ class GcsServerTest : public ::testing::Test {
     rpc::ResetServerCallExecutor();
   }
 
-  bool AddJob(const rpc::AddJobRequest &request) {
+  bool AddJob(rpc::AddJobRequest request) {
     std::promise<bool> promise;
-    client_->AddJob(request,
+    client_->AddJob(std::move(request),
                     [&promise](const Status &status, const rpc::AddJobReply &reply) {
                       RAY_CHECK_OK(status);
                       promise.set_value(true);
@@ -79,10 +79,10 @@ class GcsServerTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool MarkJobFinished(const rpc::MarkJobFinishedRequest &request) {
+  bool MarkJobFinished(rpc::MarkJobFinishedRequest request) {
     std::promise<bool> promise;
     client_->MarkJobFinished(
-        request,
+        std::move(request),
         [&promise](const Status &status, const rpc::MarkJobFinishedReply &reply) {
           RAY_CHECK_OK(status);
           promise.set_value(true);
@@ -95,7 +95,7 @@ class GcsServerTest : public ::testing::Test {
     request.set_actor_id(actor_id);
     std::optional<rpc::ActorTableData> actor_table_data_opt;
     std::promise<bool> promise;
-    client_->GetActorInfo(request,
+    client_->GetActorInfo(std::move(request),
                           [&actor_table_data_opt, &promise](
                               const Status &status, const rpc::GetActorInfoReply &reply) {
                             RAY_CHECK_OK(status);
@@ -110,10 +110,11 @@ class GcsServerTest : public ::testing::Test {
     return actor_table_data_opt;
   }
 
-  bool RegisterNode(const rpc::RegisterNodeRequest &request) {
+  bool RegisterNode(rpc::RegisterNodeRequest request) {
     std::promise<bool> promise;
     client_->RegisterNode(
-        request, [&promise](const Status &status, const rpc::RegisterNodeReply &reply) {
+        std::move(request),
+        [&promise](const Status &status, const rpc::RegisterNodeReply &reply) {
           RAY_CHECK_OK(status);
           promise.set_value(true);
         });
@@ -121,10 +122,11 @@ class GcsServerTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool UnregisterNode(const rpc::UnregisterNodeRequest &request) {
+  bool UnregisterNode(rpc::UnregisterNodeRequest request) {
     std::promise<bool> promise;
     client_->UnregisterNode(
-        request, [&promise](const Status &status, const rpc::UnregisterNodeReply &reply) {
+        std::move(request),
+        [&promise](const Status &status, const rpc::UnregisterNodeReply &reply) {
           RAY_CHECK_OK(status);
           promise.set_value(true);
         });
@@ -137,7 +139,7 @@ class GcsServerTest : public ::testing::Test {
     rpc::GetAllNodeInfoRequest request;
     std::promise<bool> promise;
     client_->GetAllNodeInfo(
-        request,
+        std::move(request),
         [&node_info_list, &promise](const Status &status,
                                     const rpc::GetAllNodeInfoReply &reply) {
           RAY_CHECK_OK(status);
@@ -150,10 +152,10 @@ class GcsServerTest : public ::testing::Test {
     return node_info_list;
   }
 
-  bool ReportWorkerFailure(const rpc::ReportWorkerFailureRequest &request) {
+  bool ReportWorkerFailure(rpc::ReportWorkerFailureRequest request) {
     std::promise<bool> promise;
     client_->ReportWorkerFailure(
-        request,
+        std::move(request),
         [&promise](const Status &status, const rpc::ReportWorkerFailureReply &reply) {
           RAY_CHECK_OK(status);
           promise.set_value(status.ok());
@@ -167,7 +169,7 @@ class GcsServerTest : public ::testing::Test {
     std::optional<rpc::WorkerTableData> worker_table_data_opt;
     std::promise<bool> promise;
     client_->GetWorkerInfo(
-        request,
+        std::move(request),
         [&worker_table_data_opt, &promise](const Status &status,
                                            const rpc::GetWorkerInfoReply &reply) {
           RAY_CHECK_OK(status);
@@ -187,7 +189,7 @@ class GcsServerTest : public ::testing::Test {
     rpc::GetAllWorkerInfoRequest request;
     std::promise<bool> promise;
     client_->GetAllWorkerInfo(
-        request,
+        std::move(request),
         [&worker_table_data, &promise](const Status &status,
                                        const rpc::GetAllWorkerInfoReply &reply) {
           RAY_CHECK_OK(status);
@@ -200,10 +202,11 @@ class GcsServerTest : public ::testing::Test {
     return worker_table_data;
   }
 
-  bool AddWorkerInfo(const rpc::AddWorkerInfoRequest &request) {
+  bool AddWorkerInfo(rpc::AddWorkerInfoRequest request) {
     std::promise<bool> promise;
     client_->AddWorkerInfo(
-        request, [&promise](const Status &status, const rpc::AddWorkerInfoReply &reply) {
+        std::move(request),
+        [&promise](const Status &status, const rpc::AddWorkerInfoReply &reply) {
           RAY_CHECK_OK(status);
           promise.set_value(true);
         });
@@ -330,7 +333,7 @@ TEST_F(GcsServerTest, TestNodeInfoFilters) {
     // Get all
     rpc::GetAllNodeInfoRequest request;
     rpc::GetAllNodeInfoReply reply;
-    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(std::move(request), &reply));
 
     ASSERT_EQ(reply.node_info_list_size(), 3);
     ASSERT_EQ(reply.num_filtered(), 0);
@@ -342,7 +345,7 @@ TEST_F(GcsServerTest, TestNodeInfoFilters) {
     request.add_node_selectors()->set_node_id(node1->node_id());
     request.add_node_selectors()->set_node_id(node2->node_id());
     rpc::GetAllNodeInfoReply reply;
-    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(std::move(request), &reply));
 
     ASSERT_EQ(reply.node_info_list_size(), 2);
     ASSERT_EQ(reply.num_filtered(), 1);
@@ -353,7 +356,7 @@ TEST_F(GcsServerTest, TestNodeInfoFilters) {
     rpc::GetAllNodeInfoRequest request;
     request.set_state_filter(rpc::GcsNodeInfo::ALIVE);
     rpc::GetAllNodeInfoReply reply;
-    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(std::move(request), &reply));
 
     ASSERT_EQ(reply.node_info_list_size(), 2);
     ASSERT_EQ(reply.num_filtered(), 1);
@@ -365,7 +368,7 @@ TEST_F(GcsServerTest, TestNodeInfoFilters) {
     rpc::GetAllNodeInfoRequest request;
     request.set_state_filter(rpc::GcsNodeInfo::DEAD);
     rpc::GetAllNodeInfoReply reply;
-    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(std::move(request), &reply));
 
     ASSERT_EQ(reply.node_info_list_size(), 1);
     ASSERT_EQ(reply.num_filtered(), 2);
@@ -378,7 +381,7 @@ TEST_F(GcsServerTest, TestNodeInfoFilters) {
     request.add_node_selectors()->set_node_name("node1");
     request.add_node_selectors()->set_node_name("node2");
     rpc::GetAllNodeInfoReply reply;
-    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(std::move(request), &reply));
 
     ASSERT_EQ(reply.node_info_list_size(), 2);
     ASSERT_EQ(reply.num_filtered(), 1);
@@ -391,7 +394,7 @@ TEST_F(GcsServerTest, TestNodeInfoFilters) {
     request.add_node_selectors()->set_node_ip_address("127.0.0.1");
     request.add_node_selectors()->set_node_ip_address("127.0.0.2");
     rpc::GetAllNodeInfoReply reply;
-    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(std::move(request), &reply));
 
     ASSERT_EQ(reply.node_info_list_size(), 2);
     ASSERT_EQ(reply.num_filtered(), 1);
@@ -404,7 +407,7 @@ TEST_F(GcsServerTest, TestNodeInfoFilters) {
     request.add_node_selectors()->set_node_id(node1->node_id());
     request.add_node_selectors()->set_node_name("node2");
     rpc::GetAllNodeInfoReply reply;
-    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(std::move(request), &reply));
     ASSERT_EQ(reply.node_info_list_size(), 2);
     ASSERT_EQ(reply.num_filtered(), 1);
     ASSERT_EQ(reply.total(), 3);
@@ -417,7 +420,7 @@ TEST_F(GcsServerTest, TestNodeInfoFilters) {
     request.add_node_selectors()->set_node_id(node3->node_id());
     request.set_state_filter(rpc::GcsNodeInfo::ALIVE);
     rpc::GetAllNodeInfoReply reply;
-    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(std::move(request), &reply));
     ASSERT_EQ(reply.node_info_list_size(), 1);
     ASSERT_EQ(reply.num_filtered(), 2);
     ASSERT_EQ(reply.total(), 3);
@@ -430,7 +433,7 @@ TEST_F(GcsServerTest, TestNodeInfoFilters) {
     request.add_node_selectors()->set_node_name("node3");
     request.set_state_filter(rpc::GcsNodeInfo::DEAD);
     rpc::GetAllNodeInfoReply reply;
-    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(std::move(request), &reply));
     ASSERT_EQ(reply.node_info_list_size(), 1);
     ASSERT_EQ(reply.num_filtered(), 2);
     ASSERT_EQ(reply.total(), 3);
