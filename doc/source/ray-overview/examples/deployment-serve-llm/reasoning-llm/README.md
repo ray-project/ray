@@ -101,13 +101,17 @@ llm_config = LLMConfig(
             min_replicas=1, max_replicas=2,
         )
     ),
+    ### Uncomment if your model is gated and need your Huggingface Token to access it
+    #runtime_env=dict(
+    #    env_vars={
+    #        "HF_TOKEN": os.environ.get("HF_TOKEN")
+    #    }
+    #),
     engine_kwargs=dict(
         tensor_parallel_size=8,
         max_model_len=32768,
-        reasoning_parser='deepseek_r1',
-        ### Uncomment if your model is gated and need your Huggingface Token to access it
-        #hf_token=os.environ.get("HF_TOKEN"),
-    ),
+        reasoning_parser='deepseek_r1'
+    )
 )
 
 app = build_openai_app({"llm_configs": [llm_config]})
@@ -208,7 +212,7 @@ serve shutdown -y
 
 ---
 
-### Production Deployment with Anyscale Service
+## Production Deployment with Anyscale Service
 
 For production, it's recommended to use Anyscale Services to deploy your Ray Serve app on a dedicated cluster without code changes. Anyscale provides scalability, fault tolerance, and load balancing, ensuring resilience against node failures, high traffic, and rolling updates. See [Deploying a medium-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/medium-size-llm/README.html#production-deployment-with-anyscale-service) for an example with a medium-size model like the *QwQ-32&nbsp;B* used here.
 

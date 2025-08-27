@@ -36,14 +36,18 @@ llm_config = LLMConfig(
             min_replicas=1, max_replicas=1,
         )
     ),
+    ### Uncomment if your model is gated and need your Huggingface Token to access it
+    #runtime_env=dict(
+    #    env_vars={
+    #        "HF_TOKEN": os.environ.get("HF_TOKEN")
+    #    }
+    #),
     engine_kwargs=dict(
         max_model_len=16384,
-        ### Uncomment if your model is gated and need your Huggingface Token to access it
-        #hf_token=os.environ.get("HF_TOKEN"),
         # Split weights among 8 GPUs in the node
         tensor_parallel_size=8,
         pipeline_parallel_size=2
-    ),
+    )
 )
 
 app = build_openai_app({"llm_configs": [llm_config]})
@@ -164,7 +168,7 @@ Write your Anyscale Service configuration, in a new `service.yaml` file, write:
 ```yaml
 #service.yaml
 name: deploy-deepseek-r1
-image_uri: anyscale/ray-llm:2.48.0-py311-cu128
+image_uri: anyscale/ray-llm:2.49.0-py311-cu128
 compute_config:
   auto_select_worker_config: true 
   # Change default disk size to 1000GB
@@ -207,18 +211,14 @@ anyscale service deploy -f service.yaml
 
 You can use any image from the Anyscale registry, or build your own Dockerfile on top of an Anyscale base image. Create a new `Dockerfile` and start with this minimal setup:
 ```Dockerfile
-FROM anyscale/ray:2.48.0-slim-py312-cu128
+FROM anyscale/ray:2.49.0-slim-py312-cu128
 
 # C compiler for Triton’s runtime build step (vLLM V1 engine)
 # https://github.com/vllm-project/vllm/issues/2997
 RUN sudo apt-get update && \
     sudo apt-get install -y --no-install-recommends build-essential
 
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-
-RUN uv pip install --system vllm==0.9.2
-# Avoid https://github.com/vllm-project/vllm-ascend/issues/2046 with transformers >= 4.54.0
-RUN uv pip install --system transformers==4.53.3
+RUN pip install vllm==0.10.0
 ```
 
 In your Anyscale Service config, replace `image_uri` with `containerfile`:
@@ -226,7 +226,7 @@ In your Anyscale Service config, replace `image_uri` with `containerfile`:
 #service.yaml
 ...
 ## Replace
-#image_uri: anyscale/ray-llm:2.48.0-py311-cu128
+#image_uri: anyscale/ray-llm:2.49.0-py311-cu128
 ## With
 containerfile: ./Dockerfile # path to your dockerfile
 ...

@@ -32,15 +32,14 @@ llm_config = LLMConfig(
             min_replicas=1, max_replicas=4,
         )
     ),
+    ### If your model is not gated, you can skip `hf_token`
+    # Share your Hugging Face Token to the vllm engine so it can access the gated Llama 3
+    # Type `export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>` in a terminal
     engine_kwargs=dict(
         max_model_len=32768,
-        ### If your model is not gated, you can skip `hf_token`
-        # Share your Hugging Face Token to the vllm engine so it can access the gated Llama 3
-        # Type `export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>` in a terminal
-        hf_token=os.environ.get("HF_TOKEN"),
         # Split weights among 8 GPUs in the node
         tensor_parallel_size=8
-    ),
+    )
 )
 
 app = build_openai_app({"llm_configs": [llm_config]})
@@ -151,7 +150,7 @@ Write your Anyscale Service configuration, in a new `service.yaml` file, write:
 ```yaml
 #service.yaml
 name: deploy-llama-3-70b
-image_uri: anyscale/ray-llm:2.48.0-py311-cu128
+image_uri: anyscale/ray-llm:2.49.0-py311-cu128
 compute_config:
   auto_select_worker_config: true 
 working_dir: .
@@ -166,25 +165,21 @@ Deploy your Service, make sure you set your HuggingFace Token first, `export HF_
 
 ```bash
 %%bash
-anyscale service deploy -f service.yaml --env HF_TOKEN=<YOUR_HUGGINGFACE_TOKEN>
+anyscale service deploy -f service.yaml --env HF_TOKEN=$HF_TOKEN
 ```
 
 **Custom Dockerfile**
 
 You can use any image from the Anyscale registry, or build your own Dockerfile on top of an Anyscale base image. Create a new `Dockerfile` and start with this minimal setup:
 ```Dockerfile
-FROM anyscale/ray:2.48.0-slim-py312-cu128
+FROM anyscale/ray:2.49.0-slim-py312-cu128
 
 # C compiler for Triton’s runtime build step (vLLM V1 engine)
 # https://github.com/vllm-project/vllm/issues/2997
 RUN sudo apt-get update && \
     sudo apt-get install -y --no-install-recommends build-essential
 
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-
-RUN uv pip install --system vllm==0.9.2
-# Avoid https://github.com/vllm-project/vllm-ascend/issues/2046 with transformers >= 4.54.0
-RUN uv pip install --system transformers==4.53.3
+RUN pip install vllm==0.10.0
 ```
 
 In your Anyscale Service config, replace `image_uri` with `containerfile`:
@@ -192,7 +187,7 @@ In your Anyscale Service config, replace `image_uri` with `containerfile`:
 #service.yaml
 ...
 ## Replace
-#image_uri: anyscale/ray-llm:2.48.0-py311-cu128
+#image_uri: anyscale/ray-llm:2.49.0-py311-cu128
 ## With
 containerfile: ./Dockerfile # path to your dockerfile
 ...
