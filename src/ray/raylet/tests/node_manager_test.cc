@@ -390,8 +390,6 @@ class NodeManagerTest : public ::testing::Test {
     })");
 
     NodeManagerConfig node_manager_config{};
-    node_manager_config.node_manager_address = "127.0.0.1";
-    node_manager_config.node_manager_port = 0;
     node_manager_config.maximum_startup_concurrency = 1;
     node_manager_config.store_socket_name = "test_store_socket";
 
