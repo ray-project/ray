@@ -179,8 +179,8 @@ ray_cc_test(
     deps = [
         ":util",
         "//:ray_fakes",
-        "//fakes/ray/rpc/raylet:fake_raylet_client",
         "//:ray_mock",
+        "//src/fakes/ray/rpc/raylet:fake_raylet_client",
         "//src/ray/common:ray_object",
         "//src/ray/object_manager/plasma:plasma_client",
         "//src/ray/raylet:local_object_manager_interface",

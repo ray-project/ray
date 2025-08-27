@@ -64,8 +64,8 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_fakes",
-        "//fakes/ray/rpc/raylet:fake_raylet_client",
         "//:ray_mock",
+        "//src/fakes/ray/rpc/raylet:fake_raylet_client",
         "//src/ray/common:task_common",
         "//src/ray/common:test_util",
         "//src/ray/core_worker:memory_store",
