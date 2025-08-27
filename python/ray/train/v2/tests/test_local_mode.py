@@ -5,7 +5,6 @@ from unittest.mock import MagicMock
 import lightgbm
 import pandas as pd
 import pytest
-import xgboost
 from datasets import Dataset
 from sklearn.datasets import load_breast_cancer
 from sklearn.model_selection import train_test_split
@@ -40,10 +39,6 @@ from ray.train.tests.util import create_dict_checkpoint
 from ray.train.torch import TorchTrainer
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.v2.jax import JaxTrainer
-from ray.train.xgboost import (
-    RayTrainReportCallback as XGBoostRayTrainReportCallback,
-    XGBoostTrainer,
-)
 
 if sys.version_info >= (3, 12):
     # Tensorflow is not installed for Python 3.12 because of keras compatibility.
@@ -527,76 +522,6 @@ def test_e2e_hf_ray_data_local_mode(ray_start_4_cpus, config_id, num_workers):
 
     assert result.metrics["step"] == max_steps
     assert "eval_loss" in result.metrics
-
-
-def test_xgboost_trainer_local_mode(ray_start_4_cpus):
-    def xgboost_train_fn_per_worker(
-        label_column: str,
-        dataset_keys: set,
-    ):
-        checkpoint = ray.train.get_checkpoint()
-        starting_model = None
-        remaining_iters = 10
-        if checkpoint:
-            starting_model = XGBoostRayTrainReportCallback.get_model(checkpoint)
-            starting_iter = starting_model.num_boosted_rounds()
-            remaining_iters = remaining_iters - starting_iter
-
-        train_ds_iter = ray.train.get_dataset_shard(TRAIN_DATASET_KEY)
-        train_df = train_ds_iter.materialize().to_pandas()
-
-        eval_ds_iters = {
-            k: ray.train.get_dataset_shard(k)
-            for k in dataset_keys
-            if k != TRAIN_DATASET_KEY
-        }
-        eval_dfs = {k: d.materialize().to_pandas() for k, d in eval_ds_iters.items()}
-
-        train_X, train_y = train_df.drop(label_column, axis=1), train_df[label_column]
-        dtrain = xgboost.DMatrix(train_X, label=train_y)
-
-        # NOTE: Include the training dataset in the evaluation datasets.
-        # This allows `train-*` metrics to be calculated and reported.
-        evals = [(dtrain, TRAIN_DATASET_KEY)]
-
-        for eval_name, eval_df in eval_dfs.items():
-            eval_X, eval_y = eval_df.drop(label_column, axis=1), eval_df[label_column]
-            evals.append((xgboost.DMatrix(eval_X, label=eval_y), eval_name))
-
-        evals_result = {}
-        xgboost.train(
-            {},
-            dtrain=dtrain,
-            evals=evals,
-            evals_result=evals_result,
-            num_boost_round=remaining_iters,
-            xgb_model=starting_model,
-        )
-
-    data_raw = load_breast_cancer()
-    dataset_df = pd.DataFrame(data_raw["data"], columns=data_raw["feature_names"])
-    dataset_df["target"] = data_raw["target"]
-    train_df, test_df = train_test_split(dataset_df, test_size=0.3)
-
-    train_dataset = ray.data.from_pandas(train_df)
-    valid_dataset = ray.data.from_pandas(test_df)
-    scale_config = ScalingConfig(num_workers=0)
-    trainer = XGBoostTrainer(
-        train_loop_per_worker=lambda: xgboost_train_fn_per_worker(
-            label_column="target",
-            dataset_keys={TRAIN_DATASET_KEY, "valid"},
-        ),
-        train_loop_config={
-            "tree_method": "approx",
-            "objective": "binary:logistic",
-            "eval_metric": ["logloss", "error"],
-        },
-        scaling_config=scale_config,
-        datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
-    )
-    result = trainer.fit()
-    with pytest.raises(DeprecationWarning):
-        XGBoostTrainer.get_model(result.checkpoint)
 
 
 if __name__ == "__main__":
