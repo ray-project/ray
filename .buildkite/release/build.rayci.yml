@@ -2,7 +2,7 @@ group: release build
 steps:
   - name: raycpubaseextra-testdeps
     label: "wanda: ray.py{{matrix}}.cpu.base-extra-testdeps"
-    wanda: ci/docker/ray.cpu.base-extra-testdeps.wanda.yaml
+    wanda: docker/base-extra-testdeps/cpu.wanda.yaml
     matrix:
       - "3.9"
       - "3.11"
@@ -16,7 +16,7 @@ steps:
 
   - name: raycudabaseextra-testdeps
     label: "wanda: ray.py{{matrix.python}}.cu{{matrix.cuda}}.base-extra-testdeps"
-    wanda: ci/docker/ray.cuda.base-extra-testdeps.wanda.yaml
+    wanda: docker/base-extra-testdeps/cuda.wanda.yaml
     matrix:
       setup:
         python:
@@ -35,7 +35,7 @@ steps:
 
   - name: ray-llmbaseextra-testdeps
     label: "wanda: ray.py{{matrix.python}}.llm.base-extra-testdeps (cuda {{matrix.cuda}})"
-    wanda: ci/docker/ray.cuda.base-extra-testdeps.wanda.yaml
+    wanda: docker/base-extra-testdeps/cuda.wanda.yaml
     matrix:
       setup:
         python:
@@ -52,7 +52,7 @@ steps:
 
   - name: ray-mlcudabaseextra-testdeps
     label: "wanda: ray.py{{matrix.python}}.cu{{matrix.cuda}}.ml.base-extra-testdeps"
-    wanda: ci/docker/ray.cuda.base-extra-testdeps.wanda.yaml
+    wanda: docker/base-extra-testdeps/cuda.wanda.yaml
     matrix:
       setup:
         python:

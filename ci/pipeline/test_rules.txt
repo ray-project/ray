@@ -203,10 +203,6 @@ ci/docker/forge.aarch64.wanda.yaml
 ci/docker/manylinux.Dockerfile
 ci/docker/manylinux.wanda.yaml
 ci/docker/manylinux.aarch64.wanda.yaml
-ci/docker/ray.cpu.base.wanda.yaml
-ci/docker/ray.cpu.base.aarch64.wanda.yaml
-ci/docker/ray.cuda.base.wanda.yaml
-ci/docker/ray.cuda.base.aarch64.wanda.yaml
 ci/docker/windows.build.Dockerfile
 ci/docker/windows.build.wanda.yaml
 build-docker.sh
