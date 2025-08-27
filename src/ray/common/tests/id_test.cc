@@ -178,7 +178,7 @@ TEST(PlacementGroupIDTest, TestPlacementGroup) {
 TEST(LeaseIDTest, TestLeaseID) {
   // Test basic LeaseID creation, size, and worker extraction
   const WorkerID worker_id = WorkerID::FromRandom();
-  const uint32_t counter = 0;
+  const uint32_t counter = 2;
   const LeaseID lease_id = LeaseID::FromWorkerId(worker_id, counter);
   const size_t lease_id_size = 32;
   ASSERT_FALSE(lease_id.IsNil());
@@ -186,7 +186,6 @@ TEST(LeaseIDTest, TestLeaseID) {
   ASSERT_EQ(LeaseID::Size(), lease_id_size);
   ASSERT_EQ(lease_id.Binary().size(), lease_id_size);
 
-  // Test FromRandom and uniqueness (counter behavior)
   const LeaseID random_lease = LeaseID::FromRandomWorkerId(1);
   const LeaseID another_lease = LeaseID::FromWorkerId(worker_id, 1);
 
