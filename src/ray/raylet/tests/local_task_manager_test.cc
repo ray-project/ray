@@ -31,6 +31,7 @@
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
+#include "ray/observability/fake_metric.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/tests/util.h"
 
@@ -313,7 +314,8 @@ class LocalTaskManagerTest : public ::testing::Test {
         id_(NodeID::FromRandom()),
         scheduler_(CreateSingleNodeScheduler(id_.Binary(), num_cpus, *gcs_client_)),
         object_manager_(),
-        dependency_manager_(object_manager_),
+        fake_task_by_state_counter_(),
+        dependency_manager_(object_manager_, fake_task_by_state_counter_),
         local_task_manager_(std::make_shared<LocalTaskManager>(
             id_,
             *scheduler_,
@@ -370,6 +372,7 @@ class LocalTaskManagerTest : public ::testing::Test {
   absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_info_;
 
   MockObjectManager object_manager_;
+  ray::observability::FakeMetric fake_task_by_state_counter_;
   DependencyManager dependency_manager_;
   std::shared_ptr<LocalTaskManager> local_task_manager_;
 };

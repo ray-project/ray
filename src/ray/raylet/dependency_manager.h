@@ -32,6 +32,8 @@ namespace ray {
 
 namespace raylet {
 
+using std::literals::operator""sv;
+
 /// Used for unit-testing the ClusterTaskManager, which requests dependencies
 /// for queued tasks.
 class TaskDependencyManagerInterface {
@@ -57,8 +59,9 @@ class TaskDependencyManagerInterface {
 class DependencyManager : public TaskDependencyManagerInterface {
  public:
   /// Create a task dependency manager.
-  explicit DependencyManager(ObjectManagerInterface &object_manager)
-      : object_manager_(object_manager) {
+  explicit DependencyManager(ObjectManagerInterface &object_manager,
+                             ray::observability::MetricInterface &task_by_state_counter)
+      : object_manager_(object_manager), task_by_state_counter_(task_by_state_counter) {
     waiting_tasks_counter_.SetOnChangeCallback(
         [this](std::pair<std::string, bool> key) mutable {
           int64_t num_total = waiting_tasks_counter_.Get(key);
@@ -68,25 +71,26 @@ class DependencyManager : public TaskDependencyManagerInterface {
           int64_t num_inactive = std::min(
               num_total, object_manager_.PullManagerNumInactivePullsByTaskName(key));
           // Offset the metric values recorded from the owner process.
-          ray::stats::STATS_tasks.Record(
+          task_by_state_counter_.Record(
               -num_total,
-              {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT)},
-               {"Name", key.first},
-               {"IsRetry", key.second ? "1" : "0"},
-               {"Source", "dependency_manager"}});
-          ray::stats::STATS_tasks.Record(
+              {{"State"sv,
+                rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT)},
+               {"Name"sv, key.first},
+               {"IsRetry"sv, key.second ? "1" : "0"},
+               {"Source"sv, "dependency_manager"}});
+          task_by_state_counter_.Record(
               num_total - num_inactive,
-              {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_FETCH)},
-               {"Name", key.first},
-               {"IsRetry", key.second ? "1" : "0"},
-               {"Source", "dependency_manager"}});
-          ray::stats::STATS_tasks.Record(
+              {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_FETCH)},
+               {"Name"sv, key.first},
+               {"IsRetry"sv, key.second ? "1" : "0"},
+               {"Source"sv, "dependency_manager"}});
+          task_by_state_counter_.Record(
               num_inactive,
-              {{"State",
+              {{"State"sv,
                 rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_OBJ_STORE_MEM_AVAIL)},
-               {"Name", key.first},
-               {"IsRetry", key.second ? "1" : "0"},
-               {"Source", "dependency_manager"}});
+               {"Name"sv, key.first},
+               {"IsRetry"sv, key.second ? "1" : "0"},
+               {"Source"sv, "dependency_manager"}});
         });
   }
 
@@ -315,6 +319,9 @@ class DependencyManager : public TaskDependencyManagerInterface {
   /// Counts the number of active task dependency fetches by task name. The counter
   /// total will be less than or equal to the size of queued_task_requests_.
   CounterMap<TaskMetricsKey> waiting_tasks_counter_;
+
+  /// Metrics
+  ray::observability::MetricInterface &task_by_state_counter_;
 
   friend class DependencyManagerTest;
 };
