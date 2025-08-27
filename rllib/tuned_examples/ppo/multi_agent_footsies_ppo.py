@@ -112,10 +112,10 @@ parser.add_argument(
 parser.add_argument(
     "--target-mix-size",
     type=int,
-    default=9,
+    default=8,
     help="Target number of policies (RLModules) in the mix to consider the test passed. "
     "The initial mix size is 2: 'main policy' vs. 'other'. "
-    "`--target-mix-size=9` means that 7 new policies will be added to the mix. "
+    "`--target-mix-size=8` means that 6 new policies will be added to the mix. "
     "Whether to add new policy is decided by checking the '--win-rate-threshold' condition. ",
 )
 parser.add_argument(
