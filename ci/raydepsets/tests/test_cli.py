@@ -14,8 +14,6 @@ from networkx import topological_sort
 from ci.raydepsets.cli import (
     DEFAULT_UV_FLAGS,
     DependencySetManager,
-    _copy_lock_files_to_temp_dir,
-    _diff_lock_files,
     _flatten_flags,
     _get_depset,
     _override_uv_flags,
@@ -573,7 +571,7 @@ depsets:
                 name="ray_base_test_depset",
                 output="requirements_compiled.txt",
             )
-            _copy_lock_files_to_temp_dir(manager)
+            manager.copy_lock_files_to_temp_dir()
             assert manager.temp_dir is not None
             assert (Path(manager.temp_dir) / "requirements_compiled.txt").exists()
             assert (Path(manager.workspace.dir) / "requirements_compiled.txt").exists()
@@ -590,7 +588,7 @@ depsets:
                 name="ray_base_test_depset",
                 output="requirements_compiled.txt",
             )
-            _copy_lock_files_to_temp_dir(manager)
+            manager.copy_lock_files_to_temp_dir()
             assert manager.temp_dir is not None
             replace_in_file(
                 Path(manager.temp_dir) / "requirements_compiled.txt",
@@ -598,7 +596,7 @@ depsets:
                 "emoji==2.8.0",
             )
             with self.assertRaises(RuntimeError) as e:
-                _diff_lock_files(manager)
+                manager.diff_lock_files()
             assert (
                 "Lock files are not up to date. Please update lock files and push the changes."
                 in str(e.exception)
@@ -616,9 +614,9 @@ depsets:
                 name="ray_base_test_depset",
                 output="requirements_compiled.txt",
             )
-            _copy_lock_files_to_temp_dir(manager)
+            manager.copy_lock_files_to_temp_dir()
             assert manager.temp_dir is not None
-            _diff_lock_files(manager)
+            manager.diff_lock_files()
 
 
 if __name__ == "__main__":
