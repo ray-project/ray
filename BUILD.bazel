@@ -117,7 +117,7 @@ alias(
 refresh_compile_commands(
     name = "refresh_compile_commands",
     targets = {
-        "//:ray_pkg": "",
+        "//:ray_pkg_zip": "",
     },
 )
 
