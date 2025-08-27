@@ -201,6 +201,7 @@ ray_cc_test(
         "//src/ray/common:test_util",
         "//src/ray/gcs/gcs_server:gcs_actor",
         "//src/ray/gcs/gcs_server:gcs_actor_scheduler",
+        "//src/ray/gcs/gcs_server:gcs_resource_manager",
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/tests:gcs_test_util_lib",
         "@com_google_googletest//:gtest",

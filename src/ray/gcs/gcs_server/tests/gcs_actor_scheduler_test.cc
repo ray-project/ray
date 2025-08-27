@@ -22,17 +22,17 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/asio/asio_util.h"
-#include "ray/common/test_util.h"
-#include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
-#include "ray/gcs/gcs_server/gcs_resource_manager.h"
-#include "ray/gcs/tests/gcs_test_util.h"
-#include "ray/gcs/gcs_server/gcs_actor.h"
-#include "ray/util/counter_map.h"
 #include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "fakes/ray/rpc/worker/core_worker_client.h"
 #include "mock/ray/pubsub/publisher.h"
+#include "ray/common/asio/asio_util.h"
+#include "ray/common/test_util.h"
+#include "ray/gcs/gcs_server/gcs_actor.h"
+#include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
+#include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
+#include "ray/gcs/tests/gcs_test_util.h"
+#include "ray/util/counter_map.h"
 
 namespace ray {
 using raylet::NoopLocalTaskManager;
