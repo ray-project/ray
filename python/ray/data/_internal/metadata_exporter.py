@@ -157,7 +157,7 @@ class DatasetMetadata:
     state: str
 
 
-def _add_ellipsis(s: str, truncate_length: int) -> str:
+def _add_ellipsis_for_string(s: str, truncate_length: int) -> str:
     if len(s) > truncate_length:
         return s[:truncate_length] + "..."
     return s
@@ -175,18 +175,24 @@ def sanitize_for_struct(obj, truncate_length=DEFAULT_TRUNCATION_LENGTH):
         # protobuf Struct key names must be strings.
         return {str(k): sanitize_for_struct(v, truncate_length) for k, v in obj.items()}
     elif isinstance(obj, str):
-        return _add_ellipsis(obj, truncate_length)
+        return _add_ellipsis_for_string(obj, truncate_length)
     elif isinstance(obj, (Sequence, set)):
         # Convert all sequence-like types (lists, tuples, sets, bytes, other sequences) to lists
-        return [sanitize_for_struct(v, truncate_length=truncate_length) for v in obj]
+        res = []
+        for i, v in enumerate(obj):
+            if i >= truncate_length:
+                res.append("...")
+                break
+            res.append(sanitize_for_struct(v, truncate_length))
+        return res
     else:
         try:
             if is_dataclass(obj):
                 return sanitize_for_struct(asdict(obj), truncate_length)
-            return _add_ellipsis(str(obj), truncate_length)
+            return _add_ellipsis_for_string(str(obj), truncate_length)
         except Exception:
             unk_name = f"{UNKNOWN}: {type(obj).__name__}"
-            return _add_ellipsis(unk_name, truncate_length)
+            return _add_ellipsis_for_string(unk_name, truncate_length)
 
 
 def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:

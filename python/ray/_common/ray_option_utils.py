@@ -222,7 +222,7 @@ _task_only_options = {
 
 _actor_only_options = {
     "concurrency_groups": Option((list, dict, type(None))),
-    "enable_tensor_transport": Option(bool, default_value=False),
+    "enable_tensor_transport": Option((bool, type(None)), default_value=None),
     "lifetime": Option(
         (str, type(None)),
         lambda x: None
