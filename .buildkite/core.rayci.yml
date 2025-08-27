@@ -308,8 +308,10 @@ steps:
     tags: core_cpp
     instance_type: medium
     commands:
+      - docker run --privileged -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
+        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash
+        "./src/ray/common/cgroup2/tests/sysfs_cgroup_driver_integration_test_entrypoint.sh"
       - sleep 10000
-      - ./src/ray/common/cgroup2/tests/sysfs_cgroup_driver_integration_test_entrypoint.sh
 
   - label: ":ray: core: cpp tests"
     tags: core_cpp

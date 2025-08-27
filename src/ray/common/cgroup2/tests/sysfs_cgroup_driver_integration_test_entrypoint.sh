@@ -8,7 +8,7 @@ echo "Starting Cgroupv2 Integration Tests as user ${CURR_USER}"
 echo "ROOT_CGROUP is ${ROOT_CGROUP}."
 
 if ! grep -qE 'cgroup2\srw' /etc/mtab; then
-  echo "Failed because cgroupv2 is not mounted on the system."
+  echo "Failed because cgroupv2 is not mounted on the system in read-write mode."
   echo "See the following documentation for how to enable cgroupv2 properly:"
   echo "https://kubernetes.io/docs/concepts/architecture/cgroups/#linux-distribution-cgroup-v2-support"
   exit 1
@@ -72,7 +72,6 @@ cleanup() {
 #   1. cpu, memory controllers are available on ROOT_CGROUP i.e. in the ROOT_CGROUP/cgroup.controllers file.
 #   2. All processes inside the base_cgroup can be migrated into the leaf_cgroup to avoid not violating
 #   the no internal processes contstraint.
-#
 #
 # All C++ tests should only have access to the TEST_CGROUP and nothing outside of it.
 # The C++ tests will be executed as a non-root user. Setup/teardown will need root permissions.
