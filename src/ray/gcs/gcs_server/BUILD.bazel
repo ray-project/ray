@@ -295,6 +295,7 @@ ray_cc_library(
         "gcs_server.h",
     ],
     deps = [
+        ":gcs_actor",
         ":gcs_function_manager",
         ":gcs_health_check_manager",
         ":gcs_init_data",
