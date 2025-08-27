@@ -51,6 +51,7 @@ class LocalTorchController(LocalController):
             )
             world_size = torch.distributed.get_world_size()
             world_rank = torch.distributed.get_rank()
+            torch.cuda.set_device(world_rank)
             assert os.environ["LOCAL_WORLD_SIZE"] == str(
                 world_size
             ), "Local mode only supports 1 node, LOCAL_WORLD_SIZE should be equal to WORLD_SIZE."
