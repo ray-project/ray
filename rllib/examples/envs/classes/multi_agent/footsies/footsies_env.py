@@ -68,7 +68,9 @@ class FootsiesEnv(MultiAgentEnv):
             config = {}
         self.config = config
         self.port = port
-        self.footsies_process_pid = None # Store PID of the running footsies process (we assume one per env)
+        self.footsies_process_pid = (
+            None  # Store PID of the running footsies process (we assume one per env)
+        )
         self.agents: list[AgentID] = ["p1", "p2"]
         self.possible_agents: list[AgentID] = self.agents.copy()
         self._agent_ids: set[AgentID] = set(self.agents)

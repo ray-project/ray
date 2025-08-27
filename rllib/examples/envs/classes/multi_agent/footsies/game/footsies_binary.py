@@ -118,9 +118,7 @@ class FootsiesBinary:
             stub.StartGame(footsies_pb2.Empty())
             ready = stub.IsReady(footsies_pb2.Empty()).value
             while not ready and time.time() - _t0 < _timeout_duration:
-                logger.info(
-                    f"RLlib {self.__class__.__name__}: Game not ready..."
-                )
+                logger.info(f"RLlib {self.__class__.__name__}: Game not ready...")
                 time.sleep(2)
                 ready = stub.IsReady(footsies_pb2.Empty()).value
                 if time.time() - _t0 > _timeout_duration:
