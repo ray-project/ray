@@ -46,7 +46,7 @@ Features of MetricsLogger
 The :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` API offers the following functionalities:
 
 - Log scalar values over time, such as losses, individual rewards, or episode returns.
-- Configure different reduction types, in particular ``mean``, ``min``, ``max``, or ``sum``. Also, users can chose to not
+- Configure different reduction types, in particular ``mean``, ``min``, ``max``, or ``sum``. Also, users can choose to not
   reduce at all through the ``reduce=None`` setting, leaving the logged values untouched.
   A separate ``clear_on_reduce=True`` setting allows for automatically clearing all logged values on each ``reduce`` event.
 - Specify sliding windows, over which reductions take place, for example ``window=100`` to average over the
@@ -169,7 +169,7 @@ whenever reduction takes place or you peek at the current value:
     logger.peek("max_value")  # Expect: 1000.0, which is the lifetime max (infinite window)
 
 
-You can also chose to not reduce at all, but to simply collect individual values, for example a set of images you receive
+You can also choose to not reduce at all, but to simply collect individual values, for example a set of images you receive
 from your environment over time and for which it doesn't make sense to reduce them in any way.
 
 Use the ``reduce=None`` argument for achieving this. However, it's strongly advised that you should also
@@ -228,7 +228,7 @@ Logging non-scalar data
 :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` isn't limited to scalar values.
 You can also use it to log images, videos, or any other complex data.
 
-Normally, you would chose the previously described ``reduce=None`` argument. For example, to
+Normally, you would choose the previously described ``reduce=None`` argument. For example, to
 log three consecutive image frames from a ``CartPole`` environment, do the following:
 
 .. testcode::
