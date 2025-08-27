@@ -118,18 +118,6 @@ cdef class Config:
         return RayConfig.instance().health_check_failure_threshold()
 
     @staticmethod
-    def memory_monitor_refresh_ms():
-        return (RayConfig.instance().memory_monitor_refresh_ms())
-
-    @staticmethod
-    def grpc_keepalive_time_ms():
-        return RayConfig.instance().grpc_keepalive_time_ms()
-
-    @staticmethod
-    def grpc_keepalive_timeout_ms():
-        return RayConfig.instance().grpc_keepalive_timeout_ms()
-
-    @staticmethod
     def grpc_client_keepalive_time_ms():
         return RayConfig.instance().grpc_client_keepalive_time_ms()
 
@@ -148,10 +136,6 @@ cdef class Config:
     @staticmethod
     def py_gcs_connect_timeout_s():
         return RayConfig.instance().py_gcs_connect_timeout_s()
-
-    @staticmethod
-    def gcs_rpc_server_reconnect_timeout_s():
-        return RayConfig.instance().gcs_rpc_server_reconnect_timeout_s()
 
     @staticmethod
     def maximum_gcs_destroyed_actor_cached_count():
