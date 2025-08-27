@@ -62,8 +62,8 @@ fi
 RAY_DEPS_BUILD_DIR="$(mktemp -d)"
 
 cp docker/base-deps/Dockerfile "${RAY_DEPS_BUILD_DIR}/."
-mkdir -p "${RAY_DEPS_BUILD_DIR}/python"
-cp python/requirements_compiled.txt "${RAY_DEPS_BUILD_DIR}/python/requirements_compiled.txt"
+mkdir -p "${RAY_DEPS_BUILD_DIR}/python/lock_files/base_deps"
+cp python/lock_files/base_deps/requirements_compiled_base_deps_*.txt "${RAY_DEPS_BUILD_DIR}/python/lock_files/base_deps/"
 
 BUILD_CMD=(
     docker build "${BUILD_ARGS[@]}"
