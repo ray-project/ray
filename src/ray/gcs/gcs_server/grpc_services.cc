@@ -108,6 +108,9 @@ void TaskInfoGrpcService::InitServerCallFactories(
   RPC_SERVICE_HANDLER(TaskInfoGcsService, GetTaskEvents, max_active_rpcs_per_handler_)
 }
 
+using events::AddEventsReply;
+using events::AddEventsRequest;
+
 void RayEventExportGrpcService::InitServerCallFactories(
     const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
