@@ -35,7 +35,7 @@ from ray._common.utils import (
     get_ray_address_file,
     get_system_memory,
 )
-from ray.core.generated.runtime_env_common_pb2 import (
+from ray.core.generated.runtime_environment_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
 
