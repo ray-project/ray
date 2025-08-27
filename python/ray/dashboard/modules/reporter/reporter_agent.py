@@ -1757,6 +1757,9 @@ class ReporterAgent(
             if gpu["processes_pids"] is not None:
                 gpu["processes_pids"] = list(gpu["processes_pids"].values())
 
+        # TODO(aguo): Add a pydantic model for this dict to maintain compatibility
+        # with the Ray Dashboard API and UI code.
+
         return jsonify_asdict(stats)
 
     async def run(self, server):
