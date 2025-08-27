@@ -43,7 +43,7 @@ def test_dedupe_schema_handle_empty(
 
     incoming_bundle = RefBundle([], owns_blocks=False, schema=incoming_schema)
     out_bundle, diverged = dedupe_schemas_with_validation(
-        old_schema, incoming_bundle, enforce_schemas=True, warn=False
+        old_schema, incoming_bundle, enforce_schemas=False, warn=False
     )
 
     if old_schema_is_empty:
@@ -76,9 +76,9 @@ def test_dedupe_schema_divergence(
     assert diverged
 
     if enforce_schemas:
-        assert out_bundle.schema == old_schema
-    else:
         assert out_bundle.schema == pa.schema(list(old_schema) + list(incoming_schema))
+    else:
+        assert out_bundle.schema == old_schema
 
 
 if __name__ == "__main__":

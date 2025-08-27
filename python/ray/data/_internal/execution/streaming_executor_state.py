@@ -760,7 +760,7 @@ def dedupe_schemas_with_validation(
     old_schema: Optional["Schema"],
     bundle: "RefBundle",
     warn: bool = True,
-    enforce_schemas: bool = True,
+    enforce_schemas: bool = False,
 ) -> Tuple["RefBundle", bool]:
     """Unify/Dedupe two schemas, warning if warn=True
 
@@ -796,7 +796,7 @@ def dedupe_schemas_with_validation(
             f"than the previous one. Previous schema: {old_schema}, "
             f"new schema: {bundle.schema}. This may lead to unexpected behavior."
         )
-    if not enforce_schemas:
+    if enforce_schemas:
         old_schema = unify_schemas_with_validation([old_schema, bundle.schema])
 
     return (
