@@ -23,7 +23,7 @@ documentation, sorted alphabetically.
         essentially a stateful service. :ref:`Learn more about Ray actors<actor-guide>`.
 
     Actor task
-        An invocation of an Ray actor method. Sometimes we just call it a task.
+        An invocation of a Ray actor method. Sometimes we just call it a task.
 
     Ray Agent
         Daemon process running on each Ray node. It has several functionalities like
@@ -38,7 +38,7 @@ documentation, sorted alphabetically.
     Algorithm
         A class that holds the who/when/where/how for training one or more RL agent(s).
         The user interacts with an Algorithm instance directly to train their agents
-        (it is the top-most user facing API or RLlib).
+        (it is the top-most user facing API of RLlib).
 
     Asynchronous execution
         An execution model where a later task can begin executing in parallel,
@@ -66,7 +66,7 @@ documentation, sorted alphabetically.
 
     Backend
         A class containing the initialization and teardown logic for a specific deep
-        learning framework (eg. Torch, TensorFlow), used to set up distributed
+        learning framework (e.g., Torch, TensorFlow), used to set up distributed
         data-parallel training for :ref:`Ray Train’s built-in trainers<train-api>`.
 
     Batch format
@@ -116,7 +116,7 @@ documentation, sorted alphabetically.
         different Ray components and libraries. A Checkpoint can have its data
         represented as a directory on local (on-disk) storage, as a directory on an
         external storage (e.g., cloud storage), and as an in-memory dictionary.
-        :class:`Learn more <ray.train.Checkpoint>`,
+        :class:`Learn more <ray.train.Checkpoint>`.
 
         .. TODO: How does this relate to RLlib checkpoints etc.? Be clear here
 
@@ -197,7 +197,7 @@ documentation, sorted alphabetically.
 
     Environment
         The world or simulation, in which one or more reinforcement learning agents
-        have to learn to behave optimally in wrt. a given reward function. An
+        have to learn to behave optimally with respect to a given reward function. An
         environment consists of an observation space, a reward function, an action
         space, a state transition function, and a distribution over initial states
         (after a reset).
@@ -219,7 +219,7 @@ documentation, sorted alphabetically.
     Trial Executor
         An internal :ref:`Ray Tune component<raytrialexecutor-docstring>` that manages
         the resource management and execution of each trial’s corresponding remote
-        Trainable actor. The trial  executor’s responsibilities include launching
+        Trainable actor. The trial executor’s responsibilities include launching
         training, checkpointing, and restoring remote tasks.
 
     Experiment
@@ -266,7 +266,7 @@ documentation, sorted alphabetically.
     .. TODO: Inference
 
     Job
-        A ray job is a packaged ray application that can be executed on a
+        A Ray job is a packaged ray application that can be executed on a
         (remote) Ray cluster. :ref:`Learn more<jobs-overview>`.
 
     Lineage
@@ -375,7 +375,7 @@ documentation, sorted alphabetically.
     On-Policy
         A type of RL Algorithm. In an on-policy algorithm, the policy used to compute
         the actions inside an RL environment (to generate the training data) must be the
-        exact same (matching NN weights at all times) than the one that is being
+        exact same (matching NN weights at all times) as the one that is being
         optimized. Examples for on-policy Algorithms are PPO, APPO, and IMPALA.
 
     OOM (Out of Memory)
