@@ -78,6 +78,7 @@ class RouterMetricsManager:
         self_actor_id: str,
         handle_source: DeploymentHandleSource,
         controller_handle: ActorHandle,
+        handle_request_counter: metrics.Counter,
         router_requests_counter: metrics.Counter,
         queued_requests_gauge: metrics.Gauge,
         running_requests_gauge: metrics.Gauge,
@@ -90,6 +91,8 @@ class RouterMetricsManager:
         self._controller_handle = controller_handle
 
         # Exported metrics
+        self.num_handle_requests = handle_request_counter
+
         self.num_router_requests = router_requests_counter
         self.num_router_requests.set_default_tags(
             {
@@ -146,6 +149,7 @@ class RouterMetricsManager:
         self._cached_metrics_interval_s = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS / 1000
 
         if self._cached_metrics_enabled:
+            self._cached_num_handle_requests = defaultdict(int)
             self._cached_num_router_requests = defaultdict(int)
             event_loop.create_task(self._report_cached_metrics_forever())
 
@@ -282,6 +286,10 @@ class RouterMetricsManager:
                 self.metrics_pusher.stop_tasks()
 
     def _report_cached_metrics(self):
+        for route, count in self._cached_num_handle_requests.items():
+            self.num_handle_requests.inc(count, tags={"route": route})
+        self._cached_num_handle_requests.clear()
+
         for route, count in self._cached_num_router_requests.items():
             self.num_router_requests.inc(count, tags={"route": route})
         self._cached_num_router_requests.clear()
@@ -308,6 +316,12 @@ class RouterMetricsManager:
                 backoff_time_s = min(10, 2**consecutive_errors)
                 consecutive_errors += 1
                 await asyncio.sleep(backoff_time_s)
+
+    def inc_handle_requests(self, route: str):
+        if self._cached_metrics_enabled:
+            self._cached_num_handle_requests[route] += 1
+        else:
+            self.num_handle_requests.inc(tags={"route": route})
 
     def inc_num_total_requests(self, route: str):
         if self._cached_metrics_enabled:
@@ -428,6 +442,10 @@ class Router(ABC):
     def shutdown(self) -> concurrent.futures.Future:
         pass
 
+    @abstractmethod
+    def inc_handle_requests(self, route: str):
+        pass
+
 
 async def create_event() -> asyncio.Event:
     """Helper to create an asyncio event in the current event loop."""
@@ -447,6 +465,7 @@ class AsyncioRouter:
         node_id: str,
         availability_zone: Optional[str],
         prefer_local_node_routing: bool,
+        handle_request_counter: metrics.Counter,
         resolve_request_arg_func: Coroutine = resolve_deployment_response,
         request_router_class: Optional[Callable] = None,
         request_router_kwargs: Optional[Dict[str, Any]] = None,
@@ -502,6 +521,7 @@ class AsyncioRouter:
             self_actor_id,
             handle_source,
             controller_handle,
+            handle_request_counter,
             metrics.Counter(
                 "serve_num_router_requests",
                 description="The number of requests processed by the router.",
@@ -864,6 +884,9 @@ class AsyncioRouter:
     async def shutdown(self):
         await self._metrics_manager.shutdown()
 
+    def inc_handle_requests(self, route: str):
+        self._metrics_manager.inc_handle_requests(route)
+
 
 class SingletonThreadRouter(Router):
     """Wrapper class that runs an AsyncioRouter on a separate thread.
@@ -966,6 +989,9 @@ class SingletonThreadRouter(Router):
         return asyncio.run_coroutine_threadsafe(
             self._asyncio_router.shutdown(), loop=self._asyncio_loop
         )
+
+    def inc_handle_requests(self, route: str):
+        self._asyncio_router.inc_handle_requests(route)
 
 
 class SharedRouterLongPollClient:
@@ -1082,3 +1108,6 @@ class CurrentLoopRouter(Router):
 
     def shutdown(self) -> asyncio.Future:
         return self._asyncio_loop.create_task(self._asyncio_router.shutdown())
+
+    def inc_handle_requests(self, route: str):
+        self._asyncio_router.inc_handle_requests(route)

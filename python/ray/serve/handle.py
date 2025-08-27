@@ -143,6 +143,7 @@ class _DeploymentHandleBase:
             handle_id=self.handle_id,
             deployment_id=self.deployment_id,
             handle_options=init_options,
+            handle_request_counter=self.request_counter,
         )
         self.init_options = init_options
 
@@ -200,12 +201,7 @@ class _DeploymentHandleBase:
             self.init_options, self.handle_options
         )
 
-        self.request_counter.inc(
-            tags={
-                "route": metadata.route,
-                "application": metadata.app_name,
-            }
-        )
+        self._router.inc_handle_requests(metadata.route)
 
         return self._router.assign_request(metadata, *args, **kwargs), metadata
 
