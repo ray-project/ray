@@ -42,11 +42,6 @@ class MockedGcsActorScheduler : public gcs::GcsActorScheduler {
  public:
   using gcs::GcsActorScheduler::GcsActorScheduler;
 
-  void TryLeaseWorkerFromNodeAgain(std::shared_ptr<gcs::GcsActor> actor,
-                                   std::shared_ptr<rpc::GcsNodeInfo> node) {
-    DoRetryLeasingWorkerFromNode(std::move(actor), std::move(node));
-  }
-
  protected:
   void RetryLeasingWorkerFromNode(std::shared_ptr<gcs::GcsActor> actor,
                                   std::shared_ptr<rpc::GcsNodeInfo> node) override {
@@ -703,7 +698,7 @@ TEST_F(GcsActorSchedulerTest, TestReleaseUnusedActorWorkers) {
   // When `GcsActorScheduler` receives the `ReleaseUnusedActorWorkers` reply, it will send
   // out the `RequestWorkerLease` request.
   ASSERT_TRUE(raylet_client_->ReplyReleaseUnusedActorWorkers());
-  gcs_actor_scheduler_->TryLeaseWorkerFromNodeAgain(actor, node);
+  gcs_actor_scheduler_->DoRetryLeasingWorkerFromNode(actor, node);
   ASSERT_EQ(raylet_client_->num_workers_requested, 1);
 }
 
@@ -1258,7 +1253,7 @@ TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestReleaseUnusedActorWorkersByGc
   // When `GcsActorScheduler` receives the `ReleaseUnusedActorWorkers` reply, it will send
   // out the `RequestWorkerLease` request.
   ASSERT_TRUE(raylet_client_->ReplyReleaseUnusedActorWorkers());
-  gcs_actor_scheduler_->TryLeaseWorkerFromNodeAgain(actor, node);
+  gcs_actor_scheduler_->DoRetryLeasingWorkerFromNode(actor, node);
   ASSERT_EQ(raylet_client_->num_workers_requested, 1);
 }
 
