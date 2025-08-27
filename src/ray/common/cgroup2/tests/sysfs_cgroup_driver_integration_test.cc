@@ -32,7 +32,7 @@ constexpr const char *ENV_VAR_TEST_CGROUP_PATH = "CGROUP_PATH";
 
 namespace ray {
 
-class SysFsCgroupDriverUnprivilegedIntegrationTest : public ::testing::Test {
+class SysFsCgroupDriverIntegrationTest : public ::testing::Test {
  protected:
   static void SetUpTestSuite() {
     const char *cgroup_env = std::getenv(ENV_VAR_TEST_CGROUP_PATH);
@@ -44,18 +44,17 @@ class SysFsCgroupDriverUnprivilegedIntegrationTest : public ::testing::Test {
 
   static const std::string &GetTestCgroupPath() { return test_cgroup_path_; }
 
-  // This variable must be static to be used in SetUpTestSuite
   inline static std::string test_cgroup_path_;
 };
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
-       SysFsCgroupDriverUnprivilegedIntegrationTestFailsIfNoCgroupTestPathSpecified) {
+TEST_F(SysFsCgroupDriverIntegrationTest,
+       SysFsCgroupDriverIntegrationTestFailsIfNoCgroupTestPathSpecified) {
   ASSERT_FALSE(test_cgroup_path_.empty())
       << "These integration tests cannot be run without the "
          "environment variable CGROUP_TEST_PATH";
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
+TEST_F(SysFsCgroupDriverIntegrationTest,
        CheckCgroupFailsIfCgroupv2PathButNoReadPermissions) {
   auto cgroup_dir_or_status = TempCgroupDirectory::Create(test_cgroup_path_, 0000);
   ASSERT_TRUE(cgroup_dir_or_status.ok()) << cgroup_dir_or_status.ToString();
@@ -65,7 +64,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
   EXPECT_TRUE(s.IsPermissionDenied()) << s.ToString();
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
+TEST_F(SysFsCgroupDriverIntegrationTest,
        CheckCgroupFailsIfCgroupv2PathButNoWritePermissions) {
   auto cgroup_dir_or_status = TempCgroupDirectory::Create(test_cgroup_path_, S_IRUSR);
   ASSERT_TRUE(cgroup_dir_or_status.ok()) << cgroup_dir_or_status.ToString();
@@ -75,7 +74,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
   EXPECT_TRUE(s.IsPermissionDenied()) << s.ToString();
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
+TEST_F(SysFsCgroupDriverIntegrationTest,
        CheckCgroupFailsIfCgroupv2PathButNoExecPermissions) {
   auto cgroup_dir_or_status =
       TempCgroupDirectory::Create(test_cgroup_path_, S_IRUSR | S_IWUSR);
@@ -86,7 +85,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
   EXPECT_TRUE(s.IsPermissionDenied()) << s.ToString();
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
+TEST_F(SysFsCgroupDriverIntegrationTest,
        CheckCgroupSucceedsIfCgroupv2PathAndReadWriteExecPermissions) {
   auto cgroup_dir_or_status = TempCgroupDirectory::Create(test_cgroup_path_, S_IRWXU);
   ASSERT_TRUE(cgroup_dir_or_status.ok()) << cgroup_dir_or_status.ToString();
@@ -96,7 +95,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
   EXPECT_TRUE(s.ok()) << s.ToString();
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest, CreateCgroupFailsIfAlreadyExists) {
+TEST_F(SysFsCgroupDriverIntegrationTest, CreateCgroupFailsIfAlreadyExists) {
   auto cgroup_dir_or_status = TempCgroupDirectory::Create(test_cgroup_path_, S_IRWXU);
   ASSERT_TRUE(cgroup_dir_or_status.ok()) << cgroup_dir_or_status.ToString();
   auto cgroup_dir = std::move(cgroup_dir_or_status.value());
@@ -105,8 +104,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest, CreateCgroupFailsIfAlreadyE
   ASSERT_TRUE(s.IsAlreadyExists()) << s.ToString();
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
-       CreateCgroupFailsIfAncestorCgroupDoesNotExist) {
+TEST_F(SysFsCgroupDriverIntegrationTest, CreateCgroupFailsIfAncestorCgroupDoesNotExist) {
   auto cgroup_dir_or_status = TempCgroupDirectory::Create(test_cgroup_path_, S_IRWXU);
   ASSERT_TRUE(cgroup_dir_or_status.ok()) << cgroup_dir_or_status.ToString();
   auto cgroup_dir = std::move(cgroup_dir_or_status.value());
@@ -118,8 +116,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
   EXPECT_TRUE(s.IsNotFound()) << s.ToString();
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
-       CreateCgroupFailsIfOnlyReadPermissions) {
+TEST_F(SysFsCgroupDriverIntegrationTest, CreateCgroupFailsIfOnlyReadPermissions) {
   auto cgroup_dir_or_status = TempCgroupDirectory::Create(test_cgroup_path_, S_IRUSR);
   ASSERT_TRUE(cgroup_dir_or_status.ok()) << cgroup_dir_or_status.ToString();
   auto cgroup_dir = std::move(cgroup_dir_or_status.value());
@@ -130,8 +127,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
   EXPECT_TRUE(s.IsPermissionDenied()) << s.ToString();
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
-       CreateCgroupFailsIfOnlyReadWritePermissions) {
+TEST_F(SysFsCgroupDriverIntegrationTest, CreateCgroupFailsIfOnlyReadWritePermissions) {
   auto cgroup_dir_or_status =
       TempCgroupDirectory::Create(test_cgroup_path_, S_IRUSR | S_IWUSR);
   ASSERT_TRUE(cgroup_dir_or_status.ok()) << cgroup_dir_or_status.ToString();
@@ -143,7 +139,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
   EXPECT_TRUE(s.IsPermissionDenied()) << s.ToString();
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
+TEST_F(SysFsCgroupDriverIntegrationTest,
        CreateCgroupSucceedsIfParentExistsAndReadWriteExecPermissions) {
   auto cgroup_dir_or_status = TempCgroupDirectory::Create(test_cgroup_path_, S_IRWXU);
   ASSERT_TRUE(cgroup_dir_or_status.ok()) << cgroup_dir_or_status.ToString();
@@ -160,7 +156,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
       << "Error: " << strerror(errno);
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
+TEST_F(SysFsCgroupDriverIntegrationTest,
        GetAvailableControllersFailsIfCgroupDoesNotExist) {
   std::string non_existent_path = test_cgroup_path_ +
                                   std::filesystem::path::preferred_separator + "no" +
@@ -171,7 +167,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
   EXPECT_TRUE(s.IsNotFound()) << s.ToString();
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
+TEST_F(SysFsCgroupDriverIntegrationTest,
        GetAvailableControllersFailsIfReadWriteButNotExecutePermissions) {
   auto cgroup_dir_or_status =
       TempCgroupDirectory::Create(test_cgroup_path_, S_IRUSR | S_IWUSR);
@@ -184,7 +180,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
   EXPECT_TRUE(s.IsPermissionDenied()) << s.ToString();
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
+TEST_F(SysFsCgroupDriverIntegrationTest,
        GetAvailableControllersSucceedsWithCPUAndMemoryControllersOnBaseCgroup) {
   SysFsCgroupDriver driver;
   StatusOr<std::unordered_set<std::string>> s =
@@ -196,7 +192,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
       << " has the cpu controller available";
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
+TEST_F(SysFsCgroupDriverIntegrationTest,
        GetAvailableControllersSucceedsWithNoAvailableControllers) {
   auto parent_cgroup_dir_or_status =
       TempCgroupDirectory::Create(test_cgroup_path_, S_IRWXU);
@@ -216,8 +212,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
   EXPECT_EQ(controllers.size(), 0);
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
-       MoveAllProcessesFailsIfSourceDoesntExist) {
+TEST_F(SysFsCgroupDriverIntegrationTest, MoveAllProcessesFailsIfSourceDoesntExist) {
   auto ancestor_cgroup_or_status =
       TempCgroupDirectory::Create(test_cgroup_path_, S_IRWXU);
   ASSERT_TRUE(ancestor_cgroup_or_status.ok()) << ancestor_cgroup_or_status.ToString();
@@ -234,8 +229,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
   EXPECT_TRUE(s.IsNotFound()) << s.ToString();
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
-       MoveAllProcessesFailsIfDestDoesntExist) {
+TEST_F(SysFsCgroupDriverIntegrationTest, MoveAllProcessesFailsIfDestDoesntExist) {
   auto ancestor_cgroup_or_status =
       TempCgroupDirectory::Create(test_cgroup_path_, S_IRWXU);
   ASSERT_TRUE(ancestor_cgroup_or_status.ok()) << ancestor_cgroup_or_status.ToString();
@@ -252,7 +246,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
   EXPECT_TRUE(s.IsNotFound()) << s.ToString();
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
+TEST_F(SysFsCgroupDriverIntegrationTest,
        MoveAllProcessesFailsIfNotReadWriteExecPermissionsForSource) {
   auto ancestor_cgroup_or_status =
       TempCgroupDirectory::Create(test_cgroup_path_, S_IRWXU);
@@ -271,7 +265,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
   EXPECT_TRUE(s.IsPermissionDenied()) << s.ToString();
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
+TEST_F(SysFsCgroupDriverIntegrationTest,
        MoveAllProcessesFailsIfNotReadWriteExecPermissionsForDest) {
   auto ancestor_cgroup_or_status =
       TempCgroupDirectory::Create(test_cgroup_path_, S_IRWXU);
@@ -290,7 +284,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
   EXPECT_TRUE(s.IsPermissionDenied()) << s.ToString();
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
+TEST_F(SysFsCgroupDriverIntegrationTest,
        MoveAllProcessesFailsIfNotReadWriteExecPermissionsForAncestor) {
   auto ancestor_cgroup_or_status =
       TempCgroupDirectory::Create(test_cgroup_path_, S_IRWXU);
@@ -316,7 +310,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
       << "\n Error: " << strerror(errno);
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
+TEST_F(SysFsCgroupDriverIntegrationTest,
        MoveAllProcessesSucceedsWithCorrectPermissionsAndValidCgroups) {
   auto source_cgroup_or_status = TempCgroupDirectory::Create(test_cgroup_path_, S_IRWXU);
   ASSERT_TRUE(source_cgroup_or_status.ok()) << source_cgroup_or_status.ToString();
@@ -352,7 +346,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
   ASSERT_TRUE(terminate_s.ok()) << terminate_s.ToString();
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
+TEST_F(SysFsCgroupDriverIntegrationTest,
        EnableControllerFailsIfReadOnlyPermissionsForCgroup) {
   auto cgroup_dir_or_status = TempCgroupDirectory::Create(test_cgroup_path_, S_IRUSR);
   ASSERT_TRUE(cgroup_dir_or_status.ok()) << cgroup_dir_or_status.ToString();
@@ -362,7 +356,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
   ASSERT_TRUE(s.IsPermissionDenied()) << s.ToString();
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
+TEST_F(SysFsCgroupDriverIntegrationTest,
        EnableControllerFailsIfReadWriteOnlyPermissionsForCgroup) {
   auto cgroup_dir_or_status =
       TempCgroupDirectory::Create(test_cgroup_path_, S_IRUSR | S_IWUSR);
@@ -373,8 +367,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
   ASSERT_TRUE(s.IsPermissionDenied()) << s.ToString();
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
-       EnableControllerFailsIfCgroupDoesNotExist) {
+TEST_F(SysFsCgroupDriverIntegrationTest, EnableControllerFailsIfCgroupDoesNotExist) {
   std::string non_existent_path =
       test_cgroup_path_ + std::filesystem::path::preferred_separator + "nope";
   SysFsCgroupDriver driver;
@@ -382,7 +375,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
   ASSERT_TRUE(s.IsNotFound()) << s.ToString();
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
+TEST_F(SysFsCgroupDriverIntegrationTest,
        EnableControllerFailsIfControllerNotAvailableForCgroup) {
   // This will inherit controllers available because testing_cgroup_ has
   // CPU and Memory controllers available.
@@ -404,8 +397,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
   ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
-       DisableControllerFailsIfControllerNotEnabled) {
+TEST_F(SysFsCgroupDriverIntegrationTest, DisableControllerFailsIfControllerNotEnabled) {
   auto cgroup_dir_or_status = TempCgroupDirectory::Create(test_cgroup_path_, S_IRWXU);
   ASSERT_TRUE(cgroup_dir_or_status.ok()) << cgroup_dir_or_status.ToString();
   auto cgroup_dir = std::move(cgroup_dir_or_status.value());
@@ -418,7 +410,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
   ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
+TEST_F(SysFsCgroupDriverIntegrationTest,
        DisableControllerFailsIfReadOnlyPermissionsForCgroup) {
   auto cgroup_dir_or_status = TempCgroupDirectory::Create(test_cgroup_path_, S_IRUSR);
   ASSERT_TRUE(cgroup_dir_or_status.ok()) << cgroup_dir_or_status.ToString();
@@ -428,7 +420,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
   ASSERT_TRUE(s.IsPermissionDenied()) << s.ToString();
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
+TEST_F(SysFsCgroupDriverIntegrationTest,
        DisableControllerFailsIfReadWriteOnlyPermissionsForCgroup) {
   auto cgroup_dir_or_status =
       TempCgroupDirectory::Create(test_cgroup_path_, S_IRUSR | S_IWUSR);
@@ -439,8 +431,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
   ASSERT_TRUE(s.IsPermissionDenied()) << s.ToString();
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
-       DisableControllerFailsIfCgroupDoesNotExist) {
+TEST_F(SysFsCgroupDriverIntegrationTest, DisableControllerFailsIfCgroupDoesNotExist) {
   std::string non_existent_path =
       test_cgroup_path_ + std::filesystem::path::preferred_separator + "nope";
   SysFsCgroupDriver driver;
@@ -448,7 +439,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
   ASSERT_TRUE(s.IsNotFound()) << s.ToString();
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
+TEST_F(SysFsCgroupDriverIntegrationTest,
        EnableAndDisableControllerSucceedWithCorrectInputAndPermissions) {
   auto parent_cgroup_dir_or_status =
       TempCgroupDirectory::Create(test_cgroup_path_, S_IRWXU);
@@ -487,8 +478,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
   ASSERT_TRUE(disable_parent_success_s.ok()) << disable_parent_success_s.ToString();
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
-       AddResourceConstraintFailsIfCgroupDoesntExist) {
+TEST_F(SysFsCgroupDriverIntegrationTest, AddResourceConstraintFailsIfCgroupDoesntExist) {
   std::string non_existent_path =
       test_cgroup_path_ + std::filesystem::path::preferred_separator + "nope";
   SysFsCgroupDriver driver;
@@ -496,7 +486,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
   ASSERT_TRUE(s.IsNotFound()) << s.ToString();
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
+TEST_F(SysFsCgroupDriverIntegrationTest,
        AddResourceConstraintFailsIfReadOnlyPermissions) {
   auto cgroup_or_status = TempCgroupDirectory::Create(test_cgroup_path_, S_IRUSR);
   ASSERT_TRUE(cgroup_or_status.ok()) << cgroup_or_status.ToString();
@@ -506,7 +496,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
   ASSERT_TRUE(s.IsPermissionDenied()) << s.ToString();
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
+TEST_F(SysFsCgroupDriverIntegrationTest,
        AddResourceConstraintFailsIfReadWriteOnlyPermissions) {
   auto cgroup_or_status =
       TempCgroupDirectory::Create(test_cgroup_path_, S_IRUSR | S_IWUSR);
@@ -517,7 +507,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
   ASSERT_TRUE(s.IsPermissionDenied()) << s.ToString();
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
+TEST_F(SysFsCgroupDriverIntegrationTest,
        AddResourceConstraintFailsIfConstraintNotSupported) {
   auto cgroup_or_status = TempCgroupDirectory::Create(test_cgroup_path_, S_IRWXU);
   ASSERT_TRUE(cgroup_or_status.ok()) << cgroup_or_status.ToString();
@@ -527,7 +517,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
   Status s = driver.AddConstraint(cgroup->GetPath(), "memory.max", "1");
   ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
 }
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
+TEST_F(SysFsCgroupDriverIntegrationTest,
        AddResourceConstraintFailsIfControllerNotEnabled) {
   auto cgroup_or_status = TempCgroupDirectory::Create(test_cgroup_path_, S_IRWXU);
   ASSERT_TRUE(cgroup_or_status.ok()) << cgroup_or_status.ToString();
@@ -537,7 +527,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
   Status s = driver.AddConstraint(cgroup->GetPath(), "memory.min", "1");
   ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
 }
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
+TEST_F(SysFsCgroupDriverIntegrationTest,
        AddResourceConstraintFailsIfInvalidConstraintValue) {
   auto cgroup_or_status = TempCgroupDirectory::Create(test_cgroup_path_, S_IRWXU);
   ASSERT_TRUE(cgroup_or_status.ok()) << cgroup_or_status.ToString();
@@ -553,7 +543,7 @@ TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest,
   ASSERT_TRUE(s_too_high.IsInvalidArgument()) << s_too_high.ToString();
 }
 
-TEST_F(SysFsCgroupDriverUnprivilegedIntegrationTest, AddResourceConstraintSucceeds) {
+TEST_F(SysFsCgroupDriverIntegrationTest, AddResourceConstraintSucceeds) {
   auto cgroup_or_status = TempCgroupDirectory::Create(test_cgroup_path_, S_IRWXU);
   ASSERT_TRUE(cgroup_or_status.ok()) << cgroup_or_status.ToString();
   auto cgroup = std::move(cgroup_or_status.value());
