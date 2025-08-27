@@ -225,7 +225,7 @@ class DataOrganizer:
                     break
 
             for gpu_stats in node_physical_stats.get("gpus", []):
-                # gpu_stats.get("processes") can be None, an empty list or a
+                # gpu_stats.get("processesPids") can be None, an empty list or a
                 # list of dictionaries.
                 for process in gpu_stats.get("processesPids") or []:
                     if process["pid"] == pid:

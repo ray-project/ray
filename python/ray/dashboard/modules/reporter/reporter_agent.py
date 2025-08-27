@@ -926,7 +926,7 @@ class ReporterAgent(
                     processes = gpu.get("processes_pids")
                     if processes:
                         for proc in processes.values():
-                            gpu_pid_mapping[proc.pid].append(proc)
+                            gpu_pid_mapping[proc["pid"]].append(proc)
 
             result = []
             for w in self._workers.values():
@@ -1722,6 +1722,11 @@ class ReporterAgent(
         self, cluster_autoscaling_stats_json: Optional[bytes]
     ) -> str:
         stats = self._collect_stats()
+
+        # Convert processes_pids back to a list of dictionaries to maintain backwards-compatibility
+        for gpu in stats["gpus"]:
+            if gpu["processes_pids"] is not None:
+                gpu["processes_pids"] = list(gpu["processes_pids"].values())
 
         # Report stats only when metrics collection is enabled.
         if not self._metrics_collection_disabled:
