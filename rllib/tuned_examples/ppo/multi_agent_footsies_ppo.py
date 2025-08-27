@@ -29,7 +29,6 @@ from pathlib import Path
 
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core.rl_module import RLModuleSpec, MultiRLModuleSpec
-from ray.rllib.env import EnvContext
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.examples.envs.classes.multi_agent.footsies.fixed_rlmodules import (
     NoopFixedRLModule,
@@ -37,7 +36,7 @@ from ray.rllib.examples.envs.classes.multi_agent.footsies.fixed_rlmodules import
     AttackFixedRLModule,
 )
 from ray.rllib.examples.envs.classes.multi_agent.footsies.footsies_env import (
-    FootsiesEnv,
+    env_creator,
 )
 from ray.rllib.examples.envs.classes.multi_agent.footsies.utils import (
     Matchup,
@@ -125,26 +124,6 @@ parser.add_argument(
     default=256,
     help="The length of each rollout fragment to be collected by the EnvRunners when sampling.",
 )
-
-
-def env_creator(env_config: EnvContext) -> FootsiesEnv:
-    """Creates the Footsies environment.
-    Ensure that each game server runs on a unique port. Training and evaluation env runners have separate port ranges.
-    """
-    if env_config.get("env-for-evaluation", False):
-        port = (
-            env_config["eval_start_port"]
-            - 1  # "-1" to start with eval_start_port as the first port (eval worker index starts at 1)
-            + int(env_config.worker_index) * env_config.get("num_envs_per_worker", 1)
-            + env_config.get("vector_index", 0)
-        )
-    else:
-        port = (
-            env_config["train_start_port"]
-            + int(env_config.worker_index) * env_config.get("num_envs_per_worker", 1)
-            + env_config.get("vector_index", 0)
-        )
-    return FootsiesEnv(config=env_config, port=port)
 
 
 if __name__ == "__main__":

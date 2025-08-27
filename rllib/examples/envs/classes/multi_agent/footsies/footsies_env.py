@@ -221,3 +221,27 @@ class FootsiesEnv(MultiAgentEnv):
     def _prepare_and_start_game_server(self):
         fb = FootsiesBinary(config=self.config, port=self.port)
         fb.start_game_server()
+
+
+def env_creator(env_config: EnvContext) -> FootsiesEnv:
+    """Creates the Footsies environment
+
+    Ensure that each game server runs on a unique port. Training and evaluation env runners have separate port ranges.
+
+    Helper function to create the FootsiesEnv with a unique port based on the worker index and vector index.
+    It's usually passed to the `register_env()`, like this: register_env(name="FootsiesEnv", env_creator=env_creator).
+    """
+    if env_config.get("env-for-evaluation", False):
+        port = (
+            env_config["eval_start_port"]
+            - 1  # "-1" to start with eval_start_port as the first port (eval worker index starts at 1)
+            + int(env_config.worker_index) * env_config.get("num_envs_per_worker", 1)
+            + env_config.get("vector_index", 0)
+        )
+    else:
+        port = (
+            env_config["train_start_port"]
+            + int(env_config.worker_index) * env_config.get("num_envs_per_worker", 1)
+            + env_config.get("vector_index", 0)
+        )
+    return FootsiesEnv(config=env_config, port=port)
