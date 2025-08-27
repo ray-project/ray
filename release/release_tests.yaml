@@ -2856,9 +2856,7 @@
 
   team: core
   cluster:
-    byod:
-      runtime_env:
-        - RAY_enable_open_telemetry=1
+    byod: {}
     cluster_compute: stress_tests/placement_group_tests_compute.yaml
 
   run:
@@ -2930,9 +2928,7 @@
   working_dir: microbenchmark
 
   cluster:
-    byod:
-      runtime_env:
-        - RAY_enable_open_telemetry=1
+    byod: {}
     cluster_compute: tpl_64.yaml
 
   run:
@@ -3211,9 +3207,7 @@
   frequency: nightly
   team: core
   cluster:
-    byod:
-      runtime_env:
-        - RAY_enable_open_telemetry=1
+    byod: {}
     cluster_compute: stress_tests/stress_tests_compute.yaml
 
   run:
@@ -3253,9 +3247,7 @@
   frequency: nightly
   team: core
   cluster:
-    byod:
-      runtime_env:
-        - RAY_enable_open_telemetry=1
+    byod: {}
     cluster_compute: stress_tests/stress_tests_compute.yaml
 
   run:
@@ -3387,9 +3379,7 @@
   team: core
   env: aws_perf
   cluster:
-    byod:
-      runtime_env:
-        - RAY_enable_open_telemetry=1
+    byod: {}
     cluster_compute: stress_tests/stress_tests_single_node_oom_compute.yaml
 
   run:
@@ -3553,7 +3543,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-        - RAY_enable_open_telemetry=1
     cluster_compute: single_node.yaml
 
   run:
@@ -3581,7 +3570,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-        - RAY_enable_open_telemetry=1
     cluster_compute: object_store.yaml
 
   run:
@@ -3610,7 +3598,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-        - RAY_enable_open_telemetry=1
     cluster_compute: object_store/small_objects.yaml
 
   run:
@@ -3634,7 +3621,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-        - RAY_enable_open_telemetry=1
     cluster_compute: object_store/large_objects.yaml
 
   run:
@@ -3658,7 +3644,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-        - RAY_enable_open_telemetry=1
     cluster_compute: distributed.yaml
 
   run:
@@ -3707,7 +3692,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-        - RAY_enable_open_telemetry=1
     cluster_compute: distributed.yaml
 
   run:
@@ -3736,7 +3720,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-        - RAY_enable_open_telemetry=1
     cluster_compute: distributed.yaml
 
   run:
@@ -3786,7 +3769,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-        - RAY_enable_open_telemetry=1
     cluster_compute: many_nodes.yaml
 
   run:
@@ -4586,7 +4568,7 @@
       pytest -sv test_batch_vllm.py
 
 - name: llm_batch_sglang_llama
-  frequency: nightly
+  frequency: manual # TODO(ray-llm): fix this test and re-enable it.
   python: "3.11"
   group: llm-batch
   team: llm
@@ -4603,6 +4585,55 @@
     script: >
       pytest -sv test_batch_sglang.py
 
+
+- name: text_embeddings_benchmark_{{scaling}}
+  frequency: nightly
+  python: "3.11"  # necessary for the llm-cu128 image
+  working_dir: nightly_tests
+  team: data
+
+  cluster:
+    byod:
+      type: llm-cu128
+    cluster_compute: dataset/{{scaling}}_gpu_g6e_2xl_aws.yaml
+
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  run:
+    timeout: 3600
+    script: >
+      python dataset/text_embeddings_benchmark.py --embed-concurrency 15
+
+# Note: release tests do not support specifying both 'matrix' and 'variations'
+# in a test definition, so split off preemptible tests here.
+- name: text_embeddings_benchmark_{{scaling}}_preemptible
+  frequency: nightly
+  python: "3.11"
+  working_dir: nightly_tests
+  team: data
+
+  cluster:
+    byod:
+      type: llm-cu128
+    cluster_compute: dataset/{{scaling}}_gpu_g6e_2xl_aws.yaml
+
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  run:
+    timeout: 3600
+    # Notes:
+    # - Not using true spot instances. We simulate spot preemption using TerminateEC2InstanceWithGracePeriod to soft-kill the workers. This is so that we can
+    # control the kill schedule.
+    # - Batch size is always fixed, so kill schedule is deterministic.
+    prepare: >
+      python setup_chaos.py --chaos TerminateEC2InstanceWithGracePeriod
+      --batch-size-to-kill 5 --max-to-kill 15 --kill-delay 30 --kill-interval 100
+    script: >
+      python dataset/text_embeddings_benchmark.py --chaos-test --embed-concurrency 15
 
 #######################
 # Ray examples tests

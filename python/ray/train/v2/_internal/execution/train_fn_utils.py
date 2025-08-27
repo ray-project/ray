@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional
 
 from ray.data import DataIterator
 from ray.train import Checkpoint
+from ray.train.v2._internal.execution import collective_impl
 from ray.train.v2._internal.execution.context import (
     get_train_context as get_internal_train_context,
 )
@@ -67,16 +68,34 @@ class TrainFnUtils:
         Returns:
             The DataIterator shard for this worker.
         """
-        from ray.train.v2._internal.callbacks.datasets import DatasetShardMetadata
-
-        dataset_info = DatasetShardMetadata(
-            dataset_name=dataset_name,
-            world_rank=get_internal_train_context().get_world_rank(),
+        from ray.train.v2._internal.data_integration.interfaces import (
+            DatasetShardMetadata,
         )
-        return get_internal_train_context().get_dataset_shard(dataset_info)
+
+        return get_internal_train_context().get_dataset_shard(
+            DatasetShardMetadata(dataset_name=dataset_name)
+        )
 
     def get_context(self) -> ExternalTrainContext:
         return ExternalTrainContext()
+
+    def barrier(self) -> None:
+        """Create a barrier across all workers.
+
+        All workers must call this method before the training function can continue.
+
+        This method is used by the public API function :func:`ray.train.collective.barrier`.
+        Users should typically call ``ray.train.collective.barrier()`` instead of calling this method directly.
+        """
+        return collective_impl.barrier()
+
+    def broadcast_from_rank_zero(self, data: Any) -> Any:
+        """Broadcast data from the rank 0 worker to all other workers.
+
+        This method is used by the public API function :func:`ray.train.collective.broadcast_from_rank_zero`.
+        Users should typically call ``ray.train.collective.broadcast_from_rank_zero()`` instead of calling this method directly.
+        """
+        return collective_impl.broadcast_from_rank_zero(data)
 
 
 _train_fn_utils: Optional[TrainFnUtils] = None
