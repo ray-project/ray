@@ -1723,11 +1723,6 @@ class ReporterAgent(
     ) -> str:
         stats = self._collect_stats()
 
-        # Convert processes_pids back to a list of dictionaries to maintain backwards-compatibility
-        for gpu in stats["gpus"]:
-            if gpu["processes_pids"] is not None:
-                gpu["processes_pids"] = list(gpu["processes_pids"].values())
-
         # Report stats only when metrics collection is enabled.
         if not self._metrics_collection_disabled:
             cluster_stats = (
@@ -1756,6 +1751,11 @@ class ReporterAgent(
                 )
 
             self._metrics_agent.clean_all_dead_worker_metrics()
+
+        # Convert processes_pids back to a list of dictionaries to maintain backwards-compatibility
+        for gpu in stats["gpus"]:
+            if gpu["processes_pids"] is not None:
+                gpu["processes_pids"] = list(gpu["processes_pids"].values())
 
         return jsonify_asdict(stats)
 
