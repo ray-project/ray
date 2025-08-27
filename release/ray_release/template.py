@@ -6,9 +6,9 @@ from typing import Optional, Dict, TYPE_CHECKING
 import jinja2
 import yaml
 
+from ray_release.bazel import bazel_runfile
 from ray_release.config import get_test_cloud_id
 from ray_release.exception import ReleaseTestConfigError
-from ray_release.utils import bazel_runfile
 
 if TYPE_CHECKING:
     from ray_release.config import Test
