@@ -114,6 +114,8 @@ cdef class ObjectRef(BaseID):
 
     cdef CObjectID native(self)
 
+    cdef CTensorTransport c_tensor_transport(self)
+
 cdef class ActorID(BaseID):
     cdef CActorID data
 

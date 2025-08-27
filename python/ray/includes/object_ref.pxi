@@ -155,3 +155,6 @@ cdef class ObjectRef(BaseID):
 
     def tensor_transport(self):
         return self.tensor_transport_val
+
+    cdef CTensorTransport c_tensor_transport(self):
+        return <CTensorTransport>self.tensor_transport_val
