@@ -9,7 +9,6 @@ from pathlib import Path
 
 import grpc
 import requests
-
 from ray.rllib.env import EnvContext
 from ray.rllib.examples.envs.classes.multi_agent.footsies.game.proto import (
     footsies_service_pb2 as footsies_pb2,
@@ -67,7 +66,11 @@ class FootsiesBinary:
     def _add_executable_permission(binary_path: Path) -> None:
         binary_path.chmod(binary_path.stat().st_mode | stat.S_IXUSR)
 
-    def start_game_server(self) -> None:
+    def start_game_server(self) -> int:
+        """Downloads, unzips, and starts the Footsies game server binary.
+
+        Returns footsies process PID.
+        """
         self._download_game_binary()
         self._unzip_game_binary()
 
@@ -92,9 +95,9 @@ class FootsiesBinary:
             self.binary_to_download == "linux_server"
             or self.binary_to_download == "linux_windowed"
         ):
-            subprocess.Popen([game_binary_path, "--port", str(self.port)])
+            process = subprocess.Popen([game_binary_path, "--port", str(self.port)])
         else:
-            subprocess.Popen(
+            process = subprocess.Popen(
                 [
                     "arch",
                     "-x86_64",
@@ -103,11 +106,11 @@ class FootsiesBinary:
                     str(self.port),
                 ],
             )
-        time.sleep(10)  # Grace period for the server to start
+        time.sleep(2)  # Initial grace period for the server to start
 
         # check if the game server is running correctly
         _t0 = time.time()
-        _timeout_duration = 10  # seconds
+        _timeout_duration = 20  # seconds
 
         channel = grpc.insecure_channel(f"localhost:{self.port}")
         try:
@@ -115,8 +118,10 @@ class FootsiesBinary:
             stub.StartGame(footsies_pb2.Empty())
             ready = stub.IsReady(footsies_pb2.Empty()).value
             while not ready and time.time() - _t0 < _timeout_duration:
-                logger.info("Game not ready...")
-                time.sleep(1)
+                logger.info(
+                    f"RLlib {self.__class__.__name__}: Game not ready..."
+                )
+                time.sleep(2)
                 ready = stub.IsReady(footsies_pb2.Empty()).value
                 if time.time() - _t0 > _timeout_duration:
                     raise TimeoutError(
@@ -125,6 +130,8 @@ class FootsiesBinary:
             logger.info("Game ready!")
         finally:
             channel.close()
+
+        return process.pid
 
     def _download_game_binary(self):
         chunk_size = 1024 * 1024  # 1MB
