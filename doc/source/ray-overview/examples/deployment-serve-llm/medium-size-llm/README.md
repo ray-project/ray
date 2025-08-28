@@ -35,6 +35,11 @@ llm_config = LLMConfig(
     ### If your model is not gated, you can skip `hf_token`
     # Share your Hugging Face Token to the vllm engine so it can access the gated Llama 3
     # Type `export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>` in a terminal
+    runtime_env=dict(
+        env_vars={
+            "HF_TOKEN": os.environ.get("HF_TOKEN")
+        }
+    ),
     engine_kwargs=dict(
         max_model_len=32768,
         # Split weights among 8 GPUs in the node
