@@ -937,7 +937,7 @@ class ReporterAgent(
                     processes = gpu.get("processes_pids")
                     if processes:
                         for proc in processes.values():
-                            gpu_pid_mapping[proc.pid].append(proc)
+                            gpu_pid_mapping[proc["pid"]].append(proc)
 
             result = []
             for w in self._workers.values():
