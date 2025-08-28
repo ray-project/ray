@@ -73,7 +73,7 @@ will clean up any remaining copies of the object's value to prevent a memory
 leak. Any workers that subsequently try to get the object's value will receive
 an ``OwnerDiedError`` exception, which can be handled manually.
 
-Understanding `ObjectLostErrors`
+Understanding ``ObjectLostErrors``
 --------------------------------
 
 Ray throws an ``ObjectLostError`` to the application when an object cannot be
