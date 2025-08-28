@@ -300,16 +300,6 @@ class MixManagerCallback(RLlibCallback):
                 # newly added trained policy should be initialized with the state of the main policy
                 algorithm.set_state(
                     {
-                        "env_runner": {
-                            "rl_module": {
-                                new_module_id: _main_module.get_state(),
-                            },
-                        },
-                        "eval_env_runner": {
-                            "rl_module": {
-                                new_module_id: _main_module.get_state(),
-                            },
-                        },
                         "learner_group": {
                             "learner": {
                                 "rl_module": {
