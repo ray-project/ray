@@ -2560,10 +2560,10 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBackpressure) {
   bool signal_called = false;
   ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
       req,
-      /*execution_signal_callback*/ [&signal_called](Status status,
+      /*execution_signal_callback*/ [&signal_called](Status callback_status,
                                                      int64_t num_objects_consumed) {
         signal_called = true;
-        ASSERT_TRUE(status.ok());
+        ASSERT_TRUE(callback_status.ok());
         ASSERT_EQ(num_objects_consumed, 0);
       }));
   ASSERT_TRUE(signal_called);
