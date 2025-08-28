@@ -39,11 +39,10 @@ namespace {
 
 class DynamicRateLimiter : public LeaseRequestRateLimiter {
  public:
-  explicit DynamicRateLimiter(size_t limit) : limit(limit) {}
-  size_t GetMaxPendingLeaseRequestsPerSchedulingCategory() override { return limit; }
+  explicit DynamicRateLimiter(size_t limit) : limit_(limit) {}
+  size_t GetMaxPendingLeaseRequestsPerSchedulingCategory() override { return limit_; }
 
- public:
-  size_t limit;
+  size_t limit_;
 };
 
 // Wait (and halt the thread) until object_id appears in memory_store.
@@ -925,7 +924,7 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamic) {
   ASSERT_EQ(raylet_client->reported_backlog_size, tasks.size() - 2);
 
   // Increase max concurrency. Should request leases up to the max concurrency.
-  rateLimiter->limit = concurrency;
+  rateLimiter->limit_ = concurrency;
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, NodeID::Nil()));
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 2 + concurrency);
   ASSERT_EQ(raylet_client->num_workers_requested, 2 + concurrency);
@@ -935,7 +934,7 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamic) {
   // Decrease max concurrency again. Should not request any more leases even as
   // previous requests are granted, since we are still over the current
   // concurrency.
-  rateLimiter->limit = 1;
+  rateLimiter->limit_ = 1;
   for (int i = 0; i < concurrency - 1; i++) {
     ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", i, NodeID::Nil()));
     ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 2 + concurrency);
@@ -1010,7 +1009,7 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamicWithSpillback) 
   ASSERT_EQ(raylet_client->reported_backlog_size, tasks.size() - 2);
 
   // Increase max concurrency.
-  rateLimiter->limit = concurrency;
+  rateLimiter->limit_ = concurrency;
   // The outstanding lease request is spilled back to a remote raylet.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, NodeID::FromRandom()));
   // We should request one lease request from the spillback raylet and then the
@@ -1023,7 +1022,7 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamicWithSpillback) 
   // Decrease max concurrency again. Should not request any more leases even as
   // previous requests are granted, since we are still over the current
   // concurrency.
-  rateLimiter->limit = 1;
+  rateLimiter->limit_ = 1;
   for (int i = 0; i < concurrency - 1; i++) {
     ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", i, NodeID::Nil()));
     ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, concurrency + 1);
@@ -1388,12 +1387,12 @@ TEST_F(NormalTaskSubmitterTest, TestSpillbackRoundTrip) {
     remote_raylet_clients[addr.port()] = client;
     return client;
   };
-  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
+  auto memory_store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1),
                                 WorkerType::WORKER,
                                 raylet_client_factory,
-                                store,
+                                memory_store,
                                 kLongTimeout);
   TaskSpecification task = BuildEmptyTaskSpec();
 
@@ -1533,7 +1532,7 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
 
 TEST(NormalTaskSubmitterSchedulingKeyTest, TestSchedulingKeys) {
   InstrumentedIOContextWithThread io_context("TestSchedulingKeys");
-  auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
+  auto memory_store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
 
   std::unordered_map<std::string, double> resources1({{"a", 1.0}});
   std::unordered_map<std::string, double> resources2({{"b", 2.0}});
@@ -1544,28 +1543,28 @@ TEST(NormalTaskSubmitterSchedulingKeyTest, TestSchedulingKeys) {
 
   // Tasks with different resources should request different worker leases.
   RAY_LOG(INFO) << "Test different resources";
-  TestSchedulingKey(store,
+  TestSchedulingKey(memory_store,
                     BuildTaskSpec(resources1, descriptor1),
                     BuildTaskSpec(resources1, descriptor1),
                     BuildTaskSpec(resources2, descriptor1));
 
   // Tasks with different functions should request different worker leases.
   RAY_LOG(INFO) << "Test different functions";
-  TestSchedulingKey(store,
+  TestSchedulingKey(memory_store,
                     BuildTaskSpec(resources1, descriptor1),
                     BuildTaskSpec(resources1, descriptor1),
                     BuildTaskSpec(resources1, descriptor2));
 
   // Tasks with different depths should request different worker leases.
   RAY_LOG(INFO) << "Test different depths";
-  TestSchedulingKey(store,
+  TestSchedulingKey(memory_store,
                     BuildTaskSpec(resources1, descriptor1, 0),
                     BuildTaskSpec(resources1, descriptor1, 0),
                     BuildTaskSpec(resources1, descriptor1, 1));
 
   // Tasks with different runtime envs do not request different workers.
   RAY_LOG(INFO) << "Test different runtimes";
-  TestSchedulingKey(store,
+  TestSchedulingKey(memory_store,
                     BuildTaskSpec(resources1, descriptor1, 0, "a"),
                     BuildTaskSpec(resources1, descriptor1, 0, "b"),
                     BuildTaskSpec(resources1, descriptor1, 1, "a"));
@@ -1576,16 +1575,16 @@ TEST(NormalTaskSubmitterSchedulingKeyTest, TestSchedulingKeys) {
   ObjectID plasma2 = ObjectID::FromRandom();
   // Ensure the data is already present in the local store for direct call objects.
   auto data = GenerateRandomObject();
-  store->Put(*data, direct1);
-  store->Put(*data, direct2);
+  memory_store->Put(*data, direct1);
+  memory_store->Put(*data, direct2);
 
   // Force plasma objects to be promoted.
   std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
   auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
   auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
   auto plasma_data = RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
-  store->Put(plasma_data, plasma1);
-  store->Put(plasma_data, plasma2);
+  memory_store->Put(plasma_data, plasma1);
+  memory_store->Put(plasma_data, plasma2);
 
   TaskSpecification same_deps_1 = BuildTaskSpec(resources1, descriptor1);
   same_deps_1.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
@@ -1611,17 +1610,18 @@ TEST(NormalTaskSubmitterSchedulingKeyTest, TestSchedulingKeys) {
   // Tasks with different plasma dependencies should request different worker leases,
   // but direct call dependencies shouldn't be considered.
   RAY_LOG(INFO) << "Test different dependencies";
-  TestSchedulingKey(store, same_deps_1, same_deps_2, different_deps);
+  TestSchedulingKey(memory_store, same_deps_1, same_deps_2, different_deps);
 }
 
 TEST_F(NormalTaskSubmitterTest, TestBacklogReport) {
   InstrumentedIOContextWithThread store_io_context("TestBacklogReport");
-  auto store = std::make_shared<CoreWorkerMemoryStore>(store_io_context.GetIoService());
+  auto memory_store =
+      std::make_shared<CoreWorkerMemoryStore>(store_io_context.GetIoService());
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1),
                                 WorkerType::WORKER,
                                 /*raylet_client_factory=*/nullptr,
-                                store);
+                                memory_store);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
 
@@ -1638,8 +1638,8 @@ TEST_F(NormalTaskSubmitterTest, TestBacklogReport) {
   auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
   auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
   auto plasma_data = RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
-  store->Put(plasma_data, plasma1);
-  store->Put(plasma_data, plasma2);
+  memory_store->Put(plasma_data, plasma1);
+  memory_store->Put(plasma_data, plasma2);
 
   // Same SchedulingClass, different SchedulingKey
   TaskSpecification task2 = BuildTaskSpec(resources1, descriptor1);
@@ -1648,7 +1648,8 @@ TEST_F(NormalTaskSubmitterTest, TestBacklogReport) {
   TaskSpecification task3 = BuildTaskSpec(resources1, descriptor1);
   task3.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
       plasma2.Binary());
-  TestSchedulingKey(store, WithRandomTaskId(task2), WithRandomTaskId(task2), task3);
+  TestSchedulingKey(
+      memory_store, WithRandomTaskId(task2), WithRandomTaskId(task2), task3);
 
   TaskSpecification task4 = BuildTaskSpec(resources2, descriptor2);
 
@@ -1677,12 +1678,12 @@ TEST_F(NormalTaskSubmitterTest, TestBacklogReport) {
 }
 
 TEST_F(NormalTaskSubmitterTest, TestWorkerLeaseTimeout) {
-  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
+  auto memory_store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1),
                                 WorkerType::WORKER,
                                 /*raylet_client_factory=*/nullptr,
-                                store,
+                                memory_store,
                                 /*lease_timeout_ms=*/5);
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
