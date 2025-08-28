@@ -819,6 +819,7 @@ class Dataset:
                 self._logical_plan.dag,
                 uri_column_name=expr.uri_column_name,
                 output_bytes_column_name=column_name,
+                ray_remote_args=ray_remote_args,
             )
             logical_plan = LogicalPlan(download_op, self.context)
         else:

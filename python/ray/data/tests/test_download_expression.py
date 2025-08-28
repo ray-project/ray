@@ -58,7 +58,7 @@ class TestDownloadExpressionFunctionality:
         # Create dataset with file URIs and metadata
         table = pa.Table.from_arrays(
             [
-                pa.array([f"file://{path}" for path in file_paths]),
+                pa.array([f"local://{path}" for path in file_paths]),
                 pa.array([f"id_{i}" for i in range(len(file_paths))]),
                 pa.array([f"metadata_{i}" for i in range(len(file_paths))]),
                 pa.array(range(len(file_paths))),
@@ -84,7 +84,7 @@ class TestDownloadExpressionFunctionality:
             assert result["file_id"] == f"id_{i}"
             assert result["metadata"] == f"metadata_{i}"
             assert result["index"] == i
-            assert result["file_uri"] == f"file://{file_paths[i]}"
+            assert result["file_uri"] == f"local://{file_paths[i]}"
 
     def test_download_expression_empty_dataset(self):
         """Test download expression with empty dataset."""
@@ -130,7 +130,7 @@ class TestDownloadExpressionFunctionality:
         # Create dataset
         table = pa.Table.from_arrays(
             [
-                pa.array([f"file://{path}" for path in file_paths]),
+                pa.array([f"local://{path}" for path in file_paths]),
                 pa.array(
                     [f.split(".")[0] for f, _ in test_files]
                 ),  # filename without extension
@@ -162,7 +162,7 @@ class TestDownloadExpressionErrors:
         """Test download expression with non-existent URI column."""
         table = pa.Table.from_arrays(
             [
-                pa.array(["file://test.txt"]),
+                pa.array(["local://test.txt"]),
             ],
             names=["existing_column"],
         )
@@ -178,7 +178,7 @@ class TestDownloadExpressionErrors:
         """Test download expression handling of null/empty URIs."""
         table = pa.Table.from_arrays(
             [
-                pa.array(["file://test.txt", None, ""]),
+                pa.array(["local://test.txt", None, ""]),
             ],
             names=["uri"],
         )
@@ -212,7 +212,7 @@ class TestDownloadExpressionIntegration:
         # Create dataset
         table = pa.Table.from_arrays(
             [
-                pa.array([f"file://{test_file}"]),
+                pa.array([f"local://{test_file}"]),
             ],
             names=["uri"],
         )
