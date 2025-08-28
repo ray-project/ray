@@ -45,25 +45,14 @@ class NixlTensorTransport(TensorTransportManager):
             from ray.util.collective.collective import get_group_handle
 
             nixl_backend: NixlBackend = get_group_handle(NIXL_GROUP_NAME)
-            device = None
-            tensor_meta = []
             if gpu_object:
                 serialized_descs, agent_meta = nixl_backend.get_nixl_metadata(
                     gpu_object
                 )
-                # We assume all tensors in one GPU object have the same device type.
-                device = gpu_object[0].device
-                for t in gpu_object:
-                    if t.device.type != device.type:
-                        raise ValueError(
-                            "All tensors in one GPU object must be the same device type."
-                        )
-                    tensor_meta.append((t.shape, t.dtype))
             else:
                 serialized_descs, agent_meta = None, None
             return NixlTransportMetadata(
-                tensor_meta=tensor_meta,
-                tensor_device=device,
+                tensor_meta=[(t.shape, t.dtype) for t in gpu_object],
                 nixl_serialized_descs=serialized_descs,
                 nixl_agent_meta=agent_meta,
             )
