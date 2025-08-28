@@ -2696,6 +2696,9 @@ class Dataset:
                 concurrency=num_partitions,
             )
 
+            # Ensure the result has the expected number of partitions to match regular join behavior
+            result = result.repartition(num_partitions)
+
             return result
         else:
             op = Join(

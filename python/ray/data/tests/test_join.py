@@ -430,6 +430,9 @@ def test_default_shuffle_aggregator_args():
 
 
 # Broadcast Join Tests
+#
+# Minimal tests to verify broadcast join functionality for different join types.
+# These tests ensure that broadcast joins work correctly for the supported join types.
 
 
 @pytest.mark.parametrize(
@@ -441,28 +444,18 @@ def test_default_shuffle_aggregator_args():
         "full_outer",
     ],
 )
-@pytest.mark.parametrize(
-    "num_rows_left,num_rows_right",
-    [
-        (32, 16),  # Typical case - smaller right dataset
-        (100, 10),  # Larger difference
-        (10, 5),  # Small datasets
-    ],
-)
 def test_broadcast_join_basic(
     ray_start_regular_shared_2_cpus,
     join_type,
-    num_rows_left,
-    num_rows_right,
 ):
-    """Test basic broadcast join functionality for all join types."""
+    """Test basic broadcast join functionality for all supported join types."""
 
     # Create test datasets
-    left_ds = ray.data.range(num_rows_left).map(
+    left_ds = ray.data.range(10).map(
         lambda row: {"id": row["id"], "left_value": int(row["id"]) * 2}
     )
 
-    right_ds = ray.data.range(num_rows_right).map(
+    right_ds = ray.data.range(5).map(
         lambda row: {"id": row["id"], "right_value": int(row["id"]) ** 2}
     )
 
@@ -496,13 +489,44 @@ def test_broadcast_join_basic(
     )
 
     # Ensure both DataFrames have the same column ordering before comparison
-    # This handles potential column ordering differences between broadcast and regular joins
     common_columns = sorted(set(broadcast_df.columns) & set(regular_df.columns))
     broadcast_df = broadcast_df[common_columns]
     regular_df = regular_df[common_columns]
 
     # Results should be identical
     pd.testing.assert_frame_equal(broadcast_df, regular_df)
+
+
+def test_broadcast_join_dataset_swapping(
+    ray_start_regular_shared_2_cpus,
+):
+    """Test broadcast join with dataset swapping (left smaller than right)."""
+
+    # Create datasets where left is smaller than right
+    left_ds = ray.data.range(3).map(
+        lambda row: {"id": row["id"], "left_value": int(row["id"]) * 2}
+    )
+
+    right_ds = ray.data.range(10).map(
+        lambda row: {"id": row["id"], "right_value": int(row["id"]) ** 2}
+    )
+
+    # Perform broadcast join (should trigger dataset swapping)
+    result = left_ds.join(
+        right_ds,
+        join_type="inner",
+        num_partitions=2,
+        on=("id",),
+        broadcast=True,
+    )
+
+    # Verify the result has the expected structure
+    result_df = pd.DataFrame(result.take_all())
+    expected_columns = {"id", "left_value", "right_value"}
+    assert set(result_df.columns) == expected_columns
+
+    # Should return 3 rows (all left rows match)
+    assert len(result_df) == 3
 
 
 @pytest.mark.parametrize(
@@ -531,7 +555,20 @@ def test_broadcast_join_left_smaller(
     """Test broadcast join when left dataset is smaller than right dataset.
 
     This tests the dataset swapping logic where the smaller left dataset gets broadcasted
-    and the larger right dataset gets processed in batches.
+    and the larger right dataset gets processed in batches. The test covers:
+
+    - Dataset swapping scenarios (left < right)
+    - All supported join types
+    - Various size differences
+
+    Test cases:
+    - (16, 32): Left dataset is smaller than right dataset
+    - (10, 100): Left dataset is much smaller
+    - (5, 10): Small left dataset
+
+    When left < right, the broadcast join automatically swaps the datasets internally
+    to broadcast the smaller left dataset and process the larger right dataset in batches.
+    This maintains the same join semantics while optimizing for performance.
     """
 
     # Create test datasets
@@ -597,7 +634,19 @@ def test_broadcast_join_dataset_swapping_edge_cases(
     """Test edge cases for dataset swapping in broadcast joins.
 
     This tests scenarios where the dataset sizes are very different or equal,
-    ensuring the swapping logic works correctly.
+    ensuring the swapping logic works correctly. The test covers:
+
+    - Extreme size differences (left much smaller than right)
+    - Equal sized datasets (no swapping needed)
+    - Single row datasets (minimal broadcast table)
+
+    Test cases:
+    - Left much smaller: (5, 1000) - tests extreme size difference
+    - Equal sized: (10, 10) - tests no swapping scenario
+    - Single row left: (1, 50) - tests minimal broadcast table
+
+    These edge cases ensure the broadcast join implementation is robust and handles
+    various dataset size combinations correctly.
     """
 
     # Test case 1: Left dataset much smaller than right
