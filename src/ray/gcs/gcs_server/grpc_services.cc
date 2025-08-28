@@ -36,6 +36,20 @@ void NodeInfoGrpcService::InitServerCallFactories(
   RPC_SERVICE_HANDLER(NodeInfoGcsService, CheckAlive, max_active_rpcs_per_handler_)
 }
 
+void NodeResourceInfoGrpcService::InitServerCallFactories(
+    const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+    std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+    const ClusterID &cluster_id) {
+  RPC_SERVICE_HANDLER(
+      NodeResourceInfoGcsService, GetAllAvailableResources, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      NodeResourceInfoGcsService, GetAllTotalResources, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      NodeResourceInfoGcsService, GetDrainingNodes, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      NodeResourceInfoGcsService, GetAllResourceUsage, max_active_rpcs_per_handler_)
+}
+
 void InternalPubSubGrpcService::InitServerCallFactories(
     const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
@@ -98,6 +112,24 @@ void InternalKVGrpcService::InitServerCallFactories(
   RPC_SERVICE_HANDLER(InternalKVGcsService, InternalKVKeys, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(
       InternalKVGcsService, GetInternalConfig, max_active_rpcs_per_handler_)
+}
+
+void TaskInfoGrpcService::InitServerCallFactories(
+    const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+    std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+    const ClusterID &cluster_id) {
+  RPC_SERVICE_HANDLER(TaskInfoGcsService, AddTaskEventData, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(TaskInfoGcsService, GetTaskEvents, max_active_rpcs_per_handler_)
+}
+
+using events::AddEventsReply;
+using events::AddEventsRequest;
+
+void RayEventExportGrpcService::InitServerCallFactories(
+    const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+    std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+    const ClusterID &cluster_id) {
+  RPC_SERVICE_HANDLER(RayEventExportGcsService, AddEvents, max_active_rpcs_per_handler_)
 }
 
 }  // namespace rpc
