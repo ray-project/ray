@@ -149,10 +149,6 @@ class XGBoostTrainer(DataParallelTrainer):
 
         from ray.train.xgboost import XGBoostConfig
 
-        # TODO(xgui): support local mode for XGBoostTrainer once we have better design to avoid circular import
-        if scaling_config and scaling_config.num_workers == 0:
-            raise NotImplementedError("XGBoostTrainer does not support local mode. ")
-
         super(XGBoostTrainer, self).__init__(
             train_loop_per_worker=train_loop_per_worker,
             train_loop_config=train_loop_config,
