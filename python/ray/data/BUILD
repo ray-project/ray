@@ -1240,6 +1240,20 @@ py_test(
 )
 
 py_test(
+    name = "test_unify_schemas_performance",
+    size = "small",
+    srcs = ["tests/test_unify_schemas_performance.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_util",
     size = "small",
     srcs = ["tests/test_util.py"],
