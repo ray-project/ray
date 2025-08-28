@@ -141,7 +141,7 @@ def test_all_to_all_operator():
     assert not op.completed()
     outputs = _take_outputs(op)
     expected = [[1, 2], [3, 4]]
-    assert sorted(outputs) == sorted(expected), f"Expected {expected}, got {outputs}"
+    assert sorted(outputs) == expected, f"Expected {expected}, got {outputs}"
     stats = op.get_stats()
     assert "FooStats" in stats
     assert op.completed()
