@@ -636,7 +636,7 @@ bool NormalTaskSubmitter::HandleGetWorkerFailureCause(
   std::unique_ptr<rpc::RayErrorInfo> error_info;
   bool fail_immediately = false;
   if (get_worker_failure_cause_reply_status.ok()) {
-    RAY_LOG(WARNING) << "Task failure cause for task " << task_id << ": "
+    RAY_LOG(WARNING) << "Worker failure cause for task " << task_id << ": "
                      << ray::gcs::RayErrorInfoToString(
                             get_worker_failure_cause_reply.failure_cause())
                      << " fail immedediately: "
@@ -656,7 +656,7 @@ bool NormalTaskSubmitter::HandleGetWorkerFailureCause(
                      << " ip: " << addr.ip_address();
     task_error_type = rpc::ErrorType::NODE_DIED;
     std::stringstream buffer;
-    buffer << "Worker failed due to the node (where this task was running) "
+    buffer << "Task failed due to the node (where this task was running) "
            << " was dead or unavailable.\n\nThe node IP: " << addr.ip_address()
            << ", node ID: " << NodeID::FromBinary(addr.node_id()) << "\n\n"
            << "This can happen if the instance where the node was running failed, "
