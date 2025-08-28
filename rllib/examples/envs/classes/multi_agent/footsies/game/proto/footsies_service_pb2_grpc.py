@@ -2,7 +2,7 @@
 """Client and server classes corresponding to protobuf-defined services."""
 import grpc
 
-import rllib.examples.envs.classes.multi_agent.footsies.game.proto.footsies_service_pb2 as footsies__service__pb2
+import ray.rllib.examples.envs.classes.multi_agent.footsies.game.proto.footsies_service_pb2 as footsies__service__pb2
 
 
 # import footsies_service_pb2 as footsies__service__pb2
