@@ -362,7 +362,6 @@ class LeaseID : public BaseID<LeaseID> {
   ///
   /// \return A `LeaseID` generated with random bytes
   /// Warning: this can duplicate IDs after a fork() call. We assume this never happens.
-  /// Currently it's only used in the GCS so not a problem.
   static LeaseID FromRandom();
 
   LeaseID() : BaseID() {}
