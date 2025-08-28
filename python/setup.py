@@ -635,13 +635,6 @@ def build(build_python, build_java, build_cpp):
         bazel_precmd_flags = []
         if sys.platform == "win32":
             bazel_precmd_flags = ["--output_user_root=C:/tmp"]
-        # Using --incompatible_strict_action_env so that the build is more
-        # cache-able We cannot turn this on for Python tests yet, as Ray's
-        # Python bazel tests are not hermetic.
-        #
-        # And we put it here so that does not change behavior of
-        # conda-forge build.
-        bazel_flags.append("--incompatible_strict_action_env")
 
     bazel_targets = []
     bazel_targets += ["//:gen_ray_pkg"] if build_python else []
