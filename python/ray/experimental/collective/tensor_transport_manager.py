@@ -94,6 +94,7 @@ class TensorTransportManager(ABC):
         Args:
             src_actor: The actor that runs this function.
             obj_id: The ID of the GPU object to send.
+            tensor_transport_meta: The tensor transport metadata for the GPU object.
             communicator_metadata_ref: The ObjectRef of communicator metadata for the send/recv operation.
         """
         from ray.experimental.gpu_object_manager.gpu_object_store import __ray_send__
