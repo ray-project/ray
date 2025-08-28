@@ -12,22 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
+#include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
+
+#include <gtest/gtest.h>
 
 #include <memory>
 #include <string>
 #include <vector>
 
-// clang-format off
-#include "gtest/gtest.h"
+#include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
+#include "mock/ray/pubsub/publisher.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/gcs/gcs_server/tests/gcs_server_test_util.h"
+#include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/tests/gcs_test_util.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/util/counter_map.h"
-#include "mock/ray/pubsub/publisher.h"
-#include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
-// clang-format on
 
 namespace ray {
 namespace gcs {

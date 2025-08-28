@@ -114,6 +114,21 @@ def _is_empty_schema(schema: Optional[Schema]) -> bool:
     )
 
 
+def _take_first_non_empty_schema(schemas: Iterator["Schema"]) -> Optional["Schema"]:
+    """Return the first non-empty schema from an iterator of schemas.
+
+    Args:
+        schemas: Iterator of schemas to check.
+
+    Returns:
+        The first non-empty schema, or None if all schemas are empty.
+    """
+    for schema in schemas:
+        if not _is_empty_schema(schema):
+            return schema
+    return None
+
+
 def _apply_batch_format(given_batch_format: Optional[str]) -> str:
     if given_batch_format == "default":
         given_batch_format = DEFAULT_BATCH_FORMAT

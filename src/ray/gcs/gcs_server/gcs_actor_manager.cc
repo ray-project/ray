@@ -23,8 +23,10 @@
 #include <vector>
 
 #include "ray/common/ray_config.h"
+#include "ray/common/task/task_spec.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/stats/metric_defs.h"
+#include "ray/util/logging.h"
 #include "ray/util/time.h"
 
 namespace {
@@ -1376,7 +1378,6 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
          io_context_}));
     gcs_actor_scheduler_->Schedule(actor);
   } else {
-    RemoveActorNameFromRegistry(actor);
     actor->UpdateState(rpc::ActorTableData::DEAD);
     mutable_actor_table_data->mutable_death_cause()->CopyFrom(death_cause);
     auto time = current_sys_time_ms();
