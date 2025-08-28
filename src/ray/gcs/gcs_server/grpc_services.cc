@@ -59,8 +59,6 @@ void InternalPubSubGrpcService::InitServerCallFactories(
       InternalPubSubGcsService, GcsSubscriberPoll, max_active_rpcs_per_handler_);
   RPC_SERVICE_HANDLER(
       InternalPubSubGcsService, GcsSubscriberCommandBatch, max_active_rpcs_per_handler_);
-  RPC_SERVICE_HANDLER(
-      InternalPubSubGcsService, GcsUnregisterSubscriber, max_active_rpcs_per_handler_);
 }
 
 void JobInfoGrpcService::InitServerCallFactories(

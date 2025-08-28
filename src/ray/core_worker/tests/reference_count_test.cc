@@ -107,7 +107,7 @@ using SubscriptionFailureCallbackMap =
 // static maps are used to simulate distirubted environment.
 static SubscriptionCallbackMap subscription_callback_map;
 static SubscriptionFailureCallbackMap subscription_failure_callback_map;
-static pubsub::pub_internal::SubscriptionIndex directory(
+static pubsub::SubscriptionIndex directory(
     rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
 
 static std::string GenerateID(UniqueID publisher_id, UniqueID subscriber_id) {
@@ -127,7 +127,7 @@ using PublisherFactoryFn =
 
 class MockDistributedSubscriber : public pubsub::SubscriberInterface {
  public:
-  MockDistributedSubscriber(pubsub::pub_internal::SubscriptionIndex *dict,
+  MockDistributedSubscriber(pubsub::SubscriptionIndex *dict,
                             SubscriptionCallbackMap *sub_callback_map,
                             SubscriptionFailureCallbackMap *sub_failure_callback_map,
                             UniqueID subscriber_id,
@@ -136,7 +136,7 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
         subscription_callback_map_(sub_callback_map),
         subscription_failure_callback_map_(sub_failure_callback_map),
         subscriber_id_(subscriber_id),
-        subscriber_(std::make_unique<pubsub::pub_internal::SubscriberState>(
+        subscriber_(std::make_unique<pubsub::SubscriberState>(
             subscriber_id,
             /*get_time_ms=*/[]() { return 1.0; },
             /*subscriber_timeout_ms=*/1000,
@@ -207,17 +207,17 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
     return "";
   }
 
-  pubsub::pub_internal::SubscriptionIndex *directory_;
+  pubsub::SubscriptionIndex *directory_;
   SubscriptionCallbackMap *subscription_callback_map_;
   SubscriptionFailureCallbackMap *subscription_failure_callback_map_;
   UniqueID subscriber_id_;
-  std::unique_ptr<pubsub::pub_internal::SubscriberState> subscriber_;
+  std::unique_ptr<pubsub::SubscriberState> subscriber_;
   PublisherFactoryFn client_factory_;
 };
 
 class MockDistributedPublisher : public pubsub::PublisherInterface {
  public:
-  MockDistributedPublisher(pubsub::pub_internal::SubscriptionIndex *dict,
+  MockDistributedPublisher(pubsub::SubscriptionIndex *dict,
                            SubscriptionCallbackMap *sub_callback_map,
                            SubscriptionFailureCallbackMap *sub_failure_callback_map,
                            WorkerID publisher_id)
@@ -272,7 +272,7 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
 
   std::string DebugString() const override { return ""; }
 
-  pubsub::pub_internal::SubscriptionIndex *directory_;
+  pubsub::SubscriptionIndex *directory_;
   SubscriptionCallbackMap *subscription_callback_map_;
   SubscriptionFailureCallbackMap *subscription_failure_callback_map_;
   WorkerID publisher_id_;

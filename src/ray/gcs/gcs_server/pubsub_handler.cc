@@ -45,6 +45,7 @@ void InternalPubSubHandler::HandleGcsSubscriberPoll(
   pubsub_req.set_subscriber_id(std::move(*request.mutable_subscriber_id()));
   pubsub_req.set_publisher_id(std::move(*request.mutable_publisher_id()));
   pubsub_req.set_max_processed_sequence_id(request.max_processed_sequence_id());
+  // reply->pub_messages().begin()->DebugString()
   gcs_publisher_.GetPublisher().ConnectToSubscriber(pubsub_req,
                                                     reply->mutable_publisher_id(),
                                                     reply->mutable_pub_messages(),
@@ -90,15 +91,6 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
                      << ". If you see this message, please file an issue to Ray Github.";
     }
   }
-  send_reply_callback(Status::OK(), nullptr, nullptr);
-}
-
-void InternalPubSubHandler::HandleGcsUnregisterSubscriber(
-    rpc::GcsUnregisterSubscriberRequest request,
-    rpc::GcsUnregisterSubscriberReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  const auto subscriber_id = UniqueID::FromBinary(request.subscriber_id());
-  gcs_publisher_.GetPublisher().UnregisterSubscriber(subscriber_id);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
