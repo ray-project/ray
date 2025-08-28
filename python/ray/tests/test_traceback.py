@@ -324,11 +324,10 @@ test_traceback.NoPickleError"""
         c = a + b
         return g(c)
 
-    try:
+    with pytest.raises(UnserializableException) as excinfo:
         ray.get(f.remote())
-    except Exception as ex:
-        assert isinstance(ex, UnserializableException)
-        assert clean_noqa(expected_output) == scrub_traceback(str(ex))
+    
+    assert clean_noqa(expected_output) == scrub_traceback(str(excinfo.value))
 
 
 def test_serialization_error_message(shutdown_only):
