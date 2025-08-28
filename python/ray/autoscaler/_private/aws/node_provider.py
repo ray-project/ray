@@ -127,7 +127,8 @@ class AWSNodeProvider(NodeProvider):
         self.ready_for_new_batch.set()
         self.tag_cache_lock = threading.Lock()
         self.count_lock = threading.Lock()
-        self.reuse_node_lock = threading.Lock()
+        # Prevent concurrent create_node calls to get the same stopped/stopping node to reuse.
+        self._reuse_node_lock = threading.Lock()
 
         # Cache of node objects from the last nodes() call. This avoids
         # excessive DescribeInstances requests.
@@ -291,7 +292,7 @@ class AWSNodeProvider(NodeProvider):
                     }
                 )
 
-            with self.reuse_node_lock:
+            with self._reuse_node_lock:
                 reuse_nodes = list(self.ec2.instances.filter(Filters=filters))[:count]
                 reuse_node_ids = [n.id for n in reuse_nodes]
                 reused_nodes_dict = {n.id: n for n in reuse_nodes}
