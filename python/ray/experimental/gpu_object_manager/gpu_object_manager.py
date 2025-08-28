@@ -58,6 +58,10 @@ class GPUObjectManager:
         # This dictionary is hosted on the "driver" process of the actors that
         # store and send/receive GPU objects.
         self.managed_gpu_object_metadata: Dict[str, GPUObjectMeta] = {}
+        # Dict to track reference counts for managed GPU objects
+        self._gpu_object_ref_counts: Dict[str, int] = {}
+        # Lock for metadata operations
+        self._metadata_lock = threading.Lock()
         # Per-actor local storage for GPU objects. We create the GPU object
         # store lazily, if a user specifies a non-default tensor_transport, to
         # avoid circular import and because it imports third-party dependencies
@@ -88,7 +92,8 @@ class GPUObjectManager:
             True if the current process is the driver process coordinating the data transfer
             of this GPU object.
         """
-        return obj_id in self.managed_gpu_object_metadata
+        with self._metadata_lock:
+            return obj_id in self.managed_gpu_object_metadata
 
     def add_gpu_object_ref(
         self,
@@ -120,15 +125,34 @@ class GPUObjectManager:
         tensor_meta = tensor_transport_manager.get_tensor_transport_metadata(
             src_actor, obj_id, tensor_transport
         )
-        self.managed_gpu_object_metadata[obj_id] = GPUObjectMeta(
-            src_actor=src_actor,
-            tensor_transport_backend=tensor_transport_backend,
-            tensor_transport_meta=tensor_meta,
-        )
 
-    def _get_gpu_object_metadata(self, obj_ref: ObjectRef) -> GPUObjectMeta:
+        with self._metadata_lock:
+            self.managed_gpu_object_metadata[obj_id] = GPUObjectMeta(
+                src_actor=src_actor,
+                tensor_transport_backend=str(tensor_transport_backend),
+                tensor_transport_meta=tensor_meta,
+            )
+            # Initialize the reference count to 1 for the caller
+            self._gpu_object_ref_counts[obj_id] = 1
+
+            # Register a callback to clean up metadata when the object is deleted
+            # We use a weakref callback to detect when the ObjectRef is garbage collected
+            import weakref
+
+            weakref.finalize(obj_ref, self._cleanup_gpu_object_metadata, obj_id)
+
+    def _get_gpu_object_metadata(self, obj_ref: ObjectRef) -> Optional[GPUObjectMeta]:
+        """Get the metadata for a GPU object from its ObjectRef.
+
+        Args:
+            obj_ref: The ObjectRef of the GPU object.
+
+        Returns:
+            The GPUObjectMeta if the object is managed, None otherwise.
+        """
         obj_id = obj_ref.hex()
-        return self.managed_gpu_object_metadata[obj_id]
+        with self._metadata_lock:
+            return self.managed_gpu_object_metadata.get(obj_id)
 
     def fetch_object(self, obj_id: str):
         """
@@ -152,14 +176,19 @@ class GPUObjectManager:
         if self.gpu_object_store.has_object(obj_id):
             return
 
-        gpu_object_meta = self.managed_gpu_object_metadata[obj_id]
-        src_actor = gpu_object_meta.src_actor
-        tensors = ray.get(
-            src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
-                __ray_fetch_gpu_object__, obj_id
+        with self._metadata_lock:
+            if obj_id not in self.managed_gpu_object_metadata:
+                # Metadata may have been cleaned up already
+                return
+
+            gpu_object_meta = self.managed_gpu_object_metadata[obj_id]
+            src_actor = gpu_object_meta.src_actor
+            tensors = ray.get(
+                src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
+                    __ray_fetch_gpu_object__, obj_id
+                )
             )
-        )
-        self.gpu_object_store.add_object(obj_id, tensors)
+            self.gpu_object_store.add_object(obj_id, tensors)
 
     def trigger_out_of_band_tensor_transfer(
         self, dst_actor: "ray.actor.ActorHandle", task_args: Tuple[Any, ...]
@@ -191,6 +220,8 @@ class GPUObjectManager:
                 continue
             if self.is_managed_object(arg.hex()):
                 gpu_object_refs.add(arg)
+                # Increment the reference count as this ObjectRef is being passed to another task
+                self.increment_ref_count(arg.hex())
         if gpu_object_refs:
             from ray.experimental.collective import get_tensor_transport_manager
 
@@ -200,6 +231,10 @@ class GPUObjectManager:
             # collective libraries for default Ray installation.
 
             gpu_object_meta = self._get_gpu_object_metadata(obj_ref)
+
+            # Skip if metadata has been cleaned up
+            if gpu_object_meta is None:
+                continue
 
             src_actor = gpu_object_meta.src_actor
             tensor_transport_meta = gpu_object_meta.tensor_transport_meta
@@ -279,3 +314,36 @@ class GPUObjectManager:
         )
         communicators = get_collective_groups([actor], backend=tensor_transport_backend)
         return len(communicators) > 0
+
+    def increment_ref_count(self, obj_id: str) -> None:
+        """Increment the reference count for a GPU object.
+
+        This should be called when a new reference to the GPU object is created,
+        such as when passing the ObjectRef to another task.
+
+        Args:
+            obj_id: The object ID of the GPU object.
+        """
+        with self._metadata_lock:
+            if obj_id in self._gpu_object_ref_counts:
+                self._gpu_object_ref_counts[obj_id] += 1
+
+    def _cleanup_gpu_object_metadata(self, obj_id: str) -> None:
+        """Clean up metadata for a GPU object when its ObjectRef is garbage collected.
+
+        This is called automatically via weakref callbacks when ObjectRefs go out of scope.
+
+        Args:
+            obj_id: The object ID of the GPU object.
+        """
+        with self._metadata_lock:
+            if obj_id not in self._gpu_object_ref_counts:
+                return
+
+            self._gpu_object_ref_counts[obj_id] -= 1
+
+            # If there are no more references, clean up the metadata
+            if self._gpu_object_ref_counts[obj_id] <= 0:
+                if obj_id in self.managed_gpu_object_metadata:
+                    del self.managed_gpu_object_metadata[obj_id]
+                del self._gpu_object_ref_counts[obj_id]
