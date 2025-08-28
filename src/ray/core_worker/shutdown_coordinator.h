@@ -165,40 +165,6 @@ class ShutdownCoordinator {
                        const std::shared_ptr<::ray::LocalMemoryBuffer>
                            &creation_task_exception_pb_bytes = nullptr);
 
-  /// Legacy method for compatibility - delegates to RequestShutdown
-  /// TODO (codope): This is public for now to ease incremental migration and testing.
-  /// Consider removing or making private once all call sites are wired to
-  /// RequestShutdown directly.
-  /// \param reason The reason for shutdown initiation
-  /// \return true if this call initiated shutdown, false if already shutting down
-  bool TryInitiateShutdown(ShutdownReason reason);
-
-  /// Attempt to transition to disconnecting state.
-  ///
-  /// Begins the disconnection/cleanup phase (e.g., GCS/raylet disconnect). Only
-  /// valid from kShuttingDown.
-  ///
-  /// \return true if transition succeeded, false if invalid state
-  /// TODO (codope): Public-for-now to support targeted tests; make private when tests
-  /// drive behavior exclusively via RequestShutdown.
-  /// TODO (codope): Once private, we can consider removing the internal mutex acquisition
-  /// here and in TryTransitionToShutdown(), since RequestShutdown serializes the
-  /// execution path and only a single thread invokes transitions.
-  bool TryTransitionToDisconnecting();
-
-  /// Attempt to transition to final shutdown state.
-  ///
-  /// Finalizes shutdown. Allowed from kDisconnecting (normal) or kShuttingDown
-  /// (force path).
-  ///
-  /// \return true if transition succeeded, false if invalid state
-  /// TODO (codope): Public-for-now to support targeted tests; make private when tests
-  /// drive behavior exclusively via RequestShutdown.
-  /// TODO (codope): Once private, we can consider removing the internal mutex acquisition
-  /// here and in TryTransitionToDisconnecting(), since RequestShutdown serializes the
-  /// execution path and only a single thread invokes transitions.
-  bool TryTransitionToShutdown();
-
   /// Get the current shutdown state (mutex-protected, fast path safe).
   ///
   /// \return Current shutdown state
@@ -248,6 +214,23 @@ class ShutdownCoordinator {
   std::string GetReasonString() const;
 
  private:
+  /// Legacy method for compatibility - delegates to RequestShutdown
+  /// \param reason The reason for shutdown initiation
+  /// \return true if this call initiated shutdown, false if already shutting down
+  bool TryInitiateShutdown(ShutdownReason reason);
+
+  /// Attempt to transition to disconnecting state.
+  /// Begins the disconnection/cleanup phase (e.g., GCS/raylet disconnect). Only
+  /// valid from kShuttingDown.
+  /// \return true if transition succeeded, false if invalid state
+  bool TryTransitionToDisconnecting();
+
+  /// Attempt to transition to final shutdown state.
+  /// Finalizes shutdown. Allowed from kDisconnecting (normal) or kShuttingDown
+  /// (force path).
+  /// \return true if transition succeeded, false if invalid state
+  bool TryTransitionToShutdown();
+
   /// Execute shutdown sequence based on worker type and mode
   void ExecuteShutdownSequence(
       bool force_shutdown,
