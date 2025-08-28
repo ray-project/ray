@@ -51,13 +51,16 @@
 /rllib/ @ray-project/ray-rllib
 /doc/source/rllib/ @ray-project/ray-rllib @ray-project/ray-docs
 
-# Tune
+# Ray Tune
 /python/ray/tune/ @ray-project/ray-tune
 /doc/source/tune/ @ray-project/ray-tune @ray-project/ray-docs
 
-# Train
+# Ray Train
 /python/ray/train/ @ray-project/ray-train
 /doc/source/train/ @ray-project/ray-train @ray-project/ray-docs
+
+# Ray AIR
+/python/ray/air/ @ray-project/ray-train
 
 # LLM
 /python/ray/llm/ @ray-project/ray-llm
