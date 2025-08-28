@@ -108,13 +108,12 @@ ObjectManager::ObjectManager(
       object_manager_server_("ObjectManager",
                              config_.object_manager_port,
                              config_.object_manager_address == "127.0.0.1",
-                             ClusterID::Nil(),
                              config_.rpc_service_threads_number),
       client_call_manager_(main_service,
                            /*record_stats=*/true,
                            ClusterID::Nil(),
                            config_.rpc_service_threads_number),
-      restore_spilled_object_(restore_spilled_object),
+      restore_spilled_object_(std::move(restore_spilled_object)),
       get_spilled_object_url_(std::move(get_spilled_object_url)),
       pull_retry_timer_(*main_service_,
                         boost::posix_time::milliseconds(config.timer_freq_ms)),
@@ -833,7 +832,8 @@ void ObjectManager::Tick(const boost::system::error_code &e) {
 
   auto interval = boost::posix_time::milliseconds(config_.timer_freq_ms);
   pull_retry_timer_.expires_from_now(interval);
-  pull_retry_timer_.async_wait([this](const boost::system::error_code &e) { Tick(e); });
+  pull_retry_timer_.async_wait(
+      [this](const boost::system::error_code &err) { Tick(err); });
 }
 
 }  // namespace ray

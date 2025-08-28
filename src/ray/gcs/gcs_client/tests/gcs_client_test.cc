@@ -28,7 +28,7 @@
 #include "ray/rpc/gcs/gcs_rpc_client.h"
 #include "ray/util/network_util.h"
 #include "ray/util/path_utils.h"
-#include "ray/util/util.h"
+#include "ray/util/raii.h"
 
 using namespace std::chrono_literals;  // NOLINT
 
@@ -519,7 +519,7 @@ TEST_P(GcsClientTest, TestActorInfo) {
   ActorID actor_id = ActorID::FromBinary(actor_table_data->actor_id());
 
   // Subscribe to any update operations of an actor.
-  auto on_subscribe = [](const ActorID &actor_id, const rpc::ActorTableData &data) {};
+  auto on_subscribe = [](const ActorID &, const rpc::ActorTableData &) {};
   ASSERT_TRUE(SubscribeActor(actor_id, on_subscribe));
 
   // Register an actor to GCS.
@@ -689,7 +689,7 @@ TEST_P(GcsClientTest, TestActorTableResubscribe) {
   // All the notifications for the following `SubscribeActor` operation.
   std::vector<rpc::ActorTableData> subscribe_one_notifications;
   auto actor_subscribe = [&num_subscribe_one_notifications, &subscribe_one_notifications](
-                             const ActorID &actor_id, const rpc::ActorTableData &data) {
+                             const ActorID &, const rpc::ActorTableData &data) {
     subscribe_one_notifications.emplace_back(data);
     ++num_subscribe_one_notifications;
     RAY_LOG(INFO) << "The number of actor subscription messages received is "
@@ -829,7 +829,7 @@ TEST_P(GcsClientTest, TestMultiThreadSubAndUnsub) {
   auto job_id = JobID::FromInt(1);
   for (int index = 0; index < size; ++index) {
     threads[index].reset(new std::thread([this, sub_and_unsub_loop_count, job_id] {
-      for (int index = 0; index < sub_and_unsub_loop_count; ++index) {
+      for (int inner_index = 0; inner_index < sub_and_unsub_loop_count; ++inner_index) {
         auto actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
         ASSERT_TRUE(SubscribeActor(
             actor_id, [](const ActorID &id, const rpc::ActorTableData &result) {}));

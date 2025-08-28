@@ -23,6 +23,7 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/util/time.h"
 #include "src/ray/protobuf/autoscaler.pb.h"
 #include "src/ray/protobuf/export_task_event.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -453,6 +454,8 @@ GenPlacementConstraintForPlacementGroup(const std::string &pg_id,
   // We are embedding the PG id into the key for the same reasons as we do for
   // dynamic labels (a node will have multiple PGs thus having a common PG key
   // is not enough).
+  // Note that this is only use case for dynamic labels and is retained
+  // purely for backward compatibility purposes.
   const std::string name = FormatPlacementGroupLabelName(pg_id);
   switch (strategy) {
   case rpc::PlacementStrategy::STRICT_SPREAD: {

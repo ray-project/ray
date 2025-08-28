@@ -24,7 +24,9 @@
 
 #include "ray/common/test_util.h"
 #include "ray/gcs/store_client/tests/store_client_test_base.h"
+#include "ray/util/network_util.h"
 #include "ray/util/path_utils.h"
+#include "ray/util/raii.h"
 
 using namespace std::chrono_literals;  // NOLINT
 namespace ray {
@@ -76,8 +78,6 @@ class RedisStoreClientTest : public StoreClientTestBase {
     RedisClientOptions options{"127.0.0.1", TEST_REDIS_SERVER_PORTS.front()};
     store_client_ = std::make_shared<RedisStoreClient>(io_context, options);
   }
-
-  void DisconnectStoreClient() override { store_client_.reset(); }
 
  protected:
   std::unique_ptr<std::thread> t_;
