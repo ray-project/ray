@@ -19,8 +19,10 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <thread>
 
 #include "ray/common/asio/instrumented_io_context.h"
+#include <boost/asio/executor_work_guard.hpp>
 #include "ray/common/buffer.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/status.h"
@@ -223,6 +225,21 @@ class RayletClientInterface {
 
 namespace raylet {
 
+// Helper that owns an io_context, keeps it alive with a work guard, and
+// runs it on a dedicated thread until stopped.
+class CyIoContextRunner {
+ public:
+  CyIoContextRunner();
+  instrumented_io_context &GetMainService();
+  void StopAndJoin();
+  ~CyIoContextRunner();
+
+ private:
+  instrumented_io_context io_;
+  boost::asio::executor_work_guard<instrumented_io_context::executor_type> guard_;
+  std::thread thread_;
+};
+
 /// Raylet client is responsible for communication with raylet. It implements
 /// [RayletClientInterface] and works on worker registration, lease management, etc.
 class RayletClient : public RayletClientInterface {
@@ -350,6 +367,10 @@ class RayletClient : public RayletClientInterface {
   void GetNodeStats(const rpc::GetNodeStatsRequest &request,
                     const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback) override;
 
+  void ResizeLocalResourceInstances(
+      const rpc::ResizeLocalResourceInstancesRequest &request,
+      const rpc::ClientCallback<rpc::ResizeLocalResourceInstancesReply> &callback);
+
  private:
   /// gRPC client to the NodeManagerService.
   std::shared_ptr<rpc::NodeManagerClient> grpc_client_;
@@ -362,6 +383,16 @@ class RayletClient : public RayletClientInterface {
   /// The number of object ID pin RPCs currently in flight.
   std::atomic<int64_t> pins_in_flight_ = 0;
 };
+
+// C-style trampoline to call the existing async API without exposing std::function
+// to Cython. This does not modify the class interface.
+using ResizeLocalResourceInstancesCcb = void (*)(
+    void *ctx, const Status &status, const rpc::ResizeLocalResourceInstancesReply &reply);
+void RayletClient_ResizeLocalResourceInstancesC(
+    RayletClient *client,
+    const rpc::ResizeLocalResourceInstancesRequest &request,
+    ResizeLocalResourceInstancesCcb cb,
+    void *ctx);
 
 }  // namespace raylet
 

@@ -196,6 +196,11 @@ class NodeManagerClient {
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
+  VOID_RPC_CLIENT_METHOD(NodeManagerService,
+                         ResizeLocalResourceInstances,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1, )
+
   std::shared_ptr<GrpcClient<NodeManagerService>> grpc_client_;
 
   std::shared_ptr<RetryableGrpcClient> retryable_grpc_client_;

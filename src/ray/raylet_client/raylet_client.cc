@@ -28,6 +28,22 @@
 
 namespace ray::raylet {
 
+CyIoContextRunner::CyIoContextRunner()
+    : io_(/*enable_lag_probe=*/false, /*running_on_single_thread=*/true),
+      guard_(boost::asio::make_work_guard(io_)) {
+  thread_ = std::thread([this] { io_.run(); });
+}
+
+instrumented_io_context &CyIoContextRunner::GetMainService() { return io_; }
+
+void CyIoContextRunner::StopAndJoin() {
+  guard_.reset();
+  io_.stop();
+  if (thread_.joinable()) thread_.join();
+}
+
+CyIoContextRunner::~CyIoContextRunner() { StopAndJoin(); }
+
 RayletClient::RayletClient(const rpc::Address &address,
                            rpc::ClientCallManager &client_call_manager,
                            std::function<void()> raylet_unavailable_timeout_callback)
@@ -345,4 +361,20 @@ void RayletClient::GetNodeStats(
   grpc_client_->GetNodeStats(request, callback);
 }
 
+void RayletClient::ResizeLocalResourceInstances(
+    const rpc::ResizeLocalResourceInstancesRequest &request,
+    const rpc::ClientCallback<rpc::ResizeLocalResourceInstancesReply> &callback) {
+  grpc_client_->ResizeLocalResourceInstances(request, callback);
+}
+
+void RayletClient_ResizeLocalResourceInstancesC(
+    RayletClient *client,
+    const rpc::ResizeLocalResourceInstancesRequest &request,
+    ResizeLocalResourceInstancesCcb cb,
+    void *ctx) {
+  client->ResizeLocalResourceInstances(
+      request, [cb, ctx](const Status &status, rpc::ResizeLocalResourceInstancesReply &&reply) {
+        cb(ctx, status, reply);
+      });
+}
 }  // namespace ray::raylet
