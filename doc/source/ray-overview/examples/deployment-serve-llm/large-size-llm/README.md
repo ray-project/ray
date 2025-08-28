@@ -209,31 +209,19 @@ anyscale service deploy -f service.yaml
 
 > If your model is gated, make sure to pass your HuggingFace Token to the Service with `--env HF_TOKEN=<YOUR_HUGGINGFACE_TOKEN>`
 
-**Custom Dockerfile**
-
-The recommended image for most cases is `anyscale/ray-llm`. However, if you prefer a minimal image for more control, here’s an example `Dockerfile` based on the lighter `anyscale/ray` base image that installs only what you need to run this example.
-```Dockerfile
-FROM anyscale/ray:2.49.0-slim-py312-cu128
-
-# C compiler for Triton’s runtime build step (vLLM V1 engine)
-# https://github.com/vllm-project/vllm/issues/2997
-RUN sudo apt-get update && \
-    sudo apt-get install -y --no-install-recommends build-essential
-
-RUN pip install vllm==0.10.0
-```
-
-In your Anyscale Service config, point to this Dockerfile with `containerfile` instead of `image_uri`:
+**Custom Dockerfile**  
+You can customize the container by building your own Dockerfile. In your Anyscale Service config, reference the Dockerfile with `containerfile` (instead of `image_uri`):
 
 ```yaml
 # service.yaml
-...
-## Recommended (default):
+# Replace:
 # image_uri: anyscale/ray-llm:2.49.0-py311-cu128
-## Minimal example (custom):
-containerfile: ./Dockerfile  # path to your Dockerfile
-...
+
+# with:
+containerfile: ./Dockerfile
 ```
+
+See the [Anyscale base images](https://docs.anyscale.com/reference/base-images) for details on what each image includes.
 
 ---
 
