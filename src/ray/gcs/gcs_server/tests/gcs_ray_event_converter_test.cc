@@ -306,5 +306,58 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskExecutionEvent) {
   EXPECT_EQ(state_updates.state_ts_ns().at(5), expected_ns);
 }
 
+TEST_F(GcsRayEventConverterTest, TestConvertActorTaskDefinitionEvent) {
+  GcsRayEventConverter converter;
+  rpc::events::ActorTaskDefinitionEvent actor_def_event;
+
+  // Set basic fields
+  actor_def_event.set_task_id("test_actor_task_id");
+  actor_def_event.set_task_attempt(2);
+  actor_def_event.set_job_id("test_job_id");
+  actor_def_event.set_actor_task_name("test_actor_task");
+  actor_def_event.set_language(rpc::Language::PYTHON);
+  actor_def_event.set_actor_id("actor-123");
+  actor_def_event.set_parent_task_id("parent-actor-task");
+  actor_def_event.set_placement_group_id("pg-actor");
+
+  // Set runtime env info
+  auto *runtime_env = actor_def_event.mutable_runtime_env_info();
+  runtime_env->set_serialized_runtime_env("test_actor_env");
+
+  // Set actor function descriptor (Python)
+  auto *func_desc = actor_def_event.mutable_actor_func();
+  auto *python_func = func_desc->mutable_python_function_descriptor();
+  python_func->set_function_name("test_actor_function");
+  python_func->set_class_name("TestActorClass");
+
+  // Add required resources
+  (*actor_def_event.mutable_required_resources())["CPU"] = 2.0;
+  (*actor_def_event.mutable_required_resources())["GPU"] = 1.0;
+
+  // Call the converter
+  rpc::TaskEvents task_event = converter.ConvertToTaskEvents(std::move(actor_def_event));
+
+  // Check basic fields
+  EXPECT_EQ(task_event.task_id(), "test_actor_task_id");
+  EXPECT_EQ(task_event.attempt_number(), 2);
+  EXPECT_EQ(task_event.job_id(), "test_job_id");
+
+  // Check task info
+  EXPECT_TRUE(task_event.has_task_info());
+  const auto &task_info = task_event.task_info();
+  EXPECT_EQ(task_info.type(), rpc::TaskType::ACTOR_TASK);
+  EXPECT_EQ(task_info.name(), "test_actor_task");
+  EXPECT_EQ(task_info.language(), rpc::Language::PYTHON);
+  EXPECT_EQ(task_info.func_or_class_name(), "test_actor_function");
+  EXPECT_EQ(task_info.runtime_env_info().serialized_runtime_env(), "test_actor_env");
+  EXPECT_EQ(task_info.actor_id(), "actor-123");
+  EXPECT_EQ(task_info.parent_task_id(), "parent-actor-task");
+  EXPECT_EQ(task_info.placement_group_id(), "pg-actor");
+
+  // Check required resources
+  EXPECT_EQ(task_info.required_resources().at("CPU"), 2.0);
+  EXPECT_EQ(task_info.required_resources().at("GPU"), 1.0);
+}
+
 }  // namespace gcs
 }  // namespace ray
