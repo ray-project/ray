@@ -29,7 +29,6 @@
 #include "ray/gcs/gcs_server/gcs_actor.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
-#include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/tests/gcs_test_util.h"
 #include "ray/pubsub/publisher.h"
