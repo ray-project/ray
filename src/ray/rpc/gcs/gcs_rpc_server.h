@@ -112,16 +112,6 @@ namespace rpc {
 #define ACTOR_INFO_SERVICE_RPC_HANDLER(HANDLER, MAX_ACTIVE_RPCS) \
   RPC_SERVICE_HANDLER(ActorInfoGcsService, HANDLER, MAX_ACTIVE_RPCS)
 
-#define MONITOR_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(MonitorGcsService,     \
-                      HANDLER,               \
-                      RayConfig::instance().gcs_max_active_rpcs_per_handler())
-
-#define OBJECT_INFO_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(ObjectInfoGcsService,      \
-                      HANDLER,                   \
-                      RayConfig::instance().gcs_max_active_rpcs_per_handler())
-
 #define PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(PlacementGroupInfoGcsService,       \
                       HANDLER,                            \
