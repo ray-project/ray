@@ -17,12 +17,12 @@ syntax = "proto3";
 package ray.rpc.events;
 
 import "google/protobuf/timestamp.proto";
-import "src/ray/protobuf/events_actor_task_definition_event.proto";
-import "src/ray/protobuf/events_task_definition_event.proto";
-import "src/ray/protobuf/events_task_execution_event.proto";
 import "src/ray/protobuf/events_task_profile_events.proto";
-import "src/ray/protobuf/events_driver_job_definition_event.proto";
-import "src/ray/protobuf/events_driver_job_execution_event.proto";
+import "src/ray/protobuf/public/events_actor_task_definition_event.proto";
+import "src/ray/protobuf/public/events_task_definition_event.proto";
+import "src/ray/protobuf/public/events_task_execution_event.proto";
+import "src/ray/protobuf/public/events_driver_job_definition_event.proto";
+import "src/ray/protobuf/public/events_driver_job_execution_event.proto";
 
 // This is the base message for all ray events.
 message RayEvent {
