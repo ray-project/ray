@@ -101,7 +101,7 @@ BlockPartition = List[Tuple[ObjectRef[Block], "BlockMetadata"]]
 BlockPartitionMetadata = List["BlockMetadata"]
 
 VALID_BATCH_FORMATS = ["pandas", "pyarrow", "numpy", None]
-DEFAULT_BATCH_FORMAT = "numpy"
+DEFAULT_BATCH_FORMAT = "pandas"
 
 
 def _is_empty_schema(schema: Optional[Schema]) -> bool:
