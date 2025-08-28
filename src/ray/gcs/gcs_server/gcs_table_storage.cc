@@ -210,12 +210,5 @@ template class GcsTableWithJobId<ActorID, rpc::ActorTableData>;
 template class GcsTableWithJobId<ActorID, rpc::TaskSpec>;
 template class GcsTable<PlacementGroupID, rpc::PlacementGroupTableData>;
 
-RedisGcsTableStorage::RedisGcsTableStorage(std::shared_ptr<StoreClient> store_client)
-    : GcsTableStorage(std::move(store_client)) {}
-
-InMemoryGcsTableStorage::InMemoryGcsTableStorage()
-    : GcsTableStorage(std::make_shared<ObservableStoreClient>(
-          std::make_unique<InMemoryStoreClient>())) {}
-
 }  // namespace gcs
 }  // namespace ray
