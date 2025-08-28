@@ -11,9 +11,6 @@ from ray.util.collective.types import (
     TensorTransportMetadata,
 )
 
-from ray.experimental.collective import get_tensor_transport_manager
-from ray.experimental.collective.util import device_match_transport
-
 try:
     import torch
 except ImportError:
@@ -26,6 +23,14 @@ TENSOR_TRANSPORT_TO_COLLECTIVE_BACKEND = {
     TensorTransportEnum.NCCL: Backend.NCCL,
     TensorTransportEnum.GLOO: Backend.TORCH_GLOO,
     TensorTransportEnum.NIXL: Backend.NIXL,
+}
+
+COLLECTIVE_BACKEND_TO_TORCH_DEVICE = {
+    Backend.NCCL: torch.device("cuda"),
+    Backend.TORCH_GLOO: torch.device("cpu"),
+    # TODO(Qiaolin-Yu): NIXL could also transfer tensors from CPU to CPU.
+    # More details in https://github.com/ray-project/ray/issues/55587.
+    Backend.NIXL: torch.device("cuda"),
 }
 
 
@@ -56,17 +61,15 @@ def __ray_send__(
     tensors = gpu_object_store.get_object(obj_id)
 
     backend = collective.get_group_handle(communicator_meta.communicator_name).backend()
+    device = COLLECTIVE_BACKEND_TO_TORCH_DEVICE[backend]
+
+    from ray.experimental.collective import get_tensor_transport_manager
 
     tensor_transport_manager = get_tensor_transport_manager(backend)
-    if tensors and not device_match_transport(
-        tensor_transport_meta.tensor_device, backend
-    ):
-        raise ValueError(
-            f"Tensor transport backend {backend} does not support tensor transfer on device {tensor_transport_meta.tensor_device}."
-        )
     tensor_transport_manager.send_multiple_tensors(
         tensors,
         communicator_meta,
+        device=device,
     )
 
 
@@ -79,16 +82,14 @@ def __ray_recv__(
     """Helper function that runs on the dst actor to receive tensors from the src actor."""
     from ray._private.worker import global_worker
 
+    from ray.experimental.collective import get_tensor_transport_manager
+
     backend = collective.get_group_handle(communicator_meta.communicator_name).backend()
 
-    device = tensor_transport_meta.tensor_device
+    device = COLLECTIVE_BACKEND_TO_TORCH_DEVICE[backend]
     tensor_meta = tensor_transport_meta.tensor_meta
 
     gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
-    if tensor_meta and not device_match_transport(device, backend):
-        raise ValueError(
-            f"Tensor transport backend {backend} does not support tensor transfer on device {device}."
-        )
     tensors = []
     for meta in tensor_meta:
         shape, dtype = meta
