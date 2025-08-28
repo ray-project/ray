@@ -34,16 +34,6 @@ using ray::rpc::events::AddEventsRequest;
 namespace ray {
 namespace rpc {
 
-#define MONITOR_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(MonitorGcsService,     \
-                      HANDLER,               \
-                      RayConfig::instance().gcs_max_active_rpcs_per_handler())
-
-#define OBJECT_INFO_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(ObjectInfoGcsService,      \
-                      HANDLER,                   \
-                      RayConfig::instance().gcs_max_active_rpcs_per_handler())
-
 #define GCS_RPC_SEND_REPLY(send_reply_callback, reply, status)        \
   reply->mutable_status()->set_code(static_cast<int>(status.code())); \
   reply->mutable_status()->set_message(status.message());             \

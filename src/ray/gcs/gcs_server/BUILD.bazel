@@ -425,6 +425,7 @@ ray_cc_library(
     ],
     deps = [
         ":gcs_actor",
+        ":gcs_actor_manager",
         ":gcs_actor_scheduler",
         ":gcs_function_manager",
         ":gcs_init_data",
