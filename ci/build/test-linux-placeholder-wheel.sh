@@ -8,17 +8,17 @@ if [[ ! "${OSTYPE}" =~ ^linux ]]; then
   exit 1
 fi
 
-# TODO (elliot-barn): list python versions
-ls -d -- /opt/python/*/bin/
-
 which python
 
 which pip
 
 RAY_PLACEHOLDER_VERSION="100.0.0-dev"
-PYTHON_EXE="/opt/python/${PYTHON}/bin/python"
-PIP_CMD="$(dirname "$PYTHON_EXE")/pip"
-PIP_COMPILE_CMD="$(dirname "$PYTHON_EXE")/pip-compile"
+PYTHON_EXE="python"
+PIP_CMD="pip"
+PIP_COMPILE_CMD="pip-compile"
+# PYTHON_EXE="/opt/python/${PYTHON}/bin/python"
+# PIP_CMD="$(dirname "$PYTHON_EXE")/pip"
+# PIP_COMPILE_CMD="$(dirname "$PYTHON_EXE")/pip-compile"
 # Find the appropriate wheel by grepping for the Python version.
 PYTHON_WHEEL=$(find ./.whl -maxdepth 1 -type f -name "*${PYTHON}*.whl" -print -quit)
 

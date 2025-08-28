@@ -32,9 +32,13 @@ steps:
       - export RAYCI_DISABLE_CPP_WHEEL=1
       - export SKIP_BAZEL_BUILD=1
       - export PLACEHOLDER_WHEEL=1
+      - which python
+      - which pip
+      - python --version
+      - pip --version
       - mkdir -p .whl
-      - pip wheel python/ --no-deps -w=.whl/ --use-pep517
-      - ls .whl
+      - pip wheel python/ --no-deps -w .whl/ --use-pep517
+      - ls -a .whl
       # test placeholder wheel
       - ./ci/build/test-linux-placeholder-wheel.sh {{matrix}}
     depends_on:
