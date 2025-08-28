@@ -33,7 +33,7 @@ steps:
       - export SKIP_BAZEL_BUILD=1
       - export PLACEHOLDER_WHEEL=1
       - mkdir -p .whl
-      - pip wheel python/ --no-deps -w=.whl/ --pep517
+      - pip wheel python/ --no-deps -w=.whl/ --use-pep517
       - ls .whl
       # test placeholder wheel
       - ./ci/build/test-linux-placeholder-wheel.sh {{matrix}}
