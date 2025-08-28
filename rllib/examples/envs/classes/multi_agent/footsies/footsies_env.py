@@ -1,5 +1,5 @@
 import logging
-from typing import Any
+from typing import Any, Optional
 
 import numpy as np
 import psutil
@@ -120,8 +120,8 @@ class FootsiesEnv(MultiAgentEnv):
     def reset(
         self,
         *,
-        seed: int | None = None,
-        options: dict | None = None,
+        seed: Optional[int] = None,
+        options: Optional[dict] = None,
     ) -> tuple[dict[AgentID, ObsType], dict[AgentID, Any]]:
         """Resets the environment to the starting state
         and returns the initial observations for all agents.

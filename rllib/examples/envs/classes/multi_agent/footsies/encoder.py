@@ -1,9 +1,8 @@
 import collections
 import copy
-from typing import Any
+from typing import Any, Optional, Union
 
 import numpy as np
-
 from ray.rllib.examples.envs.classes.multi_agent.footsies.game import constants
 from ray.rllib.examples.envs.classes.multi_agent.footsies.game.proto import (
     footsies_service_pb2 as footsies_pb2,
@@ -19,7 +18,7 @@ class FootsiesEncoder:
             for agent_id in ["p1", "p2"]
         }
         self.observation_delay = observation_delay
-        self._last_common_state: np.ndarray | None = None
+        self._last_common_state: Optional[np.ndarray] = None
         self._action_id_values = list(constants.FOOTSIES_ACTION_IDS.values())
 
     @staticmethod
@@ -37,7 +36,7 @@ class FootsiesEncoder:
 
     @staticmethod
     def _encode_input_buffer(
-        input_buffer: list[int], last_n: int | None = None
+        input_buffer: list[int], last_n: Optional[int] = None
     ) -> np.ndarray:
         """Encodes the input buffer into a one-hot vector.
 
@@ -126,7 +125,7 @@ class FootsiesEncoder:
     def encode_player_state(
         self,
         player_state: footsies_pb2.PlayerState,
-    ) -> dict[str, int | float | list | np.ndarray]:
+    ) -> dict[str, Union[int, float, list, np.ndarray]]:
         """Encodes the player state into observations.
 
         :param player_state: The player state to encode
@@ -176,7 +175,7 @@ class FootsiesEncoder:
 
         return feature_dict
 
-    def get_last_encoding(self) -> dict[str, np.ndarray] | None:
+    def get_last_encoding(self) -> Optional[dict[str, np.ndarray]]:
         if self._last_common_state is None:
             return None
 
@@ -219,7 +218,7 @@ class FootsiesEncoder:
 
 
 def one_hot_encoder(
-    value: int | float | str, collection: list[int | float | str]
+    value: Union[int, float, str], collection: list[Union[int, float, str]]
 ) -> np.ndarray:
     vector = np.zeros(len(collection), dtype=np.float32)
     vector[collection.index(value)] = 1
