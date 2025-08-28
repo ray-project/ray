@@ -172,6 +172,14 @@ def unify_schemas(
         ArrowVariableShapedTensorType,
     )
 
+    try:
+        if len(set(schemas)) == 1:
+            # Early exit because unifying can be expensive
+            return schemas.pop()
+    except Exception as e:
+        # Unsure if there are cases where schemas are NOT hashable
+        logger.warning(f"Failed to hash the schemas (for deduplication): {e}")
+
     schemas_to_unify = []
     schema_field_overrides = {}
 
