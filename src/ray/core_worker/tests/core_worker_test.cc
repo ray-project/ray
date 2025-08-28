@@ -564,8 +564,8 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
                                /*object_info_subscriber=*/nullptr,
                                is_node_dead);
 
-  // Set fetch batch size to 2 directly for this process.
-  RayConfig::instance().worker_fetch_request_size() = 2;
+  // Set fetch batch size to 2 with guard to restore after test.
+  ConfigGuard guard(RayConfig::instance().worker_fetch_request_size(), 2);
 
   // Mock plasma client that records Get calls and pretends objects exist.
   auto mock_plasma = std::make_shared<plasma::MockPlasmaClient>();
