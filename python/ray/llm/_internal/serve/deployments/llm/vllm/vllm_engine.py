@@ -1,15 +1,12 @@
 import argparse
-import os
 from typing import TYPE_CHECKING, AsyncGenerator, Optional, Tuple, Union
 
 from starlette.datastructures import State
 from starlette.requests import Request
-from transformers.dynamic_module_utils import init_hf_modules
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.entrypoints.openai.cli_args import FrontendArgs
 from vllm.entrypoints.openai.protocol import ErrorResponse as VLLMErrorResponse
 
-import ray
 from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionRequest,
@@ -36,7 +33,6 @@ from ray.llm._internal.serve.deployments.utils.node_initialization_utils import 
 )
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.util.placement_group import PlacementGroup
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 if TYPE_CHECKING:
     from vllm.config import VllmConfig
@@ -84,13 +80,6 @@ def _clear_current_platform_cache():
     """
     from vllm.platforms import current_platform
 
-    # TODO(seiji): remove this once https://github.com/vllm-project/vllm/pull/18979 is merged
-    if (
-        "CUDA_VISIBLE_DEVICES" in os.environ
-        and os.environ["CUDA_VISIBLE_DEVICES"] == ""
-    ):
-        del os.environ["CUDA_VISIBLE_DEVICES"]
-
     # This check is just to future proof this implementation
     # in case vllm removes their lru_cache decorator
     if hasattr(current_platform.get_device_capability, "cache_clear"):
@@ -109,10 +98,6 @@ class VLLMEngine(LLMEngine):
             llm_config: The llm configuration for this engine
         """
         super().__init__(llm_config)
-
-        # Ensure transformers_modules is initialized early in worker processes.
-        # This is critical for models with trust_remote_code=True to avoid pickle errors.
-        init_hf_modules()
 
         self.llm_config = llm_config
 
@@ -253,29 +238,12 @@ class VLLMEngine(LLMEngine):
 
         engine_config: VLLMEngineConfig = self.llm_config.get_engine_config()
 
-        if engine_config.use_gpu:
-            # Create engine config on a task with access to GPU,
-            # as GPU capability may be queried.
-            ref = (
-                ray.remote(
-                    num_cpus=0,
-                    num_gpus=0.001,
-                    accelerator_type=self.llm_config.accelerator_type,
-                )(_get_vllm_engine_config)
-                .options(
-                    runtime_env=node_initialization.runtime_env,
-                    scheduling_strategy=PlacementGroupSchedulingStrategy(
-                        placement_group=node_initialization.placement_group,
-                    ),
-                )
-                .remote(self.llm_config)
-            )
-            vllm_engine_args, vllm_engine_config = ray.get(ref)
-        else:
-            vllm_engine_args, vllm_engine_config = _get_vllm_engine_config(
-                self.llm_config
+        if engine_config.placement_strategy not in ["STRICT_PACK", "PACK"]:
+            raise ValueError(
+                "_get_vllm_engine_config must run on a GPU PG if there is one."
             )
 
+        vllm_engine_args, vllm_engine_config = _get_vllm_engine_config(self.llm_config)
         vllm_frontend_args = FrontendArgs(**engine_config.frontend_kwargs)
         return vllm_engine_args, vllm_frontend_args, vllm_engine_config
 
