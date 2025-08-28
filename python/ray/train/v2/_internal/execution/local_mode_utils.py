@@ -26,8 +26,6 @@ class LocalController:
         set_train_fn_utils(
             LocalTrainFnUtils(
                 experiment_name=self.experiment_name,
-                local_world_size=1,
-                local_rank=0,
                 dataset_shards=self.datasets,
             )
         )
