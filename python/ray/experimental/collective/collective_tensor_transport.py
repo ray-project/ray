@@ -1,6 +1,7 @@
 from typing import Optional, List, TYPE_CHECKING
 
 import ray
+from ray.util.collective.types import Backend
 from ray.experimental.collective.tensor_transport_manager import (
     TensorTransportManager,
     TensorTransportEnum,
@@ -16,9 +17,24 @@ if TYPE_CHECKING:
 
 
 class CollectiveTensorTransport(TensorTransportManager):
+    def __init__(self, tensor_transport_backend: Backend):
+        self._tensor_transport_backend = tensor_transport_backend
+
+    @property
+    def tensor_transport_backend(self) -> Backend:
+        return self._tensor_transport_backend
+
     @staticmethod
     def is_one_sided() -> bool:
         return False
+
+    def actor_has_tensor_transport(self, actor: "ray.actor.ActorHandle") -> bool:
+        from ray.experimental.collective import get_collective_groups
+
+        communicators = get_collective_groups(
+            [actor], backend=self.tensor_transport_backend
+        )
+        return len(communicators) > 0
 
     @staticmethod
     def get_tensor_transport_metadata(
@@ -140,6 +156,7 @@ class CollectiveTensorTransport(TensorTransportManager):
     @staticmethod
     def send_multiple_tensors(
         tensors: List["torch.Tensor"],
+        tensor_transport_metadata: CollectiveTransportMetadata,
         communicator_metadata: CollectiveCommunicatorMetadata,
     ):
         import ray.util.collective as collective
