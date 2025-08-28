@@ -19,6 +19,28 @@
 namespace ray {
 namespace rpc {
 
+void ActorInfoGrpcService::InitServerCallFactories(
+    const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+    std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+    const ClusterID &cluster_id) {
+  RPC_SERVICE_HANDLER(ActorInfoGcsService, UnregisterActor, max_active_rpcs_per_handler_)
+
+  /// The register & create actor RPCs take a long time, so we shouldn't limit their
+  /// concurrency to avoid distributed deadlock.
+  RPC_SERVICE_HANDLER(ActorInfoGcsService, RegisterActor, -1)
+  RPC_SERVICE_HANDLER(ActorInfoGcsService, CreateActor, -1)
+  RPC_SERVICE_HANDLER(ActorInfoGcsService, RestartActorForLineageReconstruction, -1)
+
+  RPC_SERVICE_HANDLER(ActorInfoGcsService, GetActorInfo, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(ActorInfoGcsService, GetAllActorInfo, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      ActorInfoGcsService, GetNamedActorInfo, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(ActorInfoGcsService, ListNamedActors, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(ActorInfoGcsService, KillActorViaGcs, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      ActorInfoGcsService, ReportActorOutOfScope, max_active_rpcs_per_handler_)
+}
+
 void NodeInfoGrpcService::InitServerCallFactories(
     const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,

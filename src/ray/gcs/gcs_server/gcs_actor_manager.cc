@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "ray/common/ray_config.h"
+#include "ray/common/task/task_spec.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/time.h"
