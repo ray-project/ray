@@ -172,7 +172,13 @@ def plan_streaming_repartition_op(
     input_physical_dag = physical_children[0]
     compute = get_compute(op._compute)
     transform_fn = BuildOutputBlocksMapTransformFn.for_blocks()
-    transform_fn.set_target_num_rows_per_block(op.target_num_rows_per_block)
+
+    # Set the appropriate target based on which parameter is provided
+    if op.target_num_bytes_per_block is not None:
+        transform_fn.set_target_max_block_size(op.target_num_bytes_per_block)
+    elif op.target_num_rows_per_block is not None:
+        transform_fn.set_target_num_rows_per_block(op.target_num_rows_per_block)
+
     map_transformer = MapTransformer([transform_fn])
     # Disable fusion for streaming repartition with the downstream op.
     return MapOperator.create(

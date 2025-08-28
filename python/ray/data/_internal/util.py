@@ -1506,6 +1506,54 @@ def convert_bytes_to_human_readable_str(num_bytes: int) -> str:
     return num_bytes_str
 
 
+def parse_size_string(size_str: str) -> int:
+    """Parse a human-readable size string into bytes.
+
+    Supports formats like "128mb", "10GB", "1.5tb", "512kb", "2b".
+    Units are case-insensitive and support both binary (1024) and decimal (1000) prefixes.
+
+    Args:
+        size_str: Size string to parse (e.g., "128mb", "10GB", "1.5tb")
+
+    Returns:
+        Size in bytes as an integer
+
+    Raises:
+        ValueError: If the size string format is invalid
+    """
+    import re
+
+    # Pattern to match number + unit (case insensitive)
+    pattern = r"^(\d+(?:\.\d+)?)\s*([kmgtp]?[b]?)$"
+    match = re.match(pattern, size_str.lower())
+
+    if not match:
+        raise ValueError(
+            f"Invalid size string format: '{size_str}'. "
+            f"Expected format like '128mb', '10GB', '1.5tb', '512kb', '2b'"
+        )
+
+    number = float(match.group(1))
+    unit = match.group(2)
+
+    # Define unit multipliers (binary prefixes)
+    multipliers = {
+        "b": 1,
+        "kb": 1024,
+        "mb": 1024**2,
+        "gb": 1024**3,
+        "tb": 1024**4,
+        "pb": 1024**5,
+    }
+
+    if unit not in multipliers:
+        raise ValueError(
+            f"Unsupported unit: '{unit}'. Supported units: {list(multipliers.keys())}"
+        )
+
+    return int(number * multipliers[unit])
+
+
 def _validate_rows_per_file_args(
     *,
     num_rows_per_file: Optional[int] = None,

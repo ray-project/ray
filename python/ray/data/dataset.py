@@ -95,6 +95,7 @@ from ray.data._internal.util import (
     ConsumptionAPI,
     _validate_rows_per_file_args,
     get_compute_strategy,
+    parse_size_string,
 )
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum, Unique
 from ray.data.block import (
@@ -1499,6 +1500,7 @@ class Dataset:
         self,
         num_blocks: Optional[int] = None,
         target_num_rows_per_block: Optional[int] = None,
+        target_num_bytes_per_block: Optional[Union[int, str]] = None,
         *,
         shuffle: bool = False,
         keys: Optional[List[str]] = None,
@@ -1549,6 +1551,16 @@ class Dataset:
                 optimal execution, based on the `target_num_rows_per_block`. This is
                 the current behavior because of the implementation and may change in
                 the future.
+            target_num_bytes_per_block: [Experimental] The target number of bytes per block to
+                repartition. Note that either `num_blocks` or
+                `target_num_bytes_per_block` must be set, but not both. When
+                `target_num_bytes_per_block` is set, it only repartitions
+                :class:`Dataset` :ref:`blocks <dataset_concept>` that are larger than
+                `target_num_bytes_per_block`. Note that the system will internally
+                figure out the number of bytes per :ref:`blocks <dataset_concept>` for
+                optimal execution, based on the `target_num_bytes_per_block`. This is
+                the current behavior because of the implementation and may change in
+                the future.
             shuffle: Whether to perform a distributed shuffle during the
                 repartition. When shuffle is enabled, each output block
                 contains a subset of data rows from each input block, which
@@ -1563,14 +1575,34 @@ class Dataset:
             sort: Whether the blocks should be sorted after repartitioning. Note,
                 that by default blocks will be sorted in the ascending order.
 
-        Note that you must set either `num_blocks` or `target_num_rows_per_block`
-        but not both.
+        Note that you must set exactly one of `num_blocks`, `target_num_rows_per_block`,
+        or `target_num_bytes_per_block`, but not multiple.
         Additionally note that this operation materializes the entire dataset in memory
         when you set shuffle to True.
 
         Returns:
             The repartitioned :class:`Dataset`.
         """  # noqa: E501
+
+        # Handle target_num_bytes_per_block parameter
+        if target_num_bytes_per_block is not None:
+            if isinstance(target_num_bytes_per_block, str):
+                target_num_bytes_per_block = parse_size_string(
+                    target_num_bytes_per_block
+                )
+
+            if keys is not None:
+                warnings.warn(
+                    "`keys` is ignored when `target_num_bytes_per_block` is set."
+                )
+            if sort is not False:
+                warnings.warn(
+                    "`sort` is ignored when `target_num_bytes_per_block` is set."
+                )
+            if shuffle:
+                warnings.warn(
+                    "`shuffle` must be False when `target_num_bytes_per_block` is set."
+                )
 
         if target_num_rows_per_block is not None:
             if keys is not None:
@@ -1583,18 +1615,28 @@ class Dataset:
                 )
             if shuffle:
                 warnings.warn(
-                    "`shuffle` is ignored when `target_num_rows_per_block` is set."
+                    "`shuffle` must be False when `target_num_rows_per_block` is set."
                 )
 
-        if (num_blocks is None) and (target_num_rows_per_block is None):
+        # Check that exactly one of the three parameters is set
+        param_count = sum(
+            [
+                num_blocks is not None,
+                target_num_rows_per_block is not None,
+                target_num_bytes_per_block is not None,
+            ]
+        )
+
+        if param_count == 0:
             raise ValueError(
-                "Either `num_blocks` or `target_num_rows_per_block` must be set"
+                "Exactly one of `num_blocks`, `target_num_rows_per_block`, or "
+                "`target_num_bytes_per_block` must be set"
             )
 
-        if (num_blocks is not None) and (target_num_rows_per_block is not None):
+        if param_count > 1:
             raise ValueError(
-                "Only one of `num_blocks` or `target_num_rows_per_block` must be set, "
-                "but not both."
+                "Only one of `num_blocks`, `target_num_rows_per_block`, or "
+                "`target_num_bytes_per_block` must be set, but not multiple."
             )
 
         if target_num_rows_per_block is not None and shuffle:
@@ -1602,8 +1644,19 @@ class Dataset:
                 "`shuffle` must be False when `target_num_rows_per_block` is set."
             )
 
+        if target_num_bytes_per_block is not None and shuffle:
+            raise ValueError(
+                "`shuffle` must be False when `target_num_bytes_per_block` is set."
+            )
+
         plan = self._plan.copy()
-        if target_num_rows_per_block is not None:
+        if target_num_bytes_per_block is not None:
+            # Use native byte-based repartitioning
+            op = StreamingRepartition(
+                self._logical_plan.dag,
+                target_num_bytes_per_block=target_num_bytes_per_block,
+            )
+        elif target_num_rows_per_block is not None:
             op = StreamingRepartition(
                 self._logical_plan.dag,
                 target_num_rows_per_block=target_num_rows_per_block,
@@ -5966,32 +6019,6 @@ class Dataset:
         elif self._write_ds is not None and self._write_ds._plan.has_computed_output():
             return self._write_ds.stats()
         return self._get_stats_summary().to_string()
-
-    @PublicAPI(api_group=IM_API_GROUP, stability="alpha")
-    def explain(self):
-        """Show the logical plan and physical plan of the dataset.
-
-        Examples:
-
-        .. testcode::
-
-            import ray
-            from ray.data import Dataset
-            ds: Dataset = ray.data.range(10,  override_num_blocks=10)
-            ds = ds.map(lambda x: x + 1)
-            ds.explain()
-
-        .. testoutput::
-
-            -------- Logical Plan --------
-            Map(<lambda>)
-            +- ReadRange
-            -------- Physical Plan --------
-            TaskPoolMapOperator[ReadRange->Map(<lambda>)]
-            +- InputDataBuffer[Input]
-            <BLANKLINE>
-        """
-        print(self._plan.explain())
 
     def _get_stats_summary(self) -> DatasetStatsSummary:
         return self._plan.stats().to_summary()
