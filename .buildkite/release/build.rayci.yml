@@ -67,7 +67,7 @@ steps:
     depends_on:
       - ray-mlcudabaseextra
 
-  - label: ":tapioca: build: anyscale py{{matrix.python}}-{{matrix.platform}} docker"
+  - label: ":tapioca: build: ray py{{matrix.python}}-{{matrix.platform}} image for release tests"
     key: anyscalebuild
     instance_type: release-medium
     tags:
@@ -93,7 +93,7 @@ steps:
           - cu12.3.2-cudnn9
           - cpu
 
-  - label: ":tapioca: build: anyscale-llm py{{matrix}} docker"
+  - label: ":tapioca: build: ray-llm py{{matrix}} image for release tests"
     key: anyscalellmbuild
     instance_type: release-medium
     tags:
@@ -108,7 +108,7 @@ steps:
     matrix:
       - "3.11"
 
-  - label: ":tapioca: build: anyscale-ml py{{matrix}} docker"
+  - label: ":tapioca: build: ray-ml py{{matrix}} image for release tests"
     key: anyscalemlbuild
     instance_type: release-medium
     tags:
