@@ -227,11 +227,10 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
         publisher_id_(publisher_id) {}
   ~MockDistributedPublisher() = default;
 
-  bool RegisterSubscription(const rpc::ChannelType channel_type,
+  void RegisterSubscription(const rpc::ChannelType channel_type,
                             const UniqueID &subscriber_id,
                             const std::optional<std::string> &key_id_binary) override {
     RAY_CHECK(false) << "No need to implement it for testing.";
-    return false;
   }
 
   void PublishFailure(const rpc::ChannelType channel_type,
@@ -256,13 +255,11 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
     }
   }
 
-  bool UnregisterSubscription(const rpc::ChannelType channel_type,
+  void UnregisterSubscription(const rpc::ChannelType channel_type,
                               const UniqueID &subscriber_id,
-                              const std::optional<std::string> &key_id_binary) override {
-    return true;
-  }
+                              const std::optional<std::string> &key_id_binary) override {}
 
-  void UnregisterSubscriber(const UniqueID &subscriber_id) override { return; }
+  void UnregisterSubscriber(const UniqueID &subscriber_id) override {}
 
   void ConnectToSubscriber(
       const rpc::PubsubLongPollingRequest &request,
