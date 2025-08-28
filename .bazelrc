@@ -160,7 +160,7 @@ aquery:ci --noshow_progress
 
 test:ci-base --test_output=errors
 test:ci-base --test_verbose_timeout_warnings
-test:ci-base --flaky_test_attempts=3
+test:ci-base --flaky_test_attempts=1
 
 # Sending in PATH is required for tests to run on CI, after we enable
 # --incompatible_strict_action_env, until we either convert all Python tests to
