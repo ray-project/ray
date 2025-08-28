@@ -33,7 +33,7 @@ To onboard onto Horovod, visit the `Horovod guide
 Create a HorovodTrainer
 -----------------------
 
-``Trainer``\s are the primary Ray Train classes to use to manage state and
+``Trainer``s are the primary Ray Train classes to use to manage state and
 execute training. For Horovod, use a :class:`~ray.train.horovod.HorovodTrainer`
 that you can setup like this:
 
