@@ -150,8 +150,6 @@ config.environment(
             fixed_modules_progression_sequence=(
                 "noop",
                 "back",
-                "attack",
-                "random",
             ),
         ),
     ]
