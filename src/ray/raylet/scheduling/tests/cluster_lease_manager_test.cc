@@ -319,7 +319,7 @@ RayLease CreateLease(
 
   spec_builder.SetNormalTaskSpec(0, false, "", scheduling_strategy, ActorID::Nil());
   TaskSpecification spec = std::move(spec_builder).ConsumeAndBuild();
-  LeaseSpecification lease_spec(spec.GetMessage(), false);
+  LeaseSpecification lease_spec(spec.GetMessage());
   lease_spec.GetMutableMessage().set_lease_id(lease_id.Binary());
   return RayLease(std::move(lease_spec));
 }

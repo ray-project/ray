@@ -302,7 +302,7 @@ RayLease CreateLease(const std::unordered_map<std::string, double> &required_res
   }
 
   TaskSpecification spec = std::move(spec_builder).ConsumeAndBuild();
-  LeaseSpecification lease_spec(spec.GetMessage(), false);
+  LeaseSpecification lease_spec(spec.GetMessage());
   lease_spec.GetMutableMessage().set_lease_id(LeaseID::FromRandom().Binary());
   return RayLease(std::move(lease_spec));
 }
