@@ -19,6 +19,7 @@ import ray.train.torch
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.train.torch.train_loop_utils import (
     _WrappedDataLoader,
+    # TODO(xgui): refactor this since it is fragile to cause circular import
     get_devices as get_devices_v1,
 )
 from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
