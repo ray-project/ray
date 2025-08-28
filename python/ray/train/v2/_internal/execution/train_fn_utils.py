@@ -146,14 +146,10 @@ class LocalTrainFnUtils(TrainFnUtils):
     def __init__(
         self,
         experiment_name: str,
-        local_world_size: int,
-        local_rank: int,
         dataset_shards: Optional[Dict[str, DataIterator]] = None,
     ):
         self._context = LocalTrainContext(
             experiment_name=experiment_name,
-            local_world_size=local_world_size,
-            local_rank=local_rank,
         )
         self._dataset_shards = dataset_shards
         self._last_metrics = None
