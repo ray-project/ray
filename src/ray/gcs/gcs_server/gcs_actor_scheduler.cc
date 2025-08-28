@@ -20,10 +20,8 @@
 #include <vector>
 
 #include "ray/common/asio/asio_util.h"
-#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/time.h"
-#include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
 namespace gcs {
