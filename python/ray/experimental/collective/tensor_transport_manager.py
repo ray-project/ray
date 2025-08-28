@@ -143,6 +143,7 @@ class TensorTransportManager(ABC):
     def send_multiple_tensors(
         tensors: List["torch.Tensor"],
         communicator_metadata: CommunicatorMetadata,
+        device: "torch.device",
     ):
         """
         Send multiple tensors to the destination actor.
@@ -150,4 +151,5 @@ class TensorTransportManager(ABC):
         Args:
             tensors: The tensors to send.
             communicator_metadata: The communicator metadata for the send/recv operation.
+            device: The device to send the tensors to.
         """
