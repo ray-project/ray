@@ -326,7 +326,7 @@ test_traceback.NoPickleError"""
 
     with pytest.raises(UnserializableException) as excinfo:
         ray.get(f.remote())
-    
+
     assert clean_noqa(expected_output) == scrub_traceback(str(excinfo.value))
 
 
