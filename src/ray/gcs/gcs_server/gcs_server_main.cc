@@ -112,7 +112,7 @@ int main(int argc, char *argv[]) {
   instrumented_io_context main_service(
       /*enable_metrics=*/RayConfig::instance().emit_main_service_metrics(),
       /*running_on_single_thread=*/true,
-      "gcs_server");
+      "gcs_server_main_io_context");
   // Ensure that the IO service keeps running. Without this, the main_service will exit
   // as soon as there is no more work to be processed.
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(

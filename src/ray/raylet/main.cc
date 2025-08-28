@@ -242,7 +242,7 @@ int main(int argc, char *argv[]) {
   instrumented_io_context main_service{
       /*emit_metrics=*/RayConfig::instance().emit_main_service_metrics(),
       /*running_on_single_thread=*/true,
-      "raylet"};
+      "raylet_main_io_context"};
 
   // Ensure that the IO service keeps running. Without this, the service will exit as soon
   // as there is no more work to be processed.
