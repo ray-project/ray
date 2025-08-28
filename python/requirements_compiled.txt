@@ -428,7 +428,7 @@ defusedxml==0.7.1
     #   semgrep
 delta-sharing==1.0.5
     # via -r python/requirements/ml/data-test-requirements.txt
-deltalake==0.9.0
+deltalake>=1.1.0
     # via -r python/requirements/ml/data-test-requirements.txt
 dill==0.3.7
     # via
