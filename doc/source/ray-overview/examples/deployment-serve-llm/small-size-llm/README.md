@@ -274,7 +274,7 @@ You can improve concurrency depending on your model and hardware in several ways
 **Reduce `max_model_len`**  
 Lowering `max_model_len` reduces the memory needed for KV cache.
 
-**Example:** Running *llama-3.1-8B* on an A10G or L4 GPU:
+**Example:** Running *llama-3.1-8&nbsp;B* on an A10G or L4 GPU:
 - `max_model_len = 8192` → concurrency ≈ 3.5
 - `max_model_len = 4096` → concurrency ≈ 7
 

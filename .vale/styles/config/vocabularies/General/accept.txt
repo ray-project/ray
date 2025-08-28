@@ -47,7 +47,7 @@ deserializes
 dev
 dev to prod
 [d|D]isable[d]
-disable
+[d|D]isable
 DLinear
 Dockerfile
 DPO

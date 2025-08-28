@@ -194,7 +194,7 @@ print(f"Reasoning: \n{response.choices[0].message.reasoning_content}\n\n")
 print(f"Answer: \n {response.choices[0].message.content}")
 ```
 
-If you configure a valid reasoning parser, the reasoning output should appear in the `reasoning_content` field of the response message. Otherwise, it may be included in the main `content` field, typically wrapped in `<think>...</think>` tags. See [Parsing Reasoning Outputs](#parse-reasoning-outputs) for more information.
+If you configure a valid reasoning parser, the reasoning output should appear in the `reasoning_content` field of the response message. Otherwise, it may be included in the main `content` field, typically wrapped in `<think>...</think>` tags. See [Parse reasoning outputs](#parse-reasoning-outputs) for more information.
 
 ---
 

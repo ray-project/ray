@@ -10,7 +10,7 @@ This tutorial walks you through deploying a large-size LLM like DeepSeek-R1 (685
 
 Deploying a 685&nbsp;B-parameter model like DeepSeek-R1 presents significant technical challenges. At this scale, the model can't fit on a single GPU or even a single node. It must be distributed across multiple GPUs and nodes using *tensor parallelism* (splitting tensors within each layer) and *pipeline parallelism* (spreading layers across devices).  
 
-Deploying a model of this scale normally requires you to manually launch and coordinate multiple nodes, unless you use a managed platform like [Anyscale](https://www.anyscale.com/), which automates cluster scaling and node orchestration. See [Production Deployment with Anyscale Service](#production-deployment-with-anyscale-service) for more details.
+Deploying a model of this scale normally requires you to manually launch and coordinate multiple nodes, unless you use a managed platform like [Anyscale](https://www.anyscale.com/), which automates cluster scaling and node orchestration. See [Deploy to production with Anyscale Services](#deploy-to-production-with-anyscale-services) for more details.
 
 ---
 
@@ -239,7 +239,7 @@ You can also retrieve both from the service page in the Anyscale Console. Click 
 
 ### Access the Serve LLM dashboard
 
-See [Enable LLM Monitoring](#enable-llm-monitoring) for instructions on enabling LLM-specific logging. To open the Ray Serve LLM Dashboard from an Anyscale Service:
+See [Enable LLM monitoring](#enable-llm-monitoring) for instructions on enabling LLM-specific logging. To open the Ray Serve LLM Dashboard from an Anyscale Service:
 1. In the Anyscale console, go to your **Service** or **Workspace**
 2. Navigate to the **Metrics** tab
 3. Expand **View in Grafana** and click **Serve LLM Dashboard**

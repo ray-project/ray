@@ -205,7 +205,7 @@ You can also retrieve both from the service page in the Anyscale Console. Click 
 
 ### Access the Serve LLM dashboard
 
-See [Enable LLM Monitoring](#enable-llm-monitoring) for instructions on enabling LLM-specific logging. To open the Ray Serve LLM Dashboard from an Anyscale Service:
+See [Enable LLM monitoring](#enable-llm-monitoring) for instructions on enabling LLM-specific logging. To open the Ray Serve LLM Dashboard from an Anyscale Service:
 1. In the Anyscale console, go to your **Service** or **Workspace**
 2. Navigate to the **Metrics** tab
 3. Expand **View in Grafana** and click **Serve LLM Dashboard**
@@ -264,7 +264,7 @@ Here are a few ways to improve concurrency depending on your model and hardware:
 **Reduce `max_model_len`**  
 Lowering `max_model_len` reduces the memory needed for KV cache.
 
-**Example:** Running Llama-3.1-70B on an A100-40G:
+**Example:** Running Llama-3.1-70&nbsp;B on an A100-40G:
 * `max_model_len = 32,768` → concurrency ≈ 13
 * `max_model_len = 16,384` → concurrency ≈ 26
 
