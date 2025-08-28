@@ -161,7 +161,7 @@ the specified namespace, no matter what namespace of the current job is.
 
     .. tab-item:: C++
 
-        .. code-block::
+        .. code-block:: c++
 
             // `ray start --head` has been run to launch a local cluster.
             ray::RayConfig config;
@@ -170,7 +170,7 @@ the specified namespace, no matter what namespace of the current job is.
             ray::Actor(RAY_FUNC(Counter::FactoryCreate)).SetName("my_actor", "actor_namespace").Remote();
             // It is accessible in its namespace.
             ray::GetActor<Counter>("orange");
-            ray::Shutdown();`
+            ray::Shutdown();
 
 
 Anonymous namespaces
