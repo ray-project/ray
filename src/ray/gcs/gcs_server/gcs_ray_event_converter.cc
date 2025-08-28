@@ -36,7 +36,7 @@ GcsRayEventConverter::ConvertToTaskEventDataRequests(
       break;
     }
     case rpc::events::RayEvent::TASK_EXECUTION_EVENT: {
-      ConvertToTaskEvents(std::move(*event.mutable_task_execution_event()), task_event);
+      task_event = ConvertToTaskEvents(std::move(*event.mutable_task_execution_event()));
       break;
     }
     default:
@@ -144,8 +144,9 @@ rpc::TaskEvents GcsRayEventConverter::ConvertToTaskEvents(
   return task_event;
 }
 
-void GcsRayEventConverter::ConvertToTaskEvents(rpc::events::TaskExecutionEvent &&event,
-                                               rpc::TaskEvents &task_event) {
+rpc::TaskEvents GcsRayEventConverter::ConvertToTaskEvents(
+    rpc::events::TaskExecutionEvent &&event) {
+  rpc::TaskEvents task_event;
   task_event.set_task_id(event.task_id());
   task_event.set_attempt_number(event.task_attempt());
   task_event.set_job_id(event.job_id());
@@ -160,6 +161,7 @@ void GcsRayEventConverter::ConvertToTaskEvents(rpc::events::TaskExecutionEvent &
     int64_t ns = ProtoTimestampToAbslTimeNanos(timestamp);
     (*task_state_update->mutable_state_ts_ns())[state] = ns;
   }
+  return task_event;
 }
 
 }  // namespace gcs

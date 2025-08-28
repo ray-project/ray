@@ -243,6 +243,8 @@ inline google::protobuf::Timestamp AbslTimeNanosToProtoTimestamp(int64_t nanos) 
   return timestamp;
 }
 
+// Conver a protobuf timestamp to an epoch time in nanoseconds
+// Ref: https://protobuf.dev/reference/php/api-docs/Google/Protobuf/Timestamp.html
 inline int64_t ProtoTimestampToAbslTimeNanos(
     const google::protobuf::Timestamp &timestamp) {
   return timestamp.seconds() * 1000000000LL + timestamp.nanos();

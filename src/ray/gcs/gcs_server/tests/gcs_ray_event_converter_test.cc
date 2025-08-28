@@ -270,7 +270,6 @@ TEST_F(GcsRayEventConverterTest, TestSameJobIdGrouping) {
 TEST_F(GcsRayEventConverterTest, TestConvertTaskExecutionEvent) {
   GcsRayEventConverter converter;
   rpc::events::TaskExecutionEvent exec_event;
-  rpc::TaskEvents task_event;
 
   // Set basic fields
   exec_event.set_task_id("test_task_id");
@@ -289,7 +288,7 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskExecutionEvent) {
   (*exec_event.mutable_task_state())[rpc::TaskStatus::SUBMITTED_TO_WORKER] = ts;
 
   // Call the converter
-  converter.ConvertToTaskEvents(std::move(exec_event), task_event);
+  rpc::TaskEvents task_event = converter.ConvertToTaskEvents(std::move(exec_event));
 
   // Check basic fields
   EXPECT_EQ(task_event.attempt_number(), 3);
