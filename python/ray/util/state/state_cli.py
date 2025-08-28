@@ -8,8 +8,9 @@ import click
 import yaml
 
 import ray._private.services as services
-from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray._common.network_utils import parse_address
+from ray._private.thirdparty.tabulate.tabulate import tabulate
+from ray.util.annotations import PublicAPI
 from ray.util.state import (
     StateApiClient,
     get_log,
@@ -31,7 +32,6 @@ from ray.util.state.common import (
     resource_to_schema,
 )
 from ray.util.state.exception import RayStateApiException
-from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 

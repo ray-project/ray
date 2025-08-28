@@ -1,10 +1,10 @@
+import logging
 import os
+import threading
+import time
 
 from .start_hook_base import RayOnSparkStartHook
 from .utils import get_spark_session
-import logging
-import threading
-import time
 
 _logger = logging.getLogger(__name__)
 

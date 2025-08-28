@@ -49,6 +49,7 @@ def convert_string_to_type(
 
 def record_deprecated_state_api_import():
     import warnings
+
     from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 
     warnings.warn(

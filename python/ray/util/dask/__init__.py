@@ -11,19 +11,19 @@ if Version(dask.__version__) != Version("0") and Version(dask.__version__) < Ver
         "Please upgrade your Dask installation."
     )
 
-from .scheduler import (
-    ray_dask_get,
-    ray_dask_get_sync,
-    enable_dask_on_ray,
-    disable_dask_on_ray,
-)
 from .callbacks import (
+    ProgressBarCallback,
     RayDaskCallback,
     local_ray_callbacks,
     unpack_ray_callbacks,
-    ProgressBarCallback,
 )
 from .optimizations import dataframe_optimize
+from .scheduler import (
+    disable_dask_on_ray,
+    enable_dask_on_ray,
+    ray_dask_get,
+    ray_dask_get_sync,
+)
 
 dask_persist = dask.persist
 
