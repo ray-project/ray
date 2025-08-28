@@ -1,4 +1,4 @@
-#serve_deepseek_r1.py
+# serve_deepseek_r1.py
 from ray.serve.llm import LLMConfig, build_openai_app
 
 llm_config = LLMConfig(
@@ -9,21 +9,22 @@ llm_config = LLMConfig(
     accelerator_type="H100",
     deployment_config=dict(
         autoscaling_config=dict(
-            min_replicas=1, max_replicas=1,
+            min_replicas=1,
+            max_replicas=1,
         )
     ),
     ### Uncomment if your model is gated and need your Huggingface Token to access it
-    #runtime_env=dict(
+    # runtime_env=dict(
     #    env_vars={
     #        "HF_TOKEN": os.environ.get("HF_TOKEN")
     #    }
-    #),
+    # ),
     engine_kwargs=dict(
         max_model_len=16384,
         # Split weights among 8 GPUs in the node
         tensor_parallel_size=8,
-        pipeline_parallel_size=2
-    )
+        pipeline_parallel_size=2,
+    ),
 )
 
 app = build_openai_app({"llm_configs": [llm_config]})
