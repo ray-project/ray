@@ -893,7 +893,7 @@ class ReporterAgent(
     def _generate_worker_key(self, proc: psutil.Process) -> Tuple[int, float]:
         return (proc.pid, proc.create_time())
 
-    def _get_workers(self, gpus: Optional[List[GpuUtilizationInfo]] = None):
+    def _get_worker_processes(self):
         raylet_proc = self._get_raylet_proc()
         if raylet_proc is None:
             return []
@@ -910,7 +910,13 @@ class ReporterAgent(
                     self._generate_worker_key(proc): proc
                     for proc in raylet_proc.children()
                 }
+            return workers
 
+    def _get_workers(self, gpus: Optional[List[GpuUtilizationInfo]] = None):
+        workers = self._get_worker_processes()
+        if not workers:
+            return []
+        else:
             # We should keep `raylet_proc.children()` in `self` because
             # when `cpu_percent` is first called, it returns the meaningless 0.
             # See more: https://github.com/ray-project/ray/issues/29848
@@ -1763,6 +1769,15 @@ class ReporterAgent(
 
             self._metrics_agent.clean_all_dead_worker_metrics()
 
+        # Convert processes_pids back to a list of dictionaries to maintain backwards-compatibility
+        for gpu in stats["gpus"]:
+            if isinstance(gpu.get("processes_pids"), dict):
+                gpu["processes_pids"] = list(gpu["processes_pids"].values())
+
+        # TODO(aguo): Add a pydantic model for this dict to maintain compatibility
+        # with the Ray Dashboard API and UI code.
+
+        # NOTE: This converts keys to "Google style", (e.g: "processes_pids" -> "processesPids")
         return jsonify_asdict(stats)
 
     async def run(self, server):
