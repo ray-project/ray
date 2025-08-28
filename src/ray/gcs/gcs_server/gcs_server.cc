@@ -499,10 +499,11 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
       },
       worker_client_pool_);
 
-  // Initialize by gcs tables data.
   gcs_actor_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::ActorInfoGrpcService>(
-      io_context_provider_.GetDefaultIOContext(), *gcs_actor_manager_));
+      io_context_provider_.GetDefaultIOContext(),
+      *gcs_actor_manager_,
+      RayConfig::instance().gcs_max_active_rpcs_per_handler()));
 }
 
 void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {

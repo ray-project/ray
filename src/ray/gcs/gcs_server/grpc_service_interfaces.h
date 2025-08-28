@@ -35,6 +35,48 @@ using SendReplyCallback = std::function<void(
   reply->mutable_status()->set_message(status.message());             \
   send_reply_callback(ray::Status::OK(), nullptr, nullptr)
 
+class ActorInfoGcsServiceHandler {
+ public:
+  virtual ~ActorInfoGcsServiceHandler() = default;
+
+  virtual void HandleRegisterActor(RegisterActorRequest request,
+                                   RegisterActorReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleRestartActorForLineageReconstruction(
+      RestartActorForLineageReconstructionRequest request,
+      RestartActorForLineageReconstructionReply *reply,
+      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleCreateActor(CreateActorRequest request,
+                                 CreateActorReply *reply,
+                                 SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetActorInfo(GetActorInfoRequest request,
+                                  GetActorInfoReply *reply,
+                                  SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetNamedActorInfo(GetNamedActorInfoRequest request,
+                                       GetNamedActorInfoReply *reply,
+                                       SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleListNamedActors(rpc::ListNamedActorsRequest request,
+                                     rpc::ListNamedActorsReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllActorInfo(GetAllActorInfoRequest request,
+                                     GetAllActorInfoReply *reply,
+                                     SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleKillActorViaGcs(KillActorViaGcsRequest request,
+                                     KillActorViaGcsReply *reply,
+                                     SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleReportActorOutOfScope(ReportActorOutOfScopeRequest request,
+                                           ReportActorOutOfScopeReply *reply,
+                                           SendReplyCallback send_reply_callback) = 0;
+};
+
 class NodeInfoGcsServiceHandler {
  public:
   virtual ~NodeInfoGcsServiceHandler() = default;
