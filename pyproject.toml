@@ -56,12 +56,11 @@ afterray = ["psutil", "setproctitle"]
 # python/ray/cloudpickle/*
 # doc/*
 # python/ray/__init__.py
-# python/ray/setup-dev.py
 # For the rest we will gradually remove them from the blacklist as we
 # reformat the code to follow the style guide.
 [tool.ruff.lint.per-file-ignores]
 "doc/*" = ["I"]
-
+"python/ray/__init__.py" = ["I"]
 "rllib/*" = ["I"]
 "release/*" = ["I"]
 
