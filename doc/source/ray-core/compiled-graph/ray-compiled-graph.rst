@@ -12,7 +12,7 @@ As large language models (LLMs) become common, programming distributed systems w
 :ref:`Ray Core APIs <core-key-concepts>` facilitate using multiple GPUs but have limitations such as:
 
 * System overhead of ~1 ms per task launch, which is unsuitable for high-performance tasks like LLM inference.
-* Lack support for direct GPU-to-GPU communication, requiring manual development with external libraries like NVIDIA Collective Communications Library (`NCCL <https://developer.nvidia.com/nccl>`_).
+* Lacks support for direct GPU-to-GPU communication, requiring manual development with external libraries like NVIDIA Collective Communications Library (`NCCL <https://developer.nvidia.com/nccl>`_).
 
 Ray Compiled Graph gives you a Ray Core-like API but with:
 
