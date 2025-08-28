@@ -368,7 +368,9 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
             # Acknowledge tasks only after completion (not when received) for better reliability
             task_acks_late=True,
             # Reject and requeue tasks when worker is lost to prevent data loss
-            reject_on_worker_lost=True,
+            task_reject_on_worker_lost=True,
+            # Only prefetch 1 task at a time to match concurrency and prevent task hoarding
+            worker_prefetch_multiplier=1,
         )
 
         queue_config = {
@@ -535,10 +537,7 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
         """Handle task failures and route them to appropriate dead letter queues.
 
         This method is called when a task fails after all retry attempts have been
-        exhausted. It logs the failure and moves the task to a dead letter queue
-        based on the exception type:
-        - TypeError exceptions go to unprocessable_task_queue (if configured)
-        - All other exceptions go to failed_task_queue (if configured)
+        exhausted. It logs the failure and moves the task to failed_task_queue
 
         Args:
             sender: The task object that failed
@@ -560,28 +559,15 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
             str(einfo),
         ]
 
-        dlq_name = None
-        # Route failed tasks to appropriate dead letter queue based on exception type:
-        # - TypeError (argument mismatches, type errors) -> unprocessable_task_queue
-        # - All other exceptions -> failed_task_queue
-        # This helps distinguish between code errors and invalid task invocations.
-        if (
-            isinstance(getattr(einfo.exception, "exc", einfo.exception), TypeError)
-            and self._config.unprocessable_task_queue_name
-        ):
-            dlq_name = self._config.unprocessable_task_queue_name
-        elif self._config.failed_task_queue_name:
-            dlq_name = self._config.failed_task_queue_name
-
-        if dlq_name:
+        if self._config.failed_task_queue_name:
             self._move_task_to_queue(
-                dlq_name,
+                self._config.failed_task_queue_name,
                 sender.name,
                 dlq_args,
             )
 
             logger.error(
-                f"Task {task_id} failed after max retries. Exception: {einfo}. Moved it to the {dlq_name} queue."
+                f"Task {task_id} failed after max retries. Exception: {einfo}. Moved it to the {self._config.failed_task_queue_name} queue."
             )
 
     def _handle_unknown_task(
