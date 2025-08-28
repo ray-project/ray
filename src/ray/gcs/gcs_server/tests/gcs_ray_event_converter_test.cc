@@ -329,6 +329,7 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskProfileEvents) {
   EXPECT_EQ(entry.end_time(), 123456799);
   EXPECT_EQ(entry.extra_data(), "{\"foo\": \"bar\"}");
   EXPECT_EQ(entry.event_name(), "test_event");
+}
 
 TEST_F(GcsRayEventConverterTest, TestConvertTaskExecutionEvent) {
   GcsRayEventConverter converter;
