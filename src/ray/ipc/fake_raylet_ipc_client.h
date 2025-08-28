@@ -50,7 +50,8 @@ class FakeRayletIpcClient : public RayletIpcClientInterface {
   ray::Status ActorCreationTaskDone() override { return Status::OK(); }
 
   ray::Status AsyncGetObjects(const std::vector<ObjectID> &object_ids,
-                              const std::vector<rpc::Address> &owner_addresses) override {
+                              const std::vector<rpc::Address> &owner_addresses,
+                              uint64_t *request_id) override {
     return Status::OK();
   }
 
@@ -62,11 +63,15 @@ class FakeRayletIpcClient : public RayletIpcClientInterface {
     return absl::flat_hash_set<ObjectID>();
   }
 
-  ray::Status CancelGetRequest() override { return Status::OK(); }
+  ray::Status CancelGetRequest(const uint64_t get_request_id) override {
+    return Status::OK();
+  }
 
   ray::Status NotifyDirectCallTaskBlocked() override { return Status::OK(); }
 
-  ray::Status NotifyDirectCallTaskUnblocked() override { return Status::OK(); }
+  ray::Status NotifyDirectCallTaskUnblocked(const uint64_t get_request_id) override {
+    return Status::OK();
+  }
 
   ray::Status WaitForActorCallArgs(const std::vector<rpc::ObjectReference> &references,
                                    int64_t tag) override {

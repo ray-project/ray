@@ -216,13 +216,15 @@ class CoreWorkerPlasmaStoreProvider {
   /// map.
   /// \param[out] got_exception Set to true if any of the fetched objects contained an
   /// exception.
+  /// \param[in/out] The current get request ID.
   /// \return Status.
   Status PullObjectsAndGetFromPlasmaStore(
       absl::flat_hash_set<ObjectID> &remaining,
       const std::vector<ObjectID> &batch_ids,
       int64_t timeout_ms,
       absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
-      bool *got_exception);
+      bool *got_exception,
+      uint64_t *request_id);
 
   /// Print a warning if we've attempted the fetch for too long and some
   /// objects are still unavailable.

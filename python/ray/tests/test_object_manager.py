@@ -1,12 +1,14 @@
 import multiprocessing
 import sys
 import time
+import threading
 import warnings
 
 import numpy as np
 import pytest
 
 import ray
+import ray._private.test_utils as test_utils
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -637,6 +639,125 @@ def test_maximize_concurrent_pull_race_condition(ray_start_cluster_head):
     assert (
         end - start < 20
     ), "Too much time spent in pulling objects, check the amount of time in retries"
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head",
+    [
+        test_utils.generate_system_config_map(
+            # 6MB, It is just large enough to accommodate one chunk, which
+            # is also intended to ensure that the push object process is sufficiently slow.
+            object_manager_max_bytes_in_flight=6
+            * 1024**2,
+        )
+    ],
+    indirect=True,
+)
+@pytest.mark.parametrize("executor", ["driver", "actor", "normal_task"])
+def test_ray_get_in_multiple_threads(ray_start_cluster_head, executor):
+    """
+    Used for testing the execution of ray.get in a multi-threading environment.
+    """
+    cluster = ray_start_cluster_head
+
+    # It needs to be large enough to ensure that this get operation
+    # takes a sufficiently long time. and make sure this object in head.
+    large_object_ref = ray.put(b"0" * 2 * 1024**3)
+
+    worker = cluster.add_node(resources={"worker": 1}, num_cpus=1)
+
+    def run(refs):
+        ref_largs = refs[0]
+        # put into worker plasma. Ensure that each get returns immediately.
+        # Before this fix, this get would repeatedly clear the pull progress.
+        ref_small = ray.put("1")
+        is_running = threading.Event()
+
+        def get_small():
+            while not is_running.wait(0):
+                ray.get(ref_small)
+                import time
+
+                time.sleep(0.1)
+
+        t = threading.Thread(target=get_small, daemon=True)
+        t.start()
+        ray.get(ref_largs, timeout=30)
+        is_running.set()
+        t.join()
+
+    if executor == "driver":
+        run([large_object_ref])
+    elif executor == "actor":
+
+        @ray.remote(resources={"worker": 0.1})
+        class Actor:
+            def run(self, refs, run):
+                run(refs)
+
+        actor = Actor.remote()
+        ray.get(actor.run.remote([large_object_ref], run), timeout=30)
+    elif executor == "normal_task":
+        ray.get(
+            ray.remote(resources={"worker": 0.1})(run).remote([large_object_ref]),
+            timeout=30,
+        )
+    else:
+        raise NotImplementedError
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head",
+    [
+        test_utils.generate_system_config_map(
+            # 6MB, It is just large enough to accommodate one chunk, which
+            # is also intended to ensure that the push object process is sufficiently slow.
+            object_manager_max_bytes_in_flight=6
+            * 1024**2,
+        )
+    ],
+    indirect=True,
+)
+def test_ray_get_in_multiple_threads_with_node_fo(ray_start_cluster_head):
+    """
+    Used for testing the execution of ray.get in a multi-threading environment.
+    """
+    cluster = ray_start_cluster_head
+
+    reconstruct_node = cluster.add_node(resources={"worker1": 1}, num_cpus=1)
+    cluster.add_node(resources={"worker2": 1}, num_cpus=1)
+
+    # run in worker1
+    @ray.remote(resources={"worker1": 0.1}, max_retries=1)
+    def gen_large_ref():
+        return ray.put(b"0" * 2 * 1024**3)
+
+    large_object_ref = gen_large_ref.remote()
+
+    # make sure large object is ready
+    ray.get(
+        ray.remote(resources={"worker1": 0.1})(lambda data: True).remote(
+            large_object_ref
+        )
+    )
+
+    ref_small = ray.put("small object")
+    is_running = threading.Event()
+
+    def get_small():
+        while not is_running.wait(0):
+            ray.get(ref_small)
+            time.sleep(0.1)
+
+    t = threading.Thread(target=get_small, daemon=True)
+    t.start()
+
+    cluster.remove_node(reconstruct_node)
+    cluster.add_node(resources={"worker1": 1}, num_cpus=1)
+    ray.get(large_object_ref, timeout=30)
+
+    is_running.set()
+    t.join()
 
 
 if __name__ == "__main__":

@@ -377,16 +377,22 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param client The client that is requesting the objects.
   /// \param object_refs The objects that are requested.
   /// \param is_get_request If this is a get request, else it's a wait request.
+  /// \param get_request_id The ID of get request.
   void AsyncGetOrWait(const std::shared_ptr<ClientConnection> &client,
                       const std::vector<rpc::ObjectReference> &object_refs,
-                      bool is_get_request);
+                      bool is_get_request,
+                      uint64_t *get_request_id = nullptr);
 
   /// Cancel all ongoing get requests from the client.
   ///
   /// This does *not* cancel ongoing wait requests.
   ///
   /// \param client The client whose get requests will be canceled.
-  void CancelGetRequest(const std::shared_ptr<ClientConnection> &client);
+  /// \param get_request_ids The IDs of the get requests that needs to be canceled.
+  /// std:: means cancel all get request which come from worker.
+  void CancelGetRequest(
+      const std::shared_ptr<ClientConnection> &client,
+      std::optional<absl::flat_hash_set<uint64_t>> get_request_ids = std::nullopt);
 
   /// Handle a task that is blocked. Note that this callback may
   /// arrive after the worker lease has been returned to the node manager.
@@ -399,7 +405,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// However, it is guaranteed to arrive after DirectCallTaskBlocked.
   ///
   /// \param worker Shared ptr to the worker, or nullptr if lost.
-  void HandleDirectCallTaskUnblocked(const std::shared_ptr<WorkerInterface> &worker);
+  /// \param get_request_ids The IDs of the get requests that needs to be canceled.
+  /// std:: means cancel all get request which come from worker.
+  void HandleDirectCallTaskUnblocked(
+      const std::shared_ptr<WorkerInterface> &worker,
+      std::optional<absl::flat_hash_set<uint64_t>> get_request_ids = std::nullopt);
 
   /// Destroy a worker.
   /// We will disconnect the worker connection first and then kill the worker.
