@@ -197,7 +197,7 @@ void GcsWorkerManager::HandleGetAllWorkerInfo(
     RAY_LOG(DEBUG) << "Finished getting all worker info.";
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
-  gcs_table_storage_.WorkerTable().GetAll({on_done, io_context_});
+  gcs_table_storage_.WorkerTable().GetAll({std::move(on_done), io_context_});
 }
 
 void GcsWorkerManager::HandleAddWorkerInfo(rpc::AddWorkerInfoRequest request,
