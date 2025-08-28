@@ -135,6 +135,15 @@ def _setup_torch_process_group(
         register_custom_torch_dist_backend(backend)
     elif backend == "xla":
         import torch_xla.distributed.xla_backend
+        dist.init_process_group(
+            backend='xla',
+            init_method='xla://',
+            # rank=world_rank,
+            # world_size=world_size,
+            # timeout=timedelta(seconds=timeout_s),
+        )
+
+
 
     dist.init_process_group(
         backend=backend,
@@ -209,6 +218,19 @@ class _TorchBackend(Backend):
                     f"{backend_config.init_method}) is not supported. Must "
                     f"be either 'env' or 'tcp'."
                 )
+
+            if backend_config.backend == "xla":
+                # set pjrt envs
+                coordinator = f"{master_addr}:{master_port}"
+                def _set_pjrt_envs(coord, world_size, rank):
+                    os.environ["PJRT_DEVICE"] = "CUDA"
+                    os.environ["PJRT_DIST_SERVICE_ADDR"] = coord
+                    os.environ["PJRT_WORLD_SIZE"] = str(world_size)
+                    os.environ["PJRT_PROCESS_INDEX"] = str(rank)
+                for i in range(len(worker_group)):
+                    worker_group.execute_single(i, _set_pjrt_envs, coord=coordinator, world_size=len(worker_group), rank=i)
+                    logger.info(f"set pjrt envs for worker {i}")
+
 
             setup_futures = []
             for i in range(len(worker_group)):
