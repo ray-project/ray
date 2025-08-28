@@ -519,7 +519,7 @@ def test_map_operator_ray_args(shutdown_only, use_actors):
     # Check we don't hang and complete with num_gpus=1.
     outputs = _take_outputs(op)
     expected = [[i * 2] for i in range(10)]
-    assert sorted(outputs) == sorted(expected), f"Expected {expected}, got {outputs}"
+    assert sorted(outputs) == expected, f"Expected {expected}, got {outputs}"
     assert op.completed()
 
 
