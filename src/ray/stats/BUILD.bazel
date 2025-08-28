@@ -10,12 +10,12 @@ ray_cc_library(
     hdrs = [
         "metric.h",
         "metric_defs.h",
-        "tag_defs.h",
     ],
     deps = [
+        ":tag_defs",
         "//src/ray/common:ray_config",
+        "//src/ray/observability:metric_interface",
         "//src/ray/observability:open_telemetry_metric_recorder",
-        "//src/ray/util",
         "//src/ray/util:logging",
         "//src/ray/util:size_literals",
         "@com_github_jupp0r_prometheus_cpp//pull",
@@ -38,7 +38,6 @@ ray_cc_library(
         "metric.h",
         "metric_exporter.h",
         "stats.h",
-        "tag_defs.h",
     ],
     linkopts = select({
         "@platforms//os:windows": [
@@ -49,9 +48,20 @@ ray_cc_library(
     }),
     deps = [
         ":stats_metric",
+        ":tag_defs",
+        "//src/ray/observability:metric_interface",
         "//src/ray/rpc:metrics_agent_client",
         "//src/ray/util:network_util",
         "//src/ray/util:size_literals",
         "@com_github_grpc_grpc//:grpc_opencensus_plugin",
+    ],
+)
+
+ray_cc_library(
+    name = "tag_defs",
+    srcs = ["tag_defs.cc"],
+    hdrs = ["tag_defs.h"],
+    deps = [
+        "//src/ray/observability:metric_interface",
     ],
 )

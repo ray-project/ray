@@ -64,7 +64,6 @@ class TensorTransportManager(ABC):
     def send_object(
         src_actor: "ray.actor.ActorHandle",
         obj_id: str,
-        tensor_transport_metadata_ref: TensorTransportMetadata,
         communicator_metadata_ref: CommunicatorMetadata,
     ):
         """
@@ -73,7 +72,6 @@ class TensorTransportManager(ABC):
         Args:
             src_actor: The actor that runs this function.
             obj_id: The ID of the GPU object to send.
-            tensor_transport_metadata_ref: The ObjectRef of tensor transport metadata for the GPU object.
             communicator_metadata_ref: The ObjectRef of communicator metadata for the send/recv operation.
         """
         from ray.experimental.gpu_object_manager.gpu_object_store import __ray_send__
@@ -85,7 +83,6 @@ class TensorTransportManager(ABC):
         src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
             __ray_send__,
             obj_id,
-            tensor_transport_metadata_ref,
             communicator_metadata_ref,
         )
 
@@ -145,7 +142,6 @@ class TensorTransportManager(ABC):
     @abstractmethod
     def send_multiple_tensors(
         tensors: List["torch.Tensor"],
-        tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
     ):
         """
@@ -153,6 +149,5 @@ class TensorTransportManager(ABC):
 
         Args:
             tensors: The tensors to send.
-            tensor_transport_metadata: The tensor transport metadata for the GPU object.
             communicator_metadata: The communicator metadata for the send/recv operation.
         """

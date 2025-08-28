@@ -6,7 +6,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
-        "//src/ray/gcs/gcs_server:gcs_server_lib",
+        "//src/ray/gcs/gcs_server:gcs_function_manager",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -22,6 +22,7 @@ ray_cc_test(
         "//:ray_mock",
         "//src/ray/gcs/gcs_server:gcs_server_lib",
         "//src/ray/gcs/tests:gcs_test_util_lib",
+        "//src/ray/util:counter_map",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -68,21 +69,12 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        "//src/ray/gcs/gcs_server:gcs_server_lib",
+        "//src/ray/gcs/gcs_server:gcs_kv_manager",
+        "//src/ray/gcs/gcs_server:gcs_store_client_kv",
+        "//src/ray/gcs/store_client:in_memory_store_client",
+        "//src/ray/gcs/store_client:redis_store_client",
         "//src/ray/gcs/tests:gcs_test_util_lib",
         "@com_google_googletest//:gtest",
-    ],
-)
-
-ray_cc_library(
-    name = "gcs_server_test_util",
-    hdrs = [
-        "gcs_server_test_util.h",
-    ],
-    deps = [
-        "//:ray_fakes",
-        "//src/ray/gcs/gcs_client:gcs_client_lib",
-        "//src/ray/gcs/store_client:in_memory_store_client",
     ],
 )
 
@@ -97,7 +89,8 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
-        "//src/ray/gcs/gcs_server:gcs_server_lib",
+        "//src/ray/gcs/gcs_server:gcs_health_check_manager",
+        "//src/ray/rpc:grpc_server",
         "//src/ray/util:network_util",
         "@boost//:thread",
         "@com_google_googletest//:gtest_main",
@@ -112,9 +105,10 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        ":gcs_server_test_util",
+        "//:ray_fakes",
+        "//src/fakes/ray/rpc/raylet:fake_raylet_client",
         "//src/mock/ray/pubsub:mock_publisher",
-        "//src/ray/gcs/gcs_server:gcs_server_lib",
+        "//src/ray/gcs/gcs_server:gcs_node_manager",
         "//src/ray/gcs/tests:gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -128,11 +122,11 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        ":gcs_server_test_util",
         "//:ray_mock",
         "//src/mock/ray/pubsub:mock_publisher",
-        "//src/mock/ray/pubsub:mock_subscriber",
-        "//src/ray/gcs/gcs_server:gcs_server_lib",
+        "//src/ray/gcs/gcs_server:gcs_job_manager",
+        "//src/ray/gcs/gcs_server:gcs_kv_manager",
+        "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/tests:gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -146,9 +140,8 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        ":gcs_server_test_util",
         "//:ray_mock",
-        "//src/ray/gcs/gcs_server:gcs_server_lib",
+        "//src/ray/gcs/gcs_server:gcs_task_manager",
         "//src/ray/gcs/tests:gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -165,11 +158,12 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
-        ":gcs_server_test_util",
         "//:ray_mock",
         "//src/mock/ray/pubsub:mock_publisher",
         "//src/ray/gcs/gcs_server:gcs_server_lib",
+        "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/tests:gcs_test_util_lib",
+        "//src/ray/util:counter_map",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -185,10 +179,17 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
-        ":gcs_server_test_util",
+        "//src/fakes/ray/rpc/raylet:fake_raylet_client",
+        "//src/fakes/ray/rpc/worker:fake_core_worker_client",
         "//src/mock/ray/pubsub:mock_publisher",
-        "//src/ray/gcs/gcs_server:gcs_server_lib",
+        "//src/ray/gcs/gcs_server:gcs_node_manager",
+        "//src/ray/gcs/gcs_server:gcs_placement_group",
+        "//src/ray/gcs/gcs_server:gcs_placement_group_scheduler",
+        "//src/ray/gcs/gcs_server:gcs_resource_manager",
+        "//src/ray/gcs/gcs_server:gcs_table_storage",
+        "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/tests:gcs_test_util_lib",
+        "//src/ray/util:counter_map",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -201,12 +202,16 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        ":gcs_server_test_util",
+        "//src/fakes/ray/rpc/raylet:fake_raylet_client",
+        "//src/fakes/ray/rpc/worker:fake_core_worker_client",
         "//src/mock/ray/pubsub:mock_publisher",
-        "//src/ray/gcs/gcs_client:gcs_client_lib",
-        "//src/ray/gcs/gcs_server:gcs_server_lib",
+        "//src/ray/common:test_util",
+        "//src/ray/gcs/gcs_server:gcs_actor",
+        "//src/ray/gcs/gcs_server:gcs_actor_scheduler",
+        "//src/ray/gcs/gcs_server:gcs_resource_manager",
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/tests:gcs_test_util_lib",
+        "//src/ray/util:counter_map",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -221,7 +226,9 @@ ray_cc_test(
     deps = [
         "//:ray_mock",
         "//src/ray/common:test_util",
-        "//src/ray/gcs/gcs_server:gcs_server_lib",
+        "//src/ray/gcs/gcs_server:gcs_actor",
+        "//src/ray/gcs/gcs_server:gcs_actor_scheduler",
+        "//src/ray/util:counter_map",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -236,8 +243,8 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
-        ":gcs_server_test_util",
         "//:ray_mock",
+        "//src/ray/gcs/gcs_server:gcs_actor",
         "//src/ray/gcs/gcs_server:gcs_server_lib",
         "//src/ray/gcs/tests:gcs_test_util_lib",
         "//src/ray/pubsub:publisher",
@@ -253,9 +260,10 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        ":gcs_server_test_util",
         "//src/mock/ray/pubsub:mock_publisher",
-        "//src/ray/gcs/gcs_server:gcs_server_lib",
+        "//src/ray/gcs/gcs_server:gcs_store_client_kv",
+        "//src/ray/gcs/gcs_server:gcs_worker_manager",
+        "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/tests:gcs_test_util_lib",
         "//src/ray/util:process",
         "@com_google_googletest//:gtest_main",
@@ -320,8 +328,9 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        ":gcs_server_test_util",
+        "//:ray_fakes",
         "//:ray_mock",
+        "//src/fakes/ray/rpc/raylet:fake_raylet_client",
         "//src/ray/gcs/gcs_server:gcs_server_lib",
         "//src/ray/gcs/tests:gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
@@ -337,8 +346,10 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
-        "//src/ray/gcs/gcs_server:gcs_server_lib",
+        "//src/ray/gcs/gcs_server:gcs_node_manager",
+        "//src/ray/gcs/gcs_server:gcs_resource_manager",
         "//src/ray/gcs/tests:gcs_test_util_lib",
+        "//src/ray/raylet/scheduling:cluster_resource_manager",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -351,9 +362,9 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        ":gcs_server_test_util",
         "//:ray_mock",
-        "//src/ray/gcs/gcs_server:gcs_server_lib",
+        "//src/ray/common:asio",
+        "//src/ray/gcs/gcs_server:gcs_usage_stats_client",
         "//src/ray/gcs/tests:gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -368,10 +379,10 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
-        ":gcs_server_test_util",
         "//:ray_mock",
         "//src/mock/ray/pubsub:mock_publisher",
-        "//src/ray/gcs/gcs_server:gcs_server_lib",
+        "//src/ray/gcs/gcs_server:gcs_job_manager",
+        "//src/ray/gcs/gcs_server:gcs_kv_manager",
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/tests:gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
@@ -387,7 +398,6 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
-        ":gcs_server_test_util",
         "//:ray_mock",
         "//src/ray/gcs/gcs_server:gcs_server_lib",
         "//src/ray/gcs/store_client:in_memory_store_client",
@@ -397,7 +407,7 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "gcs_node_manager_export_event_test",
+    name = "node_manager_export_event_test",
     size = "small",
     srcs = ["export_api/gcs_node_manager_export_event_test.cc"],
     tags = [
@@ -405,11 +415,12 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
-        ":gcs_server_test_util",
+        "//src/fakes/ray/rpc/raylet:fake_raylet_client",
         "//src/mock/ray/pubsub:mock_publisher",
-        "//src/ray/gcs/gcs_server:gcs_server_lib",
+        "//src/ray/gcs/gcs_server:gcs_node_manager",
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/tests:gcs_test_util_lib",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/util:string_utils",
+        "@com_google_googletest//:gtest",
     ],
 )

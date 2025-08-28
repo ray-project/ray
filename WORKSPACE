@@ -117,7 +117,7 @@ filegroup(
 )
 
 http_archive(
-    name = "uv_x86_64",
+    name = "uv_x86_64-linux",
     build_file_content = """
 filegroup(
     name = "file",
@@ -130,12 +130,39 @@ filegroup(
 )
 
 http_archive(
+    name = "uv_aarch64-darwin",
+    build_file_content = """
+filegroup(
+    name = "file",
+    srcs = glob(["**"]),
+    visibility = ["//visibility:public"],
+)
+""",
+    sha256 = "5200278ae00b5c0822a7db7a99376b2167e8e9391b29c3de22f9e4fdebc9c0e8",
+    urls = ["https://github.com/astral-sh/uv/releases/download/0.8.10/uv-aarch64-apple-darwin.tar.gz"],
+)
+
+http_archive(
     name = "com_github_storypku_bazel_iwyu",
     sha256 = "aa78c331a2cb139f73f7d74eeb4d5ab29794af82023ef5d6d5194f76b7d37449",
     strip_prefix = "bazel_iwyu-0.19.2",
     urls = [
         "https://github.com/storypku/bazel_iwyu/archive/0.19.2.tar.gz",
     ],
+)
+
+http_archive(
+    name = "redis_linux_x86_64",
+    build_file_content = """exports_files(["redis-server", "redis-cli"])""",
+    sha256 = "4ae33c10059ed52202a12929d269deea46fac81b8e02e722d30cb22ceb3ed678",
+    urls = ["https://github.com/ray-project/redis/releases/download/7.2.3/redis-linux-x86_64.tar.gz"],
+)
+
+http_archive(
+    name = "redis_linux_arm64",
+    build_file_content = """exports_files(["redis-server", "redis-cli"])""",
+    sha256 = "2d1085a4f69477e1f44cbddd531e593f0712532b1ade9beab0b221a0cb01f298",
+    urls = ["https://github.com/ray-project/redis/releases/download/7.2.3/redis-linux-arm64.tar.gz"],
 )
 
 load("@com_github_storypku_bazel_iwyu//bazel:dependencies.bzl", "bazel_iwyu_dependencies")

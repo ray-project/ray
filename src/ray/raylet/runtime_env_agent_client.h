@@ -25,7 +25,7 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "src/ray/protobuf/gcs.pb.h"
-#include "src/ray/protobuf/runtime_env_common.pb.h"
+#include "src/ray/protobuf/public/runtime_environment.pb.h"
 
 namespace ray {
 namespace raylet {

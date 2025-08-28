@@ -60,6 +60,31 @@ struct ClusterResourceManagerTest : public ::testing::Test {
   std::unique_ptr<ClusterResourceManager> manager;
 };
 
+TEST_F(ClusterResourceManagerTest, UpdateNode) {
+  // Prepare a sync message with updated totals/available, labels and flags.
+  syncer::ResourceViewSyncMessage payload;
+  payload.mutable_resources_total()->insert({"CPU", 10.0});
+  payload.mutable_resources_available()->insert({"CPU", 5.0});
+  payload.mutable_labels()->insert({"zone", "us-east-1a"});
+  payload.set_object_pulls_queued(true);
+  payload.set_idle_duration_ms(42);
+  payload.set_is_draining(true);
+  payload.set_draining_deadline_timestamp_ms(123456);
+
+  // Update existing node and validate the local view reflects the payload.
+  ASSERT_TRUE(manager->UpdateNode(node0, payload));
+
+  const auto &node_resources = manager->GetNodeResources(node0);
+  ASSERT_EQ(node_resources.total.Get(scheduling::ResourceID("CPU")), 10);
+  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU")), 5);
+  ASSERT_EQ(node_resources.labels.at("zone"), "us-east-1a");
+  ASSERT_TRUE(node_resources.object_pulls_queued);
+  ASSERT_EQ(node_resources.idle_resource_duration_ms, 42);
+  ASSERT_TRUE(node_resources.is_draining);
+  ASSERT_EQ(node_resources.draining_deadline_timestamp_ms, 123456);
+  ASSERT_TRUE(node_resources.last_resource_update_time.has_value());
+}
+
 TEST_F(ClusterResourceManagerTest, DebugStringTest) {
   // Test max_num_nodes_to_include parameter is working.
   ASSERT_EQ(std::vector<std::string>(absl::StrSplit(manager->DebugString(), "node id:"))
