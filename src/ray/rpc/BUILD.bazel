@@ -241,7 +241,6 @@ ray_cc_library(
     hdrs = [
         "worker/core_worker_client.h",
         "worker/core_worker_client_pool.h",
-        "worker/core_worker_server.h",
     ],
     deps = [
         "//src/ray/common:id",
