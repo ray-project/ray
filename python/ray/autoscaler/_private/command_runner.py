@@ -168,8 +168,8 @@ class SSHCommandRunner(CommandRunnerInterface):
         use_internal_ip,
     ):
 
-        ssh_control_hash = hashlib.sha1(cluster_name.encode()).hexdigest()
-        ssh_user_hash = hashlib.sha1(getuser().encode()).hexdigest()
+        ssh_control_hash = hashlib.sha256(cluster_name.encode()).hexdigest()
+        ssh_user_hash = hashlib.sha256(getuser().encode()).hexdigest()
         ssh_control_path = "/tmp/ray_ssh_{}/{}".format(
             ssh_user_hash[:HASH_MAX_LENGTH], ssh_control_hash[:HASH_MAX_LENGTH]
         )

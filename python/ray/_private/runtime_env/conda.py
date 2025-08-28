@@ -214,7 +214,7 @@ def inject_dependencies(
 def _get_conda_env_hash(conda_dict: Dict) -> str:
     # Set `sort_keys=True` so that different orderings yield the same hash.
     serialized_conda_spec = json.dumps(conda_dict, sort_keys=True)
-    hash = hashlib.sha1(serialized_conda_spec.encode("utf-8")).hexdigest()
+    hash = hashlib.sha256(serialized_conda_spec.encode("utf-8")).hexdigest()
     return hash
 
 

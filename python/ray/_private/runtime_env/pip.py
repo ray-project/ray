@@ -20,7 +20,7 @@ default_logger = logging.getLogger(__name__)
 
 def _get_pip_hash(pip_dict: Dict) -> str:
     serialized_pip_spec = json.dumps(pip_dict, sort_keys=True)
-    hash_val = hashlib.sha1(serialized_pip_spec.encode("utf-8")).hexdigest()
+    hash_val = hashlib.sha256(serialized_pip_spec.encode("utf-8")).hexdigest()
     return hash_val
 
 

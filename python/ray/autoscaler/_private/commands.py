@@ -336,7 +336,7 @@ def _bootstrap_config(
     config = prepare_config(config)
     # NOTE: multi-node-type autoscaler is guaranteed to be in use after this.
 
-    hasher = hashlib.sha1()
+    hasher = hashlib.sha256()
     hasher.update(json.dumps([config], sort_keys=True).encode("utf-8"))
     cache_key = os.path.join(
         tempfile.gettempdir(), "ray-config-{}".format(hasher.hexdigest())

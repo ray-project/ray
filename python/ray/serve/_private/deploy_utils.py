@@ -106,4 +106,4 @@ def get_app_code_version(app_config: ServeApplicationSchema) -> str:
         },
         sort_keys=True,
     ).encode("utf-8")
-    return hashlib.sha1(encoded).hexdigest()
+    return hashlib.sha256(encoded).hexdigest()
