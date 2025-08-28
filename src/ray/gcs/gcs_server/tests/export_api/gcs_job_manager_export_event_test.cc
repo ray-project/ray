@@ -25,6 +25,7 @@
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/tests/gcs_test_util.h"
+#include "ray/observability/fake_ray_event_recorder.h"
 
 using json = nlohmann::json;
 
@@ -58,6 +59,7 @@ class GcsJobManagerTest : public ::testing::Test {
           return std::make_shared<rpc::MockCoreWorkerClientConfigurableRunningTasks>(
               address.port());
         });
+    fake_ray_event_recorder_ = std::make_unique<observability::FakeRayEventRecorder>();
     log_dir_ = "event_12345";
   }
 
@@ -77,6 +79,7 @@ class GcsJobManagerTest : public ::testing::Test {
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   std::unique_ptr<gcs::FakeInternalKVInterface> fake_kv_;
   std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
+  std::unique_ptr<observability::FakeRayEventRecorder> fake_ray_event_recorder_;
   RuntimeEnvManager runtime_env_manager_;
   const std::chrono::milliseconds timeout_ms_{5000};
   std::string log_dir_;
@@ -104,7 +107,9 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
                                      *function_manager_,
                                      *fake_kv_,
                                      io_service_,
-                                     *worker_client_pool_);
+                                     *worker_client_pool_,
+                                     *fake_ray_event_recorder_,
+                                     "test_session_name");
 
   gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
   gcs_job_manager.Initialize(gcs_init_data);

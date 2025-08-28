@@ -148,6 +148,7 @@ int main(int argc, char *argv[]) {
   gcs_server_config.grpc_server_port = gcs_server_port;
   gcs_server_config.grpc_server_thread_num =
       RayConfig::instance().gcs_server_rpc_server_thread_num();
+  gcs_server_config.metrics_agent_port = metrics_agent_port;
   gcs_server_config.redis_address = redis_address;
   gcs_server_config.redis_port = redis_port;
   gcs_server_config.enable_redis_ssl = FLAGS_redis_enable_ssl;

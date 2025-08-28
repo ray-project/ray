@@ -267,6 +267,8 @@ class GcsServer {
   std::unique_ptr<GcsInternalKVManager> kv_manager_;
   /// Job info handler.
   std::unique_ptr<GcsJobManager> gcs_job_manager_;
+  /// The Ray job event recorder that is used to record job events.
+  std::unique_ptr<observability::RayEventRecorder> ray_event_recorder_;
 
   /// Ray Syncer related fields.
   std::unique_ptr<syncer::RaySyncer> ray_syncer_;

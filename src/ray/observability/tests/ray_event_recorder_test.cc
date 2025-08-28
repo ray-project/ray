@@ -48,8 +48,9 @@ class MockEventAggregatorClient : public rpc::EventAggregatorClient {
 class RayEventRecorderTest : public ::testing::Test {
  public:
   RayEventRecorderTest() {
-    mock_client_ = std::make_unique<MockEventAggregatorClient>(recorded_events_);
-    recorder_ = std::make_unique<RayEventRecorder>(*mock_client_, io_service_);
+    recorder_ = std::make_unique<RayEventRecorder>(io_service_, 12345);
+    recorder_->event_aggregator_client_ =
+        std::make_unique<MockEventAggregatorClient>(recorded_events_);
   }
 
   void SetUp() override {
@@ -61,7 +62,6 @@ class RayEventRecorderTest : public ::testing::Test {
  protected:
   instrumented_io_context io_service_;
   std::vector<rpc::events::RayEvent> recorded_events_;
-  std::unique_ptr<MockEventAggregatorClient> mock_client_;
   std::unique_ptr<RayEventRecorder> recorder_;
 };
 
