@@ -111,6 +111,34 @@ class FootsiesEnv(MultiAgentEnv):
         else:
             return constants.EnvActions.ATTACK
 
+    def close(self):
+        """Terminate Footsies game server process.
+
+        Run to ensure no game servers are left running.
+        """
+        timeout = 2
+        try:
+            logger.info(
+                f"RLlib {self.__class__.__name__}: Terminating Footsies "
+                f"game server process with PID: {self.footsies_process_pid}..."
+            )
+            p = psutil.Process(self.footsies_process_pid)
+            p.terminate()
+            p.wait(timeout=timeout)
+        except psutil.NoSuchProcess:
+            logger.info(
+                f"RLlib {self.__class__.__name__}: Process with PID {self.footsies_process_pid} not found, "
+                f"it might have been already terminated."
+            )
+        except psutil.TimeoutExpired:
+            logger.warning(
+                f"RLlib {self.__class__.__name__}: Process with PID {self.footsies_process_pid} did not terminate "
+                f"within {timeout} seconds. "
+                f"Sending SIGKILL signal instead.",
+            )
+            p.kill()
+            p.wait(timeout=timeout)
+
     def get_infos(self):
         return {agent: {} for agent in self.agents}
 
@@ -219,34 +247,6 @@ class FootsiesEnv(MultiAgentEnv):
         self.last_game_state = game_state
 
         return observations, rewards, terminateds, truncateds, self.get_infos()
-
-    def terminate_footsies_process(self):
-        """Terminate Footsies game server process associated with this env_runner.
-
-        Run at the end of the RLlib experiment to ensure no game servers are left running.
-        """
-        timeout = 2
-        try:
-            logger.info(
-                f"RLlib {self.__class__.__name__}: Terminating Footsies "
-                f"game server process with PID: {self.footsies_process_pid}..."
-            )
-            p = psutil.Process(self.footsies_process_pid)
-            p.terminate()
-            p.wait(timeout=timeout)
-        except psutil.NoSuchProcess:
-            logger.info(
-                f"RLlib {self.__class__.__name__}: Process with PID {self.footsies_process_pid} not found, "
-                f"it might have been already terminated."
-            )
-        except psutil.TimeoutExpired:
-            logger.warning(
-                f"RLlib {self.__class__.__name__}: Process with PID {self.footsies_process_pid} did not terminate "
-                f"within {timeout} seconds. "
-                f"Sending SIGKILL signal instead.",
-            )
-            p.kill()
-            p.wait(timeout=timeout)
 
     def _build_charged_special_queue(self):
         assert self.SPECIAL_CHARGE_FRAMES % self.frame_skip == 0

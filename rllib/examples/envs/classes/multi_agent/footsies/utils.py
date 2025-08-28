@@ -341,18 +341,3 @@ class MixManagerCallback(RLlibCallback):
         That will tell Ray Tune, whether to stop training (once the 'target_mix_size' has been reached).
         """
         result["mix_size"] = len(self.modules_in_mix)
-
-        if len(self.modules_in_mix) >= self.target_mix_size:
-            # we reached the target mix size. Experiment will be terminated.
-            # we need to terminate all running footsies binaries, associated with the experiment.
-            logger.info(
-                f"RLlib {self.__class__.__name__}: Reached target mix size of {self.target_mix_size}. "
-                f"Terminating Footsies game processes."
-            )
-
-            algorithm.env_runner_group.foreach_env_runner(
-                lambda er: er.env.envs[0].unwrapped.terminate_footsies_process(),
-            )
-            algorithm.eval_env_runner_group.foreach_env_runner(
-                lambda er: er.env.envs[0].unwrapped.terminate_footsies_process(),
-            )
