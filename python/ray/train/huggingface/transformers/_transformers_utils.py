@@ -131,7 +131,10 @@ def prepare_trainer(trainer: "Trainer") -> "Trainer":
             if eval_dataset is None:
                 eval_dataset = self.eval_dataset
 
-            if isinstance(eval_dataset, _IterableFromIterator):
+            if isinstance(eval_dataset, str) and isinstance(self.eval_dataset, dict) and isinstance(self.eval_dataset[eval_dataset], _IterableFromIterator):
+                dataset = RayTorchIterableDataset(self.eval_dataset[eval_dataset])
+                return DataLoader(dataset, batch_size=1, collate_fn=lambda x: x[0])
+            elif isinstance(eval_dataset, _IterableFromIterator):
                 dataset = RayTorchIterableDataset(eval_dataset)
                 return DataLoader(dataset, batch_size=1, collate_fn=lambda x: x[0])
             else:
