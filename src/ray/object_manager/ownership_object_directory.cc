@@ -246,7 +246,7 @@ void OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfNeeded(
   in_flight_requests_.emplace(worker_id);
   auto owner_client = GetClient(owner_address);
   owner_client->UpdateObjectLocationBatch(
-      request,
+      std::move(request),
       [this, worker_id, node_id, owner_address](
           const Status &status, const rpc::UpdateObjectLocationBatchReply &reply) {
         RAY_CHECK(in_flight_requests_.erase(worker_id) > 0);

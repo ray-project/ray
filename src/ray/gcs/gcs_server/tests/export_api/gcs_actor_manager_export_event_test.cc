@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <gtest/gtest.h>
+
 #include <chrono>
 #include <list>
 #include <memory>
@@ -20,18 +22,15 @@
 #include <utility>
 #include <vector>
 
-// clang-format off
-#include "gtest/gtest.h"
-#include "ray/common/asio/instrumented_io_context.h"
-#include "ray/gcs/gcs_server/tests/gcs_server_test_util.h"
-#include "ray/gcs/tests/gcs_test_util.h"
-#include "ray/gcs/gcs_server/gcs_kv_manager.h"
-#include "ray/gcs/store_client/in_memory_store_client.h"
 #include "mock/ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/gcs/gcs_server/gcs_kv_manager.h"
+#include "ray/gcs/gcs_server/tests/gcs_server_test_util.h"
+#include "ray/gcs/store_client/in_memory_store_client.h"
+#include "ray/gcs/tests/gcs_test_util.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/util/event.h"
-// clang-format on
 
 namespace ray {
 
@@ -54,8 +53,8 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
     auto pending_it =
         std::find_if(actors.begin(),
                      actors.end(),
-                     [actor_id](const std::shared_ptr<gcs::GcsActor> &actor) {
-                       return actor->GetActorID() == actor_id;
+                     [actor_id](const std::shared_ptr<gcs::GcsActor> &current_actor) {
+                       return current_actor->GetActorID() == actor_id;
                      });
     if (pending_it != actors.end()) {
       actors.erase(pending_it);
@@ -235,7 +234,7 @@ class GcsActorManagerTest : public ::testing::Test {
     io_service_.post(
         [this, request, &promise]() {
           auto status = gcs_actor_manager_->RegisterActor(
-              request, [this, request, &promise](const Status &status) {
+              request, [this, request, &promise](const Status &) {
                 auto actor_id = ActorID::FromBinary(
                     request.task_spec().actor_creation_task_spec().actor_id());
                 promise.set_value(
@@ -286,9 +285,9 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
   Status status = gcs_actor_manager_->CreateActor(
       create_actor_request,
-      [&finished_actors](const std::shared_ptr<gcs::GcsActor> &actor,
-                         const rpc::PushTaskReply &reply,
-                         const Status &status) { finished_actors.emplace_back(actor); });
+      [&finished_actors](const std::shared_ptr<gcs::GcsActor> &result_actor,
+                         const rpc::PushTaskReply &,
+                         const Status &) { finished_actors.emplace_back(result_actor); });
   RAY_CHECK_OK(status);
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::PENDING_CREATION, ""),
                1);
