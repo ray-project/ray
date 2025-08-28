@@ -22,6 +22,13 @@ from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 from ray.util.state import list_actors
 
 
+# Some tests are not possible to run if proxy is not available on every node.
+# We skip them if proxy is not available.
+def is_proxy_on_every_node() -> bool:
+    client = _get_global_client()
+    return client._http_config.location == "EveryNode"
+
+
 @pytest.fixture
 def shutdown_ray():
     if ray.is_initialized():
@@ -286,8 +293,10 @@ def test_autoscaler_shutdown_node_http_everynode(
 
     serve.run(A.bind(), name="app_f")
 
-    # 2 proxies, 1 controller, 2 replicas.
-    wait_for_condition(lambda: len(list_actors()) == 5)
+    # If proxy is on every node, total actors are 2 proxies, 1 controller, 2 replicas.
+    # Otherwise, total actors are 1 proxy, 1 controller, 2 replicas.
+    expected_actors = 5 if is_proxy_on_every_node() else 4
+    wait_for_condition(lambda: len(list_actors()) == expected_actors)
     assert len(ray.nodes()) == 2
 
     # Stop all deployment replicas.
@@ -347,8 +356,10 @@ def test_drain_and_undrain_http_proxy_actors(
 
     serve.run(HelloModel.options(num_replicas=2).bind())
 
+    expected_actor_count = 6 if is_proxy_on_every_node() else 4
+
     # 3 proxies, 1 controller, 2 replicas.
-    wait_for_condition(lambda: len(list_actors()) == 6)
+    wait_for_condition(lambda: len(list_actors()) == expected_actor_count)
     assert len(ray.nodes()) == 3
 
     client = _get_global_client()
@@ -356,7 +367,8 @@ def test_drain_and_undrain_http_proxy_actors(
         **ray.get(client._controller.get_serve_instance_details.remote())
     )
     proxy_actor_ids = {proxy.actor_id for _, proxy in serve_details.proxies.items()}
-    assert len(proxy_actor_ids) == 3
+    expected_proxy_actor_count = 3 if is_proxy_on_every_node() else 1
+    assert len(proxy_actor_ids) == expected_proxy_actor_count
 
     serve.run(HelloModel.options(num_replicas=1).bind())
     # 1 proxy should be draining
@@ -426,8 +438,10 @@ def test_controller_shutdown_gracefully(
     model = HelloModel.bind()
     serve.run(target=model)
 
-    # Ensure total actors of 2 proxies, 1 controller, and 2 replicas
-    wait_for_condition(lambda: len(list_actors()) == 5)
+    # If proxy is on every node, total actors are 2 proxies, 1 controller, and 2 replicas
+    # Otherwise, total actors are 1 proxy, 1 controller, and 2 replicas
+    expected_actors = 5 if is_proxy_on_every_node() else 4
+    wait_for_condition(lambda: len(list_actors()) == expected_actors)
     assert len(ray.nodes()) == 2
 
     # Call `graceful_shutdown()` on the controller, so it will start shutdown.
@@ -485,8 +499,11 @@ def test_client_shutdown_gracefully_when_timeout(
     model = HelloModel.bind()
     serve.run(target=model)
 
-    # Ensure total actors of 2 proxies, 1 controller, and 2 replicas
-    wait_for_condition(lambda: len(list_actors()) == 5)
+    # Check expected actors based on mode
+    # If proxy is on every node, total actors are 2 proxies, 1 controller, and 2 replicas
+    # Otherwise, total actors are 1 proxy, 1 controller, and 2 replicas
+    expected_actors = 5 if is_proxy_on_every_node() else 4
+    wait_for_condition(lambda: len(list_actors()) == expected_actors)
     assert len(ray.nodes()) == 2
 
     # Ensure client times out if the controller does not shutdown within timeout.
