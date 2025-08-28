@@ -463,6 +463,8 @@ class ActorReplicaWrapper:
                     if self._deployment_is_cross_language
                     else deployment_info.replica_config.serialized_init_args
                 )
+            # TODO(abrar): Fill in the correct rank
+            rank = 0
             init_args = (
                 self.replica_id,
                 cloudpickle.dumps(deployment_info.replica_config.deployment_def)
@@ -620,6 +622,8 @@ class ActorReplicaWrapper:
             deployment_config.user_config = self._format_user_config(
                 deployment_config.user_config
             )
+            # TODO(abrar): FIll in the correct rank
+            rank = 0
             self._ready_obj_ref = self._actor_handle.reconfigure.remote(
                 deployment_config,
                 rank,
@@ -2033,7 +2037,7 @@ class DeploymentState:
         this method returns False.
 
         Returns:
-            bool: Whether or not the deployment is being updated.
+            bool: Whether the target state has changed.
         """
 
         curr_deployment_info = self._target_state.info
@@ -2117,10 +2121,14 @@ class DeploymentState:
         return True
 
     def autoscale(self) -> int:
-        """Autoscale the deployment based on metrics."""
+        """Autoscale the deployment based on metrics.
+
+        Returns:
+            Whether the target state has changed.
+        """
 
         if self._target_state.deleting:
-            return
+            return False
 
         decision_num_replicas = self._autoscaling_state_manager.get_target_num_replicas(
             deployment_id=self._id,
@@ -2131,7 +2139,7 @@ class DeploymentState:
             decision_num_replicas is None
             or decision_num_replicas == self._target_state.target_num_replicas
         ):
-            return
+            return False
 
         new_info = copy(self._target_state.info)
         new_info.version = self._target_state.version.code_version
@@ -2147,7 +2155,7 @@ class DeploymentState:
                 states=[ReplicaState.RUNNING], version=self._target_state.version
             ),
         ):
-            return
+            return True
 
         curr_stats_str = (
             f"Current ongoing requests: "
@@ -2174,10 +2182,14 @@ class DeploymentState:
                 trigger=DeploymentStatusInternalTrigger.AUTOSCALE_DOWN,
                 message=f"Downscaling from {old_num} to {new_num} replicas.",
             )
+        return True
 
-    def delete(self) -> None:
+    def delete(self) -> bool:
         if not self._target_state.deleting:
             self._set_target_state_deleting()
+            return True
+
+        return False
 
     def _stop_or_update_outdated_version_replicas(self, max_to_stop=math.inf) -> bool:
         """Stop or update replicas with outdated versions.
@@ -3198,7 +3210,7 @@ class DeploymentStateManager:
         this is a no-op and returns False.
 
         Returns:
-            bool: Whether or not the deployment is being updated.
+            bool: Whether the target state has changed.
         """
         if deployment_id not in self._deployment_states:
             self._deployment_states[deployment_id] = self._create_deployment_state(
@@ -3217,7 +3229,9 @@ class DeploymentStateManager:
         # This method must be idempotent. We should validate that the
         # specified deployment exists on the client.
         if id in self._deployment_states:
-            self._deployment_states[id].delete()
+            return self._deployment_states[id].delete()
+
+        return False
 
     def update(self) -> bool:
         """Updates the state of all deployments to match their goal state.
@@ -3229,11 +3243,14 @@ class DeploymentStateManager:
         any_recovering = False
         upscales: Dict[DeploymentID, List[ReplicaSchedulingRequest]] = {}
         downscales: Dict[DeploymentID, DeploymentDownscaleRequest] = {}
+        target_state_changed = False
 
         # STEP 1: Update current state
         for deployment_state in self._deployment_states.values():
             if deployment_state.should_autoscale():
-                deployment_state.autoscale()
+                target_state_changed = (
+                    deployment_state.autoscale() or target_state_changed
+                )
 
             deployment_state.check_and_update_replicas()
 
@@ -3285,10 +3302,6 @@ class DeploymentStateManager:
                 deleted_ids.append(deployment_id)
             any_recovering |= any_replicas_recovering
 
-        # Take a checkpoint before actually affecting the state of the cluster
-        # by starting/stopping replicas.
-        self.save_checkpoint()
-
         # STEP 6: Schedule all STARTING replicas and stop all STOPPING replicas
         deployment_to_replicas_to_stop = self._deployment_scheduler.schedule(
             upscales, downscales
@@ -3327,6 +3340,9 @@ class DeploymentStateManager:
 
         if len(deleted_ids):
             self._record_deployment_usage()
+
+        if target_state_changed:
+            self.save_checkpoint()
 
         return any_recovering
 
