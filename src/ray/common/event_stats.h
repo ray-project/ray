@@ -82,14 +82,14 @@ struct StatsHandle {
               std::shared_ptr<GuardedEventStats> handler_stats_,
               std::shared_ptr<GuardedGlobalStats> global_stats_,
               const bool emit_stats_,
-              const std::optional<std::string>& context_name_)
+              const std::optional<std::string> &context_name_)
       : event_name(std::move(event_name_)),
         start_time(start_time_),
         handler_stats(std::move(handler_stats_)),
         global_stats(std::move(global_stats_)),
         end_or_execution_recorded(false),
         emit_stats(emit_stats_),
-        context_name(context_name_){}
+        context_name(context_name_) {}
 
   ~StatsHandle() {
     if (!end_or_execution_recorded) {
@@ -132,9 +132,8 @@ class EventTracker {
   ///
   /// \param fn The function to execute and instrument.
   /// \param handle An opaque stats handle returned by RecordStart().
-  static void RecordExecution(
-      const std::function<void()> &fn,
-      std::shared_ptr<StatsHandle> handle);
+  static void RecordExecution(const std::function<void()> &fn,
+                              std::shared_ptr<StatsHandle> handle);
 
   /// Records the end of an event. This is used in conjunction
   /// with RecordStart() to manually instrument an event.

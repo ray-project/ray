@@ -107,8 +107,7 @@ void instrumented_io_context::post(std::function<void()> handler,
         event_stats_->RecordStart(std::move(name), emit_metrics_, 0, context_name_);
     handler = [handler = std::move(handler),
                stats_handle = std::move(stats_handle)]() mutable {
-      EventTracker::RecordExecution(
-          handler, std::move(stats_handle));
+      EventTracker::RecordExecution(handler, std::move(stats_handle));
     };
   }
 
@@ -132,9 +131,7 @@ void instrumented_io_context::dispatch(std::function<void()> handler, std::strin
   // readers lock in the callback.
   boost::asio::dispatch(
       *this,
-      [handler = std::move(handler),
-       stats_handle = std::move(stats_handle)]() mutable {
-        EventTracker::RecordExecution(
-            handler, std::move(stats_handle));
+      [handler = std::move(handler), stats_handle = std::move(stats_handle)]() mutable {
+        EventTracker::RecordExecution(handler, std::move(stats_handle));
       });
 }

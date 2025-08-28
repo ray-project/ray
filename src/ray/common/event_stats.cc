@@ -63,7 +63,7 @@ std::shared_ptr<StatsHandle> EventTracker::RecordStart(
     std::string name,
     bool emit_metrics,
     const int64_t expected_queueing_delay_ns,
-    const std::optional<std::string>& event_context_name) {
+    const std::optional<std::string> &event_context_name) {
   auto stats = GetOrCreate(name);
   int64_t curr_count = 0;
   {
@@ -96,9 +96,10 @@ void EventTracker::RecordEnd(std::shared_ptr<StatsHandle> handle) {
 
   if (handle->emit_stats) {
     // Update event-specific stats.
-    ray::stats::STATS_operation_run_time_ms.Record(execution_time_ns / 1000000,
-                                                   handle->context_name.value_or(handle->event_name));
-    ray::stats::STATS_operation_active_count.Record(curr_count, handle->context_name.value_or(handle->event_name));
+    ray::stats::STATS_operation_run_time_ms.Record(
+        execution_time_ns / 1000000, handle->context_name.value_or(handle->event_name));
+    ray::stats::STATS_operation_active_count.Record(
+        curr_count, handle->context_name.value_or(handle->event_name));
   }
 
   handle->end_or_execution_recorded = true;
