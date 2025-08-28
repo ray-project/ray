@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/gcs/gcs_server/gcs_actor_manager.h"
+
 #include <gtest/gtest.h>
 
 #include <list>
@@ -22,9 +24,12 @@
 
 #include "mock/ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
+#include "mock/ray/gcs/gcs_server/runtime_env_manager.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/runtime_env_manager.h"
 #include "ray/gcs/gcs_server/gcs_actor.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
+#include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/tests/gcs_test_util.h"
