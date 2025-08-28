@@ -31,14 +31,6 @@ class PublisherInterface {
  public:
   virtual ~PublisherInterface() = default;
 
-  /// NOTE: Retry behavior
-  /// RegisterSubscription, UnregisterSubscription, and UnregisterSubscriber are
-  /// expected to be idempotent.
-  /// Publish and PublishFailure are expected to republish if called again.
-  /// ConnectToSubscriber flushes the old request (sends back reply) if it's
-  /// called again before the previous one was replied to. Based on the
-  /// max_processed_sequence_id in the request, it will decide what messages to send back.
-
   /// Handle a long poll request from `subscriber_id`.
   virtual void ConnectToSubscriber(
       const rpc::PubsubLongPollingRequest &request,
