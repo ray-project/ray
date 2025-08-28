@@ -42,7 +42,7 @@ class NodeInfoGrpcService : public GrpcService {
                                int64_t max_active_rpcs_per_handler)
       : GrpcService(io_service),
         service_handler_(service_handler),
-        max_active_rpcs_per_handler_(max_active_rpcs_per_handler){};
+        max_active_rpcs_per_handler_(max_active_rpcs_per_handler) {}
 
  protected:
   grpc::Service &GetGrpcService() override { return service_; }
@@ -55,6 +55,190 @@ class NodeInfoGrpcService : public GrpcService {
  private:
   NodeInfoGcsService::AsyncService service_;
   NodeInfoGcsServiceHandler &service_handler_;
+  int64_t max_active_rpcs_per_handler_;
+};
+
+class NodeResourceInfoGrpcService : public GrpcService {
+ public:
+  explicit NodeResourceInfoGrpcService(instrumented_io_context &io_service,
+                                       NodeResourceInfoGcsServiceHandler &handler,
+                                       int64_t max_active_rpcs_per_handler)
+      : GrpcService(io_service),
+        service_handler_(handler),
+        max_active_rpcs_per_handler_(max_active_rpcs_per_handler){};
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      const ClusterID &cluster_id) override;
+
+ private:
+  NodeResourceInfoGcsService::AsyncService service_;
+  NodeResourceInfoGcsServiceHandler &service_handler_;
+  int64_t max_active_rpcs_per_handler_;
+};
+
+class InternalPubSubGrpcService : public GrpcService {
+ public:
+  InternalPubSubGrpcService(instrumented_io_context &io_service,
+                            InternalPubSubGcsServiceHandler &handler,
+                            int64_t max_active_rpcs_per_handler)
+      : GrpcService(io_service),
+        service_handler_(handler),
+        max_active_rpcs_per_handler_(max_active_rpcs_per_handler) {}
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      const ClusterID &cluster_id) override;
+
+ private:
+  InternalPubSubGcsService::AsyncService service_;
+  InternalPubSubGcsServiceHandler &service_handler_;
+  int64_t max_active_rpcs_per_handler_;
+};
+
+class JobInfoGrpcService : public GrpcService {
+ public:
+  explicit JobInfoGrpcService(instrumented_io_context &io_service,
+                              JobInfoGcsServiceHandler &handler,
+                              int64_t max_active_rpcs_per_handler)
+      : GrpcService(io_service),
+        service_handler_(handler),
+        max_active_rpcs_per_handler_(max_active_rpcs_per_handler){};
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      const ClusterID &cluster_id) override;
+
+ private:
+  JobInfoGcsService::AsyncService service_;
+  JobInfoGcsServiceHandler &service_handler_;
+  int64_t max_active_rpcs_per_handler_;
+};
+
+class RuntimeEnvGrpcService : public GrpcService {
+ public:
+  explicit RuntimeEnvGrpcService(instrumented_io_context &io_service,
+                                 RuntimeEnvGcsServiceHandler &handler,
+                                 int64_t max_active_rpcs_per_handler)
+      : GrpcService(io_service),
+        service_handler_(handler),
+        max_active_rpcs_per_handler_(max_active_rpcs_per_handler) {}
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      const ClusterID &cluster_id) override;
+
+ private:
+  RuntimeEnvGcsService::AsyncService service_;
+  RuntimeEnvGcsServiceHandler &service_handler_;
+  int64_t max_active_rpcs_per_handler_;
+};
+
+class WorkerInfoGrpcService : public GrpcService {
+ public:
+  explicit WorkerInfoGrpcService(instrumented_io_context &io_service,
+                                 WorkerInfoGcsServiceHandler &handler,
+                                 int64_t max_active_rpcs_per_handler)
+      : GrpcService(io_service),
+        service_handler_(handler),
+        max_active_rpcs_per_handler_(max_active_rpcs_per_handler){};
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      const ClusterID &cluster_id) override;
+
+ private:
+  WorkerInfoGcsService::AsyncService service_;
+  WorkerInfoGcsServiceHandler &service_handler_;
+  int64_t max_active_rpcs_per_handler_;
+};
+
+class InternalKVGrpcService : public GrpcService {
+ public:
+  explicit InternalKVGrpcService(instrumented_io_context &io_service,
+                                 InternalKVGcsServiceHandler &handler,
+                                 int64_t max_active_rpcs_per_handler)
+      : GrpcService(io_service),
+        service_handler_(handler),
+        max_active_rpcs_per_handler_(max_active_rpcs_per_handler){};
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      const ClusterID &cluster_id) override;
+
+ private:
+  InternalKVGcsService::AsyncService service_;
+  InternalKVGcsServiceHandler &service_handler_;
+  int64_t max_active_rpcs_per_handler_;
+};
+
+class TaskInfoGrpcService : public GrpcService {
+ public:
+  explicit TaskInfoGrpcService(instrumented_io_context &io_service,
+                               TaskInfoGcsServiceHandler &handler,
+                               int64_t max_active_rpcs_per_handler)
+      : GrpcService(io_service),
+        service_handler_(handler),
+        max_active_rpcs_per_handler_(max_active_rpcs_per_handler){};
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      const ClusterID &cluster_id) override;
+
+ private:
+  TaskInfoGcsService::AsyncService service_;
+  TaskInfoGcsServiceHandler &service_handler_;
+  int64_t max_active_rpcs_per_handler_;
+};
+
+class RayEventExportGrpcService : public GrpcService {
+ public:
+  explicit RayEventExportGrpcService(instrumented_io_context &io_service,
+                                     RayEventExportGcsServiceHandler &handler,
+                                     int64_t max_active_rpcs_per_handler)
+      : GrpcService(io_service),
+        service_handler_(handler),
+        max_active_rpcs_per_handler_(max_active_rpcs_per_handler){};
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      const ClusterID &cluster_id) override;
+
+ private:
+  RayEventExportGcsService::AsyncService service_;
+  RayEventExportGcsServiceHandler &service_handler_;
   int64_t max_active_rpcs_per_handler_;
 };
 
