@@ -241,7 +241,7 @@ class FakeRayletClient : public RayletClientInterface {
   void GetWorkerFailureCause(
       const LeaseID &lease_id,
       const rpc::ClientCallback<rpc::GetWorkerFailureCauseReply> &callback) override {
-    ray::rpc::GetTaskFailureCauseReply reply;
+    ray::rpc::GetWorkerFailureCauseReply reply;
     callback(Status::OK(), std::move(reply));
     num_get_task_failure_causes += 1;
   }
