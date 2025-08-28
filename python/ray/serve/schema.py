@@ -1025,25 +1025,12 @@ class ScalingDecision(BaseModel):
 
 
 @PublicAPI(stability="alpha")
-class DeploymentAutoscalerView(BaseModel):
+class DeploymentAutoscalingDetail(BaseModel):
     """Deployment-level autoscaler observability."""
 
     class Config:
         extra = Extra.forbid
 
-    name: str = Field(..., description="Deployment name.")
-    current_replicas: int = Field(
-        ..., ge=0, description="Current number of live replicas."
-    )
-    proposed_replicas: int = Field(
-        ..., ge=0, description="Proposed number of replicas from the autoscaler policy."
-    )
-    min_replicas: Optional[int] = Field(
-        None, ge=0, description="Effective min replicas (capacity-adjusted)."
-    )
-    max_replicas: Optional[int] = Field(
-        None, ge=0, description="Effective max replicas (capacity-adjusted)."
-    )
     scaling_status: ScalingStatus = Field(
         ..., description="Current scaling direction or stability."
     )
@@ -1052,9 +1039,6 @@ class DeploymentAutoscalerView(BaseModel):
     )
     metrics: Optional[Dict[str, Any]] = Field(
         None, description="Aggregated metrics for this deployment."
-    )
-    lookback_period_s: Optional[int] = Field(
-        None, ge=0, description="Metrics lookback window (seconds)."
     )
     metrics_health: MetricsHealth = Field(
         MetricsHealth.HEALTHY, description="Health of metrics collection pipeline."
@@ -1104,7 +1088,7 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
         description="Details about the live replicas of this deployment."
     )
 
-    autoscaler: Optional["DeploymentAutoscalerView"] = Field(
+    autoscaling_detail: Optional[DeploymentAutoscalingDetail] = Field(
         default=None,
         description="[EXPERIMENTAL] Deployment-level autoscaler observability for this deployment.",
     )
