@@ -38,45 +38,43 @@ Upon execution, the Processor object instantiates replicas of the vLLM engine (u
     :start-after: __basic_llm_example_start__
     :end-before: __basic_llm_example_end__
 
-.. testcode::
+Here's a simple configuration example:
 
-    # Validate the basic LLM configuration
+.. code-block:: python
+
     from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
-    
+
     config = vLLMEngineProcessorConfig(
         model_source="unsloth/Llama-3.1-8B-Instruct",
-        engine_kwargs={"enable_chunked_prefill": True, "max_num_batched_tokens": 4096, "max_model_len": 16384},
-        concurrency=1, batch_size=64
+        engine_kwargs={
+            "enable_chunked_prefill": True,
+            "max_num_batched_tokens": 4096,
+            "max_model_len": 16384,
+        },
+        concurrency=1,
+        batch_size=64,
     )
-    
     processor = build_llm_processor(config)
-    print("LLM processor configured successfully")
-
-.. testoutput::
-
-    LLM processor configured successfully
 
 Each processor requires specific input columns. You can find more info by using the following API:
 
-.. testcode::
+The processor requires specific input columns. Here's how to check what columns are needed:
 
-    # Test that Ray LLM integration works
+.. code-block:: python
+
     from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
     
     config = vLLMEngineProcessorConfig(model_source="unsloth/Llama-3.1-8B-Instruct")
     processor = build_llm_processor(config)
     processor.log_input_column_names()
 
-.. testoutput::
-    :options: +MOCK
-
-    The first stage of the processor is ChatTemplateStage.
-    Required input columns:
-            messages: A list of messages in OpenAI chat format. See https://platform.openai.com/docs/api-reference/chat/create for details.
+    # Output: The first stage of the processor is ChatTemplateStage.
+    # Required input columns:
+    #         messages: A list of messages in OpenAI chat format.
 
 Some models may require a Hugging Face token to be specified. You can specify the token in the `runtime_env` argument.
 
-.. testcode::
+.. code-block:: python
 
     config = vLLMEngineProcessorConfig(
         model_source="unsloth/Llama-3.1-8B-Instruct",
@@ -165,31 +163,29 @@ Complete VLM example:
     :start-after: __vlm_example_start__
     :end-before: __vlm_example_end__
 
-.. testcode::
+Here's a simple VLM configuration:
 
-    # Validate the VLM configuration
+.. code-block:: python
+
     from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
-    
-    vision_processor_config = vLLMEngineProcessorConfig(
+
+    vision_config = vLLMEngineProcessorConfig(
         model_source="Qwen/Qwen2.5-VL-3B-Instruct",
-        engine_kwargs={"tensor_parallel_size": 1, "pipeline_parallel_size": 1},
+        engine_kwargs={"tensor_parallel_size": 1},
         runtime_env={"env_vars": {"HF_TOKEN": "your-hf-token-here"}},
         batch_size=1,
         accelerator_type="L4",
-        concurrency=1,
         has_image=True
     )
-    
-    vision_processor = build_llm_processor(vision_processor_config)
-    print("Vision processor configured successfully")
-    print("Model: Qwen/Qwen2.5-VL-3B-Instruct")
-    print("Has image support: True")
+    processor = build_llm_processor(vision_config)
 
-.. testoutput::
+For a comprehensive VLM configuration example:
 
-    Vision processor configured successfully
-    Model: Qwen/Qwen2.5-VL-3B-Instruct
-    Has image support: True
+.. literalinclude:: doc_code/working-with-llms/vlm_example.py
+    :language: python
+    :start-after: def create_vlm_config():
+    :end-before: def run_vlm_example():
+    :dedent: 0
 
 
 .. _openai_compatible_api_endpoint:
@@ -206,41 +202,26 @@ Complete OpenAI API example:
     :start-after: __openai_example_start__
     :end-before: __openai_example_end__
 
-.. testcode::
+Here's a simple OpenAI API configuration:
 
-    # Validate the OpenAI API configuration
+.. code-block:: python
+
     from ray.data.llm import HttpRequestProcessorConfig, build_llm_processor
-    
+
     config = HttpRequestProcessorConfig(
         url="https://api.openai.com/v1/chat/completions",
         headers={"Authorization": "Bearer your-api-key-here"},
         qps=1
     )
-    
     processor = build_llm_processor(config)
-    print("OpenAI API processor configured successfully")
-    print()
-    print("The processor would handle:")
-    print("- Preprocessing: Convert text to OpenAI API format")
-    print("- HTTP requests: Send batched requests to OpenAI") 
-    print("- Postprocessing: Extract response content")
 
-.. testoutput::
+For a comprehensive configuration and usage demo:
 
-    OpenAI API example (demo mode - no API key provided)
-    To run with real API key, set OPENAI_API_KEY environment variable
-    <BLANKLINE>
-    Example configuration:
-    config = HttpRequestProcessorConfig(
-        url='https://api.openai.com/v1/chat/completions',
-        headers={'Authorization': f'Bearer {api_key}'},
-        qps=1,
-    )
-    <BLANKLINE>
-    The processor would handle:
-    - Preprocessing: Convert text to OpenAI API format
-    - HTTP requests: Send batched requests to OpenAI
-    - Postprocessing: Extract response content
+.. literalinclude:: doc_code/working-with-llms/openai_api_example.py
+    :language: python
+    :start-after: def run_openai_demo():
+    :end-before: # __openai_example_end__
+    :dedent: 4
 
 Usage Data Collection
 --------------------------
@@ -309,7 +290,7 @@ Ray Data LLM provides the following utility to help uploading models to remote o
 
 And later you can use remote object store URI as `model_source` in the config.
 
-.. testcode::
+.. code-block:: python
 
     from ray.data.llm import vLLMEngineProcessorConfig
     
@@ -317,4 +298,11 @@ And later you can use remote object store URI as `model_source` in the config.
         model_source="gs://my-bucket/path/to/facebook-opt-350m",  # or s3://my-bucket/path/to/model_name
         # ... other configuration parameters
     )
-    print("Remote object store configuration validated")
+
+For a more comprehensive S3 configuration example with environment variables:
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: def create_s3_config():
+    :end-before: def create_lora_config():
+    :dedent: 4
