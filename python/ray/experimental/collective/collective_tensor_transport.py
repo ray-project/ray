@@ -144,7 +144,7 @@ class CollectiveTensorTransport(TensorTransportManager):
     ):
         import ray.util.collective as collective
 
-        device = tensor_transport_metadata.tensor_device
+        device = tensors[0].device if tensors else None
 
         for tensor in tensors:
             if tensor.device.type != device.type:

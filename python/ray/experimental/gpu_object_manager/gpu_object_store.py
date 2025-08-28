@@ -58,11 +58,9 @@ def __ray_send__(
     backend = collective.get_group_handle(communicator_meta.communicator_name).backend()
 
     tensor_transport_manager = get_tensor_transport_manager(backend)
-    if tensors and not device_match_transport(
-        tensor_transport_meta.tensor_device, backend
-    ):
+    if tensors and not device_match_transport(tensors[0].device, backend):
         raise ValueError(
-            f"Tensor transport backend {backend} does not support tensor transfer on device {tensor_transport_meta.tensor_device}."
+            f"Tensor transport backend {backend} does not support tensor transfer on device {tensors[0].device}."
         )
     tensor_transport_manager.send_multiple_tensors(
         tensors,
