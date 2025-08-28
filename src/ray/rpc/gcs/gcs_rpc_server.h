@@ -109,9 +109,6 @@ using AutoscalerStateHandler = AutoscalerStateServiceHandler;
 namespace ray {
 namespace rpc {
 
-#define ACTOR_INFO_SERVICE_RPC_HANDLER(HANDLER, MAX_ACTIVE_RPCS) \
-  RPC_SERVICE_HANDLER(ActorInfoGcsService, HANDLER, MAX_ACTIVE_RPCS)
-
 #define MONITOR_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(MonitorGcsService,     \
                       HANDLER,               \
@@ -126,95 +123,6 @@ namespace rpc {
   reply->mutable_status()->set_code(static_cast<int>(status.code())); \
   reply->mutable_status()->set_message(status.message());             \
   send_reply_callback(ray::Status::OK(), nullptr, nullptr)
-
-class ActorInfoGcsServiceHandler {
- public:
-  virtual ~ActorInfoGcsServiceHandler() = default;
-
-  virtual void HandleRegisterActor(RegisterActorRequest request,
-                                   RegisterActorReply *reply,
-                                   SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleRestartActorForLineageReconstruction(
-      RestartActorForLineageReconstructionRequest request,
-      RestartActorForLineageReconstructionReply *reply,
-      SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleCreateActor(CreateActorRequest request,
-                                 CreateActorReply *reply,
-                                 SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetActorInfo(GetActorInfoRequest request,
-                                  GetActorInfoReply *reply,
-                                  SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetNamedActorInfo(GetNamedActorInfoRequest request,
-                                       GetNamedActorInfoReply *reply,
-                                       SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleListNamedActors(rpc::ListNamedActorsRequest request,
-                                     rpc::ListNamedActorsReply *reply,
-                                     rpc::SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetAllActorInfo(GetAllActorInfoRequest request,
-                                     GetAllActorInfoReply *reply,
-                                     SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleKillActorViaGcs(KillActorViaGcsRequest request,
-                                     KillActorViaGcsReply *reply,
-                                     SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleReportActorOutOfScope(ReportActorOutOfScopeRequest request,
-                                           ReportActorOutOfScopeReply *reply,
-                                           SendReplyCallback send_reply_callback) = 0;
-};
-
-/// The `GrpcService` for `ActorInfoGcsService`.
-class ActorInfoGrpcService : public GrpcService {
- public:
-  /// Constructor.
-  ///
-  /// \param[in] handler The service handler that actually handle the requests.
-  explicit ActorInfoGrpcService(instrumented_io_context &io_service,
-                                ActorInfoGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler){};
-
- protected:
-  grpc::Service &GetGrpcService() override { return service_; }
-
-  void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id) override {
-    /// Register/Create Actor RPC takes long time, we shouldn't limit them to avoid
-    /// distributed deadlock.
-    ACTOR_INFO_SERVICE_RPC_HANDLER(RegisterActor, -1);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(RestartActorForLineageReconstruction, -1);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(CreateActor, -1);
-
-    /// Others need back pressure.
-    ACTOR_INFO_SERVICE_RPC_HANDLER(
-        GetActorInfo, RayConfig::instance().gcs_max_active_rpcs_per_handler());
-    ACTOR_INFO_SERVICE_RPC_HANDLER(
-        GetNamedActorInfo, RayConfig::instance().gcs_max_active_rpcs_per_handler());
-    ACTOR_INFO_SERVICE_RPC_HANDLER(
-        ListNamedActors, RayConfig::instance().gcs_max_active_rpcs_per_handler());
-    ACTOR_INFO_SERVICE_RPC_HANDLER(
-        GetAllActorInfo, RayConfig::instance().gcs_max_active_rpcs_per_handler());
-    ACTOR_INFO_SERVICE_RPC_HANDLER(
-        KillActorViaGcs, RayConfig::instance().gcs_max_active_rpcs_per_handler());
-    ACTOR_INFO_SERVICE_RPC_HANDLER(
-        ReportActorOutOfScope, RayConfig::instance().gcs_max_active_rpcs_per_handler());
-  }
-
- private:
-  /// The grpc async service object.
-  ActorInfoGcsService::AsyncService service_;
-  /// The service handler that actually handle the requests.
-  ActorInfoGcsServiceHandler &service_handler_;
-};
-
-using ActorInfoHandler = ActorInfoGcsServiceHandler;
 
 }  // namespace rpc
 }  // namespace ray
