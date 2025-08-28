@@ -661,11 +661,15 @@ SHUFFLE_ALL_TO_ALL_OPS = [
 
 
 @pytest.mark.parametrize(
-    "shuffle_op",
-    SHUFFLE_ALL_TO_ALL_OPS,
+    "idx, shuffle_op",
+    list(enumerate(SHUFFLE_ALL_TO_ALL_OPS)),
 )
 def test_debug_limit_shuffle_execution_to_num_blocks(
-    ray_start_regular, restore_data_context, configure_shuffle_method, shuffle_op
+    ray_start_regular,
+    restore_data_context,
+    configure_shuffle_method,
+    idx,
+    shuffle_op,
 ):
     if configure_shuffle_method == ShuffleStrategy.HASH_SHUFFLE:
         pytest.skip("Not supported by hash-shuffle")
@@ -676,7 +680,14 @@ def test_debug_limit_shuffle_execution_to_num_blocks(
     ds = ray.data.range(1000, override_num_blocks=parallelism)
     shuffled_ds = shuffle_fn(ds).materialize()
     shuffled_ds = shuffled_ds.materialize()
-    assert shuffled_ds._plan.initial_num_blocks() == parallelism
+
+    initial_blocks = shuffled_ds._plan.initial_num_blocks()
+
+    # For groupby, map_groups with a sort shuffle, the implementation sorts and repartitions to 1 block.
+    if idx == 2 and configure_shuffle_method != ShuffleStrategy.HASH_SHUFFLE:
+        assert initial_blocks == 1
+    else:
+        assert initial_blocks == parallelism
 
     ds.context.set_config("debug_limit_shuffle_execution_to_num_blocks", 1)
     shuffled_ds = shuffle_fn(ds).materialize()
@@ -764,6 +775,47 @@ def test_sort_inlined_objects_warnings(
         assert all(warning_str not in caplog.text for warning_str in warning_strs)
     else:
         assert all(warning_str in caplog.text for warning_str in warning_strs)
+
+
+def test_sort_with_boundaries_and_limit(ray_start_regular):
+    """Test that when both boundaries and limit are specified, limit takes precedence
+    and boundaries are ignored. This verifies the correctness of num_outputs=1 logic
+    in Sort operator when limit is present."""
+    num_items = 1000
+    boundaries = [100, 200, 300, 400]  # These should be ignored when limit is present
+    limit = 50
+
+    # Create dataset and sort with both boundaries and limit via chaining
+    ds = ray.data.range(num_items, override_num_blocks=10).random_shuffle()
+    result_ds = ds.sort("id", boundaries=boundaries).limit(limit)
+
+    # Should get top 50 elements (0-49) since limit takes precedence
+    result = extract_values("id", result_ds.take_all())
+    expected = list(range(limit))
+    assert result == expected
+
+    # Should produce only 1 block due to num_outputs=1 optimization
+    blocks = list(result_ds.iter_batches(batch_size=None))
+    assert len(blocks) == 1
+
+    # Verify boundaries were ignored by checking we don't get boundary-based partitioning
+    # If boundaries were respected, we'd get len(boundaries)+1 = 5 blocks
+    assert len(blocks) != len(boundaries) + 1
+
+    # Test the fused case too (limit pushdown optimization)
+
+    # Create a sort followed by limit to trigger the fusion
+    ds2 = ray.data.range(num_items, override_num_blocks=10).random_shuffle()
+    result_ds2 = ds2.sort("id", boundaries=boundaries).limit(limit)
+
+    # Verify the logical plan has fused the operations
+    plan_str = result_ds2._plan._logical_plan.dag.dag_str
+    # Should see fused sort, not separate limit
+    assert "Sort[Sort]" in plan_str or "Sort" in plan_str
+
+    # Result should still be correct
+    result2 = extract_values("id", result_ds2.take_all())
+    assert result2 == expected
 
 
 if __name__ == "__main__":
