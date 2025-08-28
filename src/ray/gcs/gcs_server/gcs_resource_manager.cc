@@ -19,7 +19,8 @@
 #include <utility>
 
 #include "ray/common/ray_config.h"
-#include "ray/stats/metric_defs.h"
+#include "ray/gcs/gcs_server/state_util.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 namespace gcs {
@@ -28,7 +29,7 @@ GcsResourceManager::GcsResourceManager(instrumented_io_context &io_context,
                                        ClusterResourceManager &cluster_resource_manager,
                                        GcsNodeManager &gcs_node_manager,
                                        NodeID local_node_id,
-                                       ClusterTaskManager *cluster_task_manager)
+                                       raylet::ClusterTaskManager *cluster_task_manager)
     : io_context_(io_context),
       cluster_resource_manager_(cluster_resource_manager),
       gcs_node_manager_(gcs_node_manager),
@@ -36,7 +37,7 @@ GcsResourceManager::GcsResourceManager(instrumented_io_context &io_context,
       cluster_task_manager_(cluster_task_manager) {}
 
 void GcsResourceManager::ConsumeSyncMessage(
-    std::shared_ptr<const syncer::RaySyncMessage> message) {
+    std::shared_ptr<const rpc::syncer::RaySyncMessage> message) {
   // ConsumeSyncMessage is called by ray_syncer which might not run
   // in a dedicated thread for performance.
   // GcsResourceManager is a module always run in the main thread, so we just
@@ -301,7 +302,7 @@ void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
 
   absl::flat_hash_map<std::string, std::string> labels(node.labels().begin(),
                                                        node.labels().end());
-  cluster_resource_manager_.SetNodeLabels(scheduling_node_id, labels);
+  cluster_resource_manager_.SetNodeLabels(scheduling_node_id, std::move(labels));
 
   rpc::ResourcesData data;
   data.set_node_id(node_id.Binary());

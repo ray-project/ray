@@ -29,10 +29,10 @@ GcsRayEventConverter::ConvertToTaskEventDataRequests(
   absl::flat_hash_map<std::string, size_t> job_id_to_index;
   // convert RayEvents to TaskEvents and group by job id.
   for (auto &event : *request.mutable_events_data()->mutable_events()) {
-    rpc::TaskEvents task_event;
+    std::optional<rpc::TaskEvents> task_event = std::nullopt;
     switch (event.event_type()) {
     case rpc::events::RayEvent::TASK_DEFINITION_EVENT: {
-      ConvertToTaskEvents(std::move(*event.mutable_task_definition_event()), task_event);
+      task_event = ConvertToTaskEvents(std::move(*event.mutable_task_definition_event()));
       break;
     }
     case rpc::events::RayEvent::TASK_EXECUTION_EVENT: {
@@ -45,7 +45,9 @@ GcsRayEventConverter::ConvertToTaskEventDataRequests(
     }
 
     // Groups all taskEvents belonging to same jobId into one AddTaskEventDataRequest
-    AddTaskEventToRequest(std::move(task_event), requests_per_job_id, job_id_to_index);
+    if (task_event) {
+      AddTaskEventToRequest(std::move(*task_event), requests_per_job_id, job_id_to_index);
+    }
   }
 
   //  Groups all taskEventMetadata belonging to same jobId into one
@@ -105,8 +107,9 @@ void GcsRayEventConverter::AddDroppedTaskAttemptsToRequest(
   }
 }
 
-void GcsRayEventConverter::ConvertToTaskEvents(rpc::events::TaskDefinitionEvent &&event,
-                                               rpc::TaskEvents &task_event) {
+rpc::TaskEvents GcsRayEventConverter::ConvertToTaskEvents(
+    rpc::events::TaskDefinitionEvent &&event) {
+  rpc::TaskEvents task_event;
   task_event.set_task_id(event.task_id());
   task_event.set_attempt_number(event.task_attempt());
   task_event.set_job_id(event.job_id());
@@ -138,6 +141,7 @@ void GcsRayEventConverter::ConvertToTaskEvents(rpc::events::TaskDefinitionEvent 
         function_descriptor.java_function_descriptor().function_name());
   }
   task_info->mutable_required_resources()->swap(*event.mutable_required_resources());
+  return task_event;
 }
 
 void GcsRayEventConverter::ConvertToTaskEvents(rpc::events::TaskExecutionEvent &&event,
