@@ -2,6 +2,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 
 from ray.train import Checkpoint, DataConfig
 from ray.train.trainer import GenDataset
+from ray.train.v2._internal.execution.local_mode_torch_utils import LocalTorchController
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.util import PublicAPI
@@ -212,4 +213,10 @@ class TorchTrainer(DataParallelTrainer):
             datasets=datasets,
             resume_from_checkpoint=resume_from_checkpoint,
             metadata=metadata,
+        )
+
+    def _get_local_controller(self) -> LocalTorchController:
+        return LocalTorchController(
+            experiment_name=self.run_config.name,
+            datasets=self.datasets,
         )
