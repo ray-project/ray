@@ -23,7 +23,7 @@
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/gcs/store_provider/in_memory_store_provider.h"
+#include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/tests/gcs_test_util.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/util/counter_map.h"
