@@ -712,6 +712,24 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionWorkerFailure) {
   ASSERT_TRUE(absl::StrContains(
       actor->GetActorTableData().death_cause().actor_died_error_context().error_message(),
       "worker process has died."));
+  ASSERT_EQ(gcs_actor_manager_->GetActorIDByName(actor_name, "test"),
+            actor->GetActorID());
+
+  // Detached actor has no reply of WaitForActorRefDeleted request.
+  ASSERT_FALSE(worker_client_->Reply());
+  // Kill this detached actor
+  rpc::KillActorViaGcsReply reply;
+  rpc::KillActorViaGcsRequest request;
+  request.set_actor_id(actor->GetActorID().Binary());
+  request.set_force_kill(true);
+  request.set_no_restart(true);
+  gcs_actor_manager_->HandleKillActorViaGcs(
+      request,
+      &reply,
+      /*send_reply_callback*/
+      [](Status status, std::function<void()> success, std::function<void()> failure) {});
+  io_service_.run_one();
+
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName(actor_name, "test"), ActorID::Nil());
 
   // Create an actor with the same name. This ensures that the name has been properly
