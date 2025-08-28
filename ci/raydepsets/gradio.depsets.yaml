@@ -1,0 +1,26 @@
+build_arg_sets:
+  py39:
+    PYTHON_VERSION: "3.9"
+  py310:
+    PYTHON_VERSION: "3.10"
+  py311:
+    PYTHON_VERSION: "3.11"
+  py312:
+    PYTHON_VERSION: "3.12"
+
+
+depsets:
+  - name: gradio_test_depset_${PYTHON_VERSION}
+    requirements:
+      - python/requirements/test-requirements.txt
+    constraints:
+      - python/requirements_compiled.txt
+    output: python/deplocks/gradio/gradio_test_${PYTHON_VERSION}.lock
+    operation: compile
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+    build_arg_sets:
+      - py310
+      - py311
+      - py312
