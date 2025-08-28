@@ -1376,7 +1376,6 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
          io_context_}));
     gcs_actor_scheduler_->Schedule(actor);
   } else {
-    RemoveActorNameFromRegistry(actor);
     actor->UpdateState(rpc::ActorTableData::DEAD);
     mutable_actor_table_data->mutable_death_cause()->CopyFrom(death_cause);
     auto time = current_sys_time_ms();
