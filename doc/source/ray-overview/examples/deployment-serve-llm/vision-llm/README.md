@@ -43,18 +43,18 @@ llm_config = LLMConfig(
 app = build_openai_app({"llm_configs": [llm_config]})
 ```
 
-> Before moving to a production setup, it's recommended to switch to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html). This makes your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines for example. See [Serving LLMs: Production Guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.
+**Note:** Before moving to a production setup, it's recommended to switch to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html). This makes your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines for example. See [Serving LLMs: Production Guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.
 
 ---
 
-## Local End-to-End Deployment
+## Deploy locally
 
 **Prerequisites**
 
 * Access to GPU compute.
 * (Optional) A **Hugging Face token** if using gated models like Meta’s Llama. Store it in `export HF_TOKEN=<YOUR-TOKEN-HERE>`
 
-> Depending on the organization, you can usually request access on the model's Hugging Face page. For example, Meta’s Llama models approval can take anywhere from a few hours to several weeks.
+**Note:** Depending on the organization, you can usually request access on the model's Hugging Face page. For example, Meta’s Llama models approval can take anywhere from a few hours to several weeks.
 
 **Dependencies:**  
 ```bash
@@ -79,11 +79,11 @@ Deployment typically takes a few minutes as the cluster is provisioned, the vLLM
 
 ---
 
-### Sending Request with Images
+### Sending requests with images
 
-Your endpoint is available locally at `http://localhost:8000` and you can use a placeholder authentication token for the OpenAI client, for example `"FAKE_KEY"`
+Your endpoint is available locally at `http://localhost:8000` and you can use a placeholder authentication token for the OpenAI client, for example `"FAKE_KEY"`.
 
-Example Curl with Image URL
+Example cURL with image URL
 
 
 ```bash
@@ -107,7 +107,7 @@ curl -X POST http://localhost:8000/v1/chat/completions \
       }'
 ```
 
-Example Python with Image URL
+Example Python with image URL
 
 
 ```python
@@ -186,7 +186,7 @@ for chunk in response:
 
 ### Shutdown 
 
-Shutdown your LLM service
+Shutdown your LLM service:
 
 
 ```bash
@@ -197,13 +197,13 @@ serve shutdown -y
 
 ---
 
-## Production Deployment with Anyscale Service
+## Deploy to production with Anyscale Services
 
-For production, it's recommended to use Anyscale Services to deploy your Ray Serve app on a dedicated cluster without code changes. Anyscale provides scalability, fault tolerance, and load balancing, ensuring resilience against node failures, high traffic, and rolling updates. See [Deploying a small-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/small-size-llm/README.html#production-deployment-with-anyscale-service) for an example with a small-size model like the *Qwen2.5-VL-7&nbsp;B-Instruct* used here.
+For production, it's recommended to use Anyscale Services to deploy your Ray Serve app on a dedicated cluster without code changes. Anyscale provides scalability, fault tolerance, and load balancing, ensuring resilience against node failures, high traffic, and rolling updates. See [Deploying a small-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/small-size-llm/README.html#deploy-to-production-with-anyscale-services) for an example with a small-size model like the *Qwen2.5-VL-7&nbsp;B-Instruct* used here.
 
 ---
 
-## Limiting Images per Prompt
+## Limiting images per prompt
 
 Ray Serve LLM uses [vLLM](https://docs.vllm.ai/en/stable/) as its backend engine. You can configure vLLM by passing parameters through the `engine_kwargs` section of your Serve LLM configuration. For a full list of supported options, see the [vLLM documentation](https://docs.vllm.ai/en/stable/configuration/engine_args.html#multimodalconfig).  
 
@@ -223,4 +223,4 @@ applications:
 
 ## Summary
 
-In this tutorial, you deployed a Vision LLM with Ray Serve LLM, from development to production. You learned how to configure Ray Serve LLM, deploy your service on your Ray Cluster, and how to send requests with images.
+In this tutorial, you deployed a Vision LLM with Ray Serve LLM, from development to production. You learned how to configure Ray Serve LLM, deploy your service on your Ray cluster, and how to send requests with images.

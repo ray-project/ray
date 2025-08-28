@@ -1,67 +1,67 @@
-# Deploying a Hybrid Reasoning LLM
+# Deploy a hybrid reasoning LLM
 
-A hybrid reasoning model provides flexibility by allowing reasoning to be enabled or disabled as needed. This makes it possible to use structured, step-by-step thinking for complex queries while skipping it for simpler ones, balancing accuracy with efficiency depending on the task.
+A hybrid reasoning model provides flexibility by allowing you to enable or disable reasoning as needed. You can use structured, step-by-step thinking for complex queries while skipping it for simpler ones, balancing accuracy with efficiency depending on the task.
 
-This tutorial walks you through deploying a Hybrid Reasoning LLM using Ray Serve LLM.  
+This tutorial walks you through deploying a hybrid reasoning LLM using Ray Serve LLM.  
 
 ---
 
 ## Distinction with purely reasoning models
 
-*Hybrid reasoning models* are reasoning-capable models that allow you to toggle the thinking process on and off. This means you can enable structured, step-by-step reasoning when needed but skip it for simpler queries to reduce latency. Purely reasoning models always apply their reasoning behavior, while hybrid models give you fine-grained control over when that reasoning is used.
+*Hybrid reasoning models* are reasoning-capable models that allow you to toggle the thinking process on and off. You can enable structured, step-by-step reasoning when needed but skip it for simpler queries to reduce latency. Purely reasoning models always apply their reasoning behavior, while hybrid models give you fine-grained control over when that reasoning is used.
 <!-- vale Google.Acronyms = NO -->
 | **Mode**         | **Core Behavior**                            | **Use Case Examples**                                               | **Limitation**                                    |
 | ---------------- | -------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------- |
-| **Thinking ON**  | Explicit multi-step thinking process | Math, coding, logic puzzles, multi-hop QA, CoT prompting | Slower response time, more tokens used      |
-| **Thinking OFF** | Direct answer generation                   | Casual queries, short instructions, single-step answers              | May struggle with complex reasoning or interpretability |
+| **Thinking ON**  | Explicit multi-step thinking process | Math, coding, logic puzzles, multi-hop QA, CoT prompting | Slower response time, more tokens used.      |
+| **Thinking OFF** | Direct answer generation                   | Casual queries, short instructions, single-step answers              | May struggle with complex reasoning or interpretability. |
 <!-- vale Google.Acronyms = YES -->
-> Reasoning often benefit from long context windows (32K up to +1M tokens), high token throughput, low-temperature decoding (greedy sampling), and strong instruction tuning or scratchpad-style reasoning.
+**Note:** Reasoning often benefits from long context windows (32K up to +1M tokens), high token throughput, low-temperature decoding (greedy sampling), and strong instruction tuning or scratchpad-style reasoning.
 
-To see an example of deploying a purely reasoning model like *QwQ-32&nbsp;B*, see [Deploying a Reasoning LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/reasoning-llm/notebook.html)
+To see an example of deploying a purely reasoning model like *QwQ-32&nbsp;B*, see [Deploying a Reasoning LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/reasoning-llm/notebook.html).
 
 ---
 
-## Enabling or Disabling thinking
+## Enable or disable thinking
 
-Some hybrid reasoning models let you toggle their "thinking" mode on or off. This section explains when it makes sense to use thinking mode versus skipping it, and shows how to control the setting in practice.
+Some hybrid reasoning models let you toggle their "thinking" mode on or off. This section explains when to use thinking mode versus skipping it, and shows how to control the setting in practice.
 
 ---
 <!-- vale Vale.Terms = NO -->
-### When to Enable or Disable Thinking Mode
+### When to enable or disable thinking mode
 <!-- vale Vale.Terms = YES -->
-**When to enable thinking mode:**
-- For complex, multi-step tasks that require reasoning, such as math, physics, or logic problems.
-- When handling ambiguous queries or situations with incomplete information.
-- For planning, workflow orchestration, or when the model needs to act as an "agent" coordinating other tools or models.
-- When analyzing intricate data, images, or charts.
-- For in-depth code reviews or evaluating outputs from other AI systems (LLM as Judge approach).
+**Enable thinking mode for:**
+- Complex, multi-step tasks that require reasoning, such as math, physics, or logic problems.
+- Ambiguous queries or situations with incomplete information.
+- Planning, workflow orchestration, or when the model needs to act as an "agent" coordinating other tools or models.
+- Analyzing intricate data, images, or charts.
+- In-depth code reviews or evaluating outputs from other AI systems (LLM as Judge approach).
 
-**When to disable thinking mode:**
-- For simple, well-defined, or routine tasks.
-- When low latency and fast responses are the priority.
-- When the model is used for repetitive, straightforward steps within a larger automated workflow.
+**Disable thinking mode for:**
+- Simple, well-defined, or routine tasks.
+- Low latency and fast responses as the priority.
+- Repetitive, straightforward steps within a larger automated workflow.
 
 ---
 
 ### How to enable or disable thinking mode
 
-Toggling the thinking mode varies by model and framework. Always check the model's documentation to see how thinking is structured and controlled.
+Toggle thinking mode varies by model and framework. Check the model's documentation to see how thinking is structured and controlled.
 
 For example, to [control reasoning in Qwen-3](https://huggingface.co/Qwen/Qwen3-32B#switching-between-thinking-and-non-thinking-mode), you can:
-* Add `"/think"` or `"/no_think"` in the prompt
-* Or set `enable_thinking` in the request:
-  `extra_body={"chat_template_kwargs": {"enable_thinking": ...}}`
+* Add `"/think"` or `"/no_think"` in the prompt.
+* Set `enable_thinking` in the request:
+  `extra_body={"chat_template_kwargs": {"enable_thinking": ...}}`.
 
-See [Sending Requests with Thinking Enabled](#sending-request-with-thinking-enabled) or [Sending Requests with Thinking Disabled](#sending-request-with-thinking-disabled) for practical examples.
+See [Send request with thinking enabled](#send-request-with-thinking-enabled) or [Send request with thinking disabled](#send-request-with-thinking-disabled) for practical examples.
 
 ---
 
-## Parsing Reasoning Outputs
+## Parse reasoning outputs
 
 In thinking mode, hybrid models often separate *reasoning* from the *final answer* using tags like `<think>...</think>`. Without a proper parser, this reasoning may end up in the `content` field instead of the dedicated `reasoning_content` field.  
 
-To make sure the reasoning output is correctly parsed, configure a `reasoning_parser` in your Ray Serve LLM deployment. This tells vLLM how to isolate the model’s thought process from the rest of the output.
-> For example, *Qwen-3* uses the `qwen3` parser. See the [vLLM docs](https://docs.vllm.ai/en/stable/features/reasoning_outputs.html#supported-models) or your model's documentation to find a supported parser, or [build your own](https://docs.vllm.ai/en/stable/features/reasoning_outputs.html#how-to-support-a-new-reasoning-model) if needed.
+To ensure the reasoning output is correctly parsed, configure a `reasoning_parser` in your Ray Serve LLM deployment. This tells vLLM how to isolate the model’s thought process from the rest of the output.
+**Note:** For example, *Qwen-3* uses the `qwen3` parser. See the [vLLM docs](https://docs.vllm.ai/en/stable/features/reasoning_outputs.html#supported-models) or your model's documentation to find a supported parser, or [build your own](https://docs.vllm.ai/en/stable/features/reasoning_outputs.html#how-to-support-a-new-reasoning-model) if needed.
 
 ```yaml
 applications:
@@ -103,7 +103,7 @@ print(f"Reasoning: {response.choices[0].message.reasoning_content}")
 
 ## Configure Ray Serve LLM
 
-Make sure to set your Hugging Face token in the config file to access gated models.
+Set your Hugging Face token in the config file to access gated models.
 
 Ray Serve LLM provides multiple [Python APIs](https://docs.ray.io/en/latest/serve/api/index.html#llm-api) for defining your application. Use [`build_openai_app`](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.llm.build_openai_app.html#ray.serve.llm.build_openai_app) to build a full application from your [`LLMConfig`](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.llm.LLMConfig.html#ray.serve.llm.LLMConfig) object.
 
@@ -126,7 +126,7 @@ llm_config = LLMConfig(
             min_replicas=1, max_replicas=2,
         )
     ),
-    ### Uncomment if your model is gated and need your Huggingface Token to access it
+    ### Uncomment if your model is gated and needs your Hugging Face token to access it
     #runtime_env=dict(
     #    env_vars={
     #        "HF_TOKEN": os.environ.get("HF_TOKEN")
@@ -141,18 +141,18 @@ llm_config = LLMConfig(
 app = build_openai_app({"llm_configs": [llm_config]})
 ```
 
-> Before moving to a production setup, it's recommended to switch to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html). This makes your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines for example. See [Serving LLMs: Production Guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.
+**Note:** Before moving to a production setup, it's recommended to switch to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html). This makes your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines for example. See [Serving LLMs: Production Guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.
 
 ---
 
-## Local End-to-End Deployment
+## Deploy locally
 
 **Prerequisites**
 
 * Access to GPU compute.
-* (Optional) A **Hugging Face token** if using gated models like Meta’s Llama. Store it in `export HF_TOKEN=<YOUR-TOKEN-HERE>`
+* (Optional) A **Hugging Face token** if using gated models like Meta’s Llama. Store it in `export HF_TOKEN=<YOUR-TOKEN-HERE>`.
 
-> Depending on the organization, you can usually request access on the model's Hugging Face page. For example, Meta’s Llama models approval can take anywhere from a few hours to several weeks.
+**Note:** Depending on the organization, you can usually request access on the model's Hugging Face page. For example, Meta’s Llama models approval can take anywhere from a few hours to several weeks.
 
 **Dependencies:**  
 ```bash
@@ -181,7 +181,7 @@ Use the `model_id` defined in your config (here, `my-qwen-3-32b`) to query your 
 
 ---
 
-### Sending Request with Thinking Disabled
+### Send request with thinking disabled
 
 You can disable thinking in Qwen-3 by either adding a `/no_think` tag in the prompt or by forwarding `enable_thinking: False` to the vLLM inference engine.  
 
@@ -226,11 +226,11 @@ print(f"Answer: \n {response.choices[0].message.content}")
 ```
 
 Notice the `reasoning_content` is empty here. 
-> Depending on your model's documentation, empty could mean `None`, an empty string or even empty tags `"<think></think>"`
+**Note:** Depending on your model's documentation, empty could mean `None`, an empty string or even empty tags `"<think></think>"`
 
 ---
 
-### Sending Request with Thinking Enabled
+### Send request with thinking enabled
  
 You can enable thinking in Qwen-3 by either adding a `/think` tag in the prompt or by forwarding `enable_thinking: True` to the vLLM inference engine.  
 
@@ -274,13 +274,13 @@ print(f"Reasoning: \n{response.choices[0].message.reasoning_content}\n\n")
 print(f"Answer: \n {response.choices[0].message.content}")
 ```
 
-If you configure a valid reasoning parser, the reasoning output should appear in the `reasoning_content` field of the response message. Otherwise, it may be included in the main `content` field, typically wrapped in `<think>...</think>` tags. See [Parsing Reasoning Outputs](#parsing-reasoning-outputs) for more information.
+If you configure a valid reasoning parser, the reasoning output should appear in the `reasoning_content` field of the response message. Otherwise, it may be included in the main `content` field, typically wrapped in `<think>...</think>` tags. See [Parse reasoning outputs](#parse-reasoning-outputs) for more information.
 
 ---
 
 ### Shutdown 
 
-Shutdown your LLM service
+Shutdown your LLM service:
 
 
 ```bash
@@ -291,13 +291,13 @@ serve shutdown -y
 
 ---
 
-## Production Deployment with Anyscale Service
+## Deploy to production with Anyscale Services
 
 For production, it's recommended to use Anyscale Services to deploy your Ray Serve app on a dedicated cluster without code changes. Anyscale provides scalability, fault tolerance, and load balancing, ensuring resilience against node failures, high traffic, and rolling updates. See [Deploying a medium-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/medium-size-llm/README.html#production-deployment-with-anyscale-service) for an example with a medium-size model like the *Qwen-32b* used here.
 
 ---
 
-## Streaming Reasoning Content
+## Stream reasoning content
 
 In thinking mode, hybrid reasoning models may take longer to begin generating the main content. You can stream their intermediate reasoning output in the same way as the main content.  
 
@@ -360,4 +360,4 @@ for chunk in response:
 
 ## Summary
 
-In this tutorial, you deployed a reasoning LLM with Ray Serve LLM, from development to production. You learned how to configure Ray Serve LLM with the right reasoning parser, deploy your service on your Ray Cluster, how to send requests, and how to parse reasoning outputs in the response.
+In this tutorial, you deployed a hybrid reasoning LLM with Ray Serve LLM, from development to production. You learned how to configure Ray Serve LLM with the right reasoning parser, deploy your service on your Ray cluster, and how to send requests, and how to parse reasoning outputs in the response.

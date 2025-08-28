@@ -1,41 +1,40 @@
-# Deploying a Reasoning LLM
+# Deploy a reasoning LLM
 
-A reasoning LLM is built to handle tasks that require deeper analysis or step-by-step thought. It can generate intermediate reasoning before arriving at a final answer, making it better suited for situations where careful logic or structured problem-solving is more important than speed or efficiency.
+A reasoning LLM handles tasks that require deeper analysis or step-by-step thought. It generates intermediate reasoning before arriving at a final answer, making it better suited for situations where careful logic or structured problem-solving is more important than speed or efficiency.
 
 This tutorial walks you through deploying a reasoning LLM using Ray Serve LLM.  
 
 ---
 
-## Distinction with non-reasoning models
+## Compare reasoning and non-reasoning models
 
-Reasoning models are designed to simulate step-by-step, structured thought processes to solve complex tasks like math, multi-hop QA, or code generation. In contrast, non-reasoning models aim for fast, direct responses and are typically trained for fluency or instruction following without explicit intermediate reasoning. The key distinction lies in whether the model attempts to "think through" the problem before answering.
+Reasoning models simulate step-by-step, structured thought processes to solve complex tasks like math, multi-hop QA, or code generation. In contrast, non-reasoning models provide fast, direct responses and focus on fluency or instruction following without explicit intermediate reasoning. The key distinction lies in whether the model attempts to "think through" the problem before answering.
 
 | **Model Type**          | **Core Behavior**                    | **Use Case Examples**                                    | **Limitation**                                        |
 | ----------------------- | ------------------------------------ | -------------------------------------------------------- | ----------------------------------------------------- |
-| **Reasoning Model**     | Explicit multi-step thinking process | Math, coding, logic puzzles, multi-hop QA, CoT prompting | Slower response time, more tokens used                |
-| **Non-Reasoning Model** | Direct answer generation             | Casual queries, short instructions, single-step answers  | May struggle with complex reasoning or interpretability |
+| **Reasoning Model**     | Explicit multi-step thinking process | Math, coding, logic puzzles, multi-hop QA, CoT prompting | Slower response time, more tokens used.                |
+| **Non-Reasoning Model** | Direct answer generation             | Casual queries, short instructions, single-step answers  | May struggle with complex reasoning or interpretability. |
 
 Many reasoning-capable models structure their outputs with special markers such as `<think>` tags, or expose reasoning traces inside dedicated fields like `reasoning_content` in the OpenAI API response. Always check the model's documentation to see how thinking is structured and controlled.
 
-> Reasoning LLMs often benefit from long context windows (32K up to +1M tokens), high token throughput, low-temperature decoding (greedy sampling), and strong instruction tuning or scratchpad-style reasoning.
+**Note:** Reasoning LLMs often benefit from long context windows (32K up to +1M tokens), high token throughput, low-temperature decoding (greedy sampling), and strong instruction tuning or scratchpad-style reasoning.
 
 ---
 
-### When to use a reasoning model?
+### Choose when to use reasoning models
 
 Whether you should use a reasoning model depends on how much information your prompt already provides.
 
-If your input is clear and complete, a standard model is usually faster and more efficient.  
-If your input is ambiguous or complex, a reasoning model is better suited, it can work through the problem step by step and fill in gaps through intermediate reasoning.
+If your input is clear and complete, a standard model is usually faster and more efficient. If your input is ambiguous or complex, a reasoning model works better because it can work through the problem step by step and fill in gaps through intermediate reasoning.
 
 ---
 
-## Parsing Reasoning Outputs
+## Parse reasoning outputs
 
 Reasoning models often separate *reasoning* from the *final answer* using tags like `<think>...</think>`. Without a proper parser, this reasoning may end up in the `content` field instead of the dedicated `reasoning_content` field.
 
 To extract reasoning correctly, configure a `reasoning_parser` in your Ray Serve deployment. This tells vLLM how to isolate the model’s thought process from the rest of the output.
-> For example, *QwQ* uses the `deepseek-r1` parser. Other models may require different parsers. See the [vLLM docs](https://docs.vllm.ai/en/stable/features/reasoning_outputs.html#supported-models) or your model's documentation to find a supported parser, or [build your own](https://docs.vllm.ai/en/stable/features/reasoning_outputs.html#how-to-support-a-new-reasoning-model) if needed.
+**Note:** For example, *QwQ* uses the `deepseek-r1` parser. Other models may require different parsers. See the [vLLM docs](https://docs.vllm.ai/en/stable/features/reasoning_outputs.html#supported-models) or your model's documentation to find a supported parser, or [build your own](https://docs.vllm.ai/en/stable/features/reasoning_outputs.html#how-to-support-a-new-reasoning-model) if needed.
 
 ```yaml
 applications:
@@ -78,11 +77,11 @@ print(f"Reasoning: {response.choices[0].message.reasoning_content}")
 
 ## Configure Ray Serve LLM
 
-Make sure to set your Hugging Face token in the config file to access gated models.
+Set your Hugging Face token in the config file to access gated models.
 
 Ray Serve LLM provides multiple [Python APIs](https://docs.ray.io/en/latest/serve/api/index.html#llm-api) for defining your application. Use [`build_openai_app`](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.llm.build_openai_app.html#ray.serve.llm.build_openai_app) to build a full application from your [`LLMConfig`](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.llm.LLMConfig.html#ray.serve.llm.LLMConfig) object.
 
-Set `tensor_parallel_size= 8` to distribute the model's weights among 8 GPUs in the node. 
+Set `tensor_parallel_size=8` to distribute the model's weights among 8 GPUs in the node. 
 
 
 ```python
@@ -117,18 +116,18 @@ llm_config = LLMConfig(
 app = build_openai_app({"llm_configs": [llm_config]})
 ```
 
-> Before moving to a production setup, it's recommended to switch to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html). This makes your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines for example. See [Serving LLMs: Production Guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.
+**Note:** Before moving to a production setup, switch to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html). This makes your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. See [Serving LLMs: Production Guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.
 
 ---
 
-## Local End-to-End Deployment
+## Deploy locally
 
 **Prerequisites**
 
 * Access to GPU compute.
 * (Optional) A **Hugging Face token** if using gated models like Meta’s Llama. Store it in `export HF_TOKEN=<YOUR-TOKEN-HERE>`
 
-> Depending on the organization, you can usually request access on the model's Hugging Face page. For example, Meta’s Llama models approval can take anywhere from a few hours to several weeks.
+**Note:** Depending on the organization, you can usually request access on the model's Hugging Face page. For example, Meta’s Llama models approval can take anywhere from a few hours to several weeks.
 
 **Dependencies:**  
 ```bash
@@ -137,7 +136,7 @@ pip install "ray[serve,llm]"
 
 ---
 
-### Launch
+### Launch the service
 
 Follow the instructions at [Configure Ray Serve LLM](#configure-ray-serve-llm) to define your app in a Python module `serve_qwq_32b.py`.  
 
@@ -153,9 +152,9 @@ Deployment typically takes a few minutes as the cluster is provisioned, the vLLM
 
 ---
 
-### Sending Request
+### Send requests
 
-Your endpoint is available locally at `http://localhost:8000` and you can use a placeholder authentication token for the OpenAI client, for example `"FAKE_KEY"`
+Your endpoint is available locally at `http://localhost:8000` and you can use a placeholder authentication token for the OpenAI client, for example `"FAKE_KEY"`.
 
 Example Curl
 
@@ -195,13 +194,13 @@ print(f"Reasoning: \n{response.choices[0].message.reasoning_content}\n\n")
 print(f"Answer: \n {response.choices[0].message.content}")
 ```
 
-If you configure a valid reasoning parser, the reasoning output should appear in the `reasoning_content` field of the response message. Otherwise, it may be included in the main `content` field, typically wrapped in `<think>...</think>` tags. See [Parsing Reasoning Outputs](#parsing-reasoning-outputs) for more information.
+If you configure a valid reasoning parser, the reasoning output should appear in the `reasoning_content` field of the response message. Otherwise, it may be included in the main `content` field, typically wrapped in `<think>...</think>` tags. See [Parsing Reasoning Outputs](#parse-reasoning-outputs) for more information.
 
 ---
 
-### Shutdown 
+### Shutdown
 
-Shutdown your LLM service
+Shutdown your LLM service:
 
 
 ```bash
@@ -212,13 +211,13 @@ serve shutdown -y
 
 ---
 
-## Production Deployment with Anyscale Service
+## Deploy to production with Anyscale Services
 
-For production, it's recommended to use Anyscale Services to deploy your Ray Serve app on a dedicated cluster without code changes. Anyscale provides scalability, fault tolerance, and load balancing, ensuring resilience against node failures, high traffic, and rolling updates. See [Deploying a medium-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/medium-size-llm/README.html#production-deployment-with-anyscale-service) for an example with a medium-size model like the *QwQ-32&nbsp;B* used here.
+For production, use Anyscale Services to deploy your Ray Serve app on a dedicated cluster without code changes. Anyscale provides scalability, fault tolerance, and load balancing, ensuring resilience against node failures, high traffic, and rolling updates. See [Deploying a medium-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/medium-size-llm/README.html#deploy-to-production-with-anyscale-services) for an example with a medium-size model like the *QwQ-32&nbsp;B* used here.
 
 ---
 
-## Streaming Reasoning Content
+## Stream reasoning content
 
 Reasoning models may take longer to begin generating the main content. You can stream their intermediate reasoning output in the same way as the main content.  
 
@@ -261,4 +260,4 @@ for chunk in response:
 
 ## Summary
 
-In this tutorial, you deployed a reasoning LLM with Ray Serve LLM, from development to production. You learned how to configure Ray Serve LLM with the right reasoning parser, deploy your service on your Ray Cluster, how to send requests, and how to parse reasoning outputs in the response.
+In this tutorial, you deployed a reasoning LLM with Ray Serve LLM, from development to production. You learned how to configure Ray Serve LLM with the right reasoning parser, deploy your service on your Ray cluster, and how to send requests, and how to parse reasoning outputs in the response.

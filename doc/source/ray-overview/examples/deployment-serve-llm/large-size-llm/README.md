@@ -1,16 +1,16 @@
-# Deploying a large-size LLM
+# Deploy a large-size LLM
 
 A large-size LLM typically runs on multiple nodes with multiple GPUs, prioritizing peak quality and capability: stronger reasoning, broader knowledge, longer context windows, more robust generalization. It’s the right choice when state-of-the-art results are required and higher latency, complexity, and cost are acceptable trade-offs.
 
-This tutorial walks you through deploying a large-size LLM like DeepSeek-R1 (685&nbsp;B parameters) using Ray Serve LLM. For smaller model, see [Deploying a small-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/small-size-llm/README.html) or [Deploying a medium-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/medium-size-llm/README.html).
+This tutorial walks you through deploying a large-size LLM like DeepSeek-R1 (685&nbsp;B parameters) using Ray Serve LLM. For smaller models, see [Deploying a small-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/small-size-llm/README.html) or [Deploying a medium-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/medium-size-llm/README.html).
 
 ---
 
-## Challenges of Large-Scale Deployment
+## Challenges of large-scale deployment
 
 Deploying a 685&nbsp;B-parameter model like DeepSeek-R1 presents significant technical challenges. At this scale, the model can't fit on a single GPU or even a single node. It must be distributed across multiple GPUs and nodes using *tensor parallelism* (splitting tensors within each layer) and *pipeline parallelism* (spreading layers across devices).  
 
-Deploying a model of this scale normally requires manually launching and coordinating multiple nodes, unless you use a managed platform like [Anyscale](https://www.anyscale.com/), which automates cluster scaling and node orchestration. See [Production Deployment with Anyscale Service](#production-deployment-with-anyscale-service) for more details.
+Deploying a model of this scale normally requires you to manually launch and coordinate multiple nodes, unless you use a managed platform like [Anyscale](https://www.anyscale.com/), which automates cluster scaling and node orchestration. See [Production Deployment with Anyscale Service](#production-deployment-with-anyscale-service) for more details.
 
 ---
 
@@ -53,18 +53,18 @@ llm_config = LLMConfig(
 app = build_openai_app({"llm_configs": [llm_config]})
 ```
 
-> Before moving to a production setup, it's recommended to switch to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html). This makes your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines for example. See [Serving LLMs: Production Guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.
+**Note:** Before moving to a production setup, it's recommended to switch to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html). This makes your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines for example. See [Serving LLMs: Production Guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.
 
 ---
 
-## Local End-to-End Deployment
+## Deploy locally
 
 **Prerequisites**
 
 * Access to GPU compute.
-* (Optional) A **Hugging Face token** if using gated models like Meta’s Llama. Store it in `export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>`
+* (Optional) A **Hugging Face token** if using gated models like Meta’s Llama. Store it in `export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>`.
 
-> Depending on the organization, you can usually request access on the model's Hugging Face page. For example, Meta’s Llama models approval can take anywhere from a few hours to several weeks.
+**Note:** Depending on the organization, you can usually request access on the model's Hugging Face page. For example, Meta’s Llama models approval can take anywhere from a few hours to several weeks.
 
 **Dependencies:**  
 ```bash
@@ -91,11 +91,11 @@ Deployment typically takes a few minutes as the cluster is provisioned, the vLLM
 
 ---
 
-### Sending Requests
+### Send requests
 
-Your endpoint is available locally at `http://localhost:8000` and you can use a placeholder authentication token for the OpenAI client, for example `"FAKE_KEY"`
+Your endpoint is available locally at `http://localhost:8000` and you can use a placeholder authentication token for the OpenAI client, for example `"FAKE_KEY"`.
 
-Example Curl
+Example curl:
 
 
 ```bash
@@ -109,7 +109,7 @@ curl -X POST http://localhost:8000/v1/chat/completions \
       }'
 ```
 
-Example Python
+Example Python:
 
 
 ```python
@@ -137,7 +137,9 @@ for chunk in response:
 
 ---
 
-### Shutdown 
+### Shutdown
+
+Shutdown your LLM service: 
 
 
 ```bash
@@ -148,9 +150,9 @@ serve shutdown -y
 
 ---
 
-## Production Deployment with Anyscale Service
+## Deploy to production with Anyscale Services
 
-For production, it's recommended to use Anyscale Services to deploy Ray Serve apps on dedicated clusters without code changes. Anyscale provides scalability, fault tolerance, and load balancing, while also automating multi-node setup and autoscaling for large models like DeepSeek-R1.
+For production deployment, use Anyscale Services to deploy the Ray Serve app to a dedicated cluster without modifying the code. Anyscale provides scalability, fault tolerance, and load balancing, keeping the service resilient against node failures, high traffic, and rolling updates, while also automating multi-node setup and autoscaling for large models like DeepSeek-R1.
 
 **Beware**: this is an expensive deployment. At the time of writing, the deployment cost is around \$110 USD per hour in the `us-west-2` AWS region using on-demand instances. Because this node has a high amount of inter-node traffic, and cross-zone traffic is expensive (around \$0.02 per GB), it's recommended to *disable cross-zone autoscaling*. This demo is pre-configured with cross-zone autoscaling disabled for your convenience.
 
@@ -162,11 +164,11 @@ To provision nodes with 1000 GB of disk capacity, see [Changing the default disk
 
 ---
 
-### Launch
+### Launch the service
 
-Anyscale provides out-of-the-box images (`anyscale/ray-llm`) which comes pre-loaded with Ray Serve LLM, vLLM, and all required GPU/runtime dependencies. This makes it easy to get started without building a custom image.
+Anyscale provides out-of-the-box images (`anyscale/ray-llm`) which come pre-loaded with Ray Serve LLM, vLLM, and all required GPU/runtime dependencies. This makes it easy to get started without building a custom image.
 
-Write your Anyscale Service configuration in a new `service.yaml` file:
+Create your Anyscale Service configuration in a new `service.yaml` file:
 ```yaml
 #service.yaml
 name: deploy-deepseek-r1
@@ -207,7 +209,7 @@ Deploy your Service
 anyscale service deploy -f service.yaml
 ```
 
-> If your model is gated, make sure to pass your HuggingFace Token to the Service with `--env HF_TOKEN=<YOUR_HUGGINGFACE_TOKEN>`
+**Note:** If your model is gated, make sure to pass your HuggingFace Token to the Service with `--env HF_TOKEN=<YOUR_HUGGINGFACE_TOKEN>`
 
 **Custom Dockerfile**  
 You can customize the container by building your own Dockerfile. In your Anyscale Service config, reference the Dockerfile with `containerfile` (instead of `image_uri`):
@@ -225,17 +227,17 @@ See the [Anyscale base images](https://docs.anyscale.com/reference/base-images) 
 
 ---
 
-### Sending Requests 
+### Send requests 
 
-Both the endpoint and authentication token are shown in the output of the `anyscale service deploy` command:
+The `anyscale service deploy` command output shows both the endpoint and authentication token:
 ```console
 (anyscale +3.9s) curl -H "Authorization: Bearer <YOUR-TOKEN>" <YOUR-ENDPOINT>
 ```
-You can also retrieve both from the service page in the Anyscale Console. Just click the **Query** button at the top. See [Sending Requests](#sending-requests) for example requests, but make sure to put the correct endpoint and authentication token.  
+You can also retrieve both from the service page in the Anyscale Console. Click the **Query** button at the top. See [Send requests](#send-requests) for example requests, but make sure to use the correct endpoint and authentication token.  
 
 ---
 
-### Serve LLM Dashboard
+### Access the Serve LLM dashboard
 
 See [Enable LLM Monitoring](#enable-llm-monitoring) for instructions on enabling LLM-specific logging. To open the Ray Serve LLM Dashboard from an Anyscale Service:
 1. In the Anyscale console, go to your **Service** or **Workspace**
@@ -246,7 +248,7 @@ See [Enable LLM Monitoring](#enable-llm-monitoring) for instructions on enabling
 
 ### Shutdown 
  
-Shutdown your Anyscale Service
+Shutdown your Anyscale Service:
 
 
 ```bash
@@ -257,7 +259,7 @@ anyscale service terminate -n deploy-deepseek-r1
 
 ---
 
-## Enable LLM Monitoring
+## Enable LLM monitoring
 
 The *Serve LLM Dashboard* offers deep visibility into model performance, latency, and system behavior, including:
 
@@ -266,7 +268,7 @@ The *Serve LLM Dashboard* offers deep visibility into model performance, latency
 * KV cache utilization
 
 To enable these metrics, go to your LLM config and set `log_engine_metrics: true`. Ensure vLLM V1 is active with `VLLM_USE_V1: "1"`. 
-> `VLLM_USE_V1: "1"` is the default value with `ray >= 2.48.0` and can be omitted.
+**Note:** `VLLM_USE_V1: "1"` is the default value with `ray >= 2.48.0` and can be omitted.
 ```yaml
 applications:
 - ...
@@ -282,7 +284,7 @@ applications:
 
 ---
 
-## Improving Concurrency
+## Improve concurrency
 
 Ray Serve LLM uses [vLLM](https://docs.vllm.ai/en/stable/) as its backend engine, which logs the *maximum concurrency* it can support based on your configuration.  
 
@@ -296,10 +298,9 @@ Here are a few ways to improve concurrency depending on your model and hardware:
 **Reduce `max_model_len`**  
 Lowering `max_model_len` reduces the memory needed for KV cache.
 
-> *Example*:  
-> Running DeepSeek-R1 on 2 nodes with 8xH100-80&nbsp;GB GPUs each:
-> * `max_model_len = 32,768` → concurrency ≈ 29
-> * `max_model_len = 16,384` → concurrency ≈ 58
+**Example**: Running DeepSeek-R1 on 2 nodes with 8xH100-80&nbsp;GB GPUs each:
+* `max_model_len = 32,768` → concurrency ≈ 29
+* `max_model_len = 16,384` → concurrency ≈ 58
 
 **Use Distilled or Quantized Models**  
 Quantizing or distilling your model reduces its memory footprint, freeing up space for more KV cache and enabling more concurrent requests. For example, see [`deepseek-ai/DeepSeek-R1-Distill-Llama-70B`](https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Llama-70B) for a distilled version of DeepSeek-R1.
@@ -335,4 +336,4 @@ See this [Troubleshooting Guide](https://docs.anyscale.com/overview) for common 
 
 ## Summary
 
-In this tutorial, you deployed a medium-size LLM with Ray Serve LLM, from development to production. You learned how to configure Ray Serve LLM, deploy your service on your Ray Cluster, and how to send requests. you also learned how to monitor your app and common troubleshooting issues.
+In this tutorial, you deployed a large-size LLM with Ray Serve LLM, from development to production. You learned how to configure Ray Serve LLM, deploy your service on your Ray cluster, and how to send requests. You also learned how to monitor your app and common troubleshooting issues.

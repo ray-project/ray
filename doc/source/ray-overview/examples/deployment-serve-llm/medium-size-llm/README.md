@@ -1,16 +1,16 @@
 # Deploying a medium-size LLM
 
-A medium-size LLM typically runs on a single node with 4—8 GPUs and offers a balance between performance and efficiency. It provides stronger accuracy and reasoning than small models while remaining more affordable and resource-friendly than very large ones. This makes it a solid choice for production workloads that need good quality at lower cost, or for scaling applications where large models would be too slow or expensive.
+A medium-size LLM typically runs on a single node with 4-8 GPUs. It offers a balance between performance and efficiency. These models provide stronger accuracy and reasoning than small models while remaining more affordable and resource-friendly than very large ones. This makes them a solid choice for production workloads that need good quality at lower cost. They're also ideal for scaling applications where large models would be too slow or expensive.
 
-This tutorial walks you through deploying a medium-size LLM using Ray Serve LLM. For smaller model, see [Deploying a small-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/small-size-llm/README.html), and for larger models, see [Deploying a large-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/large-size-llm/README.html).
+This tutorial walks you through deploying a medium-size LLM using Ray Serve LLM. For smaller models, see [Deploying a small-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/small-size-llm/README.html), and for larger models, see [Deploying a large-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/large-size-llm/README.html).
 
 ---
 
 ## Configure Ray Serve LLM
 
-Make sure to set your Hugging Face token in the config file to access gated models like `Llama-3.1`.
+Set your Hugging Face token in the config file to access gated models like `Llama-3.1`.
 
-A medium-sized LLM can typically be deployed on a single node with multiple GPUs. To leverage all available GPUs, set `tensor_parallel_size` to the number of GPUs on the node, which distributes the model’s weights evenly across them.
+You can deploy a medium-sized LLM on a single node with multiple GPUs. To leverage all available GPUs, set `tensor_parallel_size` to the number of GPUs on the node, which distributes the model’s weights evenly across them.
 
 Ray Serve LLM provides multiple [Python APIs](https://docs.ray.io/en/latest/serve/api/index.html#llm-api) for defining your application. Use [`build_openai_app`](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.llm.build_openai_app.html#ray.serve.llm.build_openai_app) to build a full application from your [`LLMConfig`](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.llm.LLMConfig.html#ray.serve.llm.LLMConfig) object.
 
@@ -50,18 +50,18 @@ llm_config = LLMConfig(
 app = build_openai_app({"llm_configs": [llm_config]})
 ```
 
-> Before moving to a production setup, it's recommended to switch to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html). This makes your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines for example. See [Serving LLMs: Production Guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.
+**Note:** Before moving to a production setup, it's recommended to switch to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html). This makes your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines for example. See [Serving LLMs: Production Guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.
 
 ---
 
-## Local End-to-End Deployment
+## Deploy locally
 
 **Prerequisites**
 
 * Access to GPU compute.
-* (Optional) A **Hugging Face token** if using gated models like Meta’s Llama. Store it in `export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>`
+* (Optional) A **Hugging Face token** if using gated models like Meta’s Llama. Store it in `export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>`.
 
-> Depending on the organization, you can usually request access on the model's Hugging Face page. For example, Meta’s Llama models approval can take anywhere from a few hours to several weeks.
+**Note: **Depending on the organization, you can usually request access on the model's Hugging Face page. For example, Meta’s Llama models approval can take anywhere from a few hours to several weeks.
 
 **Dependencies:**  
 ```bash
@@ -86,11 +86,11 @@ Deployment typically takes a few minutes as the cluster is provisioned, the vLLM
 
 ---
 
-### Sending Requests
+### Send requests
 
-Your endpoint is available locally at `http://localhost:8000` and you can use a placeholder authentication token for the OpenAI client, for example `"FAKE_KEY"`
+Your endpoint is available locally at `http://localhost:8000` and you can use a placeholder authentication token for the OpenAI client, for example `"FAKE_KEY"`.
 
-Example Curl
+Example curl:
 
 
 ```bash
@@ -104,7 +104,7 @@ curl -X POST http://localhost:8000/v1/chat/completions \
       }'
 ```
 
-Example Python
+Example Python:
 
 
 ```python
@@ -132,7 +132,9 @@ for chunk in response:
 
 ---
 
-### Shutdown 
+### Shutdown
+
+Shutdown your LLM service: 
 
 
 ```bash
@@ -143,17 +145,17 @@ serve shutdown -y
 
 ---
 
-## Production Deployment with Anyscale Service
+## Deploy to production with Anyscale Services
 
-For production deployment, use Anyscale services to deploy the Ray Serve app to a dedicated cluster without modifying the code. Anyscale ensures scalability, fault tolerance, and load balancing, keeping the service resilient against node failures, high traffic, and rolling updates.
+For production deployment, use Anyscale Services to deploy the Ray Serve app to a dedicated cluster without modifying the code. Anyscale ensures scalability, fault tolerance, and load balancing, keeping the service resilient against node failures, high traffic, and rolling updates.
 
 ---
 
-### Launch
+### Launch the service
 
-Anyscale provides out-of-the-box images (`anyscale/ray-llm`) which comes pre-loaded with Ray Serve LLM, vLLM, and all required GPU/runtime dependencies. This makes it easy to get started without building a custom image.
+Anyscale provides out-of-the-box images (`anyscale/ray-llm`) which come pre-loaded with Ray Serve LLM, vLLM, and all required GPU/runtime dependencies. This makes it easy to get started without building a custom image.
 
-Write your Anyscale Service configuration in a new `service.yaml` file:
+Create your Anyscale Service configuration in a new `service.yaml` file:
 ```yaml
 #service.yaml
 name: deploy-llama-3-70b
@@ -167,7 +169,7 @@ applications:
 - import_path: serve_llama_3_1_70b:app
 ```
 
-Deploy your Service, make sure you forward your HuggingFace Token to the command.
+Deploy your Service. Make sure you forward your HuggingFace Token to the command.
 
 
 ```bash
@@ -191,17 +193,17 @@ See the [Anyscale base images](https://docs.anyscale.com/reference/base-images) 
 
 ---
 
-### Sending Requests 
+### Send requests 
 
-Both the endpoint and authentication token are shown in the output of the `anyscale service deploy` command:
+The `anyscale service deploy` command output shows both the endpoint and authentication token:
 ```console
 (anyscale +3.9s) curl -H "Authorization: Bearer <YOUR-TOKEN>" <YOUR-ENDPOINT>
 ```
-You can also retrieve both from the service page in the Anyscale Console. Just click the **Query** button at the top. See [Sending Requests](#sending-requests) for example requests, but make sure to put the correct endpoint and authentication token.  
+You can also retrieve both from the service page in the Anyscale Console. Click the **Query** button at the top. See [Send requests](#send-requests) for example requests, but make sure to use the correct endpoint and authentication token.  
 
 ---
 
-### Serve LLM Dashboard
+### Access the Serve LLM dashboard
 
 See [Enable LLM Monitoring](#enable-llm-monitoring) for instructions on enabling LLM-specific logging. To open the Ray Serve LLM Dashboard from an Anyscale Service:
 1. In the Anyscale console, go to your **Service** or **Workspace**
@@ -212,7 +214,7 @@ See [Enable LLM Monitoring](#enable-llm-monitoring) for instructions on enabling
 
 ### Shutdown 
  
-Shutdown your Anyscale Service
+Shutdown your Anyscale Service:
 
 
 ```bash
@@ -223,16 +225,16 @@ anyscale service terminate -n deploy-llama-3-70b
 
 ---
 
-## Enable LLM Monitoring
+## Enable LLM monitoring
 
 The *Serve LLM Dashboard* offers deep visibility into model performance, latency, and system behavior, including:
 
-* Token throughput (tokens/sec)
-* Latency metrics: Time To First Token (TTFT), Time Per Output Token (TPOT)
-* KV cache utilization
+* Token throughput (tokens/sec).
+* Latency metrics: Time To First Token (TTFT), Time Per Output Token (TPOT).
+* KV cache utilization.
 
 To enable these metrics, go to your LLM config and set `log_engine_metrics: true`. Ensure vLLM V1 is active with `VLLM_USE_V1: "1"`. 
-> `VLLM_USE_V1: "1"` is the default value with `ray >= 2.48.0` and can be omitted.
+**Note:** `VLLM_USE_V1: "1"` is the default value with `ray >= 2.48.0` and can be omitted.
 ```yaml
 applications:
 - ...
@@ -248,7 +250,7 @@ applications:
 
 ---
 
-## Improving Concurrency
+## Improve concurrency
 
 Ray Serve LLM uses [vLLM](https://docs.vllm.ai/en/latest/) as its backend engine, which logs the *maximum concurrency* it can support based on your configuration.  
 
@@ -262,10 +264,9 @@ Here are a few ways to improve concurrency depending on your model and hardware:
 **Reduce `max_model_len`**  
 Lowering `max_model_len` reduces the memory needed for KV cache.
 
-> *Example*:  
-> Running llama-3.1-70&nbsp;B On an A100-40G:
-> * `max_model_len = 32,768` → concurrency ≈ 13
-> * `max_model_len = 16,384` → concurrency ≈ 26
+**Example:** Running Llama-3.1-70B on an A100-40G:
+* `max_model_len = 32,768` → concurrency ≈ 13
+* `max_model_len = 16,384` → concurrency ≈ 26
 
 **Use Quantized Models**  
 Quantizing your model (for example, to FP8) reduces the model's memory footprint, freeing up memory for more KV cache and enabling more concurrent requests.
@@ -295,12 +296,12 @@ deployment_config:
 **HuggingFace Auth Errors**  
 Some models, such as Llama-3.1, are gated and require prior authorization from the organization. See your model’s documentation for instructions on obtaining access.
 
-**Out-Of-Memory Errors**  
-Out‑of‑memory (OOM) errors are one of the most common failure modes when deploying LLMs, especially as model sizes, and context length increase.  
+**Out-of-memory errors**  
+Out-of-memory (OOM) errors are one of the most common failure modes when deploying LLMs, especially as model sizes and context length increase.  
 See this [Troubleshooting Guide](https://docs.anyscale.com/overview) for common errors and how to fix them.
 
 ---
 
 ## Summary
 
-In this tutorial, you deployed a medium-size LLM with Ray Serve LLM, from development to production. You learned how to configure Ray Serve LLM, deploy your service on your Ray Cluster, and how to send requests. you also learned how to monitor your app and common troubleshooting issues.
+In this tutorial, you deployed a medium-size LLM with Ray Serve LLM, from development to production. You learned how to configure Ray Serve LLM, deploy your service on your Ray cluster, and how to send requests. You also learned how to monitor your app and common troubleshooting issues.
