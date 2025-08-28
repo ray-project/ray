@@ -23,7 +23,7 @@
 #include "mock/ray/raylet_client/raylet_client.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
 #include "ray/common/test_util.h"
-#include "ray/gcs/gcs_server/gcs_actor_manager.h"
+#include "ray/gcs/gcs_server/gcs_actor.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/util/counter_map.h"
 
