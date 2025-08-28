@@ -10,6 +10,7 @@ from typing import (
     List,
     Literal,
     Optional,
+    Set,
     Tuple,
     TypeVar,
     Union,
@@ -86,8 +87,6 @@ from ray.data.datasource import (
     BaseFileMetadataProvider,
     Connection,
     Datasource,
-    MCAPFilterConfig,
-    ExternalIndexConfig,
     PathPartitionFilter,
 )
 from ray.data.datasource.datasource import Reader
@@ -2106,8 +2105,11 @@ def read_tfrecords(
 def read_mcap(
     paths: Union[str, List[str]],
     *,
-    filter_config: Optional["MCAPFilterConfig"] = None,
-    external_index_config: Optional["ExternalIndexConfig"] = None,
+    channels: Optional[Set[str]] = None,
+    topics: Optional[Set[str]] = None,
+    time_range: Optional[Tuple[int, int]] = None,
+    message_types: Optional[Set[str]] = None,
+    include_metadata: bool = True,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = -1,
     ray_remote_args: Optional[Dict[str, Any]] = None,
@@ -2138,15 +2140,11 @@ def read_mcap(
 
         Read with filtering for specific channels and time range.
 
-        >>> from ray.data.datasource import MCAPFilterConfig
-        >>> filter_config = MCAPFilterConfig(
-        ...     channels={"camera", "lidar"},
-        ...     time_range=(1000000000, 5000000000),  # 1-5 seconds in nanoseconds
-        ...     message_types={"Image", "PointCloud"}
-        ... )
         >>> ds = ray.data.read_mcap( # doctest: +SKIP
         ...     "s3://bucket/mcap-data/", # doctest: +SKIP
-        ...     filter_config=filter_config # doctest: +SKIP
+        ...     channels={"camera", "lidar"}, # doctest: +SKIP
+        ...     time_range=(1000000000, 5000000000),  # 1-5 seconds in nanoseconds # doctest: +SKIP
+        ...     message_types={"sensor_msgs/Image", "sensor_msgs/PointCloud2"} # doctest: +SKIP
         ... ) # doctest: +SKIP
 
         Read multiple local files with include_paths.
@@ -2156,13 +2154,28 @@ def read_mcap(
         ...     include_paths=True # doctest: +SKIP
         ... ) # doctest: +SKIP
 
+        Read with topic filtering and metadata inclusion.
+
+        >>> ds = ray.data.read_mcap( # doctest: +SKIP
+        ...     "data.mcap", # doctest: +SKIP
+        ...     topics={"/camera/image_raw", "/lidar/points"}, # doctest: +SKIP
+        ...     include_metadata=True, # doctest: +SKIP
+        ...     include_paths=True # doctest: +SKIP
+        ... ) # doctest: +SKIP
+
     Args:
         paths: A single file or directory, or a list of file or directory paths.
             A list of paths can contain both files and directories.
-        filter_config: Optional filter configuration for predicate pushdown optimization.
-            Includes channel filtering, topic filtering, time range filtering, and
-            message type filtering.
-        external_index_config: Optional external index configuration for optimization.
+        channels: Optional set of channel names to include. If specified, only messages
+            from these channels will be read. Mutually exclusive with `topics`.
+        topics: Optional set of topic names to include. If specified, only messages
+            from these topics will be read. Mutually exclusive with `channels`.
+        time_range: Optional tuple of (start_time, end_time) in nanoseconds for filtering
+            messages by timestamp. Both values must be non-negative and start_time < end_time.
+        message_types: Optional set of message type names (schema names) to include.
+            Only messages with matching schema names will be read.
+        include_metadata: Whether to include MCAP metadata fields in the output.
+            Defaults to True. When True, includes schema, channel, and message metadata.
         filesystem: The PyArrow filesystem implementation to read from.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
@@ -2203,10 +2216,17 @@ def read_mcap(
     if file_extensions is None:
         file_extensions = ["mcap"]
 
+    # Validate that channels and topics are not both specified
+    if channels is not None and topics is not None:
+        raise ValueError("Cannot specify both 'channels' and 'topics'. Use one or the other.")
+
     datasource = MCAPDatasource(
         paths,
-        filter_config=filter_config,
-        external_index=external_index_config,
+        channels=channels,
+        topics=topics,
+        time_range=time_range,
+        message_types=message_types,
+        include_metadata=include_metadata,
         filesystem=filesystem,
         meta_provider=meta_provider,
         partition_filter=partition_filter,

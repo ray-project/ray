@@ -18,6 +18,7 @@ from ray.data.datasource.file_based_datasource import (
     _S3FileSystemWrapper,
 )
 from ray.data.datasource.file_datasink import (
+    BlockBasedFileDatasink,
     RowBasedFileDatasink,
 )
 from ray.data.datasource.file_meta_provider import (
@@ -36,8 +37,6 @@ from ray.data.datasource.partitioning import (
 )
 from ray.data._internal.datasource.mcap_datasource import (
     MCAPDatasource,
-    MCAPFilterConfig,
-    ExternalIndexConfig,
 )
 from ray.data._internal.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
@@ -60,8 +59,6 @@ __all__ = [
     "FileMetadataProvider",
     "FilenameProvider",
     "MCAPDatasource",
-    "MCAPFilterConfig",
-    "ExternalIndexConfig",
     "ParquetMetadataProvider",
     "PartitionStyle",
     "PathPartitionFilter",
@@ -71,6 +68,7 @@ __all__ = [
     "ReadTask",
     "Reader",
     "RowBasedFileDatasink",
+    "BlockBasedFileDatasink",
     "_S3FileSystemWrapper",
     "WriteResult",
     "WriteReturnType",

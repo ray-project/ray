@@ -1408,9 +1408,9 @@ py_test(
 )
 
 py_test(
-    name = "test_mcap_datasource",
+    name = "test_mcap",
     size = "medium",
-    srcs = ["tests/test_mcap_datasource.py"],
+    srcs = ["tests/test_mcap.py"],
     tags = [
         "exclusive",
         "team:data",
