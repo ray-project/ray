@@ -230,9 +230,9 @@ class NvidiaGpuProvider(GpuProvider):
             1       7175     C     86     26      -      -      -      -    ray::TorchGPUWo
             2          -     -      -      -      -      -      -      -    -
 
-        Returns a dict mapping GPU index to list of ProcessGPUInfo.
+        Returns a dict mapping GPU index to dict of pid to ProcessGPUInfo.
         """
-        process_utilizations = defaultdict(list)
+        process_utilizations = defaultdict(dict)
         lines = nvsmi_stdout.splitlines()
         # Get the first line that is started with #
         table_header = None
@@ -275,7 +275,7 @@ class NvidiaGpuProvider(GpuProvider):
                 ),  # Convert percentage to MB
                 gpu_utilization=sm,
             )
-            process_utilizations[gpu_id].append(process_info)
+            process_utilizations[gpu_id][pid] = process_info
         return process_utilizations
 
     def _get_pynvml_gpu_usage(self) -> List[GpuUtilizationInfo]:
