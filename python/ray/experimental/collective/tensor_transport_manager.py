@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import List, Optional, TYPE_CHECKING
 from ray.util.collective.types import TensorTransportMetadata, CommunicatorMetadata
+from ray.util.collective.types import Backend
 from ray._private.custom_types import TensorTransportEnum
 
 import ray
@@ -10,6 +11,15 @@ if TYPE_CHECKING:
 
 
 class TensorTransportManager(ABC):
+    @property
+    @abstractmethod
+    def tensor_transport_backend(self) -> Backend:
+        """The tensor transport backend, e.g., NCCL.
+
+        Returns:
+            Backend: The backend of the tensor transport.
+        """
+
     @staticmethod
     @abstractmethod
     def is_one_sided() -> bool:
@@ -17,6 +27,17 @@ class TensorTransportManager(ABC):
 
         Returns:
             bool: True if the backend is one-sided, False otherwise.
+        """
+
+    @abstractmethod
+    def actor_has_tensor_transport(self, actor: "ray.actor.ActorHandle") -> bool:
+        """Whether the actor has the tensor transport available.
+
+        Args:
+            actor: The actor to check.
+
+        Returns:
+            bool: True if the actor has the tensor transport available, False otherwise.
         """
 
     @staticmethod
@@ -64,6 +85,7 @@ class TensorTransportManager(ABC):
     def send_object(
         src_actor: "ray.actor.ActorHandle",
         obj_id: str,
+        tensor_transport_meta: TensorTransportMetadata,
         communicator_metadata_ref: CommunicatorMetadata,
     ):
         """
@@ -72,6 +94,7 @@ class TensorTransportManager(ABC):
         Args:
             src_actor: The actor that runs this function.
             obj_id: The ID of the GPU object to send.
+            tensor_transport_meta: The tensor transport metadata for the GPU object.
             communicator_metadata_ref: The ObjectRef of communicator metadata for the send/recv operation.
         """
         from ray.experimental.gpu_object_manager.gpu_object_store import __ray_send__
@@ -83,6 +106,7 @@ class TensorTransportManager(ABC):
         src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
             __ray_send__,
             obj_id,
+            tensor_transport_meta,
             communicator_metadata_ref,
         )
 
