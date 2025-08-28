@@ -93,7 +93,10 @@ class LLMRouter(_LLMRouter):
 
 @PublicAPI(stability="alpha")
 def build_llm_deployment(
-    llm_config: "LLMConfig", *, name_prefix: Optional[str] = None
+    llm_config: "LLMConfig",
+    *,
+    name_prefix: Optional[str] = None,
+    override_serve_options: Optional[dict] = None,
 ) -> "Application":
     """Helper to build a single vllm deployment from the given llm config.
 
@@ -150,13 +153,18 @@ def build_llm_deployment(
     Args:
         llm_config: The llm config to build vllm deployment.
         name_prefix: Optional prefix to be used for the deployment name.
+        override_serve_options: Optional serve options to override the original serve options based on the llm_config.
 
     Returns:
         The configured Ray Serve Application for vllm deployment.
     """
     from ray.llm._internal.serve.builders import build_llm_deployment
 
-    return build_llm_deployment(llm_config=llm_config, name_prefix=name_prefix)
+    return build_llm_deployment(
+        llm_config=llm_config,
+        name_prefix=name_prefix,
+        override_serve_options=override_serve_options,
+    )
 
 
 @PublicAPI(stability="alpha")
