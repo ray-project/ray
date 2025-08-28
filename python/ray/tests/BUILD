@@ -631,6 +631,7 @@ py_test_module_list(
     files = [
         "test_gpu_objects_nccl.py",
         "test_gpu_objects_nixl.py",
+        "test_gpu_objects_metadata.py"
     ],
     tags = [
         "exclusive",
