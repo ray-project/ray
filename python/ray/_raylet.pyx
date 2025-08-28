@@ -598,7 +598,7 @@ class SerializedRayObject(NamedTuple):
 
 
 cdef RayObjectsToSerializedRayObjects(
-        const c_vector[shared_ptr[CRayObject]] objects):
+        const c_vector[shared_ptr[CRayObject]] objects, object_refs: Optional[List[ObjectRef]] = None):
     serialized_ray_objects = []
     for i in range(objects.size()):
         # core_worker will return a nullptr for objects that couldn't be
@@ -614,6 +614,11 @@ cdef RayObjectsToSerializedRayObjects(
                 metadata = Buffer.make(
                     objects[i].get().GetMetadata()).to_pybytes()
             tensor_transport = TensorTransportEnum(<int>(objects[i].get().GetTensorTransport()))
+            if (
+                tensor_transport == TensorTransportEnum.OBJECT_STORE
+                and object_refs is not None
+            ):
+                tensor_transport = TensorTransportEnum(object_refs[i].tensor_transport())
             serialized_ray_objects.append(SerializedRayObject(data, metadata, tensor_transport))
     return serialized_ray_objects
 
@@ -622,11 +627,13 @@ cdef VectorToObjectRefs(const c_vector[CObjectReference] &object_refs,
                         skip_adding_local_ref):
     result = []
     for i in range(object_refs.size()):
+        tensor_transport_val = <int>object_refs[i].tensor_transport()
         result.append(ObjectRef(
             object_refs[i].object_id(),
             object_refs[i].owner_address().SerializeAsString(),
             object_refs[i].call_site(),
-            skip_adding_local_ref=skip_adding_local_ref))
+            skip_adding_local_ref=skip_adding_local_ref,
+            tensor_transport_val=tensor_transport_val))
     return result
 
 
@@ -937,11 +944,13 @@ cdef prepare_args_internal(
             op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
                     c_arg, &c_owner_address)
             check_status(op_status)
+            c_tensor_transport = (<ObjectRef>arg).c_tensor_transport()
             args_vector.push_back(
                 unique_ptr[CTaskArg](new CTaskArgByReference(
                     c_arg,
                     c_owner_address,
-                    arg.call_site())))
+                    arg.call_site(),
+                    c_tensor_transport)))
 
         else:
             try:
@@ -998,7 +1007,8 @@ cdef prepare_args_internal(
                     new CTaskArgByReference(
                             put_id,
                             CCoreWorkerProcess.GetCoreWorker().GetRpcAddress(),
-                            put_arg_call_site
+                            put_arg_call_site,
+                            TENSOR_TRANSPORT_OBJECT_STORE
                         )))
                 incremented_put_arg_ids.push_back(put_id)
 
@@ -1882,10 +1892,10 @@ cdef void execute_task(
                 if c_args.empty():
                     args, kwargs = [], {}
                 else:
-                    metadata_pairs = RayObjectsToSerializedRayObjects(c_args)
                     object_refs = VectorToObjectRefs(
                             c_arg_refs,
                             skip_adding_local_ref=False)
+                    metadata_pairs = RayObjectsToSerializedRayObjects(c_args, object_refs)
                     if core_worker.current_actor_is_asyncio():
                         # We deserialize objects in event loop thread to
                         # prevent segfaults. See #7799
@@ -4155,6 +4165,11 @@ cdef class CoreWorker:
                                          method_meta.retry_exceptions,
                                          method_meta.generator_backpressure_num_objects, # noqa
                                          method_meta.enable_task_events,
+                                         # TODO(swang): Pass
+                                         # enable_tensor_transport when
+                                         # serializing an ActorHandle and
+                                         # sending to another actor.
+                                         False,  # enable_tensor_transport
                                          method_meta.method_name_to_tensor_transport,
                                          actor_method_cpu,
                                          actor_creation_function_descriptor,
@@ -4173,6 +4188,7 @@ cdef class CoreWorker:
                                          {},  # method retry_exceptions
                                          {},  # generator_backpressure_num_objects
                                          {},  # enable_task_events
+                                         False,  # enable_tensor_transport
                                          None,  # method_name_to_tensor_transport
                                          0,  # actor method cpu
                                          actor_creation_function_descriptor,
