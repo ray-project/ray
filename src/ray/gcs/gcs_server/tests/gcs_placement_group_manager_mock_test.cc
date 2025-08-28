@@ -17,10 +17,10 @@
 // clang-format off
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
-#include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
+#include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
-#include "mock/ray/gcs/gcs_server/gcs_placement_group_mgr.h"
+#include "mock/ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
 #include "mock/ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "mock/ray/gcs/store_client/store_client.h"
