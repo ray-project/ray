@@ -508,8 +508,8 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingWithPreferredNodeTest) {
   // Remote node is feasible but has no available resource.
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
       remote_node_id, remote_resource_total, {{"CPU", 0}});
-  LeaseSpecification lease_spec1(std::move(spec_builder_1).ConsumeAndBuild().GetMessage(),
-                                 false);
+  LeaseSpecification lease_spec1(
+      std::move(spec_builder_1).ConsumeAndBuild().GetMessage());
   auto node_id_3 = resource_scheduler.GetBestSchedulableNode(
       lease_spec1,
       /*preferred_node_id=*/local_node_id.Binary(),
@@ -552,8 +552,8 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingWithPreferredNodeTest) {
                                    "",
                                    nullptr);
   spec_builder_2.SetNormalTaskSpec(0, false, "", scheduling_strategy, ActorID::Nil());
-  LeaseSpecification lease_spec2(std::move(spec_builder_2).ConsumeAndBuild().GetMessage(),
-                                 false);
+  LeaseSpecification lease_spec2(
+      std::move(spec_builder_2).ConsumeAndBuild().GetMessage());
   auto node_id_4 = resource_scheduler.GetBestSchedulableNode(
       lease_spec2,
       /*preferred_node_id=*/local_node_id.Binary(),
@@ -1852,7 +1852,7 @@ TEST_F(ClusterResourceSchedulerTest, LabelSelectorIsSchedulableOnNodeTest) {
   label_selector_spec.SetNormalTaskSpec(
       0, false, "", scheduling_strategy, ActorID::Nil());
   auto built_label_selector = std::move(label_selector_spec).ConsumeAndBuild();
-  LeaseSpecification lease_spec(built_label_selector.GetMessage(), false);
+  LeaseSpecification lease_spec(built_label_selector.GetMessage());
   resource_scheduler.GetBestSchedulableNode(lease_spec, "", false, false, &is_infeasible);
   ASSERT_TRUE(is_infeasible);
 

@@ -28,7 +28,7 @@ LeaseSpecification CreateFakeLease(std::vector<ObjectID> deps) {
   for (auto &dep : deps) {
     spec.add_dependencies()->set_object_id(dep.Binary());
   }
-  spec.set_lease_id(LeaseID::FromRandom());
+  spec.set_lease_id(LeaseID::FromRandom().Binary());
   spec.mutable_scheduling_strategy()->mutable_default_scheduling_strategy();
   return LeaseSpecification(spec);
 }
