@@ -340,7 +340,7 @@ Key differences for embedding models:
 - Set ``task_type="embed"``
 - Set ``apply_chat_template=False`` and ``detokenize=False``
 - Use direct ``prompt`` input instead of ``messages``
-- Access embeddings via ``row["embeddings"]``
+- Access embeddings through``row["embeddings"]``
 
 .. _openai_compatible_api_endpoint:
 
