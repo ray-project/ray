@@ -1,6 +1,6 @@
 # Start with an Anyscale base image.
 # Use the drop-down above to browse through all available images.
-FROM anyscale/ray:2.48.0-slim-py312-cu128
+FROM anyscale/ray:2.49.0-slim-py312-cu128
 
 # Add your pip dependencies here. Disable cache for a smaller image to optimize build and cluster startup time.
 # RUN pip install --no-cache-dir --upgrade <package1> <package2>
