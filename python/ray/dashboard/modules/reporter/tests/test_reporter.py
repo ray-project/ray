@@ -1017,6 +1017,10 @@ def test_reporter_worker_cpu_percent():
         def _generate_worker_key(self, proc):
             return (proc.pid, proc.create_time())
 
+        def _get_worker_processes(self):
+            return ReporterAgent._get_worker_processes(self)
+
+
     obj = ReporterAgentDummy()
 
     try:
