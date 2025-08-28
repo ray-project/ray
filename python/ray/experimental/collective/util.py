@@ -1,4 +1,4 @@
-from typing import Tuple, TYPE_CHECKING
+from typing import Tuple
 from contextlib import closing
 import socket
 
@@ -10,9 +10,6 @@ from ray.experimental.collective.nixl_tensor_transport import NixlTensorTranspor
 from ray.experimental.collective.collective_tensor_transport import (
     CollectiveTensorTransport,
 )
-
-if TYPE_CHECKING:
-    import torch
 
 # Singleton instances for tensor transport managers
 _nixl_tensor_transport_manager = None
@@ -40,18 +37,6 @@ def get_tensor_transport_manager(
         if _collective_tensor_transport_manager is None:
             _collective_tensor_transport_manager = CollectiveTensorTransport()
         return _collective_tensor_transport_manager
-    else:
-        raise ValueError(f"Unsupported tensor transport protocol: {tensor_transport}")
-
-
-def device_match_transport(device: "torch.device", tensor_transport: Backend) -> bool:
-    """Check if the device matches the transport."""
-    if tensor_transport == Backend.NIXL:
-        return device.type == "cuda" or device.type == "cpu"
-    elif tensor_transport == Backend.TORCH_GLOO:
-        return device.type == "cpu"
-    elif tensor_transport == Backend.NCCL:
-        return device.type == "cuda"
     else:
         raise ValueError(f"Unsupported tensor transport protocol: {tensor_transport}")
 
