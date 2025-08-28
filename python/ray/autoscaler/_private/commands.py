@@ -824,8 +824,16 @@ def get_or_create_head_node(
 
         # Use RAY_UP_enable_autoscaler_v2 instead of RAY_enable_autoscaler_v2
         # to avoid accidentally enabling autoscaler v2 for ray up
-        # due to env inheritance.
-        if os.getenv("RAY_UP_enable_autoscaler_v2", "0") == "1":
+        # due to env inheritance. The default value is 1 since Ray 2.50.0.
+        if os.getenv("RAY_UP_enable_autoscaler_v2", "1") == "1":
+            if "RAY_UP_enable_autoscaler_v2" not in os.environ:
+                # TODO (rueian): Remove this notice after Ray 2.52.0.
+                cli_logger.print(
+                    "Autoscaler v2 is now enabled by default (since Ray 2.50.0). "
+                    "To switch back to v1, set {}=0. This message can be suppressed by setting {} explicitly.",
+                    cf.bold("RAY_UP_enable_autoscaler_v2"),
+                    cf.bold("RAY_UP_enable_autoscaler_v2"),
+                )
             ray_start_commands = with_envs(
                 ray_start_commands,
                 {
