@@ -117,16 +117,6 @@ namespace rpc {
                       HANDLER,               \
                       RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
-#define TASK_INFO_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(TaskInfoGcsService,      \
-                      HANDLER,                 \
-                      RayConfig::instance().gcs_max_active_rpcs_per_handler())
-
-#define RAY_EVENT_EXPORT_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(RayEventExportGcsService,       \
-                      HANDLER,                        \
-                      RayConfig::instance().gcs_max_active_rpcs_per_handler())
-
 #define OBJECT_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(ObjectInfoGcsService,      \
                       HANDLER,                   \
@@ -291,83 +281,8 @@ class PlacementGroupInfoGrpcService : public GrpcService {
   PlacementGroupInfoGcsServiceHandler &service_handler_;
 };
 
-class TaskInfoGcsServiceHandler {
- public:
-  virtual ~TaskInfoGcsServiceHandler() = default;
-
-  virtual void HandleAddTaskEventData(AddTaskEventDataRequest request,
-                                      AddTaskEventDataReply *reply,
-                                      SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetTaskEvents(GetTaskEventsRequest request,
-                                   GetTaskEventsReply *reply,
-                                   SendReplyCallback send_reply_callback) = 0;
-};
-
-/// The `GrpcService` for `TaskInfoGcsService`.
-class TaskInfoGrpcService : public GrpcService {
- public:
-  /// Constructor.
-  ///
-  /// \param[in] io_service IO service to run the handler.
-  /// \param[in] handler The service handler that actually handle the requests.
-  explicit TaskInfoGrpcService(instrumented_io_context &io_service,
-                               TaskInfoGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler){};
-
- protected:
-  grpc::Service &GetGrpcService() override { return service_; }
-
-  void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id) override {
-    TASK_INFO_SERVICE_RPC_HANDLER(AddTaskEventData);
-    TASK_INFO_SERVICE_RPC_HANDLER(GetTaskEvents);
-  }
-
- private:
-  /// The grpc async service object.
-  TaskInfoGcsService::AsyncService service_;
-  /// The service handler that actually handle the requests.
-  TaskInfoGcsServiceHandler &service_handler_;
-};
-
-class RayEventExportGcsServiceHandler {
- public:
-  virtual ~RayEventExportGcsServiceHandler() = default;
-  virtual void HandleAddEvents(AddEventsRequest request,
-                               AddEventsReply *reply,
-                               SendReplyCallback send_reply_callback) = 0;
-};
-
-/// The `GrpcService` for `RayEventExportGcsService`.
-class RayEventExportGrpcService : public GrpcService {
- public:
-  explicit RayEventExportGrpcService(instrumented_io_context &io_service,
-                                     RayEventExportGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler) {}
-
- protected:
-  grpc::Service &GetGrpcService() override { return service_; }
-  void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id) override {
-    RAY_EVENT_EXPORT_SERVICE_RPC_HANDLER(AddEvents);
-  }
-
- private:
-  /// The grpc async service object.
-  RayEventExportGcsService::AsyncService service_;
-  /// The service handler that actually handle the requests.
-  RayEventExportGcsServiceHandler &service_handler_;
-};
-
 using ActorInfoHandler = ActorInfoGcsServiceHandler;
 using PlacementGroupInfoHandler = PlacementGroupInfoGcsServiceHandler;
-using TaskInfoHandler = TaskInfoGcsServiceHandler;
-using RayEventExportHandler = RayEventExportGcsServiceHandler;
 
 }  // namespace rpc
 }  // namespace ray
