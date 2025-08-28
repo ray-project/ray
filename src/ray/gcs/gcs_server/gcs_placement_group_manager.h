@@ -33,10 +33,8 @@
 #include "ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/gcs_server/grpc_service_interfaces.h"
 #include "ray/gcs/gcs_server/usage_stats_client.h"
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/rpc/gcs/gcs_rpc_server.h"
-#include "ray/rpc/worker/core_worker_client.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/exponential_backoff.h"
 #include "ray/util/time.h"
@@ -52,7 +50,7 @@ namespace gcs {
 /// the head of the queue and schedule it. If schedule success, using the
 /// SchedulePendingPlacementGroups() Immediately. else wait for a short time beforw using
 /// SchedulePendingPlacementGroups() next time.
-class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
+class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler {
  public:
   /// Create a GcsPlacementGroupManager
   ///

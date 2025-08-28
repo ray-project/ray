@@ -12,15 +12,15 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "gcs_placement_group_mgr_mock_test",
+    name = "gcs_placement_group_manager_mock_test",
     size = "small",
     srcs = [
-        "gcs_placement_group_mgr_mock_test.cc",
+        "gcs_placement_group_manager_mock_test.cc",
     ],
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
-        "//src/ray/gcs/gcs_server:gcs_server_lib",
+        "//src/ray/gcs/gcs_server:gcs_placement_group_manager",
         "//src/ray/gcs/tests:gcs_test_util_lib",
         "//src/ray/util:counter_map",
         "@com_google_googletest//:gtest_main",
@@ -148,10 +148,10 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "gcs_placement_group_mgr_test",
+    name = "gcs_placement_group_manager_test",
     size = "small",
     srcs = [
-        "gcs_placement_group_mgr_test.cc",
+        "gcs_placement_group_manager_test.cc",
     ],
     tags = [
         "no_tsan",
@@ -160,7 +160,7 @@ ray_cc_test(
     deps = [
         "//:ray_mock",
         "//src/mock/ray/pubsub:mock_publisher",
-        "//src/ray/gcs/gcs_server:gcs_server_lib",
+        "//src/ray/gcs/gcs_server:gcs_placement_group_manager",
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/tests:gcs_test_util_lib",
         "//src/ray/util:counter_map",

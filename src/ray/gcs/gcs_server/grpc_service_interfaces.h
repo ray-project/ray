@@ -227,5 +227,35 @@ class RayEventExportGcsServiceHandler {
                                SendReplyCallback send_reply_callback) = 0;
 };
 
+class PlacementGroupInfoGcsServiceHandler {
+ public:
+  virtual ~PlacementGroupInfoGcsServiceHandler() = default;
+
+  virtual void HandleCreatePlacementGroup(CreatePlacementGroupRequest request,
+                                          CreatePlacementGroupReply *reply,
+                                          SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleRemovePlacementGroup(RemovePlacementGroupRequest request,
+                                          RemovePlacementGroupReply *reply,
+                                          SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetPlacementGroup(GetPlacementGroupRequest request,
+                                       GetPlacementGroupReply *reply,
+                                       SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllPlacementGroup(GetAllPlacementGroupRequest request,
+                                          GetAllPlacementGroupReply *reply,
+                                          SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleWaitPlacementGroupUntilReady(
+      WaitPlacementGroupUntilReadyRequest request,
+      WaitPlacementGroupUntilReadyReply *reply,
+      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetNamedPlacementGroup(GetNamedPlacementGroupRequest request,
+                                            GetNamedPlacementGroupReply *reply,
+                                            SendReplyCallback send_reply_callback) = 0;
+};
+
 }  // namespace rpc
 }  // namespace ray

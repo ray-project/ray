@@ -12,6 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#pragma once
+
+#include <gmock/gmock.h>
+
+#include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
+
 namespace ray {
 namespace gcs {
 
