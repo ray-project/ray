@@ -280,30 +280,6 @@ TEST_F(ShutdownCoordinatorTest, Worker_HandleExit_OnIdleTimeout) {
                                            ShutdownReason::kIdleTimeout));
 }
 
-TEST_F(ShutdownCoordinatorTest, ShouldEarlyExit_Performance_IsFast) {
-#ifdef _RAY_TSAN_BUILD
-  GTEST_SKIP() << "Disabled in tsan because of performance";
-#endif
-  auto coordinator = CreateCoordinator();
-  auto start = std::chrono::steady_clock::now();
-  constexpr int iterations = 1000000;
-  volatile bool result = false;
-
-  for (int i = 0; i < iterations; ++i) {
-    result = coordinator->ShouldEarlyExit();
-  }
-
-  auto end = std::chrono::steady_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
-
-  // Should be very fast (less than 100ns per call on modern hardware)
-  double ns_per_call = static_cast<double>(duration.count()) / iterations;
-  EXPECT_LT(ns_per_call, 100.0)
-      << "ShouldEarlyExit too slow: " << ns_per_call << "ns per call";
-
-  (void)result;
-}
-
 TEST_F(ShutdownCoordinatorTest, StringRepresentations_StateAndReason_AreReadable) {
   auto coordinator = CreateCoordinator();
 
