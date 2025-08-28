@@ -99,79 +99,23 @@ class BroadcastJoinFunction:
                 f"Supported types are: {list(_JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP.keys())}"
             )
 
-        # Coalesce the small dataset to a single partition and materialize
-        try:
-            # Repartition to 1 partition and materialize
-            # For small datasets, this should be very fast
-            coalesced_ds = small_table_dataset.repartition(1).materialize()
+        # Materialize the small dataset for broadcasting
+        # Repartition to 1 partition and materialize
+        coalesced_ds = small_table_dataset.repartition(1).materialize()
 
-            # Get PyArrow table reference from the dataset
-            arrow_refs = coalesced_ds.to_arrow_refs()
-            if len(arrow_refs) != 1:
-                # Combine multiple references into one
-                import pyarrow as pa
-
-                arrow_tables = [ray.get(ref) for ref in arrow_refs]
-                if arrow_tables:
-                    self.small_table = pa.concat_tables(arrow_tables)
-                else:
-                    # Create an empty table with the correct schema if possible
-                    try:
-                        # Try to get schema from the original dataset
-                        sample_refs = small_table_dataset.limit(1).to_arrow_refs()
-                        if sample_refs:
-                            sample_table = ray.get(sample_refs[0])
-                            if sample_table.schema:
-                                # Create empty table with same schema
-                                self.small_table = pa.table(
-                                    [[] for _ in sample_table.schema],
-                                    schema=sample_table.schema,
-                                )
-                            else:
-                                self.small_table = pa.table({})
-                        else:
-                            self.small_table = pa.table({})
-                    except Exception:
-                        self.small_table = pa.table({})
-            else:
-                self.small_table = ray.get(arrow_refs[0])
-
-        except Exception as e:
-            import warnings
-
-            warnings.warn(
-                f"Warning: {e}. \nThe dataset being broadcast is likely too large "
-                f"to fit in memory or there was an error during materialization. "
-                "Falling back to empty table."
-            )
-            # Create an empty table as fallback
+        # Get PyArrow table reference from the dataset
+        arrow_refs = coalesced_ds.to_arrow_refs()
+        if len(arrow_refs) != 1:
+            # Combine multiple references into one
             import pyarrow as pa
 
-            # Try to get schema from the original dataset for better fallback
-            try:
-                sample_refs = small_table_dataset.limit(1).to_arrow_refs()
-                if sample_refs:
-                    sample_table = ray.get(sample_refs[0])
-                    if sample_table.schema:
-                        # Create empty table with same schema
-                        self.small_table = pa.table(
-                            [[] for _ in sample_table.schema],
-                            schema=sample_table.schema,
-                        )
-                    else:
-                        self.small_table = pa.table({})
-                else:
-                    self.small_table = pa.table({})
-            except Exception:
+            arrow_tables = [ray.get(ref) for ref in arrow_refs]
+            if arrow_tables:
+                self.small_table = pa.concat_tables(arrow_tables)
+            else:
                 self.small_table = pa.table({})
-
-        # Store the original dataset as fallback if materialization failed
-        self._fallback_dataset = small_table_dataset
-        self._materialization_succeeded = (
-            hasattr(self.small_table, "schema")
-            and len(self.small_table.schema) > 0
-            and self.small_table.num_rows > 0
-        )
+        else:
+            self.small_table = ray.get(arrow_refs[0])
 
     def __call__(self, batch: DataBatch) -> DataBatch:
         """Perform PyArrow join on a batch from the large table.
@@ -187,49 +131,14 @@ class BroadcastJoinFunction:
             Joined batch containing the result of the join operation.
 
         Note:
-            If the small dataset cannot be materialized, a warning will be logged
-            and an empty table will be used as fallback.
+            The small dataset must be materializable for broadcast joins to work.
+            If materialization fails, the join will fail.
         """
         import pyarrow as pa
 
         # Convert batch to PyArrow table if needed
         if isinstance(batch, dict):
             batch = pa.table(batch)
-
-        # If materialization failed, try to get the small table from the fallback dataset
-        if not self._materialization_succeeded:
-            try:
-                # Try to get a small sample from the fallback dataset
-                fallback_refs = self._fallback_dataset.limit(1000).to_arrow_refs()
-                if fallback_refs:
-                    fallback_tables = [ray.get(ref) for ref in fallback_refs]
-                    if fallback_tables:
-                        self.small_table = pa.concat_tables(fallback_tables)
-                        self._materialization_succeeded = True
-            except Exception:
-                # If all else fails, use empty table
-                pass
-
-        # If we still don't have a valid small table, we can't proceed with the join
-        if not self._materialization_succeeded or self.small_table.num_rows == 0:
-            # For joins that require data from the small table, return empty result
-            # This is the safest fallback when the small table cannot be materialized
-            import pyarrow as pa
-
-            # Try to create an empty result with the expected schema
-            try:
-                # Get schema from the batch
-                if hasattr(batch, "schema") and batch.schema:
-                    # Create empty table with batch schema
-                    empty_result = pa.table(
-                        [[] for _ in batch.schema], schema=batch.schema
-                    )
-                    return empty_result
-                else:
-                    # Fallback to empty table
-                    return pa.table({})
-            except Exception:
-                return pa.table({})
 
         # Get the appropriate PyArrow join type for standard joins
         arrow_join_type = _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP[self.join_type]
@@ -241,57 +150,42 @@ class BroadcastJoinFunction:
         )
 
         # Validate that both tables have the required key columns
-        try:
-            if self.datasets_swapped:
-                # Validate small table (originally left) has required key columns
-                missing_keys = [
-                    col
-                    for col in self.small_table_key_columns
-                    if col not in self.small_table.schema.names
-                ]
-                if missing_keys:
-                    raise ValueError(f"Small table missing key columns: {missing_keys}")
+        if self.datasets_swapped:
+            # Validate small table (originally left) has required key columns
+            missing_keys = [
+                col
+                for col in self.small_table_key_columns
+                if col not in self.small_table.schema.names
+            ]
+            if missing_keys:
+                raise ValueError(f"Small table missing key columns: {missing_keys}")
 
-                # Validate batch (originally right) has required key columns
-                missing_keys = [
-                    col
-                    for col in self.large_table_key_columns
-                    if col not in batch.schema.names
-                ]
-                if missing_keys:
-                    raise ValueError(f"Batch missing key columns: {missing_keys}")
-            else:
-                # Validate batch (originally left) has required key columns
-                missing_keys = [
-                    col
-                    for col in self.large_table_key_columns
-                    if col not in batch.schema.names
-                ]
-                if missing_keys:
-                    raise ValueError(f"Batch missing key columns: {missing_keys}")
+            # Validate batch (originally right) has required key columns
+            missing_keys = [
+                col
+                for col in self.large_table_key_columns
+                if col not in batch.schema.names
+            ]
+            if missing_keys:
+                raise ValueError(f"Batch missing key columns: {missing_keys}")
+        else:
+            # Validate batch (originally left) has required key columns
+            missing_keys = [
+                col
+                for col in self.large_table_key_columns
+                if col not in batch.schema.names
+            ]
+            if missing_keys:
+                raise ValueError(f"Batch missing key columns: {missing_keys}")
 
-                # Validate small table (originally right) has required key columns
-                missing_keys = [
-                    col
-                    for col in self.small_table_key_columns
-                    if col not in self.small_table.schema.names
-                ]
-                if missing_keys:
-                    raise ValueError(f"Small table missing key columns: {missing_keys}")
-        except Exception:
-            # If validation fails, return empty result
-            import pyarrow as pa
-
-            try:
-                if hasattr(batch, "schema") and batch.schema:
-                    empty_result = pa.table(
-                        [[] for _ in batch.schema], schema=batch.schema
-                    )
-                    return empty_result
-                else:
-                    return pa.table({})
-            except Exception:
-                return pa.table({})
+            # Validate small table (originally right) has required key columns
+            missing_keys = [
+                col
+                for col in self.small_table_key_columns
+                if col not in self.small_table.schema.names
+            ]
+            if missing_keys:
+                raise ValueError(f"Small table missing key columns: {missing_keys}")
 
         if self.datasets_swapped:
             # When datasets are swapped:
@@ -299,60 +193,26 @@ class BroadcastJoinFunction:
             # - small_table is the originally LEFT dataset (smaller, broadcasted)
             # We need to maintain LEFT.join(RIGHT) semantics
             # So we do: small_table.join(batch) = LEFT.join(RIGHT_BATCH)
-
-            try:
-                joined_table = self.small_table.join(
-                    batch,
-                    join_type=arrow_join_type,
-                    keys=list(self.small_table_key_columns),
-                    right_keys=list(self.large_table_key_columns),
-                    left_suffix=self.small_table_columns_suffix,
-                    right_suffix=self.large_table_columns_suffix,
-                    coalesce_keys=coalesce_keys,
-                )
-            except Exception:
-                # If join fails, return empty result with batch schema
-                import pyarrow as pa
-
-                try:
-                    if hasattr(batch, "schema") and batch.schema:
-                        empty_result = pa.table(
-                            [[] for _ in batch.schema], schema=batch.schema
-                        )
-                        return empty_result
-                    else:
-                        return pa.table({})
-                except Exception:
-                    return pa.table({})
+            joined_table = self.small_table.join(
+                batch,
+                join_type=arrow_join_type,
+                keys=list(self.small_table_key_columns),
+                right_keys=list(self.large_table_key_columns),
+                left_suffix=self.small_table_columns_suffix,
+                right_suffix=self.large_table_columns_suffix,
+                coalesce_keys=coalesce_keys,
+            )
         else:
             # Normal case:
             # - batch comes from the originally LEFT dataset (larger)
             # - small_table is the originally RIGHT dataset (smaller, broadcasted)
             # We maintain LEFT.join(RIGHT) semantics: batch.join(small_table)
-
-            try:
-                joined_table = batch.join(
-                    self.small_table,
-                    join_type=arrow_join_type,
-                    keys=list(self.large_table_key_columns),
-                    right_keys=list(self.small_table_key_columns),
-                    left_suffix=self.large_table_columns_suffix,
-                    right_suffix=self.small_table_columns_suffix,
-                    coalesce_keys=coalesce_keys,
-                )
-            except Exception:
-                # If join fails, return empty result with batch schema
-                import pyarrow as pa
-
-                try:
-                    if hasattr(batch, "schema") and batch.schema:
-                        empty_result = pa.table(
-                            [[] for _ in batch.schema], schema=batch.schema
-                        )
-                        return empty_result
-                    else:
-                        return pa.table({})
-                except Exception:
-                    return pa.table({})
+            joined_table = batch.join(
+                self.small_table,
+                join_type=arrow_join_type,
+                keys=list(self.large_table_key_columns),
+                right_suffix=self.small_table_columns_suffix,
+                coalesce_keys=coalesce_keys,
+            )
 
         return joined_table

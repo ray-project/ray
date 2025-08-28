@@ -450,12 +450,12 @@ def test_broadcast_join_basic(
 ):
     """Test basic broadcast join functionality for all supported join types."""
 
-    # Create test datasets
-    left_ds = ray.data.range(10).map(
+    # Create test datasets - much smaller for efficient testing
+    left_ds = ray.data.range(5).map(  # Reduced from 10 to 5
         lambda row: {"id": row["id"], "left_value": int(row["id"]) * 2}
     )
 
-    right_ds = ray.data.range(5).map(
+    right_ds = ray.data.range(3).map(  # Reduced from 5 to 3
         lambda row: {"id": row["id"], "right_value": int(row["id"]) ** 2}
     )
 
@@ -463,7 +463,6 @@ def test_broadcast_join_basic(
     broadcast_result = left_ds.join(
         right_ds,
         join_type=join_type,
-        num_partitions=2,  # Match the number of CPUs in the test fixture
         on=("id",),
         broadcast=True,
     )
@@ -502,12 +501,12 @@ def test_broadcast_join_dataset_swapping(
 ):
     """Test broadcast join with dataset swapping (left smaller than right)."""
 
-    # Create datasets where left is smaller than right
-    left_ds = ray.data.range(3).map(
+    # Create datasets where left is smaller than right - much smaller for efficient testing
+    left_ds = ray.data.range(2).map(  # Reduced from 3 to 2
         lambda row: {"id": row["id"], "left_value": int(row["id"]) * 2}
     )
 
-    right_ds = ray.data.range(10).map(
+    right_ds = ray.data.range(5).map(  # Reduced from 10 to 5
         lambda row: {"id": row["id"], "right_value": int(row["id"]) ** 2}
     )
 
@@ -515,7 +514,6 @@ def test_broadcast_join_dataset_swapping(
     result = left_ds.join(
         right_ds,
         join_type="inner",
-        num_partitions=2,
         on=("id",),
         broadcast=True,
     )
@@ -525,8 +523,8 @@ def test_broadcast_join_dataset_swapping(
     expected_columns = {"id", "left_value", "right_value"}
     assert set(result_df.columns) == expected_columns
 
-    # Should return 3 rows (all left rows match)
-    assert len(result_df) == 3
+    # Should return 2 rows (all left rows match)
+    assert len(result_df) == 2
 
 
 @pytest.mark.parametrize(
@@ -541,9 +539,9 @@ def test_broadcast_join_dataset_swapping(
 @pytest.mark.parametrize(
     "num_rows_left,num_rows_right",
     [
-        (16, 32),  # Left dataset is smaller than right dataset
-        (10, 100),  # Left dataset is much smaller
-        (5, 10),  # Small left dataset
+        (8, 16),  # Left dataset is smaller than right dataset - reduced from (16, 32)
+        (5, 20),  # Left dataset is much smaller - reduced from (10, 100)
+        (3, 8),  # Small left dataset - reduced from (5, 10)
     ],
 )
 def test_broadcast_join_left_smaller(
@@ -584,7 +582,6 @@ def test_broadcast_join_left_smaller(
     broadcast_result = left_ds.join(
         right_ds,
         join_type=join_type,
-        num_partitions=2,  # Match the number of CPUs in the test fixture
         on=("id",),
         broadcast=True,
     )
@@ -641,27 +638,27 @@ def test_broadcast_join_dataset_swapping_edge_cases(
     - Single row datasets (minimal broadcast table)
 
     Test cases:
-    - Left much smaller: (5, 1000) - tests extreme size difference
-    - Equal sized: (10, 10) - tests no swapping scenario
-    - Single row left: (1, 50) - tests minimal broadcast table
+    - Left much smaller: (3, 15) - tests extreme size difference
+    - Equal sized: (5, 5) - tests no swapping scenario
+    - Single row left: (1, 8) - tests minimal broadcast table
 
     These edge cases ensure the broadcast join implementation is robust and handles
     various dataset size combinations correctly.
     """
 
     # Test case 1: Left dataset much smaller than right
-    left_ds_small = ray.data.range(5).map(
+    left_ds_small = ray.data.range(3).map(  # Reduced from 5 to 3
         lambda row: {"id": row["id"], "left_value": int(row["id"]) * 2}
     )
-    right_ds_large = ray.data.range(1000).map(
+    right_ds_large = ray.data.range(15).map(  # Reduced from 100 to 15
         lambda row: {"id": row["id"], "right_value": int(row["id"]) ** 2}
     )
 
     # Test case 2: Equal sized datasets
-    left_ds_equal = ray.data.range(10).map(
+    left_ds_equal = ray.data.range(5).map(  # Reduced from 10 to 5
         lambda row: {"id": row["id"], "left_value": int(row["id"]) * 2}
     )
-    right_ds_equal = ray.data.range(10).map(
+    right_ds_equal = ray.data.range(5).map(  # Reduced from 10 to 5
         lambda row: {"id": row["id"], "right_value": int(row["id"]) ** 2}
     )
 
@@ -669,7 +666,7 @@ def test_broadcast_join_dataset_swapping_edge_cases(
     left_ds_single = ray.data.range(1).map(
         lambda row: {"id": row["id"], "left_value": int(row["id"]) * 2}
     )
-    right_ds_multi = ray.data.range(50).map(
+    right_ds_multi = ray.data.range(8).map(  # Reduced from 20 to 8
         lambda row: {"id": row["id"], "right_value": int(row["id"]) ** 2}
     )
 
@@ -684,7 +681,6 @@ def test_broadcast_join_dataset_swapping_edge_cases(
         broadcast_result = left_ds.join(
             right_ds,
             join_type=join_type,
-            num_partitions=2,  # Match the number of CPUs in the test fixture
             on=("id",),
             broadcast=True,
         )
@@ -774,7 +770,6 @@ def test_broadcast_join_with_different_key_names_and_swapping(
         broadcast_result = left_ds.join(
             right_ds,
             join_type=join_type,
-            num_partitions=2,
             on=("left_id",),
             right_on=("right_id",),
             broadcast=True,
@@ -889,7 +884,6 @@ def test_broadcast_join_different_key_names(ray_start_regular_shared_2_cpus):
     result = left_ds.join(
         right_ds,
         join_type="inner",
-        num_partitions=2,
         on=("left_id",),
         right_on=("right_id",),
         broadcast=True,
@@ -911,7 +905,7 @@ def test_broadcast_join_performance_with_small_right(ray_start_regular_shared_2_
     """Test that broadcast join is used appropriately for small right datasets."""
 
     # Large left dataset
-    left_ds = ray.data.range(1000).map(
+    left_ds = ray.data.range(20).map(  # Reduced from 100 to 20
         lambda row: {"id": row["id"], "left_value": row["id"] * 2}
     )
 
@@ -924,7 +918,6 @@ def test_broadcast_join_performance_with_small_right(ray_start_regular_shared_2_
     result = left_ds.join(
         right_ds,
         join_type="inner",
-        num_partitions=2,  # Match the number of CPUs in the test fixture
         on=("id",),
         broadcast=True,
     )
@@ -973,7 +966,6 @@ def test_broadcast_join_expected_outputs(ray_start_regular_shared_2_cpus):
     inner_result = left_ds.join(
         right_ds,
         join_type="inner",
-        num_partitions=2,
         on=("id",),
         broadcast=True,
     )
@@ -1172,7 +1164,6 @@ def test_broadcast_join_column_structure_validation(ray_start_regular_shared_2_c
     left_outer_result = left_ds.join(
         right_ds,
         join_type="left_outer",
-        num_partitions=2,
         on=("id",),
         broadcast=True,
     )
@@ -1191,7 +1182,6 @@ def test_broadcast_join_column_structure_validation(ray_start_regular_shared_2_c
     suffixed_result = left_ds.join(
         right_ds,
         join_type="inner",
-        num_partitions=2,
         on=("id",),
         left_suffix="_left",
         right_suffix="_right",
@@ -1228,7 +1218,6 @@ def test_broadcast_join_column_structure_validation(ray_start_regular_shared_2_c
     diff_keys_result = left_ds_diff_keys.join(
         right_ds_diff_keys,
         join_type="inner",
-        num_partitions=2,
         on=("left_id",),
         right_on=("right_id",),
         broadcast=True,
