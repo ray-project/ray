@@ -154,7 +154,9 @@ class ProtocolsProvider:
             from urllib.parse import urlparse
 
             parsed = urlparse(uri)
-            if not parsed.hostname or not parsed.hostname.endswith(".dfs.core.windows.net"):
+            if (not parsed.scheme == "abfss" or 
+                not parsed.hostname or 
+                not parsed.hostname.endswith(".dfs.core.windows.net")):
                 raise ValueError(f"Invalid ABFSS URI format: {uri}")
 
             # Extract storage account name from hostname (account.dfs.core.windows.net)
