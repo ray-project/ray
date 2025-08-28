@@ -314,6 +314,7 @@ class Node:
             dashboard_agent_listen_port=self._dashboard_agent_listen_port,
             runtime_env_agent_port=self._runtime_env_agent_port,
         )
+        self._events_export_address = ray_params.events_export_address
 
         # Pick a GCS server port.
         if head:
@@ -604,6 +605,11 @@ class Node:
     def metrics_export_port(self):
         """Get the port that exposes metrics"""
         return self._metrics_export_port
+
+    @property
+    def events_export_address(self):
+        """Get the address that exposes events"""
+        return self._events_export_address
 
     @property
     def runtime_env_agent_port(self):
@@ -1215,6 +1221,7 @@ class Node:
             metrics_agent_port=self._ray_params.metrics_agent_port,
             runtime_env_agent_port=self._ray_params.runtime_env_agent_port,
             metrics_export_port=self._metrics_export_port,
+            events_export_address=self._events_export_address,
             dashboard_agent_listen_port=self._ray_params.dashboard_agent_listen_port,
             use_valgrind=use_valgrind,
             use_profiler=use_profiler,

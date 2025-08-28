@@ -36,6 +36,7 @@ from ray._private.utils import (
     parse_resources_json,
 )
 from ray._common.network_utils import parse_address, build_address
+from ray._private.http_utils import validate_http_only_endpoint
 from ray._private.internal_api import memory_summary
 from ray._common.usage import usage_lib
 import ray._common.usage.usage_constants as usage_constant
@@ -578,6 +579,12 @@ Windows powershell users need additional escaping:
     help="the port to use to expose Ray metrics through a Prometheus endpoint.",
 )
 @click.option(
+    "--events-export-address",
+    type=str,
+    default=None,
+    help="An HTTP endpoint to send Ray events to. If not provided, events will not be sent.",
+)
+@click.option(
     "--no-monitor",
     is_flag=True,
     hidden=True,
@@ -710,6 +717,7 @@ def start(
     system_config,
     enable_object_reconstruction,
     metrics_export_port,
+    events_export_address,
     no_monitor,
     tracing_startup_hook,
     ray_debugger_external,
@@ -785,6 +793,16 @@ def start(
 
     redirect_output = None if not no_redirect_output else True
 
+    if events_export_address is not None:
+        try:
+            validate_http_only_endpoint(events_export_address)
+        except ValueError as e:
+            cli_logger.abort(
+                "Invalid events export address: {}. Error: {}",
+                events_export_address,
+                str(e),
+            )
+
     # no  client, no  port -> ok
     # no  port, has client -> default to 10001
     # has port, no  client -> value error
@@ -825,6 +843,7 @@ def start(
         _system_config=system_config,
         enable_object_reconstruction=enable_object_reconstruction,
         metrics_export_port=metrics_export_port,
+        events_export_address=events_export_address,
         no_monitor=no_monitor,
         tracing_startup_hook=tracing_startup_hook,
         ray_debugger_external=ray_debugger_external,

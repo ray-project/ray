@@ -389,6 +389,24 @@ def test_ray_start_worker_cannot_specify_temp_dir(
     assert "--head` is a required flag to use `--temp-dir`" in str(result.output)
 
 
+def test_ray_start_with_events_export_addr_expect_set_correctly(cleanup_ray):
+    runner = CliRunner()
+    result = runner.invoke(
+        scripts.start, ["--head", "--events-export-address=http://localhost:8000"]
+    )
+    assert result.exit_code == 0
+    _die_on_error(result)
+
+
+def test_ray_start_with_incorrect_events_export_addr_expect_error(cleanup_ray):
+    runner = CliRunner()
+    result = runner.invoke(
+        scripts.start, ["--head", "--events-export-address=invalid-url"]
+    )
+    assert result.exit_code != 0
+    assert "Invalid events export address" in result.output
+
+
 def _ray_start_hook(ray_params, head):
     os.makedirs(ray_params.temp_dir, exist_ok=True)
     with open(os.path.join(ray_params.temp_dir, "ray_hook_ok"), "w") as f:

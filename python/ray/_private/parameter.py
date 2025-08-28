@@ -101,6 +101,7 @@ class RayParams:
         metrics_agent_port: The port to bind metrics agent.
         metrics_export_port: The port at which metrics are exposed
             through a Prometheus endpoint.
+        events_export_address: An HTTP endpoint to send Ray events to. If not provided, events will not be sent.
         no_monitor: If True, the ray autoscaler monitor for this cluster
             will not be started.
         _system_config: Configuration for overriding RayConfig
@@ -170,6 +171,7 @@ class RayParams:
         enable_object_reconstruction: Optional[bool] = False,
         metrics_agent_port: Optional[int] = None,
         metrics_export_port: Optional[int] = None,
+        events_export_address: Optional[str] = None,
         tracing_startup_hook=None,
         no_monitor: Optional[bool] = False,
         env_vars: Optional[Dict[str, str]] = None,
@@ -224,6 +226,7 @@ class RayParams:
         self.autoscaling_config = autoscaling_config
         self.metrics_agent_port = metrics_agent_port
         self.metrics_export_port = metrics_export_port
+        self.events_export_address = events_export_address
         self.tracing_startup_hook = tracing_startup_hook
         self.no_monitor = no_monitor
         self.ray_debugger_external = ray_debugger_external

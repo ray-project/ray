@@ -64,6 +64,7 @@ from ray._common.utils import load_class
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.custom_types import TensorTransportEnum
 from ray._private.function_manager import FunctionActorManager
+from ray._private.http_utils import validate_http_only_endpoint
 from ray._private.inspect_util import is_cython
 from ray._private.ray_logging import (
     global_worker_stdstream_dispatcher,
@@ -1383,6 +1384,7 @@ def init(
     enable_resource_isolation: bool = False,
     system_reserved_cpu: Optional[float] = None,
     system_reserved_memory: Optional[int] = None,
+    events_export_address: Optional[str] = None,
     **kwargs,
 ) -> BaseContext:
     """
@@ -1504,6 +1506,8 @@ def init(
             By default, the min of 10% and 25GB plus object_store_memory will be reserved.
             Must be >= 100MB and system_reserved_memory + object_store_bytes < total available memory.
             This option only works if enable_resource_isolation is True.
+        events_export_address: The HTTP endpoint to send Ray events to.
+            If not provided, events will not be sent.
         _cgroup_path: The path for the cgroup the raylet should use to enforce resource isolation.
             By default, the cgroup used for resource isolation will be /sys/fs/cgroup.
             The raylet must have read/write permissions to this path.
@@ -1660,6 +1664,14 @@ def init(
 
         usage_lib.record_library_usage("client")
         return ctx
+
+    if events_export_address is not None:
+        try:
+            validate_http_only_endpoint(events_export_address)
+        except ValueError as e:
+            raise ValueError(
+                f"Invalid events export address: {events_export_address}. Error: {e}"
+            )
 
     if kwargs.get("allow_multiple"):
         raise RuntimeError(
@@ -1835,6 +1847,7 @@ def init(
             _system_config=_system_config,
             enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port,
+            events_export_address=events_export_address,
             tracing_startup_hook=_tracing_startup_hook,
             node_name=_node_name,
             resource_isolation_config=resource_isolation_config,
@@ -1885,6 +1898,11 @@ def init(
         if _node_name is not None:
             raise ValueError(
                 "_node_name cannot be configured when connecting to "
+                "an existing cluster."
+            )
+        if events_export_address is not None:
+            raise ValueError(
+                "_events_export_address cannot be configured when connecting to "
                 "an existing cluster."
             )
 
