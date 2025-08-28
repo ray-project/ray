@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "gtest/gtest_prod.h"
 #include "src/ray/protobuf/events_event_aggregator_service.pb.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
@@ -44,6 +45,34 @@ class GcsRayEventConverter {
   /// \return The output TaskEvents to populate.
   rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskDefinitionEvent &&event);
 
+  /// Convert a TaskExecutionEvent to a TaskEvents.
+  ///
+  /// \param event The TaskExecutionEvent to convert.
+  /// \return The output TaskEvents to populate.
+  rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskExecutionEvent &&event);
+
+  /// Convert an ActorTaskDefinitionEvent to a TaskEvents.
+  ///
+  /// \param event The ActorTaskDefinitionEvent to convert.
+  /// \return The output TaskEvents to populate.
+  rpc::TaskEvents ConvertToTaskEvents(rpc::events::ActorTaskDefinitionEvent &&event);
+
+  /// Populate the TaskInfoEntry with the given runtime env info, function descriptor,
+  /// and required resources. This function is commonly used to convert the task
+  /// and actor task definition events to TaskEvents.
+  ///
+  /// \param runtime_env_info The runtime env info.
+  /// \param function_descriptor The function descriptor.
+  /// \param required_resources The required resources.
+  /// \param language The language of the task.
+  /// \param task_info The output TaskInfoEntry to populate.
+  void PopulateTaskRuntimeAndFunctionInfo(
+      rpc::RuntimeEnvInfo &&runtime_env_info,
+      rpc::FunctionDescriptor &&function_descriptor,
+      ::google::protobuf::Map<std::string, double> &&required_resources,
+      rpc::Language language,
+      rpc::TaskInfoEntry *task_info);
+
   /// Add a task event to the appropriate job-grouped request.
   ///
   /// \param task_event The TaskEvents to add.
@@ -63,6 +92,9 @@ class GcsRayEventConverter {
       rpc::events::TaskEventsMetadata &&metadata,
       std::vector<rpc::AddTaskEventDataRequest> &requests_per_job_id,
       absl::flat_hash_map<std::string, size_t> &job_id_to_index);
+
+  FRIEND_TEST(GcsRayEventConverterTest, TestConvertTaskExecutionEvent);
+  FRIEND_TEST(GcsRayEventConverterTest, TestConvertActorTaskDefinitionEvent);
 };
 
 }  // namespace gcs

@@ -14,7 +14,10 @@
 
 #include "ray/gcs/gcs_server/gcs_ray_event_converter.h"
 
+#include <google/protobuf/map.h>
+
 #include "absl/container/flat_hash_map.h"
+#include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/util/logging.h"
 
@@ -32,6 +35,15 @@ GcsRayEventConverter::ConvertToTaskEventDataRequests(
     switch (event.event_type()) {
     case rpc::events::RayEvent::TASK_DEFINITION_EVENT: {
       task_event = ConvertToTaskEvents(std::move(*event.mutable_task_definition_event()));
+      break;
+    }
+    case rpc::events::RayEvent::TASK_EXECUTION_EVENT: {
+      task_event = ConvertToTaskEvents(std::move(*event.mutable_task_execution_event()));
+      break;
+    }
+    case rpc::events::RayEvent::ACTOR_TASK_DEFINITION_EVENT: {
+      task_event =
+          ConvertToTaskEvents(std::move(*event.mutable_actor_task_definition_event()));
       break;
     }
     default:
@@ -112,31 +124,100 @@ rpc::TaskEvents GcsRayEventConverter::ConvertToTaskEvents(
   rpc::TaskInfoEntry *task_info = task_event.mutable_task_info();
   task_info->set_type(event.task_type());
   task_info->set_name(event.task_name());
-  task_info->set_language(event.language());
   task_info->set_task_id(event.task_id());
   task_info->set_job_id(event.job_id());
-  task_info->mutable_runtime_env_info()->Swap(event.mutable_runtime_env_info());
   task_info->set_parent_task_id(event.parent_task_id());
   if (!event.placement_group_id().empty()) {
     task_info->set_placement_group_id(event.placement_group_id());
   }
 
-  auto function_descriptor = event.task_func();
-  if (event.language() == rpc::Language::CPP &&
-      function_descriptor.has_cpp_function_descriptor()) {
-    task_info->set_func_or_class_name(
-        function_descriptor.cpp_function_descriptor().function_name());
-  } else if (event.language() == rpc::Language::PYTHON &&
-             function_descriptor.has_python_function_descriptor()) {
-    task_info->set_func_or_class_name(
-        function_descriptor.python_function_descriptor().function_name());
-  } else if (event.language() == rpc::Language::JAVA &&
-             function_descriptor.has_java_function_descriptor()) {
-    task_info->set_func_or_class_name(
-        function_descriptor.java_function_descriptor().function_name());
-  }
-  task_info->mutable_required_resources()->swap(*event.mutable_required_resources());
+  PopulateTaskRuntimeAndFunctionInfo(std::move(*event.mutable_runtime_env_info()),
+                                     std::move(*event.mutable_task_func()),
+                                     std::move(*event.mutable_required_resources()),
+                                     event.language(),
+                                     task_info);
   return task_event;
+}
+
+rpc::TaskEvents GcsRayEventConverter::ConvertToTaskEvents(
+    rpc::events::TaskExecutionEvent &&event) {
+  rpc::TaskEvents task_event;
+  task_event.set_task_id(event.task_id());
+  task_event.set_attempt_number(event.task_attempt());
+  task_event.set_job_id(event.job_id());
+
+  rpc::TaskStateUpdate *task_state_update = task_event.mutable_state_updates();
+  task_state_update->set_node_id(event.node_id());
+  task_state_update->set_worker_id(event.worker_id());
+  task_state_update->set_worker_pid(event.worker_pid());
+  task_state_update->mutable_error_info()->Swap(event.mutable_ray_error_info());
+
+  for (const auto &[state, timestamp] : event.task_state()) {
+    int64_t ns = ProtoTimestampToAbslTimeNanos(timestamp);
+    (*task_state_update->mutable_state_ts_ns())[state] = ns;
+  }
+  return task_event;
+}
+
+rpc::TaskEvents GcsRayEventConverter::ConvertToTaskEvents(
+    rpc::events::ActorTaskDefinitionEvent &&event) {
+  rpc::TaskEvents task_event;
+  task_event.set_task_id(event.task_id());
+  task_event.set_attempt_number(event.task_attempt());
+  task_event.set_job_id(event.job_id());
+
+  rpc::TaskInfoEntry *task_info = task_event.mutable_task_info();
+  task_info->set_type(rpc::TaskType::ACTOR_TASK);
+  task_info->set_name(event.actor_task_name());
+  task_info->set_task_id(event.task_id());
+  task_info->set_job_id(event.job_id());
+  task_info->set_parent_task_id(event.parent_task_id());
+  if (!event.placement_group_id().empty()) {
+    task_info->set_placement_group_id(event.placement_group_id());
+  }
+  if (!event.actor_id().empty()) {
+    task_info->set_actor_id(event.actor_id());
+  }
+  PopulateTaskRuntimeAndFunctionInfo(std::move(*event.mutable_runtime_env_info()),
+                                     std::move(*event.mutable_actor_func()),
+                                     std::move(*event.mutable_required_resources()),
+                                     event.language(),
+                                     task_info);
+  return task_event;
+}
+
+void GcsRayEventConverter::PopulateTaskRuntimeAndFunctionInfo(
+    rpc::RuntimeEnvInfo &&runtime_env_info,
+    rpc::FunctionDescriptor &&function_descriptor,
+    ::google::protobuf::Map<std::string, double> &&required_resources,
+    rpc::Language language,
+    rpc::TaskInfoEntry *task_info) {
+  task_info->set_language(language);
+  task_info->mutable_runtime_env_info()->Swap(&runtime_env_info);
+  switch (language) {
+  case rpc::Language::CPP:
+    if (function_descriptor.has_cpp_function_descriptor()) {
+      task_info->set_func_or_class_name(
+          function_descriptor.cpp_function_descriptor().function_name());
+    }
+    break;
+  case rpc::Language::PYTHON:
+    if (function_descriptor.has_python_function_descriptor()) {
+      task_info->set_func_or_class_name(
+          function_descriptor.python_function_descriptor().function_name());
+    }
+    break;
+  case rpc::Language::JAVA:
+    if (function_descriptor.has_java_function_descriptor()) {
+      task_info->set_func_or_class_name(
+          function_descriptor.java_function_descriptor().function_name());
+    }
+    break;
+  default:
+    // Other languages are not handled.
+    break;
+  }
+  task_info->mutable_required_resources()->swap(required_resources);
 }
 
 }  // namespace gcs
