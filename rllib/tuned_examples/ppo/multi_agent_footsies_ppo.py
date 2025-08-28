@@ -104,7 +104,7 @@ parser.add_argument(
 parser.add_argument(
     "--win-rate-threshold",
     type=float,
-    default=0.9,
+    default=0.85,
     help="The main policy should have at least 'win-rate-threshold' win rate against the "
     "other policy to advance to the next level. Moving to the next level "
     "means adding a new policy to the mix.",
