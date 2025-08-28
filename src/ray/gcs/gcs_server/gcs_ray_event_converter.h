@@ -41,9 +41,8 @@ class GcsRayEventConverter {
   /// Convert a TaskDefinitionEvent to a TaskEvents.
   ///
   /// \param event The TaskDefinitionEvent to convert.
-  /// \param task_event The output TaskEvents to populate.
-  void ConvertToTaskEvents(rpc::events::TaskDefinitionEvent &&event,
-                           rpc::TaskEvents &task_event);
+  /// \return The output TaskEvents to populate.
+  rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskDefinitionEvent &&event);
 
   /// Add a task event to the appropriate job-grouped request.
   ///
