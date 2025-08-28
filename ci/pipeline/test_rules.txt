@@ -226,10 +226,10 @@ src/ray/core_worker/experimental*.cc
 ;
 
 
-python/ray/experimental/gpu_object_manager/*.py
-python/ray/experimental/collective/*.py
-python/ray/tests/gpu_objects/*.py
-@ gpu_objects
+python/ray/experimental/gpu_object_manager/
+python/ray/experimental/collective/
+python/ray/tests/gpu_objects/
+@ python gpu_objects
 ;
 
 .github/

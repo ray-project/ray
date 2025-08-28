@@ -60,7 +60,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/_common/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
         --install-mask all-ray-libraries
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,runtime_env_container,manual,multi_gpu,spark_on_ray,ray_client,compiled_graphs,dask
+        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,runtime_env_container,manual,multi_gpu,spark_on_ray,ray_client,compiled_graphs,dask,gpu_objects
         --install-mask all-ray-libraries
 
   - label: ":ray: core: cgraph + gpu objects cpu python tests"
