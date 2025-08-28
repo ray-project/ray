@@ -326,7 +326,7 @@ def _create_udf_callable(fn: Callable):
 
 
 @PublicAPI(stability="alpha")
-def udf(fn: Optional[Callable] = None) -> Callable:
+def udf() -> Callable:
     """
     Decorator to convert a UDF into an expression-compatible function.
 
@@ -338,8 +338,6 @@ def udf(fn: Optional[Callable] = None) -> Callable:
     multiple values from that column across the batch. Under the hood, when working
     with multiple columns, they get translated to PyArrow arrays (one array per column).
 
-    Args:
-        fn: The function to decorate (when used as @udf)
     Returns:
         A callable that creates UDFExpr instances when called with expressions
 
@@ -378,9 +376,6 @@ def udf(fn: Optional[Callable] = None) -> Callable:
     def decorator(func: Callable):
         return _create_udf_callable(func)
 
-    # Support both @udf() and @udf
-    if fn is not None:
-        return decorator(fn)
     return decorator
 
 
