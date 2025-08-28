@@ -114,7 +114,6 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
   ///
   /// \param job_id The key to lookup from the table.
   /// \param callback Callback that will be called after read finishes.
-  /// \return Status
   void GetByJobId(const JobID &job_id,
                   Postable<void(absl::flat_hash_map<Key, Data>)> callback);
 
