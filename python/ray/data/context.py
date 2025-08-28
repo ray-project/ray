@@ -140,6 +140,8 @@ DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION = env_bool(
     "RAY_DATA_ENABLE_PROGRESS_BAR_NAME_TRUNCATION", True
 )
 
+DEFAULT_ENFORCE_SCHEMAS = env_bool("RAY_DATA_ALLOW_ENFORCE_SCHEMAS", False)
+
 DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
 
 
@@ -532,6 +534,8 @@ class DataContext:
     issue_detectors_config: "IssueDetectorsConfiguration" = field(
         default_factory=_issue_detectors_config_factory
     )
+
+    enforce_schemas: bool = DEFAULT_ENFORCE_SCHEMAS
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
