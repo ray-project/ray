@@ -378,6 +378,9 @@ def udf(fn: Optional[Callable] = None) -> Callable:
     def decorator(func: Callable):
         return _create_udf_callable(func)
 
+    # Support both @udf() and @udf
+    if fn is not None:
+        return decorator(fn)
     return decorator
 
 
