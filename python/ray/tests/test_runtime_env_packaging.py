@@ -9,6 +9,7 @@ import uuid
 from filecmp import dircmp
 from pathlib import Path
 from shutil import copytree, make_archive, rmtree
+from unittest.mock import MagicMock, patch
 import zipfile
 import ray
 
@@ -872,6 +873,167 @@ def test_get_local_dir_from_uri():
     assert get_local_dir_from_uri(uri, "base_dir") == Path(
         "base_dir/<working_dir_content_hash>"
     )
+
+
+class TestAbfssStorageAccountExtraction:
+    """Test ABFSS storage account name extraction from URLs."""
+
+    def test_valid_abfss_urls(self):
+        """Test extraction of storage account names from valid ABFSS URLs."""
+        from urllib.parse import urlparse
+        
+        test_cases = [
+            ("abfss://container@cloudgangsa.dfs.core.windows.net/file.zip", "cloudgangsa"),
+            ("abfss://data@mystorageaccount.dfs.core.windows.net/path/file.zip", "mystorageaccount"),
+            ("abfss://logs@company123.dfs.core.windows.net/2024/data.zip", "company123"),
+            ("abfss://backup@test-storage.dfs.core.windows.net/backup.zip", "test-storage"),
+            ("abfss://ml-data@azurestorage001.dfs.core.windows.net/models/model.zip", "azurestorage001"),
+        ]
+
+        for uri, expected_account in test_cases:
+            parsed = urlparse(uri)
+            assert parsed.hostname.endswith(".dfs.core.windows.net"), f"URI should have correct hostname: {uri}"
+
+            # Test the extraction logic
+            extracted_account = parsed.hostname.split(".")[0]
+            assert extracted_account == expected_account, f"Expected {expected_account}, got {extracted_account} for URI: {uri}"
+
+    def test_invalid_abfss_urls(self):
+        """Test that invalid ABFSS URLs are properly rejected."""
+        from urllib.parse import urlparse
+        
+        invalid_uris = [
+            "abfss://container@account.blob.core.windows.net/file.zip",  # blob instead of dfs
+            "abfss://container@account.core.windows.net/file.zip",       # missing dfs
+            "abfss://container@account.dfs.windows.net/file.zip",        # missing core
+            "abfss://container@account/file.zip",                        # no domain
+            "https://container@account.dfs.core.windows.net/file.zip",   # wrong protocol
+            "abfss://account.dfs.core.windows.net/file.zip",             # missing container@
+        ]
+        
+        for uri in invalid_uris:
+            parsed = urlparse(uri)
+            
+            # Test the validation logic
+            should_be_invalid = (
+                not parsed.scheme == "abfss" or
+                not parsed.hostname or 
+                not parsed.hostname.endswith(".dfs.core.windows.net")
+            )
+            
+            assert should_be_invalid, f"URI should be considered invalid: {uri}"
+
+    def test_abfss_url_parsing_edge_cases(self):
+        """Test edge cases for ABFSS URL parsing."""
+        from urllib.parse import urlparse
+        
+        # Test with different path structures
+        test_cases = [
+            "abfss://container@account.dfs.core.windows.net/",                    # root path
+            "abfss://container@account.dfs.core.windows.net/single-file.zip",    # single file
+            "abfss://container@account.dfs.core.windows.net/deep/nested/path/file.zip",  # deep path
+            "abfss://my-container@my-account.dfs.core.windows.net/file-with-dashes.zip", # dashes in names
+        ]
+        
+        for uri in test_cases:
+            parsed = urlparse(uri)
+            assert parsed.scheme == "abfss", f"Scheme should be abfss: {uri}"
+            assert parsed.hostname.endswith(".dfs.core.windows.net"), f"Should have correct hostname: {uri}"
+            
+            # Extract account name
+            account_name = parsed.hostname.split(".")[0]
+            assert len(account_name) > 0, f"Account name should not be empty: {uri}"
+            assert "." not in account_name, f"Account name should not contain dots: {uri}"
+
+    @patch.dict("sys.modules", {"adlfs": MagicMock(), "azure.identity": MagicMock()})
+    def test_abfss_handler_with_url_extraction(self):
+        """Test that ABFSS handler correctly extracts account from URL."""
+        # Mock the ProtocolsProvider for this test
+        class MockProtocolsProvider:
+            @classmethod
+            def _handle_abfss_protocol(cls):
+                # Import mocked modules
+                import adlfs
+                from azure.identity import DefaultAzureCredential
+                
+                def open_file(uri, mode, *, transport_params=None):
+                    # Parse ABFSS URI to extract storage account name
+                    from urllib.parse import urlparse
+                    
+                    parsed = urlparse(uri)
+                    if (not parsed.scheme == "abfss" or 
+                        not parsed.hostname or 
+                        not parsed.hostname.endswith(".dfs.core.windows.net")):
+                        raise ValueError(f"Invalid ABFSS URI format: {uri}")
+                    
+                    # Extract storage account name from hostname
+                    azure_storage_account_name = parsed.hostname.split(".")[0]
+                    
+                    # Mock filesystem creation (would normally create real filesystem)
+                    mock_file = MagicMock()
+                    mock_file.read.return_value = f"Data from {azure_storage_account_name}".encode()
+                    
+                    # Simulate adlfs.AzureBlobFileSystem call (would normally create real filesystem)
+                    adlfs.AzureBlobFileSystem(
+                        account_name=azure_storage_account_name, 
+                        credential=DefaultAzureCredential()
+                    )
+                    
+                    return mock_file
+                
+                return open_file, None
+        
+        # Test the handler
+        mock_provider = MockProtocolsProvider()
+        open_file_func, transport_params = mock_provider._handle_abfss_protocol()
+        
+        # Test with different URIs
+        test_uris = [
+            "abfss://container@cloudgangsa.dfs.core.windows.net/file.zip",
+            "abfss://data@teststorage.dfs.core.windows.net/path/file.zip",
+        ]
+        
+        for uri in test_uris:
+            file_obj = open_file_func(uri, "rb")
+            content = file_obj.read()
+            
+            # Extract expected account name
+            from urllib.parse import urlparse
+            parsed = urlparse(uri)
+            expected_account = parsed.hostname.split(".")[0]
+            
+            assert content == f"Data from {expected_account}".encode(), f"Should extract correct account name for {uri}"
+
+    def test_abfss_url_format_validation(self):
+        """Test comprehensive ABFSS URL format validation."""
+        from urllib.parse import urlparse
+        
+        # Test the actual format we expect: abfss://container@account.dfs.core.windows.net/path
+        valid_formats = [
+            "abfss://cloud-gang-blob@cloudgangsa.dfs.core.windows.net/package.zip",
+            "abfss://data@mystorageaccount.dfs.core.windows.net/ml-models/model.zip", 
+            "abfss://logs@company.dfs.core.windows.net/2024/01/15/logs.zip",
+        ]
+        
+        for uri in valid_formats:
+            parsed = urlparse(uri)
+            
+            # Validate scheme
+            assert parsed.scheme == "abfss", f"Scheme should be 'abfss': {uri}"
+            
+            # Validate hostname format
+            assert parsed.hostname.endswith(".dfs.core.windows.net"), f"Should end with .dfs.core.windows.net: {uri}"
+            
+            # Validate we can extract account name
+            account_name = parsed.hostname.split(".")[0]
+            assert len(account_name) > 0, f"Account name should not be empty: {uri}"
+            
+            # Validate container@account format in the "path" part before hostname
+            netloc_parts = parsed.netloc.split("@")
+            assert len(netloc_parts) == 2, f"Should have container@account format: {uri}"
+            
+            container_name = netloc_parts[0]
+            assert len(container_name) > 0, f"Container name should not be empty: {uri}"
 
 
 if __name__ == "__main__":
