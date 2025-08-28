@@ -1689,7 +1689,7 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
           // with normal task resource usages so GCS can fast update
           // its resource view of this raylet.
           if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-            auto normal_task_resources = local_lease_manager_.CalcNormalLeaseResources();
+            auto normal_task_resources = local_lease_manager_.CalcNormalTaskResources();
             RAY_LOG(DEBUG).WithField(actor_id)
                 << "Reject leasing as the raylet has no enough resources. "
                    "normal_task_resources = "

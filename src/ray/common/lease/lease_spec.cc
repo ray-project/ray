@@ -20,9 +20,10 @@
 
 namespace ray {
 
-LeaseSpecification::LeaseSpecification(const rpc::TaskSpec &task_spec,
-                                       bool is_actor_creation_task)
+LeaseSpecification::LeaseSpecification(const rpc::TaskSpec &task_spec)
     : MessageWrapper(std::make_shared<rpc::LeaseSpec>()) {
+  RAY_CHECK(task_spec.type() == TaskType::NORMAL_TASK ||
+            task_spec.type() == TaskType::ACTOR_CREATION_TASK);
   message_->set_job_id(task_spec.job_id());
   message_->mutable_caller_address()->CopyFrom(task_spec.caller_address());
   message_->mutable_required_resources()->insert(task_spec.required_resources().begin(),
@@ -47,8 +48,8 @@ LeaseSpecification::LeaseSpecification(const rpc::TaskSpec &task_spec,
   message_->set_attempt_number(task_spec.attempt_number());
   message_->set_root_detached_actor_id(task_spec.root_detached_actor_id());
   message_->set_task_name(task_spec.name());
-  if (is_actor_creation_task) {
-    message_->set_type(TaskType::ACTOR_CREATION_TASK);
+  message_->set_type(task_spec.type());
+  if (IsActorCreationTask()) {
     message_->set_actor_id(task_spec.actor_creation_task_spec().actor_id());
     message_->set_is_detached_actor(task_spec.actor_creation_task_spec().is_detached());
     message_->set_max_actor_restarts(
@@ -58,7 +59,6 @@ LeaseSpecification::LeaseSpecification(const rpc::TaskSpec &task_spec,
       message_->add_dynamic_worker_options(option);
     }
   } else {
-    message_->set_type(TaskType::NORMAL_TASK);
     message_->set_max_retries(task_spec.max_retries());
   }
   ComputeResources();

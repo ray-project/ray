@@ -998,7 +998,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
         // worker exit to avoid process and resource leak.
         NotifyCoreWorkerToKillActor(actor, death_cause, force_kill);
       }
-      CancelActorInScheduling(actor, actor->GetLeaseSpecification().LeaseId());
+      CancelActorInScheduling(actor);
     }
   }
 
@@ -1718,7 +1718,7 @@ void GcsActorManager::KillActor(const ActorID &actor_id, bool force_kill) {
       NotifyCoreWorkerToKillActor(
           actor, GenKilledByApplicationCause(GetActor(actor_id)), force_kill);
     }
-    CancelActorInScheduling(actor, actor->GetLeaseSpecification().LeaseId());
+    CancelActorInScheduling(actor);
     RestartActor(actor_id,
                  /*need_reschedule=*/true,
                  GenKilledByApplicationCause(GetActor(actor_id)));
@@ -1742,10 +1742,10 @@ void GcsActorManager::AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &
   }
 }
 
-void GcsActorManager::CancelActorInScheduling(const std::shared_ptr<GcsActor> &actor,
-                                              const LeaseID &lease_id) {
+void GcsActorManager::CancelActorInScheduling(const std::shared_ptr<GcsActor> &actor) {
+  auto lease_id = actor->GetLeaseSpecification().LeaseId();
   RAY_LOG(DEBUG).WithField(actor->GetActorID()).WithField(lease_id)
-      << "Cancel actor in scheduling";
+      << "Cancel actor in scheduling, this may be due to resource re-eviction";
   const auto &actor_id = actor->GetActorID();
   const auto &node_id = actor->GetNodeID();
   // The actor has not been created yet. It is either being scheduled or is

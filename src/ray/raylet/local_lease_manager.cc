@@ -1130,8 +1130,8 @@ bool LocalLeaseManager::ReturnCpuResourcesToUnblockedWorker(
   }
 }
 
-ResourceSet LocalLeaseManager::CalcNormalLeaseResources() const {
-  ResourceSet total_normal_lease_resources;
+ResourceSet LocalLeaseManager::CalcNormalTaskResources() const {
+  ResourceSet total_normal_task_resources;
   for (auto &entry : leased_workers_) {
     std::shared_ptr<WorkerInterface> worker = entry.second;
     auto &lease_spec = worker->GetGrantedLease().GetLeaseSpecification();
@@ -1155,10 +1155,10 @@ ResourceSet LocalLeaseManager::CalcNormalLeaseResources() const {
           }
         }
       }
-      total_normal_lease_resources += resource_set;
+      total_normal_task_resources += resource_set;
     }
   }
-  return total_normal_lease_resources;
+  return total_normal_task_resources;
 }
 
 uint64_t LocalLeaseManager::MaxGrantedLeasesPerSchedulingClass(
@@ -1209,14 +1209,14 @@ void LocalLeaseManager::DebugStr(std::stringstream &buffer) const {
       continue;
     }
 
-    const auto &lease_name = worker->GetGrantedLease()
-                                 .GetLeaseSpecification()
-                                 .FunctionDescriptor()
-                                 ->CallString();
+    const auto &task_or_actor_name = worker->GetGrantedLease()
+                                         .GetLeaseSpecification()
+                                         .FunctionDescriptor()
+                                         ->CallString();
     buffer << "    - (language="
            << rpc::Language_descriptor()->FindValueByNumber(worker->GetLanguage())->name()
            << " "
-           << "lease_name=" << lease_name << " "
+           << "actor_or_task" << task_or_actor_name << " "
            << "pid=" << worker->GetProcess().GetId() << " "
            << "worker_id=" << worker->WorkerId() << "): "
            << worker->GetGrantedLease()

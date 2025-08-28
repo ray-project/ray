@@ -63,7 +63,7 @@ class GcsActor {
         task_spec_(std::make_unique<rpc::TaskSpec>(std::move(task_spec))),
         counter_(std::move(counter)),
         export_event_write_enabled_(IsExportAPIEnabledActor()) {
-    lease_spec_ = std::make_unique<LeaseSpecification>(*task_spec_, true);
+    lease_spec_ = std::make_unique<LeaseSpecification>(*task_spec_);
     RAY_CHECK(actor_table_data_.state() != rpc::ActorTableData::DEAD);
     RefreshMetrics();
   }
@@ -141,7 +141,7 @@ class GcsActor {
       actor_table_data_.mutable_label_selector()->insert(
           task_spec_->label_selector().begin(), task_spec_->label_selector().end());
     }
-    lease_spec_ = std::make_unique<LeaseSpecification>(*task_spec_, true);
+    lease_spec_ = std::make_unique<LeaseSpecification>(*task_spec_);
     RefreshMetrics();
   }
 

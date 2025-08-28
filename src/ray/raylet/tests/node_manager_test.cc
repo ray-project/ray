@@ -210,7 +210,7 @@ LeaseSpecification BuildLeaseSpec(
                             0,
                             TaskID::Nil(),
                             "");
-  return LeaseSpecification(std::move(builder).ConsumeAndBuild().GetMessage(), false);
+  return LeaseSpecification(std::move(builder).ConsumeAndBuild().GetMessage());
 }
 
 LeaseSpecification DetachedActorCreationLeaseSpec(const rpc::Address &owner_address,
@@ -254,8 +254,7 @@ LeaseSpecification DetachedActorCreationLeaseSpec(const rpc::Address &owner_addr
                                              /*extension_data=*/"",
                                              /*allow_out_of_order_execution=*/false,
                                              /*root_detached_actor_id=*/actor_id);
-  return LeaseSpecification(std::move(task_spec_builder).ConsumeAndBuild().GetMessage(),
-                            true);
+  return LeaseSpecification(std::move(task_spec_builder).ConsumeAndBuild().GetMessage());
 }
 
 }  // namespace

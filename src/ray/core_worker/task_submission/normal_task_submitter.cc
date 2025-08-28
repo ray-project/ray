@@ -69,8 +69,7 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
 
     // Only set lease_spec if this is a new scheduling key entry
     if (new_scheduling_key_entry) {
-      scheduling_key_entry.lease_spec =
-          LeaseSpecification(task_spec.GetMessage(), /*is_actor_creation_task=*/false);
+      scheduling_key_entry.lease_spec = LeaseSpecification(task_spec.GetMessage());
     }
     scheduling_key_entry.task_queue.push_back(std::move(task_spec));
 
@@ -650,13 +649,14 @@ bool NormalTaskSubmitter::HandleGetWorkerFailureCause(
     }
     fail_immediately = get_worker_failure_cause_reply.fail_task_immediately();
   } else {
-    RAY_LOG(WARNING) << "Failed to fetch task failure cause with status "
+    RAY_LOG(WARNING) << "Failed to fetch worker failure cause with status "
                      << get_worker_failure_cause_reply_status.ToString()
+                     << " worker id: " << WorkerID::FromBinary(addr.worker_id())
                      << " node id: " << NodeID::FromBinary(addr.node_id())
                      << " ip: " << addr.ip_address();
     task_error_type = rpc::ErrorType::NODE_DIED;
     std::stringstream buffer;
-    buffer << "Task failed due to the node (where this task was running) "
+    buffer << "Worker failed due to the node (where this task was running) "
            << " was dead or unavailable.\n\nThe node IP: " << addr.ip_address()
            << ", node ID: " << NodeID::FromBinary(addr.node_id()) << "\n\n"
            << "This can happen if the instance where the node was running failed, "

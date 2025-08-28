@@ -34,8 +34,7 @@ namespace ray {
 // leasing, scheduling, dependency resolution, and cancellation.
 class LeaseSpecification : public MessageWrapper<rpc::LeaseSpec> {
  public:
-  explicit LeaseSpecification(const rpc::TaskSpec &task_spec,
-                              bool is_actor_creation_task);
+  explicit LeaseSpecification(const rpc::TaskSpec &task_spec);
 
   /// Construct an empty task specification. This should not be used directly.
   LeaseSpecification() { ComputeResources(); }
