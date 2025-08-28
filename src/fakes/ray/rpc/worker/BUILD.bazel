@@ -1,0 +1,10 @@
+load("//bazel:ray.bzl", "ray_cc_library")
+
+ray_cc_library(
+    name = "fake_core_worker_client",
+    hdrs = ["core_worker_client.h"],
+    deps = [
+        "//src/ray/rpc:core_worker_client",
+        "@com_google_absl//absl/synchronization",
+    ],
+)

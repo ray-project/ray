@@ -25,6 +25,7 @@
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
+#include "ray/util/counter_map.h"
 
 using namespace ::testing;  // NOLINT
 
