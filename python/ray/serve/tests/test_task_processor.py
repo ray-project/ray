@@ -244,116 +244,78 @@ class TestTaskConsumerWithRayServe:
         self, temp_queue_directory, serve_instance, create_processor_config
     ):
         """Test that tasks persist in queue and get executed after deployment restart."""
-        processor_config = create_processor_config()
+        # Setup
+        config = create_processor_config()
         tracker = ProcessedTasksTracker.remote()
-        processing_signal = SignalActor.remote()
+        signal1 = SignalActor.remote()
 
         @serve.deployment(num_replicas=1, graceful_shutdown_timeout_s=60)
-        @task_consumer(task_processor_config=processor_config)
-        class ServeTaskConsumer:
+        @task_consumer(task_processor_config=config)
+        class TaskConsumer:
             def __init__(self, tracker_ref, signal_ref):
-                self.tracker = tracker_ref
-                self.signal = signal_ref
+                self.tracker, self.signal = tracker_ref, signal_ref
                 self.local_processed = []
 
             @task_handler(name="process_request")
             def process_request(self, data):
-                ray.get(self.signal.wait.remote())
+                ray.get(self.signal.wait.remote())  # Block until signal
                 self.local_processed.append(data)
                 ray.get(self.tracker.add_task.remote(data))
-
                 return f"Processed: {data}"
 
             def get_local_processed(self):
                 return self.local_processed
 
-        serve.run(
-            ServeTaskConsumer.bind(tracker, processing_signal),
-            name="test_task_consumer_persistence_across_restarts_v1",
-        )
+        # Deploy first version and send tasks
+        serve.run(TaskConsumer.bind(tracker, signal1), name="app_v1")
 
         num_tasks = 20
-        task_ids = []
         for i in range(num_tasks):
-            task_id_ref = send_request_to_queue.remote(processor_config, f"task_{i}")
-            task_ids.append(ray.get(task_id_ref))
+            ray.get(send_request_to_queue.remote(config, f"task_{i}"))
 
+        # Process exactly 1 task, then restart deployment
         wait_for_condition(
-            lambda: ray.get(processing_signal.cur_num_waiters.remote())
-            == 1,  # because worker concurrency is 1, and in worker, we wait for signal to be sent
-            timeout=10,
+            lambda: ray.get(signal1.cur_num_waiters.remote()) == 1, timeout=10
         )
+        ray.get(signal1.send.remote(clear=True))  # Allow 1 task to complete
+        wait_for_condition(lambda: ray.get(tracker.get_count.remote()) == 1, timeout=10)
 
-        ray.get(
-            processing_signal.send.remote(clear=True)
-        )  # Release signal to allow tasks to complete
-
+        # Shutdown first deployment
+        serve.delete("app_v1", _blocking=False)
+        ray.get(signal1.send.remote())  # Release any stuck tasks
         wait_for_condition(
-            lambda: ray.get(tracker.get_count.remote())
-            == 1,  # as we triggered processing by sending signal only once, so we expect 1 task to be processed
-            timeout=10,
+            lambda: "app_v1" not in serve.status().applications, timeout=100
         )
 
-        serve.delete(
-            "test_task_consumer_persistence_across_restarts_v1", _blocking=False
-        )
-
-        ray.get(
-            processing_signal.send.remote()
-        )  # Release signal to allow ongoing tasks to complete, or else they will be stuck
-
-        wait_for_condition(
-            lambda: "test_task_consumer_persistence_across_restarts_v1"
-            not in serve.status().applications,  # Wait for the deployment to be fully deleted
-            timeout=100,
-        )
-
+        # Verify exactly 2 tasks were processed (1 completed + 1 that was processing during shutdown)
         tasks_before_restart = ray.get(tracker.get_count.remote())
         assert (
             tasks_before_restart == 2
-        ), f"Expected at least 2 tasks processed, got {tasks_before_restart}"
-        assert (
-            tasks_before_restart < num_tasks
-        ), "All tasks were processed before restart, test cannot verify persistence"
+        ), f"Expected 2 tasks processed, got {tasks_before_restart}"
 
-        processing_signal_for_new_deployment = SignalActor.remote()
-
-        new_deployment_handle = serve.run(
-            ServeTaskConsumer.bind(tracker, processing_signal_for_new_deployment),
-            name="test_task_consumer_persistence_across_restarts_v2",
-        )
+        # Deploy second version and process remaining tasks
+        signal2 = SignalActor.remote()
+        handle = serve.run(TaskConsumer.bind(tracker, signal2), name="app_v2")
 
         wait_for_condition(
-            lambda: ray.get(
-                processing_signal_for_new_deployment.cur_num_waiters.remote()
-            )
-            == 1,  # Wait for remaining tasks to start processing - because worker concurrency is 1, and in worker, we wait for signal to be sent
-            timeout=10,
+            lambda: ray.get(signal2.cur_num_waiters.remote()) == 1, timeout=10
         )
-
-        ray.get(processing_signal_for_new_deployment.send.remote())
-
+        ray.get(signal2.send.remote())  # Process all remaining tasks
         wait_for_condition(
-            lambda: ray.get(tracker.get_count.remote())
-            == num_tasks,  # Wait for all tasks to be processed
-            timeout=100,
+            lambda: ray.get(tracker.get_count.remote()) == num_tasks, timeout=100
         )
 
+        # Verify all tasks were processed and distributed correctly
         expected_tasks = {f"task_{i}" for i in range(num_tasks)}
-        final_processed_tasks = ray.get(tracker.get_processed_tasks.remote())
-        local_processed_second = (
-            new_deployment_handle.get_local_processed.remote().result()
-        )
+        final_tasks = ray.get(tracker.get_processed_tasks.remote())
+        second_deployment_tasks = ray.get(handle.get_local_processed.remote())
 
         assert (
-            final_processed_tasks == expected_tasks
-        ), f"Expected {expected_tasks}, got {final_processed_tasks}"
+            final_tasks == expected_tasks
+        ), f"Missing tasks: {expected_tasks - final_tasks}"
         assert (
-            len(local_processed_second) > 0
-        ), "Second deployment should have processed some tasks"
-        assert (
-            len(local_processed_second) == num_tasks - tasks_before_restart
-        ), f"Second deployment should have processed {num_tasks - tasks_before_restart} tasks, but processed {len(local_processed_second)}"
+            len(second_deployment_tasks) == num_tasks - tasks_before_restart
+        ), f"Second deployment processed {len(second_deployment_tasks)} tasks, expected {num_tasks - tasks_before_restart}"
 
     def test_task_consumer_as_serve_deployment_with_async_task_handler(
         self, temp_queue_directory, serve_instance, create_processor_config
