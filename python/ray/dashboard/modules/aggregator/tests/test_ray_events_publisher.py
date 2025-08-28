@@ -4,7 +4,7 @@ import sys
 import asyncio
 from unittest.mock import Mock
 
-from ray.dashboard.modules.aggregator.ray_events_publisher import (
+from ray.dashboard.modules.aggregator.publisher.ray_event_publisher import (
     RayEventsPublisher,
     AsyncHttpPublisherClient,
     NoopPublisher,
