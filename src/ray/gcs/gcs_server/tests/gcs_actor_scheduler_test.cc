@@ -26,10 +26,11 @@
 #include "fakes/ray/rpc/worker/core_worker_client.h"
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/common/asio/asio_util.h"
-#include "ray/gcs/gcs_server/gcs_actor_manager.h"
+#include "ray/common/test_util.h"
+#include "ray/gcs/gcs_server/gcs_actor.h"
+#include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
-#include "ray/gcs/store_client/store_client.h"
 #include "ray/gcs/tests/gcs_test_util.h"
 #include "ray/util/counter_map.h"
 
@@ -40,11 +41,6 @@ namespace gcs {
 class MockedGcsActorScheduler : public gcs::GcsActorScheduler {
  public:
   using gcs::GcsActorScheduler::GcsActorScheduler;
-
-  void TryLeaseWorkerFromNodeAgain(std::shared_ptr<gcs::GcsActor> actor,
-                                   std::shared_ptr<rpc::GcsNodeInfo> node) {
-    DoRetryLeasingWorkerFromNode(std::move(actor), std::move(node));
-  }
 
  protected:
   void RetryLeasingWorkerFromNode(std::shared_ptr<gcs::GcsActor> actor,
@@ -69,7 +65,7 @@ class MockedGcsActorScheduler : public gcs::GcsActorScheduler {
 class FakeGcsActorTable : public gcs::GcsActorTable {
  public:
   // The store_client and io_context args are NOT used.
-  explicit FakeGcsActorTable(std::shared_ptr<gcs::StoreClient> store_client)
+  explicit FakeGcsActorTable(std::shared_ptr<gcs::InMemoryStoreClient> store_client)
       : GcsActorTable(store_client) {}
 
   Status Put(const ActorID &key,
@@ -81,7 +77,7 @@ class FakeGcsActorTable : public gcs::GcsActorTable {
   }
 
  private:
-  std::shared_ptr<gcs::StoreClient> store_client_ =
+  std::shared_ptr<gcs::InMemoryStoreClient> store_client_ =
       std::make_shared<gcs::InMemoryStoreClient>();
 };
 
@@ -208,7 +204,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
 
  protected:
   std::unique_ptr<InstrumentedIOContextWithThread> io_context_;
-  std::shared_ptr<gcs::StoreClient> store_client_;
+  std::shared_ptr<gcs::InMemoryStoreClient> store_client_;
   std::shared_ptr<FakeGcsActorTable> gcs_actor_table_;
   std::shared_ptr<FakeRayletClient> raylet_client_;
   std::shared_ptr<FakeCoreWorkerClient> worker_client_;
@@ -702,7 +698,7 @@ TEST_F(GcsActorSchedulerTest, TestReleaseUnusedActorWorkers) {
   // When `GcsActorScheduler` receives the `ReleaseUnusedActorWorkers` reply, it will send
   // out the `RequestWorkerLease` request.
   ASSERT_TRUE(raylet_client_->ReplyReleaseUnusedActorWorkers());
-  gcs_actor_scheduler_->TryLeaseWorkerFromNodeAgain(actor, node);
+  gcs_actor_scheduler_->DoRetryLeasingWorkerFromNode(actor, node);
   ASSERT_EQ(raylet_client_->num_workers_requested, 1);
 }
 
@@ -1257,7 +1253,7 @@ TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestReleaseUnusedActorWorkersByGc
   // When `GcsActorScheduler` receives the `ReleaseUnusedActorWorkers` reply, it will send
   // out the `RequestWorkerLease` request.
   ASSERT_TRUE(raylet_client_->ReplyReleaseUnusedActorWorkers());
-  gcs_actor_scheduler_->TryLeaseWorkerFromNodeAgain(actor, node);
+  gcs_actor_scheduler_->DoRetryLeasingWorkerFromNode(actor, node);
   ASSERT_EQ(raylet_client_->num_workers_requested, 1);
 }
 
