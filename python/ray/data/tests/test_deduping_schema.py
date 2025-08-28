@@ -8,13 +8,13 @@ from ray.data._internal.execution.streaming_executor_state import (
     dedupe_schemas_with_validation,
 )
 from ray.data._internal.pandas_block import PandasBlockSchema
-from ray.data.block import Schema
+from ray.data.block import Schema, _is_empty_schema
 
 
 @pytest.mark.parametrize(
     "incoming_schema",
     [
-        pa.schema([pa.field("uuid", pa.string())]), # NOTE: diff from old_schema
+        pa.schema([pa.field("uuid", pa.string())]),  # NOTE: diff from old_schema
         pa.schema([]),  # Empty Schema
         PandasBlockSchema(names=["col1"], types=[int]),
         PandasBlockSchema(names=[], types=[]),
@@ -41,7 +41,7 @@ def test_dedupe_schema_handle_empty(
         old_schema, incoming_bundle, enforce_schemas=False, warn=False
     )
 
-    if old_schema is None or len(old_schema) == 0:
+    if _is_empty_schema(old_schema):
         # old_schema is invalid
         assert not diverged, (old_schema, incoming_schema)
         assert out_bundle.schema == incoming_schema, (old_schema, incoming_schema)

@@ -180,8 +180,7 @@ def unify_schemas(
     )
 
     try:
-        schemas = set(schemas)
-        if len(schemas) == 1:
+        if len(set(schemas)) == 1:
             # Early exit because unifying can be expensive
             return schemas.pop()
     except Exception as e:
