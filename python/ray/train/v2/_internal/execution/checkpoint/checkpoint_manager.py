@@ -308,12 +308,12 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         return train_context_args
 
     async def get_all_reported_checkpoints(
-        self, expected_num_checkpoints: int
+        self, expected_num_report_calls: int
     ) -> List[ReportedCheckpoint]:
         """Once expected_num_checkpoints are reported, return the ReportedCheckpoints."""
         async with self._condition:
             await self._condition.wait_for(
-                lambda: self._num_report_calls == expected_num_checkpoints
+                lambda: self._num_report_calls == expected_num_report_calls
             )
             # TODO: might be nice for CheckpointManager to manage ReportedCheckpoint
             # instead of _TrainingResult but that is a large refactor.
