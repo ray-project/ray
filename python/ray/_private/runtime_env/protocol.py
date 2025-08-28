@@ -136,11 +136,11 @@ class ProtocolsProvider:
             ValueError: If required environment variables are not set.
         """
         try:
-            import pyarrow.fs as fs
+            import adlfs
             from azure.identity import DefaultAzureCredential
         except ImportError:
             raise ImportError(
-                "You must `pip install pyarrow azure-identity` "
+                "You must `pip install adlfs azure-identity` "
                 "to fetch URIs in Azure Blob File System Secure. "
                 + cls._MISSING_DEPENDENCIES_WARNING
             )
@@ -154,29 +154,17 @@ class ProtocolsProvider:
                 "AZURE_STORAGE_ACCOUNT environment variable to be set."
             )
 
-        # Create PyArrow ADLS Gen2 filesystem
-        filesystem = fs.AdlsGen2FileSystem(
+        # Create ADLFS filesystem with Azure credentials
+        filesystem = adlfs.AzureBlobFileSystem(
             account_name=azure_storage_account_name, credential=DefaultAzureCredential()
         )
 
         def open_file(uri, mode, *, transport_params=None):
-            # Parse ABFSS URI: abfss://container@account.dfs.core.windows.net/path/file
-            from urllib.parse import urlparse
-
-            parsed = urlparse(uri)
-
-            # Extract container and path from ABFSS URL
-            container = parsed.username  # container name is before @
-            path = parsed.path.lstrip("/")  # remove leading slash
-
-            full_path = f"{container}/{path}"
-
+            # adlfs can handle ABFSS URIs directly
             if "r" in mode:
-                # PyArrow's input file has read() method compatible with the expected interface
-                return filesystem.open_input_file(full_path)
+                return filesystem.open(uri, mode)
             elif "w" in mode:
-                # PyArrow's output stream has write() method
-                return filesystem.open_output_stream(full_path)
+                return filesystem.open(uri, mode)
             else:
                 raise ValueError(f"Unsupported mode: {mode}")
 
