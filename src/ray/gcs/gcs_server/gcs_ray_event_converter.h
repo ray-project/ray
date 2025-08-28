@@ -35,23 +35,21 @@ class GcsRayEventConverter {
   ///
   /// \param request The AddEventsRequest to convert.
   /// \return A list of AddTaskEventDataRequest grouped by job id.
-  void ConvertToTaskEventDataRequests(rpc::events::AddEventsRequest &&request,
-                                      std::vector<rpc::AddTaskEventDataRequest> &data);
+  std::vector<rpc::AddTaskEventDataRequest> ConvertToTaskEventDataRequests(
+      rpc::events::AddEventsRequest &&request);
 
  private:
   /// Convert a TaskDefinitionEvent to a TaskEvents.
   ///
   /// \param event The TaskDefinitionEvent to convert.
-  /// \param task_event The output TaskEvents to populate.
-  void ConvertToTaskEvents(rpc::events::TaskDefinitionEvent &&event,
-                           rpc::TaskEvents &task_event);
+  /// \return The output TaskEvents to populate.
+  rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskDefinitionEvent &&event);
 
   /// Convert a TaskExecutionEvent to a TaskEvents.
   ///
   /// \param event The TaskExecutionEvent to convert.
-  /// \param task_event The output TaskEvents to populate.
-  void ConvertToTaskEvents(rpc::events::TaskExecutionEvent &&event,
-                           rpc::TaskEvents &task_event);
+  /// \return The output TaskEvents to populate.
+  rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskExecutionEvent &&event);
 
   /// Convert an ActorTaskDefinitionEvent to a TaskEvents.
   ///
@@ -92,7 +90,7 @@ class GcsRayEventConverter {
   /// \param requests_per_job_id The list of requests grouped by job id.
   /// \param job_id_to_index The map from job id to index in requests_per_job_id.
   void AddDroppedTaskAttemptsToRequest(
-      rpc::events::TaskEventsMetadata *metadata,
+      rpc::events::TaskEventsMetadata &&metadata,
       std::vector<rpc::AddTaskEventDataRequest> &requests_per_job_id,
       absl::flat_hash_map<std::string, size_t> &job_id_to_index);
 

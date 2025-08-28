@@ -17,27 +17,28 @@
 #include <google/protobuf/map.h>
 
 #include "absl/container/flat_hash_map.h"
+#include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/util/logging.h"
 
 namespace ray {
 namespace gcs {
 
-void GcsRayEventConverter::ConvertToTaskEventDataRequests(
-    rpc::events::AddEventsRequest &&request,
-    std::vector<rpc::AddTaskEventDataRequest> &requests_per_job_id) {
+std::vector<rpc::AddTaskEventDataRequest>
+GcsRayEventConverter::ConvertToTaskEventDataRequests(
+    rpc::events::AddEventsRequest &&request) {
+  std::vector<rpc::AddTaskEventDataRequest> requests_per_job_id;
   absl::flat_hash_map<std::string, size_t> job_id_to_index;
-
   // convert RayEvents to TaskEvents and group by job id.
   for (auto &event : *request.mutable_events_data()->mutable_events()) {
-    rpc::TaskEvents task_event;
+    std::optional<rpc::TaskEvents> task_event = std::nullopt;
     switch (event.event_type()) {
     case rpc::events::RayEvent::TASK_DEFINITION_EVENT: {
-      ConvertToTaskEvents(std::move(*event.mutable_task_definition_event()), task_event);
+      task_event = ConvertToTaskEvents(std::move(*event.mutable_task_definition_event()));
       break;
     }
     case rpc::events::RayEvent::TASK_EXECUTION_EVENT: {
-      ConvertToTaskEvents(std::move(*event.mutable_task_execution_event()), task_event);
+      task_event = ConvertToTaskEvents(std::move(*event.mutable_task_execution_event()));
       break;
     }
     case rpc::events::RayEvent::ACTOR_TASK_DEFINITION_EVENT: {
@@ -51,15 +52,19 @@ void GcsRayEventConverter::ConvertToTaskEventDataRequests(
     }
 
     // Groups all taskEvents belonging to same jobId into one AddTaskEventDataRequest
-    AddTaskEventToRequest(std::move(task_event), requests_per_job_id, job_id_to_index);
+    if (task_event) {
+      AddTaskEventToRequest(std::move(*task_event), requests_per_job_id, job_id_to_index);
+    }
   }
 
   //  Groups all taskEventMetadata belonging to same jobId into one
   //  AddTaskEventDataRequest
   auto *metadata = request.mutable_events_data()->mutable_task_events_metadata();
   if (metadata->dropped_task_attempts_size() > 0) {
-    AddDroppedTaskAttemptsToRequest(metadata, requests_per_job_id, job_id_to_index);
+    AddDroppedTaskAttemptsToRequest(
+        std::move(*metadata), requests_per_job_id, job_id_to_index);
   }
+  return requests_per_job_id;
 }
 
 void GcsRayEventConverter::AddTaskEventToRequest(
@@ -84,11 +89,11 @@ void GcsRayEventConverter::AddTaskEventToRequest(
 }
 
 void GcsRayEventConverter::AddDroppedTaskAttemptsToRequest(
-    rpc::events::TaskEventsMetadata *metadata,
+    rpc::events::TaskEventsMetadata &&metadata,
     std::vector<rpc::AddTaskEventDataRequest> &requests_per_job_id,
     absl::flat_hash_map<std::string, size_t> &job_id_to_index) {
   // Process each dropped task attempt individually and route to the correct job ID
-  for (auto &dropped_attempt : *metadata->mutable_dropped_task_attempts()) {
+  for (auto &dropped_attempt : *metadata.mutable_dropped_task_attempts()) {
     const auto task_id = TaskID::FromBinary(dropped_attempt.task_id());
     const auto job_id_key = task_id.JobId().Binary();
 
@@ -109,8 +114,9 @@ void GcsRayEventConverter::AddDroppedTaskAttemptsToRequest(
   }
 }
 
-void GcsRayEventConverter::ConvertToTaskEvents(rpc::events::TaskDefinitionEvent &&event,
-                                               rpc::TaskEvents &task_event) {
+rpc::TaskEvents GcsRayEventConverter::ConvertToTaskEvents(
+    rpc::events::TaskDefinitionEvent &&event) {
+  rpc::TaskEvents task_event;
   task_event.set_task_id(event.task_id());
   task_event.set_attempt_number(event.task_attempt());
   task_event.set_job_id(event.job_id());
@@ -132,8 +138,9 @@ void GcsRayEventConverter::ConvertToTaskEvents(rpc::events::TaskDefinitionEvent 
                         task_info);
 }
 
-void GcsRayEventConverter::ConvertToTaskEvents(rpc::events::TaskExecutionEvent &&event,
-                                               rpc::TaskEvents &task_event) {
+rpc::TaskEvents GcsRayEventConverter::ConvertToTaskEvents(
+    rpc::events::TaskExecutionEvent &&event) {
+  rpc::TaskEvents task_event;
   task_event.set_task_id(event.task_id());
   task_event.set_attempt_number(event.task_attempt());
   task_event.set_job_id(event.job_id());
@@ -145,9 +152,10 @@ void GcsRayEventConverter::ConvertToTaskEvents(rpc::events::TaskExecutionEvent &
   task_state_update->mutable_error_info()->Swap(event.mutable_ray_error_info());
 
   for (const auto &[state, timestamp] : event.task_state()) {
-    int64_t ns = timestamp.seconds() * 1000000000LL + timestamp.nanos();
+    int64_t ns = ProtoTimestampToAbslTimeNanos(timestamp);
     (*task_state_update->mutable_state_ts_ns())[state] = ns;
   }
+  return task_event;
 }
 
 void GcsRayEventConverter::ConvertToTaskEvents(

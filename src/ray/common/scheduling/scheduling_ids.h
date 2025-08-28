@@ -25,7 +25,6 @@
 #include "ray/common/constants.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
-#include "ray/util/util.h"
 
 namespace ray {
 
@@ -143,15 +142,15 @@ inline std::ostream &operator<<(
 /// the singleton map with PredefinedResources.
 template <>
 inline StringIdMap &BaseSchedulingID<SchedulingIDTag::Resource>::GetMap() {
-  static std::unique_ptr<StringIdMap> map{[]() {
-    std::unique_ptr<StringIdMap> map(new StringIdMap());
-    map->InsertOrDie(kCPU_ResourceLabel, CPU)
+  static std::unique_ptr<StringIdMap> singleton_map{[]() {
+    std::unique_ptr<StringIdMap> map_ptr(new StringIdMap());
+    map_ptr->InsertOrDie(kCPU_ResourceLabel, CPU)
         .InsertOrDie(kGPU_ResourceLabel, GPU)
         .InsertOrDie(kObjectStoreMemory_ResourceLabel, OBJECT_STORE_MEM)
         .InsertOrDie(kMemory_ResourceLabel, MEM);
-    return map;
+    return map_ptr;
   }()};
-  return *map;
+  return *singleton_map;
 }
 
 namespace scheduling {

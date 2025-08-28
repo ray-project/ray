@@ -67,6 +67,21 @@ def _create_empty_table(schema: "pyarrow.Schema"):
     return pa.table(arrays, schema=schema)
 
 
+def _hash_partition(
+    table: "pyarrow.Table",
+    num_partitions: int,
+) -> np.ndarray:
+
+    partitions = np.zeros((table.num_rows,), dtype=np.int64)
+    for i in range(table.num_rows):
+        _tuple = tuple(c[i] for c in table.columns)
+        partitions[i] = hash(_tuple) % num_partitions
+
+    # Convert to ndarray to compute hash partition indices
+    # more efficiently
+    return partitions
+
+
 def hash_partition(
     table: "pyarrow.Table",
     *,
@@ -90,15 +105,7 @@ def hash_partition(
         return {0: table}
 
     projected_table = table.select(hash_cols)
-
-    partitions = np.zeros((projected_table.num_rows,))
-    for i in range(projected_table.num_rows):
-        _tuple = tuple(c[i] for c in projected_table.columns)
-        partitions[i] = hash(_tuple) % num_partitions
-
-    # Convert to ndarray to compute hash partition indices
-    # more efficiently
-    partitions_array = np.asarray(partitions)
+    partitions_array = _hash_partition(projected_table, num_partitions=num_partitions)
     # For every partition compile list of indices of rows falling
     # under that partition
     indices = [np.where(partitions_array == p)[0] for p in range(num_partitions)]
@@ -171,6 +178,14 @@ def unify_schemas(
         ArrowTensorType,
         ArrowVariableShapedTensorType,
     )
+
+    try:
+        if len(set(schemas)) == 1:
+            # Early exit because unifying can be expensive
+            return schemas[0]
+    except Exception as e:
+        # Unsure if there are cases where schemas are NOT hashable
+        logger.warning(f"Failed to hash the schemas (for deduplication): {e}")
 
     schemas_to_unify = []
     schema_field_overrides = {}

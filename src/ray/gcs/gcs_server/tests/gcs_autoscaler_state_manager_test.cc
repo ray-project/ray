@@ -12,30 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// clang-format off
+#include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
+
+#include <algorithm>
+#include <limits>
+#include <map>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <vector>
-#include <algorithm>
-#include <map>
-#include <string>
-#include <limits>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "ray/common/asio/instrumented_io_context.h"
-#include "ray/gcs/gcs_server/tests/gcs_server_test_util.h"
-#include "ray/gcs/tests/gcs_test_util.h"
-#include "ray/gcs/gcs_server/store_client_kv.h"
-#include "ray/raylet/scheduling/cluster_resource_manager.h"
-#include "mock/ray/gcs/gcs_server/gcs_placement_group_mgr.h"
-#include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_actor_manager.h"
+#include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
+#include "mock/ray/gcs/gcs_server/gcs_placement_group_mgr.h"
 #include "mock/ray/gcs/store_client/store_client.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
-
-#include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
-// clang-format on
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/gcs/gcs_server/gcs_init_data.h"
+#include "ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/gcs/gcs_server/store_client_kv.h"
+#include "ray/gcs/gcs_server/tests/gcs_server_test_util.h"
+#include "ray/gcs/tests/gcs_test_util.h"
+#include "ray/raylet/scheduling/cluster_resource_manager.h"
 
 namespace ray {
 
