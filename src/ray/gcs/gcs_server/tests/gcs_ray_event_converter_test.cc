@@ -309,7 +309,6 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskExecutionEvent) {
 TEST_F(GcsRayEventConverterTest, TestConvertActorTaskDefinitionEvent) {
   GcsRayEventConverter converter;
   rpc::events::ActorTaskDefinitionEvent actor_def_event;
-  rpc::TaskEvents task_event;
 
   // Set basic fields
   actor_def_event.set_task_id("test_actor_task_id");
@@ -336,7 +335,7 @@ TEST_F(GcsRayEventConverterTest, TestConvertActorTaskDefinitionEvent) {
   (*actor_def_event.mutable_required_resources())["GPU"] = 1.0;
 
   // Call the converter
-  converter.ConvertToTaskEvents(std::move(actor_def_event), task_event);
+  rpc::TaskEvents task_event = converter.ConvertToTaskEvents(std::move(actor_def_event));
 
   // Check basic fields
   EXPECT_EQ(task_event.task_id(), "test_actor_task_id");

@@ -54,11 +54,10 @@ class GcsRayEventConverter {
   /// Convert an ActorTaskDefinitionEvent to a TaskEvents.
   ///
   /// \param event The ActorTaskDefinitionEvent to convert.
-  /// \param task_event The output TaskEvents to populate.
-  void ConvertToTaskEvents(rpc::events::ActorTaskDefinitionEvent &&event,
-                           rpc::TaskEvents &task_event);
+  /// \return The output TaskEvents to populate.
+  rpc::TaskEvents ConvertToTaskEvents(rpc::events::ActorTaskDefinitionEvent &&event);
 
-  /// Generate a TaskInfoEntry from the given runtime env info, function descriptor,
+  /// Populate the TaskInfoEntry with the given runtime env info, function descriptor,
   /// and required resources. This function is commonly used to convert the task
   /// and actor task definition events to TaskEvents.
   ///
@@ -67,7 +66,7 @@ class GcsRayEventConverter {
   /// \param required_resources The required resources.
   /// \param language The language of the task.
   /// \param task_info The output TaskInfoEntry to populate.
-  void GenerateTaskInfoEntry(
+  void PopulateTaskRuntimeAndFunctionInfo(
       rpc::RuntimeEnvInfo &&runtime_env_info,
       rpc::FunctionDescriptor &&function_descriptor,
       ::google::protobuf::Map<std::string, double> &&required_resources,

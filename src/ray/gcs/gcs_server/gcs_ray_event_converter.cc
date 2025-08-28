@@ -42,8 +42,8 @@ GcsRayEventConverter::ConvertToTaskEventDataRequests(
       break;
     }
     case rpc::events::RayEvent::ACTOR_TASK_DEFINITION_EVENT: {
-      ConvertToTaskEvents(std::move(*event.mutable_actor_task_definition_event()),
-                          task_event);
+      task_event =
+          ConvertToTaskEvents(std::move(*event.mutable_actor_task_definition_event()));
       break;
     }
     default:
@@ -131,11 +131,12 @@ rpc::TaskEvents GcsRayEventConverter::ConvertToTaskEvents(
     task_info->set_placement_group_id(event.placement_group_id());
   }
 
-  GenerateTaskInfoEntry(std::move(*event.mutable_runtime_env_info()),
-                        std::move(*event.mutable_task_func()),
-                        std::move(*event.mutable_required_resources()),
-                        event.language(),
-                        task_info);
+  PopulateTaskRuntimeAndFunctionInfo(std::move(*event.mutable_runtime_env_info()),
+                                     std::move(*event.mutable_task_func()),
+                                     std::move(*event.mutable_required_resources()),
+                                     event.language(),
+                                     task_info);
+  return task_event;
 }
 
 rpc::TaskEvents GcsRayEventConverter::ConvertToTaskEvents(
@@ -158,8 +159,9 @@ rpc::TaskEvents GcsRayEventConverter::ConvertToTaskEvents(
   return task_event;
 }
 
-void GcsRayEventConverter::ConvertToTaskEvents(
-    rpc::events::ActorTaskDefinitionEvent &&event, rpc::TaskEvents &task_event) {
+rpc::TaskEvents GcsRayEventConverter::ConvertToTaskEvents(
+    rpc::events::ActorTaskDefinitionEvent &&event) {
+  rpc::TaskEvents task_event;
   task_event.set_task_id(event.task_id());
   task_event.set_attempt_number(event.task_attempt());
   task_event.set_job_id(event.job_id());
@@ -176,14 +178,15 @@ void GcsRayEventConverter::ConvertToTaskEvents(
   if (!event.actor_id().empty()) {
     task_info->set_actor_id(event.actor_id());
   }
-  GenerateTaskInfoEntry(std::move(*event.mutable_runtime_env_info()),
-                        std::move(*event.mutable_actor_func()),
-                        std::move(*event.mutable_required_resources()),
-                        event.language(),
-                        task_info);
+  PopulateTaskRuntimeAndFunctionInfo(std::move(*event.mutable_runtime_env_info()),
+                                     std::move(*event.mutable_actor_func()),
+                                     std::move(*event.mutable_required_resources()),
+                                     event.language(),
+                                     task_info);
+  return task_event;
 }
 
-void GcsRayEventConverter::GenerateTaskInfoEntry(
+void GcsRayEventConverter::PopulateTaskRuntimeAndFunctionInfo(
     rpc::RuntimeEnvInfo &&runtime_env_info,
     rpc::FunctionDescriptor &&function_descriptor,
     ::google::protobuf::Map<std::string, double> &&required_resources,
