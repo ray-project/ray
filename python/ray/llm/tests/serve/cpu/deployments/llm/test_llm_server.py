@@ -153,6 +153,34 @@ class TestLLMServer:
         LLMResponseValidator.validate_embedding_response(chunks[0], dimensions)
 
     @pytest.mark.asyncio
+    async def test_score_llm_server(
+        self,
+        serve_handle,
+        mock_llm_config,
+        mock_score_request,
+    ):
+        """Test score API from LLMServer perspective."""
+
+        # Create score request
+        request = mock_score_request
+
+        print("\n\n_____ SCORE SERVER _____\n\n")
+
+        # Get the response
+        batched_chunks = serve_handle.score.remote(request)
+
+        # Collect responses (should be just one)
+        chunks = []
+        async for batch in batched_chunks:
+            chunks.append(batch)
+
+        # Check that we got one response
+        assert len(chunks) == 1
+
+        # Validate score response
+        LLMResponseValidator.validate_score_response(chunks[0])
+
+    @pytest.mark.asyncio
     async def test_check_health(self, mock_llm_config):
         """Test health check functionality."""
 
