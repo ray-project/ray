@@ -283,9 +283,13 @@ RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH = get_env_str(
 RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH = get_env_str(
     "RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH", None
 )
-
+# The method name on the serve deployment which will return the custom autoscaling metrics to the controller.
 RAY_SERVE_AUTOSCALING_STATS_METHOD = get_env_str(
     "RAY_SERVE_AUTOSCALING_STATS_METHOD", "record_autoscaling_stats"
+)
+# Maximum timeout allowed for RAY_SERVE_AUTOSCALING_STATS_METHOD to run.
+RAY_SERVE_AUTOSCALING_STATS_TIMEOUT_S = get_env_float(
+    "RAY_SERVE_AUTOSCALING_STATS_TIMEOUT_S", 10.0
 )
 
 # How often autoscaling metrics are recorded on Serve replicas.
