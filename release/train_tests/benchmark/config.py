@@ -83,6 +83,9 @@ class BenchmarkConfig(BaseModel):
     num_epochs: int = 1
     skip_train_step: bool = False
 
+    # Checkpointing
+    checkpoint_every_n_steps: int = -1
+
     # Validation
     validate_every_n_steps: int = -1
     skip_validation_step: bool = False
@@ -109,11 +112,11 @@ def _add_field_to_parser(parser: argparse.ArgumentParser, field: str, field_info
         parser.add_argument(f"--{field}", type=field_type, default=field_info.default)
 
 
-def cli_to_config() -> BenchmarkConfig:
+def cli_to_config(benchmark_config_cls=BenchmarkConfig) -> BenchmarkConfig:
     parser = argparse.ArgumentParser()
 
     nested_fields = []
-    for field, field_info in BenchmarkConfig.model_fields.items():
+    for field, field_info in benchmark_config_cls.model_fields.items():
         # Skip nested configs for now
         if _is_pydantic_model(field_info.annotation):
             nested_fields.append(field)
@@ -127,24 +130,24 @@ def cli_to_config() -> BenchmarkConfig:
     nested_configs = {}
     for nested_field in nested_fields:
         nested_parser = argparse.ArgumentParser()
-        config_cls = BenchmarkConfig.model_fields[nested_field].annotation
+        nested_config_cls = benchmark_config_cls.model_fields[nested_field].annotation
 
-        if config_cls == DataLoaderConfig:
+        if nested_config_cls == DataLoaderConfig:
             if top_level_args.dataloader_type == DataloaderType.RAY_DATA:
-                config_cls = RayDataConfig
+                nested_config_cls = RayDataConfig
             elif top_level_args.dataloader_type == DataloaderType.TORCH:
-                config_cls = TorchConfig
+                nested_config_cls = TorchConfig
 
-        if config_cls == TaskConfig:
+        if nested_config_cls == TaskConfig:
             if top_level_args.task == ImageClassificationConfig.TASK_NAME:
-                config_cls = ImageClassificationConfig
+                nested_config_cls = ImageClassificationConfig
             elif top_level_args.task == RecsysConfig.TASK_NAME:
-                config_cls = RecsysConfig
+                nested_config_cls = RecsysConfig
 
-        for field, field_info in config_cls.model_fields.items():
+        for field, field_info in nested_config_cls.model_fields.items():
             _add_field_to_parser(nested_parser, field, field_info)
 
         args, _ = nested_parser.parse_known_args()
-        nested_configs[nested_field] = config_cls(**vars(args))
+        nested_configs[nested_field] = nested_config_cls(**vars(args))
 
-    return BenchmarkConfig(**vars(top_level_args), **nested_configs)
+    return benchmark_config_cls(**vars(top_level_args), **nested_configs)
