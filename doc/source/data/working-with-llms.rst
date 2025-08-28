@@ -40,48 +40,27 @@ Upon execution, the Processor object instantiates replicas of the vLLM engine (u
 
 Here's a simple configuration example:
 
-.. code-block:: python
-
-    from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
-
-    config = vLLMEngineProcessorConfig(
-        model_source="unsloth/Llama-3.1-8B-Instruct",
-        engine_kwargs={
-            "enable_chunked_prefill": True,
-            "max_num_batched_tokens": 4096,
-            "max_model_len": 16384,
-        },
-        concurrency=1,
-        batch_size=64,
-    )
-    processor = build_llm_processor(config)
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :lines: 28-37
 
 Each processor requires specific input columns. You can find more info by using the following API:
 
 The processor requires specific input columns. Here's how to check what columns are needed:
 
-.. code-block:: python
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :lines: 65-67
 
-    from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
-    
-    config = vLLMEngineProcessorConfig(model_source="unsloth/Llama-3.1-8B-Instruct")
-    processor = build_llm_processor(config)
-    processor.log_input_column_names()
+The output shows:
 
-    # Output: The first stage of the processor is ChatTemplateStage.
-    # Required input columns:
-    #         messages: A list of messages in OpenAI chat format.
+- **ChatTemplateStage**: Required input columns: messages (OpenAI chat format)
 
 Some models may require a Hugging Face token to be specified. You can specify the token in the `runtime_env` argument.
 
-.. code-block:: python
-
-    config = vLLMEngineProcessorConfig(
-        model_source="unsloth/Llama-3.1-8B-Instruct",
-        runtime_env={"env_vars": {"HF_TOKEN": "your_huggingface_token"}},
-        concurrency=1,
-        batch_size=64,
-    )
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :lines: 267-276
 
 .. _vllm_llm:
 
@@ -165,19 +144,9 @@ Complete VLM example:
 
 Here's a simple VLM configuration:
 
-.. code-block:: python
-
-    from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
-
-    vision_config = vLLMEngineProcessorConfig(
-        model_source="Qwen/Qwen2.5-VL-3B-Instruct",
-        engine_kwargs={"tensor_parallel_size": 1},
-        runtime_env={"env_vars": {"HF_TOKEN": "your-hf-token-here"}},
-        batch_size=1,
-        accelerator_type="L4",
-        has_image=True
-    )
-    processor = build_llm_processor(vision_config)
+.. literalinclude:: doc_code/working-with-llms/vlm_example.py
+    :language: python
+    :lines: 62-81
 
 For a comprehensive VLM configuration example:
 
@@ -204,16 +173,9 @@ Complete OpenAI API example:
 
 Here's a simple OpenAI API configuration:
 
-.. code-block:: python
-
-    from ray.data.llm import HttpRequestProcessorConfig, build_llm_processor
-
-    config = HttpRequestProcessorConfig(
-        url="https://api.openai.com/v1/chat/completions",
-        headers={"Authorization": "Bearer your-api-key-here"},
-        qps=1
-    )
-    processor = build_llm_processor(config)
+.. literalinclude:: doc_code/working-with-llms/openai_api_example.py
+    :language: python
+    :lines: 40-44
 
 For a comprehensive configuration and usage demo:
 
@@ -290,14 +252,9 @@ Ray Data LLM provides the following utility to help uploading models to remote o
 
 And later you can use remote object store URI as `model_source` in the config.
 
-.. code-block:: python
-
-    from ray.data.llm import vLLMEngineProcessorConfig
-    
-    config = vLLMEngineProcessorConfig(
-        model_source="gs://my-bucket/path/to/facebook-opt-350m",  # or s3://my-bucket/path/to/model_name
-        # ... other configuration parameters
-    )
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :lines: 103-111
 
 For a more comprehensive S3 configuration example with environment variables:
 
