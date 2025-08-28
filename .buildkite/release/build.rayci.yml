@@ -2,7 +2,7 @@ group: release build
 steps:
   - name: raycpubaseextra-testdeps
     label: "wanda: ray.py{{matrix}}.cpu.base-extra-testdeps"
-    wanda: ci/docker/ray.cpu.base-extra-testdeps.wanda.yaml
+    wanda: docker/base-extra-testdeps/cpu.wanda.yaml
     matrix:
       - "3.9"
       - "3.11"
@@ -16,7 +16,7 @@ steps:
 
   - name: raycudabaseextra-testdeps
     label: "wanda: ray.py{{matrix.python}}.cu{{matrix.cuda}}.base-extra-testdeps"
-    wanda: ci/docker/ray.cuda.base-extra-testdeps.wanda.yaml
+    wanda: docker/base-extra-testdeps/cuda.wanda.yaml
     matrix:
       setup:
         python:
@@ -35,7 +35,7 @@ steps:
 
   - name: ray-llmbaseextra-testdeps
     label: "wanda: ray.py{{matrix.python}}.llm.base-extra-testdeps (cuda {{matrix.cuda}})"
-    wanda: ci/docker/ray.cuda.base-extra-testdeps.wanda.yaml
+    wanda: docker/base-extra-testdeps/cuda.wanda.yaml
     matrix:
       setup:
         python:
@@ -52,7 +52,7 @@ steps:
 
   - name: ray-mlcudabaseextra-testdeps
     label: "wanda: ray.py{{matrix.python}}.cu{{matrix.cuda}}.ml.base-extra-testdeps"
-    wanda: ci/docker/ray.cuda.base-extra-testdeps.wanda.yaml
+    wanda: docker/base-extra-testdeps/cuda.wanda.yaml
     matrix:
       setup:
         python:
@@ -67,7 +67,7 @@ steps:
     depends_on:
       - ray-mlcudabaseextra
 
-  - label: ":tapioca: build: anyscale py{{matrix.python}}-{{matrix.platform}} docker"
+  - label: ":tapioca: build: ray py{{matrix.python}}-{{matrix.platform}} image for release tests"
     key: anyscalebuild
     instance_type: release-medium
     tags:
@@ -93,7 +93,7 @@ steps:
           - cu12.3.2-cudnn9
           - cpu
 
-  - label: ":tapioca: build: anyscale-llm py{{matrix}} docker"
+  - label: ":tapioca: build: ray-llm py{{matrix}} image for release tests"
     key: anyscalellmbuild
     instance_type: release-medium
     tags:
@@ -108,7 +108,7 @@ steps:
     matrix:
       - "3.11"
 
-  - label: ":tapioca: build: anyscale-ml py{{matrix}} docker"
+  - label: ":tapioca: build: ray-ml py{{matrix}} image for release tests"
     key: anyscalemlbuild
     instance_type: release-medium
     tags:
