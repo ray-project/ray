@@ -134,6 +134,5 @@ namespace rpc {
   reply->mutable_status()->set_message(status.message());             \
   send_reply_callback(ray::Status::OK(), nullptr, nullptr)
 
-
 }  // namespace rpc
 }  // namespace ray
