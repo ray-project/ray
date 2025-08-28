@@ -146,7 +146,7 @@ For production deployment, use Anyscale services to deploy the Ray Serve app to 
 
 ### Launch
 
-Anyscale provides out-of-the-box images (`anyscale/ray-llm`) which comes preloaded with Ray Serve LLM, vLLM, and all required GPU/runtime dependencies. This makes it easy to get started without building a custom image.
+Anyscale provides out-of-the-box images (`anyscale/ray-llm`) which comes pre-loaded with Ray Serve LLM, vLLM, and all required GPU/runtime dependencies. This makes it easy to get started without building a custom image.
 
 Write your Anyscale Service configuration in a new `service.yaml` file:
 ```yaml
