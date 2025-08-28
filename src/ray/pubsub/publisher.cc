@@ -196,22 +196,25 @@ void SubscriptionIndex::EraseEntry(const std::string &key_id,
   }
 
   // Erase keys from the subscriber of individual keys.
-  auto subscribers_to_message_it = subscribers_to_key_id_.find(subscriber_id);
-  if (subscribers_to_message_it == subscribers_to_key_id_.end()) {
+  auto subscribers_to_key_id_it = subscribers_to_key_id_.find(subscriber_id);
+  if (subscribers_to_key_id_it == subscribers_to_key_id_.end()) {
     return;
   }
-  auto &objects = subscribers_to_message_it->second;
+  auto &objects = subscribers_to_key_id_it->second;
   auto object_it = objects.find(key_id);
   if (object_it == objects.end()) {
     return;
   }
   objects.erase(object_it);
   if (objects.empty()) {
-    subscribers_to_key_id_.erase(subscribers_to_message_it);
+    subscribers_to_key_id_.erase(subscribers_to_key_id_it);
   }
 
   // Erase subscribers from keys (reverse index).
   auto entity_it = entities_.find(key_id);
+  if (entity_it == entities_.end()) {
+    return;
+  }
   auto &entity = *entity_it->second;
   // If code reaches this line, that means the subscriber id was in the index.
   entity.RemoveSubscriber(subscriber_id);
