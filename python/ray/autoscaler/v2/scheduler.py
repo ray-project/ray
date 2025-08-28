@@ -813,7 +813,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                         req.ippr_statuses
                         and instance.cloud_instance_id in req.ippr_statuses
                     ):
-                        # Attach current IPPR state and its IPPR spec for
+                        # Attach the current IPPR state of the node and its IPPR spec for
                         # later resizing.
                         node.ippr_status = req.ippr_statuses[instance.cloud_instance_id]
                         node.ippr_spec = req.ippr_specs.groups[node.node_type]
@@ -1562,7 +1562,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         # If there's any existing nodes left, we will add to the target nodes
         target_nodes.extend(existing_nodes)
 
-        # Try scheduling resource requests with IPPR after filling up existing nodes with their current capacity.
+        # Try scheduling remaining requests with IPPR after filling up existing nodes with their current capacity.
         existing_nodes = target_nodes
         target_nodes = []
         ippr_candidates = []
@@ -1619,6 +1619,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         ]
         ippr_specs = ctx.get_ippr_specs()
         for node in node_pools:
+            # if the new node can be resized, consider its maximum capacity in its IPPR spec.
             if ippr_specs and node.node_type in ippr_specs.groups:
                 group = ippr_specs.groups[node.node_type]
                 node.update_total_resources(
