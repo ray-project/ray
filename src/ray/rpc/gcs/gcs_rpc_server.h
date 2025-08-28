@@ -112,9 +112,14 @@ namespace rpc {
 #define ACTOR_INFO_SERVICE_RPC_HANDLER(HANDLER, MAX_ACTIVE_RPCS) \
   RPC_SERVICE_HANDLER(ActorInfoGcsService, HANDLER, MAX_ACTIVE_RPCS)
 
-#define PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(PlacementGroupInfoGcsService,       \
-                      HANDLER,                            \
+#define MONITOR_SERVICE_RPC_HANDLER(HANDLER) \
+  RPC_SERVICE_HANDLER(MonitorGcsService,     \
+                      HANDLER,               \
+                      RayConfig::instance().gcs_max_active_rpcs_per_handler())
+
+#define OBJECT_INFO_SERVICE_RPC_HANDLER(HANDLER) \
+  RPC_SERVICE_HANDLER(ObjectInfoGcsService,      \
+                      HANDLER,                   \
                       RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
 #define GCS_RPC_SEND_REPLY(send_reply_callback, reply, status)        \
@@ -209,70 +214,7 @@ class ActorInfoGrpcService : public GrpcService {
   ActorInfoGcsServiceHandler &service_handler_;
 };
 
-class PlacementGroupInfoGcsServiceHandler {
- public:
-  virtual ~PlacementGroupInfoGcsServiceHandler() = default;
-
-  virtual void HandleCreatePlacementGroup(CreatePlacementGroupRequest request,
-                                          CreatePlacementGroupReply *reply,
-                                          SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleRemovePlacementGroup(RemovePlacementGroupRequest request,
-                                          RemovePlacementGroupReply *reply,
-                                          SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetPlacementGroup(GetPlacementGroupRequest request,
-                                       GetPlacementGroupReply *reply,
-                                       SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetAllPlacementGroup(GetAllPlacementGroupRequest request,
-                                          GetAllPlacementGroupReply *reply,
-                                          SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleWaitPlacementGroupUntilReady(
-      WaitPlacementGroupUntilReadyRequest request,
-      WaitPlacementGroupUntilReadyReply *reply,
-      SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetNamedPlacementGroup(GetNamedPlacementGroupRequest request,
-                                            GetNamedPlacementGroupReply *reply,
-                                            SendReplyCallback send_reply_callback) = 0;
-};
-
-/// The `GrpcService` for `PlacementGroupInfoGcsService`.
-class PlacementGroupInfoGrpcService : public GrpcService {
- public:
-  /// Constructor.
-  ///
-  /// \param[in] handler The service handler that actually handle the requests.
-  explicit PlacementGroupInfoGrpcService(instrumented_io_context &io_service,
-                                         PlacementGroupInfoGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler) {}
-
- protected:
-  grpc::Service &GetGrpcService() override { return service_; }
-
-  void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id) override {
-    PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(CreatePlacementGroup);
-    PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(RemovePlacementGroup);
-    PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(GetPlacementGroup);
-    PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(GetNamedPlacementGroup);
-    PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(GetAllPlacementGroup);
-    PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(WaitPlacementGroupUntilReady);
-  }
-
- private:
-  /// The grpc async service object.
-  PlacementGroupInfoGcsService::AsyncService service_;
-  /// The service handler that actually handle the requests.
-  PlacementGroupInfoGcsServiceHandler &service_handler_;
-};
-
 using ActorInfoHandler = ActorInfoGcsServiceHandler;
-using PlacementGroupInfoHandler = PlacementGroupInfoGcsServiceHandler;
 
 }  // namespace rpc
 }  // namespace ray

@@ -132,5 +132,24 @@ void RayEventExportGrpcService::InitServerCallFactories(
   RPC_SERVICE_HANDLER(RayEventExportGcsService, AddEvents, max_active_rpcs_per_handler_)
 }
 
+void PlacementGroupInfoGrpcService::InitServerCallFactories(
+    const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+    std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+    const ClusterID &cluster_id) {
+  RPC_SERVICE_HANDLER(
+      PlacementGroupInfoGcsService, CreatePlacementGroup, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      PlacementGroupInfoGcsService, RemovePlacementGroup, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      PlacementGroupInfoGcsService, GetPlacementGroup, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      PlacementGroupInfoGcsService, GetNamedPlacementGroup, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      PlacementGroupInfoGcsService, GetAllPlacementGroup, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(PlacementGroupInfoGcsService,
+                      WaitPlacementGroupUntilReady,
+                      max_active_rpcs_per_handler_)
+}
+
 }  // namespace rpc
 }  // namespace ray
