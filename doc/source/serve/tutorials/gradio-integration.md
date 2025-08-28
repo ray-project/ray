@@ -16,7 +16,7 @@ Remember you can substitute this app with your own Gradio app if you want to try
 
 To follow this tutorial, you need Ray Serve, Gradio, and transformers. If you haven't already, install them by running:
 ```console
-$ pip install "ray[serve]" gradio==3.50.2 torch transformers
+$ pip install "ray[serve]" gradio==5.11.0 torch transformers
 ```
 
 
