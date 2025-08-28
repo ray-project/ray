@@ -128,12 +128,15 @@ class ProtocolsProvider:
     def _handle_abfss_protocol(cls):
         """Set up Azure Blob File System Secure (ABFSS) protocol handling.
 
+        Automatically extracts the storage account name from ABFSS URIs.
+        Format: abfss://container@account.dfs.core.windows.net/path
+
         Returns:
             tuple: (open_file function, transport_params)
 
         Raises:
             ImportError: If required dependencies are not installed.
-            ValueError: If required environment variables are not set.
+            ValueError: If ABFSS URI format is invalid.
         """
         try:
             import adlfs
@@ -145,21 +148,23 @@ class ProtocolsProvider:
                 + cls._MISSING_DEPENDENCIES_WARNING
             )
 
-        # Define authentication variable
-        azure_storage_account_name = os.getenv("AZURE_STORAGE_ACCOUNT")
+        def open_file(uri, mode, *, transport_params=None):
+            # Parse ABFSS URI to extract storage account name
+            # Format: abfss://container@account.dfs.core.windows.net/path
+            from urllib.parse import urlparse
 
-        if not azure_storage_account_name:
-            raise ValueError(
-                "Azure Blob File System Secure authentication requires "
-                "AZURE_STORAGE_ACCOUNT environment variable to be set."
+            parsed = urlparse(uri)
+            if not parsed.hostname or not parsed.hostname.endswith(".dfs.core.windows.net"):
+                raise ValueError(f"Invalid ABFSS URI format: {uri}")
+
+            # Extract storage account name from hostname (account.dfs.core.windows.net)
+            azure_storage_account_name = parsed.hostname.split(".")[0]
+
+            # Create ADLFS filesystem with Azure credentials for this specific request
+            filesystem = adlfs.AzureBlobFileSystem(
+                account_name=azure_storage_account_name, credential=DefaultAzureCredential()
             )
 
-        # Create ADLFS filesystem with Azure credentials
-        filesystem = adlfs.AzureBlobFileSystem(
-            account_name=azure_storage_account_name, credential=DefaultAzureCredential()
-        )
-
-        def open_file(uri, mode, *, transport_params=None):
             # adlfs can handle ABFSS URIs directly
             if "r" in mode:
                 return filesystem.open(uri, mode)
