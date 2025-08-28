@@ -128,7 +128,6 @@ ray_cc_library(
     srcs = ["node_manager/raylet_client_pool.cc"],
     hdrs = [
         "node_manager/node_manager_client.h",
-        "node_manager/node_manager_server.h",
         "node_manager/raylet_client_pool.h",
     ] + [
         # TODO(eoakes): these are needed due to a circular dependency:
@@ -242,7 +241,6 @@ ray_cc_library(
     hdrs = [
         "worker/core_worker_client.h",
         "worker/core_worker_client_pool.h",
-        "worker/core_worker_server.h",
     ],
     deps = [
         "//src/ray/common:id",
