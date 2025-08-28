@@ -2213,18 +2213,16 @@ Status CoreWorker::CreatePlacementGroup(
   }
   const PlacementGroupID placement_group_id = PlacementGroupID::Of(GetCurrentJobId());
   PlacementGroupSpecBuilder builder;
-  builder.SetPlacementGroupSpec(
-      placement_group_id,
-      placement_group_creation_options.name_,
-      placement_group_creation_options.bundles_,
-      placement_group_creation_options.strategy_,
-      placement_group_creation_options.is_detached_,
-      placement_group_creation_options.max_cpu_fraction_per_node_,
-      placement_group_creation_options.soft_target_node_id_,
-      worker_context_->GetCurrentJobID(),
-      worker_context_->GetCurrentActorID(),
-      worker_context_->CurrentActorDetached(),
-      placement_group_creation_options.bundle_label_selector_);
+  builder.SetPlacementGroupSpec(placement_group_id,
+                                placement_group_creation_options.name_,
+                                placement_group_creation_options.bundles_,
+                                placement_group_creation_options.strategy_,
+                                placement_group_creation_options.is_detached_,
+                                placement_group_creation_options.soft_target_node_id_,
+                                worker_context_->GetCurrentJobID(),
+                                worker_context_->GetCurrentActorID(),
+                                worker_context_->CurrentActorDetached(),
+                                placement_group_creation_options.bundle_label_selector_);
   PlacementGroupSpecification placement_group_spec = builder.Build();
   *return_placement_group_id = placement_group_id;
   RAY_LOG(INFO).WithField(placement_group_id)
@@ -3098,7 +3096,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
   waiter->IncrementObjectGenerated();
 
   client->ReportGeneratorItemReturns(
-      request,
+      std::move(request),
       [waiter, generator_id, return_id, item_index](
           const Status &status, const rpc::ReportGeneratorItemReturnsReply &reply) {
         RAY_LOG(DEBUG) << "ReportGeneratorItemReturns replied. " << generator_id

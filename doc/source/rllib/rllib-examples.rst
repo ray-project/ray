@@ -158,7 +158,7 @@ Curiosity
    Using curiosity is beneficial in sparse-reward environments where agents may struggle to find rewarding paths.
    However, count-based methods are only feasible for environments with small observation spaces.
 
-- `Euclidian distance-based curiosity <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/euclidian_distance_based_curiosity.py>`__:
+- `Euclidean distance-based curiosity <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/euclidian_distance_based_curiosity.py>`__:
    Uses Euclidean distance between states and the initial state to measure novelty, encouraging exploration by rewarding the agent for reaching "far away"
    regions of the environment.
    Suitable for sparse-reward tasks, where diverse exploration is key to success.

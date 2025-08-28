@@ -74,7 +74,7 @@ class CollectiveTensorTransport(TensorTransportManager):
                 f"No communicators found for actors {src_actor} and {dst_actor}. "
                 "Create a communicator with "
                 "`ray.experimental.collective.create_collective_group` "
-                "before calling actor tasks."
+                "before calling actor tasks. with non-default tensor_transport."
             )
         elif len(communicators) > 1:
             raise ValueError(
@@ -129,7 +129,6 @@ class CollectiveTensorTransport(TensorTransportManager):
     @staticmethod
     def send_multiple_tensors(
         tensors: List["torch.Tensor"],
-        tensor_transport_metadata: CollectiveTransportMetadata,
         communicator_metadata: CollectiveCommunicatorMetadata,
         device: "torch.device",
     ):

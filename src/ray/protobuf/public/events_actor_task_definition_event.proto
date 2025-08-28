@@ -14,30 +14,29 @@
 
 syntax = "proto3";
 
-import "src/ray/protobuf/runtime_env_common.proto";
+import "src/ray/protobuf/public/runtime_environment.proto";
 import "src/ray/protobuf/common.proto";
 
 package ray.rpc.events;
 
-// Message containing the definition information of a task.
+// Message containing the definition information of an actor task.
 // The message is expected to be emitted once per task attempt.
-message TaskDefinitionEvent {
-  // task_id and task_attempt form the unique identifier of a task.
+message ActorTaskDefinitionEvent {
+  // task_id and task_attempt forms the unique identifier for a task.
   bytes task_id = 1;
   int32 task_attempt = 2;
 
-  // The task definition information.
-  // Valid values are NORMAL_TASK, ACTOR_CREATION_TASK, DRIVER_TASK
-  TaskType task_type = 3;
-  Language language = 4;
-  FunctionDescriptor task_func = 5;
-  string task_name = 6;
-  map<string, double> required_resources = 7;
-  RuntimeEnvInfo runtime_env_info = 8;
+  // The actor task definition information.
+  Language language = 3;
+  FunctionDescriptor actor_func = 4;
+  string actor_task_name = 5;
+  map<string, double> required_resources = 6;
+  RuntimeEnvInfo runtime_env_info = 7;
 
   // The correlation ids of the task that can be used to correlate the task with
   // other events.
-  bytes job_id = 9;
+  bytes job_id = 8;
+  bytes actor_id = 9;
   bytes parent_task_id = 10;
   bytes placement_group_id = 11;
   map<string, bytes> ref_ids = 12;

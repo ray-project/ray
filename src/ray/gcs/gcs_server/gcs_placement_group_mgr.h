@@ -30,9 +30,11 @@
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
+#include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/usage_stats_client.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
+#include "ray/rpc/gcs/gcs_rpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/exponential_backoff.h"
@@ -84,8 +86,6 @@ class GcsPlacementGroup {
     placement_group_table_data_.set_creator_actor_dead(
         placement_group_spec.creator_actor_dead());
     placement_group_table_data_.set_is_detached(placement_group_spec.is_detached());
-    placement_group_table_data_.set_max_cpu_fraction_per_node(
-        placement_group_spec.max_cpu_fraction_per_node());
     placement_group_table_data_.set_soft_target_node_id(
         placement_group_spec.soft_target_node_id());
     placement_group_table_data_.set_ray_namespace(ray_namespace);
@@ -160,9 +160,6 @@ class GcsPlacementGroup {
 
   /// Returns whether or not this is a detached placement group.
   bool IsDetached() const;
-
-  /// Returns the maximum CPU fraction per node for this placement group.
-  double GetMaxCpuFractionPerNode() const;
 
   /// Return the target node ID where bundles of this placement group should be placed.
   /// Only works for STRICT_PACK placement group.

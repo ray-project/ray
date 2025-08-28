@@ -109,7 +109,6 @@ class NixlTensorTransport(TensorTransportManager):
     @staticmethod
     def send_multiple_tensors(
         tensors: List["torch.Tensor"],
-        tensor_transport_metadata: NixlTransportMetadata,
         communicator_metadata: NixlCommunicatorMetadata,
         device: "torch.device",
     ):

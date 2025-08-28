@@ -35,6 +35,22 @@
       s3://ray-benchmark-data-internal-us-west-2/imagenet/parquet --format parquet
       --iter-bundles
 
+- name: "read_large_parquet_{{scaling}}"
+
+  cluster:
+    cluster_compute: "{{scaling}}_cpu_compute.yaml"
+
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  run:
+    timeout: 3600
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data-internal-us-west-2/large-parquet/ --format parquet
+      --iter-bundles
+
 - name: "read_images_{{scaling}}"
 
   cluster:

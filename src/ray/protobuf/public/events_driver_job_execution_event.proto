@@ -16,8 +16,6 @@
 syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
-import "src/ray/protobuf/runtime_env_common.proto";
-import "src/ray/protobuf/common.proto";
 
 package ray.rpc.events;
 

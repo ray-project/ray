@@ -16,7 +16,7 @@
 #include <ray/api/runtime_env.h>
 #include <ray/util/logging.h>
 
-#include "src/ray/protobuf/runtime_env_common.pb.h"
+#include "src/ray/protobuf/public/runtime_environment.pb.h"
 
 namespace ray {
 

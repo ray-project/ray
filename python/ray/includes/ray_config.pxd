@@ -69,12 +69,6 @@ cdef extern from "ray/common/ray_config.h" nogil:
 
         int64_t health_check_failure_threshold() const
 
-        uint64_t memory_monitor_refresh_ms() const
-
-        int64_t grpc_keepalive_time_ms() const
-
-        int64_t grpc_keepalive_timeout_ms() const
-
         int64_t grpc_client_keepalive_time_ms() const
 
         int64_t grpc_client_keepalive_timeout_ms() const
@@ -88,8 +82,6 @@ cdef extern from "ray/common/ray_config.h" nogil:
         int64_t nums_py_gcs_reconnect_retry() const
 
         int64_t py_gcs_connect_timeout_s() const
-
-        int gcs_rpc_server_reconnect_timeout_s() const
 
         int maximum_gcs_destroyed_actor_cached_count() const
 

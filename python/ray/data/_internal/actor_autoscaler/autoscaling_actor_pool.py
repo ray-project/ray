@@ -109,3 +109,6 @@ class AutoscalingActorPool(ABC):
     def get_pool_util(self) -> float:
         """Calculate the utilization of the given actor pool."""
         ...
+
+    def max_concurrent_tasks(self) -> int:
+        return self.max_actor_concurrency() * self.num_running_actors()

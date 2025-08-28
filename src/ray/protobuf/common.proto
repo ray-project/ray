@@ -16,7 +16,7 @@ syntax = "proto3";
 
 package ray.rpc;
 
-import "src/ray/protobuf/runtime_env_common.proto";
+import "src/ray/protobuf/public/runtime_environment.proto";
 
 option java_package = "io.ray.runtime.generated";
 
@@ -655,8 +655,6 @@ message PlacementGroupSpec {
   bool creator_actor_dead = 8;
   // Whether the placement group is persistent.
   bool is_detached = 9;
-  // The maximum fraction of CPU cores that this placement group can use on each node.
-  double max_cpu_fraction_per_node = 10;
   // Binary ID of the target node where bundles should be placed
   // iff the target node has enough available resources and alive.
   // Otherwise, the bundles can be placed elsewhere.
@@ -673,6 +671,9 @@ message ObjectReference {
   // Used to print debugging information if there is an error retrieving the
   // object.
   string call_site = 3;
+  // The tensor transport to use for this object. If not specified, then use the
+  // default object store.
+  optional TensorTransport tensor_transport = 4;
 }
 
 message ObjectReferenceCount {
