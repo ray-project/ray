@@ -301,7 +301,8 @@ def test_actor_repr_in_traceback(ray_start_regular):
 
 
 def test_unpickleable_stacktrace(shutdown_only):
-    expected_output = """Failed to deserialize exception. This can happen when the original exception contains special characters that interfere with deserialization.
+    expected_output = """Failed to deserialize exception. This typically occurs when the original exception class is not available, there are version incompatibilities, or the serialized data is corrupted.
+
 Original exception:
 ray.exceptions.RayTaskError: ray::f() (pid=XXX, ip=YYY)
   File "FILE", line ZZ, in f

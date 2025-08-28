@@ -909,22 +909,43 @@ class RayCgraphCapacityExceeded(RaySystemError):
 
 @PublicAPI(stability="alpha")
 class UnserializableException(RayError):
-    """Raised when there is an error deserializing the serialized exception.
+    """Raised when there is an error deserializing a serialized exception.
 
     This occurs when deserializing (unpickling) a previously serialized exception
     fails. In this case, we fall back to raising the string representation of
     the original exception along with its stack trace that was captured at the
     time of serialization.
+
+    Common causes of pickle deserialization failure include:
+    - Missing modules or classes: The exception class is not available in the
+      current environment (e.g., custom exception from an unimported module)
+    - Version incompatibility: Exception was pickled with a different Python
+      or library version
+    - Changed class definitions: The exception class definition has changed
+      between serialization and deserialization
+    - Corrupted or invalid serialized data
+    - Memory limitations during deserialization
+    - Non-picklable objects: Exception contains references to lambda functions
+      or other objects that cannot be pickled/unpickled
+    - Special characters or encoding issues that interfere with deserialization
+
+    Args:
+        original_stack_trace: The string representation and stack trace of the
+            original exception that was captured during serialization.
+
+    Pickle limitations: https://docs.python.org/3/library/pickle.html#what-can-be-pickled-and-unpickled
     """
 
     def __init__(self, original_stack_trace: str):
-        self.original_stack_trace = original_stack_trace
+        self._original_stack_trace = original_stack_trace
 
     def __str__(self):
         return (
-            "Failed to deserialize exception. This can happen when the original exception contains special characters that interfere with deserialization.\n"
+            "Failed to deserialize exception. This typically occurs when the original "
+            "exception class is not available, there are version incompatibilities, "
+            "or the serialized data is corrupted.\n\n"
             "Original exception:\n"
-            f"{self.original_stack_trace}"
+            f"{self._original_stack_trace}"
         )
 
 
