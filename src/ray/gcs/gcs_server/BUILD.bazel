@@ -332,10 +332,10 @@ ray_cc_library(
         "//src/ray/common:id",
         "//src/ray/common:task_common",
         "//src/ray/protobuf:core_worker_cc_proto",
-        "//src/ray/protobuf:gcs_service_cc_proto",
-        "//src/ray/util:event",
         "//src/ray/protobuf:export_event_cc_proto",
+        "//src/ray/protobuf:gcs_service_cc_proto",
         "//src/ray/util:counter_map",
+        "//src/ray/util:event",
     ],
 )
 
@@ -348,8 +348,8 @@ ray_cc_library(
         "gcs_actor_scheduler.h",
     ],
     implementation_deps = [
-        "//src/ray/util:time",
         "//src/ray/common:ray_config",
+        "//src/ray/util:time",
     ],
     deps = [
         ":gcs_actor",
@@ -383,8 +383,8 @@ ray_cc_library(
         "//src/ray/common:task_common",
         "//src/ray/gcs:gcs_pb_util",
         "//src/ray/stats:stats_lib",
-        "//src/ray/util:time",
         "//src/ray/util:logging",
+        "//src/ray/util:time",
     ],
     deps = [
         ":gcs_actor",
