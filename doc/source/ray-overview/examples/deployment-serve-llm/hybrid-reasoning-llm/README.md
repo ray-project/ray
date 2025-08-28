@@ -2,7 +2,7 @@
 
 A hybrid reasoning model provides flexibility by allowing you to enable or disable reasoning as needed. You can use structured, step-by-step thinking for complex queries while skipping it for simpler ones, balancing accuracy with efficiency depending on the task.
 
-This tutorial walks you through deploying a hybrid reasoning LLM using Ray Serve LLM.  
+This tutorial deploys a hybrid reasoning LLM using Ray Serve LLM.  
 
 ---
 

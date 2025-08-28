@@ -1,6 +1,6 @@
 # Deploy a small-size LLM
 
-This page shows you how to deploy a small-size large language model (LLM) using Ray Serve LLM.
+This tutorial deploys a small-size LLM using Ray Serve LLM.
 
 ## Overview
 

@@ -2,7 +2,7 @@
 
 A large-size LLM typically runs on multiple nodes with multiple GPUs, prioritizing peak quality and capability: stronger reasoning, broader knowledge, longer context windows, more robust generalization. It’s the right choice when state-of-the-art results are required and higher latency, complexity, and cost are acceptable trade-offs.
 
-This tutorial walks you through deploying a large-size LLM like DeepSeek-R1 (685&nbsp;B parameters) using Ray Serve LLM. For smaller models, see [Deploying a small-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/small-size-llm/README.html) or [Deploying a medium-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/medium-size-llm/README.html).
+This tutorial deploys a large-size LLM like DeepSeek-R1 (685&nbsp;B parameters) using Ray Serve LLM. For smaller models, see [Deploying a small-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/small-size-llm/README.html) or [Deploying a medium-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/medium-size-llm/README.html).
 
 ---
 
