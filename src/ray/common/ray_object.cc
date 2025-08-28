@@ -14,11 +14,14 @@
 
 #include "ray/common/ray_object.h"
 
-#include "msgpack.hpp"
+#include <memory>
+#include <msgpack.hpp>  // NOLINT
+#include <string>
+#include <utility>
 
 namespace {
 
-static const std::string kObjectInPlasmaStr =
+static const std::string kObjectInPlasmaStr =  // NOLINT
     std::to_string(ray::rpc::ErrorType::OBJECT_IN_PLASMA);
 
 std::shared_ptr<ray::LocalMemoryBuffer> MakeBufferFromString(const uint8_t *data,
@@ -111,7 +114,7 @@ bool RayObject::IsException(rpc::ErrorType *error_type) const {
   if (metadata_ == nullptr || metadata_->Size() > 2) {
     return false;
   }
-  // TODO (kfstorm): metadata should be structured.
+  // TODO(kfstorm): metadata should be structured.
   const std::string_view metadata(reinterpret_cast<const char *>(metadata_->Data()),
                                   metadata_->Size());
   if (metadata == kObjectInPlasmaStr) {

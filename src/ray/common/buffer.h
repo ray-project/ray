@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <functional>
@@ -82,7 +83,7 @@ class LocalMemoryBuffer : public Buffer {
   }
 
   /// Construct a LocalMemoryBuffer of all zeros of the given size.
-  LocalMemoryBuffer(size_t size) : has_data_copy_(true) {
+  explicit LocalMemoryBuffer(size_t size) : has_data_copy_(true) {
     buffer_ = reinterpret_cast<uint8_t *>(aligned_malloc(size, BUFFER_ALIGNMENT));
     data_ = buffer_;
     size_ = size;
@@ -163,7 +164,7 @@ class SharedMemoryBuffer : public Buffer {
   /// Disable copy constructor and assignment, as default copy will
   /// cause invalid data_.
   SharedMemoryBuffer &operator=(const LocalMemoryBuffer &) = delete;
-  SharedMemoryBuffer(const LocalMemoryBuffer &) = delete;
+  explicit SharedMemoryBuffer(const LocalMemoryBuffer &) = delete;
 
   /// Pointer to the data.
   uint8_t *data_;

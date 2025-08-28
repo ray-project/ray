@@ -31,6 +31,7 @@
 #include <cstring>
 #include <iosfwd>
 #include <string>
+#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "ray/common/macros.h"

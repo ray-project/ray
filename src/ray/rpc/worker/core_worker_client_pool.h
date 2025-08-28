@@ -21,6 +21,7 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/hash/hash.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_client/gcs_client.h"

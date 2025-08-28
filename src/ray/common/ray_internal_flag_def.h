@@ -25,11 +25,15 @@
 // WARNING: if you update this file, please also update RAY_INTERNAL_FLAGS in
 // ray_constants.py.
 
+#pragma once
+
+#include <string>
+
 /// Ray Job ID.
-RAY_INTERNAL_FLAG(std::string, JOB_ID, "")
+RAY_INTERNAL_FLAG(std::string, JOB_ID, "")  // NOLINT
 
 /// Raylet process ID.
-RAY_INTERNAL_FLAG(std::string, RAYLET_PID, "")
+RAY_INTERNAL_FLAG(std::string, RAYLET_PID, "")  // NOLINT
 
 /// Override the random node ID for testing.
-RAY_INTERNAL_FLAG(std::string, OVERRIDE_NODE_ID_FOR_TESTING, "")
+RAY_INTERNAL_FLAG(std::string, OVERRIDE_NODE_ID_FOR_TESTING, "")  // NOLINT

@@ -16,12 +16,14 @@
 
 #include <fstream>
 #include <functional>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "absl/strings/escaping.h"
 #include "ray/common/buffer.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/ray_object.h"
-#include "ray/common/test_util.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
@@ -53,7 +55,7 @@ int TestSetupUtil::StartUpRedisServer(int port, bool save) {
     }
     // Use random port (in range [2000, 7000) to avoid port conflicts between UTs.
     do {
-      actual_port = rand() % 5000 + 2000;
+      actual_port = rand() % 5000 + 2000;  // NOLINT
     } while (!CheckPortFree(actual_port));
   }
 
@@ -184,9 +186,9 @@ std::shared_ptr<RayObject> GenerateRandomObject(
 }
 
 /// Path to redis server executable binary.
-std::string TEST_REDIS_SERVER_EXEC_PATH;
+std::string TEST_REDIS_SERVER_EXEC_PATH;  // NOLINT
 /// Path to redis client executable binary.
-std::string TEST_REDIS_CLIENT_EXEC_PATH;
+std::string TEST_REDIS_CLIENT_EXEC_PATH;  // NOLINT
 /// Ports of redis server.
 std::vector<int> TEST_REDIS_SERVER_PORTS;
 

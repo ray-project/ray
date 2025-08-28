@@ -29,6 +29,7 @@
 #include <chrono>
 #include <csignal>
 #include <filesystem>
+#include <string>
 #include <string_view>
 #include <thread>
 #include <unordered_set>

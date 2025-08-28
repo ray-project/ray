@@ -17,13 +17,16 @@
 #include <google/protobuf/repeated_field.h>
 
 #include <deque>
+#include <list>
 #include <memory>
 #include <string>
 #include <tuple>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/hash/hash.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/actor_manager.h"
 #include "ray/core_worker/context.h"
