@@ -45,6 +45,12 @@ class GcsRayEventConverter {
   /// \return The output TaskEvents to populate.
   rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskDefinitionEvent &&event);
 
+  /// Convert ProfileEvents to a TaskEvents.
+  ///
+  /// \param event TaskProfileEvents object to convert.
+  /// \return The output TaskEvents to populate.
+  rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskProfileEvents &&event);
+
   /// Convert a TaskExecutionEvent to a TaskEvents.
   ///
   /// \param event The TaskExecutionEvent to convert.

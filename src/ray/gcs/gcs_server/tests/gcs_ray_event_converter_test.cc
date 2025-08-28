@@ -56,6 +56,7 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskDefinitionEvent) {
   event->set_message("test message");
 
   auto *task_def_event = event->mutable_task_definition_event();
+
   task_def_event->set_task_type(rpc::TaskType::NORMAL_TASK);
   task_def_event->set_language(rpc::Language::PYTHON);
   task_def_event->mutable_task_func()
@@ -65,6 +66,7 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskDefinitionEvent) {
   task_def_event->set_task_attempt(1);
   task_def_event->set_job_id("test_job_id");
   task_def_event->set_task_name("test_task_name");
+
   task_def_event->set_parent_task_id("parent_task_id");
   task_def_event->set_placement_group_id("pg_id");
 
@@ -265,6 +267,68 @@ TEST_F(GcsRayEventConverterTest, TestSameJobIdGrouping) {
   const auto &events = task_event_data_requests[0].data().events_by_task();
   EXPECT_EQ(events[0].job_id(), job_id.Binary());
   EXPECT_EQ(events[1].job_id(), job_id.Binary());
+}
+
+TEST_F(GcsRayEventConverterTest, TestConvertTaskProfileEvents) {
+  rpc::events::AddEventsRequest request;
+  GcsRayEventConverter converter;
+
+  // Create a task profile event
+  auto *event = request.mutable_events_data()->add_events();
+  event->set_event_id("test_event_id");
+  event->set_event_type(rpc::events::RayEvent::TASK_PROFILE_EVENT);
+  event->set_source_type(rpc::events::RayEvent::CORE_WORKER);
+  event->set_severity(rpc::events::RayEvent::INFO);
+  event->set_message("test message");
+
+  auto *task_profile_events = event->mutable_task_profile_events();
+  task_profile_events->set_task_id("test_task_id");
+  task_profile_events->set_attempt_number(1);
+  task_profile_events->set_job_id("test_job_id");
+
+  // Add a profile event
+  auto *profile_events = task_profile_events->mutable_profile_events();
+  profile_events->set_component_id("test_component_id");
+  profile_events->set_component_type("worker");
+  profile_events->set_node_ip_address("test_address");
+
+  // add a profile event entry
+  auto *ProfileEventEntry = profile_events->add_events();
+  ProfileEventEntry->set_start_time(123456789);
+  ProfileEventEntry->set_end_time(123456799);
+  ProfileEventEntry->set_extra_data("{\"foo\": \"bar\"}");
+  ProfileEventEntry->set_event_name("test_event");
+
+  // Convert
+  auto task_event_data_requests =
+      converter.ConvertToTaskEventDataRequests(std::move(request));
+
+  // Verify conversion
+  EXPECT_EQ(task_event_data_requests.size(), 1);
+  auto task_event_data = task_event_data_requests[0];
+  EXPECT_EQ(task_event_data.data().events_by_task_size(), 1);
+  const auto &converted_task = task_event_data.data().events_by_task(0);
+
+  EXPECT_EQ(converted_task.task_id(), "test_task_id");
+  EXPECT_EQ(converted_task.attempt_number(), 1);
+  EXPECT_EQ(converted_task.job_id(), "test_job_id");
+  EXPECT_EQ(converted_task.profile_events().events_size(), 1);
+  EXPECT_EQ(task_event_data.data().job_id(), "test_job_id");
+
+  // Check profile event fields
+  EXPECT_TRUE(converted_task.has_profile_events());
+  const auto &profile_event = converted_task.profile_events();
+  EXPECT_EQ(profile_event.component_id(), "test_component_id");
+  EXPECT_EQ(profile_event.component_type(), "worker");
+  EXPECT_EQ(profile_event.node_ip_address(), "test_address");
+
+  // verify that there is one profile event entry and values match our expectations
+  EXPECT_TRUE(profile_event.events().size() == 1);
+  const auto &entry = profile_event.events(0);
+  EXPECT_EQ(entry.start_time(), 123456789);
+  EXPECT_EQ(entry.end_time(), 123456799);
+  EXPECT_EQ(entry.extra_data(), "{\"foo\": \"bar\"}");
+  EXPECT_EQ(entry.event_name(), "test_event");
 }
 
 TEST_F(GcsRayEventConverterTest, TestConvertTaskExecutionEvent) {

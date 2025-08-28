@@ -41,6 +41,10 @@ GcsRayEventConverter::ConvertToTaskEventDataRequests(
       task_event = ConvertToTaskEvents(std::move(*event.mutable_task_execution_event()));
       break;
     }
+    case rpc::events::RayEvent::TASK_PROFILE_EVENT: {
+      task_event = ConvertToTaskEvents(std::move(*event.mutable_task_profile_events()));
+      break;
+    }
     case rpc::events::RayEvent::ACTOR_TASK_DEFINITION_EVENT: {
       task_event =
           ConvertToTaskEvents(std::move(*event.mutable_actor_task_definition_event()));
@@ -183,6 +187,17 @@ rpc::TaskEvents GcsRayEventConverter::ConvertToTaskEvents(
                                      std::move(*event.mutable_required_resources()),
                                      event.language(),
                                      task_info);
+  return task_event;
+}
+
+rpc::TaskEvents GcsRayEventConverter::ConvertToTaskEvents(
+    rpc::events::TaskProfileEvents &&event) {
+  rpc::TaskEvents task_event;
+  task_event.set_task_id(event.task_id());
+  task_event.set_attempt_number(event.attempt_number());
+  task_event.set_job_id(event.job_id());
+
+  task_event.mutable_profile_events()->Swap(event.mutable_profile_events());
   return task_event;
 }
 
