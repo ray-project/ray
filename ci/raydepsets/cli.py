@@ -91,7 +91,8 @@ class DependencySetManager:
         if check:
             self.temp_dir = tempfile.mkdtemp()
             self.old_lock_files = self.get_destinations()
-            self.save_sources(self.get_sources(), self.old_lock_files)
+            sources = self.get_sources()
+            self.save_sources(sources, self.old_lock_files)
         else:
             self.temp_dir = None
         self.build_graph = DiGraph()

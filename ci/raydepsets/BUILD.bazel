@@ -36,6 +36,7 @@ py_test(
     srcs = ["tests/test_cli.py"],
     data = [
         "tests/test_data/requirement_constraints_test.txt",
+        "tests/test_data/requirements_compiled.txt",
         "tests/test_data/requirements_compiled_test.txt",
         "tests/test_data/requirements_compiled_test_expand.txt",
         "tests/test_data/requirements_compiled_test_update.txt",

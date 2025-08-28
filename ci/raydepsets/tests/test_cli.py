@@ -36,7 +36,7 @@ _runfiles = runfiles.Create()
 
 
 def _create_test_manager(
-    tmpdir: str, config_path: Optional[str] = None
+    tmpdir: str, config_path: Optional[str] = None, check: bool = False
 ) -> DependencySetManager:
     if config_path is None:
         config_path = "test.depsets.yaml"
@@ -45,6 +45,7 @@ def _create_test_manager(
         config_path=config_path,
         workspace_dir=tmpdir,
         uv_cache_dir=uv_cache_dir.as_posix(),
+        check=check,
     )
 
 
@@ -562,24 +563,24 @@ depsets:
     def test_copy_lock_files_to_temp_dir(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
-            manager = _create_test_manager(tmpdir)
+            manager = _create_test_manager(tmpdir, check=True)
             manager.config.depsets = [manager.config.depsets[0]]
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
                 append_flags=["--no-annotate", "--no-header"],
-                name="ray_base_test_depset",
+                name="check_depset",
                 output="requirements_compiled.txt",
             )
-            manager.copy_lock_files_to_temp_dir()
             assert manager.temp_dir is not None
             assert (Path(manager.temp_dir) / "requirements_compiled.txt").exists()
             assert (Path(manager.workspace.dir) / "requirements_compiled.txt").exists()
 
-    def test_diff_lock_files(self):
+    def test_diff_lock_files_out_of_date(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
-            manager = _create_test_manager(tmpdir)
+            manager = _create_test_manager(tmpdir, check=True)
+            # use a single depset to test diffing
             manager.config.depsets = [manager.config.depsets[0]]
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
@@ -588,15 +589,15 @@ depsets:
                 name="ray_base_test_depset",
                 output="requirements_compiled.txt",
             )
-            manager.copy_lock_files_to_temp_dir()
             assert manager.temp_dir is not None
             replace_in_file(
                 Path(manager.temp_dir) / "requirements_compiled.txt",
                 "emoji==2.9.0",
                 "emoji==2.8.0",
             )
+
             with self.assertRaises(RuntimeError) as e:
-                manager.diff_lock_files()
+                manager.check_lock_files()
             assert (
                 "Lock files are not up to date. Please update lock files and push the changes."
                 in str(e.exception)
@@ -605,7 +606,7 @@ depsets:
     def test_diff_lock_files_up_to_date(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
-            manager = _create_test_manager(tmpdir)
+            manager = _create_test_manager(tmpdir, check=True)
             manager.config.depsets = [manager.config.depsets[0]]
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
@@ -614,9 +615,8 @@ depsets:
                 name="ray_base_test_depset",
                 output="requirements_compiled.txt",
             )
-            manager.copy_lock_files_to_temp_dir()
             assert manager.temp_dir is not None
-            manager.diff_lock_files()
+            manager.check_lock_files()
 
 
 if __name__ == "__main__":
