@@ -194,10 +194,24 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "gcs_ray_event_converter",
+    srcs = ["gcs_ray_event_converter.cc"],
+    hdrs = ["gcs_ray_event_converter.h"],
+    deps = [
+        "//src/ray/common:grpc_util",
+        "//src/ray/common:id",
+        "//src/ray/protobuf:events_event_aggregator_service_cc_proto",
+        "//src/ray/protobuf:gcs_service_cc_proto",
+        "//src/ray/util:logging",
+    ],
+)
+
+ray_cc_library(
     name = "gcs_task_manager",
     srcs = ["gcs_task_manager.cc"],
     hdrs = ["gcs_task_manager.h"],
     deps = [
+        ":gcs_ray_event_converter",
         ":gcs_usage_stats_client",
         ":grpc_service_interfaces",
         "//src/ray/common:asio",

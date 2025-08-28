@@ -146,6 +146,32 @@ class GcsTaskManagerTest : public ::testing::Test {
     return reply;
   }
 
+  rpc::events::AddEventsReply SyncAddEvents(
+      const rpc::events::RayEventsData &events_data) {
+    rpc::events::AddEventsRequest request;
+    rpc::events::AddEventsReply reply;
+    std::promise<bool> promise;
+
+    request.mutable_events_data()->CopyFrom(events_data);
+    // Dispatch so that it runs in GcsTaskManager's io service.
+    io_context_->GetIoService().dispatch(
+        [this, &promise, &request, &reply]() {
+          task_manager->HandleAddEvents(
+              request,
+              &reply,
+              [&promise](Status, std::function<void()>, std::function<void()>) {
+                promise.set_value(true);
+              });
+        },
+        "SyncAddEvent");
+
+    promise.get_future().get();
+
+    // Assert on RPC reply.
+    EXPECT_EQ(StatusCode(reply.status().code()), StatusCode::OK);
+    return reply;
+  }
+
   rpc::GetTaskEventsReply SyncGetTaskEvents(
       const std::vector<TaskID> task_ids,
       const std::vector<rpc::FilterPredicate> task_id_predicates,
@@ -401,6 +427,21 @@ class GcsTaskManagerDroppedTaskAttemptsLimit : public GcsTaskManagerTest {
   }
 };
 
+TEST_F(GcsTaskManagerTest, TestHandleAddEventBasic) {
+  size_t num_task_events = 100;
+  auto task_ids = GenTaskIDs(num_task_events);
+  auto events = GenTaskEvents(task_ids, 0);
+  auto events_data = Mocker::GenRayEventsData(events, {});
+  auto reply = SyncAddEvents(events_data);
+
+  // Assert on RPC reply.
+  EXPECT_EQ(StatusCode(reply.status().code()), StatusCode::OK);
+
+  // Assert on actual data.
+  EXPECT_EQ(task_manager->task_event_storage_->GetTaskEvents().size(), num_task_events);
+  EXPECT_EQ(task_manager->GetTotalNumTaskEventsReported(), num_task_events);
+}
+
 TEST_F(GcsTaskManagerTest, TestHandleAddTaskEventBasic) {
   size_t num_task_events = 100;
   int32_t num_status_events_dropped = 10;
@@ -422,6 +463,50 @@ TEST_F(GcsTaskManagerTest, TestHandleAddTaskEventBasic) {
     EXPECT_EQ(task_manager->GetTotalNumProfileTaskEventsDropped(),
               num_profile_events_dropped);
     EXPECT_EQ(task_manager->GetTotalNumTaskAttemptsDropped(), num_status_events_dropped);
+  }
+}
+
+TEST_F(GcsTaskManagerTest, TestHandleAddEventsMultiJobGrouping) {
+  // Prepare events for two jobs in a single AddEvents request
+  auto task_ids_job0 = GenTaskIDs(3);
+  auto task_ids_job1 = GenTaskIDs(2);
+
+  auto events_job0 = GenTaskEvents(task_ids_job0, /*attempt_number*/ 0, /*job_id*/ 0);
+  auto events_job1 = GenTaskEvents(task_ids_job1, /*attempt_number*/ 0, /*job_id*/ 1);
+
+  // Build RayEventsData including dropped attempts for each job
+  std::vector<rpc::TaskEvents> all_events;
+  all_events.insert(all_events.end(), events_job0.begin(), events_job0.end());
+  all_events.insert(all_events.end(), events_job1.begin(), events_job1.end());
+
+  std::vector<TaskAttempt> dropped_attempts;
+  dropped_attempts.emplace_back(GenTaskIDForJob(0), 0);
+  dropped_attempts.emplace_back(GenTaskIDForJob(1), 0);
+
+  auto ray_events_data = Mocker::GenRayEventsData(all_events, dropped_attempts);
+
+  // Send AddEvents once; converter should group by job id and GCS should record all
+  auto reply = SyncAddEvents(ray_events_data);
+  EXPECT_EQ(StatusCode(reply.status().code()), StatusCode::OK);
+
+  // Verify all events stored
+  EXPECT_EQ(task_manager->task_event_storage_->GetTaskEvents().size(),
+            task_ids_job0.size() + task_ids_job1.size());
+
+  // Verify per-job data loss counters populated from dropped attempts
+  {
+    auto reply_job0 = SyncGetTaskEvents(/* task_ids */ {}, JobID::FromInt(0));
+    EXPECT_EQ(reply_job0.num_status_task_events_dropped(), 1);
+  }
+  {
+    auto reply_job1 = SyncGetTaskEvents(/* task_ids */ {}, JobID::FromInt(1));
+    EXPECT_EQ(reply_job1.num_status_task_events_dropped(), 1);
+  }
+
+  // Verify global counters reflect both drops
+  {
+    auto reply_all = SyncGetTaskEvents(/* task_ids */ {});
+    EXPECT_EQ(reply_all.num_status_task_events_dropped(), 2);
   }
 }
 

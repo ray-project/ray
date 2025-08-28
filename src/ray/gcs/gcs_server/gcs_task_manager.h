@@ -24,6 +24,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
+#include "ray/gcs/gcs_server/gcs_ray_event_converter.h"
 #include "ray/gcs/gcs_server/grpc_service_interfaces.h"
 #include "ray/gcs/gcs_server/usage_stats_client.h"
 #include "ray/gcs/pb_util.h"
@@ -472,6 +473,7 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
     std::vector<std::list<rpc::TaskEvents>> task_events_list_;
 
     friend class GcsTaskManager;
+    FRIEND_TEST(GcsTaskManagerTest, TestHandleAddEventBasic);
     FRIEND_TEST(GcsTaskManagerTest, TestHandleAddTaskEventBasic);
     FRIEND_TEST(GcsTaskManagerTest, TestMergeTaskEventsSameTaskAttempt);
     FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents);
@@ -482,6 +484,8 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
   };
 
  private:
+  void RecordTaskEventData(rpc::AddTaskEventDataRequest &request);
+
   /// Record data loss from worker.
   ///
   /// TODO(rickyx): This will be updated to record task attempt loss properly.
@@ -522,10 +526,15 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
   // the io_service_thread_. Access to it is *not* thread safe.
   std::unique_ptr<GcsTaskManagerStorage> task_event_storage_;
 
+  // Converter for converting RayEvents to TaskEvents.
+  std::unique_ptr<GcsRayEventConverter> ray_event_converter_;
+
   /// The runner to run function periodically.
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
 
+  FRIEND_TEST(GcsTaskManagerTest, TestHandleAddEventBasic);
   FRIEND_TEST(GcsTaskManagerTest, TestHandleAddTaskEventBasic);
+  FRIEND_TEST(GcsTaskManagerTest, TestHandleAddEventsMultiJobGrouping);
   FRIEND_TEST(GcsTaskManagerTest, TestMergeTaskEventsSameTaskAttempt);
   FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents);
   FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestIndexNoLeak);
