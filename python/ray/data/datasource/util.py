@@ -1,8 +1,10 @@
 from typing import Iterable
 
 from ray.data.block import Block
+from ray.util.annotations import DeveloperAPI
 
 
+@DeveloperAPI
 def iter_sliced_blocks(
     blocks: Iterable[Block], per_block_limit: int
 ) -> Iterable[Block]:
