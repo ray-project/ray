@@ -3,16 +3,19 @@ from __future__ import annotations
 import operator
 from typing import Any, Callable, Dict
 
+import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
 
 from ray.data.expressions import (
     BinaryExpr,
+    CaseExpr,
     ColumnExpr,
     Expr,
     LiteralExpr,
     Operation,
+    WhenExpr,
 )
 
 _PANDAS_EXPR_OPS_MAP = {
@@ -58,7 +61,57 @@ def _eval_expr_recursive(expr: "Expr", batch, ops: Dict["Operation", Callable]) 
             _eval_expr_recursive(expr.left, batch, ops),
             _eval_expr_recursive(expr.right, batch, ops),
         )
-        raise TypeError(f"Unsupported expression node: {type(expr).__name__}")
+    if isinstance(expr, CaseExpr):
+        # Evaluate case statement using vectorized operations for batch processing
+        # For pandas: use numpy.select for efficient vectorized evaluation
+        # For Arrow: use pyarrow.compute.case_when for efficient vectorized evaluation
+
+        # Evaluate all conditions and values first
+        conditions = [
+            _eval_expr_recursive(condition, batch, ops)
+            for condition, _ in expr.when_clauses
+        ]
+        choices = [
+            _eval_expr_recursive(value, batch, ops) for _, value in expr.when_clauses
+        ]
+        default = _eval_expr_recursive(expr.default, batch, ops)
+
+        # Use appropriate vectorized operation based on batch type
+        if isinstance(batch, pd.DataFrame):
+            # For pandas, use numpy.select which handles Series efficiently
+            return np.select(conditions, choices, default=default)
+        elif isinstance(batch, pa.Table):
+            # For Arrow, use pyarrow.compute.case_when
+            # PyArrow case_when expects:
+            # - cond: a struct array of boolean conditions
+            # - *cases: the case values (one for each condition, plus default)
+
+            # Create a struct array from the conditions
+            if len(conditions) == 1:
+                # Single condition case
+                cond_struct = pa.StructArray.from_arrays(
+                    [conditions[0]], names=["cond0"]
+                )
+                return pc.case_when(cond_struct, choices[0], default)
+            else:
+                # Multiple conditions case
+                cond_names = [f"cond{i}" for i in range(len(conditions))]
+                cond_struct = pa.StructArray.from_arrays(conditions, names=cond_names)
+                # Pass all choices plus default as separate arguments
+                return pc.case_when(cond_struct, *choices, default)
+        else:
+            # Fallback for other types (should not happen in practice)
+            raise TypeError(
+                f"Unsupported batch type for CaseExpr: {type(batch).__name__}"
+            )
+
+    if isinstance(expr, WhenExpr):
+        # WhenExpr should not be evaluated directly - it should be converted to CaseExpr first
+        raise TypeError(
+            "WhenExpr cannot be evaluated directly. Use .otherwise() to complete the case statement."
+        )
+
+    raise TypeError(f"Unsupported expression node: {type(expr).__name__}")
 
 
 def eval_expr(expr: "Expr", batch) -> Any:
