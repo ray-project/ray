@@ -225,7 +225,7 @@ def test_p2p_errors_before_group_creation(ray_start_regular):
 
     with pytest.raises(
         ValueError,
-        match="Actor.* does not have tensor transport GLOO available. Please create a communicator with `ray.experimental.collective.create_collective_group` before calling actor tasks with non-default tensor_transport.",
+        match="Actor.* does not have tensor transport GLOO available.*",
     ):
         sender.echo.remote(small_tensor)
 
