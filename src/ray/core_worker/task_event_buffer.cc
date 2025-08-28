@@ -254,6 +254,8 @@ void TaskStatusEvent::PopulateRpcRayTaskExecutionEvent(
   if (state_update_->pid_.has_value()) {
     execution_event_data.set_worker_pid(state_update_->pid_.value());
   }
+
+  execution_event_data.set_job_id(job_id_.Binary());
 }
 
 void TaskStatusEvent::PopulateRpcRayEventBaseFields(

@@ -39,4 +39,5 @@ message TaskExecutionEvent {
   bytes node_id = 5;
   bytes worker_id = 6;
   int32 worker_pid = 7;
+  bytes job_id = 8;
 }
