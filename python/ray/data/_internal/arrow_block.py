@@ -187,7 +187,7 @@ def _get_max_chunk_size(
     if table.nbytes == 0:
         return None
     else:
-        avg_row_size = max(int(table.nbytes / table.num_rows), 1)
+        avg_row_size = table.nbytes / table.num_rows
         return max(1, int(max_chunk_size_bytes / avg_row_size))
 
 
