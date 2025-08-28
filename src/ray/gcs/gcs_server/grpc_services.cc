@@ -23,8 +23,6 @@ void ActorInfoGrpcService::InitServerCallFactories(
     const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
     const ClusterID &cluster_id) {
-  RPC_SERVICE_HANDLER(ActorInfoGcsService, UnregisterActor, max_active_rpcs_per_handler_)
-
   /// The register & create actor RPCs take a long time, so we shouldn't limit their
   /// concurrency to avoid distributed deadlock.
   RPC_SERVICE_HANDLER(ActorInfoGcsService, RegisterActor, -1)
