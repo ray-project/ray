@@ -205,10 +205,6 @@ class GcsWorkerTable : public GcsTable<WorkerID, rpc::WorkerTableData> {
   }
 };
 
-/// \class GcsTableStorage
-///
-/// This class is not meant to be used directly. All gcs table storage classes should
-/// derive from this class and override class member variables.
 class GcsTableStorage {
  public:
   explicit GcsTableStorage(std::shared_ptr<StoreClient> store_client)
