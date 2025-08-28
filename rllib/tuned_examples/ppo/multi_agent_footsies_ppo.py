@@ -166,7 +166,7 @@ config = (
     )
     .training(
         train_batch_size_per_learner=args.rollout_fragment_length
-                                     * (args.num_env_runners or 1),
+        * (args.num_env_runners or 1),
         lr=1e-4,
         entropy_coeff=0.01,
         num_epochs=10,
@@ -210,7 +210,7 @@ config = (
         )
     )
     .evaluation(
-        evaluation_num_env_runners=2,
+        evaluation_num_env_runners=args.evaluation_num_env_runners or 1,
         evaluation_sample_timeout_s=180,
         evaluation_interval=1,
         evaluation_duration=20,  # 20 episodes is enough to get a good win rate estimate
