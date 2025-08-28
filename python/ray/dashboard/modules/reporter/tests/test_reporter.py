@@ -1020,7 +1020,6 @@ def test_reporter_worker_cpu_percent():
         def _get_worker_processes(self):
             return ReporterAgent._get_worker_processes(self)
 
-
     obj = ReporterAgentDummy()
 
     try:
