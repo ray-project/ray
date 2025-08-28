@@ -120,7 +120,7 @@ Here are a few examples of saving checkpoints with different training frameworks
 
     .. tab-item:: Hugging Face Transformers
 
-        Ray Train leverages HuggingFace Transformers Trainer's ``Callback`` interface
+        Ray Train leverages Hugging Face Transformers Trainer's ``Callback`` interface
         to report metrics and checkpoints.
 
         **Option 1: Use Ray Train's default report callback**

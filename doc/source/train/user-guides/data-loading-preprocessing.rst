@@ -11,7 +11,7 @@ Key advantages include:
 - Automatic and fast failure recovery.
 - Automatic on-the-fly data splitting across distributed training workers.
 
-For more details about Ray Data, check out the :ref:`Ray Data documentation<data>`.`
+For more details about Ray Data, check out the :ref:`Ray Data documentation<data>`.
 
 .. note::
 
