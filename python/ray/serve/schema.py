@@ -1019,9 +1019,6 @@ class ScalingDecision(BaseModel):
     policy: Optional[str] = Field(
         None, description="Policy name or identifier (if applicable)."
     )
-    metrics: Optional[Dict[str, Any]] = Field(
-        None, description="Snapshot of metrics consulted when making the decision."
-    )
 
 
 @PublicAPI(stability="alpha")

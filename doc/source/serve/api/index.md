@@ -106,7 +106,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.schema.ScalingSource
    serve.schema.ScalingStatus
    serve.schema.ScalingDecision
-   serve.schema.DeploymentAutoscalerView
+   serve.schema.DeploymentAutoscalingDetail
    serve.schema.ServeAutoscalerObservability
 ```
 
