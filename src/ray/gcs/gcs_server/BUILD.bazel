@@ -381,6 +381,7 @@ ray_cc_library(
         ":gcs_kv_manager",
         ":gcs_node_manager",
         ":gcs_placement_group",
+        ":gcs_placement_group_manager",
         ":gcs_placement_group_scheduler",
         ":gcs_pubsub_handler",
         ":gcs_resource_manager",
