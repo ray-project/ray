@@ -104,9 +104,7 @@ def test_input_data_buffer(ray_start_regular_shared):
 
     # Check we return all bundles in order.
     assert not op.completed()
-    outputs = _take_outputs(op)
-    expected = [[1, 2], [3], [4, 5]]
-    assert sorted(outputs) == sorted(expected), f"Expected {expected}, got {outputs}"
+    assert _take_outputs(op) == [[1, 2], [3], [4, 5]]
     assert op.completed()
 
 
