@@ -63,14 +63,14 @@ async frameworks like aiohttp, aioredis, etc.
 .. testoutput::
     :options: +MOCK
 
-    (AsyncActor pid=40293) started
-    (AsyncActor pid=40293) started
-    (AsyncActor pid=40293) started
-    (AsyncActor pid=40293) started
-    (AsyncActor pid=40293) finished
-    (AsyncActor pid=40293) finished
-    (AsyncActor pid=40293) finished
-    (AsyncActor pid=40293) finished
+    (AsyncActor pid=9064) Waiting for other coroutines to start.
+    (AsyncActor pid=9064) Waiting for other coroutines to start.
+    (AsyncActor pid=9064) Waiting for other coroutines to start.
+    (AsyncActor pid=9064) All coroutines are executing concurrently, unblocking.
+    (AsyncActor pid=9064) All coroutines ran concurrently.
+    (AsyncActor pid=9064) All coroutines ran concurrently.
+    (AsyncActor pid=9064) All coroutines ran concurrently.
+    (AsyncActor pid=9064) All coroutines ran concurrently.
 
 .. testcode::
     :hide:
