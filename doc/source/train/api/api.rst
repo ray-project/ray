@@ -72,7 +72,7 @@ Hugging Face Transformers
 More Frameworks
 ---------------
 
-Tensorflow/Keras
+TensorFlow/Keras
 ~~~~~~~~~~~~~~~~
 
 .. autosummary::
