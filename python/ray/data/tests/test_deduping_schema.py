@@ -12,33 +12,28 @@ from ray.data.block import Schema
 
 
 @pytest.mark.parametrize(
-    "incoming_schema,incoming_schema_is_empty",
+    "incoming_schema",
     [
-        (
-            pa.schema([pa.field("uuid", pa.string())]),
-            False,
-        ),  # NOTE: diff from old_schema
-        (pa.schema([]), True),  # Empty Schema
-        (PandasBlockSchema(names=["col1"], types=[int]), False),
-        (PandasBlockSchema(names=[], types=[]), True),
-        (None, True),  # Null Schema
+        pa.schema([pa.field("uuid", pa.string())]), # NOTE: diff from old_schema
+        pa.schema([]),  # Empty Schema
+        PandasBlockSchema(names=["col1"], types=[int]),
+        PandasBlockSchema(names=[], types=[]),
+        None,  # Null Schema
     ],
 )
 @pytest.mark.parametrize(
-    "old_schema,old_schema_is_empty",
+    "old_schema",
     [
-        (pa.schema([pa.field("id", pa.int64())]), False),
-        (pa.schema([]), True),  # Empty Schema
-        (PandasBlockSchema(names=["col2"], types=[int]), False),
-        (PandasBlockSchema(names=[], types=[]), True),
-        (None, True),  # Null Schema
+        pa.schema([pa.field("id", pa.int64())]),
+        pa.schema([]),  # Empty Schema
+        PandasBlockSchema(names=["col2"], types=[int]),
+        PandasBlockSchema(names=[], types=[]),
+        None,  # Null Schema
     ],
 )
 def test_dedupe_schema_handle_empty(
     old_schema: Optional["Schema"],
-    old_schema_is_empty: bool,
     incoming_schema: Optional["Schema"],
-    incoming_schema_is_empty: bool,
 ):
 
     incoming_bundle = RefBundle([], owns_blocks=False, schema=incoming_schema)
@@ -46,7 +41,7 @@ def test_dedupe_schema_handle_empty(
         old_schema, incoming_bundle, enforce_schemas=False, warn=False
     )
 
-    if old_schema_is_empty:
+    if old_schema is None or len(old_schema) == 0:
         # old_schema is invalid
         assert not diverged, (old_schema, incoming_schema)
         assert out_bundle.schema == incoming_schema, (old_schema, incoming_schema)
