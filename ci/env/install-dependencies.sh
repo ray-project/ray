@@ -160,7 +160,7 @@ install_node() {
       fi
     else
       # https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions
-      curl -sSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+      curl -sSL https://deb.nodesource.com/setup_16.x | sudo -E bash -
       sudo apt-get install -y nodejs
       return
     fi
@@ -170,7 +170,7 @@ install_node() {
   (
     set +x # suppress set -x since it'll get very noisy here.
     . "${HOME}/.nvm/nvm.sh"
-    NODE_VERSION="22"
+    NODE_VERSION="16"
     nvm install $NODE_VERSION
     nvm use --silent $NODE_VERSION
     npm config set loglevel warn  # make NPM quieter
