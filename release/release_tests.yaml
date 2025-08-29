@@ -4777,7 +4777,7 @@
   python: "3.11"
   group: ray-examples
   team: ml
-  working_dir: //doc/source/ray-overview/examples/deployment-serve-llm  # use // to access from repo's root
+  working_dir: //doc/source/serve/tutorials/deployment-serve-llm  # use // to access from repo's root
 
   cluster:
     byod:
