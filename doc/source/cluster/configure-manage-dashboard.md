@@ -135,7 +135,7 @@ The Ray Dashboard provides read **and write** access to the Ray Cluster. The rev
 
 Dashboard is included if you use `ray[default]` or {ref}`other installation commands <installation>` and automatically started.
 
-To disable Dashboard, use the following arguments for `--include-dashboard`.
+To disable the Dashboard, use the --include-dashboard argument.
 
 ::::{tab-set}
 
