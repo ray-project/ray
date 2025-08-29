@@ -521,6 +521,7 @@ ray_cc_library(
         "//src/ray/pubsub:publisher",
         "//src/ray/raylet/scheduling:scheduler",
         "//src/ray/raylet_client:raylet_client_lib",
+        "//src/ray/rpc:grpc_server",
         "//src/ray/rpc:core_worker_client",
         "//src/ray/rpc:metrics_agent_client",
         "//src/ray/rpc:node_manager_client",
