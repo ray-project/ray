@@ -140,6 +140,7 @@ class InMemoryMetricsStore:
             timestamp: the unix epoch timestamp the metrics are
               collected at.
         """
+        logger.info(f"add_metrics_point METRICS DICT {data_points}")
         for name, value in data_points.items():
             # Using in-sort to insert while maintaining sorted ordering.
             bisect.insort(a=self.data[name], x=TimeStampedValue(timestamp, value))
