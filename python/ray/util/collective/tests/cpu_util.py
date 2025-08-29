@@ -1,11 +1,11 @@
-import numpy as np
 import logging
+
+import numpy as np
+import torch
 
 import ray
 import ray.util.collective as col
 from ray.util.collective.types import Backend, ReduceOp
-
-import torch
 
 logger = logging.getLogger(__name__)
 

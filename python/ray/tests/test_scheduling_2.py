@@ -9,17 +9,17 @@ import pytest
 import ray
 import ray._private.gcs_utils as gcs_utils
 import ray.experimental.internal_kv as internal_kv
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import (
-    make_global_state_accessor,
-    get_metric_check_condition,
     MetricSamplePattern,
+    get_metric_check_condition,
+    make_global_state_accessor,
 )
 from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
-from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.util.state import list_tasks
 
 

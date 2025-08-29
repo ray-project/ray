@@ -1,16 +1,16 @@
 import os
 import sys
-import torch
 
 import pytest
+import torch
 
 import ray
 import ray.cluster_utils
+import ray.experimental.collective as collective
+from ray.dag import InputNode
+from ray.dag.output_node import MultiOutputNode
 from ray.exceptions import RayChannelError, RayTaskError
 from ray.experimental.channel.cpu_communicator import CPUCommunicator
-from ray.dag import InputNode
-import ray.experimental.collective as collective
-from ray.dag.output_node import MultiOutputNode
 from ray.tests.conftest import *  # noqa
 
 

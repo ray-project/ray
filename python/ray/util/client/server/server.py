@@ -20,14 +20,14 @@ import ray._private.state
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray import cloudpickle
+from ray._common.network_utils import build_address, is_localhost
 from ray._private import ray_constants
 from ray._private.client_mode_hook import disable_client_hook
-from ray._raylet import GcsClient
 from ray._private.ray_constants import env_integer
 from ray._private.ray_logging import setup_logger
 from ray._private.services import canonicalize_bootstrap_address_or_die
 from ray._private.tls_utils import add_port_to_grpc_server
-from ray._common.network_utils import build_address, is_localhost
+from ray._raylet import GcsClient
 from ray.job_config import JobConfig
 from ray.util.client.common import (
     CLIENT_SERVER_MAX_THREADS,

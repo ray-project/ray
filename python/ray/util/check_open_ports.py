@@ -3,18 +3,20 @@
 See https://www.anyscale.com/blog/update-on-ray-cve-2023-48022-new-verification-tooling-available # noqa: E501
 for more details.
 """
-from typing import List, Tuple
-import subprocess
-import click
-import psutil
-import urllib
 import json
+import subprocess
+import urllib
+from typing import List, Tuple
+
+import click
 
 import ray
-from ray.util.annotations import PublicAPI
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger
 from ray.autoscaler._private.constants import RAY_PROCESSES
+from ray.util.annotations import PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+import psutil
 
 
 def _get_ray_ports() -> List[int]:
