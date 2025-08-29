@@ -126,6 +126,12 @@ void GcsActor::WriteActorExportEvent() const {
 
 rpc::TaskSpec *GcsActor::GetMutableTaskSpec() { return task_spec_.get(); }
 
+rpc::LeaseSpec *GcsActor::GetMutableLeaseSpec() {
+  return &lease_spec_->GetMutableMessage();
+}
+
+const LeaseSpecification &GcsActor::GetLeaseSpecification() const { return *lease_spec_; }
+
 const ResourceRequest &GcsActor::GetAcquiredResources() const {
   return acquired_resources_;
 }

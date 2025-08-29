@@ -81,7 +81,7 @@ class NodeManagerClient {
                          /*method_timeout_ms*/ -1, )
 
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         CancelTasksWithResourceShapes,
+                         CancelLeasesWithResourceShapes,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
@@ -106,7 +106,7 @@ class NodeManagerClient {
                          /*method_timeout_ms*/ -1, )
 
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         ReturnWorker,
+                         ReturnWorkerLease,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
@@ -177,7 +177,7 @@ class NodeManagerClient {
                          /*method_timeout_ms*/ -1, )
 
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         GetTaskFailureCause,
+                         GetWorkerFailureCause,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 

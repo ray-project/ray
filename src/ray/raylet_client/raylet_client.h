@@ -25,7 +25,6 @@
 #include "ray/common/bundle_spec.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
-#include "ray/common/task/task_spec.h"
 #include "ray/ipc/client_connection.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/util/process.h"
@@ -57,13 +56,14 @@ class RayletClientInterface {
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) = 0;
 
   /// Requests a worker from the raylet. The callback will be sent via gRPC.
-  /// \param resource_spec Resources that should be allocated for the worker.
+  /// \param lease_spec Lease that is requested by the owner.
   /// \param grant_or_reject: True if we we should either grant or reject the request
   ///                         but no spillback.
   /// \param callback: The callback to call when the request finishes.
   /// \param backlog_size The queue length for the given shape on the CoreWorker.
+  /// \param lease_id Unique lease ID for this worker lease request.
   virtual void RequestWorkerLease(
-      const rpc::TaskSpec &task_spec,
+      const rpc::LeaseSpec &lease_spec,
       bool grant_or_reject,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
       const int64_t backlog_size = -1,
@@ -75,11 +75,11 @@ class RayletClientInterface {
   /// \param disconnect_worker Whether the raylet should disconnect the worker.
   /// \param worker_exiting Whether the worker is exiting and cannot be reused.
   /// \return ray::Status
-  virtual ray::Status ReturnWorker(int worker_port,
-                                   const WorkerID &worker_id,
-                                   bool disconnect_worker,
-                                   const std::string &disconnect_worker_error_detail,
-                                   bool worker_exiting) = 0;
+  virtual ray::Status ReturnWorkerLease(int worker_port,
+                                        const WorkerID &worker_id,
+                                        bool disconnect_worker,
+                                        const std::string &disconnect_worker_error_detail,
+                                        bool worker_exiting) = 0;
 
   /// Request the raylet to prestart workers. In `request` we can set the worker's owner,
   /// runtime env info and number of workers.
@@ -97,7 +97,7 @@ class RayletClientInterface {
       const rpc::ClientCallback<rpc::ReleaseUnusedActorWorkersReply> &callback) = 0;
 
   virtual void CancelWorkerLease(
-      const TaskID &task_id,
+      const LeaseID &lease_id,
       const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) = 0;
 
   /// Report the backlog size of a given worker and a given scheduling class to the
@@ -108,9 +108,9 @@ class RayletClientInterface {
       const WorkerID &worker_id,
       const std::vector<rpc::WorkerBacklogReport> &backlog_reports) = 0;
 
-  virtual void GetTaskFailureCause(
-      const TaskID &task_id,
-      const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback) = 0;
+  virtual void GetWorkerFailureCause(
+      const LeaseID &lease_id,
+      const ray::rpc::ClientCallback<ray::rpc::GetWorkerFailureCauseReply> &callback) = 0;
 
   /// Request a raylet to prepare resources of given bundles for atomic placement group
   /// creation. This is used for the first phase of atomic placement group creation. The
@@ -202,9 +202,9 @@ class RayletClientInterface {
       int64_t deadline_timestamp_ms,
       const rpc::ClientCallback<rpc::DrainRayletReply> &callback) = 0;
 
-  virtual void CancelTasksWithResourceShapes(
+  virtual void CancelLeasesWithResourceShapes(
       const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,
-      const rpc::ClientCallback<rpc::CancelTasksWithResourceShapesReply> &callback) = 0;
+      const rpc::ClientCallback<rpc::CancelLeasesWithResourceShapesReply> &callback) = 0;
 
   virtual void IsLocalWorkerDead(
       const WorkerID &worker_id,
@@ -240,25 +240,25 @@ class RayletClient : public RayletClientInterface {
   std::shared_ptr<grpc::Channel> GetChannel() const override;
 
   void RequestWorkerLease(
-      const rpc::TaskSpec &resource_spec,
+      const rpc::LeaseSpec &lease_spec,
       bool grant_or_reject,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
       const int64_t backlog_size,
       const bool is_selected_based_on_locality) override;
 
-  ray::Status ReturnWorker(int worker_port,
-                           const WorkerID &worker_id,
-                           bool disconnect_worker,
-                           const std::string &disconnect_worker_error_detail,
-                           bool worker_exiting) override;
+  ray::Status ReturnWorkerLease(int worker_port,
+                                const WorkerID &worker_id,
+                                bool disconnect_worker,
+                                const std::string &disconnect_worker_error_detail,
+                                bool worker_exiting) override;
 
   void PrestartWorkers(
       const ray::rpc::PrestartWorkersRequest &request,
       const ray::rpc::ClientCallback<ray::rpc::PrestartWorkersReply> &callback) override;
 
-  void GetTaskFailureCause(
-      const TaskID &task_id,
-      const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
+  void GetWorkerFailureCause(
+      const LeaseID &lease_id,
+      const ray::rpc::ClientCallback<ray::rpc::GetWorkerFailureCauseReply> &callback)
       override;
 
   void RegisterMutableObjectReader(
@@ -285,7 +285,7 @@ class RayletClient : public RayletClientInterface {
       const rpc::ClientCallback<rpc::ReleaseUnusedActorWorkersReply> &callback) override;
 
   void CancelWorkerLease(
-      const TaskID &task_id,
+      const LeaseID &lease_id,
       const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override;
 
   void PrepareBundleResources(
@@ -323,9 +323,9 @@ class RayletClient : public RayletClientInterface {
                    int64_t deadline_timestamp_ms,
                    const rpc::ClientCallback<rpc::DrainRayletReply> &callback) override;
 
-  void CancelTasksWithResourceShapes(
+  void CancelLeasesWithResourceShapes(
       const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,
-      const rpc::ClientCallback<rpc::CancelTasksWithResourceShapesReply> &callback)
+      const rpc::ClientCallback<rpc::CancelLeasesWithResourceShapesReply> &callback)
       override;
 
   void IsLocalWorkerDead(

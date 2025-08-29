@@ -17,17 +17,18 @@
 #include <memory>
 #include <string>
 
+#include "ray/raylet/scheduling/internal.h"
 #include "ray/rpc/server_call.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
 namespace raylet {
-class ClusterTaskManagerInterface {
+class ClusterLeaseManagerInterface {
  public:
-  virtual ~ClusterTaskManagerInterface() = default;
+  virtual ~ClusterLeaseManagerInterface() = default;
 
-  // Schedule and dispatch tasks.
-  virtual void ScheduleAndDispatchTasks() = 0;
+  // Schedule and dispatch leases.
+  virtual void ScheduleAndGrantLeases() = 0;
 
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending raylet <-> gcs heartbeats. In particular, this should fill in
@@ -37,81 +38,81 @@ class ClusterTaskManagerInterface {
   /// fields used.
   virtual void FillResourceUsage(rpc::ResourcesData &data) = 0;
 
-  /// Attempt to cancel an already queued task.
+  /// Attempt to cancel an already queued lease.
   ///
-  /// \param task_id: The id of the task to remove.
+  /// \param lease_id: The id of the lease to remove.
   /// \param failure_type: The failure type.
   /// \param scheduling_failure_message: The failure message.
   ///
-  /// \return True if task was successfully removed. This function will return
-  /// false if the task is already running.
-  virtual bool CancelTask(
-      const TaskID &task_id,
+  /// \return True if lease was successfully cancelled. This function will return
+  /// false if the lease is already granted.
+  virtual bool CancelLease(
+      const LeaseID &lease_id,
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
           rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
       const std::string &scheduling_failure_message = "") = 0;
 
-  /// Cancel all tasks owned by a specific worker.
-  virtual bool CancelAllTasksOwnedBy(
+  /// Cancel all leases owned by a specific worker.
+  virtual bool CancelAllLeasesOwnedBy(
       const WorkerID &worker_id,
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
           rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
       const std::string &scheduling_failure_message = "") = 0;
 
-  /// Cancel all tasks owned by a worker on the specific node.
-  virtual bool CancelAllTasksOwnedBy(
+  /// Cancel all leases owned by a worker on the specific node.
+  virtual bool CancelAllLeasesOwnedBy(
       const NodeID &node_id,
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
           rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
       const std::string &scheduling_failure_message = "") = 0;
 
-  /// Attempt to cancel all queued tasks that match the resource shapes.
-  /// This function is intended to be used to cancel the infeasible tasks. To make it a
+  /// Attempt to cancel all queued leases that match the resource shapes.
+  /// This function is intended to be used to cancel the infeasible leases. To make it a
   /// more general function, please modify the signature by adding parameters including
   /// the failure type and the failure message.
   ///
   /// \param target_resource_shapes: The resource shapes to cancel.
   ///
-  /// \return True if any task was successfully removed. This function will return false
-  /// if the task is already running. This shouldn't happen in noremal cases because the
-  /// infeasible tasks shouldn't be able to run due to resource constraints.
-  virtual bool CancelTasksWithResourceShapes(
+  /// \return True if any lease was successfully removed. This function will return false
+  /// if the lease is already running. This shouldn't happen in noremal cases because the
+  /// infeasible leases shouldn't be able to run due to resource constraints.
+  virtual bool CancelLeasesWithResourceShapes(
       const std::vector<ResourceSet> target_resource_shapes) = 0;
 
-  /// Attempt to cancel all queued tasks that match the predicate.
+  /// Attempt to cancel all queued leases that match the predicate.
   ///
-  /// \param predicate: A function that returns true if a task needs to be cancelled.
+  /// \param predicate: A function that returns true if a lease needs to be cancelled.
   /// \param failure_type: The reason for cancellation.
   /// \param scheduling_failure_message: The reason message for cancellation.
-  /// \return True if any task was successfully cancelled.
-  virtual bool CancelTasks(
+  /// \return True if any lease was successfully cancelled.
+  virtual bool CancelLeases(
       std::function<bool(const std::shared_ptr<internal::Work> &)> predicate,
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
       const std::string &scheduling_failure_message) = 0;
 
-  /// Queue task and schedule. This happens when processing the worker lease request.
+  /// Queue lease and schedule. This happens when processing the worker lease request.
   ///
-  /// \param task: The incoming task to be queued and scheduled.
+  /// \param lease: The incoming lease to be queued and scheduled.
   /// \param grant_or_reject: True if we we should either grant or reject the request
   ///                         but no spillback.
   /// \param reply: The reply of the lease request.
   /// \param send_reply_callback: The function used during dispatching.
-  virtual void QueueAndScheduleTask(RayTask task,
-                                    bool grant_or_reject,
-                                    bool is_selected_based_on_locality,
-                                    rpc::RequestWorkerLeaseReply *reply,
-                                    rpc::SendReplyCallback send_reply_callback) = 0;
+  virtual void QueueAndScheduleLease(RayLease lease,
+                                     bool grant_or_reject,
+                                     bool is_selected_based_on_locality,
+                                     rpc::RequestWorkerLeaseReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) = 0;
 
-  /// Return with an exemplar if any tasks are pending resource acquisition.
+  /// Return with an exemplar if any leases are pending resource acquisition.
   ///
   /// \param[in] num_pending_actor_creation Number of pending actor creation tasks.
-  /// \param[in] num_pending_tasks Number of pending tasks.
-  /// \return An example task that is deadlocking if any tasks are pending resource
+  /// \param[in] num_pending_leases Number of pending leases.
+  /// \return An example lease that is deadlocking if any leases are pending resource
   /// acquisition.
-  virtual const RayTask *AnyPendingTasksForResourceAcquisition(
-      int *num_pending_actor_creation, int *num_pending_tasks) const = 0;
+  virtual const RayLease *AnyPendingLeasesForResourceAcquisition(
+      int *num_pending_actor_creation, int *num_pending_leases) const = 0;
 
-  /// The helper to dump the debug state of the cluster task manater.
+  /// The helper to dump the debug state of the cluster lease manater.
   virtual std::string DebugStr() const = 0;
 
   /// Record the internal metrics.
