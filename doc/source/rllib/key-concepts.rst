@@ -202,7 +202,7 @@ allowing you to implement any architecture and computation logic.
     inference-only version of the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, using it only to compute actions.
 
 .. raw:: html
-    
+
    <div style="clear: both;"></div>
 Each :py:class:`~ray.rllib.env.env_runner.EnvRunner` actor, managed by the :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` of the Algorithm,
 has a copy of the user's :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
