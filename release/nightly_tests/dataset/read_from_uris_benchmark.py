@@ -1,11 +1,10 @@
 import io
 
-import boto3
 import numpy as np
 from PIL import Image
 
 import ray
-from ray.data import ActorPoolStrategy
+from ray.data.expressions import download
 from benchmark import Benchmark
 
 BUCKET = "anyscale-imagenet"
@@ -21,22 +20,18 @@ def main():
 
 def benchmark_fn():
     metadata = ray.data.read_parquet(METADATA_PATH)
-    # Assuming there are 80 CPUs and 4 in-flight tasks per actor, we need at least 320
-    # partitions to utilize all CPUs.
-    # TODO: This is a temporary workaround. We need to improve the default partitioning.
-    metadata = metadata.repartition(320)
 
-    class LoadImage:
-        def __init__(self):
-            self._client = boto3.client("s3")
+    def decode_images(batch):
+        images = []
+        for b in batch["image_bytes"]:
+            image = Image.open(io.BytesIO(b)).convert("RGB")
+            images.append(np.array(image))
+        del batch["image_bytes"]
+        batch["image"] = np.stack(images)
+        return batch
 
-        def __call__(self, row):
-            data = io.BytesIO()
-            self._client.download_fileobj(BUCKET, row["key"], data)
-            image = Image.open(data).convert("RGB")
-            return {"image": np.array(image)}
-
-    ds = metadata.map(LoadImage, compute=ActorPoolStrategy(min_size=1))
+    ds = metadata.with_column("image_bytes", download("key"))
+    ds = ds.map_batches(decode_images)
     for _ in ds.iter_internal_ref_bundles():
         pass
 
