@@ -93,13 +93,21 @@ class ServeContextFilter(logging.Filter):
     def filter(self, record):
         if should_skip_context_filter(record):
             return True
-        request_context = ray.serve.context._get_serve_request_context()
-        if request_context.route:
-            setattr(record, SERVE_LOG_ROUTE, request_context.route)
-        if request_context.request_id:
-            setattr(record, SERVE_LOG_REQUEST_ID, request_context.request_id)
-        if request_context.app_name:
-            setattr(record, SERVE_LOG_APPLICATION, request_context.app_name)
+
+        # If the context is not already captured
+        if (
+            not hasattr(record, SERVE_LOG_REQUEST_ID)
+            or not hasattr(record, SERVE_LOG_ROUTE)
+            or not hasattr(record, SERVE_LOG_APPLICATION)
+        ):
+            # Current behavior for non-buffered logs
+            request_context = ray.serve.context._get_serve_request_context()
+            if request_context.route:
+                setattr(record, SERVE_LOG_ROUTE, request_context.route)
+            if request_context.request_id:
+                setattr(record, SERVE_LOG_REQUEST_ID, request_context.request_id)
+            if request_context.app_name:
+                setattr(record, SERVE_LOG_APPLICATION, request_context.app_name)
         return True
 
 
@@ -297,6 +305,30 @@ def redirected_print(*objects, sep=" ", end="\n", file=None, flush=False):
     serve_logger.log(logging.INFO, message, stacklevel=2)
 
 
+def wrap_logger_for_buffering(logger: logging.Logger = None):
+    """
+    Wraps the logger with context for the buffering case.
+    """
+
+    def create_wrapper(original_method):
+        def wrapper(msg, *args, **kwargs):
+            request_context = ray.serve.context._get_serve_request_context()
+            extra = kwargs.get("extra", {})
+            # Only adding the fields currently used inside ServeContextFilter()
+            extra[SERVE_LOG_REQUEST_ID] = request_context.request_id
+            extra[SERVE_LOG_ROUTE] = request_context.route
+            extra[SERVE_LOG_APPLICATION] = request_context.app_name
+            kwargs["extra"] = extra
+            return original_method(msg, *args, **kwargs)
+
+        return wrapper
+
+    for level_name in ["info", "warning", "error", "critical", "debug"]:
+        original_method = getattr(logger, level_name)
+        new_method = create_wrapper(original_method)
+        setattr(logger, level_name, new_method)
+
+
 def configure_component_logger(
     *,
     component_name: str,
@@ -319,7 +351,9 @@ def configure_component_logger(
     logger.propagate = False
     logger.setLevel(logging_config.log_level)
     logger.handlers.clear()
-
+    # Adds context for buffering case
+    if buffer_size > 1:
+        wrap_logger_for_buffering(logger)
     serve_formatter = ServeFormatter(component_name, component_id)
     json_formatter = JSONFormatter()
     if logging_config.additional_log_standard_attrs:
