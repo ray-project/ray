@@ -284,7 +284,10 @@ class OpState:
         """Move a bundle produced by the operator to its outqueue."""
 
         ref, diverged = dedupe_schemas_with_validation(
-            self._schema, ref, warn=not self._warned_on_schema_divergence
+            self._schema,
+            ref,
+            warn=not self._warned_on_schema_divergence,
+            enforce_schemas=self.op.data_context.enforce_schemas,
         )
         self._schema = ref.schema
         self._warned_on_schema_divergence |= diverged
@@ -303,6 +306,9 @@ class OpState:
         self.op.metrics.num_alive_actors = actor_info.running
         self.op.metrics.num_restarting_actors = actor_info.restarting
         self.op.metrics.num_pending_actors = actor_info.pending
+        for next_op in self.op.output_dependencies:
+            next_op.metrics.num_external_inqueue_blocks = self.output_queue.num_blocks
+            next_op.metrics.num_external_inqueue_bytes = self.output_queue.memory_usage
 
     def refresh_progress_bar(self, resource_manager: ResourceManager) -> None:
         """Update the console with the latest operator progress."""
@@ -754,7 +760,7 @@ def dedupe_schemas_with_validation(
     old_schema: Optional["Schema"],
     bundle: "RefBundle",
     warn: bool = True,
-    allow_divergent: bool = False,
+    enforce_schemas: bool = False,
 ) -> Tuple["RefBundle", bool]:
     """Unify/Dedupe two schemas, warning if warn=True
 
@@ -763,7 +769,7 @@ def dedupe_schemas_with_validation(
             the new schema will be used as the old schema.
         bundle: The new `RefBundle` to unify with the old schema.
         warn: Raise a warning if the schemas diverge.
-        allow_divergent: If `True`, allow the schemas to diverge and return unified schema.
+        enforce_schemas: If `True`, allow the schemas to diverge and return unified schema.
             If `False`, but keep the old schema.
 
     Returns:
@@ -790,7 +796,7 @@ def dedupe_schemas_with_validation(
             f"than the previous one. Previous schema: {old_schema}, "
             f"new schema: {bundle.schema}. This may lead to unexpected behavior."
         )
-    if allow_divergent:
+    if enforce_schemas:
         old_schema = unify_schemas_with_validation([old_schema, bundle.schema])
 
     return (

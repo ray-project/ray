@@ -22,12 +22,12 @@
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "gtest/gtest_prod.h"
-#include "ray/common/client_connection.h"
 #include "ray/common/id.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
+#include "ray/ipc/client_connection.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/util/process.h"
@@ -150,8 +150,7 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
          std::shared_ptr<ClientConnection> connection,
          rpc::ClientCallManager &client_call_manager,
          StartupToken startup_token);
-  /// A destructor responsible for freeing all worker state.
-  ~Worker() = default;
+
   rpc::WorkerType GetWorkerType() const;
   void MarkDead();
   bool IsDead() const;
@@ -159,7 +158,6 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   /// \param io_service for scheduling the graceful period timer.
   /// \param force true to kill immediately, false to give time for the worker to clean up
   /// and exit gracefully.
-  /// \return Void.
   void KillAsync(instrumented_io_context &io_service, bool force = false);
   void MarkBlocked();
   void MarkUnblocked();
@@ -247,10 +245,10 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   bool IsRegistered() { return rpc_client_ != nullptr; }
 
   bool IsAvailableForScheduling() const {
-    return !IsDead()                        // Not dead
-           && !GetAssignedTaskId().IsNil()  // No assigned task
-           && !IsBlocked()                  // Not blocked
-           && GetActorId().IsNil();         // No assigned actor
+    return !IsDead()                       // Not dead
+           && GetAssignedTaskId().IsNil()  // No assigned task
+           && !IsBlocked()                 // Not blocked
+           && GetActorId().IsNil();        // No assigned actor
   }
 
   rpc::CoreWorkerClientInterface *rpc_client() {

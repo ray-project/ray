@@ -27,6 +27,7 @@
 #include "ray/common/id.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/gcs/gcs_server/gcs_actor.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
@@ -40,8 +41,6 @@
 namespace ray {
 using raylet::ClusterTaskManager;
 namespace gcs {
-
-class GcsActor;
 
 using GcsActorSchedulerFailureCallback =
     std::function<void(std::shared_ptr<GcsActor>,
@@ -236,7 +235,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
     WorkerID GetWorkerID() const { return WorkerID::FromBinary(address_.worker_id()); }
 
     /// Get the NodeID of this leased worker.
-    NodeID GetNodeID() const { return NodeID::FromBinary(address_.raylet_id()); }
+    NodeID GetNodeID() const { return NodeID::FromBinary(address_.node_id()); }
 
     /// Get the id of the actor which is assigned to this leased worker.
     ActorID GetAssignedActorID() const { return assigned_actor_id_; }
@@ -340,7 +339,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
                                     std::shared_ptr<GcsLeasedWorker> worker);
 
   /// Get an existing lease client or connect a new one.
-  std::shared_ptr<RayletClientInterface> GetOrConnectLeaseClient(
+  std::shared_ptr<RayletClientInterface> GetOrConnectRayletClient(
       const rpc::Address &raylet_address);
 
   /// Kill the actor on a node

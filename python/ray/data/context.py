@@ -140,6 +140,8 @@ DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION = env_bool(
     "RAY_DATA_ENABLE_PROGRESS_BAR_NAME_TRUNCATION", True
 )
 
+DEFAULT_ENFORCE_SCHEMAS = env_bool("RAY_DATA_ALLOW_ENFORCE_SCHEMAS", False)
+
 DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
 
 
@@ -230,23 +232,24 @@ DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD: float = env_float(
 @DeveloperAPI
 @dataclass
 class AutoscalingConfig:
-    # Actor Pool utilization threshold for upscaling. Once Actor Pool
-    # exceeds this utilization threshold it will start adding new actors.
-    #
-    # NOTE: Actor Pool utilization is defined as ratio of
-    #
-    #   - Number of submitted tasks to
-    #   - Max number of tasks the current set of Actors in the pool could run
-    #     (defined as Ray Actor's `max_concurrency` * `pool.num_running_actors`)
-    #
-    # This utilization value could exceed 100%, when the number of submitted tasks
-    # exceed available concurrency-slots to run them in the current set of actors.
-    #
-    # This is possible when `max_tasks_in_flight_per_actor` (defaults to 2 x
-    # of `max_concurrency`) > Actor's `max_concurrency` and allows to overlap
-    # task execution with the fetching of the blocks for the next task providing
-    # for ability to negotiate a trade-off between autoscaling speed and resource
-    # efficiency (ie making tasks wait instead of immediately triggering execution)
+    """Configuration for autoscaling of Ray Data.
+
+    Args:
+        actor_pool_util_upscaling_threshold: Actor Pool utilization threshold for upscaling.
+            Once Actor Pool exceeds this utilization threshold it will start adding new actors.
+            Actor Pool utilization is defined as ratio of number of submitted tasks to the
+            number of available concurrency-slots to run them in the current set of actors.
+            This utilization value could exceed 100%, when the number of submitted tasks
+            exceed available concurrency-slots to run them in the current set of actors.
+            This is possible when `max_tasks_in_flight_per_actor`
+            (defaults to 2 x of `max_concurrency`) > Actor's `max_concurrency`
+            and allows to overlap task execution with the fetching of the blocks
+            for the next task providing for ability to negotiate a trade-off
+            between autoscaling speed and resource efficiency (i.e.,
+            making tasks wait instead of immediately triggering execution).
+        actor_pool_util_downscaling_threshold: Actor Pool utilization threshold for downscaling.
+    """
+
     actor_pool_util_upscaling_threshold: float = (
         DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD
     )
@@ -314,8 +317,6 @@ class DataContext:
     Args:
         target_max_block_size: The max target block size in bytes for reads and
             transformations. If `None`, this means the block size is infinite.
-        target_shuffle_max_block_size: The max target block size in bytes for shuffle
-            ops like ``random_shuffle``, ``sort``, and ``repartition``.
         target_min_block_size: Ray Data avoids creating blocks smaller than this
             size in bytes on read. This takes precedence over
             ``read_op_min_num_blocks``.
@@ -412,7 +413,6 @@ class DataContext:
 
     # `None` means the block size is infinite.
     target_max_block_size: Optional[int] = DEFAULT_TARGET_MAX_BLOCK_SIZE
-    target_shuffle_max_block_size: int = DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE
     target_min_block_size: int = DEFAULT_TARGET_MIN_BLOCK_SIZE
     streaming_read_buffer_size: int = DEFAULT_STREAMING_READ_BUFFER_SIZE
     enable_pandas_block: bool = DEFAULT_ENABLE_PANDAS_BLOCK
@@ -536,6 +536,11 @@ class DataContext:
         default_factory=_issue_detectors_config_factory
     )
 
+    downstream_capacity_backpressure_ratio: float = None
+    downstream_capacity_backpressure_max_queued_bundles: int = None
+
+    enforce_schemas: bool = DEFAULT_ENFORCE_SCHEMAS
+
     def __post_init__(self):
         # The additonal ray remote args that should be added to
         # the task-pool-based data tasks.
@@ -579,16 +584,24 @@ class DataContext:
             and value != DEFAULT_WRITE_FILE_RETRY_ON_ERRORS
         ):
             warnings.warn(
-                "`write_file_retry_on_errors` is deprecated. Configure "
+                "`write_file_retry_on_errors` is deprecated! Configure "
                 "`retried_io_errors` instead.",
                 DeprecationWarning,
             )
+
         elif name == "use_push_based_shuffle":
             warnings.warn(
-                "`use_push_based_shuffle` is deprecated, please configure "
+                "`use_push_based_shuffle` is deprecated! Configure "
                 "`shuffle_strategy` instead.",
                 DeprecationWarning,
             )
+
+        elif name == "target_shuffle_max_block_size":
+            warnings.warn(
+                "`target_shuffle_max_block_size` is deprecated! Configure `target_max_block_size` instead."
+            )
+
+            self.target_max_block_size = value
 
         elif name == "use_polars":
             warnings.warn(
