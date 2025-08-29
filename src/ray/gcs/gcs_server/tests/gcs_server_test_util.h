@@ -24,10 +24,16 @@
 #include "absl/synchronization/mutex.h"
 #include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "ray/common/asio/instrumented_io_context.h"
+<<<<<<< HEAD
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_client/accessor.h"
+=======
+#include "ray/common/lease/lease.h"
+#include "ray/common/task/task_util.h"
+#include "ray/common/test_util.h"
+>>>>>>> upstream/master
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
@@ -78,11 +84,19 @@ struct GcsServerMocker {
 
   class MockRayletClient : public FakeRayletClient {
    public:
+<<<<<<< HEAD
     ray::Status ReturnWorker(int worker_port,
                              const WorkerID &worker_id,
                              bool disconnect_worker,
                              const std::string &disconnect_worker_error_detail,
                              bool worker_exiting) override {
+=======
+    ray::Status ReturnWorkerLease(int worker_port,
+                                  const WorkerID &worker_id,
+                                  bool disconnect_worker,
+                                  const std::string &disconnect_worker_error_detail,
+                                  bool worker_exiting) override {
+>>>>>>> upstream/master
       if (disconnect_worker) {
         num_workers_disconnected++;
       } else {
@@ -91,17 +105,29 @@ struct GcsServerMocker {
       return Status::OK();
     }
 
+<<<<<<< HEAD
     void GetTaskFailureCause(
         const TaskID &task_id,
         const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
         override {
       ray::rpc::GetTaskFailureCauseReply reply;
+=======
+    void GetWorkerFailureCause(
+        const LeaseID &lease_id,
+        const ray::rpc::ClientCallback<ray::rpc::GetWorkerFailureCauseReply> &callback)
+        override {
+      ray::rpc::GetWorkerFailureCauseReply reply;
+>>>>>>> upstream/master
       callback(Status::OK(), std::move(reply));
       num_get_task_failure_causes += 1;
     }
 
     void RequestWorkerLease(
+<<<<<<< HEAD
         const rpc::TaskSpec &spec,
+=======
+        const rpc::LeaseSpec &spec,
+>>>>>>> upstream/master
         bool grant_or_reject,
         const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
         const int64_t backlog_size,
@@ -125,7 +151,11 @@ struct GcsServerMocker {
     }
 
     void CancelWorkerLease(
+<<<<<<< HEAD
         const TaskID &task_id,
+=======
+        const LeaseID &lease_id,
+>>>>>>> upstream/master
         const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override {
       num_leases_canceled += 1;
       cancel_callbacks.push_back(callback);
@@ -370,17 +400,27 @@ struct GcsServerMocker {
     explicit MockedGcsActorTable(std::shared_ptr<gcs::StoreClient> store_client)
         : GcsActorTable(store_client) {}
 
+<<<<<<< HEAD
     void Put(const ActorID &key,
              const rpc::ActorTableData &value,
              Postable<void(Status)> callback) override {
       Status status = Status::OK();
       std::move(callback).Post("FakeGcsActorTable.Put", status);
+=======
+    Status Put(const ActorID &key,
+               const rpc::ActorTableData &value,
+               Postable<void(Status)> callback) override {
+      auto status = Status::OK();
+      std::move(callback).Post("FakeGcsActorTable.Put", status);
+      return status;
+>>>>>>> upstream/master
     }
 
    private:
     std::shared_ptr<gcs::StoreClient> store_client_ =
         std::make_shared<gcs::InMemoryStoreClient>();
   };
+<<<<<<< HEAD
 
   class MockedNodeInfoAccessor : public gcs::NodeInfoAccessor {
    public:
@@ -430,6 +470,8 @@ struct GcsServerMocker {
 
     void AsyncResubscribe() override {}
   };
+=======
+>>>>>>> upstream/master
 };
 
 }  // namespace ray
