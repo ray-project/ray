@@ -809,7 +809,7 @@ class Dataset:
             >>> from ray.data.expressions import udf
             >>> import pyarrow.compute as pc
             >>>
-            >>> @udf()
+            >>> @udf(return_dtype=DataType.int32())
             ... def add_one(column):
             ...     return pc.add(column, 1)
             >>>

@@ -4,52 +4,13 @@ from typing import Any, Union
 import numpy as np
 import pyarrow as pa
 
+from ray.data._internal.pyarrow_compat import PyArrowCompat
 from ray.util.annotations import PublicAPI
-
-
-def generate_arrow_factory_methods(cls: type):
-    """Metaprogrammming: Class decorator to generate factory methods for PyArrow types using from_arrow."""
-
-    # Define the mapping of method name -> (pyarrow_func, description)
-    type_definitions = {
-        "int8": (pa.int8, "an 8-bit signed integer"),
-        "int16": (pa.int16, "a 16-bit signed integer"),
-        "int32": (pa.int32, "a 32-bit signed integer"),
-        "int64": (pa.int64, "a 64-bit signed integer"),
-        "uint8": (pa.uint8, "an 8-bit unsigned integer"),
-        "uint16": (pa.uint16, "a 16-bit unsigned integer"),
-        "uint32": (pa.uint32, "a 32-bit unsigned integer"),
-        "uint64": (pa.uint64, "a 64-bit unsigned integer"),
-        "float32": (pa.float32, "a 32-bit floating point number"),
-        "float64": (pa.float64, "a 64-bit floating point number"),
-        "string": (pa.string, "a variable-length string"),
-        "bool": (pa.bool_, "a boolean value"),
-        "binary": (pa.binary, "variable-length binary data"),
-    }
-
-    for method_name, (pa_func, description) in type_definitions.items():
-
-        def create_method(name, func, desc):
-            def factory_method(cls):
-                return cls.from_arrow(func())
-
-            factory_method.__doc__ = f"""Create a DataType representing {desc}.
-
-        Returns:
-            DataType: A DataType with PyArrow {name} type
-        """
-            factory_method.__name__ = name
-            factory_method.__qualname__ = f"{cls.__name__}.{name}"
-            return classmethod(factory_method)
-
-        setattr(cls, method_name, create_method(method_name, pa_func, description))
-
-    return cls
 
 
 @PublicAPI(stability="alpha")
 @dataclass
-@generate_arrow_factory_methods
+@PyArrowCompat.factory_methods
 class DataType:
     """A simplified Ray Data DataType supporting Arrow, NumPy, and Python types."""
 
@@ -57,7 +18,10 @@ class DataType:
 
     def __post_init__(self):
         """Validate the _internal_type after initialization."""
-        if not isinstance(self._internal_type, (pa.DataType, np.dtype, type)):
+        if not isinstance(
+            self._internal_type,
+            (pa.DataType, np.dtype, type),
+        ):
             raise TypeError(
                 f"DataType supports only PyArrow DataType, NumPy dtype, or Python type, but was given type {type(self._internal_type)}."
             )
@@ -76,13 +40,8 @@ class DataType:
     def to_arrow_dtype(self) -> pa.DataType:
         if self.is_arrow_type():
             return self._internal_type
-        elif self.is_numpy_type():
-            return pa.from_numpy_dtype(self._internal_type)
         else:
-            try:
-                return pa.from_numpy_dtype(np.dtype(self._internal_type))
-            except (TypeError, pa.ArrowNotImplementedError):
-                return pa.py_object()
+            return PyArrowCompat.convert_to_arrow_type(self._internal_type)
 
     def to_numpy_dtype(self) -> np.dtype:
         if self.is_numpy_type():
@@ -183,22 +142,14 @@ class DataType:
         # 1. Handle numpy arrays and scalars
         if isinstance(value, (np.ndarray, np.generic)):
             return cls.from_numpy(value.dtype)
-        # 2. Handle PyArrow scalars
-        elif (
-            hasattr(value, "type")
-            and hasattr(pa, "Scalar")
-            and isinstance(value, pa.Scalar)
-        ):
-            return cls.from_arrow(value.type)
-
         # 3. Try PyArrow type inference for regular Python values
-        else:
-            try:
-                inferred_arrow_type = pa.infer_type([value])
+        try:
+            inferred_arrow_type = PyArrowCompat.infer_type([value])
+            if inferred_arrow_type is not None:
                 return cls.from_arrow(inferred_arrow_type)
-            except pa.ArrowInvalid:
-                # Fall back to Python type if Arrow type inference fails
-                return cls.from_python(type(value))
+        except Exception:
+            # Fall back to Python type if Arrow type inference fails
+            return cls.from_python(type(value))
 
     def __repr__(self) -> str:
         if self.is_arrow_type():
