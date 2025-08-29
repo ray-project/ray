@@ -653,5 +653,17 @@ def test_wait_tensor_freed_double_tensor(ray_start_regular):
     assert not gpu_object_store.has_object(obj_id2)
 
 
+def test_ipc_colocated_actors(ray_start_regular):
+    world_size = 2
+    actors = [GPUTestActor.options(num_gpus=0.5).remote() for _ in range(world_size)]
+    create_collective_group(actors, backend="torch_gloo")
+    src_actor, dst_actor = actors[0], actors[1]
+
+    ref = src_actor.echo.remote(torch.tensor([1, 2, 3]))
+
+    result = dst_actor.double.remote(ref)
+    assert torch.equal(ray.get(ref), torch.tensor([2, 4, 6]))
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
