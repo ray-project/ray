@@ -7,173 +7,96 @@ import pyarrow as pa
 from ray.util.annotations import PublicAPI
 
 
+def generate_arrow_factory_methods(cls: type):
+    """Metaprogrammming: Class decorator to generate factory methods for PyArrow types using from_arrow."""
+
+    # Define the mapping of method name -> (pyarrow_func, description)
+    type_definitions = {
+        "int8": (pa.int8, "an 8-bit signed integer"),
+        "int16": (pa.int16, "a 16-bit signed integer"),
+        "int32": (pa.int32, "a 32-bit signed integer"),
+        "int64": (pa.int64, "a 64-bit signed integer"),
+        "uint8": (pa.uint8, "an 8-bit unsigned integer"),
+        "uint16": (pa.uint16, "a 16-bit unsigned integer"),
+        "uint32": (pa.uint32, "a 32-bit unsigned integer"),
+        "uint64": (pa.uint64, "a 64-bit unsigned integer"),
+        "float32": (pa.float32, "a 32-bit floating point number"),
+        "float64": (pa.float64, "a 64-bit floating point number"),
+        "string": (pa.string, "a variable-length string"),
+        "bool": (pa.bool_, "a boolean value"),
+        "binary": (pa.binary, "variable-length binary data"),
+    }
+
+    for method_name, (pa_func, description) in type_definitions.items():
+
+        def create_method(name, func, desc):
+            def factory_method(cls):
+                return cls.from_arrow(func())
+
+            factory_method.__doc__ = f"""Create a DataType representing {desc}.
+
+        Returns:
+            DataType: A DataType with PyArrow {name} type
+        """
+            factory_method.__name__ = name
+            factory_method.__qualname__ = f"{cls.__name__}.{name}"
+            return classmethod(factory_method)
+
+        setattr(cls, method_name, create_method(method_name, pa_func, description))
+
+    return cls
+
+
 @PublicAPI(stability="alpha")
 @dataclass
+@generate_arrow_factory_methods
 class DataType:
     """A simplified Ray Data DataType supporting Arrow, NumPy, and Python types."""
 
-    internal_type: Union[pa.DataType, np.dtype, type]
+    _internal_type: Union[pa.DataType, np.dtype, type]
 
     def __post_init__(self):
-        """Validate the internal_type after initialization."""
-        if not isinstance(self.internal_type, (pa.DataType, np.dtype, type)):
+        """Validate the _internal_type after initialization."""
+        if not isinstance(self._internal_type, (pa.DataType, np.dtype, type)):
             raise TypeError(
-                "DataType supports only PyArrow DataType, NumPy dtype, or Python type."
+                f"DataType supports only PyArrow DataType, NumPy dtype, or Python type, but was given type {type(self._internal_type)}."
             )
 
     # Type checking methods
     def is_arrow_type(self) -> bool:
-        return isinstance(self.internal_type, pa.DataType)
+        return isinstance(self._internal_type, pa.DataType)
 
     def is_numpy_type(self) -> bool:
-        return isinstance(self.internal_type, np.dtype)
+        return isinstance(self._internal_type, np.dtype)
 
     def is_python_type(self) -> bool:
-        return isinstance(self.internal_type, type)
+        return isinstance(self._internal_type, type)
 
     # Conversion methods
     def to_arrow_dtype(self) -> pa.DataType:
         if self.is_arrow_type():
-            return self.internal_type
+            return self._internal_type
         elif self.is_numpy_type():
-            return pa.from_numpy_dtype(self.internal_type)
+            return pa.from_numpy_dtype(self._internal_type)
         else:
             try:
-                return pa.from_numpy_dtype(np.dtype(self.internal_type))
+                return pa.from_numpy_dtype(np.dtype(self._internal_type))
             except (TypeError, pa.ArrowNotImplementedError):
                 return pa.py_object()
 
     def to_numpy_dtype(self) -> np.dtype:
         if self.is_numpy_type():
-            return self.internal_type
+            return self._internal_type
         elif self.is_arrow_type():
-            return self.internal_type.to_pandas_dtype()
+            return self._internal_type.to_pandas_dtype()
         else:
             return np.dtype("object")
 
     def to_python_type(self) -> type:
         if self.is_python_type():
-            return self.internal_type
+            return self._internal_type
         else:
             raise ValueError(f"DataType {self} is not a Python type")
-
-    # Factory methods for Arrow types
-    @classmethod
-    def int8(cls) -> "DataType":
-        """Create a DataType representing an 8-bit signed integer.
-
-        Returns:
-            DataType: A DataType with PyArrow int8 type
-        """
-        return cls(internal_type=pa.int8())
-
-    @classmethod
-    def int16(cls) -> "DataType":
-        """Create a DataType representing a 16-bit signed integer.
-
-        Returns:
-            DataType: A DataType with PyArrow int16 type
-        """
-        return cls(internal_type=pa.int16())
-
-    @classmethod
-    def int32(cls) -> "DataType":
-        """Create a DataType representing a 32-bit signed integer.
-
-        Returns:
-            DataType: A DataType with PyArrow int32 type
-        """
-        return cls(internal_type=pa.int32())
-
-    @classmethod
-    def int64(cls) -> "DataType":
-        """Create a DataType representing a 64-bit signed integer.
-
-        Returns:
-            DataType: A DataType with PyArrow int64 type
-        """
-        return cls(internal_type=pa.int64())
-
-    @classmethod
-    def uint8(cls) -> "DataType":
-        """Create a DataType representing an 8-bit unsigned integer.
-
-        Returns:
-            DataType: A DataType with PyArrow uint8 type
-        """
-        return cls(internal_type=pa.uint8())
-
-    @classmethod
-    def uint16(cls) -> "DataType":
-        """Create a DataType representing a 16-bit unsigned integer.
-
-        Returns:
-            DataType: A DataType with PyArrow uint16 type
-        """
-        return cls(internal_type=pa.uint16())
-
-    @classmethod
-    def uint32(cls) -> "DataType":
-        """Create a DataType representing a 32-bit unsigned integer.
-
-        Returns:
-            DataType: A DataType with PyArrow uint32 type
-        """
-        return cls(internal_type=pa.uint32())
-
-    @classmethod
-    def uint64(cls) -> "DataType":
-        """Create a DataType representing a 64-bit unsigned integer.
-
-        Returns:
-            DataType: A DataType with PyArrow uint64 type
-        """
-        return cls(internal_type=pa.uint64())
-
-    @classmethod
-    def float32(cls) -> "DataType":
-        """Create a DataType representing a 32-bit floating point number.
-
-        Returns:
-            DataType: A DataType with PyArrow float32 type
-        """
-        return cls(internal_type=pa.float32())
-
-    @classmethod
-    def float64(cls) -> "DataType":
-        """Create a DataType representing a 64-bit floating point number.
-
-        Returns:
-            DataType: A DataType with PyArrow float64 type
-        """
-        return cls(internal_type=pa.float64())
-
-    @classmethod
-    def string(cls) -> "DataType":
-        """Create a DataType representing a variable-length string.
-
-        Returns:
-            DataType: A DataType with PyArrow string type
-        """
-        return cls(internal_type=pa.string())
-
-    @classmethod
-    def bool(cls) -> "DataType":
-        """Create a DataType representing a boolean value.
-
-        Returns:
-            DataType: A DataType with PyArrow boolean type
-        """
-        return cls(internal_type=pa.bool_())
-
-    @classmethod
-    def binary(cls) -> "DataType":
-        """Create a DataType representing variable-length binary data.
-
-        Returns:
-            DataType: A DataType with PyArrow binary type
-        """
-        return cls(internal_type=pa.binary())
 
     # Factory methods from external systems
     @classmethod
@@ -194,7 +117,7 @@ class DataType:
             >>> DataType.from_arrow(pa.int64())
             DataType(arrow:int64)
         """
-        return cls(internal_type=arrow_type)
+        return cls(_internal_type=arrow_type)
 
     @classmethod
     def from_numpy(cls, numpy_dtype: Union[np.dtype, str]) -> "DataType":
@@ -216,7 +139,7 @@ class DataType:
         """
         if isinstance(numpy_dtype, str):
             numpy_dtype = np.dtype(numpy_dtype)
-        return cls(internal_type=numpy_dtype)
+        return cls(_internal_type=numpy_dtype)
 
     @classmethod
     def from_python(cls, python_type: type) -> "DataType":
@@ -235,7 +158,7 @@ class DataType:
             >>> DataType.from_python(str)
             DataType(python:str)
         """
-        return cls(internal_type=python_type)
+        return cls(_internal_type=python_type)
 
     @classmethod
     def infer_dtype(cls, value: Any) -> "DataType":
@@ -258,12 +181,8 @@ class DataType:
             DataType(numpy:int32)
         """
         # 1. Handle numpy arrays and scalars
-        if isinstance(value, np.ndarray):
+        if isinstance(value, (np.ndarray, np.generic)):
             return cls.from_numpy(value.dtype)
-        elif hasattr(value, "dtype") and hasattr(value, "item"):
-            # This catches numpy scalars (e.g., np.int32(5), np.float64(3.14))
-            return cls.from_numpy(value.dtype)
-
         # 2. Handle PyArrow scalars
         elif (
             hasattr(value, "type")
@@ -283,16 +202,16 @@ class DataType:
 
     def __repr__(self) -> str:
         if self.is_arrow_type():
-            return f"DataType(arrow:{self.internal_type})"
+            return f"DataType(arrow:{self._internal_type})"
         elif self.is_numpy_type():
-            return f"DataType(numpy:{self.internal_type})"
+            return f"DataType(numpy:{self._internal_type})"
         else:
-            return f"DataType(python:{self.internal_type.__name__})"
+            return f"DataType(python:{self._internal_type.__name__})"
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, DataType):
             return False
-        return self.internal_type == other.internal_type
+        return self._internal_type == other._internal_type
 
     def __hash__(self) -> int:
-        return hash(self.internal_type)
+        return hash(self._internal_type)
