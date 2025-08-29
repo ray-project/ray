@@ -18,6 +18,7 @@ class DataType:
 
     def __post_init__(self):
         """Validate the _internal_type after initialization."""
+        # TODO: Support Pandas extension types
         if not isinstance(
             self._internal_type,
             (pa.DataType, np.dtype, type),
@@ -47,7 +48,16 @@ class DataType:
         if self.is_numpy_type():
             return self._internal_type
         elif self.is_arrow_type():
-            return self._internal_type.to_pandas_dtype()
+            try:
+                # For most basic arrow types, this will work
+                pandas_dtype = self._internal_type.to_pandas_dtype()
+                if isinstance(pandas_dtype, np.dtype):
+                    return pandas_dtype
+                else:
+                    # If pandas returns an extension dtype, fall back to object
+                    return np.dtype("object")
+            except (TypeError, NotImplementedError, pa.ArrowNotImplementedError):
+                return np.dtype("object")
         else:
             return np.dtype("object")
 
@@ -162,7 +172,15 @@ class DataType:
     def __eq__(self, other) -> bool:
         if not isinstance(other, DataType):
             return False
+
+        # Ensure they're from the same type system by checking the actual type
+        # of the internal type object, not just the value
+        if type(self._internal_type) is not type(other._internal_type):
+            return False
+
         return self._internal_type == other._internal_type
 
     def __hash__(self) -> int:
-        return hash(self._internal_type)
+        # Include the type of the internal type in the hash to ensure
+        # different type systems don't collide
+        return hash((type(self._internal_type), self._internal_type))

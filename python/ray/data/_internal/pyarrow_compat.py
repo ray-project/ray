@@ -109,3 +109,25 @@ class PyArrowCompat:
             Inferred PyArrow DataType or None if inference fails
         """
         return _infer_pyarrow_type(values)
+
+    @classmethod
+    def convert_to_arrow_type(cls, dtype: Union[np.dtype, type]) -> pa.DataType:
+        """
+        Convert numpy dtype or Python type to PyArrow DataType.
+
+        Args:
+            dtype: NumPy dtype or Python type
+
+        Returns:
+            Corresponding PyArrow DataType
+        """
+        if isinstance(dtype, np.dtype):
+            try:
+                return pa.from_numpy_dtype(dtype)
+            except (TypeError, pa.ArrowNotImplementedError):
+                return pa.py_object()
+        else:
+            try:
+                return pa.from_numpy_dtype(np.dtype(dtype))
+            except (TypeError, pa.ArrowNotImplementedError):
+                return pa.py_object()
