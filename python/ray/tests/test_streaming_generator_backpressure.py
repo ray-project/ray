@@ -1,10 +1,11 @@
 import asyncio
-import pytest
-import numpy as np
+import os
+import signal
 import sys
 import time
-import signal
-import os
+
+import numpy as np
+import pytest
 
 import ray
 from ray._common.test_utils import wait_for_condition

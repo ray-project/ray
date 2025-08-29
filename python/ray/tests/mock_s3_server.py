@@ -1,11 +1,12 @@
 # extracted from aioboto3
 #    https://github.com/terrycain/aioboto3/blob/16a1a1085191ebe6d40ee45d9588b2173738af0c/tests/mock_server.py
-import pytest
-import requests
 import shutil
 import signal
 import subprocess as sp
 import time
+
+import pytest
+import requests
 
 from ray._common.network_utils import build_address
 
