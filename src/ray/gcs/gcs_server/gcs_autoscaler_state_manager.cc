@@ -19,10 +19,6 @@
 #include <utility>
 #include <vector>
 
-#include "ray/gcs/gcs_server/gcs_actor_manager.h"
-#include "ray/gcs/gcs_server/gcs_node_manager.h"
-#include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
-#include "ray/gcs/gcs_server/state_util.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/util/string_utils.h"
 #include "ray/util/time.h"
@@ -621,10 +617,10 @@ void GcsAutoscalerStateManager::CancelInfeasibleRequests() const {
       RAY_LOG(WARNING) << "Canceling infeasible requests on node " << node_id
                        << " with infeasible_shapes=" << resource_shapes_str;
 
-      raylet_client->CancelTasksWithResourceShapes(
+      raylet_client->CancelLeasesWithResourceShapes(
           infeasible_shapes,
           [node_id](const Status &status,
-                    const rpc::CancelTasksWithResourceShapesReply &) {
+                    const rpc::CancelLeasesWithResourceShapesReply &) {
             if (status.ok()) {
               RAY_LOG(INFO) << "Infeasible tasks cancelled on node " << node_id;
             } else {

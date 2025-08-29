@@ -106,8 +106,8 @@ ray_cc_library(
         "//src/ray/common:task_common",
         "//src/ray/protobuf:gcs_service_cc_proto",
         "//src/ray/protobuf:ray_syncer_cc_proto",
+        "//src/ray/raylet/scheduling:cluster_lease_manager",
         "//src/ray/raylet/scheduling:cluster_resource_manager",
-        "//src/ray/raylet/scheduling:cluster_task_manager",
         "//src/ray/rpc:gcs_server",
         "//src/ray/stats:stats_metric",
         "//src/ray/util:logging",
@@ -328,6 +328,7 @@ ray_cc_library(
     visibility = ["//visibility:private"],
     deps = [
         "//src/ray/common:status",
+        "//src/ray/protobuf:autoscaler_cc_grpc",
         "//src/ray/protobuf:gcs_service_cc_grpc",
     ],
 )
@@ -345,6 +346,7 @@ ray_cc_library(
         ":grpc_service_interfaces",
         "//src/ray/common:asio",
         "//src/ray/common:id",
+        "//src/ray/protobuf:autoscaler_cc_grpc",
         "//src/ray/protobuf:gcs_service_cc_grpc",
         "//src/ray/rpc:grpc_server",
         "//src/ray/rpc:server_call",
@@ -365,6 +367,7 @@ ray_cc_library(
     ],
     deps = [
         "//src/ray/common:id",
+        "//src/ray/common:lease",
         "//src/ray/common:task_common",
         "//src/ray/protobuf:core_worker_cc_proto",
         "//src/ray/protobuf:export_event_cc_proto",
@@ -394,7 +397,7 @@ ray_cc_library(
         "//src/ray/common:id",
         "//src/ray/common:task_common",
         "//src/ray/protobuf:gcs_service_cc_proto",
-        "//src/ray/raylet/scheduling:cluster_task_manager",
+        "//src/ray/raylet/scheduling:cluster_lease_manager",
         "//src/ray/raylet_client:raylet_client_lib",
         "//src/ray/rpc:core_worker_client",
         "//src/ray/rpc:node_manager_client",
@@ -444,19 +447,51 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "gcs_server_lib",
+    name = "gcs_autoscaler_state_manager",
     srcs = [
         "gcs_autoscaler_state_manager.cc",
-        "gcs_server.cc",
     ],
     hdrs = [
         "gcs_autoscaler_state_manager.h",
+    ],
+    implementation_deps = [
+        "//src/ray/common:ray_config",
+        "//src/ray/gcs:gcs_pb_util",
+        "//src/ray/util:logging",
+        "//src/ray/util:string_utils",
+        "//src/ray/util:time",
+    ],
+    deps = [
+        ":gcs_actor_manager",
+        ":gcs_init_data",
+        ":gcs_kv_manager",
+        ":gcs_node_manager",
+        ":gcs_placement_group_manager",
+        ":gcs_state_util",
+        ":grpc_service_interfaces",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/gcs/pubsub:gcs_pub_sub_lib",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/util:thread_checker",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_server_lib",
+    srcs = [
+        "gcs_server.cc",
+    ],
+    hdrs = [
         "gcs_server.h",
     ],
     deps = [
         ":gcs_actor",
         ":gcs_actor_manager",
         ":gcs_actor_scheduler",
+        ":gcs_autoscaler_state_manager",
         ":gcs_function_manager",
         ":gcs_health_check_manager",
         ":gcs_init_data",
