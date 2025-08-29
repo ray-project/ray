@@ -4,9 +4,14 @@ import functools
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
+
+import numpy as np
+import pyarrow as pa
 
 from ray.util.annotations import DeveloperAPI, PublicAPI
+
+UDF_RETURN_TYPES = Union[List[Any], np.ndarray[Any, Any], pa.Array, pa.ChunkedArray]
 
 
 @DeveloperAPI(stability="alpha")
@@ -270,7 +275,7 @@ class UDFExpr(Expr):
         >>> expr = add_one(col("value"))
     """
 
-    fn: Callable
+    fn: Callable[..., UDF_RETURN_TYPES]
     args: List[Expr]
     kwargs: Dict[str, Expr]
     function_name: Optional[str] = None
@@ -290,10 +295,10 @@ class UDFExpr(Expr):
         )
 
 
-def _create_udf_callable(fn: Callable):
+def _create_udf_callable(fn: Callable[..., UDF_RETURN_TYPES]) -> Callable[..., UDFExpr]:
     """Create a callable that generates UDFExpr when called with expressions."""
 
-    def udf_callable(*args, **kwargs):
+    def udf_callable(*args, **kwargs) -> UDFExpr:
         # Convert arguments to expressions if they aren't already
         expr_args = []
         for arg in args:
@@ -326,7 +331,7 @@ def _create_udf_callable(fn: Callable):
 
 
 @PublicAPI(stability="alpha")
-def udf() -> Callable:
+def udf() -> Callable[..., UDFExpr]:
     """
     Decorator to convert a UDF into an expression-compatible function.
 
@@ -373,7 +378,7 @@ def udf() -> Callable:
         >>> ds_complex = ds.with_column("doubled_plus_one", add_one(col("value")) * 2)
     """
 
-    def decorator(func: Callable):
+    def decorator(func: Callable[..., UDF_RETURN_TYPES]) -> Callable[..., UDFExpr]:
         return _create_udf_callable(func)
 
     return decorator
