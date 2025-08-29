@@ -995,14 +995,6 @@ class DatasetStats:
         object, which can be used to generate a summary string."""
         operators_stats = []
         is_sub_operator = len(self.metadata) > 1
-        for name, stats in self.metadata.items():
-            operators_stats.append(
-                OperatorStatsSummary.from_block_metadata(
-                    name,
-                    stats,
-                    is_sub_operator=is_sub_operator,
-                )
-            )
 
         iter_stats = IterStatsSummary(
             self.iter_wait_s,
@@ -1021,9 +1013,56 @@ class DatasetStats:
             self.iter_blocks_remote,
             self.iter_unknown_location,
         )
+
         stats_summary_parents = []
         if self.parents is not None:
             stats_summary_parents = [p.to_summary() for p in self.parents]
+
+        # Collect the sum of the final output row counts from all parent nodes
+        parent_total_output = 0
+        for i, parent_summary in enumerate(stats_summary_parents):
+            if parent_summary.operators_stats:
+                # Get the last operator stats from the current parent summary
+                last_parent_op = parent_summary.operators_stats[-1]
+                # Extract output row count (handle dict type with "sum" key)
+                op_output = (
+                    last_parent_op.output_num_rows.get("sum", 0)
+                    if isinstance(last_parent_op.output_num_rows, dict)
+                    else 0
+                )
+                logger.debug(
+                    f"Parent {i + 1} (operator: {last_parent_op.operator_name}) contributes {op_output} rows to input"
+                )
+                parent_total_output += op_output
+
+        # Create temporary operator stats objects from block metadata
+        temp_ops = [
+            OperatorStatsSummary.from_block_metadata(
+                name, stats, is_sub_operator=is_sub_operator
+            )
+            for name, stats in self.metadata.items()
+        ]
+
+        for i, op in enumerate(temp_ops):
+            # For sub-operators: inherit input based on the order in the current list
+            if is_sub_operator:
+                if i == 0:
+                    # Input of the first sub-operator is the total output from parent nodes
+                    op.total_input_num_rows = parent_total_output
+                else:
+                    # Input of subsequent sub-operators is the output of the previous sub-operator
+                    prev_op = temp_ops[i - 1]
+                    op.total_input_num_rows = (
+                        prev_op.output_num_rows["sum"]
+                        if (
+                            prev_op.output_num_rows and "sum" in prev_op.output_num_rows
+                        )
+                        else 0
+                    )
+            else:
+                # Single operator scenario: input rows = total output from all parent nodes
+                op.total_input_num_rows = parent_total_output
+            operators_stats.append(op)
         streaming_exec_schedule_s = (
             self.streaming_exec_schedule_s.get()
             if self.streaming_exec_schedule_s
@@ -1325,6 +1364,8 @@ class OperatorStatsSummary:
     udf_time: Optional[Dict[str, float]] = None
     # memory: no "sum" stat
     memory: Optional[Dict[str, float]] = None
+    # Use the output_num_rows of the parent Operator as output_num_rows
+    total_input_num_rows: Optional[int] = None
     output_num_rows: Optional[Dict[str, float]] = None
     output_size_bytes: Optional[Dict[str, float]] = None
     # node_count: "count" stat instead of "sum"
@@ -1459,6 +1500,9 @@ class OperatorStatsSummary:
                 "count": len(node_counts),
             }
 
+        # Assign a value in to_summary and initialize it as None.
+        total_input_num_rows = None
+
         return OperatorStatsSummary(
             operator_name=operator_name,
             is_sub_operator=is_sub_operator,
@@ -1470,6 +1514,7 @@ class OperatorStatsSummary:
             cpu_time=cpu_stats,
             udf_time=udf_stats,
             memory=memory_stats,
+            total_input_num_rows=total_input_num_rows,
             output_num_rows=output_num_rows_stats,
             output_size_bytes=output_size_bytes_stats,
             node_count=node_counts_stats,
@@ -1583,9 +1628,18 @@ class OperatorStatsSummary:
             # total number of rows produced by the sum of the wall times across all
             # blocks of the operator. This assumes that on a single node the work done
             # would be equivalent, with no concurrency.
+            total_num_in_rows = (
+                self.total_input_num_rows if self.total_input_num_rows else 0
+            )
             total_num_out_rows = output_num_rows_stats["sum"]
             out += indent
             out += "* Operator throughput:\n"
+            out += (
+                indent + "\t* Total input num rows:" f" {total_num_in_rows} " "rows\n"
+            )
+            out += (
+                indent + "\t* Total output num rows:" f" {total_num_out_rows} " "rows\n"
+            )
             out += (
                 indent + "\t* Ray Data throughput:"
                 f" {total_num_out_rows / self.time_total_s} "
