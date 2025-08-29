@@ -8,9 +8,8 @@ from dask.highlevelgraph import HighLevelGraph
 from .scheduler import MultipleReturnFunc, multiple_return_get
 
 try:
-    from dask.dataframe.shuffle import SimpleShuffleLayer
     from dask.dataframe.optimize import optimize
-    from dask.dataframe.shuffle import shuffle_group
+    from dask.dataframe.shuffle import SimpleShuffleLayer, shuffle_group
 except ImportError:
     # SimpleShuffleLayer doesn't exist in this version of Dask.
     # This is the case for dask>=2025.1.0.
