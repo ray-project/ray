@@ -346,7 +346,6 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
     auto failure_callback = [this, owner_address](const std::string &object_id_binary,
                                                   const Status &status) {
       const auto obj_id = ObjectID::FromBinary(object_id_binary);
-      rpc::WorkerObjectLocationsPubMessage location_info;
       if (!status.ok()) {
         RAY_LOG(INFO).WithField(obj_id)
             << "Failed to get the location: " << status.ToString();
@@ -362,9 +361,10 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
       // Location lookup can fail if the owner is reachable but no longer has a
       // record of this ObjectRef, most likely due to an issue with the
       // distributed reference counting protocol.
-      ObjectLocationSubscriptionCallback(location_info,
-                                         obj_id,
-                                         /*location_lookup_failed*/ true);
+      ObjectLocationSubscriptionCallback(
+          /*location_info=*/rpc::WorkerObjectLocationsPubMessage{},
+          obj_id,
+          /*location_lookup_failed*/ true);
     };
 
     auto sub_message = std::make_unique<rpc::SubMessage>();

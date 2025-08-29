@@ -26,7 +26,7 @@
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
-#include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
+#include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/grpc_services.h"
@@ -499,10 +499,11 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
       },
       worker_client_pool_);
 
-  // Initialize by gcs tables data.
   gcs_actor_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::ActorInfoGrpcService>(
-      io_context_provider_.GetDefaultIOContext(), *gcs_actor_manager_));
+      io_context_provider_.GetDefaultIOContext(),
+      *gcs_actor_manager_,
+      RayConfig::instance().gcs_max_active_rpcs_per_handler()));
 }
 
 void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
@@ -522,10 +523,12 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
       [this](const JobID &job_id) {
         return gcs_job_manager_->GetJobConfig(job_id)->ray_namespace();
       });
-  // Initialize by gcs tables data.
+
   gcs_placement_group_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::PlacementGroupInfoGrpcService>(
-      io_context_provider_.GetDefaultIOContext(), *gcs_placement_group_manager_));
+      io_context_provider_.GetDefaultIOContext(),
+      *gcs_placement_group_manager_,
+      RayConfig::instance().gcs_max_active_rpcs_per_handler()));
 }
 
 GcsServer::StorageType GcsServer::GetStorageType() const {
@@ -728,7 +731,9 @@ void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) 
   gcs_autoscaler_state_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(
       std::make_unique<rpc::autoscaler::AutoscalerStateGrpcService>(
-          io_context_provider_.GetDefaultIOContext(), *gcs_autoscaler_state_manager_));
+          io_context_provider_.GetDefaultIOContext(),
+          *gcs_autoscaler_state_manager_,
+          RayConfig::instance().gcs_max_active_rpcs_per_handler()));
 }
 
 void GcsServer::InitGcsTaskManager() {
@@ -739,7 +744,7 @@ void GcsServer::InitGcsTaskManager() {
       io_context,
       *gcs_task_manager_,
       RayConfig::instance().gcs_max_active_rpcs_per_handler()));
-  rpc_server_.RegisterService(std::make_unique<rpc::RayEventExportGrpcService>(
+  rpc_server_.RegisterService(std::make_unique<rpc::events::RayEventExportGrpcService>(
       io_context,
       *gcs_task_manager_,
       RayConfig::instance().gcs_max_active_rpcs_per_handler()));
