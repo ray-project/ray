@@ -661,7 +661,7 @@ def test_ipc_colocated_actors(ray_start_regular):
 
     ref = src_actor.echo.remote(torch.tensor([1, 2, 3]))
 
-    result = dst_actor.double.remote(ref)
+    dst_actor.double.remote(ref)
     assert torch.equal(ray.get(ref), torch.tensor([2, 4, 6]))
 
 
