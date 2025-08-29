@@ -74,12 +74,11 @@ class RayletClientInterface {
   /// \param worker_id The unique worker id of the worker on the raylet node.
   /// \param disconnect_worker Whether the raylet should disconnect the worker.
   /// \param worker_exiting Whether the worker is exiting and cannot be reused.
-  /// \return ray::Status
-  virtual ray::Status ReturnWorkerLease(int worker_port,
-                                        const WorkerID &worker_id,
-                                        bool disconnect_worker,
-                                        const std::string &disconnect_worker_error_detail,
-                                        bool worker_exiting) = 0;
+  virtual void ReturnWorkerLease(int worker_port,
+                                 const LeaseID &lease_id,
+                                 bool disconnect_worker,
+                                 const std::string &disconnect_worker_error_detail,
+                                 bool worker_exiting) = 0;
 
   /// Request the raylet to prestart workers. In `request` we can set the worker's owner,
   /// runtime env info and number of workers.
@@ -246,11 +245,11 @@ class RayletClient : public RayletClientInterface {
       const int64_t backlog_size,
       const bool is_selected_based_on_locality) override;
 
-  ray::Status ReturnWorkerLease(int worker_port,
-                                const WorkerID &worker_id,
-                                bool disconnect_worker,
-                                const std::string &disconnect_worker_error_detail,
-                                bool worker_exiting) override;
+  void ReturnWorkerLease(int worker_port,
+                         const LeaseID &lease_id,
+                         bool disconnect_worker,
+                         const std::string &disconnect_worker_error_detail,
+                         bool worker_exiting) override;
 
   void PrestartWorkers(
       const ray::rpc::PrestartWorkersRequest &request,
