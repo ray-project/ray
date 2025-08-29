@@ -305,7 +305,7 @@ def redirected_print(*objects, sep=" ", end="\n", file=None, flush=False):
     serve_logger.log(logging.INFO, message, stacklevel=2)
 
 
-def wrap_logger_for_buffering(logger: logging.Logger = None):
+def wrap_logger_for_buffering(logger: logging.Logger):
     """
     Wraps the logger with context for the buffering case.
     """
