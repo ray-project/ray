@@ -9,7 +9,7 @@ certifi
 pycurl
 azure-identity
 smart_open[s3,gcs,azure,http]
-adlfs[abfs]
+adlfs
 
 # Anyscale CLI requirements
 boto3>=1.26.76
