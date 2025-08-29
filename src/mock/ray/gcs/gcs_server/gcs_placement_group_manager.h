@@ -11,17 +11,12 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
 
-namespace ray {
-namespace gcs {
+#pragma once
 
-class MockGcsPlacementGroup : public GcsPlacementGroup {
- public:
-};
+#include <gmock/gmock.h>
 
-}  // namespace gcs
-}  // namespace ray
+#include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 
 namespace ray {
 namespace gcs {

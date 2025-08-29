@@ -23,8 +23,10 @@
 #include <vector>
 
 #include "ray/common/ray_config.h"
+#include "ray/common/task/task_spec.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/stats/metric_defs.h"
+#include "ray/util/logging.h"
 #include "ray/util/time.h"
 
 namespace {
@@ -998,7 +1000,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
         // worker exit to avoid process and resource leak.
         NotifyCoreWorkerToKillActor(actor, death_cause, force_kill);
       }
-      CancelActorInScheduling(actor, TaskID::ForActorCreationTask(actor_id));
+      CancelActorInScheduling(actor);
     }
   }
 
@@ -1376,7 +1378,6 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
          io_context_}));
     gcs_actor_scheduler_->Schedule(actor);
   } else {
-    RemoveActorNameFromRegistry(actor);
     actor->UpdateState(rpc::ActorTableData::DEAD);
     mutable_actor_table_data->mutable_death_cause()->CopyFrom(death_cause);
     auto time = current_sys_time_ms();
@@ -1709,16 +1710,16 @@ void GcsActorManager::KillActor(const ActorID &actor_id, bool force_kill) {
     NotifyCoreWorkerToKillActor(
         actor, GenKilledByApplicationCause(GetActor(actor_id)), force_kill);
   } else {
-    const auto &task_id = actor->GetCreationTaskSpecification().TaskId();
-    RAY_LOG(DEBUG).WithField(actor->GetActorID()).WithField(task_id)
-        << "The actor hasn't been created yet, cancel scheduling task";
+    const auto &lease_id = actor->GetLeaseSpecification().LeaseId();
+    RAY_LOG(DEBUG).WithField(actor->GetActorID()).WithField(lease_id)
+        << "The actor hasn't been created yet, cancel scheduling lease";
     if (!worker_id.IsNil()) {
       // The actor is in phase of creating, so we need to notify the core
       // worker exit to avoid process and resource leak.
       NotifyCoreWorkerToKillActor(
           actor, GenKilledByApplicationCause(GetActor(actor_id)), force_kill);
     }
-    CancelActorInScheduling(actor, task_id);
+    CancelActorInScheduling(actor);
     RestartActor(actor_id,
                  /*need_reschedule=*/true,
                  GenKilledByApplicationCause(GetActor(actor_id)));
@@ -1742,10 +1743,10 @@ void GcsActorManager::AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &
   }
 }
 
-void GcsActorManager::CancelActorInScheduling(const std::shared_ptr<GcsActor> &actor,
-                                              const TaskID &task_id) {
-  RAY_LOG(DEBUG).WithField(actor->GetActorID()).WithField(task_id)
-      << "Cancel actor in scheduling";
+void GcsActorManager::CancelActorInScheduling(const std::shared_ptr<GcsActor> &actor) {
+  auto lease_id = actor->GetLeaseSpecification().LeaseId();
+  RAY_LOG(DEBUG).WithField(actor->GetActorID()).WithField(lease_id)
+      << "Cancel actor in scheduling, this may be due to resource re-eviction";
   const auto &actor_id = actor->GetActorID();
   const auto &node_id = actor->GetNodeID();
   // The actor has not been created yet. It is either being scheduled or is
@@ -1762,7 +1763,7 @@ void GcsActorManager::CancelActorInScheduling(const std::shared_ptr<GcsActor> &a
     // it doesn't responds, and the actor should be still in leasing state.
     // NOTE: We will cancel outstanding lease request by calling
     // `raylet_client->CancelWorkerLease`.
-    gcs_actor_scheduler_->CancelOnLeasing(node_id, actor_id, task_id);
+    gcs_actor_scheduler_->CancelOnLeasing(node_id, actor_id, lease_id);
     // Return the actor's acquired resources (if any).
     gcs_actor_scheduler_->OnActorDestruction(actor);
   }
