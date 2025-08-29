@@ -54,7 +54,6 @@ class GcsTable {
   ///
   /// \param key The key to lookup from the table.
   /// \param callback Callback that will be called after read finishes.
-  /// \return Status
   void Get(const Key &key, Postable<void(Status, std::optional<Data>)> callback);
 
   /// Get all data from the table asynchronously.
