@@ -15,4 +15,3 @@ Examples
    ./object-detection/README.ipynb
    ./e2e-rag/README.ipynb
    ./mcp-ray-serve/README.ipynb
-   ./deployment-serve-llm/README.ipynb
