@@ -1,5 +1,8 @@
 from typing import Optional, Tuple, Union
 
+from ray._raylet import build_address as _build_address
+from ray._raylet import parse_address as _parse_address
+
 
 def parse_address(address: str) -> Optional[Tuple[str, str]]:
     """Parse a network address string into host and port.
@@ -10,21 +13,7 @@ def parse_address(address: str) -> Optional[Tuple[str, str]]:
     Returns:
         Tuple with (host, port) if port found, None if no colon separator.
     """
-    pos = address.rfind(":")
-    if pos == -1:
-        return None
-
-    host = address[:pos]
-    port = address[pos + 1 :]
-
-    if ":" in host:
-        if host.startswith("[") and host.endswith("]"):
-            host = host[1:-1]
-        else:
-            # Invalid IPv6 (missing brackets) or colon is part of the address, not a host:port split.
-            return None
-
-    return (host, port)
+    return _parse_address(address)
 
 
 def build_address(host: str, port: Union[int, str]) -> str:
@@ -37,11 +26,7 @@ def build_address(host: str, port: Union[int, str]) -> str:
     Returns:
         Formatted address string (e.g., "localhost:8000" or "[::1]:8000").
     """
-    if host is not None and ":" in host:
-        # IPv6 address
-        return f"[{host}]:{port}"
-    # IPv4 address or hostname
-    return f"{host}:{port}"
+    return _build_address(host, port)
 
 
 def is_localhost(host: str) -> bool:
