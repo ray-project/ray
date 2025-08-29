@@ -38,6 +38,7 @@ from ray.serve._private.utils import (
     inside_ray_client_context,
     resolve_deployment_response,
 )
+from ray.util import metrics
 from ray.util.placement_group import PlacementGroup
 
 # NOTE: Please read carefully before changing!
@@ -150,6 +151,7 @@ def create_router(
     handle_id: str,
     deployment_id: DeploymentID,
     handle_options: InitHandleOptions,
+    handle_request_counter: metrics.Counter,
     request_router_class: Optional[Callable] = None,
 ) -> Router:
     # NOTE(edoakes): this is lazy due to a nasty circular import that should be fixed.
@@ -187,6 +189,7 @@ def create_router(
         node_id=node_id,
         availability_zone=availability_zone,
         prefer_local_node_routing=handle_options._prefer_local_routing,
+        handle_request_counter=handle_request_counter,
     )
 
 

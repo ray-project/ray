@@ -25,6 +25,7 @@ from ray.serve.handle import (
     DeploymentResponse,
     DeploymentResponseGenerator,
 )
+from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -82,12 +83,16 @@ def make_local_deployment_handle(
         raise
 
     def _create_local_router(
-        handle_id: str, deployment_id: DeploymentID, handle_options: Any
+        handle_id: str,
+        deployment_id: DeploymentID,
+        handle_options: Any,
+        handle_request_counter: metrics.Counter,
     ) -> Router:
         return LocalRouter(
             user_callable_wrapper,
             deployment_id=deployment_id,
             handle_options=handle_options,
+            handle_request_counter=handle_request_counter,
         )
 
     return DeploymentHandle(
@@ -246,12 +251,14 @@ class LocalRouter(Router):
         user_callable_wrapper: UserCallableWrapper,
         deployment_id: DeploymentID,
         handle_options: Any,
+        handle_request_counter: metrics.Counter,
     ):
         self._deployment_id = deployment_id
         self._user_callable_wrapper = user_callable_wrapper
         assert (
             self._user_callable_wrapper._callable is not None
         ), "User callable must already be initialized."
+        self._handle_request_counter = handle_request_counter
 
     def running_replicas_populated(self) -> bool:
         return True
@@ -342,3 +349,11 @@ class LocalRouter(Router):
         noop_future = concurrent.futures.Future()
         noop_future.set_result(None)
         return noop_future
+
+    def inc_num_handle_requests(self, route: str):
+        self._handle_request_counter.inc(
+            tags={
+                "application": self._deployment_id.app_name,
+                "route": route,
+            }
+        )

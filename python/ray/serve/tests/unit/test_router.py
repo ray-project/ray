@@ -268,6 +268,7 @@ def setup_router(request) -> Tuple[AsyncioRouter, FakeRequestRouter]:
         node_id="test-node-id",
         availability_zone="test-az",
         prefer_local_node_routing=False,
+        handle_request_counter=FakeCounter(),
         _request_router_initialized_event=asyncio.Event(),
     )
     return router, fake_request_router
@@ -787,6 +788,7 @@ class TestRouterMetricsManager:
             "random_actor",
             DeploymentHandleSource.UNKNOWN,
             Mock(),
+            FakeCounter(tag_keys=("handle", "deployment", "route", "application")),
             FakeCounter(
                 tag_keys=("deployment", "route", "application", "handle", "actor_id")
             ),
@@ -817,6 +819,7 @@ class TestRouterMetricsManager:
             "random_actor",
             DeploymentHandleSource.UNKNOWN,
             Mock(),
+            FakeCounter(tag_keys=("handle", "deployment", "route", "application")),
             FakeCounter(
                 tag_keys=("deployment", "route", "application", "handle", "actor_id")
             ),
@@ -846,6 +849,7 @@ class TestRouterMetricsManager:
             "random_actor",
             DeploymentHandleSource.UNKNOWN,
             Mock(),
+            FakeCounter(tag_keys=("handle", "deployment", "route", "application")),
             FakeCounter(
                 tag_keys=("deployment", "route", "application", "handle", "actor_id")
             ),
@@ -930,6 +934,7 @@ class TestRouterMetricsManager:
             "random_actor",
             DeploymentHandleSource.UNKNOWN,
             Mock(),
+            FakeCounter(tag_keys=("handle", "deployment", "route", "application")),
             FakeCounter(
                 tag_keys=("deployment", "route", "application", "handle", "actor_id")
             ),
@@ -974,6 +979,7 @@ class TestRouterMetricsManager:
                 self_actor_id,
                 DeploymentHandleSource.PROXY,
                 mock_controller_handle,
+                FakeCounter(tag_keys=("handle", "deployment", "route", "application")),
                 FakeCounter(
                     tag_keys=(
                         "deployment",
@@ -1033,6 +1039,7 @@ class TestRouterMetricsManager:
             "some_actor",
             DeploymentHandleSource.PROXY,
             Mock(),
+            FakeCounter(tag_keys=("handle", "deployment", "route", "application")),
             FakeCounter(
                 tag_keys=(
                     "deployment",
@@ -1099,6 +1106,7 @@ class TestRouterMetricsManager:
             "random_actor",
             DeploymentHandleSource.UNKNOWN,
             Mock(),
+            FakeCounter(tag_keys=("handle", "deployment", "route", "application")),
             FakeCounter(
                 tag_keys=("deployment", "route", "application", "handle", "actor_id")
             ),
@@ -1137,6 +1145,7 @@ class TestSingletonThreadRouter:
             node_id="test-node-id",
             availability_zone="test-az",
             prefer_local_node_routing=False,
+            handle_request_counter=FakeCounter(),
         )
         router._asyncio_router = asyncio_router
         return router
