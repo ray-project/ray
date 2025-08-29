@@ -18,22 +18,19 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "ray/common/task/task_spec.h"
+#include "ray/common/lease/lease_spec.h"
 
 namespace ray {
 namespace core {
 
-TaskSpecification CreateFakeTask(std::vector<ObjectID> deps) {
-  TaskSpecification spec;
-  spec.GetMutableMessage().set_task_id(TaskID::FromRandom(JobID::FromInt(1)).Binary());
+LeaseSpecification CreateFakeLease(std::vector<ObjectID> deps) {
+  rpc::LeaseSpec spec;
   for (auto &dep : deps) {
-    spec.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
-        dep.Binary());
+    spec.add_dependencies()->set_object_id(dep.Binary());
   }
-  spec.GetMutableMessage()
-      .mutable_scheduling_strategy()
-      ->mutable_default_scheduling_strategy();
-  return spec;
+  spec.set_lease_id(LeaseID::FromRandom().Binary());
+  spec.mutable_scheduling_strategy()->mutable_default_scheduling_strategy();
+  return LeaseSpecification(spec);
 }
 
 class MockLocalityDataProvider : public LocalityDataProviderInterface {
@@ -73,9 +70,9 @@ TEST(LocalLeasePolicyTest, TestReturnFallback) {
   ObjectID obj1 = ObjectID::FromRandom();
   ObjectID obj2 = ObjectID::FromRandom();
   std::vector<ObjectID> deps{obj1, obj2};
-  auto task_spec = CreateFakeTask(deps);
+  auto lease_spec = CreateFakeLease(deps);
   auto [best_node_address, is_selected_based_on_locality] =
-      local_lease_policy.GetBestNodeForTask(task_spec);
+      local_lease_policy.GetBestNodeForLease(lease_spec);
   // Test that fallback node was chosen.
   ASSERT_EQ(NodeID::FromBinary(best_node_address.node_id()), fallback_node);
   ASSERT_FALSE(is_selected_based_on_locality);
@@ -96,12 +93,12 @@ TEST(LocalityAwareLeasePolicyTest, TestBestLocalityFallbackSpreadSchedulingStrat
   LocalityAwareLeasePolicy locality_lease_policy(
       *mock_locality_data_provider, MockNodeAddrFactory, fallback_rpc_address);
   std::vector<ObjectID> deps{obj1, obj2};
-  auto task_spec = CreateFakeTask(deps);
-  task_spec.GetMutableMessage()
+  auto lease_spec = CreateFakeLease(deps);
+  lease_spec.GetMutableMessage()
       .mutable_scheduling_strategy()
       ->mutable_spread_scheduling_strategy();
   auto [best_node_address, is_selected_based_on_locality] =
-      locality_lease_policy.GetBestNodeForTask(task_spec);
+      locality_lease_policy.GetBestNodeForLease(lease_spec);
   // Locality logic is not run since it's a spread scheduling strategy.
   ASSERT_EQ(mock_locality_data_provider->num_locality_data_fetches, 0);
   // Test that fallback node was chosen.
@@ -125,14 +122,14 @@ TEST(LocalityAwareLeasePolicyTest,
   LocalityAwareLeasePolicy locality_lease_policy(
       *mock_locality_data_provider, MockNodeAddrFactory, fallback_rpc_address);
   std::vector<ObjectID> deps{obj1, obj2};
-  auto task_spec = CreateFakeTask(deps);
+  auto lease_spec = CreateFakeLease(deps);
   NodeID node_affinity_node = NodeID::FromRandom();
-  task_spec.GetMutableMessage()
+  lease_spec.GetMutableMessage()
       .mutable_scheduling_strategy()
       ->mutable_node_affinity_scheduling_strategy()
       ->set_node_id(node_affinity_node.Binary());
   auto [best_node_address, is_selected_based_on_locality] =
-      locality_lease_policy.GetBestNodeForTask(task_spec);
+      locality_lease_policy.GetBestNodeForLease(lease_spec);
   // Locality logic is not run since it's a node affinity scheduling strategy.
   ASSERT_EQ(mock_locality_data_provider->num_locality_data_fetches, 0);
   // Test that node affinity node was chosen.
@@ -155,9 +152,9 @@ TEST(LocalityAwareLeasePolicyTest, TestBestLocalityDominatingNode) {
   LocalityAwareLeasePolicy locality_lease_policy(
       *mock_locality_data_provider, MockNodeAddrFactory, fallback_rpc_address);
   std::vector<ObjectID> deps{obj1, obj2};
-  auto task_spec = CreateFakeTask(deps);
+  auto lease_spec = CreateFakeLease(deps);
   auto [best_node_address, is_selected_based_on_locality] =
-      locality_lease_policy.GetBestNodeForTask(task_spec);
+      locality_lease_policy.GetBestNodeForLease(lease_spec);
   // Locality data provider should be called once for each dependency.
   ASSERT_EQ(mock_locality_data_provider->num_locality_data_fetches, deps.size());
   // Test that best node was chosen.
@@ -181,9 +178,9 @@ TEST(LocalityAwareLeasePolicyTest, TestBestLocalityBiggerObject) {
   LocalityAwareLeasePolicy locality_lease_policy(
       *mock_locality_data_provider, MockNodeAddrFactory, fallback_rpc_address);
   std::vector<ObjectID> deps{obj1, obj2};
-  auto task_spec = CreateFakeTask(deps);
+  auto lease_spec = CreateFakeLease(deps);
   auto [best_node_address, is_selected_based_on_locality] =
-      locality_lease_policy.GetBestNodeForTask(task_spec);
+      locality_lease_policy.GetBestNodeForLease(lease_spec);
   // Locality data provider should be called once for each dependency.
   ASSERT_EQ(mock_locality_data_provider->num_locality_data_fetches, deps.size());
   // Test that best node was chosen.
@@ -211,9 +208,9 @@ TEST(LocalityAwareLeasePolicyTest, TestBestLocalityBetterNode) {
   LocalityAwareLeasePolicy locality_lease_policy(
       *mock_locality_data_provider, MockNodeAddrFactory, fallback_rpc_address);
   std::vector<ObjectID> deps{obj1, obj2, obj3};
-  auto task_spec = CreateFakeTask(deps);
+  auto lease_spec = CreateFakeLease(deps);
   auto [best_node_address, is_selected_based_on_locality] =
-      locality_lease_policy.GetBestNodeForTask(task_spec);
+      locality_lease_policy.GetBestNodeForLease(lease_spec);
   // Locality data provider should be called once for each dependency.
   ASSERT_EQ(mock_locality_data_provider->num_locality_data_fetches, deps.size());
   // Test that best node was chosen.
@@ -235,9 +232,9 @@ TEST(LocalityAwareLeasePolicyTest, TestBestLocalityFallbackNoLocations) {
   LocalityAwareLeasePolicy locality_lease_policy(
       *mock_locality_data_provider, MockNodeAddrFactory, fallback_rpc_address);
   std::vector<ObjectID> deps{obj1, obj2};
-  auto task_spec = CreateFakeTask(deps);
+  auto lease_spec = CreateFakeLease(deps);
   auto [best_node_address, is_selected_based_on_locality] =
-      locality_lease_policy.GetBestNodeForTask(task_spec);
+      locality_lease_policy.GetBestNodeForLease(lease_spec);
   // Locality data provider should be called once for each dependency.
   ASSERT_EQ(mock_locality_data_provider->num_locality_data_fetches, deps.size());
   // Test that fallback node was chosen.
@@ -252,11 +249,11 @@ TEST(LocalityAwareLeasePolicyTest, TestBestLocalityFallbackNoDeps) {
   auto mock_locality_data_provider = std::make_shared<MockLocalityDataProvider>();
   LocalityAwareLeasePolicy locality_lease_policy(
       *mock_locality_data_provider, MockNodeAddrFactory, fallback_rpc_address);
-  // No task dependencies.
+  // No lease dependencies.
   std::vector<ObjectID> deps;
-  auto task_spec = CreateFakeTask(deps);
+  auto lease_spec = CreateFakeLease(deps);
   auto [best_node_address, is_selected_based_on_locality] =
-      locality_lease_policy.GetBestNodeForTask(task_spec);
+      locality_lease_policy.GetBestNodeForLease(lease_spec);
   // Locality data provider should be called once for each dependency.
   ASSERT_EQ(mock_locality_data_provider->num_locality_data_fetches, deps.size());
   // Test that fallback node was chosen.
@@ -279,9 +276,9 @@ TEST(LocalityAwareLeasePolicyTest, TestBestLocalityFallbackAddrFetchFail) {
   LocalityAwareLeasePolicy locality_lease_policy(
       *mock_locality_data_provider, MockNodeAddrFactoryAlwaysNull, fallback_rpc_address);
   std::vector<ObjectID> deps{obj1, obj2};
-  auto task_spec = CreateFakeTask(deps);
+  auto lease_spec = CreateFakeLease(deps);
   auto [best_node_address, is_selected_based_on_locality] =
-      locality_lease_policy.GetBestNodeForTask(task_spec);
+      locality_lease_policy.GetBestNodeForLease(lease_spec);
   // Locality data provider should be called once for each dependency.
   ASSERT_EQ(mock_locality_data_provider->num_locality_data_fetches, deps.size());
   // Test that fallback node was chosen.
