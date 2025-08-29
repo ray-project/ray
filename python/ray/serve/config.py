@@ -17,7 +17,7 @@ from ray._common.pydantic_compat import (
 )
 from ray._common.utils import import_attr
 from ray.serve._private.constants import (
-    DEFAULT_AUTOSCALING_POLICY,
+    DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_GRPC_PORT,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
@@ -28,6 +28,7 @@ from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
+from ray.serve._private.utils import validate_ssl_config
 from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -162,6 +163,15 @@ class RequestRouterConfig(BaseModel):
 DEFAULT_METRICS_INTERVAL_S = 10.0
 
 
+@PublicAPI(stability="alpha")
+class AutoscalingPolicy(BaseModel):
+    name: Union[str, Callable] = Field(
+        default=DEFAULT_AUTOSCALING_POLICY_NAME,
+        description="Name of the policy function or the import path of the policy. "
+        "Will be the concatenation of the policy module and the policy name if user passed a callable.",
+    )
+
+
 @PublicAPI(stability="stable")
 class AutoscalingConfig(BaseModel):
     """Config for the Serve Autoscaler."""
@@ -174,7 +184,7 @@ class AutoscalingConfig(BaseModel):
     initial_replicas: Optional[NonNegativeInt] = None
     max_replicas: PositiveInt = 1
 
-    target_ongoing_requests: PositiveFloat = DEFAULT_TARGET_ONGOING_REQUESTS
+    target_ongoing_requests: Optional[PositiveFloat] = DEFAULT_TARGET_ONGOING_REQUESTS
 
     metrics_interval_s: PositiveFloat = Field(
         default=DEFAULT_METRICS_INTERVAL_S,
@@ -222,8 +232,12 @@ class AutoscalingConfig(BaseModel):
     # Cloudpickled policy definition.
     _serialized_policy_def: bytes = PrivateAttr(default=b"")
 
-    # Custom autoscaling config. Defaults to the request-based autoscaler.
-    _policy: Union[str, Callable] = PrivateAttr(default=DEFAULT_AUTOSCALING_POLICY)
+    # Autoscaling policy. This policy is deployment scoped. Defaults to the request-based autoscaler.
+    _policy: AutoscalingPolicy = Field(default_factory=AutoscalingPolicy)
+
+    # This is to make `_policy` a normal field until its GA ready.
+    class Config:
+        underscore_attrs_are_private = True
 
     @validator("max_replicas", always=True)
     def replicas_settings_valid(cls, max_replicas, values):
@@ -273,18 +287,21 @@ class AutoscalingConfig(BaseModel):
         """
         values = self.dict()
         policy = values.get("_policy")
-        if isinstance(policy, Callable):
-            policy = f"{policy.__module__}.{policy.__name__}"
 
-        if not policy:
-            policy = DEFAULT_AUTOSCALING_POLICY
+        policy_name = None
+        if isinstance(policy, dict):
+            policy_name = policy.get("name")
 
-        policy_path = policy
-        policy = import_attr(policy)
+        if isinstance(policy_name, Callable):
+            policy_name = f"{policy_name.__module__}.{policy_name.__name__}"
 
-        if not values.get("_serialized_policy_def"):
-            self._serialized_policy_def = cloudpickle.dumps(policy)
-        self._policy = policy_path
+        if not policy_name:
+            policy_name = DEFAULT_AUTOSCALING_POLICY_NAME
+
+        if not self._serialized_policy_def:
+            self._serialized_policy_def = cloudpickle.dumps(import_attr(policy_name))
+
+        self._policy = AutoscalingPolicy(name=policy_name)
 
     @classmethod
     def default(cls):
@@ -394,6 +411,13 @@ class HTTPOptions(BaseModel):
     - request_timeout_s: End-to-end timeout for HTTP requests.
     - keep_alive_timeout_s: Duration to keep idle connections alive when no
       requests are ongoing.
+    - ssl_keyfile: Path to the SSL key file for HTTPS. If provided with
+      ssl_certfile, the HTTP server will use HTTPS.
+    - ssl_certfile: Path to the SSL certificate file for HTTPS. If provided
+      with ssl_keyfile, the HTTP server will use HTTPS.
+    - ssl_keyfile_password: Optional password for the SSL key file.
+    - ssl_ca_certs: Optional path to CA certificate file for client certificate
+      verification.
 
     - location: [DEPRECATED: use `proxy_location` field instead] The deployment
       location of HTTP servers:
@@ -417,12 +441,22 @@ class HTTPOptions(BaseModel):
     root_path: str = ""
     request_timeout_s: Optional[float] = None
     keep_alive_timeout_s: int = DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S
+    ssl_keyfile: Optional[str] = None
+    ssl_certfile: Optional[str] = None
+    ssl_keyfile_password: Optional[str] = None
+    ssl_ca_certs: Optional[str] = None
 
     @validator("location", always=True)
     def location_backfill_no_server(cls, v, values):
         if values["host"] is None or v is None:
             return DeploymentMode.NoServer
 
+        return v
+
+    @validator("ssl_certfile")
+    def validate_ssl_certfile(cls, v, values):
+        ssl_keyfile = values.get("ssl_keyfile")
+        validate_ssl_config(v, ssl_keyfile)
         return v
 
     @validator("middlewares", always=True)

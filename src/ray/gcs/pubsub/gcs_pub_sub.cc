@@ -24,74 +24,45 @@
 namespace ray {
 namespace gcs {
 
-Status GcsPublisher::PublishActor(const ActorID &id,
-                                  rpc::ActorTableData message,
-                                  const StatusCallback &done) {
+void GcsPublisher::PublishActor(const ActorID &id, rpc::ActorTableData message) {
   rpc::PubMessage msg;
   msg.set_channel_type(rpc::ChannelType::GCS_ACTOR_CHANNEL);
   msg.set_key_id(id.Binary());
   *msg.mutable_actor_message() = std::move(message);
   publisher_->Publish(std::move(msg));
-  if (done != nullptr) {
-    done(Status::OK());
-  }
-  return Status::OK();
 }
 
-Status GcsPublisher::PublishJob(const JobID &id,
-                                const rpc::JobTableData &message,
-                                const StatusCallback &done) {
+void GcsPublisher::PublishJob(const JobID &id, rpc::JobTableData message) {
   rpc::PubMessage msg;
   msg.set_channel_type(rpc::ChannelType::GCS_JOB_CHANNEL);
   msg.set_key_id(id.Binary());
-  *msg.mutable_job_message() = message;
+  *msg.mutable_job_message() = std::move(message);
   publisher_->Publish(std::move(msg));
-  if (done != nullptr) {
-    done(Status::OK());
-  }
-  return Status::OK();
 }
 
-Status GcsPublisher::PublishNodeInfo(const NodeID &id,
-                                     const rpc::GcsNodeInfo &message,
-                                     const StatusCallback &done) {
+void GcsPublisher::PublishNodeInfo(const NodeID &id, rpc::GcsNodeInfo message) {
   rpc::PubMessage msg;
   msg.set_channel_type(rpc::ChannelType::GCS_NODE_INFO_CHANNEL);
   msg.set_key_id(id.Binary());
-  *msg.mutable_node_info_message() = message;
+  *msg.mutable_node_info_message() = std::move(message);
   publisher_->Publish(std::move(msg));
-  if (done != nullptr) {
-    done(Status::OK());
-  }
-  return Status::OK();
 }
 
-Status GcsPublisher::PublishWorkerFailure(const WorkerID &id,
-                                          const rpc::WorkerDeltaData &message,
-                                          const StatusCallback &done) {
+void GcsPublisher::PublishWorkerFailure(const WorkerID &id,
+                                        rpc::WorkerDeltaData message) {
   rpc::PubMessage msg;
   msg.set_channel_type(rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL);
   msg.set_key_id(id.Binary());
-  *msg.mutable_worker_delta_message() = message;
+  *msg.mutable_worker_delta_message() = std::move(message);
   publisher_->Publish(std::move(msg));
-  if (done != nullptr) {
-    done(Status::OK());
-  }
-  return Status::OK();
 }
 
-Status GcsPublisher::PublishError(const std::string &id,
-                                  const rpc::ErrorTableData &message,
-                                  const StatusCallback &done) {
+void GcsPublisher::PublishError(std::string id, rpc::ErrorTableData message) {
   rpc::PubMessage msg;
   msg.set_channel_type(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
-  msg.set_key_id(id);
-  *msg.mutable_error_info_message() = message;
+  msg.set_key_id(std::move(id));
+  *msg.mutable_error_info_message() = std::move(message);
   publisher_->Publish(std::move(msg));
-  if (done != nullptr) {
-    done(Status::OK());
-  }
-  return Status::OK();
 }
 
 std::string GcsPublisher::DebugString() const { return publisher_->DebugString(); }
@@ -108,18 +79,18 @@ Status GcsSubscriber::SubscribeAllJobs(
   auto subscription_failure_callback = [](const std::string &, const Status &status) {
     RAY_LOG(WARNING) << "Subscription to Job channel failed: " << status.ToString();
   };
-  // Ignore if the subscription already exists, because the resubscription is intentional.
-  RAY_UNUSED(subscriber_->SubscribeChannel(
+  subscriber_->Subscribe(
       std::make_unique<rpc::SubMessage>(),
       rpc::ChannelType::GCS_JOB_CHANNEL,
       gcs_address_,
-      [done](Status status) {
+      /*key_id=*/std::nullopt,
+      [done](const Status &status) {
         if (done != nullptr) {
           done(status);
         }
       },
       std::move(subscribe_item_callback),
-      std::move(subscription_failure_callback)));
+      std::move(subscription_failure_callback));
   return Status::OK();
 }
 
@@ -139,19 +110,18 @@ Status GcsSubscriber::SubscribeActor(
     RAY_LOG(WARNING) << "Subscription to Actor " << id.Hex()
                      << " failed: " << status.ToString();
   };
-  // Ignore if the subscription already exists, because the resubscription is intentional.
-  RAY_UNUSED(subscriber_->Subscribe(
+  subscriber_->Subscribe(
       std::make_unique<rpc::SubMessage>(),
       rpc::ChannelType::GCS_ACTOR_CHANNEL,
       gcs_address_,
-      id.Binary(),
-      [done](Status status) {
+      /*key_id=*/id.Binary(),
+      [done](const Status &status) {
         if (done != nullptr) {
           done(status);
         }
       },
       std::move(subscription_callback),
-      std::move(subscription_failure_callback)));
+      std::move(subscription_failure_callback));
   return Status::OK();
 }
 
@@ -176,18 +146,18 @@ void GcsSubscriber::SubscribeAllNodeInfo(const ItemCallback<rpc::GcsNodeInfo> &s
   auto subscription_failure_callback = [](const std::string &, const Status &status) {
     RAY_LOG(WARNING) << "Subscription to NodeInfo channel failed: " << status.ToString();
   };
-  // Ignore if the subscription already exists, because the resubscription is intentional.
-  RAY_UNUSED(subscriber_->SubscribeChannel(
+  subscriber_->Subscribe(
       std::make_unique<rpc::SubMessage>(),
       rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
       gcs_address_,
-      [done](Status status) {
+      /*key_id=*/std::nullopt,
+      [done](const Status &status) {
         if (done != nullptr) {
           done(status);
         }
       },
       std::move(subscribe_item_callback),
-      std::move(subscription_failure_callback)));
+      std::move(subscription_failure_callback));
 }
 
 Status GcsSubscriber::SubscribeAllWorkerFailures(
@@ -201,39 +171,38 @@ Status GcsSubscriber::SubscribeAllWorkerFailures(
                      << status.ToString();
   };
   // Ignore if the subscription already exists, because the resubscription is intentional.
-  RAY_UNUSED(subscriber_->SubscribeChannel(
+  subscriber_->Subscribe(
       std::make_unique<rpc::SubMessage>(),
       rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
       gcs_address_,
+      /*key_id=*/std::nullopt,
       /*subscribe_done_callback=*/
-      [done](Status status) {
+      [done](const Status &status) {
         if (done != nullptr) {
           done(status);
         }
       },
       std::move(subscribe_item_callback),
-      std::move(subscription_failure_callback)));
+      std::move(subscription_failure_callback));
   return Status::OK();
 }
 
-std::vector<std::string> PythonGetLogBatchLines(const rpc::LogBatch &log_batch) {
-  return std::vector<std::string>(log_batch.lines().begin(), log_batch.lines().end());
+std::vector<std::string> PythonGetLogBatchLines(rpc::LogBatch log_batch) {
+  return std::vector<std::string>(
+      std::make_move_iterator(log_batch.mutable_lines()->begin()),
+      std::make_move_iterator(log_batch.mutable_lines()->end()));
 }
 
 PythonGcsSubscriber::PythonGcsSubscriber(const std::string &gcs_address,
                                          int gcs_port,
                                          rpc::ChannelType channel_type,
-                                         const std::string &subscriber_id,
-                                         const std::string &worker_id)
-    : channel_type_(channel_type),
-      subscriber_id_(subscriber_id),
-      publisher_id_(""),
-      worker_id_(worker_id),
-      max_processed_sequence_id_(0),
-      closed_(false) {
-  channel_ = rpc::GcsRpcClient::CreateGcsChannel(gcs_address, gcs_port);
-  pubsub_stub_ = rpc::InternalPubSubGcsService::NewStub(channel_);
-}
+                                         std::string subscriber_id,
+                                         std::string worker_id)
+    : channel_(rpc::GcsRpcClient::CreateGcsChannel(gcs_address, gcs_port)),
+      pubsub_stub_(rpc::InternalPubSubGcsService::NewStub(channel_)),
+      channel_type_(channel_type),
+      subscriber_id_(std::move(subscriber_id)),
+      worker_id_(std::move(worker_id)) {}
 
 Status PythonGcsSubscriber::Subscribe() {
   absl::MutexLock lock(&mu_);
@@ -247,9 +216,9 @@ Status PythonGcsSubscriber::Subscribe() {
   rpc::GcsSubscriberCommandBatchRequest request;
   request.set_subscriber_id(subscriber_id_);
   request.set_sender_id(worker_id_);
-  auto *cmd = request.add_commands();
-  cmd->set_channel_type(channel_type_);
-  cmd->mutable_subscribe_message();
+  auto *command = request.add_commands();
+  command->set_channel_type(channel_type_);
+  command->mutable_subscribe_message();
 
   rpc::GcsSubscriberCommandBatchReply reply;
   grpc::Status status =
@@ -309,7 +278,7 @@ Status PythonGcsSubscriber::DoPoll(int64_t timeout_ms, rpc::PubMessage *message)
       max_processed_sequence_id_ = 0;
     }
     last_batch_size_ = reply.pub_messages().size();
-    for (auto &cur_pub_msg : reply.pub_messages()) {
+    for (auto &cur_pub_msg : *reply.mutable_pub_messages()) {
       if (cur_pub_msg.sequence_id() <= max_processed_sequence_id_) {
         RAY_LOG(WARNING) << "Ignoring out of order message " << cur_pub_msg.sequence_id();
         continue;
@@ -324,7 +293,7 @@ Status PythonGcsSubscriber::DoPoll(int64_t timeout_ms, rpc::PubMessage *message)
     }
   }
 
-  *message = queue_.front();
+  *message = std::move(queue_.front());
   queue_.pop_front();
 
   return Status::OK();
@@ -335,8 +304,8 @@ Status PythonGcsSubscriber::PollError(std::string *key_id,
                                       rpc::ErrorTableData *data) {
   rpc::PubMessage message;
   RAY_RETURN_NOT_OK(DoPoll(timeout_ms, &message));
-  *key_id = message.key_id();
-  *data = message.error_info_message();
+  *key_id = std::move(*message.mutable_key_id());
+  *data = std::move(*message.mutable_error_info_message());
   return Status::OK();
 }
 
@@ -345,18 +314,8 @@ Status PythonGcsSubscriber::PollLogs(std::string *key_id,
                                      rpc::LogBatch *data) {
   rpc::PubMessage message;
   RAY_RETURN_NOT_OK(DoPoll(timeout_ms, &message));
-  *key_id = message.key_id();
-  *data = message.log_batch_message();
-  return Status::OK();
-}
-
-Status PythonGcsSubscriber::PollActor(std::string *key_id,
-                                      int64_t timeout_ms,
-                                      rpc::ActorTableData *data) {
-  rpc::PubMessage message;
-  RAY_RETURN_NOT_OK(DoPoll(timeout_ms, &message));
-  *key_id = message.key_id();
-  *data = message.actor_message();
+  *key_id = std::move(*message.mutable_key_id());
+  *data = std::move(*message.mutable_log_batch_message());
   return Status::OK();
 }
 
@@ -376,10 +335,14 @@ Status PythonGcsSubscriber::Close() {
 
   grpc::ClientContext context;
 
-  rpc::GcsUnregisterSubscriberRequest request;
+  rpc::GcsSubscriberCommandBatchRequest request;
   request.set_subscriber_id(subscriber_id_);
-  rpc::GcsUnregisterSubscriberReply reply;
-  grpc::Status status = pubsub_stub_->GcsUnregisterSubscriber(&context, request, &reply);
+  auto *command = request.add_commands();
+  command->set_channel_type(channel_type_);
+  command->mutable_unsubscribe_message();
+  rpc::GcsSubscriberCommandBatchReply reply;
+  grpc::Status status =
+      pubsub_stub_->GcsSubscriberCommandBatch(&context, request, &reply);
 
   if (!status.ok()) {
     RAY_LOG(WARNING) << "Error while unregistering the subscriber: "

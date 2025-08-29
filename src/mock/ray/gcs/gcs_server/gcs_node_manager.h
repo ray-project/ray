@@ -11,7 +11,12 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include "gmock/gmock.h"
+
+#pragma once
+
+#include <gmock/gmock.h>
+
+#include "ray/gcs/gcs_server/gcs_node_manager.h"
 
 namespace ray {
 namespace gcs {

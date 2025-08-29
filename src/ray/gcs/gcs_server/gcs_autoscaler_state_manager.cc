@@ -19,12 +19,9 @@
 #include <utility>
 #include <vector>
 
-#include "ray/gcs/gcs_server/gcs_actor_manager.h"
-#include "ray/gcs/gcs_server/gcs_node_manager.h"
-#include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
-#include "ray/gcs/gcs_server/state_util.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/util/string_utils.h"
+#include "ray/util/time.h"
 
 namespace ray {
 namespace gcs {
@@ -93,10 +90,9 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
 
       if (gcs_publisher_ != nullptr) {
         std::string error_type = "infeasible_resource_requests";
-        auto error_data_ptr = gcs::CreateErrorTableData(
+        auto error_data = CreateErrorTableData(
             error_type, error_message, absl::FromUnixMillis(current_time_ms()));
-        RAY_CHECK_OK(
-            gcs_publisher_->PublishError(session_name_, *error_data_ptr, nullptr));
+        gcs_publisher_->PublishError(session_name_, std::move(error_data));
       }
     }
   };
@@ -413,6 +409,10 @@ void GcsAutoscalerStateManager::GetNodeStates(
     node_state_proto->mutable_total_resources()->insert(total.begin(), total.end());
 
     // Add dynamic PG labels.
+    // DEPRECATED: Dynamic labels feature is deprecated. Do not introduce new usages.
+    // This assignment is kept only for backward compatibility in the autoscaler, where
+    // the placement group ID is needed to enforce antiaffinity constraints for
+    // strict-spread placement group scheduling.
     const auto &pgs_on_node = gcs_placement_group_manager_.GetBundlesOnNode(node_id);
     for (const auto &[pg_id, _bundle_indices] : pgs_on_node) {
       node_state_proto->mutable_dynamic_labels()->insert(

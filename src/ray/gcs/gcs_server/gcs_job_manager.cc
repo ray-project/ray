@@ -21,8 +21,11 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/match.h"
 #include "ray/gcs/pb_util.h"
+#include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/stats/metric.h"
+#include "ray/util/time.h"
 
 namespace ray {
 namespace gcs {
@@ -47,7 +50,7 @@ void GcsJobManager::WriteDriverJobExportEvent(rpc::JobTableData job_data) const 
   if (!export_event_write_enabled_) {
     return;
   }
-  if (job_data.config().ray_namespace().find(kRayInternalNamespacePrefix) == 0) {
+  if (absl::StartsWith(job_data.config().ray_namespace(), kRayInternalNamespacePrefix)) {
     // Namespace of this job starts with _ray_internal_ so
     // don't write export event.
     return;
@@ -102,15 +105,13 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
                   job_table_data = mutable_job_table_data,
                   reply,
                   send_reply_callback =
-                      std::move(send_reply_callback)](const Status &status) {
-    RAY_CHECK(thread_checker_.IsOnSameThread());
-
+                      std::move(send_reply_callback)](const Status &status) mutable {
+    WriteDriverJobExportEvent(job_table_data);
     if (!status.ok()) {
       RAY_LOG(ERROR).WithField(job_id).WithField("driver_pid",
                                                  job_table_data.driver_pid())
           << "Failed to register job.";
     } else {
-      RAY_CHECK_OK(gcs_publisher_.PublishJob(job_id, job_table_data, /*done=*/nullptr));
       if (job_table_data.config().has_runtime_env_info()) {
         runtime_env_manager_.AddURIReference(job_id.Hex(),
                                              job_table_data.config().runtime_env_info());
@@ -123,16 +124,14 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
       // Intentionally not checking return value, since the function could be invoked for
       // multiple times and requires idempotency (i.e. due to retry).
       running_job_start_times_.insert({job_id, job_table_data.start_time()});
+      gcs_publisher_.PublishJob(job_id, std::move(job_table_data));
     }
-    WriteDriverJobExportEvent(job_table_data);
+
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  Status status = gcs_table_storage_.JobTable().Put(
-      job_id, mutable_job_table_data, {on_done, io_context_});
-  if (!status.ok()) {
-    on_done(status);
-  }
+  RAY_UNUSED(gcs_table_storage_.JobTable().Put(
+      job_id, mutable_job_table_data, {std::move(on_done), io_context_}));
 }
 
 void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
@@ -151,7 +150,7 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
     if (!status.ok()) {
       RAY_LOG(ERROR).WithField(job_id) << "Failed to mark job as finished.";
     } else {
-      RAY_CHECK_OK(gcs_publisher_.PublishJob(job_id, job_table_data, nullptr));
+      gcs_publisher_.PublishJob(job_id, job_table_data);
       runtime_env_manager_.RemoveURIReference(job_id.Hex());
       ClearJobInfos(job_table_data);
       RAY_LOG(DEBUG).WithField(job_id) << "Marked job as finished.";
@@ -193,11 +192,11 @@ void GcsJobManager::HandleMarkJobFinished(rpc::MarkJobFinishedRequest request,
 
   Status status = gcs_table_storage_.JobTable().Get(
       job_id,
-      {[this, job_id, send_reply](Status status,
+      {[this, job_id, send_reply](Status get_status,
                                   std::optional<rpc::JobTableData> result) {
          RAY_CHECK(thread_checker_.IsOnSameThread());
 
-         if (status.ok() && result) {
+         if (get_status.ok() && result) {
            MarkJobAsFinished(*result, send_reply);
            return;
          }
@@ -205,11 +204,11 @@ void GcsJobManager::HandleMarkJobFinished(rpc::MarkJobFinishedRequest request,
          if (!result.has_value()) {
            RAY_LOG(ERROR).WithField(job_id)
                << "Tried to mark job as finished, but no job table entry was found.";
-         } else if (!status.ok()) {
+         } else if (!get_status.ok()) {
            RAY_LOG(ERROR).WithField(job_id)
-               << "Failed to mark job as finished: " << status;
+               << "Failed to mark job as finished: " << get_status;
          }
-         send_reply(status);
+         send_reply(get_status);
        },
        io_context_});
   if (!status.ok()) {
@@ -417,8 +416,8 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
            send_reply_callback,
            job_data_key_to_indices,
            num_finished_tasks,
-           try_send_reply](const auto &result) {
-            for (const auto &data : result) {
+           try_send_reply](const auto &job_info_result) {
+            for (const auto &data : job_info_result) {
               const std::string &job_data_key = data.first;
               // The JobInfo stored by the Ray Job API.
               const std::string &job_info_json = data.second;
@@ -433,8 +432,8 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
                       << job_info_json << " Error: " << status.message();
                 }
                 // Add the JobInfo to the correct indices in the reply.
-                for (int i : job_data_key_to_indices.at(job_data_key)) {
-                  reply->mutable_job_info_list(i)->mutable_job_info()->CopyFrom(
+                for (int j : job_data_key_to_indices.at(job_data_key)) {
+                  reply->mutable_job_info_list(j)->mutable_job_info()->CopyFrom(
                       jobs_api_info);
                 }
               }
@@ -456,7 +455,7 @@ void GcsJobManager::HandleReportJobError(rpc::ReportJobErrorRequest request,
                                          rpc::ReportJobErrorReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   auto job_id = JobID::FromBinary(request.job_error().job_id());
-  RAY_CHECK_OK(gcs_publisher_.PublishError(job_id.Hex(), request.job_error(), nullptr));
+  gcs_publisher_.PublishError(job_id.Hex(), std::move(*request.mutable_job_error()));
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 

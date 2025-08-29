@@ -808,17 +808,29 @@ class Dataset:
         Returns:
             A new dataset with the added column evaluated via the expression.
         """
-        from ray.data._internal.logical.operators.map_operator import Project
+        from ray.data._internal.logical.operators.map_operator import Download, Project
+
+        # TODO: Once the expression API supports UDFs, we can clean up the code here.
+        from ray.data.expressions import DownloadExpr
 
         plan = self._plan.copy()
-        project_op = Project(
-            self._logical_plan.dag,
-            cols=None,
-            cols_rename=None,
-            exprs={column_name: expr},
-            ray_remote_args=ray_remote_args,
-        )
-        logical_plan = LogicalPlan(project_op, self.context)
+        if isinstance(expr, DownloadExpr):
+            download_op = Download(
+                self._logical_plan.dag,
+                uri_column_name=expr.uri_column_name,
+                output_bytes_column_name=column_name,
+                ray_remote_args=ray_remote_args,
+            )
+            logical_plan = LogicalPlan(download_op, self.context)
+        else:
+            project_op = Project(
+                self._logical_plan.dag,
+                cols=None,
+                cols_rename=None,
+                exprs={column_name: expr},
+                ray_remote_args=ray_remote_args,
+            )
+            logical_plan = LogicalPlan(project_op, self.context)
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
@@ -1494,7 +1506,6 @@ class Dataset:
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
-    @AllToAllAPI
     @PublicAPI(api_group=SSR_API_GROUP)
     def repartition(
         self,
@@ -1517,9 +1528,11 @@ class Dataset:
 
         .. note::
 
-            Repartition has two modes. If ``shuffle=False``, Ray Data performs the
-            minimal data movement needed to equalize block sizes. Otherwise, Ray Data
-            performs a full distributed shuffle.
+            Repartition has three modes:
+
+             * When ``num_blocks`` and ``shuffle=True`` are specified Ray Data performs a full distributed shuffle producing exactly ``num_blocks`` blocks.
+             * When ``num_blocks`` and ``shuffle=False`` are specified, Ray Data does NOT perform full shuffle, instead opting in for splitting and combining of the blocks attempting to minimize the necessary data movement (relative to full-blown shuffle). Exactly ``num_blocks`` will be produced.
+             * If ``target_num_rows_per_block`` is set (exclusive with ``num_blocks`` and ``shuffle``), streaming repartitioning will be executed, where blocks will be made to carry no more than ``target_num_rows_per_block``. Smaller blocks will be combined into bigger ones up to ``target_num_rows_per_block`` as well.
 
             .. image:: /data/images/dataset-shuffle.svg
                 :align: center
@@ -1538,7 +1551,8 @@ class Dataset:
         Args:
             num_blocks: Number of blocks after repartitioning.
             target_num_rows_per_block: [Experimental] The target number of rows per block to
-                repartition. Note that either `num_blocks` or
+                repartition. Performs streaming repartitioning of the dataset (no shuffling).
+                Note that either `num_blocks` or
                 `target_num_rows_per_block` must be set, but not both. When
                 `target_num_rows_per_block` is set, it only repartitions
                 :class:`Dataset` :ref:`blocks <dataset_concept>` that are larger than
@@ -5964,6 +5978,32 @@ class Dataset:
         elif self._write_ds is not None and self._write_ds._plan.has_computed_output():
             return self._write_ds.stats()
         return self._get_stats_summary().to_string()
+
+    @PublicAPI(api_group=IM_API_GROUP, stability="alpha")
+    def explain(self):
+        """Show the logical plan and physical plan of the dataset.
+
+        Examples:
+
+        .. testcode::
+
+            import ray
+            from ray.data import Dataset
+            ds: Dataset = ray.data.range(10,  override_num_blocks=10)
+            ds = ds.map(lambda x: x + 1)
+            ds.explain()
+
+        .. testoutput::
+
+            -------- Logical Plan --------
+            Map(<lambda>)
+            +- ReadRange
+            -------- Physical Plan --------
+            TaskPoolMapOperator[ReadRange->Map(<lambda>)]
+            +- InputDataBuffer[Input]
+            <BLANKLINE>
+        """
+        print(self._plan.explain())
 
     def _get_stats_summary(self) -> DatasetStatsSummary:
         return self._plan.stats().to_summary()

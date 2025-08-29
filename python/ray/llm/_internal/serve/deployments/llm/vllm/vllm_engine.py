@@ -1,6 +1,5 @@
 import argparse
 import os
-import uuid
 from typing import TYPE_CHECKING, AsyncGenerator, Optional, Tuple, Union
 
 from starlette.datastructures import State
@@ -20,6 +19,8 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     EmbeddingRequest,
     EmbeddingResponse,
     ErrorResponse,
+    ScoreRequest,
+    ScoreResponse,
 )
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
@@ -44,6 +45,7 @@ if TYPE_CHECKING:
     from vllm.entrypoints.openai.serving_completion import OpenAIServingCompletion
     from vllm.entrypoints.openai.serving_embedding import OpenAIServingEmbedding
     from vllm.entrypoints.openai.serving_models import OpenAIServingModels
+    from vllm.entrypoints.openai.serving_score import ServingScores
 
 vllm = try_import("vllm")
 logger = get_logger(__name__)
@@ -118,41 +120,14 @@ class VLLMEngine(LLMEngine):
             raise ImportError(
                 "vLLM is not installed. Please install it with `pip install ray[llm]`."
             )
-        from vllm import envs as vllm_envs, utils as vllm_utils
+        from vllm import envs as vllm_envs
 
         if not vllm_envs.VLLM_USE_V1:
             logger.warning(
                 "vLLM v0 is getting fully deprecated. As a result in Ray Serve LLM only v1 is supported. Only when you know what you are doing, you can set VLLM_USE_V1=0"
             )
 
-        # TODO (Kourosh): This validation logic belongs to the PDProxy module.
-        # Pick a random port in P/D case.
-        kv_transfer_config = llm_config.engine_kwargs.get("kv_transfer_config", None)
-        if kv_transfer_config is not None:
-            connector_type = getattr(kv_transfer_config, "kv_connector", "")
-            if connector_type != "NixlConnector":
-                raise ValueError("Only NixlConnector is supported for kv transfer.")
-            if (
-                "VLLM_NIXL_SIDE_CHANNEL_PORT" not in vllm_envs.environment_variables
-                or "VLLM_NIXL_SIDE_CHANNEL_HOST" not in vllm_envs.environment_variables
-            ):
-                raise ValueError(
-                    "This vLLM version does not support VLLM_NIXL_SIDE_CHANNEL_PORT"
-                    "or VLLM_NIXL_SIDE_CHANNEL_HOST environment variable. It's likely"
-                    "that you are using an older version of vLLM."
-                )
-
-            if not vllm_envs.is_set("VLLM_NIXL_SIDE_CHANNEL_PORT"):
-                port: int = vllm_utils.get_open_port()
-                os.environ["VLLM_NIXL_SIDE_CHANNEL_PORT"] = str(port)
-            if not vllm_envs.is_set("VLLM_NIXL_SIDE_CHANNEL_HOST"):
-                os.environ["VLLM_NIXL_SIDE_CHANNEL_HOST"] = vllm_utils.get_ip()
-
-            # We need to overwrite the engine_id to make it unique across replicas.
-            engine_id = getattr(kv_transfer_config, "engine_id", str(uuid.uuid4()))
-            host = vllm_envs.VLLM_NIXL_SIDE_CHANNEL_HOST
-            port = vllm_envs.VLLM_NIXL_SIDE_CHANNEL_PORT
-            kv_transfer_config.engine_id = "-".join([engine_id, host, str(port)])
+        self.llm_config.setup_engine_backend()
 
         self._running = False
 
@@ -162,6 +137,7 @@ class VLLMEngine(LLMEngine):
         self._oai_serving_chat: Optional["OpenAIServingChat"] = None
         self._oai_serving_completion: Optional["OpenAIServingCompletion"] = None
         self._oai_serving_embedding: Optional["OpenAIServingEmbedding"] = None
+        self._oai_serving_scores: Optional["ServingScores"] = None
 
     async def start(self) -> None:
         """Start the vLLM engine.
@@ -217,6 +193,7 @@ class VLLMEngine(LLMEngine):
         self._oai_serving_chat = state.openai_serving_chat
         self._oai_serving_completion = state.openai_serving_completion
         self._oai_serving_embedding = state.openai_serving_embedding
+        self._oai_serving_scores = state.openai_serving_scores
 
         self._validate_openai_serving_models()
         self._validate_engine_client()
@@ -248,6 +225,11 @@ class VLLMEngine(LLMEngine):
         assert hasattr(
             self._oai_serving_embedding, "create_embedding"
         ), "oai_serving_embedding must have a create_embedding attribute"
+
+    def _validate_openai_serving_scores(self):
+        assert hasattr(
+            self._oai_serving_scores, "create_score"
+        ), "oai_serving_scores must have a create_score attribute"
 
     def _validate_engine_client(self):
         assert hasattr(
@@ -382,7 +364,9 @@ class VLLMEngine(LLMEngine):
 
     def _create_raw_request(
         self,
-        request: Union[CompletionRequest, ChatCompletionRequest, EmbeddingRequest],
+        request: Union[
+            CompletionRequest, ChatCompletionRequest, EmbeddingRequest, ScoreRequest
+        ],
         path: str,
     ) -> Request:
         scope = {
@@ -470,6 +454,22 @@ class VLLMEngine(LLMEngine):
         else:
             yield EmbeddingResponse(**embedding_response.model_dump())
 
+    async def score(
+        self, request: ScoreRequest
+    ) -> AsyncGenerator[Union[ScoreResponse, ErrorResponse], None]:
+        self._validate_openai_serving_scores()
+
+        raw_request = self._create_raw_request(request, "/score")
+
+        score_response = await self._oai_serving_scores.create_score(
+            request, raw_request=raw_request
+        )
+
+        if isinstance(score_response, VLLMErrorResponse):
+            yield ErrorResponse(**score_response.model_dump())
+        else:
+            yield ScoreResponse(**score_response.model_dump())
+
     async def check_health(self) -> None:
         assert self._engine_client is not None, "engine_client is not initialized"
 
@@ -478,3 +478,15 @@ class VLLMEngine(LLMEngine):
         except BaseException as e:
             logger.error("Healthcheck failed. The replica will be restarted")
             raise e from None
+
+    async def reset_prefix_cache(self) -> None:
+        assert self._engine_client is not None, "engine_client is not initialized"
+        await self._engine_client.reset_prefix_cache()
+
+    async def start_profile(self) -> None:
+        assert self._engine_client is not None, "engine_client is not initialized"
+        await self._engine_client.start_profile()
+
+    async def stop_profile(self) -> None:
+        assert self._engine_client is not None, "engine_client is not initialized"
+        await self._engine_client.stop_profile()

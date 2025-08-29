@@ -2077,6 +2077,37 @@
       cluster:
         cluster_compute: compute_tpl_single_node_gce.yaml
 
+- name: serve_throughput_optimized_microbenchmarks
+  group: Serve tests
+  working_dir: serve_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    byod:
+      runtime_env:
+        - RAY_SERVE_THROUGHPUT_OPTIMIZED=1
+        - RAY_SERVE_DISABLE_SHUTTING_DOWN_INGRESS_REPLICAS_FORCEFULLY=0
+    cluster_compute: compute_tpl_single_node_16_cpu.yaml
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 7200
+    long_running: false
+    script: python workloads/microbenchmarks.py --run-all
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: compute_tpl_single_node_gce.yaml
+
 - name: serve_resnet_benchmark
   group: Serve tests
   working_dir: serve_tests
@@ -2856,10 +2887,7 @@
 
   team: core
   cluster:
-    byod:
-      runtime_env:
-        - RAY_experimental_enable_open_telemetry_on_agent=1
-        - RAY_experimental_enable_open_telemetry_on_core=1
+    byod: {}
     cluster_compute: stress_tests/placement_group_tests_compute.yaml
 
   run:
@@ -2931,10 +2959,7 @@
   working_dir: microbenchmark
 
   cluster:
-    byod:
-      runtime_env:
-        - RAY_experimental_enable_open_telemetry_on_agent=1
-        - RAY_experimental_enable_open_telemetry_on_core=1
+    byod: {}
     cluster_compute: tpl_64.yaml
 
   run:
@@ -3213,10 +3238,7 @@
   frequency: nightly
   team: core
   cluster:
-    byod:
-      runtime_env:
-        - RAY_experimental_enable_open_telemetry_on_agent=1
-        - RAY_experimental_enable_open_telemetry_on_core=1
+    byod: {}
     cluster_compute: stress_tests/stress_tests_compute.yaml
 
   run:
@@ -3256,10 +3278,7 @@
   frequency: nightly
   team: core
   cluster:
-    byod:
-      runtime_env:
-        - RAY_experimental_enable_open_telemetry_on_agent=1
-        - RAY_experimental_enable_open_telemetry_on_core=1
+    byod: {}
     cluster_compute: stress_tests/stress_tests_compute.yaml
 
   run:
@@ -3391,10 +3410,7 @@
   team: core
   env: aws_perf
   cluster:
-    byod:
-      runtime_env:
-        - RAY_experimental_enable_open_telemetry_on_agent=1
-        - RAY_experimental_enable_open_telemetry_on_core=1
+    byod: {}
     cluster_compute: stress_tests/stress_tests_single_node_oom_compute.yaml
 
   run:
@@ -3558,8 +3574,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-        - RAY_experimental_enable_open_telemetry_on_agent=1
-        - RAY_experimental_enable_open_telemetry_on_core=1
     cluster_compute: single_node.yaml
 
   run:
@@ -3587,8 +3601,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-        - RAY_experimental_enable_open_telemetry_on_agent=1
-        - RAY_experimental_enable_open_telemetry_on_core=1
     cluster_compute: object_store.yaml
 
   run:
@@ -3617,8 +3629,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-        - RAY_experimental_enable_open_telemetry_on_agent=1
-        - RAY_experimental_enable_open_telemetry_on_core=1
     cluster_compute: object_store/small_objects.yaml
 
   run:
@@ -3642,8 +3652,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-        - RAY_experimental_enable_open_telemetry_on_agent=1
-        - RAY_experimental_enable_open_telemetry_on_core=1
     cluster_compute: object_store/large_objects.yaml
 
   run:
@@ -3667,8 +3675,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-        - RAY_experimental_enable_open_telemetry_on_agent=1
-        - RAY_experimental_enable_open_telemetry_on_core=1
     cluster_compute: distributed.yaml
 
   run:
@@ -3717,8 +3723,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-        - RAY_experimental_enable_open_telemetry_on_agent=1
-        - RAY_experimental_enable_open_telemetry_on_core=1
     cluster_compute: distributed.yaml
 
   run:
@@ -3747,8 +3751,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-        - RAY_experimental_enable_open_telemetry_on_agent=1
-        - RAY_experimental_enable_open_telemetry_on_core=1
     cluster_compute: distributed.yaml
 
   run:
@@ -3798,8 +3800,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-        - RAY_experimental_enable_open_telemetry_on_agent=1
-        - RAY_experimental_enable_open_telemetry_on_core=1
     cluster_compute: many_nodes.yaml
 
   run:
@@ -4102,6 +4102,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10
@@ -4122,6 +4124,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override nightly
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override nightly
@@ -4142,6 +4146,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override latest
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override latest
@@ -4162,6 +4168,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override commit
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override commit
@@ -4183,6 +4191,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py aws/example-minimal.yaml
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/example-minimal.yaml
@@ -4203,6 +4213,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py aws/example-full.yaml --num-expected-nodes 2 --retries 20 --docker-override latest
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/example-full.yaml --num-expected-nodes 2 --retries 20 --docker-override latest
@@ -4226,6 +4238,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py gcp/example-minimal-pinned.yaml
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-minimal-pinned.yaml
@@ -4249,6 +4263,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 30 --docker-override latest
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 30 --docker-override latest
@@ -4272,6 +4288,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override latest
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override latest
@@ -4295,6 +4313,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override nightly
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override nightly
@@ -4318,6 +4338,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override commit
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override commit
@@ -4341,6 +4363,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py gcp/example-gpu-docker.yaml
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-gpu-docker.yaml
@@ -4553,6 +4577,26 @@
     long_running: false
     script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1_2p6d.yaml --skip-hf-token true
 
+- name: llm_serve_llama_3dot1_8B_quantized_tp1_2p6d_lmcache
+  frequency: nightly
+  python: "3.11"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu128
+      post_build_script: byod_llm_lmcache_test.sh
+    cluster_compute: llm_auto_select_worker.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1_2p6d_lmcache.yaml --skip-hf-token true
 
 ##############
 # LLM Batch
@@ -4579,7 +4623,7 @@
       pytest -sv test_batch_vllm.py
 
 - name: llm_batch_sglang_llama
-  frequency: nightly
+  frequency: manual # TODO(ray-llm): fix this test and re-enable it.
   python: "3.11"
   group: llm-batch
   team: llm
@@ -4596,6 +4640,55 @@
     script: >
       pytest -sv test_batch_sglang.py
 
+
+- name: text_embeddings_benchmark_{{scaling}}
+  frequency: nightly
+  python: "3.11"  # necessary for the llm-cu128 image
+  working_dir: nightly_tests
+  team: data
+
+  cluster:
+    byod:
+      type: llm-cu128
+    cluster_compute: dataset/{{scaling}}_gpu_g6e_2xl_aws.yaml
+
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  run:
+    timeout: 3600
+    script: >
+      python dataset/text_embeddings_benchmark.py --embed-concurrency 15
+
+# Note: release tests do not support specifying both 'matrix' and 'variations'
+# in a test definition, so split off preemptible tests here.
+- name: text_embeddings_benchmark_{{scaling}}_preemptible
+  frequency: nightly
+  python: "3.11"
+  working_dir: nightly_tests
+  team: data
+
+  cluster:
+    byod:
+      type: llm-cu128
+    cluster_compute: dataset/{{scaling}}_gpu_g6e_2xl_aws.yaml
+
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  run:
+    timeout: 3600
+    # Notes:
+    # - Not using true spot instances. We simulate spot preemption using TerminateEC2InstanceWithGracePeriod to soft-kill the workers. This is so that we can
+    # control the kill schedule.
+    # - Batch size is always fixed, so kill schedule is deterministic.
+    prepare: >
+      python setup_chaos.py --chaos TerminateEC2InstanceWithGracePeriod
+      --batch-size-to-kill 5 --max-to-kill 15 --kill-delay 30 --kill-interval 100
+    script: >
+      python dataset/text_embeddings_benchmark.py --chaos-test --embed-concurrency 15
 
 #######################
 # Ray examples tests

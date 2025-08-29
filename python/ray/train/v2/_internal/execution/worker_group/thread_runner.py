@@ -1,10 +1,13 @@
 import logging
+import queue
 import threading
-import traceback
 from typing import Callable, Optional, TypeVar
 
 from ray.train.v2._internal.exceptions import UserExceptionWithTraceback
-from ray.train.v2._internal.util import get_callable_name
+from ray.train.v2._internal.util import (
+    construct_user_exception_with_traceback,
+    get_callable_name,
+)
 
 T = TypeVar("T")
 
@@ -21,7 +24,9 @@ class ThreadRunner:
         self._exc: Optional[UserExceptionWithTraceback] = None
 
         self._thread: Optional[threading.Thread] = None
+        self._monitor_thread: Optional[threading.Thread] = None
         self._lock = threading.Lock()
+        self._exc_queue: queue.SimpleQueue[Optional[Exception]] = queue.SimpleQueue()
 
         self._is_running = False
 
@@ -37,19 +42,13 @@ class ThreadRunner:
                 result = target()
                 with self._lock:
                     self._ret = result
+                self._exc_queue.put(None)
             except BaseException as e:
-                with self._lock:
-                    # Exclude the first 2 frames from the traceback, which are
-                    # the `ThreadRunner._run_target` and `construct_train_func` calls.
-                    # TODO(justinvyu): This is brittle and may break if the call stack
-                    # changes. Figure out a more robust way to exclude these frames.
-                    exc_traceback_str = traceback.format_exc(
-                        limit=-(len(traceback.extract_tb(e.__traceback__)) - 2)
-                    )
-                    logger.error(f"Error in training function:\n{exc_traceback_str}")
-                    self._exc = UserExceptionWithTraceback(
-                        e, traceback_str=exc_traceback_str
-                    )
+                # Exclude the first 2 frames from the traceback, which are
+                # the `ThreadRunner._run_target` and `construct_train_func` calls.
+                self._exc_queue.put(
+                    construct_user_exception_with_traceback(e, exclude_frames=2)
+                )
 
             with self._lock:
                 self._is_running = False
@@ -61,7 +60,20 @@ class ThreadRunner:
         )
         self._thread.start()
 
+        def _monitor_target():
+            exc = self._exc_queue.get()
+            with self._lock:
+                self._exc = exc
+
+        self._monitor_thread = threading.Thread(
+            target=_monitor_target,
+            daemon=True,
+            name=f"MonitoringThread({get_callable_name(target)})",
+        )
+        self._monitor_thread.start()
+
     def is_running(self) -> bool:
+        """Returns whether the target function is still running."""
         with self._lock:
             return self._is_running
 
@@ -73,10 +85,6 @@ class ThreadRunner:
         with self._lock:
             return self._ret
 
-    def join(self, timeout: Optional[float] = None) -> T:
-        if self._thread is None:
-            raise RuntimeError("Must call `run` before trying to `join`.")
-
-        self._thread.join(timeout=timeout)
-
-        return self.get_return_value()
+    def get_exception_queue(self) -> queue.SimpleQueue:
+        """Returns a queue that nested threads can add exceptions to."""
+        return self._exc_queue

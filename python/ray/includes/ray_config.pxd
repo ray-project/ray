@@ -37,8 +37,6 @@ cdef extern from "ray/common/ray_config.h" nogil:
 
         int object_manager_push_timeout_ms() const
 
-        uint64_t object_manager_default_chunk_size() const
-
         uint32_t maximum_gcs_deletion_batch_size() const
 
         int64_t max_direct_call_object_size() const
@@ -71,12 +69,6 @@ cdef extern from "ray/common/ray_config.h" nogil:
 
         int64_t health_check_failure_threshold() const
 
-        uint64_t memory_monitor_refresh_ms() const
-
-        int64_t grpc_keepalive_time_ms() const
-
-        int64_t grpc_keepalive_timeout_ms() const
-
         int64_t grpc_client_keepalive_time_ms() const
 
         int64_t grpc_client_keepalive_timeout_ms() const
@@ -90,8 +82,6 @@ cdef extern from "ray/common/ray_config.h" nogil:
         int64_t nums_py_gcs_reconnect_retry() const
 
         int64_t py_gcs_connect_timeout_s() const
-
-        int gcs_rpc_server_reconnect_timeout_s() const
 
         int maximum_gcs_destroyed_actor_cached_count() const
 
