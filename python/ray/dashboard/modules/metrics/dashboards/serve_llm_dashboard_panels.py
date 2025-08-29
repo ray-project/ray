@@ -275,6 +275,43 @@ SERVE_LLM_GRAFANA_PANELS = [
         grid_pos=GridPos(12, 40, 12, 8),
     ),
     Panel(
+        id=28,
+        title="vLLM: Prefix Cache Hit Rate",
+        description="Percentage of prefix cache queries that resulted in a cache hit (GPU).",
+        unit="percentunit",
+        targets=[
+            Target(
+                expr='increase(ray_vllm:gpu_prefix_cache_hits_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[30s]) / increase(ray_vllm:gpu_prefix_cache_queries_total{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[30s])',
+                legend="GPU: {{model_name}} - {{WorkerId}}",
+            ),
+        ],
+        fill=1,
+        linewidth=2,
+        stack=False,
+        grid_pos=GridPos(0, 48, 12, 8),
+    ),
+    Panel(
+        id=27,
+        title="Tokens Per Request Per Model Last 7 Days",
+        description="",
+        unit="Tokens",
+        targets=[
+            Target(
+                expr='sum by (model_name) (delta(ray_vllm:prompt_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w])) / sum by (model_name) (delta(ray_vllm:request_success_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))',
+                legend="In: {{ model_name}}",
+            ),
+            Target(
+                expr='sum by (model_name) (delta(ray_vllm:generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w])) / sum by (model_name) (delta(ray_vllm:request_success_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))',
+                legend="Out: {{ model_name}}",
+            ),
+        ],
+        fill=1,
+        linewidth=2,
+        stack=False,
+        grid_pos=GridPos(12, 48, 12, 8),
+        template=PanelTemplate.GAUGE,
+    ),
+    Panel(
         id=14,
         title="Tokens Last 24 Hours",
         description="",
@@ -292,7 +329,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(0, 48, 12, 8),
+        grid_pos=GridPos(0, 56, 12, 8),
         template=PanelTemplate.STAT,
     ),
     Panel(
@@ -313,7 +350,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(12, 48, 12, 8),
+        grid_pos=GridPos(12, 56, 12, 8),
         template=PanelTemplate.STAT,
     ),
     Panel(
@@ -330,7 +367,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(12, 56, 12, 8),
+        grid_pos=GridPos(0, 64, 12, 8),
         template=PanelTemplate.PIE_CHART,
     ),
     Panel(
@@ -347,7 +384,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(0, 64, 12, 8),
+        grid_pos=GridPos(12, 64, 12, 8),
         template=PanelTemplate.STAT,
     ),
     Panel(
@@ -364,7 +401,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(12, 64, 12, 8),
+        grid_pos=GridPos(0, 72, 12, 8),
         template=PanelTemplate.STAT,
     ),
     Panel(
@@ -381,7 +418,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(0, 72, 12, 8),
+        grid_pos=GridPos(12, 72, 12, 8),
         template=PanelTemplate.STAT,
     ),
     Panel(
@@ -398,7 +435,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(12, 72, 12, 8),
+        grid_pos=GridPos(0, 80, 12, 8),
         template=PanelTemplate.GAUGE,
     ),
     Panel(
@@ -415,7 +452,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(0, 80, 12, 8),
+        grid_pos=GridPos(12, 80, 12, 8),
         template=PanelTemplate.GAUGE,
     ),
     Panel(
@@ -432,7 +469,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(12, 80, 12, 8),
+        grid_pos=GridPos(0, 88, 12, 8),
         template=PanelTemplate.GAUGE,
     ),
     Panel(
@@ -448,27 +485,6 @@ SERVE_LLM_GRAFANA_PANELS = [
             Target(
                 expr='sum by (model_name) (delta(ray_vllm:generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))',
                 legend="Out: {{ model_name }}",
-            ),
-        ],
-        fill=1,
-        linewidth=2,
-        stack=False,
-        grid_pos=GridPos(0, 88, 12, 8),
-        template=PanelTemplate.GAUGE,
-    ),
-    Panel(
-        id=27,
-        title="Tokens Per Request Per Model Last 7 Days",
-        description="",
-        unit="Tokens",
-        targets=[
-            Target(
-                expr='sum by (model_name) (delta(ray_vllm:prompt_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w])) / sum by (model_name) (delta(ray_vllm:request_success_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))',
-                legend="In: {{ model_name}}",
-            ),
-            Target(
-                expr='sum by (model_name) (delta(ray_vllm:generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1w])) / sum by (model_name) (delta(ray_vllm:request_success_total{{WorkerId=~"$workerid", {global_filters}}}[1w]))',
-                legend="Out: {{ model_name}}",
             ),
         ],
         fill=1,
