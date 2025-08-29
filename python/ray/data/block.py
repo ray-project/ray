@@ -57,6 +57,11 @@ Schema = Union[type, "PandasBlockSchema", "pyarrow.lib.Schema"]
 # Represents a single column of the ``Block``
 BlockColumn = Union["pyarrow.ChunkedArray", "pyarrow.Array", "pandas.Series"]
 
+# Represents a single column of the ``Batch``
+BatchColumn = Union[
+    "pandas.Series", "np.ndarray", "pyarrow.Array", "pyarrow.ChunkedArray"
+]
+
 
 logger = logging.getLogger(__name__)
 
