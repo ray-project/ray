@@ -46,7 +46,6 @@ class GcsTable {
   /// \param key The key that will be written to the table.
   /// \param value The value of the key that will be written to the table.
   /// \param callback Callback that will be called after write finishes.
-  /// \return Status
   virtual void Put(const Key &key,
                    const Data &value,
                    Postable<void(ray::Status)> callback);
