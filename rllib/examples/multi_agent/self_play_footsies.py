@@ -99,6 +99,8 @@ parser.add_argument(
 
 args = parser.parse_args()
 register_env(name="FootsiesEnv", env_creator=env_creator)
+stop["mix_size"] = args.target_mix_size
+
 config.environment(
     env="FootsiesEnv",
     env_config={
