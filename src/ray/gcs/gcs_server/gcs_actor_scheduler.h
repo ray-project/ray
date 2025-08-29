@@ -30,7 +30,6 @@
 #include "ray/gcs/gcs_server/gcs_actor.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
-#include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/node_manager/raylet_client_pool.h"
