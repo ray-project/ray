@@ -33,13 +33,12 @@ BUILD_CPP = os.getenv("RAY_DISABLE_EXTRA_CPP") != "1"
 SKIP_BAZEL_BUILD = os.getenv("SKIP_BAZEL_BUILD") == "1"
 BAZEL_ARGS = os.getenv("BAZEL_ARGS")
 BAZEL_LIMIT_CPUS = os.getenv("BAZEL_LIMIT_CPUS")
-PLACEHOLDER_WHEEL = os.getenv("PLACEHOLDER_WHEEL") == "1"
 
 THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
 RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR = os.path.join(
     "ray", "_private", "runtime_env", "agent", "thirdparty_files"
 )
-PLACEHOLDER_VERSION = "100.0.0-dev"
+DEPS_ONLY_VERSION = "100.0.0-dev"
 # In automated builds, we do a few adjustments before building. For instance,
 # the bazel environment is set up slightly differently, and symlinks are
 # replaced with junctions in Windows. This variable is set in our conda-forge
@@ -72,6 +71,7 @@ class BuildType(Enum):
     DEBUG = 2
     ASAN = 3
     TSAN = 4
+    DEPS_ONLY = 5
 
 
 class SetupSpec:
@@ -88,8 +88,8 @@ class SetupSpec:
             self.version: str = f"{version}+asan"
         elif build_type == BuildType.TSAN:
             self.version: str = f"{version}+tsan"
-        elif PLACEHOLDER_WHEEL:
-            self.version: str = PLACEHOLDER_VERSION
+        elif build_type == BuildType.DEPS_ONLY:
+            self.version: str = DEPS_ONLY_VERSION
         else:
             self.version = version
         self.description: str = description
@@ -99,7 +99,7 @@ class SetupSpec:
         self.extras: dict = {}
 
     def get_packages(self):
-        if self.type == SetupType.RAY and not PLACEHOLDER_WHEEL:
+        if self.type == SetupType.RAY and self.build_type != BuildType.DEPS_ONLY:
             return setuptools.find_packages(exclude=("tests", "*.tests", "*.tests.*"))
         else:
             return []
@@ -112,6 +112,8 @@ elif build_type == "asan":
     BUILD_TYPE = BuildType.ASAN
 elif build_type == "tsan":
     BUILD_TYPE = BuildType.TSAN
+elif build_type == "deps-only":
+    BUILD_TYPE = BuildType.DEPS_ONLY
 else:
     BUILD_TYPE = BuildType.DEFAULT
 
@@ -711,13 +713,13 @@ def copy_file(target_dir, filename, rootdir):
 
 
 def pip_run(build_ext):
-    if SKIP_BAZEL_BUILD:
+    if SKIP_BAZEL_BUILD or setup_spec.build_type == BuildType.DEPS_ONLY:
         build(False, False, False)
     else:
         build(True, BUILD_JAVA, BUILD_CPP)
 
     if setup_spec.type == SetupType.RAY:
-        if PLACEHOLDER_WHEEL:
+        if setup_spec.build_type == BuildType.DEPS_ONLY:
             setup_spec.files_to_include = []
             return
         setup_spec.files_to_include += ray_files
