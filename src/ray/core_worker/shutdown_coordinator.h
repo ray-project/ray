@@ -214,11 +214,6 @@ class ShutdownCoordinator {
   std::string GetReasonString() const;
 
  private:
-  /// Legacy method for compatibility - delegates to RequestShutdown
-  /// \param reason The reason for shutdown initiation
-  /// \return true if this call initiated shutdown, false if already shutting down
-  bool TryInitiateShutdown(ShutdownReason reason);
-
   /// Attempt to transition to disconnecting state.
   /// Begins the disconnection/cleanup phase (e.g., GCS/raylet disconnect). Only
   /// valid from kShuttingDown.
