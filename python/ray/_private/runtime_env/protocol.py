@@ -154,9 +154,11 @@ class ProtocolsProvider:
             from urllib.parse import urlparse
 
             parsed = urlparse(uri)
-            if (not parsed.scheme == "abfss" or 
-                not parsed.hostname or 
-                not parsed.hostname.endswith(".dfs.core.windows.net")):
+            if (
+                not parsed.scheme == "abfss"
+                or not parsed.hostname
+                or not parsed.hostname.endswith(".dfs.core.windows.net")
+            ):
                 raise ValueError(f"Invalid ABFSS URI format: {uri}")
 
             # Extract storage account name from hostname (account.dfs.core.windows.net)
@@ -164,7 +166,8 @@ class ProtocolsProvider:
 
             # Create ADLFS filesystem with Azure credentials for this specific request
             filesystem = adlfs.AzureBlobFileSystem(
-                account_name=azure_storage_account_name, credential=DefaultAzureCredential()
+                account_name=azure_storage_account_name,
+                credential=DefaultAzureCredential(),
             )
 
             # adlfs can handle ABFSS URIs directly
