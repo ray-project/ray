@@ -223,13 +223,13 @@ def plan_filter_op(
             zero_copy_batch=True,
         )
     else:
-        udf_is_callable_class = isinstance(op._filter_expr, CallableClass)
+        udf_is_callable_class = isinstance(op._fn, CallableClass)
         filter_fn, init_fn = _get_udf(
-            op._filter_expr,
-            op._filter_expr_args,
-            op._filter_expr_kwargs,
-            op._filter_expr_constructor_args if udf_is_callable_class else None,
-            op._filter_expr_constructor_kwargs if udf_is_callable_class else None,
+            op._fn,
+            op._fn_args,
+            op._fn_kwargs,
+            op._fn_constructor_args if udf_is_callable_class else None,
+            op._fn_constructor_kwargs if udf_is_callable_class else None,
         )
         transform_fn = _generate_transform_fn_for_filter(filter_fn)
         map_transformer = _create_map_transformer_for_row_based_map_op(
