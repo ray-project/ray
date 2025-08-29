@@ -61,6 +61,7 @@ available_node_types:
                 imageOffer: ubuntu-1804
                 imageSku: 1804-gen2
                 imageVersion: latest
+                zones: ["None"]
 
     ray.worker.default:
         # The minimum number of nodes of this type to launch.
@@ -82,6 +83,8 @@ available_node_types:
                 # set a maximum price for spot instances if desired
                 # billingProfile:
                 #     maxPrice: -1
+                # Nodes will not be assigned availability zones
+                zones: ["None"]
 
 # Specify the node type of the head node (as configured above).
 head_node_type: ray.head.default
