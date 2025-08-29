@@ -1677,6 +1677,10 @@ def test_one_liner_actor_method_invocation(shutdown_only):
     assert result == "ok"
 
 
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Out of scope actor cleanup doesn't work with Ray client.",
+)
 def test_get_actor_after_same_name_actor_dead(shutdown_only):
     ACTOR_NAME = "test_actor"
     NAMESPACE_NAME = "test_namespace"
