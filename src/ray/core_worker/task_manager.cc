@@ -38,6 +38,20 @@ constexpr int64_t kTaskFailureThrottlingThreshold = 50;
 // Throttle task failure logs to once this interval.
 constexpr int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
+static inline rpc::ErrorType MapStatusToErrorType(const Status &status) {
+  if (status.IsObjectStoreFull() || status.IsTransientObjectStoreFull()) {
+    return rpc::ErrorType::OUT_OF_MEMORY;
+  }
+  if (status.IsOutOfDisk()) {
+    return rpc::ErrorType::OUT_OF_DISK_ERROR;
+  }
+  if (status.IsIOError()) {
+    // Local IPC failure to plasma/raylet; attribute to local control-plane failure.
+    return rpc::ErrorType::LOCAL_RAYLET_DIED;
+  }
+  return rpc::ErrorType::WORKER_DIED;
+}
+
 absl::flat_hash_set<ObjectID> ObjectRefStream::GetItemsUnconsumed() const {
   absl::flat_hash_set<ObjectID> result;
   for (int64_t index = 0; index <= max_index_seen_; index++) {
@@ -922,10 +936,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
         RAY_LOG(WARNING).WithField(object_id)
             << "Failed to handle dynamic task return: " << direct_or.status();
         Status st = direct_or.status();
-        rpc::ErrorType err_type = rpc::ErrorType::WORKER_DIED;
-        if (st.IsObjectStoreFull() || st.IsTransientObjectStoreFull()) {
-          err_type = rpc::ErrorType::OUT_OF_MEMORY;
-        }
+        rpc::ErrorType err_type = MapStatusToErrorType(st);
         rpc::RayErrorInfo err_info;
         err_info.set_error_message(st.ToString());
         FailOrRetryPendingTask(task_id,
@@ -953,10 +964,13 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
       // If storing return in plasma failed, treat as system failure for this attempt.
       // Do not proceed with normal completion. Mark task failed immediately.
       Status st = direct_or.status();
+      rpc::ErrorType err_type = MapStatusToErrorType(st);
+      rpc::RayErrorInfo err_info;
+      err_info.set_error_message(st.ToString());
       FailOrRetryPendingTask(task_id,
-                             rpc::ErrorType::WORKER_DIED,
+                             err_type,
                              &st,
-                             /*ray_error_info=*/nullptr,
+                             /*ray_error_info=*/&err_info,
                              /*mark_task_object_failed=*/true,
                              /*fail_immediately=*/true);
       return;
@@ -1093,6 +1107,17 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
             RAY_LOG(WARNING).WithField(generator_return_id)
                 << "Failed to handle generator return during app error propagation: "
                 << res.status();
+            Status st = res.status();
+            rpc::ErrorType err_type = MapStatusToErrorType(st);
+            rpc::RayErrorInfo err_info;
+            err_info.set_error_message(st.ToString());
+            FailOrRetryPendingTask(spec.TaskId(),
+                                   err_type,
+                                   &st,
+                                   /*ray_error_info=*/&err_info,
+                                   /*mark_task_object_failed=*/true,
+                                   /*fail_immediately=*/true);
+            return;
           }
         }
       }
@@ -1545,14 +1570,13 @@ void TaskManager::MarkTaskReturnObjectsFailed(
     auto num_streaming_generator_returns = spec.NumStreamingGeneratorReturns();
     for (size_t i = 0; i < num_streaming_generator_returns; i++) {
       const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
+      in_memory_store_.Put(error, generator_return_id);
       if (store_in_plasma_ids.contains(generator_return_id)) {
         Status s = put_in_local_plasma_callback_(error, generator_return_id);
         if (!s.ok()) {
           RAY_LOG(WARNING).WithField(generator_return_id)
               << "Failed to put error object in plasma: " << s;
         }
-      } else {
-        in_memory_store_.Put(error, generator_return_id);
       }
     }
   }
