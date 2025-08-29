@@ -28,13 +28,18 @@ try:
 
     if "datasets_modules" not in sys.modules and is_datasets_available():
         import importlib
+        import importlib.metadata
         import os
 
         import datasets.load
+        from packaging.version import parse
 
         # Datasets >= 4.0 removed dataset scripts support and the dynamic-modules cache.
         # Only initialize dynamic modules on <= 3.x where the initializer `init_dynamic_modules` exists.
-        if hasattr(datasets.load, "init_dynamic_modules"):
+        DATASETS_VERSION = parse(importlib.metadata.version("datasets"))
+        DATASETS_VERSION_WITHOUT_SCRIPT_SUPPORT = parse("4.0.0")
+
+        if DATASETS_VERSION < DATASETS_VERSION_WITHOUT_SCRIPT_SUPPORT:
             dynamic_modules_path = os.path.join(
                 datasets.load.init_dynamic_modules(), "__init__.py"
             )
