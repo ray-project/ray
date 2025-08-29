@@ -24,8 +24,11 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
+#include "ray/gcs/gcs_server/gcs_ray_event_converter.h"
+#include "ray/gcs/gcs_server/grpc_service_interfaces.h"
 #include "ray/gcs/gcs_server/usage_stats_client.h"
 #include "ray/gcs/pb_util.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/util/counter_map.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -91,7 +94,8 @@ class FinishedTaskActorTaskGcPolicy : public TaskEventsGcPolicyInterface {
 ///
 /// This class has its own io_context and io_thread, that's separate from other GCS
 /// services. All handling of all rpc should be posted to the single thread it owns.
-class GcsTaskManager : public rpc::TaskInfoHandler, public rpc::RayEventExportHandler {
+class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
+                       public rpc::events::RayEventExportGcsServiceHandler {
  public:
   /// Create a GcsTaskManager.
   explicit GcsTaskManager(instrumented_io_context &io_service);
@@ -469,6 +473,7 @@ class GcsTaskManager : public rpc::TaskInfoHandler, public rpc::RayEventExportHa
     std::vector<std::list<rpc::TaskEvents>> task_events_list_;
 
     friend class GcsTaskManager;
+    FRIEND_TEST(GcsTaskManagerTest, TestHandleAddEventBasic);
     FRIEND_TEST(GcsTaskManagerTest, TestHandleAddTaskEventBasic);
     FRIEND_TEST(GcsTaskManagerTest, TestMergeTaskEventsSameTaskAttempt);
     FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents);
@@ -479,6 +484,8 @@ class GcsTaskManager : public rpc::TaskInfoHandler, public rpc::RayEventExportHa
   };
 
  private:
+  void RecordTaskEventData(rpc::AddTaskEventDataRequest &request);
+
   /// Record data loss from worker.
   ///
   /// TODO(rickyx): This will be updated to record task attempt loss properly.
@@ -519,10 +526,15 @@ class GcsTaskManager : public rpc::TaskInfoHandler, public rpc::RayEventExportHa
   // the io_service_thread_. Access to it is *not* thread safe.
   std::unique_ptr<GcsTaskManagerStorage> task_event_storage_;
 
+  // Converter for converting RayEvents to TaskEvents.
+  std::unique_ptr<GcsRayEventConverter> ray_event_converter_;
+
   /// The runner to run function periodically.
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
 
+  FRIEND_TEST(GcsTaskManagerTest, TestHandleAddEventBasic);
   FRIEND_TEST(GcsTaskManagerTest, TestHandleAddTaskEventBasic);
+  FRIEND_TEST(GcsTaskManagerTest, TestHandleAddEventsMultiJobGrouping);
   FRIEND_TEST(GcsTaskManagerTest, TestMergeTaskEventsSameTaskAttempt);
   FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents);
   FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestIndexNoLeak);

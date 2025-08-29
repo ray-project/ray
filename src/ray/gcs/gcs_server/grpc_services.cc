@@ -19,6 +19,26 @@
 namespace ray {
 namespace rpc {
 
+void ActorInfoGrpcService::InitServerCallFactories(
+    const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+    std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+    const ClusterID &cluster_id) {
+  /// The register & create actor RPCs take a long time, so we shouldn't limit their
+  /// concurrency to avoid distributed deadlock.
+  RPC_SERVICE_HANDLER(ActorInfoGcsService, RegisterActor, -1)
+  RPC_SERVICE_HANDLER(ActorInfoGcsService, CreateActor, -1)
+  RPC_SERVICE_HANDLER(ActorInfoGcsService, RestartActorForLineageReconstruction, -1)
+
+  RPC_SERVICE_HANDLER(ActorInfoGcsService, GetActorInfo, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(ActorInfoGcsService, GetAllActorInfo, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      ActorInfoGcsService, GetNamedActorInfo, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(ActorInfoGcsService, ListNamedActors, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(ActorInfoGcsService, KillActorViaGcs, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      ActorInfoGcsService, ReportActorOutOfScope, max_active_rpcs_per_handler_)
+}
+
 void NodeInfoGrpcService::InitServerCallFactories(
     const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
@@ -36,6 +56,20 @@ void NodeInfoGrpcService::InitServerCallFactories(
   RPC_SERVICE_HANDLER(NodeInfoGcsService, CheckAlive, max_active_rpcs_per_handler_)
 }
 
+void NodeResourceInfoGrpcService::InitServerCallFactories(
+    const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+    std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+    const ClusterID &cluster_id) {
+  RPC_SERVICE_HANDLER(
+      NodeResourceInfoGcsService, GetAllAvailableResources, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      NodeResourceInfoGcsService, GetAllTotalResources, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      NodeResourceInfoGcsService, GetDrainingNodes, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      NodeResourceInfoGcsService, GetAllResourceUsage, max_active_rpcs_per_handler_)
+}
+
 void InternalPubSubGrpcService::InitServerCallFactories(
     const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
@@ -45,8 +79,6 @@ void InternalPubSubGrpcService::InitServerCallFactories(
       InternalPubSubGcsService, GcsSubscriberPoll, max_active_rpcs_per_handler_);
   RPC_SERVICE_HANDLER(
       InternalPubSubGcsService, GcsSubscriberCommandBatch, max_active_rpcs_per_handler_);
-  RPC_SERVICE_HANDLER(
-      InternalPubSubGcsService, GcsUnregisterSubscriber, max_active_rpcs_per_handler_);
 }
 
 void JobInfoGrpcService::InitServerCallFactories(
@@ -83,6 +115,82 @@ void WorkerInfoGrpcService::InitServerCallFactories(
   RPC_SERVICE_HANDLER(
       WorkerInfoGcsService, UpdateWorkerNumPausedThreads, max_active_rpcs_per_handler_)
 }
+
+void InternalKVGrpcService::InitServerCallFactories(
+    const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+    std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+    const ClusterID &cluster_id) {
+  RPC_SERVICE_HANDLER(InternalKVGcsService, InternalKVGet, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      InternalKVGcsService, InternalKVMultiGet, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(InternalKVGcsService, InternalKVPut, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(InternalKVGcsService, InternalKVDel, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      InternalKVGcsService, InternalKVExists, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(InternalKVGcsService, InternalKVKeys, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      InternalKVGcsService, GetInternalConfig, max_active_rpcs_per_handler_)
+}
+
+void TaskInfoGrpcService::InitServerCallFactories(
+    const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+    std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+    const ClusterID &cluster_id) {
+  RPC_SERVICE_HANDLER(TaskInfoGcsService, AddTaskEventData, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(TaskInfoGcsService, GetTaskEvents, max_active_rpcs_per_handler_)
+}
+
+void PlacementGroupInfoGrpcService::InitServerCallFactories(
+    const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+    std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+    const ClusterID &cluster_id) {
+  RPC_SERVICE_HANDLER(
+      PlacementGroupInfoGcsService, CreatePlacementGroup, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      PlacementGroupInfoGcsService, RemovePlacementGroup, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      PlacementGroupInfoGcsService, GetPlacementGroup, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      PlacementGroupInfoGcsService, GetNamedPlacementGroup, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      PlacementGroupInfoGcsService, GetAllPlacementGroup, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(PlacementGroupInfoGcsService,
+                      WaitPlacementGroupUntilReady,
+                      max_active_rpcs_per_handler_)
+}
+
+namespace autoscaler {
+
+void AutoscalerStateGrpcService::InitServerCallFactories(
+    const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+    std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+    const ClusterID &cluster_id) {
+  RPC_SERVICE_HANDLER(
+      AutoscalerStateService, GetClusterResourceState, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      AutoscalerStateService, ReportAutoscalingState, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      AutoscalerStateService, ReportClusterConfig, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(AutoscalerStateService,
+                      RequestClusterResourceConstraint,
+                      max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      AutoscalerStateService, GetClusterStatus, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(AutoscalerStateService, DrainNode, max_active_rpcs_per_handler_)
+}
+
+}  // namespace autoscaler
+
+namespace events {
+
+void RayEventExportGrpcService::InitServerCallFactories(
+    const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+    std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+    const ClusterID &cluster_id) {
+  RPC_SERVICE_HANDLER(RayEventExportGcsService, AddEvents, max_active_rpcs_per_handler_)
+}
+
+}  // namespace events
 
 }  // namespace rpc
 }  // namespace ray

@@ -3,7 +3,7 @@ from typing import List, Optional
 
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalOperator, SourceOperator
-from ray.data._internal.util import unify_ref_bundles_schema
+from ray.data._internal.util import unify_schemas_with_validation
 from ray.data.block import BlockMetadata
 
 
@@ -49,7 +49,7 @@ class InputData(LogicalOperator, SourceOperator):
             return None
 
     def infer_schema(self):
-        return unify_ref_bundles_schema(self.input_data)
+        return unify_schemas_with_validation([data.schema for data in self.input_data])
 
     def is_lineage_serializable(self) -> bool:
         # This operator isn't serializable because it contains ObjectRefs.

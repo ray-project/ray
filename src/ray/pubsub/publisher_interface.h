@@ -16,9 +16,7 @@
 
 #include <gtest/gtest_prod.h>
 
-#include <memory>
 #include <string>
-#include <utility>
 
 #include "ray/common/id.h"
 #include "ray/rpc/server_call.h"
@@ -34,10 +32,6 @@ class PublisherInterface {
   virtual ~PublisherInterface() = default;
 
   /// Handle a long poll request from `subscriber_id`.
-  ///
-  /// TODO(sang): Currently, we need to pass the callback for connection because we are
-  /// using long polling internally. This should be changed once the bidirectional grpc
-  /// streaming is supported.
   virtual void ConnectToSubscriber(
       const rpc::PubsubLongPollingRequest &request,
       std::string *publisher_id,
@@ -50,8 +44,7 @@ class PublisherInterface {
   /// \param subscriber_id The ID of the subscriber.
   /// \param key_id The key_id that the subscriber is subscribing to. std::nullopt if
   /// subscribing to all.
-  /// \return True if registration is new. False otherwise.
-  virtual bool RegisterSubscription(const rpc::ChannelType channel_type,
+  virtual void RegisterSubscription(const rpc::ChannelType channel_type,
                                     const UniqueID &subscriber_id,
                                     const std::optional<std::string> &key_id) = 0;
 
@@ -75,8 +68,7 @@ class PublisherInterface {
   /// \param channel_type The type of the channel.
   /// \param subscriber_id The ID of the subscriber.
   /// \param key_id The key_id of the subscriber. std::nullopt if subscribing to all.
-  /// \return True if erased. False otherwise.
-  virtual bool UnregisterSubscription(const rpc::ChannelType channel_type,
+  virtual void UnregisterSubscription(const rpc::ChannelType channel_type,
                                       const UniqueID &subscriber_id,
                                       const std::optional<std::string> &key_id) = 0;
 

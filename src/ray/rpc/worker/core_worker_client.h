@@ -109,7 +109,7 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
       const ClientCallback<ActorCallArgWaitCompleteReply> &callback) {}
 
   /// Ask the owner of an object about the object's current status.
-  virtual void GetObjectStatus(const GetObjectStatusRequest &request,
+  virtual void GetObjectStatus(GetObjectStatusRequest &&request,
                                const ClientCallback<GetObjectStatusReply> &callback) {}
 
   /// Ask the actor's owner to reply when the actor has no references.
@@ -128,7 +128,7 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
       const ClientCallback<PubsubCommandBatchReply> &callback) {}
 
   virtual void UpdateObjectLocationBatch(
-      const UpdateObjectLocationBatchRequest &request,
+      UpdateObjectLocationBatchRequest &&request,
       const ClientCallback<UpdateObjectLocationBatchReply> &callback) {}
 
   virtual void GetObjectLocationsOwner(
@@ -136,7 +136,7 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
       const ClientCallback<GetObjectLocationsOwnerReply> &callback) {}
 
   virtual void ReportGeneratorItemReturns(
-      const ReportGeneratorItemReturnsRequest &request,
+      ReportGeneratorItemReturnsRequest &&request,
       const ClientCallback<ReportGeneratorItemReturnsReply> &callback) {}
 
   /// Tell this actor to exit immediately.

@@ -222,6 +222,7 @@ class GPUObjectManager:
                 tensor_transport_manager.send_object(
                     src_actor,
                     obj_id,
+                    tensor_transport_meta,
                     communicator_meta,
                 )
             tensor_transport_manager.recv_object(
@@ -269,7 +270,7 @@ class GPUObjectManager:
         """
         # Import get_collective_groups here to avoid dependency on
         # collective libraries for default Ray installation.
-        from ray.experimental.collective import get_collective_groups
+        from ray.experimental.collective import get_tensor_transport_manager
         from ray.experimental.gpu_object_manager.gpu_object_store import (
             _tensor_transport_to_collective_backend,
         )
@@ -277,5 +278,7 @@ class GPUObjectManager:
         tensor_transport_backend = _tensor_transport_to_collective_backend(
             tensor_transport
         )
-        communicators = get_collective_groups([actor], backend=tensor_transport_backend)
-        return len(communicators) > 0
+        tensor_transport_manager = get_tensor_transport_manager(
+            tensor_transport_backend
+        )
+        return tensor_transport_manager.actor_has_tensor_transport(actor)

@@ -63,11 +63,11 @@ def get_priority(priority_str: str) -> Priority:
     return priority_str_to_enum[priority_str]
 
 
-def get_test_attr_regex_filters(filters_str: str) -> Dict[str, str]:
+def get_test_filters(filters_str: str) -> Dict[str, str]:
     if not filters_str:
         return {}
 
-    test_attr_regex_filters = {}
+    test_filters = {}
     for line in filters_str.splitlines():
         line = line.strip()
         if not line:
@@ -75,11 +75,10 @@ def get_test_attr_regex_filters(filters_str: str) -> Dict[str, str]:
         parts = line.split(":", maxsplit=1)
         if len(parts) != 2:
             raise ReleaseTestConfigError(
-                f"Invalid test attr regex filter: {line}. "
-                "Should be of the form attr:regex"
+                f"Invalid test filter: {line}. " "Should be of the form attr:value"
             )
-        test_attr_regex_filters[parts[0]] = parts[1]
-    return test_attr_regex_filters
+        test_filters[parts[0]] = parts[1]
+    return test_filters
 
 
 def split_ray_repo_str(repo_str: str) -> Tuple[str, str]:
@@ -127,7 +126,7 @@ def get_default_settings() -> Dict:
     settings = {
         "frequency": Frequency.ANY,
         "prefer_smoke_tests": False,
-        "test_attr_regex_filters": None,
+        "test_filters": None,
         "ray_test_repo": None,
         "ray_test_branch": None,
         "priority": Priority.DEFAULT,
@@ -158,12 +157,13 @@ def update_settings_from_environment(settings: Dict) -> Dict:
 
     if "TEST_NAME" in os.environ:
         # This is for backward compatibility.
-        settings["test_attr_regex_filters"] = get_test_attr_regex_filters(
-            "name:" + os.environ["TEST_NAME"]
-        )
+        settings["test_filters"] = get_test_filters("name:" + os.environ["TEST_NAME"])
+
+    if "TEST_FILTERS" in os.environ:
+        settings["test_filters"] = os.environ["TEST_FILTERS"]
 
     if "TEST_ATTR_REGEX_FILTERS" in os.environ:
-        settings["test_attr_regex_filters"] = get_test_attr_regex_filters(
+        settings["test_filters"] = get_test_filters(
             os.environ["TEST_ATTR_REGEX_FILTERS"]
         )
 
@@ -191,17 +191,13 @@ def update_settings_from_buildkite(settings: Dict):
 
     test_name_filter = get_buildkite_prompt_value("release-test-name")
     if test_name_filter:
-        settings["test_attr_regex_filters"] = get_test_attr_regex_filters(
-            "name:" + test_name_filter
-        )
+        settings["test_filters"] = get_test_filters("name:" + test_name_filter)
 
-    test_attr_regex_filters = get_buildkite_prompt_value(
-        "release-test-attr-regex-filters"
-    )
-    if test_attr_regex_filters:
-        settings["test_attr_regex_filters"] = get_test_attr_regex_filters(
-            test_attr_regex_filters
-        )
+    test_filters = get_buildkite_prompt_value(
+        "release-test-filters"
+    ) or get_buildkite_prompt_value("release-test-attr-regex-filters")
+    if test_filters:
+        settings["test_filters"] = get_test_filters(test_filters)
 
     test_priority = get_buildkite_prompt_value("release-priority")
     if test_priority:

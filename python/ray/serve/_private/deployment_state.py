@@ -250,6 +250,8 @@ class ActorReplicaWrapper:
         self._initialization_latency_s: Optional[float] = None
         self._port: Optional[int] = None
         self._docs_path: Optional[str] = None
+        # Rank assigned to the replica.
+        self._rank: Optional[int] = None
         # Populated in `on_scheduled` or `recover`.
         self._actor_handle: ActorHandle = None
         self._placement_group: PlacementGroup = None
@@ -281,6 +283,10 @@ class ActorReplicaWrapper:
     @property
     def deployment_name(self) -> str:
         return self._deployment_id.name
+
+    @property
+    def rank(self) -> Optional[int]:
+        return self._rank
 
     @property
     def app_name(self) -> str:
@@ -454,6 +460,8 @@ class ActorReplicaWrapper:
                     if self._deployment_is_cross_language
                     else deployment_info.replica_config.serialized_init_args
                 )
+            # TODO(abrar): Fill in the correct rank
+            rank = 0
             init_args = (
                 self.replica_id,
                 cloudpickle.dumps(deployment_info.replica_config.deployment_def)
@@ -467,6 +475,7 @@ class ActorReplicaWrapper:
                 self._version,
                 deployment_info.ingress,
                 deployment_info.route_prefix,
+                rank,
             )
         # TODO(simon): unify the constructor arguments across language
         elif (
@@ -598,8 +607,12 @@ class ActorReplicaWrapper:
             deployment_config.user_config = self._format_user_config(
                 deployment_config.user_config
             )
+            # TODO(abrar): FIll in the correct rank
+            rank = 0
             self._ready_obj_ref = self._actor_handle.reconfigure.remote(
-                deployment_config, version.route_prefix
+                deployment_config,
+                rank,
+                version.route_prefix,
             )
 
         self._version = version
@@ -729,6 +742,7 @@ class ActorReplicaWrapper:
                         self._initialization_latency_s,
                         self._port,
                         self._docs_path,
+                        self._rank,
                     ) = ray.get(self._ready_obj_ref)
             except RayTaskError as e:
                 logger.exception(

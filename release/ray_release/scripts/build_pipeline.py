@@ -78,14 +78,14 @@ def main(
     env = {}
     frequency = settings["frequency"]
     prefer_smoke_tests = settings["prefer_smoke_tests"]
-    test_attr_regex_filters = settings["test_attr_regex_filters"]
+    test_filters = settings["test_filters"]
     priority = settings["priority"]
 
     logger.info(
         f"Found the following buildkite pipeline settings:\n\n"
         f"  frequency =               {settings['frequency']}\n"
         f"  prefer_smoke_tests =      {settings['prefer_smoke_tests']}\n"
-        f"  test_attr_regex_filters = {settings['test_attr_regex_filters']}\n"
+        f"  test_filters =            {settings['test_filters']}\n"
         f"  ray_test_repo =           {settings['ray_test_repo']}\n"
         f"  ray_test_branch =         {settings['ray_test_branch']}\n"
         f"  priority =                {settings['priority']}\n"
@@ -110,7 +110,7 @@ def main(
     filtered_tests = filter_tests(
         test_collection,
         frequency=frequency,
-        test_attr_regex_filters=test_attr_regex_filters,
+        test_filters=test_filters,
         prefer_smoke_tests=prefer_smoke_tests,
         run_jailed_tests=run_jailed_tests,
         run_unstable_tests=run_unstable_tests,

@@ -444,50 +444,6 @@ cc_grpc_library(
 )
 
 proto_library(
-    name = "events_actor_task_definition_event_proto",
-    srcs = ["events_actor_task_definition_event.proto"],
-    deps = [
-        ":common_proto",
-        ":runtime_env_common_proto",
-        "//src/ray/protobuf/public:runtime_environment_proto",
-    ],
-)
-
-cc_proto_library(
-    name = "events_actor_task_definition_event_cc_proto",
-    deps = [":events_actor_task_definition_event_proto"],
-)
-
-proto_library(
-    name = "events_task_definition_event_proto",
-    srcs = ["events_task_definition_event.proto"],
-    deps = [
-        ":common_proto",
-        ":runtime_env_common_proto",
-        "//src/ray/protobuf/public:runtime_environment_proto",
-    ],
-)
-
-cc_proto_library(
-    name = "events_task_definition_event_cc_proto",
-    deps = [":events_task_definition_event_proto"],
-)
-
-proto_library(
-    name = "events_task_execution_event_proto",
-    srcs = ["events_task_execution_event.proto"],
-    deps = [
-        ":common_proto",
-        "@com_google_protobuf//:timestamp_proto",
-    ],
-)
-
-cc_proto_library(
-    name = "events_task_execution_event_cc_proto",
-    deps = [":events_task_execution_event_proto"],
-)
-
-proto_library(
     name = "events_task_profile_events_proto",
     srcs = ["events_task_profile_events.proto"],
     deps = [
@@ -504,12 +460,12 @@ proto_library(
     name = "events_base_event_proto",
     srcs = ["events_base_event.proto"],
     deps = [
-        ":events_actor_task_definition_event_proto",
-        ":events_task_definition_event_proto",
-        ":events_task_execution_event_proto",
         ":events_task_profile_events_proto",
+        "//src/ray/protobuf/public:events_actor_task_definition_event_proto",
         "//src/ray/protobuf/public:events_driver_job_definition_event_proto",
         "//src/ray/protobuf/public:events_driver_job_execution_event_proto",
+        "//src/ray/protobuf/public:events_task_definition_event_proto",
+        "//src/ray/protobuf/public:events_task_execution_event_proto",
         "@com_google_protobuf//:timestamp_proto",
     ],
 )

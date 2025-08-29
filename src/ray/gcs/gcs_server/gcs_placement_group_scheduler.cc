@@ -21,8 +21,6 @@
 #include <vector>
 
 #include "ray/common/asio/asio_util.h"
-#include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
-#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace gcs {
@@ -400,16 +398,16 @@ void GcsPlacementGroupScheduler::OnAllBundlePrepareRequestReturned(
 
   placement_group->UpdateState(rpc::PlacementGroupTableData::PREPARED);
 
-  RAY_CHECK_OK(gcs_table_storage_.PlacementGroupTable().Put(
+  gcs_table_storage_.PlacementGroupTable().Put(
       placement_group_id,
       placement_group->GetPlacementGroupTableData(),
       {[this, lease_status_tracker, schedule_failure_handler, schedule_success_handler](
-           Status status) {
+           const ray::Status &status) {
          RAY_CHECK_OK(status);
          CommitAllBundles(
              lease_status_tracker, schedule_failure_handler, schedule_success_handler);
        },
-       io_context_}));
+       io_context_});
 }
 
 void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(

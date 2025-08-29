@@ -133,13 +133,18 @@ class SSHOptions:
             "ServerAliveCountMax": 3,
         }
         if control_path:
-            self.arg_dict.update(
-                {
-                    "ControlMaster": "auto",
-                    "ControlPath": "{}/%C".format(control_path),
-                    "ControlPersist": "10s",
-                }
-            )
+            if sys.platform == "win32":
+                # Don't set any control path options on Windows
+                pass
+            else:
+                self.arg_dict.update(
+                    {
+                        "ControlMaster": "auto",
+                        "ControlPath": "{}/%C".format(control_path),
+                        "ControlPersist": "10s",
+                    }
+                )
+
         self.arg_dict.update(kwargs)
 
     def to_ssh_options_list(self, *, timeout=60):
@@ -170,9 +175,13 @@ class SSHCommandRunner(CommandRunnerInterface):
 
         ssh_control_hash = hashlib.sha1(cluster_name.encode()).hexdigest()
         ssh_user_hash = hashlib.sha1(getuser().encode()).hexdigest()
-        ssh_control_path = "/tmp/ray_ssh_{}/{}".format(
-            ssh_user_hash[:HASH_MAX_LENGTH], ssh_control_hash[:HASH_MAX_LENGTH]
-        )
+        if sys.platform == "win32":
+            # Disable SSH control paths on Windows - currently using it cause socket errors
+            ssh_control_path = None
+        else:
+            ssh_control_path = "/tmp/ray_ssh_{}/{}".format(
+                ssh_user_hash[:HASH_MAX_LENGTH], ssh_control_hash[:HASH_MAX_LENGTH]
+            )
 
         self.cluster_name = cluster_name
         self.log_prefix = log_prefix
@@ -238,10 +247,11 @@ class SSHCommandRunner(CommandRunnerInterface):
         # This should run before any SSH commands and therefore ensure that
         #   the ControlPath directory exists, allowing SSH to maintain
         #   persistent sessions later on.
-        try:
-            os.makedirs(self.ssh_control_path, mode=0o700, exist_ok=True)
-        except OSError as e:
-            cli_logger.warning("{}", str(e))  # todo: msg
+        if self.ssh_control_path is not None:
+            try:
+                os.makedirs(self.ssh_control_path, mode=0o700, exist_ok=True)
+            except OSError as e:
+                cli_logger.warning("{}", str(e))  # todo: msg
 
     def _run_helper(
         self,
@@ -406,32 +416,48 @@ class SSHCommandRunner(CommandRunnerInterface):
         self._set_ssh_ip_if_required()
         options = options or {}
 
-        command = ["rsync"]
-        command += [
-            "--rsh",
-            subprocess.list2cmdline(
-                ["ssh"] + self.ssh_options.to_ssh_options_list(timeout=120)
-            ),
-        ]
-        command += ["-avz"]
-        command += self._create_rsync_filter_args(options=options)
-        command += [source, "{}@{}:{}".format(self.ssh_user, self.ssh_ip, target)]
+        # on windows use scp -r instead of rsync
+        if sys.platform == "win32":
+            # Use scp as fallback for Windows
+            command = ["scp", "-r"]
+            command += self.ssh_options.to_ssh_options_list(timeout=120)
+            command += [source, "{}@{}:{}".format(self.ssh_user, self.ssh_ip, target)]
+        else:
+            command = ["rsync"]
+            command += [
+                "--rsh",
+                subprocess.list2cmdline(
+                    ["ssh"] + self.ssh_options.to_ssh_options_list(timeout=120)
+                ),
+            ]
+            command += ["-avz"]
+            command += self._create_rsync_filter_args(options=options)
+            command += [source, "{}@{}:{}".format(self.ssh_user, self.ssh_ip, target)]
+
         cli_logger.verbose("Running `{}`", cf.bold(" ".join(command)))
         self._run_helper(command, silent=is_rsync_silent())
 
     def run_rsync_down(self, source, target, options=None):
         self._set_ssh_ip_if_required()
 
-        command = ["rsync"]
-        command += [
-            "--rsh",
-            subprocess.list2cmdline(
-                ["ssh"] + self.ssh_options.to_ssh_options_list(timeout=120)
-            ),
-        ]
-        command += ["-avz"]
-        command += self._create_rsync_filter_args(options=options)
-        command += ["{}@{}:{}".format(self.ssh_user, self.ssh_ip, source), target]
+        # on Windows use scp -r instead of rsync
+        if sys.platform == "win32":
+            # Use scp as fallback for Windows
+            command = ["scp", "-r"]
+            command += self.ssh_options.to_ssh_options_list(timeout=120)
+            command += ["{}@{}:{}".format(self.ssh_user, self.ssh_ip, source), target]
+        else:
+            command = ["rsync"]
+            command += [
+                "--rsh",
+                subprocess.list2cmdline(
+                    ["ssh"] + self.ssh_options.to_ssh_options_list(timeout=120)
+                ),
+            ]
+            command += ["-avz"]
+            command += self._create_rsync_filter_args(options=options)
+            command += ["{}@{}:{}".format(self.ssh_user, self.ssh_ip, source), target]
+
         cli_logger.verbose("Running `{}`", cf.bold(" ".join(command)))
         self._run_helper(command, silent=is_rsync_silent())
 
@@ -510,8 +536,13 @@ class DockerCommandRunner(CommandRunnerInterface):
             self._get_docker_host_mount_location(self.ssh_command_runner.cluster_name),
             target.lstrip("/"),
         )
-
         host_mount_location = os.path.dirname(host_destination.rstrip("/"))
+        if sys.platform == "win32":
+            # fix paths if running on Windows
+            source = source.replace("\\", "/")
+            host_mount_location = host_mount_location.replace("\\", "/")
+            host_destination = host_destination.replace("\\", "/")
+
         self.ssh_command_runner.run(
             f"mkdir -p {host_mount_location} && chown -R "
             f"{self.ssh_command_runner.ssh_user} {host_mount_location}",
@@ -558,9 +589,11 @@ class DockerCommandRunner(CommandRunnerInterface):
             source.lstrip("/"),
         )
         host_mount_location = os.path.dirname(host_source.rstrip("/"))
+        # Convert Windows paths to Unix-style for remote commands
+        host_mount_location_unix = host_mount_location.replace("\\", "/")
         self.ssh_command_runner.run(
-            f"mkdir -p {host_mount_location} && chown -R "
-            f"{self.ssh_command_runner.ssh_user} {host_mount_location}",
+            f"mkdir -p {host_mount_location_unix} && chown -R "
+            f"{self.ssh_command_runner.ssh_user} {host_mount_location_unix}",
             silent=is_rsync_silent(),
         )
         if source[-1] == "/":
@@ -575,7 +608,9 @@ class DockerCommandRunner(CommandRunnerInterface):
                     self.docker_cmd,
                     self.container_name,
                     self._docker_expand_user(source),
-                    host_source,
+                    host_source.replace(
+                        "\\", "/"
+                    ),  # Convert Windows paths to Unix-style for rsync
                 ),
                 silent=is_rsync_silent(),
             )
@@ -728,7 +763,6 @@ class DockerCommandRunner(CommandRunnerInterface):
                 "{} pull {}".format(self.docker_cmd, specific_image), run_env="host"
             )
         else:
-
             self.run(
                 f"{self.docker_cmd} image inspect {specific_image} "
                 "1> /dev/null  2>&1 || "
@@ -750,9 +784,9 @@ class DockerCommandRunner(CommandRunnerInterface):
                 specific_image, cleaned_bind_mounts
             )
             if requires_re_init:
-                self.run(
-                    f"{self.docker_cmd} stop {self.container_name}", run_env="host"
-                )
+                docker_stop_cmd = f"{self.docker_cmd} stop {self.container_name}"
+                logger.info("Executing Docker command: %s", docker_stop_cmd)
+                self.run(docker_stop_cmd, run_env="host")
 
         if (not container_running) or requires_re_init:
             if not sync_run_yet:
@@ -821,7 +855,9 @@ class DockerCommandRunner(CommandRunnerInterface):
                                 self.ssh_command_runner.cluster_name
                             ),
                             mount,
-                        ),
+                        ).replace(
+                            "\\", "/"
+                        ),  # Convert Windows paths to Unix-style for rsync
                         container=self.container_name,
                         dst=self._docker_expand_user(mount),
                     )

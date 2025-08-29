@@ -831,7 +831,7 @@ class ActorMethod:
                 self._actor, tensor_transport
             ):
                 raise ValueError(
-                    f"{self._actor} does not have tensor transport {tensor_transport.name} available. Please create a communicator with "
+                    f'{self._actor} does not have tensor transport {tensor_transport.name} available. If using a collective-based transport ("nccl" or "gloo"), please create a communicator with '
                     "`ray.experimental.collective.create_collective_group` "
                     "before calling actor tasks with non-default tensor_transport."
                 )
