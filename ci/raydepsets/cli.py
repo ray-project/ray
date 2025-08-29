@@ -6,7 +6,8 @@ import shutil
 import click
 import runfiles
 from networkx import DiGraph, topological_sort
-
+import tempfile
+import difflib
 
 from ci.raydepsets.workspace import Depset, Workspace
 
@@ -81,13 +82,61 @@ class DependencySetManager:
         config_path: str = None,
         workspace_dir: Optional[str] = None,
         uv_cache_dir: Optional[str] = None,
+        check: Optional[bool] = False,
     ):
         self.workspace = Workspace(workspace_dir)
         self.config = self.workspace.load_config(config_path)
+        if check:
+            self.check = True
+            self.temp_dir = tempfile.mkdtemp()
+            self.output_paths = self.get_output_paths()
+            self.copy_to_temp_dir()
         self.build_graph = DiGraph()
         self._build()
         self._uv_binary = _uv_binary()
         self._uv_cache_dir = uv_cache_dir
+
+    def get_output_paths(self) -> List[Path]:
+        output_paths = []
+        for depset in self.config.depsets:
+            output_paths.append(Path(depset.output))
+        return output_paths
+
+    def copy_to_temp_dir(self):
+        """Copy the lock files from source file paths to temp dir."""
+        for output_path in self.output_paths:
+            source_fp, target_fp = self.get_source_and_dest(output_path)
+            target_fp.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(
+                source_fp,
+                target_fp,
+            )
+
+    def diff_lock_files(self):
+        diffs = []
+        for output_path in self.output_paths:
+            new_lock_file_fp, old_lock_file_fp = self.get_source_and_dest(output_path)
+            old_lock_file_contents = self.read_lock_file(old_lock_file_fp)
+            new_lock_file_contents = self.read_lock_file(new_lock_file_fp)
+            for diff in difflib.unified_diff(
+                old_lock_file_contents,
+                new_lock_file_contents,
+                fromfile=new_lock_file_fp.as_posix(),
+                tofile=old_lock_file_fp.as_posix(),
+                lineterm="",
+            ):
+                diffs.append(diff)
+        if len(diffs) > 0:
+            click.echo("".join(diffs))
+            self.cleanup_temp_dir()
+            raise RuntimeError(
+                "Lock files are not up to date. Please update lock files and push the changes."
+            )
+        click.echo("Lock files are up to date.")
+        self.cleanup_temp_dir()
+
+    def get_source_and_dest(self, output_path: str) -> tuple[Path, Path]:
+        return (self.get_path(output_path), (Path(self.temp_dir) / output_path))
 
     def _build(self):
         for depset in self.config.depsets:
@@ -227,23 +276,6 @@ class DependencySetManager:
             append_flags=append_flags,
             override_flags=override_flags,
         )
-
-    def diff_lock_files(self):
-        """Diff the lock files."""
-        cmd = ["git", "diff", "--exit-code"]
-        status = subprocess.run(
-            cmd,
-            cwd=self.workspace.dir,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            check=False,
-        )
-        if status.returncode != 0:
-            raise RuntimeError(
-                f"Lock files are not up to date. Please update lock files and push the changes. Status: {status.returncode}\n{status.stdout}"
-            )
-        click.echo("Lock files are up to date.")
 
     def read_lock_file(self, file_path: Path) -> List[str]:
         if not file_path.exists():
