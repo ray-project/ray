@@ -12,7 +12,7 @@ _gc_thread: Optional[threading.Thread] = None
 _gc_lock = threading.Lock()
 
 
-class GCManagerThread(threading.Thread):
+class PythonGCThread(threading.Thread):
     def __init__(self, min_interval: int = 5):
         super().__init__(name="GCManagerThread", daemon=True)
         self._running = True
