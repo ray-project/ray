@@ -2764,7 +2764,7 @@ class Dataset:
             # from the large dataset to maintain partition structure
             if num_partitions is None:
                 # Use the current number of partitions from the large dataset
-                target_partitions = large_ds.num_partitions()
+                target_partitions = large_ds.num_blocks()
             else:
                 target_partitions = num_partitions
 
