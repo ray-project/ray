@@ -30,7 +30,7 @@ GcsActorScheduler::GcsActorScheduler(
     instrumented_io_context &io_context,
     GcsActorTable &gcs_actor_table,
     const GcsNodeManager &gcs_node_manager,
-    ClusterTaskManager &cluster_task_manager,
+    ClusterLeaseManager &cluster_lease_manager,
     GcsActorSchedulerFailureCallback schedule_failure_handler,
     GcsActorSchedulerSuccessCallback schedule_success_handler,
     rpc::RayletClientPool &raylet_client_pool,
@@ -40,7 +40,7 @@ GcsActorScheduler::GcsActorScheduler(
     : io_context_(io_context),
       gcs_actor_table_(gcs_actor_table),
       gcs_node_manager_(gcs_node_manager),
-      cluster_task_manager_(cluster_task_manager),
+      cluster_lease_manager_(cluster_lease_manager),
       schedule_failure_handler_(std::move(schedule_failure_handler)),
       schedule_success_handler_(std::move(schedule_success_handler)),
       raylet_client_pool_(raylet_client_pool),
@@ -54,7 +54,7 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
   RAY_CHECK(actor->GetNodeID().IsNil() && actor->GetWorkerID().IsNil());
 
   if (RayConfig::instance().gcs_actor_scheduling_enabled() &&
-      !actor->GetCreationTaskSpecification().GetRequiredResources().IsEmpty()) {
+      !actor->GetLeaseSpecification().GetRequiredResources().IsEmpty()) {
     ScheduleByGcs(actor);
   } else {
     ScheduleByRaylet(actor);
@@ -90,8 +90,7 @@ void GcsActorScheduler::ScheduleByGcs(std::shared_ptr<GcsActor> actor) {
                   .second);
 
     actor->SetAcquiredResources(ResourceMapToResourceRequest(
-        actor->GetCreationTaskSpecification().GetRequiredResources().GetResourceMap(),
-        false));
+        actor->GetLeaseSpecification().GetRequiredResources().GetResourceMap(), false));
     // Lease worker directly from the node.
     actor->SetGrantOrReject(true);
     LeaseWorkerFromNode(actor, node.value());
@@ -99,13 +98,14 @@ void GcsActorScheduler::ScheduleByGcs(std::shared_ptr<GcsActor> actor) {
 
   // Queue and schedule the actor locally (gcs).
   const auto &owner_node = gcs_node_manager_.GetAliveNode(actor->GetOwnerNodeID());
-  RayTask task(actor->GetCreationTaskSpecification(),
-               owner_node.has_value() ? actor->GetOwnerNodeID().Binary() : std::string());
-  cluster_task_manager_.QueueAndScheduleTask(std::move(task),
-                                             /*grant_or_reject*/ false,
-                                             /*is_selected_based_on_locality*/ false,
-                                             /*reply*/ reply.get(),
-                                             send_reply_callback);
+  RayLease lease(
+      actor->GetLeaseSpecification(),
+      owner_node.has_value() ? actor->GetOwnerNodeID().Binary() : std::string());
+  cluster_lease_manager_.QueueAndScheduleLease(std::move(lease),
+                                               /*grant_or_reject=*/false,
+                                               /*is_selected_based_on_locality=*/false,
+                                               /*reply=*/reply.get(),
+                                               send_reply_callback);
 }
 
 void GcsActorScheduler::ScheduleByRaylet(std::shared_ptr<GcsActor> actor) {
@@ -142,8 +142,8 @@ NodeID GcsActorScheduler::SelectForwardingNode(std::shared_ptr<GcsActor> actor) 
 
   // If an actor has resource requirements, we will try to schedule it on the same node as
   // the owner if possible.
-  const auto &task_spec = actor->GetCreationTaskSpecification();
-  if (!task_spec.GetRequiredResources().IsEmpty()) {
+  const auto &lease_spec = actor->GetLeaseSpecification();
+  if (!lease_spec.GetRequiredResources().IsEmpty()) {
     auto maybe_node = gcs_node_manager_.GetAliveNode(actor->GetOwnerNodeID());
     node = maybe_node.has_value() ? maybe_node.value() : SelectNodeRandomly();
   } else {
@@ -227,10 +227,10 @@ std::vector<ActorID> GcsActorScheduler::CancelOnNode(const NodeID &node_id) {
 
 void GcsActorScheduler::CancelOnLeasing(const NodeID &node_id,
                                         const ActorID &actor_id,
-                                        const TaskID &task_id) {
+                                        const LeaseID &lease_id) {
   // NOTE: This method will cancel the outstanding lease request and remove leasing
   // information from the internal state.
-  RAY_LOG(DEBUG) << "Canceling worker leasing of task " << task_id;
+  RAY_LOG(DEBUG) << "Canceling worker lease request " << lease_id;
   auto node_it = node_to_actors_when_leasing_.find(node_id);
   RAY_CHECK(node_it != node_to_actors_when_leasing_.end());
   node_it->second.erase(actor_id);
@@ -248,7 +248,7 @@ void GcsActorScheduler::CancelOnLeasing(const NodeID &node_id,
     address.set_port(node_info->node_manager_port());
     auto raylet_client = GetOrConnectRayletClient(address);
     raylet_client->CancelWorkerLease(
-        task_id, [](const Status &status, const rpc::CancelWorkerLeaseReply &reply) {});
+        lease_id, [](const Status &status, const rpc::CancelWorkerLeaseReply &reply) {});
   }
 }
 
@@ -327,8 +327,12 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
   auto raylet_client = GetOrConnectRayletClient(remote_address);
   // Actor leases should be sent to the raylet immediately, so we should never build up a
   // backlog in GCS.
+  // Counter for generating unique lease IDs.
+  static uint32_t lease_id_counter = 1;
+  actor->GetMutableLeaseSpec()->set_lease_id(
+      LeaseID::FromWorker(WorkerID::FromRandom(), lease_id_counter++).Binary());
   raylet_client->RequestWorkerLease(
-      actor->GetCreationTaskSpecification().GetMessage(),
+      actor->GetLeaseSpecification().GetMessage(),
       actor->GetGrantOrReject(),
       [this, actor, node](const Status &status,
                           const rpc::RequestWorkerLeaseReply &reply) {
@@ -412,18 +416,17 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
     // Without this, there could be a possible race condition. Related issues:
     // https://github.com/ray-project/ray/pull/9215/files#r449469320
     worker_client_pool_.GetOrConnect(leased_worker->GetAddress());
-    RAY_CHECK_OK(gcs_actor_table_.Put(actor->GetActorID(),
-                                      actor->GetActorTableData(),
-                                      {[this, actor, leased_worker](Status status) {
-                                         RAY_CHECK_OK(status);
-                                         if (actor->GetState() ==
-                                             rpc::ActorTableData::DEAD) {
-                                           // Actor has already been killed.
-                                           return;
-                                         }
-                                         CreateActorOnWorker(actor, leased_worker);
-                                       },
-                                       io_context_}));
+    gcs_actor_table_.Put(actor->GetActorID(),
+                         actor->GetActorTableData(),
+                         {[this, actor, leased_worker](Status status) {
+                            RAY_CHECK_OK(status);
+                            if (actor->GetState() == rpc::ActorTableData::DEAD) {
+                              // Actor has already been killed.
+                              return;
+                            }
+                            CreateActorOnWorker(actor, leased_worker);
+                          },
+                          io_context_});
   }
 }
 
@@ -432,13 +435,13 @@ void GcsActorScheduler::HandleRequestWorkerLeaseCanceled(
     const NodeID &node_id,
     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
     const std::string &scheduling_failure_message) {
-  RAY_LOG(INFO)
-      << "The lease worker request from node " << node_id << " for actor "
-      << actor->GetActorID() << "("
-      << actor->GetCreationTaskSpecification().FunctionDescriptor()->CallString() << ")"
-      << " has been canceled, job id = " << actor->GetActorID().JobId()
-      << ", cancel type: "
-      << rpc::RequestWorkerLeaseReply::SchedulingFailureType_Name(failure_type);
+  RAY_LOG(INFO) << "The lease worker request from node " << node_id << " for actor "
+                << actor->GetActorID() << "("
+                << actor->GetLeaseSpecification().FunctionDescriptor()->CallString()
+                << ")"
+                << " has been canceled, job id = " << actor->GetActorID().JobId()
+                << ", cancel type: "
+                << rpc::RequestWorkerLeaseReply::SchedulingFailureType_Name(failure_type);
 
   schedule_failure_handler_(actor, failure_type, scheduling_failure_message);
 }
@@ -663,13 +666,13 @@ void GcsActorScheduler::HandleWorkerLeaseRejectedReply(
 void GcsActorScheduler::OnActorDestruction(std::shared_ptr<GcsActor> actor) {
   if (!actor->GetAcquiredResources().IsEmpty()) {
     ReturnActorAcquiredResources(actor);
-    cluster_task_manager_.ScheduleAndDispatchTasks();
+    cluster_lease_manager_.ScheduleAndGrantLeases();
   }
 }
 
 void GcsActorScheduler::ReturnActorAcquiredResources(std::shared_ptr<GcsActor> actor) {
   auto &cluster_resource_manager =
-      cluster_task_manager_.GetClusterResourceScheduler().GetClusterResourceManager();
+      cluster_lease_manager_.GetClusterResourceScheduler().GetClusterResourceManager();
   cluster_resource_manager.AddNodeAvailableResources(
       scheduling::NodeID(actor->GetNodeID().Binary()),
       actor->GetAcquiredResources().GetResourceSet());
@@ -677,13 +680,13 @@ void GcsActorScheduler::ReturnActorAcquiredResources(std::shared_ptr<GcsActor> a
 }
 
 size_t GcsActorScheduler::GetPendingActorsCount() const {
-  return cluster_task_manager_.GetInfeasibleQueueSize() +
-         cluster_task_manager_.GetPendingQueueSize();
+  return cluster_lease_manager_.GetInfeasibleQueueSize() +
+         cluster_lease_manager_.GetPendingQueueSize();
 }
 
 bool GcsActorScheduler::CancelInFlightActorScheduling(
     const std::shared_ptr<GcsActor> &actor) {
-  return cluster_task_manager_.CancelTask(actor->GetCreationTaskSpecification().TaskId());
+  return cluster_lease_manager_.CancelLease(actor->GetLeaseSpecification().LeaseId());
 }
 
 }  // namespace gcs
