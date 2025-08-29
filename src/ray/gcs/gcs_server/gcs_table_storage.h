@@ -128,7 +128,6 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
   ///
   /// \param keys The batch key that will be deleted from the table.
   /// \param callback Callback that will be called after delete finishes.
-  /// \return Status
   void BatchDelete(const std::vector<Key> &keys,
                    Postable<void(ray::Status)> callback) override;
 
