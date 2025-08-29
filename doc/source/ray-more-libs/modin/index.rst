@@ -3,7 +3,7 @@
 Using Pandas on Ray (Modin)
 ===========================
 
-Modin_, previously pandas on Ray, is a dataframe manipulation library that
+Modin_, previously Pandas on Ray, is a dataframe manipulation library that
 allows users to speed up their pandas workloads by acting as a drop-in
 replacement. Modin also provides support for other APIs (e.g. spreadsheet)
 and libraries, like xgboost.
