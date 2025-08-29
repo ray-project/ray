@@ -40,7 +40,7 @@ def benchmark_fn():
         )
         return table.set_column(table.schema.get_field_index("key"), "key", new_col)
 
-    ds = metadata.map_batches(convert_key)
+    ds = metadata.map_batches(convert_key, batch_format="pyarrow")
     ds = ds.with_column("image_bytes", download("key"))
     ds = ds.map_batches(decode_images)
     for _ in ds.iter_internal_ref_bundles():
