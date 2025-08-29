@@ -23,7 +23,7 @@ See the [Data-Juicer 2.0: Cloud-Scale Adaptive Data Processing for Foundation Mo
 
 ### Subset splitting
 
-When a cluster has tens of thousands of nodes but only a few dataset files, Ray splits the dataset files according to available resources and distribute the blocks across all nodes, incurring high network communication costs and reducing CPU utilization. For more details, see [Ray's `_autodetect_parallelism` function](https://github.com/ray-project/ray/blob/2dbd08a46f7f08ea614d8dd20fd0bca5682a3078/python/ray/data/_internal/util.py#L201-L205) and [tuning output blocks for Ray](read_output_blocks).
+When a cluster has tens of thousands of nodes but only a few dataset files, Ray splits the dataset files according to available resources and distributes the blocks across all nodes, incurring high network communication costs and reducing CPU utilization. For more details, see [Ray's `_autodetect_parallelism` function](https://github.com/ray-project/ray/blob/2dbd08a46f7f08ea614d8dd20fd0bca5682a3078/python/ray/data/_internal/util.py#L201-L205) and [tuning output blocks for Ray](read_output_blocks).
 
 This default execution plan can be quite inefficient especially for scenarios with a large number of nodes. To optimize performance for such cases, Data-Juicer automatically splits the original dataset into smaller files in advance, taking into consideration the features of Ray and Arrow. When you encounter such performance issues, you can use this feature or split the dataset according to your own preferences. In this auto-split strategy, the single file size is about 128&nbsp;MB, and the result should ensure that the number of sub-files after splitting is at least twice the total number of CPU cores available in the cluster.
 
