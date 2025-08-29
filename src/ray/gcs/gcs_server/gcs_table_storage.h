@@ -59,7 +59,6 @@ class GcsTable {
   /// Get all data from the table asynchronously.
   ///
   /// \param callback Callback that will be called after data has been received.
-  /// \return Status
   void GetAll(Postable<void(absl::flat_hash_map<Key, Data>)> callback);
 
   /// Delete data from the table asynchronously.
