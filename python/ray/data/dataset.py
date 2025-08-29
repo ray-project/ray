@@ -827,17 +827,29 @@ class Dataset:
             A new dataset with the added column evaluated via the expression.
         """
         # TODO: update schema based on the expression AST.
-        from ray.data._internal.logical.operators.map_operator import Project
+        from ray.data._internal.logical.operators.map_operator import Download, Project
+
+        # TODO: Once the expression API supports UDFs, we can clean up the code here.
+        from ray.data.expressions import DownloadExpr
 
         plan = self._plan.copy()
-        project_op = Project(
-            self._logical_plan.dag,
-            cols=None,
-            cols_rename=None,
-            exprs={column_name: expr},
-            ray_remote_args=ray_remote_args,
-        )
-        logical_plan = LogicalPlan(project_op, self.context)
+        if isinstance(expr, DownloadExpr):
+            download_op = Download(
+                self._logical_plan.dag,
+                uri_column_name=expr.uri_column_name,
+                output_bytes_column_name=column_name,
+                ray_remote_args=ray_remote_args,
+            )
+            logical_plan = LogicalPlan(download_op, self.context)
+        else:
+            project_op = Project(
+                self._logical_plan.dag,
+                cols=None,
+                cols_rename=None,
+                exprs={column_name: expr},
+                ray_remote_args=ray_remote_args,
+            )
+            logical_plan = LogicalPlan(project_op, self.context)
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)

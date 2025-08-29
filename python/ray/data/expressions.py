@@ -377,6 +377,20 @@ def udf() -> Callable[..., UDFExpr]:
     return decorator
 
 
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False)
+class DownloadExpr(Expr):
+    """Expression that represents a download operation."""
+
+    uri_column_name: str
+
+    def structurally_equals(self, other: Any) -> bool:
+        return (
+            isinstance(other, DownloadExpr)
+            and self.uri_column_name == other.uri_column_name
+        )
+
+
 @PublicAPI(stability="beta")
 def col(name: str) -> ColumnExpr:
     """
@@ -439,6 +453,34 @@ def lit(value: Any) -> LiteralExpr:
     return LiteralExpr(value)
 
 
+@DeveloperAPI(stability="alpha")
+def download(uri_column_name: str) -> DownloadExpr:
+    """
+    Create a download expression that downloads content from URIs.
+
+    This creates an expression that will download bytes from URIs stored in
+    a specified column. When evaluated, it will fetch the content from each URI
+    and return the downloaded bytes.
+
+    Args:
+        uri_column_name: The name of the column containing URIs to download from
+    Returns:
+        A DownloadExpr that will download content from the specified URI column
+
+    Example:
+        >>> from ray.data.expressions import download
+        >>> import ray
+        >>> # Create dataset with URIs
+        >>> ds = ray.data.from_items([
+        ...     {"uri": "s3://bucket/file1.jpg", "id": "1"},
+        ...     {"uri": "s3://bucket/file2.jpg", "id": "2"}
+        ... ])
+        >>> # Add downloaded bytes column
+        >>> ds_with_bytes = ds.with_column("bytes", download("uri"))
+    """
+    return DownloadExpr(uri_column_name=uri_column_name)
+
+
 # ──────────────────────────────────────
 # Public API for evaluation
 # ──────────────────────────────────────
@@ -454,6 +496,8 @@ __all__ = [
     "BinaryExpr",
     "UDFExpr",
     "udf",
+    "DownloadExpr",
     "col",
     "lit",
+    "download",
 ]

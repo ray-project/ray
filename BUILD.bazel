@@ -282,6 +282,7 @@ alias(
         "@platforms//os:windows": "@com_github_tporadowski_redis_bin//:redis-server.exe",
         "//bazel:linux_x86_64_config": "@redis_linux_x86_64//:redis-server",
         "//bazel:linux_arm64_config": "@redis_linux_arm64//:redis-server",
+        "//bazel:osx_arm64_config": "@redis_osx_arm64//:redis-server",
         "//conditions:default": "@com_github_antirez_redis//:redis-server",
     }),
 )
@@ -292,6 +293,7 @@ alias(
         "@platforms//os:windows": "@com_github_tporadowski_redis_bin//:redis-cli.exe",
         "//bazel:linux_x86_64_config": "@redis_linux_x86_64//:redis-cli",
         "//bazel:linux_arm64_config": "@redis_linux_arm64//:redis-cli",
+        "//bazel:osx_arm64_config": "@redis_osx_arm64//:redis-cli",
         "//conditions:default": "@com_github_antirez_redis//:redis-cli",
     }),
 )

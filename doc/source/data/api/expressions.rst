@@ -20,6 +20,7 @@ Public API
     col
     lit
     udf
+    download
 
 Expression Classes
 ------------------
