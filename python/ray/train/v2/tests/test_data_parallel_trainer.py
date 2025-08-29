@@ -235,6 +235,31 @@ def test_report_mixed_checkpoint_upload_modes(tmp_path):
         assert metrics["metric"] == f"iteration_{i}_shard_0"
 
 
+def test_report_checkpoint_upload_error():
+    """Check that the trainer shuts down when an error occurs during checkpoint upload."""
+
+    def train_fn():
+        rank = ray.train.get_context().get_world_rank()
+        if rank == 0:
+            ray.train.report(
+                {},
+                Checkpoint("invalid_path"),
+                checkpoint_upload_mode=CheckpointUploadMode.ASYNC,
+            )
+        else:
+            ray.train.report(
+                {}, None, checkpoint_upload_mode=CheckpointUploadMode.ASYNC
+            )
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=2),
+    )
+    with pytest.raises(WorkerGroupError) as exc_info:
+        trainer.fit()
+        assert isinstance(exc_info.value.worker_failures[0], ValueError)
+
+
 def test_error(tmp_path):
     def _error_func_rank_0():
         """An example train_fun that raises an error on rank 0."""

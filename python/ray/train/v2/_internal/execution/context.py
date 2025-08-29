@@ -14,7 +14,11 @@ from ray.train._internal import session
 from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.storage import StorageContext
-from ray.train.v2._internal.util import _copy_doc, invoke_context_managers
+from ray.train.v2._internal.util import (
+    _copy_doc,
+    construct_user_exception_with_traceback,
+    invoke_context_managers,
+)
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.report_config import CheckpointUploadMode
 
@@ -314,12 +318,20 @@ class TrainContext:
                     checkpoint: Optional[Checkpoint],
                     current_report_attempt_number: int,
                 ) -> None:
-                    training_result = self._save_checkpoint(
-                        checkpoint_dir_name, metrics, checkpoint
-                    )
-                    self._wait_then_report(
-                        training_result, current_report_attempt_number
-                    )
+                    try:
+                        training_result = self._save_checkpoint(
+                            checkpoint_dir_name, metrics, checkpoint
+                        )
+                        self._wait_then_report(
+                            training_result, current_report_attempt_number
+                        )
+                    except Exception as e:
+                        logger.exception(
+                            "Async checkpoint upload failed - shutting down workers"
+                        )
+                        self.execution_context.training_thread_runner.get_exception_queue().put(
+                            construct_user_exception_with_traceback(e)
+                        )
 
                 self.checkpoint_uploads.submit(
                     _upload_checkpoint_and_report,
