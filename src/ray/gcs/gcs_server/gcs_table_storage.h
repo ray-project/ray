@@ -65,7 +65,6 @@ class GcsTable {
   ///
   /// \param key The key that will be deleted from the table.
   /// \param callback Callback that will be called after delete finishes.
-  /// \return Status
   virtual void Delete(const Key &key, Postable<void(ray::Status)> callback);
 
   /// Delete a batch of data from the table asynchronously.
