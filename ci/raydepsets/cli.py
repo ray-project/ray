@@ -231,10 +231,17 @@ class DependencySetManager:
     def diff_lock_files(self):
         """Diff the lock files."""
         cmd = ["git", "diff", "--exit-code"]
-        status = subprocess.run(cmd, cwd=self.workspace.dir)
+        status = subprocess.run(
+            cmd,
+            cwd=self.workspace.dir,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+        )
         if status.returncode != 0:
             raise RuntimeError(
-                f"Lock files are out of date. Status: {status.returncode}\n{status.stderr.strip()}"
+                f"Lock files are not up to date. Please update lock files and push the changes. Status: {status.returncode}\n{status.stdout}"
             )
         click.echo("Lock files are up to date.")
 

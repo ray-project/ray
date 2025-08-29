@@ -45,7 +45,6 @@ def _create_test_manager(
         config_path=config_path,
         workspace_dir=tmpdir,
         uv_cache_dir=uv_cache_dir.as_posix(),
-        check=check,
     )
 
 
@@ -580,7 +579,7 @@ class TestCli(unittest.TestCase):
                 operation="compile",
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
-                output="requirements_compiled_test.txt",
+                output="requirements_compiled.txt",
             )
             _overwrite_config_file(tmpdir, depset)
             manager = _create_test_manager(tmpdir, check=True)
@@ -589,13 +588,9 @@ class TestCli(unittest.TestCase):
                 requirements=["requirements_test.txt"],
                 append_flags=["--no-annotate", "--no-header"],
                 name="check_depset",
-                output="requirements_compiled_test.txt",
+                output="requirements_compiled.txt",
             )
-            assert manager.temp_dir is not None
-            assert (Path(manager.temp_dir) / "requirements_compiled_test.txt").exists()
-            assert (
-                Path(manager.workspace.dir) / "requirements_compiled_test.txt"
-            ).exists()
+            assert (Path(manager.workspace.dir) / "requirements_compiled.txt").exists()
 
     def test_diff_lock_files_out_of_date(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -618,15 +613,14 @@ class TestCli(unittest.TestCase):
                 name="ray_base_test_depset",
                 output="requirements_compiled_test.txt",
             )
-            assert manager.temp_dir is not None
             replace_in_file(
-                Path(manager.temp_dir) / "requirements_compiled_test.txt",
+                Path(manager.workspace.dir) / "requirements_compiled.txt",
                 "emoji==2.9.0",
                 "emoji==2.8.0",
             )
 
             with self.assertRaises(RuntimeError) as e:
-                manager.check_lock_files()
+                manager.diff_lock_files()
             assert (
                 "Lock files are not up to date. Please update lock files and push the changes."
                 in str(e.exception)
@@ -651,8 +645,8 @@ class TestCli(unittest.TestCase):
                 name="ray_base_test_depset",
                 output="requirements_compiled_test.txt",
             )
-            assert manager.temp_dir is not None
-            manager.check_lock_files()
+            manager.diff_lock_files()
+            assert "Lock files are up to date." in manager.stdout
 
 
 if __name__ == "__main__":
