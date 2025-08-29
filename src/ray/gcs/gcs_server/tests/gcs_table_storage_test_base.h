@@ -38,7 +38,7 @@ class GcsTableStorageTestBase : public ::testing::Test {
 
  protected:
   void TestGcsTableApi() {
-    auto table = gcs_table_storage_->JobTable();
+    auto &table = gcs_table_storage_->JobTable();
     JobID job1_id = JobID::FromInt(1);
     JobID job2_id = JobID::FromInt(2);
     auto job1_table_data = Mocker::GenJobTableData(job1_id);
@@ -105,7 +105,7 @@ class GcsTableStorageTestBase : public ::testing::Test {
   void Put(TABLE &table, const KEY &key, const VALUE &value) {
     auto on_done = [this](const Status &status) { --pending_count_; };
     ++pending_count_;
-    RAY_CHECK_OK(table.Put(key, value, {on_done, *(io_service_pool_->Get())}));
+    table.Put(key, value, {on_done, *(io_service_pool_->Get())});
     WaitPendingDone();
   }
 
@@ -124,7 +124,7 @@ class GcsTableStorageTestBase : public ::testing::Test {
       --pending_count_;
     };
     ++pending_count_;
-    RAY_CHECK_OK(table.Get(key, {on_done, *(io_service_pool_->Get())}));
+    table.Get(key, {on_done, *(io_service_pool_->Get())});
     WaitPendingDone();
     return values.size();
   }
@@ -147,7 +147,7 @@ class GcsTableStorageTestBase : public ::testing::Test {
       --pending_count_;
     };
     ++pending_count_;
-    RAY_CHECK_OK(table.GetByJobId(job_id, {on_done, *(io_service_pool_->Get())}));
+    table.GetByJobId(job_id, {on_done, *(io_service_pool_->Get())});
     WaitPendingDone();
     return values.size();
   }
@@ -159,7 +159,7 @@ class GcsTableStorageTestBase : public ::testing::Test {
       --pending_count_;
     };
     ++pending_count_;
-    RAY_CHECK_OK(table.Delete(key, {on_done, *(io_service_pool_->Get())}));
+    table.Delete(key, {on_done, *(io_service_pool_->Get())});
     WaitPendingDone();
   }
 
@@ -170,7 +170,7 @@ class GcsTableStorageTestBase : public ::testing::Test {
       --pending_count_;
     };
     ++pending_count_;
-    RAY_CHECK_OK(table.BatchDelete(keys, {on_done, *(io_service_pool_->Get())}));
+    table.BatchDelete(keys, {on_done, *(io_service_pool_->Get())});
     WaitPendingDone();
   }
 
