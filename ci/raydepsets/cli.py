@@ -2,8 +2,6 @@ import platform
 import subprocess
 from pathlib import Path
 from typing import List, Optional
-import tempfile
-import difflib
 import shutil
 import click
 import runfiles
@@ -57,7 +55,7 @@ def build(
     workspace_dir: Optional[str],
     name: Optional[str],
     uv_cache_dir: Optional[str],
-    check: bool = False,
+    check: Optional[bool],
 ):
     """
     Build dependency sets from a config file.
@@ -68,14 +66,13 @@ def build(
         config_path=config_path,
         workspace_dir=workspace_dir,
         uv_cache_dir=uv_cache_dir,
-        check=check,
     )
     if name:
         manager.execute_single(_get_depset(manager.config.depsets, name))
     else:
         manager.execute()
     if check:
-        manager.check_lock_files()
+        manager.diff_lock_files()
 
 
 class DependencySetManager:
@@ -84,17 +81,9 @@ class DependencySetManager:
         config_path: str = None,
         workspace_dir: Optional[str] = None,
         uv_cache_dir: Optional[str] = None,
-        check: bool = False,
     ):
         self.workspace = Workspace(workspace_dir)
         self.config = self.workspace.load_config(config_path)
-        if check:
-            self.temp_dir = tempfile.mkdtemp()
-            self.old_lock_files = self.get_destinations()
-            sources = self.get_sources()
-            self.save_sources(sources, self.old_lock_files)
-        else:
-            self.temp_dir = None
         self.build_graph = DiGraph()
         self._build()
         self._uv_binary = _uv_binary()
@@ -239,72 +228,15 @@ class DependencySetManager:
             override_flags=override_flags,
         )
 
-    def check_lock_files(self):
-        """Check the lock files are up to date."""
-        sources = self.get_sources()
-        destinations = self.get_destinations(extension="_new")
-        self.save_sources(sources, destinations)
-
-        # get tuples of old and new lock files
-        compare_tuples = self.get_compare_tuples()
-        self.diff_lock_files(compare_tuples)
-
-    def get_compare_tuples(self) -> List[tuple[Path, Path]]:
-        """Get tuples of old and new lock files."""
-        sources = self.old_lock_files
-        destinations = self.get_destinations(extension="_new")
-        return list(zip(sources, destinations))
-
-    def get_sources(self) -> List[Path]:
-        sources = []
-        for depset in self.config.depsets:
-            sources.append(Path(self.get_path(depset.output)))
-        return sources
-
-    def get_destinations(self, extension: Optional[str] = None) -> List[Path]:
-        """Get the destination file paths for the lock files."""
-        destinations = []
-        for depset in self.config.depsets:
-            depset_output_path = Path(depset.output)
-            if extension:
-                stem = Path(depset_output_path).stem
-                output_path = depset_output_path.with_stem(stem + extension)
-            else:
-                output_path = depset_output_path
-            destinations.append(self.get_path(Path(self.temp_dir) / output_path))
-        return destinations
-
-    def save_sources(self, source_fps: List[Path], target_fps: List[Path]):
-        """Copy the lock files from source file paths to target file paths."""
-        for source_fp, target_fp in zip(source_fps, target_fps):
-            target_fp.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(
-                source_fp,
-                target_fp,
-            )
-
-    def diff_lock_files(self, compare_tuples: List[tuple[Path, Path]]):
+    def diff_lock_files(self):
         """Diff the lock files."""
-        diffs = []
-        for source_fp, target_fp in compare_tuples:
-            old_lock_file_contents = self.read_lock_file(source_fp)
-            new_lock_file_contents = self.read_lock_file(target_fp)
-            for diff in difflib.unified_diff(
-                old_lock_file_contents,
-                new_lock_file_contents,
-                fromfile=source_fp.as_posix(),
-                tofile=target_fp.as_posix(),
-                lineterm="",
-            ):
-                diffs.append(diff)
-        if len(diffs) > 0:
-            click.echo("".join(diffs))
-            self.cleanup_temp_dir()
+        cmd = ["git", "diff", "--exit-code"]
+        status = subprocess.run(cmd, cwd=self.workspace.dir)
+        if status.returncode != 0:
             raise RuntimeError(
-                "Lock files are not up to date. Please update lock files and push the changes."
+                f"Lock files are out of date. Status: {status.returncode}\n{status.stderr.strip()}"
             )
         click.echo("Lock files are up to date.")
-        self.cleanup_temp_dir()
 
     def read_lock_file(self, file_path: Path) -> List[str]:
         if not file_path.exists():
