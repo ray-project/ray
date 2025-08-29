@@ -116,7 +116,6 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
   ///
   /// \param job_id The key that will be deleted from the table.
   /// \param callback Callback that will be called after delete finishes.
-  /// \return Status
   void DeleteByJobId(const JobID &job_id, Postable<void(ray::Status)> callback);
 
   /// Delete data and index from the table asynchronously.
