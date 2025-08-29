@@ -112,7 +112,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:id",
-        "//src/ray/common:task_common",
         "//src/ray/protobuf:common_cc_proto",
         "@com_google_googletest//:gtest_main",
     ],

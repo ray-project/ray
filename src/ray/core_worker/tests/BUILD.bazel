@@ -200,7 +200,6 @@ ray_cc_test(
     srcs = ["lease_policy_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:task_common",
         "//src/ray/core_worker:lease_policy",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
