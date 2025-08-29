@@ -69,7 +69,7 @@ class FakeGcsActorTable : public gcs::GcsActorTable {
       : GcsActorTable(store_client) {}
 
   void Put(const ActorID &key,
-           const Data &value,
+           const rpc::ActorTableData &value,
            Postable<void(Status)> callback) override {
     std::move(callback).Post("FakeGcsActorTable.Put", Status::OK());
   }
