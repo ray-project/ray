@@ -376,19 +376,7 @@ class AutoscalingState:
                 for k, v in self._replica_metrics[id].metrics.items():
                     metric_values[k].append(v)
 
-        agg_dict = {}
-        for k, v_list in metric_values.items():
-            # Flatten if v is a list, otherwise just use the value
-            flat_values: List[TimeStampedValue] = []
-            for v in v_list:
-                if isinstance(v, list):
-                    flat_values.extend(v)
-                else:
-                    flat_values.append(v)
-            if flat_values:
-                values = [fv.value for fv in flat_values]
-                agg_dict[k] = sum(values) / len(values)
-        return agg_dict
+        return metric_values
 
 
 class AutoscalingStateManager:

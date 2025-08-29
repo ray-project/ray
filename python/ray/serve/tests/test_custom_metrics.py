@@ -1,9 +1,12 @@
+import os
 import sys
 import time
 from typing import Any, Dict
 
 import pytest
 
+os.environ["RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE"] = "0"
+os.environ["RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S"] = "3"
 import ray
 from ray import serve
 from ray.serve._private.common import DeploymentID
@@ -18,55 +21,46 @@ def get_autoscaling_metrics_from_controller(
     return metrics.get(deployment_id, {})
 
 
-def test_deployment_custom_metric(serve_instance):
+class TestCustomServeMetrics:
     """Check that redeploying a deployment doesn't reset its start time."""
 
-    @serve.deployment
-    class DummyMetricIncrementer:
-        def __init__(self):
-            self.counter = 0
+    def test_custom_serve_metrics(self, serve_instance):
+        @serve.deployment(
+            autoscaling_config={
+                "min_replicas": 1,
+                "max_replicas": 5,
+                "target_num_ongoing_requests_per_replica": 2,
+                "upscale_delay_s": 2,
+                "downscale_delay_s": 10,
+            }
+        )
+        class DummyMetricIncrementer:
+            def __init__(self):
+                self.counter = 0
 
-        async def __call__(self) -> str:
-            self.counter += 1
-            return "Hello, world"
+            async def __call__(self) -> str:
+                self.counter += 1
+                return "Hello, world"
 
-        async def record_autoscaling_stats(self) -> Dict[str, Any]:
-            # Increments each time the deployment has been called
-            return {"counter": self.counter}
+            async def record_autoscaling_stats(self) -> Dict[str, Any]:
+                # Increments each time the deployment has been called
+                return {"counter": self.counter}
 
-    app_name = "test_custom_metrics_app"
-    handle = serve.run(DummyMetricIncrementer.bind(), name=app_name, route_prefix="/")
-    dep_id = DeploymentID(name="DummyMetricIncrementer", app_name=app_name)
-    responses = [handle.remote() for _ in range(3)]
+        app_name = "test_custom_metrics_app"
+        handle = serve.run(
+            DummyMetricIncrementer.bind(), name=app_name, route_prefix="/"
+        )
+        dep_id = DeploymentID(name="DummyMetricIncrementer", app_name=app_name)
 
-    time.sleep(10)
+        # Call deployment 3 times
+        [handle.remote() for _ in range(3)]
 
-    ref = serve_instance._controller._dump_autoscaling_metrics_for_testing.remote()
-    metrics = ray.get(ref)[dep_id]
+        # Wait for controller to receive new metrics
+        time.sleep(10)
+        metrics = get_autoscaling_metrics_from_controller(serve_instance, dep_id)
 
-    assert responses == ["Hello, world" * 3]
-    assert metrics["counter"] == 3
-
-    assert True
-
-
-def test_deployment_custom_metric_custom_method(serve_instance):
-    """Check that redeploying a deployment doesn't reset its start time."""
-
-    @serve.deployment
-    class CustomMetricMethodOverride:
-        def __init__(self):
-            self.counter = 0
-
-        async def __call__(self) -> str:
-            self.counter += 1
-            return "Hello, world"
-
-        async def my_custom_metric_method(self) -> Dict[str, Any]:
-            # Increments each time the deployment has been called
-            return {"counter": 42}
-
-    assert True
+        # The final counter value recorded by the controller should be 3
+        assert metrics["counter"][-1][0].value == 3
 
 
 if __name__ == "__main__":
