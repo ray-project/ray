@@ -96,7 +96,7 @@ class RayEventsPublisher(RayEventsPublisherInterface):
         Registers as a consumer, starts the worker loop, and handles cleanup on cancellation.
         """
         self._event_buffer_consumer_id = await self._event_buffer.register_consumer()
-        
+
         # Signal that the publisher is ready to publish events
         self._started_event.set()
 
@@ -127,7 +127,9 @@ class RayEventsPublisher(RayEventsPublisherInterface):
                 time_since_last_success_seconds = None
             else:
                 time_since_last_success_seconds = max(
-                    0.0, asyncio.get_running_loop().time() - self._metric_last_publish_success_timestamp
+                    0.0,
+                    asyncio.get_running_loop().time()
+                    - self._metric_last_publish_success_timestamp,
                 )
             publisher_metrics = {
                 "published": self._metric_events_published_since_last,
@@ -142,11 +144,13 @@ class RayEventsPublisher(RayEventsPublisherInterface):
                 "failed_attempts_since_last_success": self._metric_num_failed_attempts_since_last_success,
                 "time_since_last_success_seconds": time_since_last_success_seconds,
             }
-            
+
             # Include dropped events by type from the event buffer
             if self._event_buffer_consumer_id is not None:
-                dropped_by_type = await self._event_buffer.get_and_reset_evicted_events_count(
-                    self._event_buffer_consumer_id
+                dropped_by_type = (
+                    await self._event_buffer.get_and_reset_evicted_events_count(
+                        self._event_buffer_consumer_id
+                    )
                 )
                 publisher_metrics["dropped_events"] = dropped_by_type
             else:
@@ -196,13 +200,21 @@ class RayEventsPublisher(RayEventsPublisherInterface):
                         result.num_events_filtered_out
                     )
                     self._metric_num_failed_attempts_since_last_success = 0
-                    self._metric_last_publish_success_timestamp = asyncio.get_running_loop().time()
-                    self._metric_success_latency_seconds_since_last.append(float(duration))
+                    self._metric_last_publish_success_timestamp = (
+                        asyncio.get_running_loop().time()
+                    )
+                    self._metric_success_latency_seconds_since_last.append(
+                        float(duration)
+                    )
                 return
 
             async with self._metrics_lock:
                 # if max retries are exhausted mark as failed and break out, retry indefinitely if max_retries is less than 0
-                if self._max_retries >= 0 and self._metric_num_failed_attempts_since_last_success >= self._max_retries:
+                if (
+                    self._max_retries >= 0
+                    and self._metric_num_failed_attempts_since_last_success
+                    >= self._max_retries
+                ):
                     self._metric_events_publish_failures_since_last += int(
                         num_events_in_batch
                     )
@@ -213,7 +225,9 @@ class RayEventsPublisher(RayEventsPublisherInterface):
                 self._metric_num_failed_attempts_since_last_success += 1
                 self._metric_failure_latency_seconds_since_last.append(float(duration))
 
-            await self._async_sleep_with_backoff(self._metric_num_failed_attempts_since_last_success)
+            await self._async_sleep_with_backoff(
+                self._metric_num_failed_attempts_since_last_success
+            )
 
     async def _async_sleep_with_backoff(self, attempt: int) -> None:
         """Sleep with exponential backoff and optional jitter.
@@ -248,6 +262,6 @@ class NoopPublisher(RayEventsPublisherInterface):
 
     async def get_and_reset_metrics(self) -> Dict[str, int]:
         return {"published": 0, "filtered_out": 0, "failed": 0, "queue_dropped": 0}
-    
+
     async def wait_until_running(self, timeout: Optional[float] = None) -> bool:
         return True

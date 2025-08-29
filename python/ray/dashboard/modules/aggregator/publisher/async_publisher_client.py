@@ -75,7 +75,13 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
 
         # Convert protobuf objects to python dictionaries for HTTP POST
         filtered_json = await get_or_create_event_loop().run_in_executor(
-            self._executor, lambda: [json.loads(message_to_json(e, always_print_fields_with_no_presence=True)) for e in filtered]
+            self._executor,
+            lambda: [
+                json.loads(
+                    message_to_json(e, always_print_fields_with_no_presence=True)
+                )
+                for e in filtered
+            ],
         )
 
         try:

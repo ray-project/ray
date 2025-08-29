@@ -235,7 +235,7 @@ class AggregatorAgent(
         """
         if not prometheus_client:
             return
-        
+
         common_labels = {
             "ip": self._ip,
             "pid": self._pid,
@@ -257,16 +257,16 @@ class AggregatorAgent(
 
             self._events_received_since_last_metrics_update = 0
             self._events_failed_to_add_to_aggregator_since_last_metrics_update = 0
-            
+
             # HTTP service publisher metrics
             _events_published_to_http_svc = http_endpoint_publisher_metrics.get(
                 "published", 0
             )
-            _events_filtered_out_before_http_svc_publish = http_endpoint_publisher_metrics.get(
-                "filtered_out", 0
+            _events_filtered_out_before_http_svc_publish = (
+                http_endpoint_publisher_metrics.get("filtered_out", 0)
             )
-            _events_failed_to_publish_to_http_svc = (
-                http_endpoint_publisher_metrics.get("failed", 0)
+            _events_failed_to_publish_to_http_svc = http_endpoint_publisher_metrics.get(
+                "failed", 0
             )
             _events_dropped_in_http_publish_queue_by_type = (
                 http_endpoint_publisher_metrics.get("dropped_events", {})
@@ -297,7 +297,10 @@ class AggregatorAgent(
         events_failed_to_publish_to_http_svc.labels(**common_labels).inc(
             _events_failed_to_publish_to_http_svc
         )
-        for _event_type, _dropped_count in _events_dropped_in_http_publish_queue_by_type.items():
+        for (
+            _event_type,
+            _dropped_count,
+        ) in _events_dropped_in_http_publish_queue_by_type.items():
             events_dropped_in_http_svc_publish_queue.labels(
                 **common_labels, event_type=str(_event_type)
             ).inc(_dropped_count)

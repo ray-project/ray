@@ -63,6 +63,7 @@ def base_kwargs():
         "jitter_ratio": 0,
     }
 
+
 class TestRayEventsPublisher:
     """Test the main RayEventsPublisher functionality."""
 
@@ -112,7 +113,6 @@ class TestRayEventsPublisher:
             with pytest.raises(asyncio.CancelledError):
                 await task
 
-        
         metrics = await publisher.get_and_reset_metrics()
         assert metrics["published"] == 1
         assert metrics["failed"] == 0
@@ -156,7 +156,6 @@ class TestRayEventsPublisher:
             task.cancel()
             with pytest.raises(asyncio.CancelledError):
                 await task
-
 
 
 class TestAsyncHttpPublisherClient:
