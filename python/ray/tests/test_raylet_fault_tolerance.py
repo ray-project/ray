@@ -10,7 +10,7 @@ def simple_task():
 
 
 @pytest.mark.parametrize("deterministic_failure", ["request", "response"])
-def test_return_worker_lease_idempotent(
+def test_return_worker_lease_retry_and_idempotency(
     monkeypatch, shutdown_only, deterministic_failure
 ):
     monkeypatch.setenv(
@@ -19,7 +19,6 @@ def test_return_worker_lease_idempotent(
         + ("100:0" if deterministic_failure == "request" else "0:100"),
     )
     ray.init(num_cpus=1)
-    # Testing ReturnWorkerLease idempotency issue mentioned in issue #55469
     _ = simple_task.remote()
     _ = simple_task.remote()
     result_ref3 = simple_task.remote()

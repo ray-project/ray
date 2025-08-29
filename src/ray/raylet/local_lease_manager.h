@@ -341,8 +341,6 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   absl::flat_hash_map<SchedulingClass, absl::flat_hash_map<WorkerID, int64_t>>
       backlog_tracker_;
 
-  /// TODO(Shanly): Remove `worker_pool_` and `leased_workers_` and make them as
-  /// parameters of methods if necessary once we remove the legacy scheduler.
   WorkerPoolInterface &worker_pool_;
   absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers_;
 
