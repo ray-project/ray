@@ -36,6 +36,7 @@ This deployment provides an OpenAI-compatible FastAPI ingress and routes traffic
 - `/v1/chat/completions`: Chat interface (ChatGPT-style)
 - `/v1/completions`: Text completion
 - `/v1/embeddings`: Text embeddings
+- `/v1/score`: Text comparison
 - `/v1/models`: List available models
 - `/v1/models/{model}`: Model information
 
