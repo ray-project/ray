@@ -470,6 +470,22 @@ py_test(
 )
 
 py_test(
+    name = "test_worker",
+    size = "small",
+    srcs = ["tests/test_worker.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_worker_group",
     size = "medium",
     srcs = ["tests/test_worker_group.py"],
