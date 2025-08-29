@@ -173,9 +173,10 @@ class ReplicaMetricsManager:
             SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
         )
         self._num_ongoing_requests = 0
-
         # Lock to prevent concurrent autoscaling stats calls
         self._autoscaling_stats_lock = asyncio.Lock()
+        # Store event loop for scheduling async tasks from sync context
+        self._event_loop = event_loop or asyncio.get_event_loop()
 
         # If the interval is set to 0, eagerly sets all metrics.
         self._cached_metrics_enabled = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS != 0
@@ -228,9 +229,10 @@ class ReplicaMetricsManager:
         )
 
         self.set_autoscaling_config(autoscaling_config)
+        self.autoscaling_stats_method = autoscaling_stats_method
 
         if self._cached_metrics_enabled:
-            event_loop.create_task(self._report_cached_metrics_forever())
+            self._event_loop.create_task(self._report_cached_metrics_forever())
 
     def _report_cached_metrics(self):
         for route, count in self._cached_request_counter.items():
@@ -273,6 +275,10 @@ class ReplicaMetricsManager:
         await self._metrics_pusher.graceful_shutdown()
 
     def should_collect_metrics(self) -> bool:
+
+        logger.info(
+            f"RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE {RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE}, config: {self._autoscaling_config}"
+        )
         return (
             not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
             and self._autoscaling_config
@@ -356,8 +362,18 @@ class ReplicaMetricsManager:
     def _replica_ongoing_requests(self) -> Dict[ReplicaID, int]:
         return {self._replica_id: self._num_ongoing_requests}
 
-    async def _add_autoscaling_metrics_point(self) -> None:
-        # Defualt queue length metrics
+    def _add_autoscaling_metrics_point(self) -> None:
+        logger.info("[SYNC] Called _add_autoscaling_metrics_point (scheduling async).")
+        # Schedule the async method on the event loop
+        asyncio.run_coroutine_threadsafe(
+            self._add_autoscaling_metrics_point_async(), self._event_loop
+        )
+
+    async def _add_autoscaling_metrics_point_async(self) -> None:
+        logger.info("[ASYNC] Entered _add_autoscaling_metrics_point_async.")
+        logger.info(
+            f"[ASYNC] autoscaling_stats_method: {self.autoscaling_stats_method}"
+        )
         metrics_dict = self._replica_ongoing_requests()
 
         if self.autoscaling_stats_method:
@@ -373,8 +389,8 @@ class ReplicaMetricsManager:
                         metrics_dict.update(res)
                 except asyncio.TimeoutError:
                     logger.warning("Replica autoscaling stats timed out.")
-                except Exception:
-                    logger.warning("Replica autoscaling stats failed.")
+                except Exception as ex:
+                    logger.warning(f"Replica autoscaling stats failed. {ex}")
 
         self._metrics_store.add_metrics_point(
             metrics_dict,
@@ -778,6 +794,7 @@ class ReplicaBase(ABC):
             # Ensure that initialization is only performed once.
             # When controller restarts, it will call this method again.
             async with self._user_callable_initialized_lock:
+                logger.info("INITIALIZING")
                 self._initialization_start_time = time.time()
                 if not self._user_callable_initialized:
                     self._user_callable_asgi_app = (
@@ -1537,6 +1554,9 @@ class UserCallableWrapper:
         self._user_autoscaling_stats = getattr(
             self._callable, RAY_SERVE_AUTOSCALING_STATS_METHOD, None
         )
+        logger.info(
+            f"+++++++++ INITIALIZING RAY_SERVE_AUTOSCALING_STATS_METHOD {self._user_autoscaling_stats} {self._callable}"
+        )
 
         logger.info(
             "Finished initializing replica.",
@@ -1580,7 +1600,7 @@ class UserCallableWrapper:
         self._raise_if_not_initialized("call_record_autoscaling_stats")
 
         if self._user_autoscaling_stats is not None:
-            return self._call_user_record_routing_stats()
+            return self._call_user_autoscaling_stats()
 
         return None
 
@@ -1596,6 +1616,7 @@ class UserCallableWrapper:
     @_run_user_code
     async def _call_user_autoscaling_stats(self) -> Dict[str, Any]:
         result, _ = await self._call_func_or_gen(self._user_autoscaling_stats)
+        logger.info(f"THE RESULT {result}")
         return result
 
     @_run_user_code
