@@ -70,14 +70,12 @@ class FakeGcsActorTable : public gcs::GcsActorTable {
  public:
   // The store_client and io_context args are NOT used.
   explicit FakeGcsActorTable(std::shared_ptr<gcs::StoreClient> store_client)
-      : GcsActorTable(store_client) {}
+      : GcsActorTable(std::move(store_client)) {}
 
-  Status Put(const ActorID &key,
-             const rpc::ActorTableData &value,
-             Postable<void(Status)> callback) override {
-    auto status = Status::OK();
-    std::move(callback).Post("FakeGcsActorTable.Put", status);
-    return status;
+  void Put(const ActorID &key,
+           const Data &value,
+           Postable<void(Status)> callback) override {
+    std::move(callback).Post("FakeGcsActorTable.Put", Status::OK());
   }
 
  private:
