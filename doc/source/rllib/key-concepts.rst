@@ -181,7 +181,7 @@ RLlib's :ref:`EnvRunners <rllib-key-concepts-env-runners>` use them for computin
 
 .. raw:: html
 
-   <div style="clear: both;"></div>
+    <div style="clear: both;"></div>
 
 
 In a nutshell, an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` carries the neural
@@ -202,8 +202,9 @@ allowing you to implement any architecture and computation logic.
     inference-only version of the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, using it only to compute actions.
 
 .. raw:: html
-    
-   <div style="clear: both;"></div>
+
+    <div style="clear: both;"></div>
+
 Each :py:class:`~ray.rllib.env.env_runner.EnvRunner` actor, managed by the :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` of the Algorithm,
 has a copy of the user's :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
 Also, each :py:class:`~ray.rllib.core.learner.learner.Learner` actor, managed by the
@@ -220,9 +221,10 @@ not required for bare action computation, for example a value function estimate,
     an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, computing the loss function inputs, the loss itself,
     and the model's gradients, then updating the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`
     through the :py:class:`~ray.rllib.core.learner.learner.Learner`'s optimizers.
+
 .. raw:: html
 
-   <div style="clear: both;"></div>
+    <div style="clear: both;"></div>
 
 
 .. _rllib-key-concepts-episodes:
