@@ -44,7 +44,7 @@ repos:
         args: [ --fix, --exit-non-zero-on-fix ]
       - id: ruff
         args: [ --select, "I", --fix, --exit-non-zero-on-fix ]
-        files: '^python/ray/serve/|^python/ray/train|^python/ray/data|^python/ray/_private/|^python/ray/llm/|^python/ray/tune/'
+        files: '^python/ray/serve/|^python/ray/train|^python/ray/data|^python/ray/_private/|^python/ray/llm/|^python/ray/tune/|^python/ray/dag/'
 
   - repo: https://github.com/jsh9/pydoclint
     rev: "0.6.6"
