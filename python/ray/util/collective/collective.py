@@ -8,6 +8,7 @@ import numpy as np
 
 import ray
 from ray.util.collective import types
+from ray.util.annotations import Deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -545,7 +546,7 @@ def reducescatter(
     if len(tensor_list) != g.world_size:
         raise RuntimeError(
             "The length of the tensor list operands to reducescatter "
-            "must not be equal to world_size."
+            "must be equal to world_size."
         )
     opts = types.ReduceScatterOptions()
     opts.reduceOp = op
@@ -602,6 +603,7 @@ def send(tensor, dst_rank: int, group_name: str = "default"):
     g.send([tensor], opts)
 
 
+@Deprecated(message="Use the `send_multidevice` interface as the replacement.")
 def send_multigpu(
     tensor,
     dst_rank: int,
@@ -625,21 +627,54 @@ def send_multigpu(
     Returns:
         None
     """
+    send_multidevice(
+        tensor=tensor,
+        dst_rank=dst_rank,
+        dst_device_index=dst_gpu_index,
+        group_name=group_name,
+        n_elements=n_elements,
+    )
+
+
+def send_multidevice(
+    tensor,
+    dst_rank: int,
+    dst_device_index: int,
+    group_name: str = "default",
+    n_elements: int = 0,
+):
+    """Send a tensor to a remote Device synchronously, a Device can be
+    a GPU, Ascend NPU, or any supported accelerators.
+
+    The function assumes each process owns >1 Devices, and the sender
+    process and receiver process has equal number of Devices.
+
+    Args:
+        tensor: the tensor to send, located on a Device.
+        dst_rank: the rank of the destination process.
+        dst_device_index: the destination device index.
+        group_name: the name of the collective group.
+        n_elements: if specified, send the next n elements
+            from the starting address of tensor.
+
+    Returns:
+        None
+    """
     if not types.cupy_available():
-        raise RuntimeError("send_multigpu call requires NCCL.")
+        raise RuntimeError("send_multidevice call requires NCCL.")
     _check_single_tensor_input(tensor)
     g = get_group_handle(group_name)
     _check_rank_valid(g, dst_rank)
     if dst_rank == g.rank:
         raise RuntimeError(
             "The dst_rank '{}' is self. Considering "
-            "doing GPU to GPU memcpy instead?".format(dst_rank)
+            "doing Device to Device memcpy instead?".format(dst_rank)
         )
     if n_elements < 0:
         raise RuntimeError("The n_elements '{}' should >= 0.".format(n_elements))
     opts = types.SendOptions()
     opts.dst_rank = dst_rank
-    opts.dst_gpu_index = dst_gpu_index
+    opts.dst_device_index = dst_device_index
     opts.n_elements = n_elements
     g.send([tensor], opts)
 
@@ -665,6 +700,7 @@ def recv(tensor, src_rank: int, group_name: str = "default"):
     g.recv([tensor], opts)
 
 
+@Deprecated(message="Use the `recv_multidevice` interface as the replacement.")
 def recv_multigpu(
     tensor,
     src_rank: int,
@@ -686,21 +722,54 @@ def recv_multigpu(
     Returns:
         None
     """
+    recv_multidevice(
+        tensor=tensor,
+        src_rank=src_rank,
+        src_device_index=src_gpu_index,
+        group_name=group_name,
+        n_elements=n_elements,
+    )
+
+
+def recv_multidevice(
+    tensor,
+    src_rank: int,
+    src_device_index: int,
+    group_name: str = "default",
+    n_elements: int = 0,
+):
+    """Receive a tensor from a remote Device synchronously, a Device can be
+    a GPU, Ascend NPU, or any supported accelerators.
+
+    The function assumes each process owns >1 Devices, and the sender
+    process and receiver process has equal number of Devices.
+
+    Args:
+        tensor: the received tensor, located on a Device.
+        src_rank: the rank of the source process.
+        src_device_index: the index of the source device on the src process.
+        group_name: the name of the collective group.
+        n_elements: if specified, receive the next n elements
+            from the starting address of tensor.
+
+    Returns:
+        None
+    """
     if not types.cupy_available():
-        raise RuntimeError("recv_multigpu call requires NCCL.")
+        raise RuntimeError("recv_multidevice call requires NCCL.")
     _check_single_tensor_input(tensor)
     g = get_group_handle(group_name)
     _check_rank_valid(g, src_rank)
     if src_rank == g.rank:
         raise RuntimeError(
             "The dst_rank '{}' is self. Considering "
-            "doing GPU to GPU memcpy instead?".format(src_rank)
+            "doing Device to Device memcpy instead?".format(src_rank)
         )
     if n_elements < 0:
         raise RuntimeError("The n_elements '{}' should be >= 0.".format(n_elements))
     opts = types.RecvOptions()
     opts.src_rank = src_rank
-    opts.src_gpu_index = src_gpu_index
+    opts.src_device_index = src_device_index
     opts.n_elements = n_elements
     g.recv([tensor], opts)
 
