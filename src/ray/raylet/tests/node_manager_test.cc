@@ -948,9 +948,20 @@ TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesClamps) {
   EXPECT_EQ(reply.total_resources().at("CPU"), 6.0);
 }
 
-TEST_F(NodeManagerTest, TestHandleReturnWorkerLeaseDisconnectIdempotent) {
-  bool disconnect_worker = true;
-  bool worker_exiting = false;
+struct ReturnWorkerLeaseRequestParams {
+  bool disconnect_worker;
+  bool worker_exiting;
+};
+
+class NodeManagerReturnWorkerLeaseIdempotentTest
+    : public NodeManagerTest,
+      public testing::WithParamInterface<ReturnWorkerLeaseRequestParams> {};
+
+TEST_P(NodeManagerReturnWorkerLeaseIdempotentTest, TestDifferentRequestArgs) {
+  const auto &params = GetParam();
+  bool disconnect_worker = params.disconnect_worker;
+  bool worker_exiting = params.worker_exiting;
+
   LeaseID lease_id = LeaseID::FromRandom();
   leased_workers_[lease_id] = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
   rpc::ReturnWorkerLeaseRequest request;
@@ -989,87 +1000,11 @@ TEST_F(NodeManagerTest, TestHandleReturnWorkerLeaseDisconnectIdempotent) {
   ASSERT_EQ(leased_workers_.size(), 0);
 }
 
-TEST_F(NodeManagerTest, TestHandleReturnWorkerLeaseExitIdempotent) {
-  bool disconnect_worker = false;
-  bool worker_exiting = true;
-  LeaseID lease_id = LeaseID::FromRandom();
-  leased_workers_[lease_id] = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
-  rpc::ReturnWorkerLeaseRequest request;
-  rpc::ReturnWorkerLeaseReply reply1;
-  rpc::ReturnWorkerLeaseReply reply2;
-  request.set_lease_id(lease_id.Binary());
-  request.set_disconnect_worker(disconnect_worker);
-  request.set_disconnect_worker_error_detail("test");
-  request.set_worker_exiting(worker_exiting);
-
-  if (disconnect_worker) {
-    EXPECT_CALL(
-        mock_worker_pool_,
-        GetRegisteredWorker(testing::A<const std::shared_ptr<ClientConnection> &>()))
-        .Times(1)
-        .WillOnce(Return(nullptr));
-    EXPECT_CALL(
-        mock_worker_pool_,
-        GetRegisteredDriver(testing::A<const std::shared_ptr<ClientConnection> &>()))
-        .Times(1)
-        .WillOnce(Return(nullptr));
-  }
-  node_manager_->HandleReturnWorkerLease(
-      request,
-      &reply1,
-      [](Status s, std::function<void()> success, std::function<void()> failure) {
-        ASSERT_TRUE(s.ok());
-      });
-  ASSERT_EQ(leased_workers_.size(), 0);
-  node_manager_->HandleReturnWorkerLease(
-      request,
-      &reply2,
-      [](Status s, std::function<void()> success, std::function<void()> failure) {
-        ASSERT_TRUE(s.ok());
-      });
-  ASSERT_EQ(leased_workers_.size(), 0);
-}
-
-TEST_F(NodeManagerTest, TestHandleReturnWorkerLeaseIdempotent) {
-  bool disconnect_worker = false;
-  bool worker_exiting = false;
-  LeaseID lease_id = LeaseID::FromRandom();
-  leased_workers_[lease_id] = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
-  rpc::ReturnWorkerLeaseRequest request;
-  rpc::ReturnWorkerLeaseReply reply1;
-  rpc::ReturnWorkerLeaseReply reply2;
-  request.set_lease_id(lease_id.Binary());
-  request.set_disconnect_worker(disconnect_worker);
-  request.set_disconnect_worker_error_detail("test");
-  request.set_worker_exiting(worker_exiting);
-
-  if (disconnect_worker) {
-    EXPECT_CALL(
-        mock_worker_pool_,
-        GetRegisteredWorker(testing::A<const std::shared_ptr<ClientConnection> &>()))
-        .Times(1)
-        .WillOnce(Return(nullptr));
-    EXPECT_CALL(
-        mock_worker_pool_,
-        GetRegisteredDriver(testing::A<const std::shared_ptr<ClientConnection> &>()))
-        .Times(1)
-        .WillOnce(Return(nullptr));
-  }
-  node_manager_->HandleReturnWorkerLease(
-      request,
-      &reply1,
-      [](Status s, std::function<void()> success, std::function<void()> failure) {
-        ASSERT_TRUE(s.ok());
-      });
-  ASSERT_EQ(leased_workers_.size(), 0);
-  node_manager_->HandleReturnWorkerLease(
-      request,
-      &reply2,
-      [](Status s, std::function<void()> success, std::function<void()> failure) {
-        ASSERT_TRUE(s.ok());
-      });
-  ASSERT_EQ(leased_workers_.size(), 0);
-}
+INSTANTIATE_TEST_SUITE_P(NodeManagerReturnWorkerLeaseIdempotentVariations,
+                         NodeManagerReturnWorkerLeaseIdempotentTest,
+                         testing::Values(ReturnWorkerLeaseRequestParams{true, false},
+                                         ReturnWorkerLeaseRequestParams{false, true},
+                                         ReturnWorkerLeaseRequestParams{false, false}));
 
 }  // namespace ray::raylet
 

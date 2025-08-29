@@ -287,9 +287,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
  private:
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
-  FRIEND_TEST(NodeManagerTest, TestHandleReturnWorkerLeaseDisconnectIdempotent);
-  FRIEND_TEST(NodeManagerTest, TestHandleReturnWorkerLeaseExitIdempotent);
-  FRIEND_TEST(NodeManagerTest, TestHandleReturnWorkerLeaseIdempotent);
+  FRIEND_TEST(NodeManagerReturnWorkerLeaseIdempotentTest, TestDifferentRequestArgs);
 
   // Removes the worker from node_manager's leased_workers_ map.
   // Warning: this does NOT release the worker's resources, or put the leased worker

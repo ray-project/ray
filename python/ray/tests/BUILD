@@ -901,6 +901,23 @@ py_test_module_list(
 )
 
 py_test_module_list(
+    size = "small",
+    files = [
+        "test_core_worker_fault_tolerance.py",
+        "test_raylet_fault_tolerance.py",
+    ],
+    tags = [
+        "exclusive",
+        "small_size_python_tests",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
     size = "large",
     files = [
         "test_actor_advanced.py",
