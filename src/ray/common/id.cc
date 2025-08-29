@@ -322,7 +322,6 @@ LeaseID LeaseID::FromRandom() {
 }
 
 LeaseID LeaseID::FromWorker(const WorkerID &worker_id, uint32_t counter) {
-  RAY_CHECK_GT(counter, 0u);
   std::string data(kUniqueBytesLength, 0);
   std::memcpy(data.data(), &counter, sizeof(counter));
   std::copy_n(worker_id.Data(), kUniqueIDSize, std::back_inserter(data));

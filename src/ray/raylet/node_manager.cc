@@ -1243,7 +1243,7 @@ void NodeManager::SendPortAnnouncementResponse(
 
 void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &worker) {
   RAY_CHECK(worker);
-  RAY_CHECK(worker->GetWorkerType() != rpc::WorkerType::DRIVER);
+  RAY_CHECK_NE(worker->GetWorkerType(), rpc::WorkerType::DRIVER);
 
   if (worker->GetWorkerType() == rpc::WorkerType::SPILL_WORKER) {
     // Return the worker to the idle pool.
