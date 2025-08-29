@@ -21,8 +21,8 @@
 namespace ray {
 namespace core {
 
-std::pair<rpc::Address, bool> LocalityAwareLeasePolicy::GetBestNodeForTask(
-    const TaskSpecification &spec) {
+std::pair<rpc::Address, bool> LocalityAwareLeasePolicy::GetBestNodeForLease(
+    const LeaseSpecification &spec) {
   if (spec.GetMessage().scheduling_strategy().scheduling_strategy_case() ==
       rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy) {
     // The explicit spread scheduling strategy
@@ -40,7 +40,7 @@ std::pair<rpc::Address, bool> LocalityAwareLeasePolicy::GetBestNodeForTask(
   }
 
   // Pick node based on locality.
-  if (auto node_id = GetBestNodeIdForTask(spec)) {
+  if (auto node_id = GetBestNodeIdForLease(spec)) {
     if (auto addr = node_addr_factory_(node_id.value())) {
       return std::make_pair(addr.value(), true);
     }
@@ -49,8 +49,8 @@ std::pair<rpc::Address, bool> LocalityAwareLeasePolicy::GetBestNodeForTask(
 }
 
 /// Criteria for "best" node: The node with the most object bytes (from object_ids) local.
-std::optional<NodeID> LocalityAwareLeasePolicy::GetBestNodeIdForTask(
-    const TaskSpecification &spec) {
+std::optional<NodeID> LocalityAwareLeasePolicy::GetBestNodeIdForLease(
+    const LeaseSpecification &spec) {
   const auto object_ids = spec.GetDependencyIds();
   // Number of object bytes (from object_ids) that a given node has local.
   absl::flat_hash_map<NodeID, uint64_t> bytes_local_table;
@@ -76,8 +76,8 @@ std::optional<NodeID> LocalityAwareLeasePolicy::GetBestNodeIdForTask(
   return max_bytes_node;
 }
 
-std::pair<rpc::Address, bool> LocalLeasePolicy::GetBestNodeForTask(
-    const TaskSpecification &spec) {
+std::pair<rpc::Address, bool> LocalLeasePolicy::GetBestNodeForLease(
+    const LeaseSpecification &spec) {
   // Always return the local node.
   return std::make_pair(local_node_rpc_address_, false);
 }

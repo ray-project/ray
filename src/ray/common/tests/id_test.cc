@@ -18,7 +18,6 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/common_protocol.h"
-#include "ray/common/task/task_spec.h"
 
 namespace ray {
 
@@ -174,6 +173,33 @@ TEST(PlacementGroupIDTest, TestPlacementGroup) {
     const PlacementGroupID placement_group_id = PlacementGroupID::Of(job_id);
     ASSERT_EQ(job_id, placement_group_id.JobId());
   }
+}
+
+TEST(LeaseIDTest, TestLeaseID) {
+  // Test basic LeaseID creation, size, and worker extraction
+  const WorkerID worker_id = WorkerID::FromRandom();
+  const LeaseID lease_id = LeaseID::FromWorker(worker_id, 2);
+  const size_t lease_id_size = 32;
+  ASSERT_FALSE(lease_id.IsNil());
+  ASSERT_EQ(lease_id.WorkerId(), worker_id);
+  ASSERT_EQ(LeaseID::Size(), lease_id_size);
+  ASSERT_EQ(lease_id.Binary().size(), lease_id_size);
+
+  const LeaseID random_lease = LeaseID::FromRandom();
+  const LeaseID another_lease = LeaseID::FromWorker(worker_id, 1);
+
+  ASSERT_FALSE(random_lease.IsNil());
+  ASSERT_NE(lease_id, another_lease);
+  ASSERT_NE(lease_id, random_lease);
+  ASSERT_EQ(lease_id.WorkerId(), another_lease.WorkerId());
+
+  // Test serialization roundtrip
+  const LeaseID from_hex = LeaseID::FromHex(lease_id.Hex());
+  const LeaseID from_binary = LeaseID::FromBinary(lease_id.Binary());
+
+  ASSERT_EQ(lease_id, from_hex);
+  ASSERT_EQ(lease_id, from_binary);
+  ASSERT_EQ(lease_id.WorkerId(), from_hex.WorkerId());
 }
 
 }  // namespace ray

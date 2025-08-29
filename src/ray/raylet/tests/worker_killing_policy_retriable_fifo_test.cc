@@ -18,7 +18,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "ray/common/task/task_spec.h"
+#include "ray/common/lease/lease_spec.h"
 #include "ray/raylet/tests/util.h"
 #include "ray/raylet/worker_killing_policy.h"
 
@@ -32,24 +32,24 @@ class WorkerKillerTest : public ::testing::Test {
   RetriableFIFOWorkerKillingPolicy worker_killing_policy_;
 
   std::shared_ptr<WorkerInterface> CreateActorCreationWorker(int32_t max_restarts) {
-    rpc::TaskSpec message;
-    message.mutable_actor_creation_task_spec()->set_max_actor_restarts(max_restarts);
+    rpc::LeaseSpec message;
+    message.set_max_actor_restarts(max_restarts);
     message.set_type(ray::rpc::TaskType::ACTOR_CREATION_TASK);
-    TaskSpecification task_spec(message);
-    RayTask task(task_spec);
+    LeaseSpecification lease_spec(message);
+    RayLease lease(lease_spec);
     auto worker = std::make_shared<MockWorker>(ray::WorkerID::FromRandom(), port_);
-    worker->SetAssignedTask(task);
+    worker->GrantLease(lease);
     return worker;
   }
 
   std::shared_ptr<WorkerInterface> CreateTaskWorker(int32_t max_retries) {
-    rpc::TaskSpec message;
+    rpc::LeaseSpec message;
     message.set_max_retries(max_retries);
     message.set_type(ray::rpc::TaskType::NORMAL_TASK);
-    TaskSpecification task_spec(message);
-    RayTask task(task_spec);
+    LeaseSpecification lease_spec(message);
+    RayLease lease(lease_spec);
     auto worker = std::make_shared<MockWorker>(ray::WorkerID::FromRandom(), port_);
-    worker->SetAssignedTask(task);
+    worker->GrantLease(lease);
     return worker;
   }
 };
@@ -68,9 +68,9 @@ TEST_F(WorkerKillerTest,
   auto first_submitted =
       WorkerKillerTest::CreateActorCreationWorker(0 /* max_restarts */);
   auto second_submitted =
-      WorkerKillerTest::CreateActorCreationWorker(5 /* max_restarts */);
+      WorkerKillerTest::CreateActorCreationWorker(1 /* max_restarts */);
   auto third_submitted = WorkerKillerTest::CreateTaskWorker(0 /* max_restarts */);
-  auto fourth_submitted = WorkerKillerTest::CreateTaskWorker(11 /* max_restarts */);
+  auto fourth_submitted = WorkerKillerTest::CreateTaskWorker(1 /* max_restarts */);
 
   workers.push_back(first_submitted);
   workers.push_back(second_submitted);

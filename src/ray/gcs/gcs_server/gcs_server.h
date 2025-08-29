@@ -37,8 +37,8 @@
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/observable_store_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
+#include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
-#include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs/gcs_rpc_server.h"
 #include "ray/rpc/metrics_agent_client.h"
@@ -47,8 +47,8 @@
 #include "ray/util/throttler.h"
 
 namespace ray {
-using raylet::ClusterTaskManager;
-using raylet::NoopLocalTaskManager;
+using raylet::ClusterLeaseManager;
+using raylet::NoopLocalLeaseManager;
 
 namespace gcs {
 
@@ -149,8 +149,8 @@ class GcsServer {
   /// Initialize cluster resource scheduler.
   void InitClusterResourceScheduler();
 
-  /// Initialize cluster task manager.
-  void InitClusterTaskManager();
+  /// Initialize cluster lease manager.
+  void InitClusterLeaseManager();
 
   /// Initialize gcs job manager.
   void InitGcsJobManager(const GcsInitData &gcs_init_data);
@@ -235,13 +235,13 @@ class GcsServer {
   rpc::CoreWorkerClientPool worker_client_pool_;
   /// The cluster resource scheduler.
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
-  /// Local task manager.
-  NoopLocalTaskManager local_task_manager_;
+  /// Local lease manager.
+  NoopLocalLeaseManager local_lease_manager_;
   /// The gcs table storage.
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  /// The cluster task manager.
-  std::unique_ptr<ClusterTaskManager> cluster_task_manager_;
-  /// [gcs_resource_manager_] depends on [cluster_task_manager_].
+  /// The cluster lease manager.
+  std::unique_ptr<ClusterLeaseManager> cluster_lease_manager_;
+  /// [gcs_resource_manager_] depends on [cluster_lease_manager_].
   /// The gcs resource manager.
   std::unique_ptr<GcsResourceManager> gcs_resource_manager_;
   /// The autoscaler state manager.
