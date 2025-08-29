@@ -8,7 +8,6 @@ from queue import Queue
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import ray
-from ray.actor import ActorHandle
 from ray.data import DataIterator, Dataset
 from ray.train import BackendConfig, Checkpoint, DataConfig
 from ray.train._internal import session
@@ -20,9 +19,9 @@ from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.report_config import CheckpointUploadMode
 
 if TYPE_CHECKING:
-    from ray.train.v2._internal.callbacks.datasets import (
-        DatasetManager,
+    from ray.train.v2._internal.data_integration.interfaces import (
         DatasetShardMetadata,
+        DatasetShardProvider,
     )
     from ray.train.v2._internal.execution.callback import TrainContextCallback
     from ray.train.v2._internal.execution.worker_group.thread_runner import ThreadRunner
@@ -103,6 +102,7 @@ class TrainContext:
     distributed_context: DistributedContext
     execution_context: ExecutionContext
     storage_context: StorageContext
+    dataset_shard_provider: "DatasetShardProvider"
     checkpoint: Optional[Checkpoint] = None
     num_reported_checkpoints: int = 0
     num_attempted_reported_checkpoints: int = 0
@@ -110,9 +110,6 @@ class TrainContext:
     checkpoint_uploads: ThreadPoolExecutor = ThreadPoolExecutor(
         max_workers=MAX_CHECKPOINT_UPLOAD_THREADS
     )
-
-    dataset_manager: Optional[ActorHandle["DatasetManager"]] = None
-    _cached_dataset_shards: Dict[str, DataIterator] = field(default_factory=dict)
 
     @_copy_doc(session.get_experiment_name)
     def get_experiment_name(self) -> str:
@@ -161,33 +158,12 @@ class TrainContext:
 
         Args:
             dataset_info: The shard metadata, including the dataset name and worker rank.
-
         Returns:
             The ``DataIterator`` shard with the given name for this worker.
-
         Raises:
             KeyError: If the dataset shard with the given name is not found.
         """
-        dataset_name = dataset_info.dataset_name
-        error = KeyError(
-            f"Dataset shard for '{dataset_name}' not found. "
-            "Please ensure that the dataset is passed through the Trainer `datasets` "
-            "argument."
-        )
-
-        if self.dataset_manager is None:
-            raise error
-
-        if dataset_info.dataset_name in self._cached_dataset_shards:
-            return self._cached_dataset_shards[dataset_info.dataset_name]
-
-        try:
-            shard = ray.get(self.dataset_manager.get_dataset_shard.remote(dataset_info))
-        except KeyError as e:
-            raise error from e
-
-        self._cached_dataset_shards[dataset_info.dataset_name] = shard
-        return shard
+        return self.dataset_shard_provider.get_dataset_shard(dataset_info)
 
     def get_context_callbacks(self) -> List["TrainContextCallback"]:
         return self.execution_context.train_context_callbacks

@@ -489,7 +489,7 @@ def test_metrics_export_event_aggregator_agent(
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
-        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
+        cluster.gcs_address, cluster.head_node.node_id
     )
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
 
@@ -971,9 +971,10 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
         )
         return node_export_addrs + [autoscaler_export_addr, dashboard_export_addr]
 
-    loaded_json_data = json.loads(writer.get_file_discovery_content())[0]
+    loaded_json_data = json.loads(writer.get_file_discovery_content())
+    assert loaded_json_data == writer.get_latest_service_discovery_content()
     assert set(get_metrics_export_address_from_node(nodes)) == set(
-        loaded_json_data["targets"]
+        loaded_json_data[0]["targets"]
     )
 
     # Let's update nodes.
@@ -981,9 +982,10 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
         nodes.append(cluster.add_node())
 
     # Make sure service discovery file content is correctly updated.
-    loaded_json_data = json.loads(writer.get_file_discovery_content())[0]
+    loaded_json_data = json.loads(writer.get_file_discovery_content())
+    assert loaded_json_data == writer.get_latest_service_discovery_content()
     assert set(get_metrics_export_address_from_node(nodes)) == set(
-        loaded_json_data["targets"]
+        loaded_json_data[0]["targets"]
     )
 
 

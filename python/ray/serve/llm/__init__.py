@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
 from ray.llm._internal.serve.configs.server_models import (
     CloudMirrorConfig as _CloudMirrorConfig,
@@ -93,7 +93,10 @@ class LLMRouter(_LLMRouter):
 
 @PublicAPI(stability="alpha")
 def build_llm_deployment(
-    llm_config: "LLMConfig", *, name_prefix: Optional[str] = None
+    llm_config: "LLMConfig",
+    *,
+    name_prefix: Optional[str] = None,
+    override_serve_options: Optional[dict] = None,
 ) -> "Application":
     """Helper to build a single vllm deployment from the given llm config.
 
@@ -150,17 +153,24 @@ def build_llm_deployment(
     Args:
         llm_config: The llm config to build vllm deployment.
         name_prefix: Optional prefix to be used for the deployment name.
+        override_serve_options: Optional serve options to override the original serve options based on the llm_config.
 
     Returns:
         The configured Ray Serve Application for vllm deployment.
     """
     from ray.llm._internal.serve.builders import build_llm_deployment
 
-    return build_llm_deployment(llm_config=llm_config, name_prefix=name_prefix)
+    return build_llm_deployment(
+        llm_config=llm_config,
+        name_prefix=name_prefix,
+        override_serve_options=override_serve_options,
+    )
 
 
 @PublicAPI(stability="alpha")
-def build_openai_app(llm_serving_args: "LLMServingArgs") -> "Application":
+def build_openai_app(
+    llm_serving_args: Union["LLMServingArgs", Dict[str, Any]]
+) -> "Application":
     """Helper to build an OpenAI compatible app with the llm deployment setup from
     the given llm serving args. This is the main entry point for users to create a
     Serve application serving LLMs.
@@ -252,8 +262,8 @@ def build_openai_app(llm_serving_args: "LLMServingArgs") -> "Application":
 
 
     Args:
-        llm_serving_args: The list of llm configs or the paths to the llm config to
-            build the app.
+        llm_serving_args: Either a dict with "llm_configs" key containing a list of
+            LLMConfig objects, or an LLMServingArgs object.
 
     Returns:
         The configured Ray Serve Application router.
