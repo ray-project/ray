@@ -2667,6 +2667,48 @@ def test_with_column_mixed_udf_and_regular_expressions(
     pd.testing.assert_frame_equal(result_df, expected_df)
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+def test_with_column_udf_invalid_return_type_validation(
+    ray_start_regular_shared, target_max_block_size_infinite_or_default
+):
+    """Test that UDFs returning invalid types raise TypeError with clear message."""
+    ds = ray.data.range(3)
+
+    # Test UDF returning invalid type (dict)
+    @udf()
+    def invalid_dict_return(x: pa.Array) -> dict:
+        return {"invalid": "return_type"}
+
+    # Test UDF returning invalid type (str)
+    @udf()
+    def invalid_str_return(x: pa.Array) -> str:
+        return "invalid_string"
+
+    # Test UDF returning invalid type (int)
+    @udf()
+    def invalid_int_return(x: pa.Array) -> int:
+        return 42
+
+    # Test each invalid return type
+    test_cases = [
+        (invalid_dict_return, "dict"),
+        (invalid_str_return, "str"),
+        (invalid_int_return, "int"),
+    ]
+
+    for invalid_udf, expected_type_name in test_cases:
+        with pytest.raises((RayTaskError, UserCodeException)) as exc_info:
+            ds.with_column("invalid_col", invalid_udf(col("id"))).take(1)
+
+        # The actual TypeError gets wrapped, so we need to check the exception chain
+        error_message = str(exc_info.value)
+        assert f"returned invalid type {expected_type_name}" in error_message
+        assert "Expected BatchColumn type" in error_message
+
+
 if __name__ == "__main__":
     import sys
 

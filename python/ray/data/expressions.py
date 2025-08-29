@@ -4,14 +4,10 @@ import functools
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional
 
-import numpy as np
-import pyarrow as pa
-
+from ray.data.block import BatchColumn
 from ray.util.annotations import DeveloperAPI, PublicAPI
-
-UDF_RETURN_TYPES = Union[List[Any], np.ndarray[Any, Any], pa.Array, pa.ChunkedArray]
 
 
 @DeveloperAPI(stability="alpha")
@@ -275,7 +271,7 @@ class UDFExpr(Expr):
         >>> expr = add_one(col("value"))
     """
 
-    fn: Callable[..., UDF_RETURN_TYPES]
+    fn: Callable[..., BatchColumn]
     args: List[Expr]
     kwargs: Dict[str, Expr]
     function_name: Optional[str] = None
@@ -295,7 +291,7 @@ class UDFExpr(Expr):
         )
 
 
-def _create_udf_callable(fn: Callable[..., UDF_RETURN_TYPES]) -> Callable[..., UDFExpr]:
+def _create_udf_callable(fn: Callable[..., BatchColumn]) -> Callable[..., UDFExpr]:
     """Create a callable that generates UDFExpr when called with expressions."""
 
     def udf_callable(*args, **kwargs) -> UDFExpr:
@@ -378,7 +374,7 @@ def udf() -> Callable[..., UDFExpr]:
         >>> ds_complex = ds.with_column("doubled_plus_one", add_one(col("value")) * 2)
     """
 
-    def decorator(func: Callable[..., UDF_RETURN_TYPES]) -> Callable[..., UDFExpr]:
+    def decorator(func: Callable[..., BatchColumn]) -> Callable[..., UDFExpr]:
         return _create_udf_callable(func)
 
     return decorator

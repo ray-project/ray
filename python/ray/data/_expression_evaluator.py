@@ -7,7 +7,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
 
-from ray.data.block import DataBatch
+from ray.data.block import BatchColumn, DataBatch
 from ray.data.expressions import (
     BinaryExpr,
     ColumnExpr,
@@ -67,7 +67,17 @@ def _eval_expr_recursive(
         kwargs = {
             k: _eval_expr_recursive(v, batch, ops) for k, v in expr.kwargs.items()
         }
-        return expr.fn(*args, **kwargs)
+        result = expr.fn(*args, **kwargs)
+
+        # Can't perform type validation for unions if python version is < 3.10
+        if not isinstance(result, BatchColumn.__args__):
+            function_name = expr.function_name or "Anonymous UDF"
+            raise TypeError(
+                f"UDF '{function_name}' returned invalid type {type(result).__name__}. "
+                f"Expected BatchColumn type ({BatchColumn.__args__})"
+            )
+
+        return result
     raise TypeError(f"Unsupported expression node: {type(expr).__name__}")
 
 
@@ -79,11 +89,3 @@ def eval_expr(expr: "Expr", batch: DataBatch) -> Any:
         return _eval_expr_recursive(expr, batch, _ARROW_EXPR_OPS_MAP)
     else:
         raise TypeError(f"Unsupported batch type: {type(batch).__name__}")
-
-
-def _contains_udf(e: Expr) -> bool:
-    if isinstance(e, UDFExpr):
-        return True
-    if isinstance(e, BinaryExpr):
-        return _contains_udf(e.left) or _contains_udf(e.right)
-    return False
