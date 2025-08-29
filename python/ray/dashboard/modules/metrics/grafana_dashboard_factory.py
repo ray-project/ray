@@ -170,6 +170,7 @@ def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> str:
     # Ray metadata can be used to put arbitrary metadata
     ray_meta = base_json.get("rayMeta", []) or []
     ray_meta.append("supportsGlobalFilterOverride")
+    # Indicates full dashboard iframe embedding works well. Added after introducing panel grouping.
     ray_meta.append("supportsFullDashboardEmbedding")
     base_json["rayMeta"] = ray_meta
     return json.dumps(base_json, indent=4), uid
