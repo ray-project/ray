@@ -159,8 +159,8 @@ TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak2) {
   std::unique_ptr<Postable<void(bool)>> async_put_with_index_cb;
   // Leasing successfully
   EXPECT_CALL(*store_client, AsyncPut(_, _, _, _, _))
-      .WillOnce(
-          DoAll(SaveArgToUniquePtr<4>(&async_put_with_index_cb), Return(Status::OK())));
+      .WillOnce(DoAll(SaveArgToUniquePtr<4>(&async_put_with_index_cb),
+                      InvokeWithoutArgs([]() {})));
   actor_scheduler->ScheduleByRaylet(actor);
   rpc::RequestWorkerLeaseReply reply;
   reply.mutable_worker_address()->set_node_id(node_id.Binary());

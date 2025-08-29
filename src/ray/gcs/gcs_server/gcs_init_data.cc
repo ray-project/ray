@@ -44,56 +44,53 @@ void GcsInitData::AsyncLoad(Postable<void()> on_done) {
 
 void GcsInitData::AsyncLoadJobTableData(Postable<void()> on_done) {
   RAY_LOG(INFO) << "Loading job table data.";
-  RAY_CHECK_OK(gcs_table_storage_.JobTable().GetAll(std::move(on_done).TransformArg(
+  gcs_table_storage_.JobTable().GetAll(std::move(on_done).TransformArg(
       [this](absl::flat_hash_map<JobID, rpc::JobTableData> result) {
         job_table_data_ = std::move(result);
         RAY_LOG(INFO) << "Finished loading job table data, size = "
                       << job_table_data_.size();
-      })));
+      }));
 }
 
 void GcsInitData::AsyncLoadNodeTableData(Postable<void()> on_done) {
   RAY_LOG(INFO) << "Loading node table data.";
-  RAY_CHECK_OK(gcs_table_storage_.NodeTable().GetAll(std::move(on_done).TransformArg(
+  gcs_table_storage_.NodeTable().GetAll(std::move(on_done).TransformArg(
       [this](absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> result) {
         node_table_data_ = std::move(result);
         RAY_LOG(INFO) << "Finished loading node table data, size = "
                       << node_table_data_.size();
-      })));
+      }));
 }
 
 void GcsInitData::AsyncLoadPlacementGroupTableData(Postable<void()> on_done) {
   RAY_LOG(INFO) << "Loading placement group table data.";
-  RAY_CHECK_OK(
-      gcs_table_storage_.PlacementGroupTable().GetAll(std::move(on_done).TransformArg(
-          [this](absl::flat_hash_map<PlacementGroupID, rpc::PlacementGroupTableData>
-                     result) {
-            placement_group_table_data_ = std::move(result);
-            RAY_LOG(INFO) << "Finished loading placement group table data, size = "
-                          << placement_group_table_data_.size();
-          })));
+  gcs_table_storage_.PlacementGroupTable().GetAll(std::move(on_done).TransformArg(
+      [this](absl::flat_hash_map<PlacementGroupID, rpc::PlacementGroupTableData> result) {
+        placement_group_table_data_ = std::move(result);
+        RAY_LOG(INFO) << "Finished loading placement group table data, size = "
+                      << placement_group_table_data_.size();
+      }));
 }
 
 void GcsInitData::AsyncLoadActorTableData(Postable<void()> on_done) {
   RAY_LOG(INFO) << "Loading actor table data.";
-  RAY_CHECK_OK(gcs_table_storage_.ActorTable().AsyncRebuildIndexAndGetAll(
+  gcs_table_storage_.ActorTable().AsyncRebuildIndexAndGetAll(
       std::move(on_done).TransformArg(
           [this](absl::flat_hash_map<ActorID, rpc::ActorTableData> result) {
             actor_table_data_ = std::move(result);
             RAY_LOG(INFO) << "Finished loading actor table data, size = "
                           << actor_table_data_.size();
-          })));
+          }));
 }
 
 void GcsInitData::AsyncLoadActorTaskSpecTableData(Postable<void()> on_done) {
   RAY_LOG(INFO) << "Loading actor task spec table data.";
-  RAY_CHECK_OK(
-      gcs_table_storage_.ActorTaskSpecTable().GetAll(std::move(on_done).TransformArg(
-          [this](absl::flat_hash_map<ActorID, rpc::TaskSpec> result) -> void {
-            actor_task_spec_table_data_ = std::move(result);
-            RAY_LOG(INFO) << "Finished loading actor task spec table data, size = "
-                          << actor_task_spec_table_data_.size();
-          })));
+  gcs_table_storage_.ActorTaskSpecTable().GetAll(std::move(on_done).TransformArg(
+      [this](absl::flat_hash_map<ActorID, rpc::TaskSpec> result) -> void {
+        actor_task_spec_table_data_ = std::move(result);
+        RAY_LOG(INFO) << "Finished loading actor task spec table data, size = "
+                      << actor_task_spec_table_data_.size();
+      }));
 }
 
 }  // namespace gcs
