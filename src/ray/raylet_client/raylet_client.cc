@@ -21,8 +21,10 @@
 #include <vector>
 
 #include "absl/synchronization/notification.h"
+#include "ray/common/bundle_spec.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/ray_config.h"
+#include "ray/raylet_client/node_manager_client.h"
 #include "ray/util/logging.h"
 
 namespace ray::raylet {

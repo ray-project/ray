@@ -19,13 +19,10 @@
 #include <utility>
 
 #include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
-#include "ray/raylet_client/raylet_client.h"
-#include "ray/rpc/node_manager/node_manager_client.h"
+#include "ray/raylet_client/raylet_client_interface.h"
 
 namespace ray {
 namespace rpc {
