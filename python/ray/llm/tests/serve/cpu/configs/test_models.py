@@ -215,8 +215,7 @@ class TestModelConfig:
         }
 
         assert serve_options["placement_group_bundles"] == [
-            {"CPU": 1, "GPU": 0},
-            {"GPU": 1},
+            {"CPU": 1, "GPU": 1},
         ]
         assert serve_options["placement_group_strategy"] == "PACK"
         assert serve_options["name"] == "Test:test_model"

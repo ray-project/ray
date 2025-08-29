@@ -52,18 +52,23 @@ def disable_placement_bundles():
         def test_friendly_placement_config(
             deployment_config, replica_actor_resources, engine_config
         ):
-            # For tests, always use the new topology-aware logic but without accelerator annotations
+            # For tests, use the same topology-aware logic but without accelerator annotations
             tp_size = getattr(engine_config, "tensor_parallel_degree", 1)
             pp_size = getattr(engine_config, "pipeline_parallel_degree", 1)
 
-            replica_bundle = replica_actor_resources
-            # Create worker bundles without accelerator type annotations for test compatibility
-            worker_bundle = {"GPU": tp_size}
-            worker_bundles = [worker_bundle.copy()] * pp_size
+            # Create topology-aware bundles: one bundle per PP stage, each with tp_size GPUs
+            bundle_template = {
+                "CPU": 1,  # Each bundle gets 1 CPU
+                "GPU": tp_size,  # Each bundle gets tp_size GPUs (for TP ranks)
+            }
+            # Note: No accelerator type annotations in test environment
+
+            # Create pp_size bundles (one per PP stage)
+            topology_bundles = [bundle_template.copy() for _ in range(pp_size)]
 
             deployment_config.update(
                 {
-                    "placement_group_bundles": [replica_bundle] + worker_bundles,
+                    "placement_group_bundles": topology_bundles,
                     "placement_group_strategy": "PACK",
                 }
             )

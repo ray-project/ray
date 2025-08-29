@@ -530,23 +530,26 @@ class LLMConfig(BaseModelExtended):
             return
 
         # New default behavior: TP ranks colocated, PP ranks cross-node allowed
+        # Following guidance: placement_group_bundles=[{"cpu":1 , "gpu": tp_size} * pp_size]
         tp_size = getattr(engine_config, "tensor_parallel_degree", 1)
         pp_size = getattr(engine_config, "pipeline_parallel_degree", 1)
 
-        replica_bundle = replica_actor_resources
-
-        # Create worker bundles with proper resource annotations
-        worker_bundle = {"GPU": tp_size}
+        # Create topology-aware bundles: one bundle per PP stage, each with tp_size GPUs
+        bundle_template = {
+            "CPU": 1,  # Each bundle gets 1 CPU
+            "GPU": tp_size,  # Each bundle gets tp_size GPUs (for TP ranks)
+        }
 
         # Add accelerator type annotation if specified
         if self.accelerator_type:
-            worker_bundle[f"accelerator_type:{self.accelerator_type}"] = 0.001
+            bundle_template[f"accelerator_type:{self.accelerator_type}"] = 0.001
 
-        worker_bundles = [worker_bundle.copy()] * pp_size  # One bundle per PP stage
+        # Create pp_size bundles (one per PP stage)
+        topology_bundles = [bundle_template.copy() for _ in range(pp_size)]
 
         deployment_config.update(
             {
-                "placement_group_bundles": [replica_bundle] + worker_bundles,
+                "placement_group_bundles": topology_bundles,
                 "placement_group_strategy": "PACK",
             }
         )
