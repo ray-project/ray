@@ -394,19 +394,7 @@ class AutoscalingState:
                 for k, v in self._replica_metrics[id].metrics.items():
                     metric_values[k].append(v)
 
-        agg_dict = {}
-        for k, v_list in metric_values.items():
-            # Flatten if v is a list, otherwise just use the value
-            flat_values: List[TimeStampedValue] = []
-            for v in v_list:
-                if isinstance(v, list):
-                    flat_values.extend(v)
-                else:
-                    flat_values.append(v)
-            if flat_values:
-                values = [fv.value for fv in flat_values]
-                agg_dict[k] = sum(values) / len(values)
-        return agg_dict
+        return metric_values
 
 
 class AutoscalingStateManager:
@@ -481,7 +469,11 @@ class AutoscalingStateManager:
         )
 
     def record_request_metrics_for_replica(
-        self, replica_id: ReplicaID, window_avg: Optional[float], send_timestamp: float
+        self,
+        replica_id: ReplicaID,
+        window_avg: Optional[float],
+        metrics: DefaultDict[Hashable, List[TimeStampedValue]],
+        send_timestamp: float,
     ) -> None:
         deployment_id = replica_id.deployment_id
         # Defensively guard against delayed replica metrics arriving
@@ -490,6 +482,7 @@ class AutoscalingStateManager:
             self._autoscaling_states[deployment_id].record_request_metrics_for_replica(
                 replica_id=replica_id,
                 window_avg=window_avg,
+                metrics=metrics,
                 send_timestamp=send_timestamp,
             )
 
