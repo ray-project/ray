@@ -22,7 +22,7 @@ import os
 llm_config = LLMConfig(
     model_loading_config=dict(
         model_id="my-llama-3.1-8b",
-        # Or Qwen/Qwen2.5-7B for an ungated model
+        # Or unsloth/Meta-Llama-3.1-8B-Instruct for an ungated model
         model_source="meta-llama/Llama-3.1-8B-Instruct",
     ),
     accelerator_type="L4",
