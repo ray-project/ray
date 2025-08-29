@@ -35,7 +35,9 @@ def disable_placement_bundles():
     Fixture to disable placement bundles for tests that don't need GPU hardware.
 
     Use this fixture in tests that would otherwise require GPU hardware but
-    don't actually need to test placement bundle logic.
+    don't actually need to test placement bundle logic. This fixture patches
+    the placement logic to avoid accelerator type annotations that would cause
+    resource starvation in test environments.
     """
     with patch.object(
         VLLMEngineConfig,
@@ -43,24 +45,29 @@ def disable_placement_bundles():
         new_callable=lambda: property(lambda self: []),
     ), patch(
         "ray.llm._internal.serve.configs.server_models.LLMConfig._apply_default_placement_config"
-    ) as mock_apply_default:
-        # Mock the new default placement logic to use old engine config logic
-        def mock_apply_default_placement_config(
+    ) as mock_apply:
+
+        # Let the new placement logic run but without accelerator type annotations
+        def test_friendly_placement_config(
             deployment_config, replica_actor_resources, engine_config
         ):
-            try:
-                bundles = engine_config.placement_bundles
-            except ValueError:
-                bundles = []
-            bundles = [replica_actor_resources] + bundles
+            # For tests, always use the new topology-aware logic but without accelerator annotations
+            tp_size = getattr(engine_config, "tensor_parallel_degree", 1)
+            pp_size = getattr(engine_config, "pipeline_parallel_degree", 1)
+
+            replica_bundle = replica_actor_resources
+            # Create worker bundles without accelerator type annotations for test compatibility
+            worker_bundle = {"GPU": tp_size}
+            worker_bundles = [worker_bundle.copy()] * pp_size
+
             deployment_config.update(
                 {
-                    "placement_group_bundles": bundles,
-                    "placement_group_strategy": engine_config.placement_strategy,
+                    "placement_group_bundles": [replica_bundle] + worker_bundles,
+                    "placement_group_strategy": "PACK",
                 }
             )
 
-        mock_apply_default.side_effect = mock_apply_default_placement_config
+        mock_apply.side_effect = test_friendly_placement_config
         yield
 
 
