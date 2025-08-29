@@ -335,10 +335,14 @@ Status PythonGcsSubscriber::Close() {
 
   grpc::ClientContext context;
 
-  rpc::GcsUnregisterSubscriberRequest request;
+  rpc::GcsSubscriberCommandBatchRequest request;
   request.set_subscriber_id(subscriber_id_);
-  rpc::GcsUnregisterSubscriberReply reply;
-  grpc::Status status = pubsub_stub_->GcsUnregisterSubscriber(&context, request, &reply);
+  auto *command = request.add_commands();
+  command->set_channel_type(channel_type_);
+  command->mutable_unsubscribe_message();
+  rpc::GcsSubscriberCommandBatchReply reply;
+  grpc::Status status =
+      pubsub_stub_->GcsSubscriberCommandBatch(&context, request, &reply);
 
   if (!status.ok()) {
     RAY_LOG(WARNING) << "Error while unregistering the subscriber: "

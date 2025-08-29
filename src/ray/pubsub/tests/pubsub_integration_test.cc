@@ -304,11 +304,15 @@ TEST_F(IntegrationTest, SubscribersToOneIDAndAllIDs) {
   int wait_count = 0;
   while (!(subscriber_1->CheckNoLeaks() && subscriber_2->CheckNoLeaks())) {
     // Flush all the inflight long polling.
-    subscriber_service_->GetPublisher().UnregisterAll();
+    subscriber_service_->GetPublisher().UnregisterSubscriber(
+        subscriber_1->subscriber_id_);
+    subscriber_service_->GetPublisher().UnregisterSubscriber(
+        subscriber_2->subscriber_id_);
     ASSERT_LT(wait_count, 60) << "Subscribers still have inflight operations after 60s";
     ++wait_count;
     absl::SleepFor(absl::Seconds(1));
   }
 }
+
 }  // namespace pubsub
 }  // namespace ray
