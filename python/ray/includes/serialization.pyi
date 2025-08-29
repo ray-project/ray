@@ -69,6 +69,7 @@ class Pickle5Writer:
     # def write_to(self, inband:bytes, data:bytes,
     #                    memcopy_threads:int)->None:
 
+#TODO: Can this be made generic? See: CoreWorker.put_object
 class SerializedObject(object):
 
     def __init__(self, metadata:bytes, contained_object_refs:Union[Sequence[ObjectRef],None]=None):

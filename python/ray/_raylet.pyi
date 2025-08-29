@@ -108,7 +108,7 @@ from ray._private import external_storage
 import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as ray_pickle
 from ray.core.generated.common_pb2 import ActorDiedErrorContext
-from ray.core.generated.gcs_pb2 import JobTableData, GcsNodeInfo, ActorTableData
+from ray.core.generated.gcs_pb2 import JobTableData, GcsNodeInfo
 from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
 from ray._private.async_compat import (
     sync_to_async,
@@ -242,7 +242,7 @@ __all__ = [
     "StreamingGeneratorExecutionContext",
     "StreamingObjectRefGenerator",
     "_GcsSubscriber",
-    "_TestOnly_GcsActorSubscriber",
+    "_call_actor_shutdown",
     "_get_actor_serialized_owner_address_or_none",
     "compute_task_id",
     "del_key_prefix_from_storage",
@@ -520,7 +520,7 @@ class CoreWorker:
 
     def __init__(self, worker_type:int, store_socket:str, raylet_socket:str,
                   job_id:JobID, gcs_options:GcsClientOptions, log_dir:str,
-                  node_ip_address:str, node_manager_port:int, raylet_ip_address:str,
+                  node_ip_address:str, node_manager_port:int,
                   local_mode:bool, driver_name:str,
                   serialized_job_config:str, metrics_agent_port:int, runtime_env_hash:int,
                   startup_token:int, session_name:str, cluster_id:str, entrypoint:str,
@@ -599,8 +599,6 @@ class CoreWorker:
 
     def set_webui_display(self, key:Union[str,bytes], message:Union[str,bytes])->bool: ...
 
-    def set_actor_title(self, title:Union[str,bytes])->None: ...
-
     def set_actor_repr_name(self, repr_name:Union[str,bytes])->None: ...
 
     def get_objects(self, object_refs:Iterable[ObjectRef], timeout_ms:int=-1)->list[SerializedRayObject]: ...
@@ -642,6 +640,17 @@ class CoreWorker:
                                              remote_reader_ref_info:dict[str,ReaderRefInfo])->None: ...
 
     def experimental_channel_register_reader(self, object_ref:ObjectRef): ...
+
+    def put_object(
+            self,
+            serialized_object:SerializedObject,
+            *,
+            pin_object:bool=True,
+            owner_address:Optional[str]=None,
+            inline_small_object:bool=True,
+            _is_experimental_channel:bool=False,
+    )->ObjectRef:
+        """Create an object reference with the current worker as the owner."""
 
     def put_serialized_object_and_increment_local_ref(
             self,
@@ -714,6 +723,7 @@ class CoreWorker:
                      enable_task_events:bool,
                      labels:dict[str,str],
                      label_selector:dict[str,str],
+                     allow_out_of_order_execution: bool
                      )->ActorID: ...
 
     def create_placement_group(
@@ -722,7 +732,6 @@ class CoreWorker:
                             bundles:list[dict[str|bytes, float]],
                             strategy:str|bytes,
                             is_detached:bool,
-                            max_cpu_fraction_per_node:float,
                             soft_target_node_id:str|bytes|None,
                             bundle_label_selector:list[dict[str|bytes, str|bytes]])->PlacementGroupID: ...
 
@@ -890,7 +899,9 @@ class CoreWorker:
     #like try_read_next_object_ref_stream, can't be properly typed
     def peek_object_ref_stream(self, generator_id:ObjectRef[None])->tuple[ObjectRef,bool]: ...
 
-
+def _call_actor_shutdown()->None:
+    """Internal function that calls actor's __ray_shutdown__ method."""
+    ...
 
 class StreamRedirector:
     @staticmethod
@@ -1052,31 +1063,6 @@ class GcsLogSubscriber(_GcsSubscriber):
 
         Returns:
             A dict containing a batch of log lines and their metadata.
-        """
-        ...
-
-class _TestOnly_GcsActorSubscriber(_GcsSubscriber):
-    """Subscriber to actor updates. Thread safe.
-
-    Usage example:
-        subscriber = GcsActorSubscriber()
-        # Subscribe to the actor channel.
-        subscriber.subscribe()
-        ...
-        while running:
-            actor_data = subscriber.poll()
-            ......
-        # Unsubscribe from the channel.
-        subscriber.close()
-    """
-
-    def __init__(self, address:str, worker_id:Optional[str|bytes]=None)->None: ...
-
-    def poll(self, timeout=None)->list[tuple[bytes,ActorTableData]]:
-        """Polls for new actor messages.
-
-        Returns:
-            A list of (key_id, ActorTableData) tuples for new actor messages
         """
         ...
 

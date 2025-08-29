@@ -95,7 +95,8 @@ class InnerGcsClient:
         ...
 
     def get_all_node_info(
-        self, timeout: Optional[int | float] = None
+        self, timeout: Optional[int | float] = None,
+        state_filter: Optional[int] = None,
     ) -> Dict[NodeID, gcs_pb2.GcsNodeInfo]: ...
 
     def async_get_all_node_info(

@@ -104,6 +104,7 @@ class JobID(BaseID):
 
 class WorkerID(UniqueID): ...
 
+#TODO: Make ActorID generic? see CoreWorker.get_actor_handle; ActorHandle
 _AID = TypeVar("_AID",bound=ActorID)
 class ActorID(BaseID):
 
