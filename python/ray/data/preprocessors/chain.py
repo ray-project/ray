@@ -66,6 +66,7 @@ class Chain(Preprocessor):
             return Preprocessor.FitStatus.NOT_FITTABLE
 
     def __init__(self, *preprocessors: Preprocessor):
+        super().__init__()
         self.preprocessors = preprocessors
 
     def _fit(self, ds: Dataset) -> Preprocessor:

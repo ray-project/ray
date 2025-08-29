@@ -295,6 +295,7 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
         ] = None,
         output_columns: Optional[List[str]] = None,
     ):
+        super().__init__()
         self.columns = columns
         self.bins = bins
         self.right = right
@@ -307,48 +308,57 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         self._validate_on_fit()
-        stats = {}
-        aggregates = []
+
         if isinstance(self.bins, dict):
             columns = self.bins.keys()
         else:
             columns = self.columns
 
         for column in columns:
-            aggregates.extend(
-                self._fit_uniform_covert_bin_to_aggregate_if_needed(column)
-            )
-
-        aggregate_stats = dataset.aggregate(*aggregates)
-        mins = {}
-        maxes = {}
-        for key, value in aggregate_stats.items():
-            column_name = key[4:-1]  # min(column) -> column
-            if key.startswith("min"):
-                mins[column_name] = value
-            if key.startswith("max"):
-                maxes[column_name] = value
-
-        for column in mins.keys():
             bins = self.bins[column] if isinstance(self.bins, dict) else self.bins
-            stats[column] = _translate_min_max_number_of_bins_to_bin_edges(
-                mins[column], maxes[column], bins, self.right
-            )
+            if not isinstance(bins, int):
+                raise TypeError(
+                    f"`bins` must be an integer or a dict of integers, got {bins}"
+                )
 
-        self.stats_ = stats
+        self.stat_computation_plan.add_aggregator(
+            aggregator_fn=Min,
+            columns=columns,
+        )
+        self.stat_computation_plan.add_aggregator(
+            aggregator_fn=Max,
+            columns=columns,
+        )
+
         return self
 
     def _validate_on_fit(self):
         self._validate_bins_columns()
 
-    def _fit_uniform_covert_bin_to_aggregate_if_needed(self, column: str):
-        bins = self.bins[column] if isinstance(self.bins, dict) else self.bins
-        if isinstance(bins, int):
-            return (Min(column), Max(column))
-        else:
-            raise TypeError(
-                f"`bins` must be an integer or a dict of integers, got {bins}"
-            )
+    def _fit_execute(self, dataset: "Dataset"):
+        stats = self.stat_computation_plan.compute(dataset)
+        self.stats_ = post_fit_processor(stats, self.bins, self.right)
+        return self
+
+
+def post_fit_processor(aggregate_stats: dict, bins: Union[str, Dict], right: bool):
+    mins, maxes, stats = {}, {}, {}
+    for key, value in aggregate_stats.items():
+        column_name = key[4:-1]  # min(column) -> column
+        if key.startswith("min"):
+            mins[column_name] = value
+        if key.startswith("max"):
+            maxes[column_name] = value
+
+    for column in mins.keys():
+        stats[column] = _translate_min_max_number_of_bins_to_bin_edges(
+            mn=mins[column],
+            mx=maxes[column],
+            bins=bins[column] if isinstance(bins, dict) else bins,
+            right=right,
+        )
+
+    return stats
 
 
 # Copied from
