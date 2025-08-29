@@ -240,8 +240,9 @@ class TestModelConfig:
         ).get_serve_options(name_prefix="Test:")
 
         # New default: TP ranks colocated per PP stage
-        assert serve_options["placement_group_bundles"] == [{"CPU": 1, "GPU": 0}] + [
-            {"GPU": 3} for _ in range(2)  # 2 PP stages, each with 3 GPUs
+        assert serve_options["placement_group_bundles"] == [
+            {"CPU": 1, "GPU": 3},  # PP stage 0: 3 TP ranks
+            {"CPU": 1, "GPU": 3},  # PP stage 1: 3 TP ranks
         ]
 
         # Test the custom resource bundle with resources_per_bundle
