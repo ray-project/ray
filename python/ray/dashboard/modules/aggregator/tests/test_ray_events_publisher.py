@@ -1,7 +1,7 @@
 import pytest
 import sys
 import asyncio
-from unittest.mock import Mock
+from unittest.mock import Mock, AsyncMock
 from concurrent.futures import ThreadPoolExecutor
 
 from ray._common.test_utils import async_wait_for_condition
@@ -11,13 +11,17 @@ from ray.dashboard.modules.aggregator.publisher.ray_event_publisher import (
 )
 from ray.dashboard.modules.aggregator.publisher.async_publisher_client import (
     AsyncHttpPublisherClient,
+    AsyncGCSPublisherClient,
     PublishStats,
     PublisherClientInterface,
 )
 from ray.dashboard.modules.aggregator.multi_consumer_event_buffer import (
     MultiConsumerEventBuffer,
 )
-from ray.core.generated import events_base_event_pb2
+from ray.core.generated import (
+    events_base_event_pb2,
+    events_event_aggregator_service_pb2,
+)
 from typing import Optional
 from google.protobuf.timestamp_pb2 import Timestamp
 
@@ -301,6 +305,79 @@ class TestAsyncHttpPublisherClient:
         events = [Mock(spec=events_base_event_pb2.RayEvent) for _ in range(3)]
         count = http_client.count_num_events_in_batch(events)
         assert count == 3
+
+
+class TestGCSPublisherClient:
+    """Test GCS publisher client implementation."""
+
+    @pytest.fixture
+    def gcs_stub(self):
+        stub = Mock()
+        stub.AddEvents = AsyncMock()
+        return stub
+
+    @pytest.mark.asyncio
+    async def test_publish_empty_batch(self, gcs_stub):
+        client = AsyncGCSPublisherClient(gcs_stub=gcs_stub, timeout=5.0)
+        result = await client.publish(([], None))
+        assert result.is_publish_successful is True
+        assert result.num_events_published == 0
+        assert result.num_events_filtered_out == 0
+        gcs_stub.AddEvents.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_publish_success(self, gcs_stub):
+        mock_response = Mock()
+        mock_response.status.code = 0
+        gcs_stub.AddEvents.return_value = mock_response
+
+        client = AsyncGCSPublisherClient(gcs_stub=gcs_stub, timeout=5.0)
+        events = [
+            events_base_event_pb2.RayEvent(
+                event_id=b"1",
+                source_type=events_base_event_pb2.RayEvent.SourceType.CORE_WORKER,
+                event_type=events_base_event_pb2.RayEvent.EventType.TASK_DEFINITION_EVENT,
+                timestamp=Timestamp(seconds=123, nanos=0),
+                severity=events_base_event_pb2.RayEvent.Severity.INFO,
+                message="hello",
+            ),
+            events_base_event_pb2.RayEvent(
+                event_id=b"2",
+                source_type=events_base_event_pb2.RayEvent.SourceType.CORE_WORKER,
+                event_type=events_base_event_pb2.RayEvent.EventType.TASK_DEFINITION_EVENT,
+                timestamp=Timestamp(seconds=124, nanos=0),
+                severity=events_base_event_pb2.RayEvent.Severity.INFO,
+                message="world",
+            ),
+        ]
+
+        result = await client.publish((events, None))
+        gcs_stub.AddEvents.assert_called_once()
+        assert result.is_publish_successful is True
+        assert result.num_events_published == 2
+
+    @pytest.mark.asyncio
+    async def test_publish_gcs_error(self, gcs_stub):
+        mock_response = Mock()
+        mock_response.status.code = 1
+        mock_response.status.message = "Error"
+        gcs_stub.AddEvents.return_value = mock_response
+
+        client = AsyncGCSPublisherClient(gcs_stub=gcs_stub, timeout=5.0)
+        events = [events_base_event_pb2.RayEvent()]
+        result = await client.publish((events, None))
+        assert result.is_publish_successful is False
+        assert result.num_events_published == 0
+
+    @pytest.mark.asyncio
+    async def test_publish_exception(self, gcs_stub):
+        gcs_stub.AddEvents.side_effect = Exception("Network error")
+
+        client = AsyncGCSPublisherClient(gcs_stub=gcs_stub, timeout=5.0)
+        events = [events_base_event_pb2.RayEvent()]
+        result = await client.publish((events, None))
+        assert result.is_publish_successful is False
+        assert result.num_events_published == 0
 
 
 class TestNoopPublisher:
