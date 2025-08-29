@@ -19,6 +19,7 @@ Public API
 
     col
     lit
+    download
 
 Expression Classes
 ------------------
