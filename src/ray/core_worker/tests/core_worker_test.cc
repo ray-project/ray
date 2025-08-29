@@ -40,6 +40,7 @@
 #include "ray/core_worker/task_submission/actor_task_submitter.h"
 #include "ray/core_worker/task_submission/normal_task_submitter.h"
 #include "ray/ipc/fake_raylet_ipc_client.h"
+#include "ray/observability/fake_metric.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 
 namespace ray {
@@ -159,7 +160,8 @@ class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
         [](const ActorID &actor_id) {
           return std::make_shared<rpc::CoreWorkerClientInterface>();
         },
-        mock_gcs_client);
+        mock_gcs_client,
+        fake_task_by_state_counter_);
 
     auto object_recovery_manager = std::make_unique<ObjectRecoveryManager>(
         rpc_address,
@@ -243,7 +245,8 @@ class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
                                                 std::move(actor_manager),
                                                 task_execution_service_,
                                                 std::move(task_event_buffer),
-                                                getpid());
+                                                getpid(),
+                                                fake_task_by_state_counter_);
   }
 
  protected:
@@ -260,6 +263,7 @@ class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
   std::shared_ptr<ReferenceCounter> reference_counter_;
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
   std::shared_ptr<CoreWorker> core_worker_;
+  ray::observability::FakeMetric fake_task_by_state_counter_;
 };
 
 std::shared_ptr<RayObject> MakeRayObject(const std::string &data_str,

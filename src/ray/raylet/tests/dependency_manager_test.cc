@@ -25,6 +25,7 @@
 #include "mock/ray/object_manager/object_manager.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
+#include "ray/observability/fake_metric.h"
 
 namespace ray {
 
@@ -70,7 +71,9 @@ class CustomMockObjectManager : public MockObjectManager {
 class DependencyManagerTest : public ::testing::Test {
  public:
   DependencyManagerTest()
-      : object_manager_mock_(), dependency_manager_(object_manager_mock_) {}
+      : object_manager_mock_(),
+        fake_task_by_state_counter_(),
+        dependency_manager_(object_manager_mock_, fake_task_by_state_counter_) {}
 
   int64_t NumWaiting(const std::string &task_name) {
     return dependency_manager_.waiting_tasks_counter_.Get({task_name, false});
@@ -91,6 +94,7 @@ class DependencyManagerTest : public ::testing::Test {
   }
 
   CustomMockObjectManager object_manager_mock_;
+  ray::observability::FakeMetric fake_task_by_state_counter_;
   DependencyManager dependency_manager_;
 };
 
