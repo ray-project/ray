@@ -190,7 +190,7 @@ NodeManager::NodeManager(
 
   periodical_runner_->RunFnPeriodically(
       [this]() { cluster_lease_manager_.ScheduleAndGrantLeases(); },
-      RayConfig::instance().raylet_schedule_and_dispatch_tasks_interval_ms(),
+      RayConfig::instance().raylet_schedule_and_grant_leases_interval_ms(),
       "NodeManager.ScheduleAndGrantLeases");
 
   periodical_runner_->RunFnPeriodically(
