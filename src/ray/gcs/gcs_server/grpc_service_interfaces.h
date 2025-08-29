@@ -143,10 +143,6 @@ class InternalPubSubGcsServiceHandler {
   virtual void HandleGcsSubscriberCommandBatch(GcsSubscriberCommandBatchRequest request,
                                                GcsSubscriberCommandBatchReply *reply,
                                                SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGcsUnregisterSubscriber(GcsUnregisterSubscriberRequest request,
-                                             GcsUnregisterSubscriberReply *reply,
-                                             SendReplyCallback send_reply_callback) = 0;
 };
 
 class JobInfoGcsServiceHandler {
