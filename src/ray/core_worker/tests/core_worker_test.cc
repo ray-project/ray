@@ -26,6 +26,7 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "fakes/ray/common/asio/fake_periodical_runner.h"
+#include "fakes/ray/object_manager/plasma/fake_plasma_client.h"
 #include "fakes/ray/pubsub/publisher.h"
 #include "fakes/ray/pubsub/subscriber.h"
 #include "fakes/ray/rpc/raylet/raylet_client.h"
@@ -567,39 +568,18 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
   // Set fetch batch size to 2 with guard to restore after test.
   ConfigGuard guard(RayConfig::instance().worker_fetch_request_size(), 2);
 
-  // Mock plasma client that records Get calls and pretends objects exist.
-  auto mock_plasma = std::make_shared<plasma::MockPlasmaClient>();
-  using ::testing::_;
-  using ::testing::DoAll;
-  using ::testing::Invoke;
-  using ::testing::SaveArg;
-
+  // Fake plasma client that records Get calls.
   std::vector<std::vector<ObjectID>> observed_batches;
-  ON_CALL(*mock_plasma, Get(_, _, _))
-      .WillByDefault(Invoke([&](const std::vector<ObjectID> &ids,
-                                int64_t /*timeout_ms*/,
-                                std::vector<plasma::ObjectBuffer> *out) {
-        observed_batches.push_back(ids);
-        out->resize(ids.size());
-        for (size_t i = 0; i < ids.size(); i++) {
-          // Return non-null buffers to indicate presence.
-          uint8_t byte = 0;
-          auto parent = std::make_shared<LocalMemoryBuffer>(&byte, 1, /*copy_data=*/true);
-          (*out)[i].data = SharedMemoryBuffer::Slice(parent, 0, 1);
-          (*out)[i].metadata = SharedMemoryBuffer::Slice(parent, 0, 1);
-        }
-        return Status::OK();
-      }));
+  auto fake_plasma = std::make_shared<ray::fakes::FakePlasmaClient>(&observed_batches);
 
-  // Create provider with test client injection.
   CoreWorkerPlasmaStoreProvider provider(
       /*store_socket=*/"",
       fake_raylet,
       ref_counter,
       /*check_signals=*/[] { return Status::OK(); },
       /*warmup=*/false,
-      /*get_current_call_site=*/nullptr);
-  provider.SetPlasmaClientForTest(mock_plasma);
+      /*get_current_call_site=*/nullptr,
+      /*injected_plasma_client=*/fake_plasma);
 
   // Build a set of 5 object ids.
   std::vector<ObjectID> ids;
