@@ -1,3 +1,7 @@
+---
+orphan: true
+---
+
 # Deploy a reasoning LLM
 
 A reasoning LLM handles tasks that require deeper analysis or step-by-step thought. It generates intermediate reasoning before arriving at a final answer, making it better suited for situations where careful logic or structured problem-solving is more important than speed or efficiency.

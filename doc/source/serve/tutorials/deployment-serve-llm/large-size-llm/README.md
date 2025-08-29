@@ -1,3 +1,7 @@
+---
+orphan: true
+---
+
 # Deploy a large size LLM
 
 A large size LLM typically runs on multiple nodes with multiple GPUs, prioritizing peak quality and capability: stronger reasoning, broader knowledge, longer context windows, more robust generalization. It’s the right choice when state-of-the-art results are required and higher latency, complexity, and cost are acceptable trade-offs.

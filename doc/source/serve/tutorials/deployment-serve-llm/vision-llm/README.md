@@ -1,3 +1,7 @@
+---
+orphan: true
+---
+
 # Deploying a Vision LLM
 
 A Vision LLM can interpret images as well as text, enabling tasks like answering questions about charts, analyzing photos, or combining visuals with instructions. It extends LLMs beyond language to support multimodal reasoning and richer applications.  

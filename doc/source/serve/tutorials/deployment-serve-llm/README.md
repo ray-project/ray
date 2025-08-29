@@ -1,3 +1,7 @@
+---
+orphan: true
+---
+
 # Quick-starts with LLM Serving
 
 These guides provide a fast path to serving LLMs using Ray Serve on Anyscale, with focused tutorials for different deployment scales, from single-GPU setups to multi-node clusters.

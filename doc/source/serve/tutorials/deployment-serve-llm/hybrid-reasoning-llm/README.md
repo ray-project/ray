@@ -1,3 +1,7 @@
+---
+orphan: true
+---
+
 # Deploy a hybrid reasoning LLM
 
 A hybrid reasoning model provides flexibility by allowing you to enable or disable reasoning as needed. You can use structured, step-by-step thinking for complex queries while skipping it for simpler ones, balancing accuracy with efficiency depending on the task.
