@@ -34,6 +34,8 @@ from ray.serve.generated.serve_pb2 import (
     DeploymentLanguage,
     EncodingType as EncodingTypeProto,
     LoggingConfig as LoggingConfigProto,
+    PrometheusCustomMetrics as PrometheusCustomMetricsProto,
+    PrometheusMetric as PrometheusMetricProto,
     ReplicaConfig as ReplicaConfigProto,
     RequestRouterConfig as RequestRouterConfigProto,
 )
@@ -240,8 +242,24 @@ class DeploymentConfig(BaseModel):
             if self.needs_pickle():
                 data["user_config"] = cloudpickle.dumps(data["user_config"])
         if data.get("autoscaling_config"):
+            autoscaling_config_dict = data["autoscaling_config"]
+            # Translate Optional[List[Tuple[str, str]]] -> optional wrapper message
+            if "prometheus_custom_metrics" in autoscaling_config_dict:
+                prom_metrics = autoscaling_config_dict["prometheus_custom_metrics"]
+                if prom_metrics is None:
+                    # Explicit None: leave field unset by removing the key
+                    autoscaling_config_dict.pop("prometheus_custom_metrics")
+                elif isinstance(prom_metrics, list):
+                    metrics_msgs = [
+                        PrometheusMetricProto(metric_name=name, query=query)
+                        for name, query in prom_metrics
+                    ]
+                    autoscaling_config_dict[
+                        "prometheus_custom_metrics"
+                    ] = PrometheusCustomMetricsProto(metrics=metrics_msgs)
+
             data["autoscaling_config"] = AutoscalingConfigProto(
-                **data["autoscaling_config"]
+                **autoscaling_config_dict
             )
         if data.get("request_router_config"):
             router_kwargs = data["request_router_config"].get("request_router_kwargs")
@@ -328,6 +346,13 @@ class DeploymentConfig(BaseModel):
                 data["autoscaling_config"]["downscaling_factor"] = None
             if not data["autoscaling_config"].get("target_ongoing_requests"):
                 data["autoscaling_config"]["target_ongoing_requests"] = None
+            # Translate optional wrapper -> Optional[List[Tuple[str, str]]]
+            prom_wrapper = data["autoscaling_config"].get("prometheus_custom_metrics")
+            if prom_wrapper is not None:
+                metrics_list = prom_wrapper.get("metrics", []) or []
+                data["autoscaling_config"]["prometheus_custom_metrics"] = [
+                    (m.get("metric_name", ""), m.get("query", "")) for m in metrics_list
+                ]
             data["autoscaling_config"] = AutoscalingConfig(**data["autoscaling_config"])
         if "version" in data:
             if data["version"] == "":
