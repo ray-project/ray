@@ -421,7 +421,7 @@ class IMPALAConfig(AlgorithmConfig):
                 and self.minibatch_size <= self.total_train_batch_size
             ):
                 self._value_error(
-                    f"`minibatch_size` ({self._minibatch_size}) must either be None "
+                    f"`minibatch_size` ({self.minibatch_size}) must either be None "
                     "or a multiple of `rollout_fragment_length` "
                     f"({self.rollout_fragment_length}) while at the same time smaller "
                     "than or equal to `total_train_batch_size` "
