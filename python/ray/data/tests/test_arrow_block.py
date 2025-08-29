@@ -542,6 +542,7 @@ def test_arrow_nan_element():
     "table_data,max_chunk_size_bytes,expected",
     [
         ({"a": []}, 100, None),
+        ({"a": list(range(100))}, 7, 1),
         ({"a": list(range(100))}, 10, 1),
         ({"a": list(range(100))}, 25, 3),
         ({"a": list(range(100))}, 50, 6),
