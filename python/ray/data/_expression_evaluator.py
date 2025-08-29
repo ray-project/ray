@@ -71,10 +71,10 @@ def _eval_expr_recursive(
 
         # Can't perform type validation for unions if python version is < 3.10
         if not isinstance(result, BatchColumn.__args__):
-            function_name = expr.function_name or "Anonymous UDF"
+            function_name = expr.fn.__name__
             raise TypeError(
                 f"UDF '{function_name}' returned invalid type {type(result).__name__}. "
-                f"Expected BatchColumn type ({BatchColumn.__args__})"
+                f"Expected type {BatchColumn.__args__}"
             )
 
         return result

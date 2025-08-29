@@ -4,7 +4,7 @@ import functools
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List
 
 from ray.data.block import BatchColumn
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -274,7 +274,6 @@ class UDFExpr(Expr):
     fn: Callable[..., BatchColumn]
     args: List[Expr]
     kwargs: Dict[str, Expr]
-    function_name: Optional[str] = None
 
     def structurally_equals(self, other: Any) -> bool:
         return (
@@ -287,7 +286,6 @@ class UDFExpr(Expr):
                 self.kwargs[k].structurally_equals(other.kwargs[k])
                 for k in self.kwargs.keys()
             )
-            and self.function_name == other.function_name
         )
 
 
@@ -314,7 +312,6 @@ def _create_udf_callable(fn: Callable[..., BatchColumn]) -> Callable[..., UDFExp
             fn=fn,
             args=expr_args,
             kwargs=expr_kwargs,
-            function_name=getattr(fn, "__name__", None),
         )
 
     # Preserve original function metadata
