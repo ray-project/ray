@@ -917,17 +917,17 @@ class UnserializableException(RayError):
     time of serialization.
 
     Common causes of pickle deserialization failure include:
-    - Missing modules or classes: The exception class is not available in the
-      current environment (e.g., custom exception from an unimported module)
-    - Version incompatibility: Exception was pickled with a different Python
-      or library version
-    - Changed class definitions: The exception class definition has changed
-      between serialization and deserialization
-    - Corrupted or invalid serialized data
-    - Memory limitations during deserialization
-    - Non-picklable objects: Exception contains references to lambda functions
-      or other objects that cannot be pickled/unpickled
-    - Special characters or encoding issues that interfere with deserialization
+        - Missing modules or classes: The exception class is not available in the
+          current environment (e.g., custom exception from an unimported module)
+        - Version incompatibility: Exception was pickled with a different Python
+          or library version
+        - Changed class definitions: The exception class definition has changed
+          between serialization and deserialization
+        - Corrupted or invalid serialized data
+        - Memory limitations during deserialization
+        - Non-picklable objects: Exception contains references to lambda functions
+          or other objects that cannot be pickled/unpickled
+        - Special characters or encoding issues that interfere with deserialization
 
     Args:
         original_stack_trace: The string representation and stack trace of the
