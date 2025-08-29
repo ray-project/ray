@@ -2706,7 +2706,8 @@ def test_with_column_udf_invalid_return_type_validation(
         # The actual TypeError gets wrapped, so we need to check the exception chain
         error_message = str(exc_info.value)
         assert f"returned invalid type {expected_type_name}" in error_message
-        assert "Expected BatchColumn type" in error_message
+        assert "Expected type" in error_message
+        assert "pandas.Series" in error_message and "numpy.ndarray" in error_message
 
 
 if __name__ == "__main__":

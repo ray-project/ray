@@ -3,11 +3,12 @@ from __future__ import annotations
 import operator
 from typing import Any, Callable, Dict
 
+import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
 
-from ray.data.block import BatchColumn, DataBatch
+from ray.data.block import DataBatch
 from ray.data.expressions import (
     BinaryExpr,
     ColumnExpr,
@@ -47,7 +48,7 @@ _ARROW_EXPR_OPS_MAP = {
 
 
 def _eval_expr_recursive(
-    expr: "Expr", batch: DataBatch, ops: Dict["Operation", Callable]
+    expr: "Expr", batch: DataBatch, ops: Dict["Operation", Callable[..., Any]]
 ) -> Any:
     """Generic recursive expression evaluator."""
     # TODO: Separate unresolved expressions (arbitrary AST with unresolved refs)
@@ -70,11 +71,11 @@ def _eval_expr_recursive(
         result = expr.fn(*args, **kwargs)
 
         # Can't perform type validation for unions if python version is < 3.10
-        if not isinstance(result, BatchColumn.__args__):
+        if not isinstance(result, (pd.Series, np.ndarray, pa.Array, pa.ChunkedArray)):
             function_name = expr.fn.__name__
             raise TypeError(
                 f"UDF '{function_name}' returned invalid type {type(result).__name__}. "
-                f"Expected type {BatchColumn.__args__}"
+                f"Expected type (pandas.Series, numpy.ndarray, pyarrow.Array, or pyarrow.ChunkedArray)"
             )
 
         return result

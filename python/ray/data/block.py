@@ -18,7 +18,6 @@ from typing import (
 )
 
 import numpy as np
-import pandas as pd
 import pyarrow as pa
 
 import ray
@@ -59,7 +58,9 @@ Schema = Union[type, "PandasBlockSchema", "pyarrow.lib.Schema"]
 BlockColumn = Union["pyarrow.ChunkedArray", "pyarrow.Array", "pandas.Series"]
 
 # Represents a single column of the ``Batch``
-BatchColumn = Union[pd.Series, np.ndarray, pa.Array, pa.ChunkedArray]
+BatchColumn = Union[
+    "pandas.Series", "np.ndarray", "pyarrow.Array", "pyarrow.ChunkedArray"
+]
 
 
 logger = logging.getLogger(__name__)
