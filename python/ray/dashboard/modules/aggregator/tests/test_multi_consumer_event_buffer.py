@@ -1,4 +1,5 @@
 import asyncio
+import sys
 import pytest
 from google.protobuf.timestamp_pb2 import Timestamp
 
@@ -195,3 +196,7 @@ class TestMultiConsumerEventBuffer:
         batch = await wait_task
         assert len(batch) == 1
         assert batch[0] == event
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
