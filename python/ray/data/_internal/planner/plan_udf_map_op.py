@@ -5,7 +5,17 @@ import logging
 import queue
 from threading import Thread
 from types import GeneratorType
-from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, TypeVar
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+)
 
 import numpy as np
 import pandas as pd
@@ -213,7 +223,14 @@ def plan_filter_op(
             zero_copy_batch=True,
         )
     else:
-        filter_fn, init_fn = _get_udf(op)
+        udf_is_callable_class = isinstance(op._fn, CallableClass)
+        filter_fn, init_fn = _get_udf(
+            op._fn,
+            op._fn_args,
+            op._fn_kwargs,
+            op._fn_constructor_args if udf_is_callable_class else None,
+            op._fn_constructor_kwargs if udf_is_callable_class else None,
+        )
         transform_fn = _generate_transform_fn_for_filter(filter_fn)
         map_transformer = _create_map_transformer_for_row_based_map_op(
             transform_fn, init_fn
@@ -244,7 +261,14 @@ def plan_udf_map_op(
     input_physical_dag = physical_children[0]
 
     compute = get_compute(op._compute)
-    fn, init_fn = _get_udf(op)
+    udf_is_callable_class = isinstance(op._fn, CallableClass)
+    fn, init_fn = _get_udf(
+        op._fn,
+        op._fn_args,
+        op._fn_kwargs,
+        op._fn_constructor_args if udf_is_callable_class else None,
+        op._fn_constructor_kwargs if udf_is_callable_class else None,
+    )
 
     if isinstance(op, MapBatches):
         transform_fn = _generate_transform_fn_for_map_batches(fn)
@@ -280,17 +304,23 @@ def plan_udf_map_op(
     )
 
 
-def _get_udf(op: AbstractUDFMap):
+def _get_udf(
+    op_fn: Callable,
+    op_fn_args: Tuple[Any, ...],
+    op_fn_kwargs: Dict[str, Any],
+    op_fn_constructor_args: Optional[Tuple[Any, ...]],
+    op_fn_constructor_kwargs: Optional[Dict[str, Any]],
+):
     # Note, it's important to define these standalone variables.
     # So the parsed functions won't need to capture the entire operator, which may not
     # be serializable.
-    udf = op._fn
-    fn_args = op._fn_args or ()
-    fn_kwargs = op._fn_kwargs or {}
+    udf = op_fn
+    fn_args = op_fn_args or ()
+    fn_kwargs = op_fn_kwargs or {}
 
     if isinstance(udf, CallableClass):
-        fn_constructor_args = op._fn_constructor_args or ()
-        fn_constructor_kwargs = op._fn_constructor_kwargs or {}
+        fn_constructor_args = op_fn_constructor_args or ()
+        fn_constructor_kwargs = op_fn_constructor_kwargs or {}
 
         is_async_udf = _is_async_udf(udf.__call__)
 
