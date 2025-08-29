@@ -36,6 +36,7 @@ from ray.data._internal.execution.operators.input_data_buffer import InputDataBu
 from ray.data._internal.execution.resource_manager import (
     ResourceManager,
 )
+from ray.data._internal.metadata_exporter import _add_ellipsis_for_string
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.util import (
     unify_schemas_with_validation,
@@ -790,11 +791,13 @@ def dedupe_schemas_with_validation(
         return bundle, diverged
 
     diverged = True
-    if warn:
+    if warn and not enforce_schemas:
+        old_schema_string = _add_ellipsis_for_string(str(old_schema), 300)
+        new_schema_string = _add_ellipsis_for_string(str(bundle.schema), 300)
         logger.warning(
             f"Operator produced a RefBundle with a different schema "
-            f"than the previous one. Previous schema: {old_schema}, "
-            f"new schema: {bundle.schema}. This may lead to unexpected behavior."
+            f"than the previous one. Previous schema: {old_schema_string}, "
+            f"new schema: {new_schema_string}. This may lead to unexpected behavior."
         )
     if enforce_schemas:
         old_schema = unify_schemas_with_validation([old_schema, bundle.schema])
