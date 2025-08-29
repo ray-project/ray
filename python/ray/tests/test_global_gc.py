@@ -2,6 +2,7 @@
 import gc
 import logging
 import sys
+from unittest.mock import Mock
 import weakref
 
 import numpy as np
@@ -9,6 +10,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
+from ray._private.gc_collect_manager import PythonGCThread
 from ray._private.internal_api import global_gc
 from ray._common.test_utils import wait_for_condition
 import time
@@ -292,6 +294,64 @@ def test_long_local_gc(shutdown_only, support_fork):
         assert (
             timeout_count > 0
         ), "All ping() calls succeeded, indicating that local GC did not block the worker as expected."
+
+
+def test_gc_manager_thread_basic_functionality():
+    mock_gc_collect = Mock(return_value=10)
+
+    gc_thread = PythonGCThread(min_interval=1, gc_collect_func=mock_gc_collect)
+
+    try:
+        gc_thread.start()
+        assert gc_thread.is_alive()
+
+        gc_thread.trigger_gc()
+        time.sleep(0.1)
+
+        mock_gc_collect.assert_called_once()
+
+    finally:
+        gc_thread.stop()
+        assert not gc_thread.is_alive()
+
+
+def test_gc_manager_thread_min_interval_throttling():
+    mock_gc_collect = Mock(return_value=5)
+
+    gc_thread = PythonGCThread(min_interval=1, gc_collect_func=mock_gc_collect)
+
+    try:
+        gc_thread.start()
+
+        for _ in range(3):
+            gc_thread.trigger_gc()
+            time.sleep(0.1)
+
+        time.sleep(0.5)
+
+        assert mock_gc_collect.call_count == 1
+
+    finally:
+        gc_thread.stop()
+
+
+def test_gc_manager_thread_exception_handling():
+    mock_gc_collect = Mock(side_effect=RuntimeError("GC failed"))
+
+    gc_thread = PythonGCThread(min_interval=1, gc_collect_func=mock_gc_collect)
+
+    try:
+        gc_thread.start()
+
+        for _ in range(3):
+            gc_thread.trigger_gc()
+            time.sleep(0.1)
+
+        assert gc_thread.is_alive()
+        mock_gc_collect.assert_called_once()
+
+    finally:
+        gc_thread.stop()
 
 
 if __name__ == "__main__":
