@@ -8,4 +8,8 @@ steps:
     commands:
       - /bin/bash .buildkite/release/test-init.sh
     mount_buildkite_agent: true
-    depends_on: forge
+    depends_on:
+      - forge
+      - anyscalebuild
+      - anyscalellmbuild
+      - anyscalemlbuild
