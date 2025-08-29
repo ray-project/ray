@@ -172,11 +172,3 @@ examples:
       - xgboost
     skill_level: beginner
     link: examples/xgboost/distributed-xgboost-lightgbm
-  - title: Train on Large Datasets with XGBoost External Memory
-    frameworks:
-      - xgboost
-    skill_level: intermediate
-    use_cases:
-      - tabular data
-      - large datasets
-    link: examples/xgboost_external_memory
