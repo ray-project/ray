@@ -226,12 +226,16 @@ class _TorchBackend(Backend):
                     os.environ["PJRT_DEVICE"] = "CUDA"
                     os.environ["PJRT_DIST_SERVICE_ADDR"] = coord
                     os.environ["PJRT_WORLD_SIZE"] = str(world_size)
-                    os.environ["PJRT_PROCESS_INDEX"] = str(rank)
+                    os.environ["PJRT_LOCAL_PROCESS_RANK"] = str(rank)
+                    os.environ["PJRT_LOCAL_PROCESS_COUNT"] = str(rank)
                 for i in range(len(worker_group)):
                     worker_group.execute_single(i, _set_pjrt_envs, coord=coordinator, world_size=len(worker_group), rank=i)
                     logger.info(f"set pjrt envs for worker {i}")
 
-
+            # it might be related since we will need these env var before pjrt init and xla process group init
+            worker_group.execute(_set_torch_distributed_env_vars)
+            logger.info(f"set torch distributed envs for c10d")
+            
             setup_futures = []
             for i in range(len(worker_group)):
                 setup_futures.append(
