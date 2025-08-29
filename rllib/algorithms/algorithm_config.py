@@ -1041,6 +1041,8 @@ class AlgorithmConfig(_Config):
                             "`device` is a (torch) device.\n"
                         )
                     val_ = self._env_to_module_connector(env)
+                else:
+                    raise e
 
             # ConnectorV2 (piece or pipeline).
             if isinstance(val_, ConnectorV2):
@@ -1147,6 +1149,8 @@ class AlgorithmConfig(_Config):
                             "'__env_single__': ([env obs. space, env act. space])}`.\n"
                         )
                     val_ = self._module_to_env_connector(env)
+                else:
+                    raise e
 
             # ConnectorV2 (piece or pipeline).
             if isinstance(val_, ConnectorV2):
@@ -1195,24 +1199,24 @@ class AlgorithmConfig(_Config):
         )
 
         if self.add_default_connectors_to_module_to_env_pipeline:
-            # Prepend: Anything that has to do with plain data processing (not
-            # particularly with the actions).
+            ## Prepend: Anything that has to do with plain data processing (not
+            ## particularly with the actions).
 
-            # Remove extra time-rank, if applicable.
-            pipeline.prepend(RemoveSingleTsTimeRankFromBatch())
+            # Sample actions from ACTION_DIST_INPUTS (if ACTIONS not present).
+            pipeline.append(GetActions())
+
+            # Convert to numpy.
+            pipeline.append(TensorToNumpy())
+
+            # Unbatch all data.
+            pipeline.append(UnBatchToIndividualItems())
 
             # If multi-agent -> Map from ModuleID-based data to AgentID based data.
             if self.is_multi_agent:
-                pipeline.prepend(ModuleToAgentUnmapping())
+                pipeline.append(ModuleToAgentUnmapping())
 
-            # Unbatch all data.
-            pipeline.prepend(UnBatchToIndividualItems())
-
-            # Convert to numpy.
-            pipeline.prepend(TensorToNumpy())
-
-            # Sample actions from ACTION_DIST_INPUTS (if ACTIONS not present).
-            pipeline.prepend(GetActions())
+            # Remove extra time-rank, if applicable.
+            pipeline.append(RemoveSingleTsTimeRankFromBatch())
 
             # Append: Anything that has to do with action sampling.
             # Unsquash/clip actions based on config and action space.
