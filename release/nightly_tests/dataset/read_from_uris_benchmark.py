@@ -1,6 +1,8 @@
 import io
 
 import numpy as np
+import pyarrow as pa
+import pyarrow.compute as pc
 from PIL import Image
 
 import ray
@@ -30,7 +32,16 @@ def benchmark_fn():
         batch["image"] = np.stack(images)
         return batch
 
-    ds = metadata.with_column("image_bytes", download("key"))
+    def convert_key(table):
+        col = table["key"]
+        t = col.type
+        new_col = pc.binary_join_element_wise(
+            pa.scalar("s3://" + BUCKET, type=t), col, pa.scalar("", type=t)
+        )
+        return table.set_column(table.schema.get_field_index("key"), "key", new_col)
+
+    ds = metadata.map_batches(convert_key)
+    ds = ds.with_column("image_bytes", download("key"))
     ds = ds.map_batches(decode_images)
     for _ in ds.iter_internal_ref_bundles():
         pass
