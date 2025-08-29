@@ -135,19 +135,26 @@ Note that this section ignores fault tolerance.
 
 ### Fault detection
 
-Fault detection needed to be implemented in the component-agonistic manner, so
-it doesn't use Ray's GCS for that.
+Both pubsub RPC's will be retried by the client on transient network failures using the
+retryable grpc client used by other RPC's throughout.
 
-Subscriber detects the publisher failures from the long polling request. A
-single long polling request is initiated from the subscriber, and it sends them
-again and again whenever replied as long as there are subscribing entries. If
-the publisher fails, the long polling request is also failed, so that the
-subscriber can detect the failures of publishers. All metadata is cleaned up in
-this case.
+TODO(dayshah): Only the GCS client currently retries the requests, the core worker clients will in the future.
 
-Publishers always have received long polling request from a subscriber as long
-as there are subscribing entries from them. If subscribers are failed, they are
-not sending any more long polling requests. Publishers refreshes the long
-polling request every 30 seconds to check if the subscriber is still alive. If
-the subscriber doesn't initiate a long polling request for more than certain
-threshold, the subscriber is considered failed and all metadata is cleaned up.
+Subscribing and unsubscribing are idempotent so the `PubsubCommandBatchRequest` can be resent.
+Since we restrict it to one in-flight request, the commands will be ordered even with retries.
+
+The subscriber's `PubsubLongPollingRequest` can also be retried since it comes with a
+max_processed_sequence_id. The retry will be sent with the same max_processed_sequence_id
+and therefore the publisher will send back the all the messages from max_processed_sequence_id
+to max_sequence_id in that subscriber's mailbox. Messages will not be removed from a subscriber's
+mailbox until the subscriber sends a request with max_processed_sequence_id > sequence id of message.
+Sequence id increments on every publish on a publisher, regardless of channel or entity.
+
+Publishers keep receiving long polling requests from a subscriber as long
+as there are subscribing entries from them. If subscribers are "dead", they are
+not sending any more long polling requests. Publishers check if there's been active
+long polling requests every 30 seconds to check if the subscriber is still alive. If
+there's no activity on a LongPollingRequest for subscriber_timeout_ms (300s by default),
+we'll flush the request (we'll reply) and wait to see if the subscriber sends another one.
+If there hasn't been an active long polling request for over subscriber_timeout_ms, the
+subscriber is considered dead and all metadata is cleaned up.

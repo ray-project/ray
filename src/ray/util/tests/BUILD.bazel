@@ -126,17 +126,6 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "sample_test",
-    size = "small",
-    srcs = ["sample_test.cc"],
-    tags = ["team:core"],
-    deps = [
-        "//src/ray/util:sample",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
     name = "sequencer_test",
     size = "small",
     srcs = ["sequencer_test.cc"],
