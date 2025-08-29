@@ -1350,7 +1350,7 @@ opt-einsum==3.3.0
     #   tensorflow
 optuna==4.1.0
     # via -r python/requirements/ml/tune-requirements.txt
-orjson==3.9.10
+orjson==3.9.15
     # via
     #   gradio
     #   tensordict
@@ -1485,7 +1485,7 @@ plotly==5.23.0
     # via ax-platform
 pluggy==1.3.0
     # via pytest
-polars==1.30.0
+polars==1.32.3
     # via -r python/requirements/test-requirements.txt
 portalocker==2.8.2
     # via

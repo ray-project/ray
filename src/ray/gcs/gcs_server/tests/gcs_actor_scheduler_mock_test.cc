@@ -15,23 +15,23 @@
 #include <memory>
 #include <string>
 #include <utility>
-// clang-format off
-#include "gtest/gtest.h"
+
 #include "gmock/gmock.h"
-#include "ray/gcs/gcs_server/gcs_actor_manager.h"
-#include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
-#include "mock/ray/gcs/store_client/store_client.h"
+#include "gtest/gtest.h"
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
+#include "mock/ray/gcs/store_client/store_client.h"
 #include "mock/ray/raylet_client/raylet_client.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
 #include "ray/common/test_util.h"
-// clang-format on
+#include "ray/gcs/gcs_server/gcs_actor.h"
+#include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
+#include "ray/util/counter_map.h"
 
 using namespace ::testing;  // NOLINT
 
 namespace ray {
-using raylet::NoopLocalTaskManager;
 namespace gcs {
+
 struct MockCallback {
   MOCK_METHOD(void, Call, ((std::shared_ptr<GcsActor>)));
   void operator()(std::shared_ptr<GcsActor> a) { return Call(a); }
@@ -176,5 +176,6 @@ TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak2) {
   actor_scheduler->CancelOnWorker(node_id, worker_id);
   push_normal_task_cb(Status::OK(), rpc::PushTaskReply());
 }
+
 }  // namespace gcs
 }  // namespace ray

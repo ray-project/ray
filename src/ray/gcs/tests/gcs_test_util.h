@@ -174,7 +174,6 @@ struct Mocker {
                                   bundles,
                                   strategy,
                                   /* is_detached */ false,
-                                  /* max_cpu_fraction_per_node */ 1.0,
                                   /* soft_target_node_id */ NodeID::Nil(),
                                   job_id,
                                   actor_id,
@@ -305,6 +304,40 @@ struct Mocker {
 
     data.set_num_profile_events_dropped(num_profile_task_events_dropped);
     data.set_job_id(JobID::FromInt(0).Binary());
+
+    return data;
+  }
+
+  static rpc::events::RayEventsData GenRayEventsData(
+      const std::vector<rpc::TaskEvents> &task_events,
+      const std::vector<TaskAttempt> &drop_tasks) {
+    rpc::events::RayEventsData data;
+    rpc::events::TaskEventsMetadata metadata;
+    for (const auto &task_attempt : drop_tasks) {
+      rpc::TaskAttempt rpc_task_attempt;
+      rpc_task_attempt.set_task_id(task_attempt.first.Binary());
+      rpc_task_attempt.set_attempt_number(task_attempt.second);
+      *(metadata.add_dropped_task_attempts()) = rpc_task_attempt;
+    }
+    data.mutable_task_events_metadata()->CopyFrom(metadata);
+    for (const auto &task_event : task_events) {
+      rpc::events::RayEvent ray_event;
+      rpc::events::TaskDefinitionEvent task_definition_event;
+      task_definition_event.set_task_id(task_event.task_id());
+      task_definition_event.set_task_attempt(task_event.attempt_number());
+      task_definition_event.set_job_id(task_event.job_id());
+      if (task_event.has_task_info()) {
+        const auto &task_info = task_event.task_info();
+        task_definition_event.set_task_type(task_info.type());
+        task_definition_event.set_task_name(task_info.name());
+        task_definition_event.set_language(task_info.language());
+      }
+      ray_event.set_event_id(task_event.task_id());
+      ray_event.set_event_type(rpc::events::RayEvent::TASK_DEFINITION_EVENT);
+      ray_event.set_message("test");
+      ray_event.mutable_task_definition_event()->CopyFrom(task_definition_event);
+      *(data.add_events()) = ray_event;
+    }
 
     return data;
   }

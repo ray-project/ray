@@ -27,7 +27,6 @@ from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
 from ray.serve._private.common import RequestMetadata, ServeComponentType
 from ray.serve._private.constants import HTTP_PROXY_TIMEOUT, SERVE_LOGGER_NAME
-from ray.serve.config import gRPCOptions
 from ray.types import ObjectRef
 from ray.util.serialization import StandaloneSerializationContext
 
@@ -44,6 +43,27 @@ except ImportError:
 FILE_NAME_REGEX = r"[^\x20-\x7E]|[<>:\"/\\|?*]"
 
 MESSAGE_PACK_OFFSET = 9
+
+
+def validate_ssl_config(
+    ssl_certfile: Optional[str], ssl_keyfile: Optional[str]
+) -> None:
+    """Validate SSL configuration for HTTPS support.
+
+    Args:
+        ssl_certfile: Path to SSL certificate file
+        ssl_keyfile: Path to SSL private key file
+
+    Raises:
+        ValueError: If only one of ssl_certfile or ssl_keyfile is provided
+    """
+    if (ssl_certfile and not ssl_keyfile) or (ssl_keyfile and not ssl_certfile):
+        raise ValueError(
+            "Both ssl_keyfile and ssl_certfile must be provided together "
+            "to enable HTTPS."
+        )
+
+
 GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR = RuntimeError(
     "Streaming deployment handle results cannot be passed to "
     "downstream handle calls. If you have a use case requiring "
@@ -612,7 +632,7 @@ def wait_for_interrupt() -> None:
         raise
 
 
-def is_grpc_enabled(grpc_config: gRPCOptions) -> bool:
+def is_grpc_enabled(grpc_config) -> bool:
     return grpc_config.port > 0 and len(grpc_config.grpc_servicer_functions) > 0
 
 

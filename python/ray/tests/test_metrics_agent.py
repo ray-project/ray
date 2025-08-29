@@ -141,15 +141,16 @@ _DASHBOARD_METRICS = [
 
 _EVENT_AGGREGATOR_METRICS = [
     "ray_event_aggregator_agent_events_received_total",
-    "ray_event_aggregator_agent_events_failed_to_add_to_aggregator_total",
-    "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total",
-    "ray_event_aggregator_agent_events_published_to_external_svc_total",
-    "ray_event_aggregator_agent_events_filtered_out_before_external_svc_publish_total",
-    "ray_event_aggregator_agent_events_failed_to_publish_to_external_svc_total",
-    "ray_event_aggregator_agent_events_dropped_in_external_svc_publish_queue_total",
-    "ray_event_aggregator_agent_events_published_to_gcs_total",
-    "ray_event_aggregator_agent_events_failed_to_publish_to_gcs_total",
-    "ray_event_aggregator_agent_events_dropped_in_gcs_publish_queue_total",
+    "ray_event_aggregator_agent_events_buffer_add_failures_total",
+    "ray_event_aggregator_agent_http_events_published_total",
+    "ray_event_aggregator_agent_http_events_filtered_total",
+    "ray_event_aggregator_agent_http_publish_failures_total",
+    "ray_event_aggregator_agent_http_publish_queue_dropped_events_total",
+    "ray_event_aggregator_agent_http_publish_consecutive_failures",
+    "ray_event_aggregator_agent_http_time_since_last_success_seconds",
+    "ray_event_aggregator_agent_http_publish_duration_seconds_bucket",
+    "ray_event_aggregator_agent_http_publish_duration_seconds_count",
+    "ray_event_aggregator_agent_http_publish_duration_seconds_sum",
 ]
 
 _NODE_METRICS = [
@@ -507,15 +508,16 @@ def test_metrics_export_event_aggregator_agent(
         metrics_names = metric_descriptors.keys()
         event_aggregator_metrics = [
             "ray_event_aggregator_agent_events_received_total",
-            "ray_event_aggregator_agent_events_failed_to_add_to_aggregator_total",
-            "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total",
-            "ray_event_aggregator_agent_events_published_to_external_svc_total",
-            "ray_event_aggregator_agent_events_filtered_out_before_external_svc_publish_total",
-            "ray_event_aggregator_agent_events_failed_to_publish_to_external_svc_total",
-            "ray_event_aggregator_agent_events_dropped_in_external_svc_publish_queue_total",
-            "ray_event_aggregator_agent_events_published_to_gcs_total",
-            "ray_event_aggregator_agent_events_failed_to_publish_to_gcs_total",
-            "ray_event_aggregator_agent_events_dropped_in_gcs_publish_queue_total",
+            "ray_event_aggregator_agent_events_buffer_add_failures_total",
+            "ray_event_aggregator_agent_http_events_published_total",
+            "ray_event_aggregator_agent_http_events_filtered_total",
+            "ray_event_aggregator_agent_http_publish_failures_total",
+            "ray_event_aggregator_agent_http_publish_queue_dropped_events_total",
+            "ray_event_aggregator_agent_http_publish_consecutive_failures",
+            "ray_event_aggregator_agent_http_time_since_last_success_seconds",
+            "ray_event_aggregator_agent_http_publish_duration_seconds_bucket",
+            "ray_event_aggregator_agent_http_publish_duration_seconds_count",
+            "ray_event_aggregator_agent_http_publish_duration_seconds_sum",
         ]
         return all(metric in metrics_names for metric in event_aggregator_metrics)
 
@@ -523,29 +525,12 @@ def test_metrics_export_event_aggregator_agent(
         _, _, metric_samples = fetch_prometheus(prom_addresses)
         expected_metrics_values = {
             "ray_event_aggregator_agent_events_received_total": 3.0,
-            "ray_event_aggregator_agent_events_failed_to_add_to_aggregator_total": 0.0,
-            "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total": 1.0,
-            "ray_event_aggregator_agent_events_published_to_external_svc_total": 1.0,
-            "ray_event_aggregator_agent_events_filtered_out_before_external_svc_publish_total": 1.0,
-            "ray_event_aggregator_agent_events_failed_to_publish_to_external_svc_total": 0.0,
-            "ray_event_aggregator_agent_events_dropped_in_external_svc_publish_queue_total": 0.0,
-            "ray_event_aggregator_agent_events_published_to_gcs_total": 0.0,
-            "ray_event_aggregator_agent_events_failed_to_publish_to_gcs_total": 0.0,
-            "ray_event_aggregator_agent_events_dropped_in_gcs_publish_queue_total": 0.0,
+            "ray_event_aggregator_agent_http_events_published_total": 1.0,
         }
-        for descriptor, expected_value in expected_metrics_values.items():
-            samples = [m for m in metric_samples if m.name == descriptor]
-            if not samples:
-                return False
-            if samples[0].value != expected_value:
-                return False
         return True
-
-    wait_for_condition(test_case_stats_exist, timeout=30, retry_interval_ms=1000)
 
     now = time.time_ns()
     seconds, nanos = divmod(now, 10**9)
-    timestamp = Timestamp(seconds=seconds, nanos=nanos)
     request = AddEventsRequest(
         events_data=RayEventsData(
             events=[
@@ -587,6 +572,8 @@ def test_metrics_export_event_aggregator_agent(
 
     stub.AddEvents(request)
     wait_for_condition(lambda: len(httpserver.log) == 1)
+
+    wait_for_condition(test_case_stats_exist, timeout=30, retry_interval_ms=1000)
 
     wait_for_condition(test_case_value_correct, timeout=30, retry_interval_ms=1000)
 
@@ -986,9 +973,10 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
         )
         return node_export_addrs + [autoscaler_export_addr, dashboard_export_addr]
 
-    loaded_json_data = json.loads(writer.get_file_discovery_content())[0]
+    loaded_json_data = json.loads(writer.get_file_discovery_content())
+    assert loaded_json_data == writer.get_latest_service_discovery_content()
     assert set(get_metrics_export_address_from_node(nodes)) == set(
-        loaded_json_data["targets"]
+        loaded_json_data[0]["targets"]
     )
 
     # Let's update nodes.
@@ -996,9 +984,10 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
         nodes.append(cluster.add_node())
 
     # Make sure service discovery file content is correctly updated.
-    loaded_json_data = json.loads(writer.get_file_discovery_content())[0]
+    loaded_json_data = json.loads(writer.get_file_discovery_content())
+    assert loaded_json_data == writer.get_latest_service_discovery_content()
     assert set(get_metrics_export_address_from_node(nodes)) == set(
-        loaded_json_data["targets"]
+        loaded_json_data[0]["targets"]
     )
 
 

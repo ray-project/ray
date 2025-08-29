@@ -12,6 +12,18 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "shutdown_coordinator_test",
+    size = "medium",
+    srcs = ["shutdown_coordinator_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/core_worker:shutdown_coordinator",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "memory_store_test",
     size = "small",
     srcs = ["memory_store_test.cc"],
@@ -34,8 +46,8 @@ ray_cc_test(
     srcs = ["reference_count_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//:ray_fakes",
         "//src/mock/ray/pubsub:mock_publisher",
-        "//src/mock/ray/pubsub:mock_subscriber",
         "//src/ray/common:asio",
         "//src/ray/common:ray_object",
         "//src/ray/core_worker:memory_store",
@@ -56,8 +68,8 @@ ray_cc_test(
     deps = [
         "//:ray_fakes",
         "//:ray_mock",
+        "//src/fakes/ray/rpc/raylet:fake_raylet_client",
         "//src/mock/ray/pubsub:mock_publisher",
-        "//src/mock/ray/pubsub:mock_subscriber",
         "//src/ray/common:task_common",
         "//src/ray/common:test_util",
         "//src/ray/core_worker:memory_store",
@@ -75,9 +87,9 @@ ray_cc_test(
     srcs = ["task_manager_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//:ray_fakes",
         "//:ray_mock",
         "//src/mock/ray/pubsub:mock_publisher",
-        "//src/mock/ray/pubsub:mock_subscriber",
         "//src/ray/common:task_common",
         "//src/ray/common:test_util",
         "//src/ray/core_worker:memory_store",
@@ -144,6 +156,7 @@ ray_cc_test(
         "//src/ray/core_worker:actor_creator",
         "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//src/ray/util:path_utils",
+        "//src/ray/util:raii",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
@@ -212,6 +225,7 @@ ray_cc_test(
     deps = [
         "//:ray_fakes",
         "//:ray_mock",
+        "//src/fakes/ray/rpc/raylet:fake_raylet_client",
         "//src/ray/core_worker:experimental_mutable_object_provider",
         "//src/ray/object_manager:object_manager_common",
         "//src/ray/object_manager/plasma:plasma_client",
@@ -232,6 +246,7 @@ ray_cc_test(
     deps = [
         "//:ray_fakes",
         "//:ray_mock",
+        "//src/fakes/ray/rpc/raylet:fake_raylet_client",
         "//src/ray/common:test_util",
         "//src/ray/core_worker:core_worker_lib",
         "//src/ray/core_worker:memory_store",
