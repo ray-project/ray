@@ -392,9 +392,8 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
   /// Cancel actor which is either being scheduled or is pending scheduling.
   ///
   /// \param actor The actor to be cancelled.
-  /// \param task_id The id of actor creation task to be cancelled.
-  void CancelActorInScheduling(const std::shared_ptr<GcsActor> &actor,
-                               const TaskID &task_id);
+  /// \param lease_id The lease id of actor creation task to be cancelled.
+  void CancelActorInScheduling(const std::shared_ptr<GcsActor> &actor);
 
   /// Get the alive or dead actor of the actor id.
   /// NOTE: The return value is not meant to be passed to other scope.

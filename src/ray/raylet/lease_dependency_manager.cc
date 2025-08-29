@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/raylet/dependency_manager.h"
+#include "ray/raylet/lease_dependency_manager.h"
 
 #include <memory>
 #include <string>
@@ -23,12 +23,12 @@ namespace ray {
 
 namespace raylet {
 
-bool DependencyManager::CheckObjectLocal(const ObjectID &object_id) const {
+bool LeaseDependencyManager::CheckObjectLocal(const ObjectID &object_id) const {
   return local_objects_.count(object_id) == 1;
 }
 
-bool DependencyManager::GetOwnerAddress(const ObjectID &object_id,
-                                        rpc::Address *owner_address) const {
+bool LeaseDependencyManager::GetOwnerAddress(const ObjectID &object_id,
+                                             rpc::Address *owner_address) const {
   auto obj = required_objects_.find(object_id);
   if (obj == required_objects_.end()) {
     return false;
@@ -38,8 +38,8 @@ bool DependencyManager::GetOwnerAddress(const ObjectID &object_id,
   return !owner_address->worker_id().empty();
 }
 
-void DependencyManager::RemoveObjectIfNotNeeded(
-    absl::flat_hash_map<ObjectID, DependencyManager::ObjectDependencies>::iterator
+void LeaseDependencyManager::RemoveObjectIfNotNeeded(
+    absl::flat_hash_map<ObjectID, LeaseDependencyManager::ObjectDependencies>::iterator
         required_object_it) {
   const auto &object_id = required_object_it->first;
   if (required_object_it->second.Empty()) {
@@ -53,9 +53,9 @@ void DependencyManager::RemoveObjectIfNotNeeded(
   }
 }
 
-absl::flat_hash_map<ObjectID, DependencyManager::ObjectDependencies>::iterator
-DependencyManager::GetOrInsertRequiredObject(const ObjectID &object_id,
-                                             const rpc::ObjectReference &ref) {
+absl::flat_hash_map<ObjectID, LeaseDependencyManager::ObjectDependencies>::iterator
+LeaseDependencyManager::GetOrInsertRequiredObject(const ObjectID &object_id,
+                                                  const rpc::ObjectReference &ref) {
   auto it = required_objects_.find(object_id);
   if (it == required_objects_.end()) {
     it = required_objects_.emplace(object_id, ref).first;
@@ -63,7 +63,7 @@ DependencyManager::GetOrInsertRequiredObject(const ObjectID &object_id,
   return it;
 }
 
-void DependencyManager::StartOrUpdateWaitRequest(
+void LeaseDependencyManager::StartOrUpdateWaitRequest(
     const WorkerID &worker_id,
     const std::vector<rpc::ObjectReference> &required_objects) {
   RAY_LOG(DEBUG) << "Starting wait request for worker " << worker_id;
@@ -95,7 +95,7 @@ void DependencyManager::StartOrUpdateWaitRequest(
   }
 }
 
-void DependencyManager::CancelWaitRequest(const WorkerID &worker_id) {
+void LeaseDependencyManager::CancelWaitRequest(const WorkerID &worker_id) {
   RAY_LOG(DEBUG) << "Canceling wait request for worker " << worker_id;
   auto req_iter = wait_requests_.find(worker_id);
   if (req_iter == wait_requests_.end()) {
@@ -112,7 +112,7 @@ void DependencyManager::CancelWaitRequest(const WorkerID &worker_id) {
   wait_requests_.erase(req_iter);
 }
 
-void DependencyManager::StartOrUpdateGetRequest(
+void LeaseDependencyManager::StartOrUpdateGetRequest(
     const WorkerID &worker_id,
     const std::vector<rpc::ObjectReference> &required_objects) {
   RAY_LOG(DEBUG) << "Starting get request for worker " << worker_id;
@@ -150,7 +150,7 @@ void DependencyManager::StartOrUpdateGetRequest(
   }
 }
 
-void DependencyManager::CancelGetRequest(const WorkerID &worker_id) {
+void LeaseDependencyManager::CancelGetRequest(const WorkerID &worker_id) {
   RAY_LOG(DEBUG) << "Canceling get request for worker " << worker_id;
   auto req_iter = get_requests_.find(worker_id);
   if (req_iter == get_requests_.end()) {
@@ -171,120 +171,121 @@ void DependencyManager::CancelGetRequest(const WorkerID &worker_id) {
   get_requests_.erase(req_iter);
 }
 
-/// Request dependencies for a queued task.
-bool DependencyManager::RequestTaskDependencies(
-    const TaskID &task_id,
+/// Request dependencies for a queued lease.
+bool LeaseDependencyManager::RequestLeaseDependencies(
+    const LeaseID &lease_id,
     const std::vector<rpc::ObjectReference> &required_objects,
     const TaskMetricsKey &task_key) {
-  RAY_LOG(DEBUG) << "Adding dependencies for task " << task_id
+  RAY_LOG(DEBUG) << "Adding dependencies for lease " << lease_id
                  << ". Required objects length: " << required_objects.size();
 
   const auto required_ids = ObjectRefsToIds(required_objects);
   absl::flat_hash_set<ObjectID> deduped_ids(required_ids.begin(), required_ids.end());
-  auto inserted = queued_task_requests_.emplace(
-      task_id,
-      std::make_unique<TaskDependencies>(
-          std::move(deduped_ids), waiting_tasks_counter_, task_key));
-  RAY_CHECK(inserted.second) << "Task depedencies can be requested only once per task. "
-                             << task_id;
-  auto &task_entry = inserted.first->second;
+  auto inserted = queued_lease_requests_.emplace(
+      lease_id,
+      std::make_unique<LeaseDependencies>(
+          std::move(deduped_ids), waiting_leases_counter_, task_key));
+  RAY_CHECK(inserted.second) << "Lease depedencies can be requested only once per lease. "
+                             << lease_id;
+  auto &lease_entry = inserted.first->second;
 
   for (const auto &ref : required_objects) {
     const auto obj_id = ObjectRefToId(ref);
-    RAY_LOG(DEBUG) << "Task " << task_id << " blocked on object " << obj_id;
+    RAY_LOG(DEBUG).WithField(lease_id).WithField(obj_id) << "Lease blocked on object";
 
     auto it = GetOrInsertRequiredObject(obj_id, ref);
-    it->second.dependent_tasks.insert(task_id);
+    it->second.dependent_leases.insert(lease_id);
   }
 
-  for (const auto &obj_id : task_entry->dependencies_) {
+  for (const auto &obj_id : lease_entry->dependencies_) {
     if (local_objects_.count(obj_id)) {
-      task_entry->DecrementMissingDependencies();
+      lease_entry->DecrementMissingDependencies();
     }
   }
 
   if (!required_objects.empty()) {
-    task_entry->pull_request_id_ =
+    lease_entry->pull_request_id_ =
         object_manager_.Pull(required_objects, BundlePriority::TASK_ARGS, task_key);
-    RAY_LOG(DEBUG) << "Started pull for dependencies of task " << task_id
-                   << " request: " << task_entry->pull_request_id_;
+    RAY_LOG(DEBUG) << "Started pull for dependencies of lease " << lease_id
+                   << " request: " << lease_entry->pull_request_id_;
   }
 
-  return task_entry->num_missing_dependencies_ == 0;
+  return lease_entry->num_missing_dependencies_ == 0;
 }
 
-void DependencyManager::RemoveTaskDependencies(const TaskID &task_id) {
-  RAY_LOG(DEBUG) << "Removing dependencies for task " << task_id;
-  auto task_entry = queued_task_requests_.find(task_id);
-  RAY_CHECK(task_entry != queued_task_requests_.end())
+void LeaseDependencyManager::RemoveLeaseDependencies(const LeaseID &lease_id) {
+  RAY_LOG(DEBUG) << "Removing dependencies for lease " << lease_id;
+  auto lease_entry = queued_lease_requests_.find(lease_id);
+  RAY_CHECK(lease_entry != queued_lease_requests_.end())
       << "Can't remove dependencies of tasks that are not queued.";
 
-  if (task_entry->second->pull_request_id_ > 0) {
-    RAY_LOG(DEBUG) << "Canceling pull for dependencies of task " << task_id
-                   << " request: " << task_entry->second->pull_request_id_;
-    object_manager_.CancelPull(task_entry->second->pull_request_id_);
+  if (lease_entry->second->pull_request_id_ > 0) {
+    RAY_LOG(DEBUG) << "Canceling pull for dependencies of lease " << lease_id
+                   << " request: " << lease_entry->second->pull_request_id_;
+    object_manager_.CancelPull(lease_entry->second->pull_request_id_);
   }
 
-  for (const auto &obj_id : task_entry->second->dependencies_) {
+  for (const auto &obj_id : lease_entry->second->dependencies_) {
     auto it = required_objects_.find(obj_id);
     RAY_CHECK(it != required_objects_.end());
-    it->second.dependent_tasks.erase(task_id);
+    it->second.dependent_leases.erase(lease_id);
     RemoveObjectIfNotNeeded(it);
   }
 
-  queued_task_requests_.erase(task_entry);
+  queued_lease_requests_.erase(lease_entry);
 }
 
-std::vector<TaskID> DependencyManager::HandleObjectMissing(
+std::vector<LeaseID> LeaseDependencyManager::HandleObjectMissing(
     const ray::ObjectID &object_id) {
   RAY_CHECK(local_objects_.erase(object_id))
       << "Evicted object was not local " << object_id;
 
-  // Find any tasks that are dependent on the missing object.
-  std::vector<TaskID> waiting_task_ids;
+  // Find any leases that are dependent on the missing object.
+  std::vector<LeaseID> waiting_lease_ids;
   auto object_entry = required_objects_.find(object_id);
   if (object_entry != required_objects_.end()) {
-    for (auto &dependent_task_id : object_entry->second.dependent_tasks) {
-      auto it = queued_task_requests_.find(dependent_task_id);
-      RAY_CHECK(it != queued_task_requests_.end());
-      auto &task_entry = it->second;
-      // If the dependent task had all of its arguments ready, it was ready to
+    for (auto &dependent_lease_id : object_entry->second.dependent_leases) {
+      auto it = queued_lease_requests_.find(dependent_lease_id);
+      RAY_CHECK(it != queued_lease_requests_.end());
+      auto &lease_entry = it->second;
+      // If the dependent lease had all of its arguments ready, it was ready to
       // run but must be switched to waiting since one of its arguments is now
       // missing.
-      if (task_entry->num_missing_dependencies_ == 0) {
-        waiting_task_ids.push_back(dependent_task_id);
+      if (lease_entry->num_missing_dependencies_ == 0) {
+        waiting_lease_ids.push_back(dependent_lease_id);
         // During normal execution we should be able to include the check
-        // RAY_CHECK(pending_tasks_.count(dependent_task_id) == 1);
+        // RAY_CHECK(pending_leases_.count(dependent_lease_id) == 1);
         // However, this invariant will not hold during unit test execution.
       }
-      task_entry->IncrementMissingDependencies();
+      lease_entry->IncrementMissingDependencies();
     }
   }
 
-  // Process callbacks for all of the tasks dependent on the object that are
+  // Process callbacks for all of the leases dependent on the object that are
   // now ready to run.
-  return waiting_task_ids;
+  return waiting_lease_ids;
 }
 
-std::vector<TaskID> DependencyManager::HandleObjectLocal(const ray::ObjectID &object_id) {
+std::vector<LeaseID> LeaseDependencyManager::HandleObjectLocal(
+    const ray::ObjectID &object_id) {
   // Add the object to the table of locally available objects.
   auto inserted = local_objects_.insert(object_id);
   RAY_CHECK(inserted.second) << "Local object was already local " << object_id;
 
-  // Find all tasks and workers that depend on the newly available object.
-  std::vector<TaskID> ready_task_ids;
+  // Find all leases and workers that depend on the newly available object.
+  std::vector<LeaseID> ready_lease_ids;
   auto object_entry = required_objects_.find(object_id);
   if (object_entry != required_objects_.end()) {
-    // Loop through all tasks that depend on the newly available object.
-    for (const auto &dependent_task_id : object_entry->second.dependent_tasks) {
-      auto it = queued_task_requests_.find(dependent_task_id);
-      RAY_CHECK(it != queued_task_requests_.end());
-      auto &task_entry = it->second;
-      task_entry->DecrementMissingDependencies();
-      // If the dependent task now has all of its arguments ready, it's ready
+    // Loop through all leases that depend on the newly available object.
+    for (const auto &dependent_lease_id : object_entry->second.dependent_leases) {
+      auto it = queued_lease_requests_.find(dependent_lease_id);
+      RAY_CHECK(it != queued_lease_requests_.end());
+      auto &lease_entry = it->second;
+      lease_entry->DecrementMissingDependencies();
+      // If the dependent lease now has all of its arguments ready, it's ready
       // to run.
-      if (task_entry->num_missing_dependencies_ == 0) {
-        ready_task_ids.push_back(dependent_task_id);
+      if (lease_entry->num_missing_dependencies_ == 0) {
+        ready_lease_ids.push_back(dependent_lease_id);
       }
     }
 
@@ -310,29 +311,29 @@ std::vector<TaskID> DependencyManager::HandleObjectLocal(const ray::ObjectID &ob
     RemoveObjectIfNotNeeded(object_entry);
   }
 
-  return ready_task_ids;
+  return ready_lease_ids;
 }
 
-bool DependencyManager::TaskDependenciesBlocked(const TaskID &task_id) const {
-  auto it = queued_task_requests_.find(task_id);
-  RAY_CHECK(it != queued_task_requests_.end());
+bool LeaseDependencyManager::LeaseDependenciesBlocked(const LeaseID &lease_id) const {
+  auto it = queued_lease_requests_.find(lease_id);
+  RAY_CHECK(it != queued_lease_requests_.end());
   RAY_CHECK(it->second->pull_request_id_ != 0);
   return !object_manager_.PullRequestActiveOrWaitingForMetadata(
       it->second->pull_request_id_);
 }
 
-std::string DependencyManager::DebugString() const {
+std::string LeaseDependencyManager::DebugString() const {
   std::stringstream result;
-  result << "TaskDependencyManager:";
-  result << "\n- task deps map size: " << queued_task_requests_.size();
+  result << "LeaseDependencyManager:";
+  result << "\n- lease deps map size: " << queued_lease_requests_.size();
   result << "\n- get req map size: " << get_requests_.size();
   result << "\n- wait req map size: " << wait_requests_.size();
   result << "\n- local objects map size: " << local_objects_.size();
   return result.str();
 }
 
-void DependencyManager::RecordMetrics() {
-  waiting_tasks_counter_.FlushOnChangeCallbacks();
+void LeaseDependencyManager::RecordMetrics() {
+  waiting_leases_counter_.FlushOnChangeCallbacks();
 }
 
 }  // namespace raylet
