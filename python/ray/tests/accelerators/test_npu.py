@@ -1,7 +1,8 @@
 import os
 import sys
-import pytest
 from unittest.mock import patch
+
+import pytest
 
 import ray
 from ray._private.accelerators import NPUAcceleratorManager as Accelerator

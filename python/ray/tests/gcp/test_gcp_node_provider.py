@@ -1,33 +1,32 @@
 import logging
 import sys
-from typing import Dict
 from threading import RLock
-from unittest.mock import MagicMock, patch, call
+from typing import Dict
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
+from ray.autoscaler._private.command_runner import DockerCommandRunner, SSHCommandRunner
+from ray.autoscaler._private.gcp.config import (
+    _get_num_tpu_chips,
+    _has_tpus_in_node_configs,
+    _is_single_host_tpu,
+    get_node_type,
+    tpu_accelerator_config_to_type,
+)
 from ray.autoscaler._private.gcp.node import (
     GCPCompute,
     GCPNode,
     GCPNodeType,
     GCPResource,
 )
-
-from ray.tests.test_autoscaler import MockProcessRunner
 from ray.autoscaler._private.gcp.node_provider import GCPNodeProvider
-from ray.autoscaler._private.gcp.config import (
-    get_node_type,
-    _get_num_tpu_chips,
-    _is_single_host_tpu,
-    _has_tpus_in_node_configs,
-    tpu_accelerator_config_to_type,
-)
 from ray.autoscaler._private.gcp.tpu_command_runner import (
     TPUCommandRunner,
-    TPUVMSSHCommandRunner,
     TPUVMDockerCommandRunner,
+    TPUVMSSHCommandRunner,
 )
-from ray.autoscaler._private.command_runner import SSHCommandRunner, DockerCommandRunner
+from ray.tests.test_autoscaler import MockProcessRunner
 
 _PROJECT_NAME = "project-one"
 _AZ = "us-west1-b"
