@@ -17,18 +17,13 @@
 #include <memory>
 #include <string>
 
-// clang-format off
 #include "gtest/gtest.h"
-#include "ray/gcs/gcs_server/tests/gcs_server_test_util.h"
-#include "ray/gcs/store_client/in_memory_store_client.h"
-#include "ray/gcs/tests/gcs_test_util.h"
-#include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "mock/ray/pubsub/publisher.h"
-#include "mock/ray/pubsub/subscriber.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
-
-// clang-format on
+#include "ray/gcs/gcs_server/gcs_kv_manager.h"
+#include "ray/gcs/store_client/in_memory_store_client.h"
+#include "ray/gcs/tests/gcs_test_util.h"
 
 namespace ray {
 

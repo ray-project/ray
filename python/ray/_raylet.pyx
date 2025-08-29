@@ -184,6 +184,22 @@ from ray.includes.optional cimport (
     optional, nullopt
 )
 
+cimport cpython
+
+include "includes/network_util.pxi"
+include "includes/object_ref.pxi"
+include "includes/unique_ids.pxi"
+include "includes/ray_config.pxi"
+include "includes/function_descriptor.pxi"
+include "includes/buffer.pxi"
+include "includes/common.pxi"
+include "includes/gcs_client.pxi"
+include "includes/serialization.pxi"
+include "includes/libcoreworker.pxi"
+include "includes/global_state_accessor.pxi"
+include "includes/metric.pxi"
+include "includes/setproctitle.pxi"
+
 import ray
 from ray.exceptions import (
     RayActorError,
@@ -230,24 +246,8 @@ import ray._private.profiling as profiling
 from ray._common.utils import decode
 from ray._private.utils import DeferSigint
 from ray._private.object_ref_generator import DynamicObjectRefGenerator
-from ray._common.network_utils import build_address, parse_address
 from ray.util.annotations import PublicAPI
 from ray._private.custom_types import TensorTransportEnum
-
-cimport cpython
-
-include "includes/object_ref.pxi"
-include "includes/unique_ids.pxi"
-include "includes/ray_config.pxi"
-include "includes/function_descriptor.pxi"
-include "includes/buffer.pxi"
-include "includes/common.pxi"
-include "includes/gcs_client.pxi"
-include "includes/serialization.pxi"
-include "includes/libcoreworker.pxi"
-include "includes/global_state_accessor.pxi"
-include "includes/metric.pxi"
-include "includes/setproctitle.pxi"
 
 # Expose GCC & Clang macro to report
 # whether C++ optimizations were enabled during compilation.
@@ -598,7 +598,7 @@ class SerializedRayObject(NamedTuple):
 
 
 cdef RayObjectsToSerializedRayObjects(
-        const c_vector[shared_ptr[CRayObject]] objects):
+        const c_vector[shared_ptr[CRayObject]] objects, object_refs: Optional[List[ObjectRef]] = None):
     serialized_ray_objects = []
     for i in range(objects.size()):
         # core_worker will return a nullptr for objects that couldn't be
@@ -614,6 +614,11 @@ cdef RayObjectsToSerializedRayObjects(
                 metadata = Buffer.make(
                     objects[i].get().GetMetadata()).to_pybytes()
             tensor_transport = TensorTransportEnum(<int>(objects[i].get().GetTensorTransport()))
+            if (
+                tensor_transport == TensorTransportEnum.OBJECT_STORE
+                and object_refs is not None
+            ):
+                tensor_transport = TensorTransportEnum(object_refs[i].tensor_transport())
             serialized_ray_objects.append(SerializedRayObject(data, metadata, tensor_transport))
     return serialized_ray_objects
 
@@ -622,11 +627,13 @@ cdef VectorToObjectRefs(const c_vector[CObjectReference] &object_refs,
                         skip_adding_local_ref):
     result = []
     for i in range(object_refs.size()):
+        tensor_transport_val = <int>object_refs[i].tensor_transport()
         result.append(ObjectRef(
             object_refs[i].object_id(),
             object_refs[i].owner_address().SerializeAsString(),
             object_refs[i].call_site(),
-            skip_adding_local_ref=skip_adding_local_ref))
+            skip_adding_local_ref=skip_adding_local_ref,
+            tensor_transport_val=tensor_transport_val))
     return result
 
 
@@ -937,11 +944,13 @@ cdef prepare_args_internal(
             op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
                     c_arg, &c_owner_address)
             check_status(op_status)
+            c_tensor_transport = (<ObjectRef>arg).c_tensor_transport()
             args_vector.push_back(
                 unique_ptr[CTaskArg](new CTaskArgByReference(
                     c_arg,
                     c_owner_address,
-                    arg.call_site())))
+                    arg.call_site(),
+                    c_tensor_transport)))
 
         else:
             try:
@@ -998,7 +1007,8 @@ cdef prepare_args_internal(
                     new CTaskArgByReference(
                             put_id,
                             CCoreWorkerProcess.GetCoreWorker().GetRpcAddress(),
-                            put_arg_call_site
+                            put_arg_call_site,
+                            TENSOR_TRANSPORT_OBJECT_STORE
                         )))
                 incremented_put_arg_ids.push_back(put_id)
 
@@ -1882,10 +1892,10 @@ cdef void execute_task(
                 if c_args.empty():
                     args, kwargs = [], {}
                 else:
-                    metadata_pairs = RayObjectsToSerializedRayObjects(c_args)
                     object_refs = VectorToObjectRefs(
                             c_arg_refs,
                             skip_adding_local_ref=False)
+                    metadata_pairs = RayObjectsToSerializedRayObjects(c_args, object_refs)
                     if core_worker.current_actor_is_asyncio():
                         # We deserialize objects in event loop thread to
                         # prevent segfaults. See #7799
@@ -1918,9 +1928,6 @@ cdef void execute_task(
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
                 actor_id = core_worker.get_actor_id()
                 actor = worker.actors[actor_id]
-                class_name = actor.__class__.__name__
-                actor_title = f"{class_name}({args!r}, {kwargs!r})"
-                core_worker.set_actor_title(actor_title.encode("utf-8"))
 
             worker.record_task_log_start(task_id, attempt_number)
 
@@ -3195,9 +3202,6 @@ cdef class CoreWorker:
     def set_webui_display(self, key, message):
         CCoreWorkerProcess.GetCoreWorker().SetWebuiDisplay(key, message)
 
-    def set_actor_title(self, title):
-        CCoreWorkerProcess.GetCoreWorker().SetActorTitle(title)
-
     def set_actor_repr_name(self, repr_name):
         CCoreWorkerProcess.GetCoreWorker().SetActorReprName(repr_name)
 
@@ -3886,7 +3890,6 @@ cdef class CoreWorker:
                             c_vector[unordered_map[c_string, double]] bundles,
                             c_string strategy,
                             c_bool is_detached,
-                            double max_cpu_fraction_per_node,
                             soft_target_node_id,
                             c_vector[unordered_map[c_string, c_string]] bundle_label_selector):
         cdef:
@@ -3918,7 +3921,6 @@ cdef class CoreWorker:
                                 c_strategy,
                                 bundles,
                                 is_detached,
-                                max_cpu_fraction_per_node,
                                 c_soft_target_node_id,
                                 bundle_label_selector),
                             &c_placement_group_id))
@@ -4163,6 +4165,11 @@ cdef class CoreWorker:
                                          method_meta.retry_exceptions,
                                          method_meta.generator_backpressure_num_objects, # noqa
                                          method_meta.enable_task_events,
+                                         # TODO(swang): Pass
+                                         # enable_tensor_transport when
+                                         # serializing an ActorHandle and
+                                         # sending to another actor.
+                                         False,  # enable_tensor_transport
                                          method_meta.method_name_to_tensor_transport,
                                          actor_method_cpu,
                                          actor_creation_function_descriptor,
@@ -4181,6 +4188,7 @@ cdef class CoreWorker:
                                          {},  # method retry_exceptions
                                          {},  # generator_backpressure_num_objects
                                          {},  # enable_task_events
+                                         False,  # enable_tensor_transport
                                          None,  # method_name_to_tensor_transport
                                          0,  # actor method cpu
                                          actor_creation_function_descriptor,

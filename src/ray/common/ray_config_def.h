@@ -737,12 +737,6 @@ RAY_CONFIG(std::string, custom_unit_instance_resources, "neuron_cores,TPU,NPU,HP
 /// Ray-internal auxiliary tasks (e.g., compiled graph workers).
 RAY_CONFIG(std::string, system_concurrency_group_name, "_ray_system")
 
-// Maximum size of the batches when broadcasting resources to raylet.
-RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512)
-
-// Maximum ray sync message batch size in bytes (1MB by default) between nodes.
-RAY_CONFIG(uint64_t, max_sync_message_batch_bytes, 1 * 1024 * 1024)
-
 /// ServerCall instance number of each RPC service handler
 ///
 /// NOTE: Default value is temporarily pegged at `gcs_server_rpc_server_thread_num * 100`

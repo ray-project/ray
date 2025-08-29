@@ -45,7 +45,6 @@
 #include "ray/util/stream_redirection.h"
 #include "ray/util/stream_redirection_options.h"
 #include "ray/util/subreaper.h"
-#include "ray/util/util.h"
 
 namespace ray {
 namespace core {
@@ -424,8 +423,14 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       /*put_in_local_plasma_callback=*/
       [this](const RayObject &object, const ObjectID &object_id) {
         auto core_worker = GetCoreWorker();
-        RAY_CHECK_OK(
-            core_worker->PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true));
+        auto put_status =
+            core_worker->PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true);
+        if (!put_status.ok()) {
+          RAY_LOG(WARNING).WithField(object_id)
+              << "Failed to put object in plasma store: " << put_status;
+          return put_status;
+        }
+        return Status::OK();
       },
       /* retry_task_callback= */
       [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
@@ -781,6 +786,15 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     auto worker = CreateCoreWorker(options_, worker_id_);
     auto write_locked = core_worker_.LockForWrite();
     write_locked.Get() = worker;
+    // Initialize metrics agent client.
+    metrics_agent_client_ = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
+        "127.0.0.1",
+        options_.metrics_agent_port,
+        io_service_,
+        *write_locked.Get()->client_call_manager_);
+    metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
+      stats::InitOpenTelemetryExporter(options_.metrics_agent_port, server_status);
+    });
   }
 }
 
