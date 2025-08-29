@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 import asyncio
 import logging
 import random
-from typing import Dict
+from typing import Dict, List, Optional
 
 from ray.dashboard.modules.aggregator.multi_consumer_event_buffer import (
     MultiConsumerEventBuffer,
@@ -34,6 +34,11 @@ class RayEventsPublisherInterface(ABC):
         """Return a snapshot of internal metrics since last call and reset them."""
         pass
 
+    @abstractmethod
+    async def wait_until_running(self, timeout: Optional[float] = None) -> bool:
+        """Wait until the publisher has started."""
+        pass
+
 
 class RayEventsPublisher(RayEventsPublisherInterface):
     """RayEvents publisher that publishes batches of events to a destination using a dedicated async worker.
@@ -56,7 +61,8 @@ class RayEventsPublisher(RayEventsPublisherInterface):
 
         Args:
             name: Name identifier for this publisher instance
-            queue_max_size: Maximum number of batches that can be queued
+            publish_client: Client for publishing events to the destination
+            event_buffer: Buffer for reading batches of events
             max_retries: Maximum number of retries for failed publishes
             initial_backoff: Initial backoff time between retries in seconds
             max_backoff: Maximum backoff time between retries in seconds
@@ -67,7 +73,6 @@ class RayEventsPublisher(RayEventsPublisherInterface):
         self._initial_backoff = float(initial_backoff)
         self._max_backoff = float(max_backoff)
         self._jitter_ratio = float(jitter_ratio)
-        self._publish_worker_task = None
         self._publish_client = publish_client
         self._event_buffer = event_buffer
         self._event_buffer_consumer_id = None
@@ -78,6 +83,12 @@ class RayEventsPublisher(RayEventsPublisherInterface):
         self._metric_events_published_since_last: int = 0
         self._metric_events_filtered_out_since_last: int = 0
         self._metric_events_publish_failures_since_last: int = 0
+        self._metric_success_latency_seconds_since_last: List[float] = []
+        self._metric_failure_latency_seconds_since_last: List[float] = []
+        self._metric_num_failed_attempts_since_last_success: int = 0
+        self._metric_last_publish_success_timestamp: Optional[float] = None
+        # Event set once the publisher has registered as a consumer and is ready to publish events
+        self._started_event: asyncio.Event = asyncio.Event()
 
     async def run_forever(self) -> None:
         """Run the publisher forever until cancellation or process death.
@@ -85,6 +96,9 @@ class RayEventsPublisher(RayEventsPublisherInterface):
         Registers as a consumer, starts the worker loop, and handles cleanup on cancellation.
         """
         self._event_buffer_consumer_id = await self._event_buffer.register_consumer()
+        
+        # Signal that the publisher is ready to publish events
+        self._started_event.set()
 
         try:
             logger.info(f"Starting publisher {self._name}")
@@ -109,25 +123,70 @@ class RayEventsPublisher(RayEventsPublisherInterface):
         Returns a dict with keys: 'published', 'filtered_out', 'failed', 'queue_dropped'.
         """
         async with self._metrics_lock:
+            if self._metric_last_publish_success_timestamp is None:
+                time_since_last_success_seconds = None
+            else:
+                time_since_last_success_seconds = max(
+                    0.0, asyncio.get_running_loop().time() - self._metric_last_publish_success_timestamp
+                )
             publisher_metrics = {
                 "published": self._metric_events_published_since_last,
                 "filtered_out": self._metric_events_filtered_out_since_last,
                 "failed": self._metric_events_publish_failures_since_last,
+                "success_latency_seconds": list(
+                    self._metric_success_latency_seconds_since_last
+                ),
+                "failure_latency_seconds": list(
+                    self._metric_failure_latency_seconds_since_last
+                ),
+                "failed_attempts_since_last_success": self._metric_num_failed_attempts_since_last_success,
+                "time_since_last_success_seconds": time_since_last_success_seconds,
             }
+            
+            # Include dropped events by type from the event buffer
+            if self._event_buffer_consumer_id is not None:
+                dropped_by_type = await self._event_buffer.get_and_reset_evicted_events_count(
+                    self._event_buffer_consumer_id
+                )
+                publisher_metrics["dropped_events"] = dropped_by_type
+            else:
+                publisher_metrics["dropped_events"] = {}
+
+            # Reset counters
             self._metric_events_published_since_last = 0
             self._metric_events_filtered_out_since_last = 0
             self._metric_events_publish_failures_since_last = 0
+            self._metric_success_latency_seconds_since_last = []
+            self._metric_failure_latency_seconds_since_last = []
             return publisher_metrics
+
+    async def wait_until_running(self, timeout: Optional[float] = None) -> bool:
+        """Wait until the publisher has started.
+
+        Returns:
+            True if the publisher started before the timeout, False otherwise.
+            If timeout is None, waits indefinitely.
+        """
+        if timeout is None:
+            await self._started_event.wait()
+            return True
+        try:
+            await asyncio.wait_for(self._started_event.wait(), timeout)
+            return True
+        except asyncio.TimeoutError:
+            return False
 
     async def _async_publish_with_retries(self, batch) -> None:
         """Attempts to publish a batch with retries.
 
         Will retry failed publishes up to max_retries times with increasing delays.
         """
-        attempts = 0
         num_events_in_batch = self._publish_client.count_num_events_in_batch(batch)
         while True:
+            start = asyncio.get_running_loop().time()
             result = await self._publish_client.publish(batch)
+            duration = asyncio.get_running_loop().time() - start
+
             if result.is_publish_successful:
                 async with self._metrics_lock:
                     self._metric_events_published_since_last += int(
@@ -136,16 +195,25 @@ class RayEventsPublisher(RayEventsPublisherInterface):
                     self._metric_events_filtered_out_since_last += int(
                         result.num_events_filtered_out
                     )
+                    self._metric_num_failed_attempts_since_last_success = 0
+                    self._metric_last_publish_success_timestamp = asyncio.get_running_loop().time()
+                    self._metric_success_latency_seconds_since_last.append(float(duration))
                 return
-            # retry indefinitely if max_retries is less than 0
-            if self._max_retries >= 0 and attempts >= self._max_retries:
-                async with self._metrics_lock:
+
+            async with self._metrics_lock:
+                # if max retries are exhausted mark as failed and break out, retry indefinitely if max_retries is less than 0
+                if self._max_retries >= 0 and self._metric_num_failed_attempts_since_last_success >= self._max_retries:
                     self._metric_events_publish_failures_since_last += int(
                         num_events_in_batch
                     )
-                return
-            await self._async_sleep_with_backoff(attempts)
-            attempts += 1
+                    self._metric_num_failed_attempts_since_last_success = 0
+                    return
+
+                # max retries not exhausted, increment failed attempts counter and add latency to failure list, retry publishing batch with backoff
+                self._metric_num_failed_attempts_since_last_success += 1
+                self._metric_failure_latency_seconds_since_last.append(float(duration))
+
+            await self._async_sleep_with_backoff(self._metric_num_failed_attempts_since_last_success)
 
     async def _async_sleep_with_backoff(self, attempt: int) -> None:
         """Sleep with exponential backoff and optional jitter.
@@ -180,3 +248,6 @@ class NoopPublisher(RayEventsPublisherInterface):
 
     async def get_and_reset_metrics(self) -> Dict[str, int]:
         return {"published": 0, "filtered_out": 0, "failed": 0, "queue_dropped": 0}
+    
+    async def wait_until_running(self, timeout: Optional[float] = None) -> bool:
+        return True

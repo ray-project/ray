@@ -102,7 +102,7 @@ class MultiConsumerEventBuffer:
                     batch = [event]
                     break
 
-                    # nothing available, clear the event and wait for it to be set again
+                # there is no new events to consume, clear the condition variable and wait for it to be set again
                 has_events_to_consume.clear()
 
         # Phase 2: add items to the batch up to timeout or until full
@@ -113,7 +113,7 @@ class MultiConsumerEventBuffer:
                 break
 
             async with self._lock:
-                # Drain whatever is available without blocking
+                # drain whatever is available
                 while len(batch) < max_batch and consumer_state.cursor_index < len(
                     self._buffer
                 ):
@@ -123,7 +123,7 @@ class MultiConsumerEventBuffer:
                 if len(batch) >= max_batch:
                     break
 
-                # Still room but nothing new yet, clear the event and wait for it to be set again
+                # there is still room in the batch, but no new events to consume, clear the condition variable and wait for it to be set again
                 has_events_to_consume.clear()
             try:
                 await asyncio.wait_for(has_events_to_consume.wait(), remaining)

@@ -1,7 +1,5 @@
 import asyncio
 import pytest
-import time
-from unittest.mock import MagicMock
 from google.protobuf.timestamp_pb2 import Timestamp
 
 from ray.core.generated.events_base_event_pb2 import RayEvent

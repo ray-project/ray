@@ -1,11 +1,10 @@
-import asyncio
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 import json
 import logging
 
 from ray._common.utils import get_or_create_event_loop
 import aiohttp
-from google.protobuf.json_format import MessageToJson
+from ray._private.protobuf_compat import message_to_json
 from ray.core.generated import events_base_event_pb2
 from ray.dashboard.modules.aggregator.publisher.configs import PUBLISHER_TIMEOUT_SECONDS
 from typing import Callable
@@ -53,12 +52,11 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
     def __init__(
         self,
         endpoint: str,
-        executor: ProcessPoolExecutor,
+        executor: ThreadPoolExecutor,
         events_filter_fn: Callable[[object], bool],
         timeout: float = PUBLISHER_TIMEOUT_SECONDS,
     ) -> None:
         self._endpoint = endpoint
-        self._event_loop = get_or_create_event_loop()
         self._executor = executor
         self._events_filter_fn = events_filter_fn
         self._timeout = aiohttp.ClientTimeout(total=timeout)
@@ -75,9 +73,9 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
             # All filtered out -> success but nothing published
             return PublishStats(True, 0, num_filtered_out)
 
-        # Convert protobuf objects to JSON dictionaries for HTTP POST
-        filtered_json = await self._event_loop.run_in_executor(
-            self._executor, lambda: [json.loads(MessageToJson(e)) for e in filtered]
+        # Convert protobuf objects to python dictionaries for HTTP POST
+        filtered_json = await get_or_create_event_loop().run_in_executor(
+            self._executor, lambda: [json.loads(message_to_json(e, always_print_fields_with_no_presence=True)) for e in filtered]
         )
 
         try:
@@ -101,13 +99,10 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
     def count_num_events_in_batch(
         self, events_batch: list[events_base_event_pb2.RayEvent]
     ) -> int:
-        try:
-            return len(events_batch)
-        except Exception:
-            return 0
+        return len(events_batch)
 
     async def close(self) -> None:
-        """Closes the http session if one was created"""
+        """Closes the http session if one was created. Should be called when the publisherClient is no longer required"""
         if self._session:
             await self._session.close()
             self._session = None
