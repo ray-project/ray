@@ -41,7 +41,26 @@ def disable_placement_bundles():
         VLLMEngineConfig,
         "placement_bundles",
         new_callable=lambda: property(lambda self: []),
-    ):
+    ), patch(
+        "ray.llm._internal.serve.configs.server_models.LLMConfig._apply_default_placement_config"
+    ) as mock_apply_default:
+        # Mock the new default placement logic to use old engine config logic
+        def mock_apply_default_placement_config(
+            deployment_config, replica_actor_resources, engine_config
+        ):
+            try:
+                bundles = engine_config.placement_bundles
+            except ValueError:
+                bundles = []
+            bundles = [replica_actor_resources] + bundles
+            deployment_config.update(
+                {
+                    "placement_group_bundles": bundles,
+                    "placement_group_strategy": engine_config.placement_strategy,
+                }
+            )
+
+        mock_apply_default.side_effect = mock_apply_default_placement_config
         yield
 
 
