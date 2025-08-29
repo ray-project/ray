@@ -19,10 +19,6 @@
 #include <utility>
 #include <vector>
 
-#include "ray/gcs/gcs_server/gcs_actor_manager.h"
-#include "ray/gcs/gcs_server/gcs_node_manager.h"
-#include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
-#include "ray/gcs/gcs_server/state_util.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/util/string_utils.h"
 #include "ray/util/time.h"

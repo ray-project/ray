@@ -22,6 +22,7 @@
 #pragma once
 
 #include "ray/common/status.h"
+#include "src/ray/protobuf/autoscaler.grpc.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
@@ -261,14 +262,6 @@ class TaskInfoGcsServiceHandler {
                                    SendReplyCallback send_reply_callback) = 0;
 };
 
-class RayEventExportGcsServiceHandler {
- public:
-  virtual ~RayEventExportGcsServiceHandler() = default;
-  virtual void HandleAddEvents(events::AddEventsRequest request,
-                               events::AddEventsReply *reply,
-                               SendReplyCallback send_reply_callback) = 0;
-};
-
 class PlacementGroupInfoGcsServiceHandler {
  public:
   virtual ~PlacementGroupInfoGcsServiceHandler() = default;
@@ -298,6 +291,52 @@ class PlacementGroupInfoGcsServiceHandler {
                                             GetNamedPlacementGroupReply *reply,
                                             SendReplyCallback send_reply_callback) = 0;
 };
+
+namespace autoscaler {
+
+class AutoscalerStateServiceHandler {
+ public:
+  virtual ~AutoscalerStateServiceHandler() = default;
+
+  virtual void HandleGetClusterResourceState(GetClusterResourceStateRequest request,
+                                             GetClusterResourceStateReply *reply,
+                                             SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleReportAutoscalingState(ReportAutoscalingStateRequest request,
+                                            ReportAutoscalingStateReply *reply,
+                                            SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleRequestClusterResourceConstraint(
+      RequestClusterResourceConstraintRequest request,
+      RequestClusterResourceConstraintReply *reply,
+      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetClusterStatus(GetClusterStatusRequest request,
+                                      GetClusterStatusReply *reply,
+                                      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleDrainNode(DrainNodeRequest request,
+                               DrainNodeReply *reply,
+                               SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleReportClusterConfig(ReportClusterConfigRequest request,
+                                         ReportClusterConfigReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
+};
+
+}  // namespace autoscaler
+
+namespace events {
+
+class RayEventExportGcsServiceHandler {
+ public:
+  virtual ~RayEventExportGcsServiceHandler() = default;
+  virtual void HandleAddEvents(events::AddEventsRequest request,
+                               events::AddEventsReply *reply,
+                               SendReplyCallback send_reply_callback) = 0;
+};
+
+}  // namespace events
 
 }  // namespace rpc
 }  // namespace ray

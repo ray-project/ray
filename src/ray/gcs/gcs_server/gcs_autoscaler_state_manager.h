@@ -14,16 +14,23 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
+#include "ray/gcs/gcs_server/gcs_node_manager.h"
+#include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
+#include "ray/gcs/gcs_server/grpc_service_interfaces.h"
 #include "ray/gcs/gcs_server/state_util.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/rpc/gcs/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/raylet_client_pool.h"
 #include "ray/util/thread_checker.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -31,12 +38,7 @@
 namespace ray {
 namespace gcs {
 
-class GcsActorManager;
-class GcsNodeManager;
-class GcsPlacementGroupManager;
-class GcsResourceManager;
-
-class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler {
+class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateServiceHandler {
  public:
   GcsAutoscalerStateManager(std::string session_name,
                             GcsNodeManager &gcs_node_manager,
