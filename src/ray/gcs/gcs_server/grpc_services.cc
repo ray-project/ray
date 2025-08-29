@@ -142,16 +142,6 @@ void TaskInfoGrpcService::InitServerCallFactories(
   RPC_SERVICE_HANDLER(TaskInfoGcsService, GetTaskEvents, max_active_rpcs_per_handler_)
 }
 
-using events::AddEventsReply;
-using events::AddEventsRequest;
-
-void RayEventExportGrpcService::InitServerCallFactories(
-    const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-    std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-    const ClusterID &cluster_id) {
-  RPC_SERVICE_HANDLER(RayEventExportGcsService, AddEvents, max_active_rpcs_per_handler_)
-}
-
 void PlacementGroupInfoGrpcService::InitServerCallFactories(
     const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
@@ -170,6 +160,39 @@ void PlacementGroupInfoGrpcService::InitServerCallFactories(
                       WaitPlacementGroupUntilReady,
                       max_active_rpcs_per_handler_)
 }
+
+namespace autoscaler {
+
+void AutoscalerStateGrpcService::InitServerCallFactories(
+    const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+    std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+    const ClusterID &cluster_id) {
+  RPC_SERVICE_HANDLER(
+      AutoscalerStateService, GetClusterResourceState, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      AutoscalerStateService, ReportAutoscalingState, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      AutoscalerStateService, ReportClusterConfig, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(AutoscalerStateService,
+                      RequestClusterResourceConstraint,
+                      max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      AutoscalerStateService, GetClusterStatus, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(AutoscalerStateService, DrainNode, max_active_rpcs_per_handler_)
+}
+
+}  // namespace autoscaler
+
+namespace events {
+
+void RayEventExportGrpcService::InitServerCallFactories(
+    const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+    std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+    const ClusterID &cluster_id) {
+  RPC_SERVICE_HANDLER(RayEventExportGcsService, AddEvents, max_active_rpcs_per_handler_)
+}
+
+}  // namespace events
 
 }  // namespace rpc
 }  // namespace ray
