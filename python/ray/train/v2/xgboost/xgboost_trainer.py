@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union, List
 
 import ray.train
 from ray.train import Checkpoint
@@ -9,6 +9,7 @@ from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.util.annotations import Deprecated
 
 if TYPE_CHECKING:
+    import xgboost
     from ray.train.xgboost import XGBoostConfig
 
 logger = logging.getLogger(__name__)
@@ -109,11 +110,21 @@ class XGBoostTrainer(DataParallelTrainer):
             By default, all the Ray Dataset are split equally across workers.
             See :class:`~ray.train.DataConfig` for more details.
         resume_from_checkpoint: A checkpoint to resume training from.
-            This checkpoint can be accessed from within ``train_loop_per_worker``
+            This checkpoint can be accessed from within the ``train_loop_per_worker``
             by calling ``ray.train.get_checkpoint()``.
         metadata: Dict that should be made available via
             `ray.train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
             for checkpoints saved from this Trainer. Must be JSON-serializable.
+        use_external_memory: Whether to use external memory for training on
+            large datasets. When enabled, datasets are automatically converted
+            to use XGBoost's external memory API, allowing training on datasets
+            larger than available RAM.
+        external_memory_cache_dir: Directory for caching external memory files.
+            If None, a temporary directory will be used.
+        external_memory_device: Device to use for external memory training
+            ("cpu" or "cuda").
+        external_memory_batch_size: Batch size for external memory iteration.
+            If None, an optimal batch size will be automatically determined.
     """
 
     def __init__(
@@ -133,6 +144,11 @@ class XGBoostTrainer(DataParallelTrainer):
         label_column: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
         num_boost_round: Optional[int] = None,
+        # External memory configuration
+        use_external_memory: bool = False,
+        external_memory_cache_dir: Optional[str] = None,
+        external_memory_device: str = "cpu",
+        external_memory_batch_size: Optional[int] = None,
     ):
         if (
             label_column is not None
@@ -148,6 +164,20 @@ class XGBoostTrainer(DataParallelTrainer):
             )
 
         from ray.train.xgboost import XGBoostConfig
+
+        # Prepare train_loop_config with external memory settings
+        if train_loop_config is None:
+            train_loop_config = {}
+
+        # Add external memory configuration to train_loop_config
+        train_loop_config.update(
+            {
+                "use_external_memory": use_external_memory,
+                "external_memory_cache_dir": external_memory_cache_dir,
+                "external_memory_device": external_memory_device,
+                "external_memory_batch_size": external_memory_batch_size,
+            }
+        )
 
         super(XGBoostTrainer, self).__init__(
             train_loop_per_worker=train_loop_per_worker,
@@ -168,4 +198,65 @@ class XGBoostTrainer(DataParallelTrainer):
         raise DeprecationWarning(
             "`XGBoostTrainer.get_model` is deprecated. "
             "Use `RayTrainReportCallback.get_model` instead."
+        )
+
+    def create_dmatrix(
+        self,
+        dataset_shard,
+        label_column: Union[str, List[str]],
+        feature_columns: Optional[List[str]] = None,
+        **kwargs,
+    ) -> "xgboost.DMatrix":
+        """Automatically create the appropriate XGBoost DMatrix based on trainer
+        configuration.
+
+        This method automatically chooses between standard DMatrix and external memory
+        DMatrix based on the `use_external_memory` parameter passed to the trainer.
+
+        When external memory is enabled, it automatically converts the dataset to use
+        XGBoost's external memory API.
+
+        Args:
+            dataset_shard: Ray dataset shard to convert.
+            label_column: Name(s) of the label column(s).
+            feature_columns: Names of feature columns. If None, all non-label
+                columns are used.
+            **kwargs: Additional arguments passed to DMatrix constructor.
+
+        Returns:
+            XGBoost DMatrix object (either standard or external memory).
+
+        Example:
+            .. testcode::
+
+                def train_fn_per_worker(config: dict):
+                    train_ds_iter = ray.train.get_dataset_shard("train")
+
+                    # Automatically use external memory if enabled in trainer config
+                    dtrain = trainer.create_dmatrix(
+                        train_ds_iter,
+                        label_column="target"
+                    )
+
+                    # Train as usual
+                    bst = xgboost.train(params, dtrain=dtrain, ...)
+        """
+        from ray.train.xgboost._external_memory_utils import create_auto_dmatrix
+
+        # Get external memory configuration from train_loop_config
+        config = self.train_loop_config or {}
+        use_external_memory = config.get("use_external_memory", False)
+        external_memory_cache_dir = config.get("external_memory_cache_dir")
+        external_memory_device = config.get("external_memory_device", "cpu")
+        external_memory_batch_size = config.get("external_memory_batch_size")
+
+        return create_auto_dmatrix(
+            dataset_shard=dataset_shard,
+            label_column=label_column,
+            feature_columns=feature_columns,
+            use_external_memory=use_external_memory,
+            external_memory_cache_dir=external_memory_cache_dir,
+            external_memory_device=external_memory_device,
+            external_memory_batch_size=external_memory_batch_size,
+            **kwargs,
         )
