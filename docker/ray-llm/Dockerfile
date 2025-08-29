@@ -3,7 +3,7 @@
 ARG BASE_IMAGE
 FROM "$BASE_IMAGE"
 
-COPY python/requirements_*.txt ./
+COPY python/deplocks/llm/rayllm_*.lock ./
 
 ARG KVER="5.15.0-139-generic"
 ARG ROOT_DIR="/usr/local"
@@ -28,7 +28,7 @@ fi
 
 uv pip install --system --no-cache-dir --no-deps \
     --index-strategy unsafe-best-match \
-    -r "requirements_compiled_rayllm_${PYTHON_CODE}_${CUDA_CODE}.txt"
+    -r "rayllm_${PYTHON_CODE}_${CUDA_CODE}.lock"
 
 # Export installed packages
 $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
@@ -190,16 +190,6 @@ sudo apt-get clean
 
 EOF
 
-# Q: Why add paths that don't exist in the base image, like /usr/local/nvidia/lib64
-# and /usr/local/nvidia/bin?
-# A: The NVIDIA GPU operator version used by GKE injects these into the container
-# after it's mounted to a pod.
-# Issue is tracked here:
-# https://github.com/GoogleCloudPlatform/compute-gpu-installation/issues/46
-# More context here:
-# https://github.com/NVIDIA/nvidia-container-toolkit/issues/275
-# and here:
-# https://gitlab.com/nvidia/container-images/cuda/-/issues/27
-ENV PATH="${PATH}:${UCX_HOME}/bin:${NIXL_HOME}/bin:/usr/local/nvidia/bin"
-ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${UCX_HOME}/lib:${NIXL_HOME}/lib/x86_64-linux-gnu:/usr/local/nvidia/lib64"
+ENV PATH="${PATH}:${UCX_HOME}/bin:${NIXL_HOME}/bin"
+ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${UCX_HOME}/lib:${NIXL_HOME}/lib/x86_64-linux-gnu"
 ENV NIXL_PLUGIN_DIR="${NIXL_HOME}/lib/x86_64-linux-gnu/plugins/"
