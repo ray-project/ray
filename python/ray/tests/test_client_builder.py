@@ -362,7 +362,7 @@ def test_client_deprecation_warn():
     )
     ray.shutdown()
 
-    server = ray_client_server.serve("localhost:50055")
+    server = ray_client_server.serve("localhost", 50055)
 
     # Test warning when namespace and runtime env aren't specified
     with warnings.catch_warnings(record=True) as w:

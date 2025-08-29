@@ -385,18 +385,14 @@ class NodeInfoAccessor {
   /// \return All nodes in cache.
   virtual const absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> &GetAll() const;
 
-  /// Get information of all nodes from an RPC to GCS synchronously.
-  ///
-  /// \return All nodes from gcs without cache.
-  virtual Status GetAllNoCache(int64_t timeout_ms, std::vector<rpc::GcsNodeInfo> &nodes);
-
-  /// Get information of all nodes from an RPC to GCS synchronously with filters.
+  /// Get information of all nodes from an RPC to GCS synchronously with optional filters.
   ///
   /// \return All nodes that match the given filters from the gcs without the cache.
-  virtual StatusOr<std::vector<rpc::GcsNodeInfo>> GetAllNoCacheWithFilters(
+  virtual StatusOr<std::vector<rpc::GcsNodeInfo>> GetAllNoCache(
       int64_t timeout_ms,
-      rpc::GcsNodeInfo::GcsNodeState state_filter,
-      rpc::GetAllNodeInfoRequest::NodeSelector node_selector);
+      std::optional<rpc::GcsNodeInfo::GcsNodeState> state_filter = std::nullopt,
+      std::optional<rpc::GetAllNodeInfoRequest::NodeSelector> node_selector =
+          std::nullopt);
 
   /// Send a check alive request to GCS for the liveness of some nodes.
   ///
@@ -544,10 +540,8 @@ class ErrorInfoAccessor {
   /// duplicate messages currently cause failures (the GCS doesn't allow it). A
   /// natural way to do this is to have finer-grained time stamps.
   ///
-  /// \param data_ptr The error message that will be reported to GCS.
-  /// \param callback Callback that will be called when report is complete.
-  virtual void AsyncReportJobError(const std::shared_ptr<rpc::ErrorTableData> &data_ptr,
-                                   const StatusCallback &callback);
+  /// \param data The error message that will be reported to GCS.
+  virtual void AsyncReportJobError(rpc::ErrorTableData data);
 
  private:
   GcsClient *client_impl_;

@@ -44,10 +44,8 @@ cdef extern from * namespace "polyfill" nogil:
 
 
 cdef extern from "ray/common/status.h" namespace "ray" nogil:
-    # TODO(ryw) in Cython 3.x we can directly use `cdef enum class CStatusCode`
-    cdef cppclass CStatusCode "ray::StatusCode":
+    cdef enum class CStatusCode "ray::StatusCode":
         pass
-    cdef CStatusCode CStatusCode_OK "ray::StatusCode::OK"
     c_bool operator==(CStatusCode lhs, CStatusCode rhs)
 
     cdef cppclass CRayStatus "ray::Status":
@@ -147,6 +145,11 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
     cdef CRayStatus RayStatus_Invalid "Status::Invalid"()
     cdef CRayStatus RayStatus_NotImplemented "Status::NotImplemented"()
 
+cdef extern from "ray/common/status_or.h" namespace "ray" nogil:
+    cdef cppclass CStatusOr "ray::StatusOr"[T]:
+        c_bool ok()
+        const CRayStatus &status() const
+        T &value()
 
 cdef extern from "ray/common/id.h" namespace "ray" nogil:
     const CTaskID GenerateTaskId(const CJobID &job_id,
@@ -201,6 +204,7 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         CAddress owner_address() const
         const c_string &object_id() const
         const c_string &call_site() const
+        CTensorTransport tensor_transport() const
     cdef cppclass CNodeLabelSchedulingStrategy "ray::rpc::NodeLabelSchedulingStrategy":  # noqa: E501
         CNodeLabelSchedulingStrategy()
         CLabelMatchExpressions* mutable_hard()
@@ -260,6 +264,9 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CTensorTransport TENSOR_TRANSPORT_OBJECT_STORE "ray::rpc::TensorTransport::OBJECT_STORE"
+    cdef CTensorTransport TENSOR_TRANSPORT_NCCL "ray::rpc::TensorTransport::NCCL"
+    cdef CTensorTransport TENSOR_TRANSPORT_GLOO "ray::rpc::TensorTransport::GLOO"
+    cdef CTensorTransport TENSOR_TRANSPORT_NIXL "ray::rpc::TensorTransport::NIXL"
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CPlacementStrategy PLACEMENT_STRATEGY_PACK \
@@ -315,7 +322,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
     cdef cppclass CTaskArgByReference "ray::TaskArgByReference":
         CTaskArgByReference(const CObjectID &object_id,
                             const CAddress &owner_address,
-                            const c_string &call_site)
+                            const c_string &call_site,
+                            const CTensorTransport &tensor_transport)
 
     cdef cppclass CTaskArgByValue "ray::TaskArgByValue":
         CTaskArgByValue(const shared_ptr[CRayObject] &data)
@@ -355,7 +363,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
             const CSchedulingStrategy &scheduling_strategy,
             c_string serialized_runtime_env,
             const c_vector[CConcurrencyGroup] &concurrency_groups,
-            c_bool execute_out_of_order,
+            c_bool allow_out_of_order_execution,
             int32_t max_pending_calls,
             c_bool enable_task_events,
             const unordered_map[c_string, c_string] &labels,
@@ -369,7 +377,6 @@ cdef extern from "ray/core_worker/common.h" nogil:
             CPlacementStrategy strategy,
             const c_vector[unordered_map[c_string, double]] &bundles,
             c_bool is_detached,
-            double max_cpu_fraction_per_node,
             CNodeID soft_target_node_id,
             const c_vector[unordered_map[c_string, c_string]] &bundle_label_selector,
         )
@@ -448,9 +455,10 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             int64_t timeout_ms,
             c_vector[c_string] &drained_node_ids)
 
-        CRayStatus GetAllNoCache(
+        CStatusOr[c_vector[CGcsNodeInfo]] GetAllNoCache(
             int64_t timeout_ms,
-            c_vector[CGcsNodeInfo] &result)
+            optional[CGcsNodeState] state_filter,
+            optional[CNodeSelector] node_selector)
 
         void AsyncGetAll(
             const MultiItemPyCallback[CGcsNodeInfo] &callback,
@@ -658,13 +666,10 @@ cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
         CRayStatus PollLogs(
             c_string* key_id, int64_t timeout_ms, CLogBatch* data)
 
-        CRayStatus PollActor(
-            c_string* key_id, int64_t timeout_ms, CActorTableData* data)
-
         CRayStatus Close()
 
 cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" namespace "ray::gcs" nogil:
-    c_vector[c_string] PythonGetLogBatchLines(const CLogBatch& log_batch)
+    c_vector[c_string] PythonGetLogBatchLines(CLogBatch log_batch)
 
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
     unordered_map[c_string, c_string] PythonGetNodeLabels(
@@ -702,6 +707,9 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
 
     cdef enum CGcsNodeState "ray::rpc::GcsNodeInfo_GcsNodeState":
         ALIVE "ray::rpc::GcsNodeInfo_GcsNodeState_ALIVE",
+
+    cdef cppclass CNodeSelector "ray::rpc::GetAllNodeInfoRequest::NodeSelector":
+        pass
 
     cdef cppclass CJobTableData "ray::rpc::JobTableData":
         c_string job_id() const

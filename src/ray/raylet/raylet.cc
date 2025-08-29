@@ -22,13 +22,14 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/client_connection.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/experimental_mutable_object_provider.h"
+#include "ray/ipc/client_connection.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/object_manager/ownership_object_directory.h"
-#include "ray/util/util.h"
+#include "ray/util/network_util.h"
+#include "ray/util/time.h"
 
 namespace {
 
@@ -134,10 +135,12 @@ void Raylet::RegisterGcs() {
     RAY_CHECK_OK(status);
     RAY_LOG(INFO) << "Raylet of id, " << self_node_id_
                   << " started. Raylet consists of node_manager and object_manager."
-                  << " node_manager address: " << self_node_info_.node_manager_address()
-                  << ":" << self_node_info_.node_manager_port()
-                  << " object_manager address: " << self_node_info_.node_manager_address()
-                  << ":" << self_node_info_.object_manager_port()
+                  << " node_manager address: "
+                  << BuildAddress(self_node_info_.node_manager_address(),
+                                  self_node_info_.node_manager_port())
+                  << " object_manager address: "
+                  << BuildAddress(self_node_info_.node_manager_address(),
+                                  self_node_info_.object_manager_port())
                   << " hostname: " << self_node_info_.node_manager_hostname();
     node_manager_.RegisterGcs();
   };
@@ -155,8 +158,8 @@ void Raylet::HandleAccept(const boost::system::error_code &error) {
   if (!error) {
     ConnectionErrorHandler error_handler = [this](
                                                std::shared_ptr<ClientConnection> client,
-                                               const boost::system::error_code &error) {
-      node_manager_.HandleClientConnectionError(client, error);
+                                               const boost::system::error_code &err) {
+      node_manager_.HandleClientConnectionError(client, err);
     };
 
     MessageHandler message_handler = [this](std::shared_ptr<ClientConnection> client,
