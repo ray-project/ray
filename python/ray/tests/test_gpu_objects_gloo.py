@@ -225,7 +225,7 @@ def test_p2p_errors_before_group_creation(ray_start_regular):
 
     with pytest.raises(
         ValueError,
-        match="Actor.* does not have tensor transport GLOO available. Please create a communicator with `ray.experimental.collective.create_collective_group` before calling actor tasks with non-default tensor_transport.",
+        match="Actor.* does not have tensor transport GLOO available.*",
     ):
         sender.echo.remote(small_tensor)
 
@@ -388,6 +388,29 @@ def test_mix_cpu_gpu_data(ray_start_regular):
 
     tensor = torch.randn((1,))
     cpu_data = random.randint(0, 100)
+
+    data = [tensor, cpu_data]
+
+    sender, receiver = actors[0], actors[1]
+    ref = sender.echo.remote(data)
+    ref = receiver.double.remote(ref)
+    result = ray.get(ref)
+
+    assert result[0] == pytest.approx(tensor * 2)
+    assert result[1] == cpu_data * 2
+
+
+def test_object_in_plasma(ray_start_regular):
+    """
+    This test uses a CPU object that is large enough to be stored
+    in plasma instead of being inlined in the gRPC message.
+    """
+    world_size = 2
+    actors = [GPUTestActor.remote() for _ in range(world_size)]
+    create_collective_group(actors, backend="torch_gloo")
+
+    tensor = torch.randn((1,))
+    cpu_data = b"1" * 1000 * 1000
     data = [tensor, cpu_data]
 
     sender, receiver = actors[0], actors[1]
