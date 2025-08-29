@@ -80,7 +80,7 @@ examples:
       - generative ai
       - large language models
       - natural language processing
-    link: tutorials/deployment-serve-llm/small-size-llm/README
+    link: tutorials/deployment-serve-llm/small-size-llm/README.md
     related_technology: llm applications
   - title: Deploying a medium size LLM
     skill_level: beginner
@@ -88,7 +88,7 @@ examples:
       - generative ai
       - large language models
       - natural language processing
-    link: tutorials/deployment-serve-llm/medium-size-llm/README
+    link: tutorials/deployment-serve-llm/medium-size-llm/README.md
     related_technology: llm applications
   - title: Deploying a large size LLM
     skill_level: beginner
@@ -96,7 +96,7 @@ examples:
       - generative ai
       - large language models
       - natural language processing
-    link: tutorials/deployment-serve-llm/large-size-llm/README
+    link: tutorials/deployment-serve-llm/large-size-llm/README.md
     related_technology: llm applications
   - title: Deploying a Vision LLM
     skill_level: beginner
@@ -104,7 +104,7 @@ examples:
       - generative ai
       - large language models
       - natural language processing
-    link: tutorials/deployment-serve-llm/vision-llm/README
+    link: tutorials/deployment-serve-llm/vision-llm/README.md
     related_technology: llm applications
   - title: Deploying a reasoning LLM
     skill_level: beginner
@@ -112,7 +112,7 @@ examples:
       - generative ai
       - large language models
       - natural language processing
-    link: tutorials/deployment-serve-llm/reasoning-llm/README
+    link: tutorials/deployment-serve-llm/reasoning-llm/README.md
     related_technology: llm applications
   - title: Deploying a hybrid reasoning LLM
     skill_level: beginner
@@ -120,7 +120,7 @@ examples:
       - generative ai
       - large language models
       - natural language processing
-    link: tutorials/deployment-serve-llm/hybrid-reasoning-llm/README
+    link: tutorials/deployment-serve-llm/hybrid-reasoning-llm/README.md
     related_technology: llm applications
   - title: Serve a Chatbot with Request and Response Streaming
     skill_level: intermediate
