@@ -192,12 +192,12 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
                            const rpc::Address &owner_address,
                            const std::string &runtime_env_setup_error_message);
 
-  /// Cancels a lease in leases_to_grant_. Does not remove it from leases_to_grant_.
-  void CancelLeaseToGrant(
-      const std::shared_ptr<internal::Work> &work,
-      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
-          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
-      const std::string &scheduling_failure_message = "");
+  /// Cancels a queued lease in leases_to_grant_. Does not remove it from
+  /// leases_to_grant_.
+  void CancelLease(const std::shared_ptr<internal::Work> &work,
+                   rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
+                       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
+                   const std::string &scheduling_failure_message = "");
 
   /// Attempts to grant all leases which are ready to run. A lease
   /// will be granted if it is on `leases_to_grant_` and there are still
@@ -357,9 +357,6 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
 
   /// The maximum amount of bytes that can be used by granted lease arguments.
   size_t max_pinned_lease_arguments_bytes_;
-
-  /// Returns the current time in milliseconds.
-  std::function<int64_t()> get_time_ms_;
 
   size_t num_lease_spilled_ = 0;
   size_t num_waiting_lease_spilled_ = 0;

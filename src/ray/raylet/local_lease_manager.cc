@@ -359,10 +359,9 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
                      << front_lease.DebugString();
       auto leases_to_grant_queue_iter = leases_to_grant_queue.begin();
       while (leases_to_grant_queue_iter != leases_to_grant_queue.end()) {
-        CancelLeaseToGrant(
-            *leases_to_grant_queue_iter,
-            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
-            "Lease granting failed due to the lease becoming infeasible.");
+        CancelLease(*leases_to_grant_queue_iter,
+                    rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
+                    "Lease granting failed due to the lease becoming infeasible.");
         leases_to_grant_queue_iter =
             leases_to_grant_queue.erase(leases_to_grant_queue_iter);
       }
@@ -816,7 +815,7 @@ bool LocalLeaseManager::CancelLeases(
         if (!predicate(work)) {
           return false;
         }
-        CancelLeaseToGrant(work, failure_type, scheduling_failure_message);
+        CancelLease(work, failure_type, scheduling_failure_message);
         leases_cancelled = true;
         return true;
       });
@@ -840,7 +839,7 @@ bool LocalLeaseManager::CancelLeases(
   return leases_cancelled;
 }
 
-void LocalLeaseManager::CancelLeaseToGrant(
+void LocalLeaseManager::CancelLease(
     const std::shared_ptr<internal::Work> &work,
     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
     const std::string &scheduling_failure_message) {

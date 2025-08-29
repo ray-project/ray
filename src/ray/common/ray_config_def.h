@@ -153,7 +153,7 @@ RAY_CONFIG(int64_t, max_lineage_bytes, 1024 * 1024 * 1024)
 RAY_CONFIG(bool, preallocate_plasma_memory, false)
 
 /// The interval at which the raylet will check to see if there are any
-/// leases it can dispatch.
+/// leases it can grant.
 RAY_CONFIG(int64_t, raylet_schedule_and_grant_leases_interval_ms, 1000)
 
 /// The fraction of resource utilization on a node after which the scheduler starts
