@@ -596,6 +596,12 @@ doctest(
 
 filegroup(
     name = "example_configs",
-    srcs = glob(["source/ray-overview/examples/**/*.yaml", "source/serve/tutorials/deployment-serve-llm/**/*/.yaml"]),
+    srcs = glob(["source/ray-overview/examples/**/*.yaml"]),
+    visibility = ["//release:__pkg__"],
+)
+
+filegroup(
+    name = "deployment_llm_example_configs",
+    srcs = glob(["source/serve/tutorials/deployment-serve-llm/**/*/.yaml"]),
     visibility = ["//release:__pkg__"],
 )
