@@ -18,7 +18,6 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
-#include <utility>
 #include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
@@ -28,7 +27,6 @@
 #include "ray/common/status_or.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/ipc/client_connection.h"
-#include "ray/raylet_client/raylet_connection.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/util/process.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -141,15 +139,6 @@ class RayletClientInterface {
       const std::vector<rpc::Bundle> &bundles_in_use,
       const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) = 0;
 
-  /// Wait for the given objects, asynchronously. The core worker is notified when
-  /// the wait completes.
-  ///
-  /// \param references The objects to wait for.
-  /// \param tag Value that will be sent to the core worker via gRPC on completion.
-  /// \return ray::Status.
-  virtual ray::Status WaitForActorCallArgs(
-      const std::vector<rpc::ObjectReference> &references, int64_t tag) = 0;
-
   virtual void GetResourceLoad(
       const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) = 0;
   /// Registers a mutable object on this node so that it can be read. Writes are performed
@@ -197,6 +186,8 @@ class RayletClientInterface {
   virtual void GetSystemConfig(
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) = 0;
 
+  virtual void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback) = 0;
+
   virtual void NotifyGCSRestart(
       const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) = 0;
 
@@ -225,6 +216,8 @@ class RayletClientInterface {
       const rpc::GetNodeStatsRequest &request,
       const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback) = 0;
 
+  virtual int64_t GetPinsInFlight() const = 0;
+
   virtual ~RayletClientInterface() = default;
 };
 
@@ -236,130 +229,13 @@ class RayletClient : public RayletClientInterface {
  public:
   /// Connect to the raylet.
   ///
-  /// \param raylet_conn connection to raylet.
-  /// \param address The IP address of the worker.
-  /// \param port The port that the worker should listen on for gRPC requests. If
-  /// 0, the worker should choose a random port.
-  /// \param client_call_manager The client call manager to use for the grpc connection.
-  /// \param worker_id The worker id of the worker.
-  RayletClient(std::unique_ptr<RayletConnection> raylet_conn,
-               const rpc::Address &address,
-               rpc::ClientCallManager &client_call_manager,
-               const WorkerID &worker_id);
-
-  /// Connect to the raylet via grpc only.
-  ///
   /// \param address The IP address of the worker.
   /// \param port The port that the worker should listen on for gRPC requests. If
   /// 0, the worker should choose a random port.
   /// \param client_call_manager The client call manager to use for the grpc connection.
   explicit RayletClient(const rpc::Address &address,
-                        rpc::ClientCallManager &client_call_manager);
-
-  /// Notify the raylet that this client is disconnecting gracefully. This
-  /// is used by actors to exit gracefully so that the raylet doesn't
-  /// propagate an error message to the driver.
-  ///
-  /// It's a blocking call.
-  ///
-  /// \param disconnect_type The reason why this worker process is disconnected.
-  /// \param disconnect_detail The detailed reason for a given exit.
-  /// \return ray::Status.
-  ray::Status Disconnect(
-      const rpc::WorkerExitType &exit_type,
-      const std::string &exit_detail,
-      const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes);
-
-  /// Tell the raylet which port this worker's gRPC server is listening on.
-  ///
-  /// \param port The port.
-  /// \return ray::Status.
-  Status AnnounceWorkerPortForWorker(int port);
-
-  /// Tell the raylet this driver and its job is ready to run, with port and entrypoint.
-  ///
-  /// \param port The port.
-  /// \param entrypoint The entrypoint of the driver's job.
-  /// \return ray::Status.
-  Status AnnounceWorkerPortForDriver(int port, const std::string &entrypoint);
-
-  /// Tell the raylet that the client has finished executing a task.
-  ///
-  /// \return ray::Status.
-  ray::Status ActorCreationTaskDone();
-
-  /// Ask the Raylet to pull a set of objects to the local node.
-  ///
-  /// This request is asynchronous.
-  ///
-  /// \param object_ids The IDs of the objects to pull.
-  /// \param owner_addresses The owner addresses of the objects.
-  /// \return ray::Status.
-  ray::Status AsyncGetObjects(const std::vector<ObjectID> &object_ids,
-                              const std::vector<rpc::Address> &owner_addresses);
-
-  /// Tell the Raylet to cancel the get request from this worker.
-  ///
-  /// \return ray::Status.
-  ray::Status CancelGetRequest();
-
-  /// Notify the raylet that this client is blocked. This is only used for direct task
-  /// calls. Note that ordering of this with respect to Unblock calls is important.
-  ///
-  /// \return ray::Status.
-  ray::Status NotifyDirectCallTaskBlocked();
-
-  /// Notify the raylet that this client is unblocked. This is only used for direct task
-  /// calls. Note that ordering of this with respect to Block calls is important.
-  ///
-  /// \return ray::Status.
-  ray::Status NotifyDirectCallTaskUnblocked();
-
-  /// Wait for the given objects until timeout expires or num_return objects are
-  /// found.
-  ///
-  /// \param object_ids The objects to wait for.
-  /// \param owner_addresses The addresses of the workers that own the objects.
-  /// \param num_returns The number of objects to wait for.
-  /// \param timeout_milliseconds Duration, in milliseconds, to wait before returning.
-  /// \param result A pair with the first element containing the object ids that were
-  /// found, and the second element the objects that were not found.
-  /// \return ray::StatusOr containing error status or the set of object ids that were
-  /// found.
-  ray::StatusOr<absl::flat_hash_set<ObjectID>> Wait(
-      const std::vector<ObjectID> &object_ids,
-      const std::vector<rpc::Address> &owner_addresses,
-      int num_returns,
-      int64_t timeout_milliseconds);
-
-  /// Wait for the given objects, asynchronously. The core worker is notified when
-  /// the wait completes.
-  ///
-  /// \param references The objects to wait for.
-  /// \param tag Value that will be sent to the core worker via gRPC on completion.
-  /// \return ray::Status.
-  ray::Status WaitForActorCallArgs(const std::vector<rpc::ObjectReference> &references,
-                                   int64_t tag) override;
-
-  /// Push an error to the relevant driver.
-  ///
-  /// \param The ID of the job_id that the error is for.
-  /// \param The type of the error.
-  /// \param The error message.
-  /// \param The timestamp of the error.
-  /// \return ray::Status.
-  ray::Status PushError(const ray::JobID &job_id,
-                        const std::string &type,
-                        const std::string &error_message,
-                        double timestamp);
-
-  /// Free a list of objects from object stores.
-  ///
-  /// \param object_ids A list of ObjectsIDs to be deleted.
-  /// \param local_only Whether keep this request with local object store
-  /// or send it to all the object stores.
-  /// \return ray::Status.
-  ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only);
+                        rpc::ClientCallManager &client_call_manager,
+                        std::function<void()> raylet_unavailable_timeout_callback);
 
   std::shared_ptr<grpc::Channel> GetChannel() const override;
 
@@ -459,7 +335,7 @@ class RayletClient : public RayletClientInterface {
   void GetSystemConfig(
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) override;
 
-  void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback);
+  void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback) override;
 
   void GetResourceLoad(
       const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) override;
@@ -467,13 +343,9 @@ class RayletClient : public RayletClientInterface {
   void NotifyGCSRestart(
       const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) override;
 
-  void SubscribeToPlasma(const ObjectID &object_id, const rpc::Address &owner_address);
-
-  WorkerID GetWorkerID() const { return worker_id_; }
-
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
-  int64_t GetPinsInFlight() const { return pins_in_flight_.load(); }
+  int64_t GetPinsInFlight() const override { return pins_in_flight_.load(); }
 
   void GetNodeStats(const rpc::GetNodeStatsRequest &request,
                     const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback) override;
@@ -482,14 +354,10 @@ class RayletClient : public RayletClientInterface {
   /// gRPC client to the NodeManagerService.
   std::shared_ptr<rpc::NodeManagerClient> grpc_client_;
 
-  const WorkerID worker_id_;
-
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker.
   ResourceMappingType resource_ids_;
-  /// The connection to the raylet server.
-  std::unique_ptr<RayletConnection> conn_;
 
   /// The number of object ID pin RPCs currently in flight.
   std::atomic<int64_t> pins_in_flight_ = 0;

@@ -20,10 +20,8 @@
 #include <vector>
 
 #include "ray/common/asio/asio_util.h"
-#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
-#include "ray/gcs/gcs_server/gcs_actor_manager.h"
-#include "src/ray/protobuf/node_manager.pb.h"
+#include "ray/util/time.h"
 
 namespace ray {
 namespace gcs {
@@ -77,14 +75,14 @@ void GcsActorScheduler::ScheduleByGcs(std::shared_ptr<GcsActor> actor) {
       return;
     }
     const auto &retry_at_raylet_address = reply->retry_at_raylet_address();
-    RAY_CHECK(!retry_at_raylet_address.raylet_id().empty());
-    auto node_id = NodeID::FromBinary(retry_at_raylet_address.raylet_id());
+    RAY_CHECK(!retry_at_raylet_address.node_id().empty());
+    auto node_id = NodeID::FromBinary(retry_at_raylet_address.node_id());
     auto node = gcs_node_manager_.GetAliveNode(node_id);
     RAY_CHECK(node.has_value());
 
     // Update the address of the actor as it is tied to a node.
     rpc::Address address;
-    address.set_raylet_id(node.value()->node_id());
+    address.set_node_id(node.value()->node_id());
     actor->UpdateAddress(address);
 
     RAY_CHECK(node_to_actors_when_leasing_[actor->GetNodeID()]
@@ -126,7 +124,7 @@ void GcsActorScheduler::ScheduleByRaylet(std::shared_ptr<GcsActor> actor) {
 
   // Update the address of the actor as it is tied to a node.
   rpc::Address address;
-  address.set_raylet_id(node.value()->node_id());
+  address.set_node_id(node.value()->node_id());
   actor->UpdateAddress(address);
 
   RAY_CHECK(node_to_actors_when_leasing_[actor->GetNodeID()]
@@ -245,11 +243,11 @@ void GcsActorScheduler::CancelOnLeasing(const NodeID &node_id,
   if (iter != alive_nodes.end()) {
     const auto &node_info = iter->second;
     rpc::Address address;
-    address.set_raylet_id(node_info->node_id());
+    address.set_node_id(node_info->node_id());
     address.set_ip_address(node_info->node_manager_address());
     address.set_port(node_info->node_manager_port());
-    auto lease_client = GetOrConnectLeaseClient(address);
-    lease_client->CancelWorkerLease(
+    auto raylet_client = GetOrConnectRayletClient(address);
+    raylet_client->CancelWorkerLease(
         task_id, [](const Status &status, const rpc::CancelWorkerLeaseReply &reply) {});
   }
 }
@@ -287,10 +285,10 @@ void GcsActorScheduler::ReleaseUnusedActorWorkers(
     nodes_of_releasing_unused_workers_.insert(node_id);
 
     rpc::Address address;
-    address.set_raylet_id(alive_node.second->node_id());
+    address.set_node_id(alive_node.second->node_id());
     address.set_ip_address(alive_node.second->node_manager_address());
     address.set_port(alive_node.second->node_manager_port());
-    auto lease_client = GetOrConnectLeaseClient(address);
+    auto raylet_client = GetOrConnectRayletClient(address);
     auto release_unused_workers_callback =
         [this, node_id](const Status &status,
                         const rpc::ReleaseUnusedActorWorkersReply &reply) {
@@ -302,8 +300,8 @@ void GcsActorScheduler::ReleaseUnusedActorWorkers(
     // nodes do not have leased workers. In this case, GCS will send an empty list.
     auto workers_in_use =
         iter != node_to_workers.end() ? iter->second : std::vector<WorkerID>{};
-    lease_client->ReleaseUnusedActorWorkers(workers_in_use,
-                                            release_unused_workers_callback);
+    raylet_client->ReleaseUnusedActorWorkers(workers_in_use,
+                                             release_unused_workers_callback);
   }
 }
 
@@ -323,13 +321,13 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
   }
 
   rpc::Address remote_address;
-  remote_address.set_raylet_id(node->node_id());
+  remote_address.set_node_id(node->node_id());
   remote_address.set_ip_address(node->node_manager_address());
   remote_address.set_port(node->node_manager_port());
-  auto lease_client = GetOrConnectLeaseClient(remote_address);
+  auto raylet_client = GetOrConnectRayletClient(remote_address);
   // Actor leases should be sent to the raylet immediately, so we should never build up a
   // backlog in GCS.
-  lease_client->RequestWorkerLease(
+  raylet_client->RequestWorkerLease(
       actor->GetCreationTaskSpecification().GetMessage(),
       actor->GetGrantOrReject(),
       [this, actor, node](const Status &status,
@@ -369,11 +367,11 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
     std::shared_ptr<GcsActor> actor, const ray::rpc::RequestWorkerLeaseReply &reply) {
   const auto &retry_at_raylet_address = reply.retry_at_raylet_address();
   const auto &worker_address = reply.worker_address();
-  if (worker_address.raylet_id().empty()) {
+  if (worker_address.node_id().empty()) {
     // The worker did not succeed in the lease, but the specified node returned a new
     // node, and then try again on the new node.
-    RAY_CHECK(!retry_at_raylet_address.raylet_id().empty());
-    auto spill_back_node_id = NodeID::FromBinary(retry_at_raylet_address.raylet_id());
+    RAY_CHECK(!retry_at_raylet_address.node_id().empty());
+    auto spill_back_node_id = NodeID::FromBinary(retry_at_raylet_address.node_id());
     auto maybe_spill_back_node = gcs_node_manager_.GetAliveNode(spill_back_node_id);
     if (maybe_spill_back_node.has_value()) {
       auto spill_back_node = maybe_spill_back_node.value();
@@ -530,14 +528,14 @@ void GcsActorScheduler::DoRetryCreatingActorOnWorker(
   }
 }
 
-std::shared_ptr<RayletClientInterface> GcsActorScheduler::GetOrConnectLeaseClient(
+std::shared_ptr<RayletClientInterface> GcsActorScheduler::GetOrConnectRayletClient(
     const rpc::Address &raylet_address) {
   return raylet_client_pool_.GetOrConnectByAddress(raylet_address);
 }
 
 bool GcsActorScheduler::KillActorOnWorker(const rpc::Address &worker_address,
                                           ActorID actor_id) {
-  if (worker_address.raylet_id().empty()) {
+  if (worker_address.node_id().empty()) {
     RAY_LOG(DEBUG) << "Invalid worker address, skip the killing of actor " << actor_id;
     return false;
   }
@@ -607,8 +605,8 @@ void GcsActorScheduler::HandleWorkerLeaseReply(
         return;
       }
 
-      if (reply.worker_address().raylet_id().empty() &&
-          reply.retry_at_raylet_address().raylet_id().empty() && !reply.rejected()) {
+      if (reply.worker_address().node_id().empty() &&
+          reply.retry_at_raylet_address().node_id().empty() && !reply.rejected()) {
         // Actor creation task has been cancelled. It is triggered by `ray.kill`. If
         // the number of remaining restarts of the actor is not equal to 0, GCS will
         // reschedule the actor, so it return directly here.

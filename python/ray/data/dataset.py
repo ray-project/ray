@@ -81,6 +81,7 @@ from ray.data._internal.logical.operators.n_ary_operator import (
     Zip,
 )
 from ray.data._internal.logical.operators.one_to_one_operator import Limit
+from ray.data._internal.logical.operators.streaming_split_operator import StreamingSplit
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan
@@ -782,31 +783,31 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=EXPRESSION_API_GROUP, stability="alpha")
-    def with_columns(self, exprs: Dict[str, Expr]) -> "Dataset":
+    def with_column(self, column_name: str, expr: Expr, **ray_remote_args) -> "Dataset":
         """
-        Add new columns to the dataset.
+        Add a new column to the dataset via an expression.
 
         Examples:
 
             >>> import ray
             >>> from ray.data.expressions import col
             >>> ds = ray.data.range(100)
-            >>> ds.with_columns({"new_id": col("id") * 2, "new_id_2": col("id") * 3}).schema()
-            Column    Type
-            ------    ----
-            id        int64
-            new_id    int64
-            new_id_2  int64
+            >>> ds.with_column("id_2", (col("id") * 2)).schema()
+            Column  Type
+            ------  ----
+            id      int64
+            id_2    int64
 
         Args:
-            exprs: A dictionary mapping column names to expressions that define the new column values.
+            column_name: The name of the new column.
+            expr: An expression that defines the new column values.
+            **ray_remote_args: Additional resource requirements to request from
+                Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
+                :func:`ray.remote` for details.
 
         Returns:
-            A new dataset with the added columns evaluated via expressions.
+            A new dataset with the added column evaluated via the expression.
         """
-        if not exprs:
-            raise ValueError("at least one expression is required")
-
         from ray.data._internal.logical.operators.map_operator import Project
 
         plan = self._plan.copy()
@@ -814,7 +815,8 @@ class Dataset:
             self._logical_plan.dag,
             cols=None,
             cols_rename=None,
-            exprs=exprs,
+            exprs={column_name: expr},
+            ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(project_op, self.context)
         return Dataset(plan, logical_plan)
@@ -1492,7 +1494,6 @@ class Dataset:
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
-    @AllToAllAPI
     @PublicAPI(api_group=SSR_API_GROUP)
     def repartition(
         self,
@@ -1515,9 +1516,11 @@ class Dataset:
 
         .. note::
 
-            Repartition has two modes. If ``shuffle=False``, Ray Data performs the
-            minimal data movement needed to equalize block sizes. Otherwise, Ray Data
-            performs a full distributed shuffle.
+            Repartition has three modes:
+
+             * When ``num_blocks`` and ``shuffle=True`` are specified Ray Data performs a full distributed shuffle producing exactly ``num_blocks`` blocks.
+             * When ``num_blocks`` and ``shuffle=False`` are specified, Ray Data does NOT perform full shuffle, instead opting in for splitting and combining of the blocks attempting to minimize the necessary data movement (relative to full-blown shuffle). Exactly ``num_blocks`` will be produced.
+             * If ``target_num_rows_per_block`` is set (exclusive with ``num_blocks`` and ``shuffle``), streaming repartitioning will be executed, where blocks will be made to carry no more than ``target_num_rows_per_block``. Smaller blocks will be combined into bigger ones up to ``target_num_rows_per_block`` as well.
 
             .. image:: /data/images/dataset-shuffle.svg
                 :align: center
@@ -1536,7 +1539,8 @@ class Dataset:
         Args:
             num_blocks: Number of blocks after repartitioning.
             target_num_rows_per_block: [Experimental] The target number of rows per block to
-                repartition. Note that either `num_blocks` or
+                repartition. Performs streaming repartitioning of the dataset (no shuffling).
+                Note that either `num_blocks` or
                 `target_num_rows_per_block` must be set, but not both. When
                 `target_num_rows_per_block` is set, it only repartitions
                 :class:`Dataset` :ref:`blocks <dataset_concept>` that are larger than
@@ -1861,7 +1865,18 @@ class Dataset:
                 Unlike :meth:`~Dataset.streaming_split`, :meth:`~Dataset.split`
                 materializes the dataset in memory.
         """
-        return StreamSplitDataIterator.create(self, n, equal, locality_hints)
+        plan = self._plan.copy()
+        op = StreamingSplit(
+            self._logical_plan.dag,
+            num_splits=n,
+            equal=equal,
+            locality_hints=locality_hints,
+        )
+        logical_plan = LogicalPlan(op, self.context)
+        split_dataset = Dataset(plan, logical_plan)
+        split_dataset._set_uuid(self._uuid)
+
+        return StreamSplitDataIterator.create(split_dataset, n, locality_hints)
 
     @ConsumptionAPI
     @PublicAPI(api_group=SMJ_API_GROUP)
@@ -2465,7 +2480,8 @@ class Dataset:
         Args:
             ds: Other dataset to join against
             join_type: The kind of join that should be performed, one of ("inner",
-                "left_outer", "right_outer", "full_outer")
+                "left_outer", "right_outer", "full_outer", "left_semi", "right_semi",
+                "left_anti", "right_anti").
             num_partitions: Total number of "partitions" input sequences will be split
                 into with each partition being joined independently. Increasing number
                 of partitions allows to reduce individual partition size, hence reducing
@@ -2510,6 +2526,7 @@ class Dataset:
                 lambda row: {"id": row["id"], "square": int(row["id"]) ** 2}
             )
 
+            # Inner join example
             joined_ds = doubles_ds.join(
                 squares_ds,
                 join_type="inner",
@@ -2527,6 +2544,55 @@ class Dataset:
                 {'id': 1, 'double': 2, 'square': 1},
                 {'id': 2, 'double': 4, 'square': 4},
                 {'id': 3, 'double': 6, 'square': 9}
+            ]
+
+        .. testcode::
+            :skipif: True
+
+            # Left anti-join example: find rows in doubles_ds that don't match squares_ds
+            partial_squares_ds = ray.data.range(2).map(
+                lambda row: {"id": row["id"] + 2, "square": int(row["id"]) ** 2}
+            )
+
+            anti_joined_ds = doubles_ds.join(
+                partial_squares_ds,
+                join_type="left_anti",
+                num_partitions=2,
+                on=("id",),
+            )
+
+            print(sorted(anti_joined_ds.take_all(), key=lambda item: item["id"]))
+
+        .. testoutput::
+            :options: +ELLIPSIS, +NORMALIZE_WHITESPACE
+
+            [
+                {'id': 0, 'double': 0},
+                {'id': 1, 'double': 2}
+            ]
+
+        .. testcode::
+            :skipif: True
+
+            # Left semi-join example: find rows in doubles_ds that have matches in squares_ds
+            # (only returns columns from left dataset)
+            semi_joined_ds = doubles_ds.join(
+                squares_ds,
+                join_type="left_semi",
+                num_partitions=2,
+                on=("id",),
+            )
+
+            print(sorted(semi_joined_ds.take_all(), key=lambda item: item["id"]))
+
+        .. testoutput::
+            :options: +ELLIPSIS, +NORMALIZE_WHITESPACE
+
+            [
+                {'id': 0, 'double': 0},
+                {'id': 1, 'double': 2},
+                {'id': 2, 'double': 4},
+                {'id': 3, 'double': 6}
             ]
         """
 
@@ -5900,6 +5966,32 @@ class Dataset:
         elif self._write_ds is not None and self._write_ds._plan.has_computed_output():
             return self._write_ds.stats()
         return self._get_stats_summary().to_string()
+
+    @PublicAPI(api_group=IM_API_GROUP, stability="alpha")
+    def explain(self):
+        """Show the logical plan and physical plan of the dataset.
+
+        Examples:
+
+        .. testcode::
+
+            import ray
+            from ray.data import Dataset
+            ds: Dataset = ray.data.range(10,  override_num_blocks=10)
+            ds = ds.map(lambda x: x + 1)
+            ds.explain()
+
+        .. testoutput::
+
+            -------- Logical Plan --------
+            Map(<lambda>)
+            +- ReadRange
+            -------- Physical Plan --------
+            TaskPoolMapOperator[ReadRange->Map(<lambda>)]
+            +- InputDataBuffer[Input]
+            <BLANKLINE>
+        """
+        print(self._plan.explain())
 
     def _get_stats_summary(self) -> DatasetStatsSummary:
         return self._plan.stats().to_summary()

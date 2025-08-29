@@ -25,6 +25,7 @@
 #include "absl/container/btree_map.h"
 #include "ray/common/grpc_util.h"
 #include "ray/rpc/retryable_grpc_client.h"
+#include "ray/util/network_util.h"
 #include "src/ray/protobuf/autoscaler.grpc.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
@@ -87,7 +88,7 @@ namespace rpc {
                                         method_timeout_ms,                     \
                                         handle_payload_status,                 \
                                         SPECS)                                 \
-  void METHOD(const METHOD_NAMESPACE::METHOD##Request &request,                \
+  void METHOD(METHOD_NAMESPACE::METHOD##Request &&request,                     \
               const ClientCallback<METHOD_NAMESPACE::METHOD##Reply> &callback, \
               const int64_t timeout_ms = method_timeout_ms) SPECS {            \
     invoke_async_method<SERVICE_NAMESPACE::SERVICE,                            \
@@ -97,16 +98,16 @@ namespace rpc {
         &SERVICE_NAMESPACE::SERVICE::Stub::PrepareAsync##METHOD,               \
         grpc_client,                                                           \
         #SERVICE_NAMESPACE "::" #SERVICE ".grpc_client." #METHOD,              \
-        request,                                                               \
+        std::move(request),                                                    \
         callback,                                                              \
         timeout_ms);                                                           \
   }                                                                            \
-  ray::Status Sync##METHOD(const METHOD_NAMESPACE::METHOD##Request &request,   \
+  ray::Status Sync##METHOD(METHOD_NAMESPACE::METHOD##Request &&request,        \
                            METHOD_NAMESPACE::METHOD##Reply *reply_in,          \
                            const int64_t timeout_ms = method_timeout_ms) {     \
     std::promise<Status> promise;                                              \
     METHOD(                                                                    \
-        request,                                                               \
+        std::move(request),                                                    \
         [&promise, reply_in](const Status &status,                             \
                              const METHOD_NAMESPACE::METHOD##Reply &reply) {   \
           reply_in->CopyFrom(reply);                                           \
@@ -151,8 +152,8 @@ class GcsRpcClient {
         std::chrono::system_clock::now() +
         std::chrono::seconds(::RayConfig::instance().gcs_rpc_server_connect_timeout_s());
     if (!channel_->WaitForConnected(deadline)) {
-      RAY_LOG(WARNING) << "Failed to connect to GCS at address " << address << ":" << port
-                       << " within "
+      RAY_LOG(WARNING) << "Failed to connect to GCS at address "
+                       << BuildAddress(address, port) << " within "
                        << ::RayConfig::instance().gcs_rpc_server_connect_timeout_s()
                        << " seconds.";
     }
@@ -222,14 +223,14 @@ class GcsRpcClient {
       PrepareAsyncFunction<Service, Request, Reply> prepare_async_function,
       std::shared_ptr<GrpcClient<Service>> grpc_client,
       const std::string &call_name,
-      const Request &request,
+      Request &&request,
       const ClientCallback<Reply> &callback,
       const int64_t timeout_ms) {
     retryable_grpc_client_->template CallMethod<Service, Request, Reply>(
         prepare_async_function,
         std::move(grpc_client),
         call_name,
-        request,
+        std::forward<Request>(request),
         [callback](const Status &status, Reply &&reply) {
           if (status.ok()) {
             if constexpr (handle_payload_status) {

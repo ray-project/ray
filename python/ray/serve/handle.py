@@ -9,6 +9,7 @@ import ray
 from ray import serve
 from ray._raylet import ObjectRefGenerator
 from ray.serve._private.common import (
+    OBJ_REF_NOT_SUPPORTED_ERROR,
     DeploymentHandleSource,
     DeploymentID,
     RequestMetadata,
@@ -211,17 +212,17 @@ class _DeploymentHandleBase:
     def __getattr__(self, name):
         return self.options(method_name=name)
 
-    def shutdown(self, _skip_asyncio_check: bool = False):
+    def shutdown(self):
         if self._router:
             shutdown_future = self._router.shutdown()
             if self._is_router_running_in_separate_loop():
                 shutdown_future.result()
             else:
-                if not _skip_asyncio_check:
-                    raise RuntimeError(
-                        "Sync methods should not be called from within an `asyncio` event "
-                        "loop. Use `await handle.shutdown_async()` instead."
-                    )
+                logger.warning(
+                    "Synchronously shutting down a router that's running in the same "
+                    "event loop can only be done best effort. Please use "
+                    "`shutdown_async` instead."
+                )
 
     async def shutdown_async(self):
         if self._router:
@@ -499,6 +500,9 @@ class DeploymentResponse(_DeploymentResponseBase):
 
         ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
+        if not self._request_metadata._by_reference:
+            raise OBJ_REF_NOT_SUPPORTED_ERROR
+
         replica_result = await self._fetch_future_result_async()
         return await replica_result.to_object_ref_async()
 
@@ -522,6 +526,9 @@ class DeploymentResponse(_DeploymentResponseBase):
         """
 
         ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
+
+        if not self._request_metadata._by_reference:
+            raise OBJ_REF_NOT_SUPPORTED_ERROR
 
         if not _allow_running_in_asyncio_loop and is_running_in_asyncio_loop():
             raise RuntimeError(
@@ -640,6 +647,9 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
 
         ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
+        if not self._request_metadata._by_reference:
+            raise OBJ_REF_NOT_SUPPORTED_ERROR
+
         replica_result = await self._fetch_future_result_async()
         return replica_result.to_object_ref_gen()
 
@@ -660,6 +670,9 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         """
 
         ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
+
+        if not self._request_metadata._by_reference:
+            raise OBJ_REF_NOT_SUPPORTED_ERROR
 
         if not _allow_running_in_asyncio_loop and is_running_in_asyncio_loop():
             raise RuntimeError(
