@@ -5,9 +5,12 @@ import logging
 from ray._common.utils import get_or_create_event_loop
 import aiohttp
 from ray._private.protobuf_compat import message_to_json
-from ray.core.generated import events_base_event_pb2
+from ray.core.generated import (
+    events_base_event_pb2,
+    events_event_aggregator_service_pb2,
+)
 from ray.dashboard.modules.aggregator.publisher.configs import PUBLISHER_TIMEOUT_SECONDS
-from typing import Callable
+from typing import Callable, Optional, Tuple, List
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 
@@ -119,3 +122,85 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
         If a session is set explicitly, it will be used and managed by close().
         """
         self._session = session
+
+
+class AsyncGCSPublisherClient(PublisherClientInterface):
+    """Client for publishing ray event batches to GCS."""
+
+    def __init__(self, gcs_stub, timeout: float = PUBLISHER_TIMEOUT_SECONDS) -> None:
+        self._gcs_stub = gcs_stub
+        self._timeout = timeout
+
+    async def publish(
+        self,
+        events_batch: Tuple[
+            List[events_base_event_pb2.RayEvent],
+            Optional[events_event_aggregator_service_pb2.TaskEventsMetadata],
+        ],
+    ) -> PublishStats:
+        events, task_events_metadata = events_batch
+        if not events and (
+            not task_events_metadata
+            or len(task_events_metadata.dropped_task_attempts) == 0
+        ):
+            # nothing to publish
+            return PublishStats(
+                publish_status=True, num_events_published=0, num_events_filtered_out=0
+            )
+        try:
+            events_data = self._create_ray_events_data(events, task_events_metadata)
+            request = events_event_aggregator_service_pb2.AddEventsRequest(
+                events_data=events_data
+            )
+            response = await self._gcs_stub.AddEvents(request, timeout=self._timeout)
+            if response.status.code != 0:
+                logger.error(f"GCS AddEvents failed: {response.status.message}")
+                return PublishStats(
+                    publish_status=False,
+                    num_events_published=0,
+                    num_events_filtered_out=0,
+                )
+            return PublishStats(
+                publish_status=True,
+                num_events_published=len(events),
+                num_events_filtered_out=0,
+            )
+        except Exception as e:
+            logger.error(f"Failed to send events to GCS: {e}")
+            return PublishStats(
+                publish_status=False, num_events_published=0, num_events_filtered_out=0
+            )
+
+    def count_num_events_in_batch(
+        self,
+        events_batch: Tuple[
+            List[events_base_event_pb2.RayEvent],
+            events_event_aggregator_service_pb2.TaskEventsMetadata,
+        ],
+    ) -> int:
+        try:
+            events, _ = events_batch
+            return len(events)
+        except (TypeError, ValueError):
+            return 0
+
+    def _create_ray_events_data(
+        self,
+        event_batch: List[events_base_event_pb2.RayEvent],
+        task_events_metadata: Optional[
+            events_event_aggregator_service_pb2.TaskEventsMetadata
+        ] = None,
+    ) -> events_event_aggregator_service_pb2.RayEventsData:
+        """
+        Helper method to create RayEventsData from event batch and metadata.
+        """
+        events_data = events_event_aggregator_service_pb2.RayEventsData()
+        events_data.events.extend(event_batch)
+
+        if task_events_metadata:
+            events_data.task_events_metadata.CopyFrom(task_events_metadata)
+
+        return events_data
+
+    async def close(self) -> None:
+        pass

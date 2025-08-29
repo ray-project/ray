@@ -142,6 +142,7 @@ _DASHBOARD_METRICS = [
 _EVENT_AGGREGATOR_METRICS = [
     "ray_event_aggregator_agent_events_received_total",
     "ray_event_aggregator_agent_events_buffer_add_failures_total",
+    # HTTP publisher metrics
     "ray_event_aggregator_agent_http_events_published_total",
     "ray_event_aggregator_agent_http_events_filtered_total",
     "ray_event_aggregator_agent_http_publish_failures_total",
@@ -151,6 +152,17 @@ _EVENT_AGGREGATOR_METRICS = [
     "ray_event_aggregator_agent_http_publish_duration_seconds_bucket",
     "ray_event_aggregator_agent_http_publish_duration_seconds_count",
     "ray_event_aggregator_agent_http_publish_duration_seconds_sum",
+    # GCS publisher metrics
+    "ray_event_aggregator_agent_gcs_events_published_total",
+    "ray_event_aggregator_agent_gcs_publish_failures_total",
+    "ray_event_aggregator_agent_gcs_publish_queue_dropped_events_total",
+    "ray_event_aggregator_agent_gcs_publish_duration_seconds_bucket",
+    "ray_event_aggregator_agent_gcs_publish_duration_seconds_count",
+    "ray_event_aggregator_agent_gcs_publish_duration_seconds_sum",
+    "ray_event_aggregator_agent_gcs_publish_consecutive_failures",
+    "ray_event_aggregator_agent_gcs_time_since_last_success_seconds",
+    # Task metadata buffer metrics
+    "ray_event_aggregator_agent_task_metadata_buffer_dropped_events_total",
 ]
 
 _NODE_METRICS = [
@@ -482,6 +494,7 @@ def httpserver_listen_address():
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 2,
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS": "True",
                 # Turn off task events generation to avoid the task events from the
                 # cluster impacting the test result
                 "RAY_task_events_report_interval_ms": 0,
@@ -505,10 +518,11 @@ def test_metrics_export_event_aggregator_agent(
 
     def test_case_stats_exist():
         _, metric_descriptors, _ = fetch_prometheus(prom_addresses)
-        metrics_names = metric_descriptors.keys()
-        event_aggregator_metrics = [
+        metrics_names = set(metric_descriptors.keys())
+        required_metrics = {
             "ray_event_aggregator_agent_events_received_total",
             "ray_event_aggregator_agent_events_buffer_add_failures_total",
+            # HTTP publisher metrics
             "ray_event_aggregator_agent_http_events_published_total",
             "ray_event_aggregator_agent_http_events_filtered_total",
             "ray_event_aggregator_agent_http_publish_failures_total",
@@ -518,8 +532,21 @@ def test_metrics_export_event_aggregator_agent(
             "ray_event_aggregator_agent_http_publish_duration_seconds_bucket",
             "ray_event_aggregator_agent_http_publish_duration_seconds_count",
             "ray_event_aggregator_agent_http_publish_duration_seconds_sum",
-        ]
-        return all(metric in metrics_names for metric in event_aggregator_metrics)
+            # GCS publisher metrics
+            "ray_event_aggregator_agent_gcs_events_published_total",
+            "ray_event_aggregator_agent_gcs_publish_failures_total",
+            "ray_event_aggregator_agent_gcs_publish_queue_dropped_events_total",
+            "ray_event_aggregator_agent_gcs_publish_duration_seconds_bucket",
+            "ray_event_aggregator_agent_gcs_publish_duration_seconds_count",
+            "ray_event_aggregator_agent_gcs_publish_duration_seconds_sum",
+            "ray_event_aggregator_agent_gcs_publish_consecutive_failures",
+            "ray_event_aggregator_agent_gcs_time_since_last_success_seconds",
+            # Task metadata buffer metrics
+            "ray_event_aggregator_agent_task_metadata_buffer_dropped_events_total",
+        }
+        if not required_metrics.issubset(metrics_names):
+            return False
+        return True
 
     def test_case_value_correct():
         _, _, metric_samples = fetch_prometheus(prom_addresses)
@@ -531,6 +558,7 @@ def test_metrics_export_event_aggregator_agent(
 
     now = time.time_ns()
     seconds, nanos = divmod(now, 10**9)
+    timestamp = Timestamp(seconds=seconds, nanos=nanos)
     request = AddEventsRequest(
         events_data=RayEventsData(
             events=[

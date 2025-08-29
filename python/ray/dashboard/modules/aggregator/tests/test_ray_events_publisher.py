@@ -1,32 +1,27 @@
 import pytest
 import sys
 import asyncio
-<<<<<<< HEAD
-from unittest.mock import AsyncMock, Mock
-
-from ray.dashboard.modules.aggregator.aggregator_agent import GCSPublisher
-from ray.dashboard.modules.aggregator.ray_events_publisher import (
-    RayEventsPublisherBase,
-    ExternalSvcPublisher,
-=======
-from unittest.mock import Mock
+from unittest.mock import Mock, AsyncMock
 from concurrent.futures import ThreadPoolExecutor
 
 from ray._common.test_utils import async_wait_for_condition
 from ray.dashboard.modules.aggregator.publisher.ray_event_publisher import (
     RayEventsPublisher,
->>>>>>> upstream/aggrToGcs2
     NoopPublisher,
 )
 from ray.dashboard.modules.aggregator.publisher.async_publisher_client import (
     AsyncHttpPublisherClient,
+    AsyncGCSPublisherClient,
     PublishStats,
     PublisherClientInterface,
 )
 from ray.dashboard.modules.aggregator.multi_consumer_event_buffer import (
     MultiConsumerEventBuffer,
 )
-from ray.core.generated import events_base_event_pb2
+from ray.core.generated import (
+    events_base_event_pb2,
+    events_event_aggregator_service_pb2,
+)
 from typing import Optional
 from google.protobuf.timestamp_pb2 import Timestamp
 
@@ -312,8 +307,8 @@ class TestAsyncHttpPublisherClient:
         assert count == 3
 
 
-class TestGCSPublisher:
-    """Test GCS publisher implementation."""
+class TestGCSPublisherClient:
+    """Test GCS publisher client implementation."""
 
     @pytest.fixture
     def gcs_stub(self):
@@ -321,34 +316,22 @@ class TestGCSPublisher:
         stub.AddEvents = AsyncMock()
         return stub
 
-    @pytest.fixture
-    def gcs_publisher(self, base_kwargs, gcs_stub):
-        """Create GCS publisher for testing."""
-        kwargs = base_kwargs.copy()
-        # Remove 'name' as GCSPublisher doesn't take it directly
-        kwargs.pop("name", None)
-        kwargs.update({"timeout": 5.0, "gcs_event_stub": gcs_stub})
-        return GCSPublisher(**kwargs)
-
     @pytest.mark.asyncio
-    async def test_publish_empty_batch(self, gcs_publisher, gcs_stub):
-        """Empty batches should be treated as success with no GCS call."""
-        gcs_publisher.start()
-        gcs_publisher.publish_events(([], None))
-        await gcs_publisher.shutdown()
-        stats = gcs_publisher.get_and_reset_metrics()
-        assert stats["published"] == 0
-        assert stats["failed"] == 0
+    async def test_publish_empty_batch(self, gcs_stub):
+        client = AsyncGCSPublisherClient(gcs_stub=gcs_stub, timeout=5.0)
+        result = await client.publish(([], None))
+        assert result.is_publish_successful is True
+        assert result.num_events_published == 0
+        assert result.num_events_filtered_out == 0
         gcs_stub.AddEvents.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_publish_success(self, gcs_publisher, gcs_stub):
-        # Mock successful response
+    async def test_publish_success(self, gcs_stub):
         mock_response = Mock()
         mock_response.status.code = 0
         gcs_stub.AddEvents.return_value = mock_response
 
-        # Create actual event objects instead of mocks
+        client = AsyncGCSPublisherClient(gcs_stub=gcs_stub, timeout=5.0)
         events = [
             events_base_event_pb2.RayEvent(
                 event_id=b"1",
@@ -367,43 +350,34 @@ class TestGCSPublisher:
                 message="world",
             ),
         ]
-        gcs_publisher.start()
-        gcs_publisher.publish_events((events, None))
-        await gcs_publisher.shutdown()
 
+        result = await client.publish((events, None))
         gcs_stub.AddEvents.assert_called_once()
-        stats = gcs_publisher.get_and_reset_metrics()
-        assert stats["published"] == 2
-        assert stats["failed"] == 0
+        assert result.is_publish_successful is True
+        assert result.num_events_published == 2
 
     @pytest.mark.asyncio
-    async def test_publish_gcs_error(self, gcs_publisher, gcs_stub):
-        """Exception from GCS"""
+    async def test_publish_gcs_error(self, gcs_stub):
         mock_response = Mock()
         mock_response.status.code = 1
         mock_response.status.message = "Error"
         gcs_stub.AddEvents.return_value = mock_response
 
-        events = [Mock(spec=events_base_event_pb2.RayEvent)]
-        gcs_publisher.start()
-        gcs_publisher.publish_events((events, None))
-        await gcs_publisher.shutdown()
-
-        stats = gcs_publisher.get_and_reset_metrics()
-        assert stats["failed"] == len(events)
+        client = AsyncGCSPublisherClient(gcs_stub=gcs_stub, timeout=5.0)
+        events = [events_base_event_pb2.RayEvent()]
+        result = await client.publish((events, None))
+        assert result.is_publish_successful is False
+        assert result.num_events_published == 0
 
     @pytest.mark.asyncio
-    async def test_publish_exception(self, gcs_publisher, gcs_stub):
-        """Exception when trying to reach GCS"""
+    async def test_publish_exception(self, gcs_stub):
         gcs_stub.AddEvents.side_effect = Exception("Network error")
 
-        events = [Mock(spec=events_base_event_pb2.RayEvent)]
-        gcs_publisher.start()
-        gcs_publisher.publish_events((events, None))
-        await gcs_publisher.shutdown()
-
-        stats = gcs_publisher.get_and_reset_metrics()
-        assert stats["failed"] == len(events)
+        client = AsyncGCSPublisherClient(gcs_stub=gcs_stub, timeout=5.0)
+        events = [events_base_event_pb2.RayEvent()]
+        result = await client.publish((events, None))
+        assert result.is_publish_successful is False
+        assert result.num_events_published == 0
 
 
 class TestNoopPublisher:
