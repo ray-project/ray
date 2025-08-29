@@ -199,7 +199,7 @@ serve shutdown -y
 
 ## Deploy to production with Anyscale Services
 
-For production, it's recommended to use Anyscale Services to deploy your Ray Serve app on a dedicated cluster without code changes. Anyscale provides scalability, fault tolerance, and load balancing, ensuring resilience against node failures, high traffic, and rolling updates. See [Deploying a small-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/small-size-llm/README.html#deploy-to-production-with-anyscale-services) for an example with a small-size model like the *Qwen2.5-VL-7&nbsp;B-Instruct* used here.
+For production, it's recommended to use Anyscale Services to deploy your Ray Serve app on a dedicated cluster without code changes. Anyscale provides scalability, fault tolerance, and load balancing, ensuring resilience against node failures, high traffic, and rolling updates. See [Deploying a small size LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/small-size-llm/README.html#deploy-to-production-with-anyscale-services) for an example with a small size model like the *Qwen2.5-VL-7&nbsp;B-Instruct* used here.
 
 ---
 

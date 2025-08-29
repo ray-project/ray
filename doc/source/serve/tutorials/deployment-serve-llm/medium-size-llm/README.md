@@ -1,18 +1,18 @@
-# Deploying a medium-size LLM
+# Deploying a medium size LLM
 
-A medium-size LLM typically runs on a single node with 4-8 GPUs. It offers a balance between performance and efficiency. These models provide stronger accuracy and reasoning than small models while remaining more affordable and resource-friendly than very large ones. This makes them a solid choice for production workloads that need good quality at lower cost. They're also ideal for scaling applications where large models would be too slow or expensive.
+A medium size LLM typically runs on a single node with 4-8 GPUs. It offers a balance between performance and efficiency. These models provide stronger accuracy and reasoning than small models while remaining more affordable and resource-friendly than very large ones. This makes them a solid choice for production workloads that need good quality at lower cost. They're also ideal for scaling applications where large models would be too slow or expensive.
 
-This tutorial deploys a medium-size LLM using Ray Serve LLM. For smaller models, see [Deploying a small-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/small-size-llm/README.html), and for larger models, see [Deploying a large-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/large-size-llm/README.html).
+This tutorial deploys a medium size LLM using Ray Serve LLM. For smaller models, see [Deploying a small size LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/small-size-llm/README.html), and for larger models, see [Deploying a large size LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/large-size-llm/README.html).
 
 ---
 
 ## Configure Ray Serve LLM
 
-Set your Hugging Face token in the config file to access gated models like `Llama-3.1`.
-
-You can deploy a medium-sized LLM on a single node with multiple GPUs. To leverage all available GPUs, set `tensor_parallel_size` to the number of GPUs on the node, which distributes the model’s weights evenly across them.
+You can deploy a medium sized LLM on a single node with multiple GPUs. To leverage all available GPUs, set `tensor_parallel_size` to the number of GPUs on the node, which distributes the model’s weights evenly across them.
 
 Ray Serve LLM provides multiple [Python APIs](https://docs.ray.io/en/latest/serve/api/index.html#llm-api) for defining your application. Use [`build_openai_app`](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.llm.build_openai_app.html#ray.serve.llm.build_openai_app) to build a full application from your [`LLMConfig`](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.llm.LLMConfig.html#ray.serve.llm.LLMConfig) object.
+
+Set your Hugging Face token in the config file to access gated models like `Llama-3.1`.
 
 
 ```python
@@ -304,4 +304,4 @@ See this [Troubleshooting Guide](https://docs.anyscale.com/overview) for common 
 
 ## Summary
 
-In this tutorial, you deployed a medium-size LLM with Ray Serve LLM, from development to production. You learned how to configure Ray Serve LLM, deploy your service on your Ray cluster, and how to send requests. You also learned how to monitor your app and common troubleshooting issues.
+In this tutorial, you deployed a medium size LLM with Ray Serve LLM, from development to production. You learned how to configure Ray Serve LLM, deploy your service on your Ray cluster, and how to send requests. You also learned how to monitor your app and common troubleshooting issues.

@@ -1,8 +1,8 @@
-# Deploy a large-size LLM
+# Deploy a large size LLM
 
-A large-size LLM typically runs on multiple nodes with multiple GPUs, prioritizing peak quality and capability: stronger reasoning, broader knowledge, longer context windows, more robust generalization. It’s the right choice when state-of-the-art results are required and higher latency, complexity, and cost are acceptable trade-offs.
+A large size LLM typically runs on multiple nodes with multiple GPUs, prioritizing peak quality and capability: stronger reasoning, broader knowledge, longer context windows, more robust generalization. It’s the right choice when state-of-the-art results are required and higher latency, complexity, and cost are acceptable trade-offs.
 
-This tutorial deploys a large-size LLM like DeepSeek-R1 (685&nbsp;B parameters) using Ray Serve LLM. For smaller models, see [Deploying a small-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/small-size-llm/README.html) or [Deploying a medium-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/medium-size-llm/README.html).
+This tutorial deploys a large size LLM like DeepSeek-R1 (685&nbsp;B parameters) using Ray Serve LLM. For smaller models, see [Deploying a small size LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/small-size-llm/README.html) or [Deploying a medium size LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html).
 
 ---
 
@@ -16,7 +16,7 @@ Deploying a model of this scale normally requires you to manually launch and coo
 
 ## Configure Ray Serve LLM
 
-A large-size LLM is typically deployed across multiple nodes with multiple GPUs. To fully utilize the hardware, set `pipeline_parallel_size` to the number of nodes and `tensor_parallel_size` to the number of GPUs per node, which distributes the model’s weights evenly.
+A large size LLM is typically deployed across multiple nodes with multiple GPUs. To fully utilize the hardware, set `pipeline_parallel_size` to the number of nodes and `tensor_parallel_size` to the number of GPUs per node, which distributes the model’s weights evenly.
 
 Ray Serve LLM provides multiple [Python APIs](https://docs.ray.io/en/latest/serve/api/index.html#llm-api) for defining your application. Use [`build_openai_app`](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.llm.build_openai_app.html#ray.serve.llm.build_openai_app) to build a full application from your [`LLMConfig`](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.llm.LLMConfig.html#ray.serve.llm.LLMConfig) object.
 
@@ -336,4 +336,4 @@ See this [Troubleshooting Guide](https://docs.anyscale.com/overview) for common 
 
 ## Summary
 
-In this tutorial, you deployed a large-size LLM with Ray Serve LLM, from development to production. You learned how to configure Ray Serve LLM, deploy your service on your Ray cluster, and how to send requests. You also learned how to monitor your app and common troubleshooting issues.
+In this tutorial, you deployed a large size LLM with Ray Serve LLM, from development to production. You learned how to configure Ray Serve LLM, deploy your service on your Ray cluster, and how to send requests. You also learned how to monitor your app and common troubleshooting issues.

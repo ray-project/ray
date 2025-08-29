@@ -1,18 +1,9 @@
-# Deploy a small-size LLM
+# Deploy a small size LLM
 
-This tutorial deploys a small-size LLM using Ray Serve LLM.
+A small size LLM runs on a single node with 1–2 GPUs, making it fast, inexpensive, and simple to use. It’s ideal for prototyping, lightweight applications, latency-critical use cases, cost-sensitive deployments, and environments with limited resources where efficiency matters more than peak accuracy.
 
-## Overview
 
-A *small-size LLM* typically runs on a single node with 1 or 2 GPUs and is ideal when speed, cost, and simplicity matter most. It’s cheaper to run, faster to deploy, and easier to experiment with, making it well-suited for prototyping, lightweight applications, and scenarios where low latency or limited resources are more important than peak accuracy.  
-
-Use small-size LLMs for:
-- Rapid prototyping and experimentation.
-- Applications with strict latency requirements.
-- Cost-sensitive deployments.
-- Development environments with limited resources.
-
-For larger models, see [Deploying a medium-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/medium-size-llm/README.html) or [Deploying a large-size LLM](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/large-size-llm/README.html).
+For larger models, see [Deploying a medium size LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html) or [Deploying a large size LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/large-size-llm/README.html).
 
 ---
 
@@ -316,4 +307,4 @@ See this [Troubleshooting Guide](https://docs.anyscale.com/overview) for common 
 
 ## Summary
 
-In this tutorial, you deployed a small-size LLM with Ray Serve LLM, from development to production. You learned how to configure Ray Serve LLM, deploy your service on your Ray cluster, and how to send requests. You also learned how to monitor your app and common troubleshooting issues.
+In this tutorial, you deployed a small size LLM with Ray Serve LLM, from development to production. You learned how to configure Ray Serve LLM, deploy your service on your Ray cluster, and how to send requests. You also learned how to monitor your app and common troubleshooting issues.
