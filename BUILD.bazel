@@ -87,27 +87,11 @@ config_setting(
     flag_values = {":jemalloc_flag": "true"},
 )
 
-config_setting(
-    name = "linux_x86_64",
-    constraint_values = [
-        "@platforms//os:linux",
-        "@platforms//cpu:x86_64",
-    ],
-)
-
-config_setting(
-    name = "darwin_aarch64",
-    constraint_values = [
-        "@platforms//os:osx",
-        "@platforms//cpu:aarch64",
-    ],
-)
-
 alias(
     name = "uv_file",
     actual = select({
-        "//:linux_x86_64": "@uv_x86_64-linux//:file",
-        "//:darwin_aarch64": "@uv_aarch64-darwin//:file",
+        "//bazel:linux_x86_64_config": "@uv_x86_64-linux//:file",
+        "//bazel:osx_arm64_config": "@uv_aarch64-darwin//:file",
         "//conditions:default": "@uv_x86_64-linux//:file",
     }),
 )
@@ -296,6 +280,9 @@ alias(
     name = "redis-server",
     actual = select({
         "@platforms//os:windows": "@com_github_tporadowski_redis_bin//:redis-server.exe",
+        "//bazel:linux_x86_64_config": "@redis_linux_x86_64//:redis-server",
+        "//bazel:linux_arm64_config": "@redis_linux_arm64//:redis-server",
+        "//bazel:osx_arm64_config": "@redis_osx_arm64//:redis-server",
         "//conditions:default": "@com_github_antirez_redis//:redis-server",
     }),
 )
@@ -304,6 +291,9 @@ alias(
     name = "redis-cli",
     actual = select({
         "@platforms//os:windows": "@com_github_tporadowski_redis_bin//:redis-cli.exe",
+        "//bazel:linux_x86_64_config": "@redis_linux_x86_64//:redis-cli",
+        "//bazel:linux_arm64_config": "@redis_linux_arm64//:redis-cli",
+        "//bazel:osx_arm64_config": "@redis_osx_arm64//:redis-cli",
         "//conditions:default": "@com_github_antirez_redis//:redis-cli",
     }),
 )
