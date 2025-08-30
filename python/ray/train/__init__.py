@@ -34,6 +34,7 @@ if is_v2_enabled():
         RunConfig,
         ScalingConfig,
     )
+    from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint # noqa: F811
     from ray.train.v2.api.result import Result  # noqa: F811
     from ray.train.v2.api.train_fn_utils import (  # noqa: F811
         get_checkpoint,
@@ -79,6 +80,8 @@ TrainingIterator.__module__ = "ray.train"
 if is_v2_enabled():
     __all__.append("UserCallback")
     UserCallback.__module__ = "ray.train"
+    __all__.append("ReportedCheckpoint")
+    ReportedCheckpoint.__module__ = "ray.train"
 
 
 # DO NOT ADD ANYTHING AFTER THIS LINE.
