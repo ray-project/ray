@@ -180,7 +180,7 @@ class TestModelConfig:
         assert serve_options["placement_group_bundles"] == [
             {"CPU": 1, "GPU": 1, "accelerator_type:A100-40G": 0.001},
         ]
-        assert serve_options["placement_group_strategy"] == "STRICT_PACK"
+        assert serve_options["placement_group_strategy"] == "PACK"
         assert serve_options["name"] == "Test:test_model"
 
         # Check that our custom env vars are present
@@ -213,8 +213,11 @@ class TestModelConfig:
             "initial_replicas": 1,
             "max_replicas": 10,
         }
-        assert serve_options["placement_group_bundles"] == [{"CPU": 1, "GPU": 1}]
-        assert serve_options["placement_group_strategy"] == "STRICT_PACK"
+
+        assert serve_options["placement_group_bundles"] == [
+            {"CPU": 1, "GPU": 1},
+        ]
+        assert serve_options["placement_group_strategy"] == "PACK"
         assert serve_options["name"] == "Test:test_model"
 
         # Check that our custom env vars are present
@@ -236,19 +239,23 @@ class TestModelConfig:
             engine_kwargs=dict(tensor_parallel_size=3, pipeline_parallel_size=2),
         ).get_serve_options(name_prefix="Test:")
 
-        assert serve_options["placement_group_bundles"] == [{"CPU": 1, "GPU": 1}] + [
-            {"GPU": 1} for _ in range(5)
+        # New default: TP ranks colocated per PP stage
+        assert serve_options["placement_group_bundles"] == [
+            {"CPU": 1, "GPU": 3},  # PP stage 0: 3 TP ranks
+            {"CPU": 1, "GPU": 3},  # PP stage 1: 3 TP ranks
         ]
 
-        # Test the custom resource bundle
+        # Test the custom resource bundle with resources_per_bundle
         serve_options = LLMConfig(
             model_loading_config=dict(model_id="test_model"),
             engine_kwargs=dict(tensor_parallel_size=3, pipeline_parallel_size=2),
             resources_per_bundle={"XPU": 1},
         ).get_serve_options(name_prefix="Test:")
-        assert serve_options["placement_group_bundles"] == [
-            {"CPU": 1, "GPU": 0, "XPU": 1}
-        ] + [{"XPU": 1} for _ in range(5)]
+
+        # resources_per_bundle uses engine config logic for backward compatibility
+        assert serve_options["placement_group_bundles"] == [{"CPU": 1, "GPU": 0}] + [
+            {"XPU": 1} for _ in range(6)
+        ]
 
     def test_engine_config_cached(self):
         """Test that the engine config is cached and not recreated when calling
