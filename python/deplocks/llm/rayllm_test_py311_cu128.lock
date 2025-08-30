@@ -3,6 +3,12 @@
 --index-url https://pypi.org/simple
 --extra-index-url https://download.pytorch.org/whl/cu128
 
+adlfs==2023.8.0 \
+    --hash=sha256:07e804f6df4593acfcaf01025b162e30ac13e523d3570279c98b2d91a18026d9 \
+    --hash=sha256:3eb248a3c2a30b419f1147bd7676d156b5219f96ef7f11d47166afd2a3bdb07e
+    # via
+    #   -c python/deplocks/llm/ray_test_py311_cu128.lock
+    #   -r python/requirements/cloud-requirements.txt
 aiofiles==22.1.0 \
     --hash=sha256:1142fa8e80dbae46bb6339573ad4c8c0841358f79c6eb50a493dceca14621bad \
     --hash=sha256:9107f1ca0b2a5553987a94a3c9959fe5b491fdf731389aa5b7b1bd0733e32de6
@@ -102,6 +108,7 @@ aiohttp==3.11.16 \
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/llm/llm-test-requirements.txt
     #   -r python/requirements.txt
+    #   adlfs
     #   aiohttp-cors
     #   pytest-aiohttp
     #   vllm
@@ -223,20 +230,29 @@ azure-core==1.29.5 \
     --hash=sha256:52983c89d394c6f881a121e5101c5fa67278ca3b1f339c8fb2ef39230c70e9ac
     # via
     #   -c python/deplocks/llm/ray_test_py311_cu128.lock
+    #   adlfs
     #   azure-identity
     #   azure-storage-blob
     #   smart-open
+azure-datalake-store==0.0.53 \
+    --hash=sha256:05b6de62ee3f2a0a6e6941e6933b792b800c3e7f6ffce2fc324bc19875757393 \
+    --hash=sha256:a30c902a6e360aa47d7f69f086b426729784e71c536f330b691647a51dc42b2b
+    # via
+    #   -c python/deplocks/llm/ray_test_py311_cu128.lock
+    #   adlfs
 azure-identity==1.17.1 \
     --hash=sha256:32ecc67cc73f4bd0595e4f64b1ca65cd05186f4fe6f98ed2ae9f1aa32646efea \
     --hash=sha256:db8d59c183b680e763722bfe8ebc45930e6c57df510620985939f7f3191e0382
     # via
     #   -c python/deplocks/llm/ray_test_py311_cu128.lock
     #   -r python/requirements/cloud-requirements.txt
+    #   adlfs
 azure-storage-blob==12.22.0 \
     --hash=sha256:b3804bb4fe8ab1c32771fa464053da772a682c2737b19da438a3f4e5e3b3736e \
     --hash=sha256:bb7d2d824ce3f11f14a27ee7d9281289f7e072ac8311c52e3652672455b7d5e8
     # via
     #   -c python/deplocks/llm/ray_test_py311_cu128.lock
+    #   adlfs
     #   smart-open
 babel==2.13.1 \
     --hash=sha256:33e0952d7dd6374af8dbf6768cc4ddf3ccfefc244f9986d4074704f2fbd18900 \
@@ -499,6 +515,7 @@ cffi==1.16.0 \
     # via
     #   -c python/deplocks/llm/ray_test_py311_cu128.lock
     #   argon2-cffi-bindings
+    #   azure-datalake-store
     #   cryptography
     #   soundfile
 charset-normalizer==3.3.2 \
@@ -1063,6 +1080,7 @@ fsspec==2023.5.0 \
     # via
     #   -c python/deplocks/llm/ray_test_py311_cu128.lock
     #   -r python/requirements.txt
+    #   adlfs
     #   huggingface-hub
     #   torch
 gguf==0.17.0 \
@@ -2064,6 +2082,7 @@ msal==1.28.1 \
     --hash=sha256:d72bbfe2d5c2f2555f4bc6205be4450ddfd12976610dd9a16a9ab0f05c68b64d
     # via
     #   -c python/deplocks/llm/ray_test_py311_cu128.lock
+    #   azure-datalake-store
     #   azure-identity
     #   msal-extensions
 msal-extensions==1.2.0b1 \
@@ -3739,6 +3758,7 @@ requests==2.32.3 \
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements.txt
     #   azure-core
+    #   azure-datalake-store
     #   google-api-core
     #   google-cloud-storage
     #   huggingface-hub
