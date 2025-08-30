@@ -2,25 +2,35 @@
 
 set -exuo pipefail
 
-# Host user UID/GID
-HOST_UID=${HOST_UID:-$(id -u)}
-HOST_GID=${HOST_GID:-$(id -g)}
+if [[ "$EUID" -eq 0 ]]; then
 
-if [ "$EUID" -eq 0 ]; then
+  HOME="/tmp"
 
   # Install sudo
   yum -y install sudo
 
-  # Create group and user
-  groupadd -g "$HOST_GID" builduser
-  useradd -m -u "$HOST_UID" -g "$HOST_GID" -d /ray builduser
+  GROUP_NAME="builduser"
 
-  # Give sudo access
-  echo "builduser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+  # --- Ensure group exists ---
+  if ! getent group "$GROUP_NAME" >/dev/null; then
+    groupadd "$GROUP_NAME"
+  fi
 
-  exec sudo -E -u builduser HOME="$HOME" bash "$0" "$@"
+  # --- Ensure user exists ---
+  if ! id -u builduser >/dev/null 2>&1; then
+    useradd -m -d "$HOME"/ -g "$GROUP_NAME" builduser
+  fi
 
-  exit 0
+  mkdir -p "$HOME"/
+  chown -R builduser:"$GROUP_NAME" "$HOME"/
+
+  echo "builduser ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/builduser
+  chmod 0440 /etc/sudoers.d/builduser
+
+  exec sudo -E -u builduser HOME="$HOME" bash "$0" "$@" || {
+    echo "Failed to exec as builduser." >&2
+    exit 1
+  }
 
 fi
 
@@ -37,10 +47,19 @@ PYTHON_VERSIONS=(
 
 # Setup runtime environment
 ./ci/build/build-manylinux-forge.sh
-source "$HOME"/.nvm/nvm.sh
 
 # Compile ray
 ./ci/build/build-manylinux-ray.sh
+
+# Extract prebuilt dashboard into expected location, only if it exists
+if [[ -f "$(dirname "$0")/../dashboard_build.tar.gz" ]]; then
+  echo "Extracting $(dirname "$0")/../dashboard_build.tar.gz..."
+  mkdir -p "$(dirname "$0")/ray/dashboard/client/build"  # ensure target exists
+  tar -xzf "$(dirname "$0")/../dashboard_build.tar.gz" -C "$(dirname "$0")/ray/dashboard/client/build"
+else
+  echo "ERROR: $(dirname "$0")/../dashboard_build.tar.gz not found. Aborting." >&2
+  exit 1
+fi
 
 # Build ray wheel
 for PYTHON_VERSIONS in "${PYTHON_VERSIONS[@]}" ; do
@@ -58,13 +77,13 @@ for PYTHON_VERSIONS in "${PYTHON_VERSIONS[@]}" ; do
   # and the -e flag ensures that we don't remove the .whl directory, the
   # dashboard directory and jars directory, as well as the compiled
   # dependency constraints.
-  git clean -f -f -x -d -e .whl -e python/ray/dashboard/client -e dashboard/client -e python/ray/jars -e python/requirements_compiled.txt
+  git clean -f -f -x -d -e .whl -e python/ray/dashboard/client -e dashboard/client -e python/ray/jars -e python/requirements_compiled.txt -e dashboard_build.tar.gz
 
   ./ci/build/build-manylinux-wheel.sh "${PYTHON}"
 done
 
 # Clean the build output so later operations is on a clean directory.
-git clean -f -f -x -d -e .whl -e python/ray/dashboard/client -e python/requirements_compiled.txt
+git clean -f -f -x -d -e .whl -e python/ray/dashboard/client -e python/requirements_compiled.txt -e dashboard_build.tar.gz
 bazel clean
 
 # Build ray jar
