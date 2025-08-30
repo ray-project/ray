@@ -353,7 +353,12 @@ class MockKubernetesHttpApiClient(IKubernetesHttpApiClient):
 
         raise NotImplementedError(f"get {path}")
 
-    def patch(self, path: str, patches: List[Dict[str, Any]]):
+    def patch(
+        self,
+        path: str,
+        patches: List[Dict[str, Any]],
+        content_type: str = "application/json-patch+json",
+    ):
         self._patches[path] = patches
         return {path: patches}
 

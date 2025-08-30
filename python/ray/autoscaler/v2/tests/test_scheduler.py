@@ -19,7 +19,13 @@ from ray.autoscaler.v2.scheduler import (
     SchedulingRequest,
     logger,
 )
-from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
+from ray.autoscaler.v2.schema import (
+    AutoscalerInstance,
+    NodeType,
+    IPPRSpecs,
+    IPPRGroupSpec,
+    IPPRStatus,
+)
 from ray.autoscaler.v2.tests.util import MockEventLogger, make_autoscaler_instance
 from ray.autoscaler.v2.utils import ResourceRequestUtil
 from ray.core.generated.common_pb2 import LabelSelectorOperator
@@ -52,6 +58,8 @@ def sched_request(
     instances: Optional[List[AutoscalerInstance]] = None,
     idle_timeout_s: Optional[float] = None,
     disable_launch_config_check: Optional[bool] = False,
+    ippr_specs: Optional[IPPRSpecs] = None,
+    ippr_statuses: Optional[Dict[str, IPPRStatus]] = None,
 ) -> SchedulingRequest:
 
     if resource_requests is None:
@@ -62,6 +70,8 @@ def sched_request(
         cluster_resource_constraints = []
     if instances is None:
         instances = []
+    if ippr_statuses is None:
+        ippr_statuses = {}
 
     return SchedulingRequest(
         resource_requests=ResourceRequestUtil.group_by_count(resource_requests),
@@ -84,6 +94,8 @@ def sched_request(
         max_num_nodes=max_num_nodes,
         idle_timeout_s=idle_timeout_s,
         disable_launch_config_check=disable_launch_config_check,
+        ippr_specs=ippr_specs,
+        ippr_statuses=ippr_statuses,
     )
 
 
@@ -2636,6 +2648,175 @@ def test_pg_with_bundle_infeasible_label_selectors():
 
     assert to_launch == {}
     assert len(reply.infeasible_gang_resource_requests) == 1
+
+
+def test_ippr_resize_to_maximum_capacity():
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+
+    # Existing running node
+    instance = make_autoscaler_instance(
+        ray_node=NodeState(
+            ray_node_type_name="type_1",
+            available_resources={"CPU": 1},
+            total_resources={"CPU": 1},
+            node_id=b"r1",
+        ),
+        im_instance=Instance(
+            instance_type="type_1",
+            status=Instance.RAY_RUNNING,
+            instance_id="i-1",
+            node_id="r1",
+        ),
+        cloud_instance_id="pod-1",
+    )
+
+    # IPPR limits/specs and provider suggestion to upsize CPU to 2
+    ippr_specs = IPPRSpecs(
+        groups={
+            "type_1": IPPRGroupSpec(
+                min_cpu=1,
+                max_cpu=4,
+                min_memory=1 * 1024 * 1024 * 1024,
+                max_memory=8 * 1024 * 1024 * 1024,
+                resize_timeout=60,
+            )
+        }
+    )
+    ippr_status = IPPRStatus(
+        cloud_instance_id="pod-1",
+        spec=ippr_specs.groups["type_1"],
+        current_cpu=1,
+        current_memory=1 * 1024 * 1024 * 1024,
+        desired_cpu=1,
+        desired_memory=1 * 1024 * 1024 * 1024,
+    )
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[ResourceRequestUtil.make({"CPU": 2})],
+        instances=[instance],
+        ippr_specs=ippr_specs,
+        ippr_statuses={"pod-1": ippr_status},
+    )
+
+    reply = scheduler.schedule(request)
+    # Scheduler should issue one IPPR action with desired set to suggested values
+    assert len(reply.to_ippr) == 1
+    assert reply.to_ippr[0].cloud_instance_id == "pod-1"
+    assert reply.to_ippr[0].desired_cpu == 4.0
+    assert reply.to_ippr[0].desired_memory == 8 * 1024 * 1024 * 1024
+
+
+def test_ippr_in_progress_exposes_desired_capacity_avoids_launch():
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+
+    # Existing running node with an in-progress resize to CPU=4
+    instance = make_autoscaler_instance(
+        ray_node=NodeState(
+            ray_node_type_name="type_1",
+            available_resources={"CPU": 1},
+            total_resources={"CPU": 1},
+            node_id=b"r1",
+        ),
+        im_instance=Instance(
+            instance_type="type_1",
+            status=Instance.RAY_RUNNING,
+            instance_id="i-1",
+            node_id="r1",
+        ),
+        cloud_instance_id="pod-1",
+    )
+
+    ippr_specs = IPPRSpecs(
+        groups={
+            "type_1": IPPRGroupSpec(
+                min_cpu=1,
+                max_cpu=4,
+                min_memory=1 * 1024 * 1024 * 1024,
+                max_memory=8 * 1024 * 1024 * 1024,
+                resize_timeout=60,
+            )
+        }
+    )
+    ippr_status = IPPRStatus(
+        cloud_instance_id="pod-1",
+        spec=ippr_specs.groups["type_1"],
+        current_cpu=1,
+        current_memory=1 * 1024 * 1024 * 1024,
+        desired_cpu=4,
+        desired_memory=8 * 1024 * 1024 * 1024,
+        resized_at=int(time.time()),
+        resized_status="inprogress",
+    )
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[ResourceRequestUtil.make({"CPU": 2})],
+        instances=[instance],
+        ippr_specs=ippr_specs,
+        ippr_statuses={"pod-1": ippr_status},
+    )
+
+    reply = scheduler.schedule(request)
+    # The scheduler should fit the 2-CPU request on the existing node (using desired capacity)
+    assert reply.to_launch == []
+    assert reply.to_ippr == []  # already in progress, no new IPPR action
+
+
+def test_ippr_max_limits_affect_new_node_capacity():
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+
+    # No existing instances; IPPR max allows new nodes to expose larger capacity
+    ippr_specs = IPPRSpecs(
+        groups={
+            "type_1": IPPRGroupSpec(
+                min_cpu=1,
+                max_cpu=4,
+                min_memory=1 * 1024 * 1024 * 1024,
+                max_memory=4 * 1024 * 1024 * 1024,
+                resize_timeout=60,
+            )
+        }
+    )
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[ResourceRequestUtil.make({"CPU": 1})] * 4,
+        ippr_specs=ippr_specs,
+    )
+
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+    # With IPPR max=4, all four 1-CPU bundles should fit on a single launched node
+    assert to_launch == {"type_1": 1}
+    assert reply.to_ippr == []
 
 
 if __name__ == "__main__":
