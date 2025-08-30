@@ -24,6 +24,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
+#include "ray/gcs/gcs_server/manager_interfaces.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/grpc_service_interfaces.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
@@ -43,7 +44,7 @@ class GcsStateTest;
 /// GcsNodeManager is responsible for managing and monitoring nodes as well as handing
 /// node and resource related rpc requests.
 /// This class is not thread-safe.
-class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
+class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler, NodeManagerInterface {
  public:
   /// Create a GcsNodeManager.
   ///
@@ -174,7 +175,7 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   /// \param resource_view_sync_message The sync message containing the new state.
   void UpdateAliveNode(
       const NodeID &node_id,
-      const rpc::syncer::ResourceViewSyncMessage &resource_view_sync_message);
+      const rpc::syncer::ResourceViewSyncMessage &resource_view_sync_message) override;
 
  private:
   /// Add the dead node to the cache. If the cache is full, the earliest dead node is

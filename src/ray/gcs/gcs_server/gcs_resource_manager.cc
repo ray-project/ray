@@ -27,7 +27,7 @@ namespace gcs {
 
 GcsResourceManager::GcsResourceManager(instrumented_io_context &io_context,
                                        ClusterResourceManager &cluster_resource_manager,
-                                       GcsNodeManager &gcs_node_manager,
+                                       NodeManagerInterface &gcs_node_manager,
                                        NodeID local_node_id,
                                        raylet::ClusterLeaseManager *cluster_lease_manager)
     : io_context_(io_context),

@@ -65,10 +65,20 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "manager_interfaces",
+    hdrs = ["manager_interfaces.h"],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/protobuf:ray_syncer_cc_proto",
+    ],
+)
+
+ray_cc_library(
     name = "gcs_node_manager",
     srcs = ["gcs_node_manager.cc"],
     hdrs = ["gcs_node_manager.h"],
     deps = [
+        ":manager_interfaces",
         ":gcs_init_data",
         ":gcs_table_storage",
         ":grpc_service_interfaces",
@@ -95,8 +105,8 @@ ray_cc_library(
     srcs = ["gcs_resource_manager.cc"],
     hdrs = ["gcs_resource_manager.h"],
     deps = [
+        ":manager_interfaces",
         ":gcs_init_data",
-        ":gcs_node_manager",
         ":gcs_state_util",
         ":grpc_service_interfaces",
         "//src/ray/common:asio",
