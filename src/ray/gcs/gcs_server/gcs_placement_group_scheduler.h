@@ -33,7 +33,6 @@
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/node_manager/raylet_client_pool.h"
-#include "ray/rpc/worker/core_worker_client.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
