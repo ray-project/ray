@@ -35,13 +35,18 @@ from ray.data.datasource.partitioning import (
     PathPartitionFilter,
     PathPartitionParser,
 )
+from ray.data._internal.datasource.mcap_datasource import (
+    MCAPDatasource,
+)
+from ray.data._internal.datasource.delta_sharing_datasource import (
+    DeltaSharingDatasource,
+)
 
 # Note: HuggingFaceDatasource should NOT be imported here, because
 # we want to only import the Hugging Face datasets library when we use
 # ray.data.from_huggingface() or HuggingFaceDatasource() directly.
 __all__ = [
     "BaseFileMetadataProvider",
-    "BlockBasedFileDatasink",
     "Connection",
     "Datasink",
     "Datasource",
@@ -53,6 +58,7 @@ __all__ = [
     "FileShuffleConfig",
     "FileMetadataProvider",
     "FilenameProvider",
+    "MCAPDatasource",
     "ParquetMetadataProvider",
     "PartitionStyle",
     "PathPartitionFilter",
@@ -62,6 +68,7 @@ __all__ = [
     "ReadTask",
     "Reader",
     "RowBasedFileDatasink",
+    "BlockBasedFileDatasink",
     "_S3FileSystemWrapper",
     "WriteResult",
     "WriteReturnType",
