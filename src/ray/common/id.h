@@ -349,15 +349,6 @@ class LeaseID : public BaseID<LeaseID> {
   /// \return The `LeaseID` for the worker lease.
   static LeaseID FromWorker(const WorkerID &worker_id, uint32_t counter);
 
-  /// Creates a `LeaseID` from a driver ID. The counter bits are nulled out only for
-  /// driver as we need a predetermined lease value that can be calculated indepently by
-  /// the raylet without having to send the ID over.
-  ///
-  /// \param driver_id The driver ID to which this lease belongs.
-  ///
-  /// \return The `LeaseID` for the worker lease.
-  static LeaseID DriverLeaseId(const WorkerID &driver_id);
-
   /// Creates a random `LeaseID`.
   ///
   /// \return A `LeaseID` generated with random bytes

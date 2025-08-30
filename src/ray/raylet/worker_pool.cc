@@ -876,7 +876,7 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
                                   const rpc::JobConfig &job_config,
                                   std::function<void(Status, int)> send_reply_callback) {
   int port;
-  RAY_CHECK(!driver->GetGrantedLeaseId().IsNil());
+  RAY_CHECK(driver->GetGrantedLeaseId().IsNil());
   Status status = GetNextFreePort(&port);
   if (!status.ok()) {
     send_reply_callback(status, /*port=*/0);
@@ -1052,6 +1052,8 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   // Since the worker is now idle, verify that it has no assigned lease ID.
   RAY_CHECK(worker->GetGrantedLeaseId().IsNil())
       << "Idle workers cannot have an assigned lease ID";
+  RAY_CHECK(worker->GetWorkerType() != rpc::WorkerType::DRIVER)
+      << "Idle workers cannot be drivers";
   // Find a lease that this worker can fit. If there's none, put it in the idle pool.
   // First find in pending_registration_requests, then in pending_start_requests.
   std::shared_ptr<PopWorkerRequest> pop_worker_request = nullptr;
