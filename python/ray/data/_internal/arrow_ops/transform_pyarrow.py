@@ -191,7 +191,6 @@ def _find_diverging_fields(schemas: List["pyarrow.Schema"]) -> Dict[str, FieldIn
     # Single pass: build field info while iterating through schemas
     field_info_map: Dict[str, FieldInfo] = {}
 
-    conflicting_field_names = []
     # Process each schema once
     for schema_idx, schema in enumerate(schemas):
         # For each field we've seen so far, update or create FieldInfo
@@ -228,12 +227,9 @@ def _find_diverging_fields(schemas: List["pyarrow.Schema"]) -> Dict[str, FieldIn
                 if pyarrow.types.is_struct(field_type):
                     field_info.has_struct = True
                 if field_info.has_object and field_info.has_tensor:
-                    conflicting_field_names.append(field_name)
-
-    if conflicting_field_names:
-        raise ValueError(
-            f"Found columns with both objects and tensors: {conflicting_field_names}"
-        )
+                    raise ValueError(
+                        f"Found columns with both objects and tensors: {field_name}"
+                    )
 
     # Filter to only divergent fields
     diverging_fields = {}
@@ -346,6 +342,19 @@ def _reconcile_field(
     return None
 
 
+def _pyarrow_unify_schemas(
+    schemas: List["pyarrow.Schema"], promote_types: bool = False
+) -> "pyarrow.Schema":
+    if get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION:
+        return pyarrow.unify_schemas(schemas)
+
+    # NOTE: By default type promotion (from "smaller" to "larger" types) is disabled,
+    #       allowing only promotion b/w nullable and non-nullable ones
+    arrow_promote_types_mode = "permissive" if promote_types else "default"
+
+    return pyarrow.unify_schemas(schemas, promote_options=arrow_promote_types_mode)
+
+
 def unify_schemas(
     schemas: List["pyarrow.Schema"], *, promote_types: bool = False
 ) -> "pyarrow.Schema":
@@ -374,10 +383,33 @@ def unify_schemas(
     if len(schemas_to_unify) == 1:
         return schemas[0]
 
-    # Find diverging fields recursively
+    pyarrow_result = None
+    try:
+        pyarrow_result = _pyarrow_unify_schemas(schemas_to_unify, promote_types)
+    except Exception:
+        # PyArrow failed, we'll need to use our custom handling
+        pass
+
+    # Find diverging fields - we need this whether PyArrow succeeded or not
     divergent_fields = _find_diverging_fields(schemas_to_unify)
 
-    # Reconcile each divergent field
+    # Check if we need custom handling
+    needs_custom_handling = False
+    for field_info in divergent_fields.values():
+        if (
+            field_info.has_struct
+            or field_info.has_tensor
+            or field_info.has_object
+            or field_info.has_null_list
+        ):
+            needs_custom_handling = True
+            break
+
+    # If PyArrow succeeded and no custom handling needed, return its result
+    if pyarrow_result is not None and not needs_custom_handling:
+        return pyarrow_result
+
+    # Custom handling needed - reconcile divergent fields
     schema_field_overrides = {}
     for field_name, field_info in divergent_fields.items():
         reconciled_type = _reconcile_field(field_info, schemas_to_unify, promote_types)
@@ -400,21 +432,10 @@ def unify_schemas(
 
     # Call PyArrow's unify_schemas with the processed schemas
     try:
-        if get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION:
-            return pyarrow.unify_schemas(final_schemas)
-
-        # NOTE: By default type promotion (from "smaller" to "larger" types) is disabled,
-        #       allowing only promotion b/w nullable and non-nullable ones
-        arrow_promote_types_mode = "permissive" if promote_types else "default"
-
-        return pyarrow.unify_schemas(
-            final_schemas, promote_options=arrow_promote_types_mode
-        )
+        return _pyarrow_unify_schemas(final_schemas, promote_types)
     except Exception as e:
         schemas_str = "\n-----\n".join([str(s) for s in final_schemas])
-
         logger.error(f"Failed to unify schemas: {schemas_str}", exc_info=e)
-
         raise
 
 
