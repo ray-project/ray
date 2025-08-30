@@ -359,6 +359,9 @@ def udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
     multiple values from that column across the batch. Under the hood, when working
     with multiple columns, they get translated to PyArrow arrays (one array per column).
 
+    Args:
+        return_dtype: The data type of the return value of the UDF
+
     Returns:
         A callable that creates UDFExpr instances when called with expressions
 
