@@ -5,6 +5,7 @@ import sys
 import tempfile
 import time
 import urllib.request
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -27,6 +28,7 @@ from ray.dashboard.consts import (
 )
 from ray.dashboard.modules.job.common import JOB_ID_METADATA_KEY, JOB_NAME_METADATA_KEY
 from ray.dashboard.modules.job.job_manager import (
+    RAY_JOB_MANAGER_MONITOR_MAX_CONSECUTIVE_FAILURES,
     JobLogStorageClient,
     JobManager,
     JobSupervisor,
@@ -37,6 +39,7 @@ from ray.dashboard.modules.job.tests.conftest import (
     create_job_manager,
     create_ray_cluster,
 )
+from ray.exceptions import RpcError
 from ray.job_submission import JobStatus, JobErrorType
 from ray.tests.conftest import call_ray_start  # noqa: F401
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy  # noqa: F401
@@ -350,14 +353,15 @@ async def test_runtime_env_setup_logged_to_job_driver_logs(
         assert start_message in logs
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def shared_ray_instance():
     # Remove ray address for test ray cluster in case we have
     # lingering RAY_ADDRESS="http://127.0.0.1:8265" from previous local job
     # submissions.
     old_ray_address = os.environ.pop(RAY_ADDRESS_ENVIRONMENT_VARIABLE, None)
 
-    yield create_ray_cluster()
+    with create_ray_cluster() as cluster:
+        yield cluster
 
     if old_ray_address is not None:
         os.environ[RAY_ADDRESS_ENVIRONMENT_VARIABLE] = old_ray_address
@@ -365,7 +369,10 @@ def shared_ray_instance():
 
 @pytest.fixture
 def job_manager(shared_ray_instance, tmp_path):
-    yield create_job_manager(shared_ray_instance, tmp_path)
+    job_manager = create_job_manager(shared_ray_instance, tmp_path)
+    job_manager.JOB_MONITOR_LOOP_PERIOD_S = 0.01
+
+    yield job_manager
 
 
 async def _run_hanging_command(job_manager, tmp_dir, start_signal_actor=None):
@@ -400,7 +407,14 @@ async def _run_hanging_command(job_manager, tmp_dir, start_signal_actor=None):
 
 
 async def check_job_succeeded(job_manager, job_id):
-    data = await job_manager.get_job_info(job_id)
+    return await _check_job_succeeded(
+        get_job_info=job_manager.get_job_info, job_id=job_id
+    )
+
+
+async def _check_job_succeeded(*, get_job_info, job_id: str):
+    data = await get_job_info(job_id)
+
     status = data.status
     if status == JobStatus.FAILED:
         raise RuntimeError(f"Job failed! {data.message}")
@@ -413,7 +427,15 @@ async def check_job_succeeded(job_manager, job_id):
 
 
 async def check_job_failed(job_manager, job_id, expected_error_type=None):
-    data = await job_manager.get_job_info(job_id)
+    return await _check_job_failed(
+        get_job_info=job_manager.get_job_info,
+        job_id=job_id,
+        expected_error_type=expected_error_type,
+    )
+
+
+async def _check_job_failed(*, get_job_info, job_id: str, expected_error_type=None):
+    data = await get_job_info(job_id)
     status = data.status
     assert status in {JobStatus.PENDING, JobStatus.RUNNING, JobStatus.FAILED}
     if expected_error_type:
@@ -889,7 +911,7 @@ class TestAsyncAPI:
                 check_job_failed,
                 job_manager=job_manager,
                 job_id=job_id,
-                expected_error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE,
+                expected_error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_DIED,
             )
             data = await job_manager.get_job_info(job_id)
             assert data.driver_exit_code is None
@@ -946,10 +968,15 @@ class TestAsyncAPI:
                 check_job_failed,
                 job_manager=job_manager,
                 job_id=job_id,
-                expected_error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE,
+                expected_error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_DIED,
             )
             data = await job_manager.get_job_info(job_id)
+
             assert data.driver_exit_code is None
+            assert data.message.startswith(
+                "Job supervisor actor died: The actor died unexpectedly before "
+                "finishing this task"
+            )
 
     async def test_stop_job_subprocess_cleanup_upon_stop(self, job_manager):
         """
@@ -1416,7 +1443,6 @@ async def test_actor_creation_error_not_overwritten(shared_ray_instance, tmp_pat
             assert data.driver_exit_code is None
 
 
-@pytest.mark.asyncio
 async def test_no_task_events_exported(shared_ray_instance, tmp_path):
     """Verify that no task events are exported by the JobSupervisor."""
     job_manager = create_job_manager(shared_ray_instance, tmp_path)
@@ -1431,6 +1457,61 @@ async def test_no_task_events_exported(shared_ray_instance, tmp_path):
     # Assert no task events for the JobSupervisor are exported.
     for t in list_tasks():
         assert "JobSupervisor" not in t.name
+
+
+@pytest.mark.parametrize(
+    "max_failures,expected_job_status",
+    [
+        (RAY_JOB_MANAGER_MONITOR_MAX_CONSECUTIVE_FAILURES - 1, JobStatus.SUCCEEDED),
+        (RAY_JOB_MANAGER_MONITOR_MAX_CONSECUTIVE_FAILURES + 1, JobStatus.FAILED),
+    ],
+)
+async def test_job_manager_tolerates_gcs_failures(
+    job_manager, max_failures, expected_job_status
+):
+    """Test driver exit code from finished task that failed"""
+
+    original_get_info = job_manager._job_info_client.get_info
+
+    num_failures = 0
+
+    async def _failing_get_info(*args, **kwargs):
+        nonlocal num_failures
+
+        if num_failures < max_failures:
+            num_failures += 1
+            raise RpcError("deadline exceeded")
+        else:
+            return await original_get_info(*args, **kwargs)
+
+    # Mock out `JobManager._job_info_client`
+    job_manager._job_info_client.get_info = AsyncMock(side_effect=_failing_get_info)
+
+    # Override `JobManager`s monitoring frequency to 100ms
+    job_manager.JOB_MONITOR_LOOP_PERIOD_S = 0.1
+
+    # Simulate job running for 5 seconds
+    job_id = await job_manager.submit_job(entrypoint="sleep 3; echo 'hello world'")
+
+    if expected_job_status == JobStatus.FAILED:
+        expected_job_state_check = _check_job_failed
+    elif expected_job_status == JobStatus.SUCCEEDED:
+        expected_job_state_check = _check_job_succeeded
+    else:
+        raise NotImplementedError(f"unexpected job status: {expected_job_status}")
+
+    # Wait for the job to reach expected target state
+    await async_wait_for_condition(
+        expected_job_state_check,
+        timeout=10,
+        get_job_info=original_get_info,
+        job_id=job_id,
+    )
+
+    # Check that the job failed
+    job_info = await job_manager.get_job_info(job_id)
+
+    assert job_info.status == expected_job_status
 
 
 if __name__ == "__main__":
