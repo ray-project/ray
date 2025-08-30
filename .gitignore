@@ -100,6 +100,12 @@ scripts/nodes.txt
 
 # OS X folder attributes
 .DS_Store
+/bazel-out/
+/bazel-bin/
+/bazel-testlogs/
+/bazel-ray/
+/bazel-cache/
+myenv/
 
 # Debug files
 *.dSYM/
