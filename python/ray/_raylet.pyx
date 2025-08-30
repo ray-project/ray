@@ -34,6 +34,7 @@ from typing import (
     Tuple,
     Union,
     NamedTuple,
+    TypedDict
 )
 
 import contextvars
@@ -285,6 +286,31 @@ async_task_name = contextvars.ContextVar('async_task_name', default=None)
 async_task_function_name = contextvars.ContextVar('async_task_function_name',
                                                   default=None)
 
+class LocationPtrDict(TypedDict):
+    node_ids: list[str]
+    object_size: int
+    did_spill: bool
+
+class RefCountDict(TypedDict):
+    local: int
+    submitted: int
+
+class GcsErrorPollDict(TypedDict):
+    job_id:bytes
+    type:str
+    error_message:str
+    timestamp:float
+
+class GcsLogPollDict(TypedDict):
+    ip:str
+    pid:str
+    job:str
+    is_err:bool
+    lines:list[str]
+    actor_name:str
+    task_name:str
+
+
 @PublicAPI
 class ObjectRefGenerator:
     """A generator to obtain object references
@@ -335,7 +361,7 @@ class ObjectRefGenerator:
     def send(self, value):
         raise NotImplementedError("`gen.send` is not supported.")
 
-    def throw(self, value):
+    def throw(self, value, val=None, tb=None):
         raise NotImplementedError("`gen.throw` is not supported.")
 
     def close(self):
@@ -350,7 +376,7 @@ class ObjectRefGenerator:
     async def asend(self, value):
         raise NotImplementedError("`gen.asend` is not supported.")
 
-    async def athrow(self, value):
+    async def athrow(self, value, val=None, tb=None):
         raise NotImplementedError("`gen.athrow` is not supported.")
 
     async def aclose(self):
