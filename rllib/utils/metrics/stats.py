@@ -1,56 +1,19 @@
 from collections import defaultdict, deque
-import time
 import copy
-import threading
 import heapq
+import threading
+import time
 from typing import Any, Dict, List, Union, Optional, Tuple
+import uuid
 
 import numpy as np
 
 from ray.rllib.utils import force_list
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.util.annotations import DeveloperAPI
 
-_, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
-
-
-@DeveloperAPI
-def compute_percentiles(sorted_list, percentiles):
-    """Compute percentiles from an already sorted list.
-
-    Note that this will not raise an error if the list is not sorted to avoid overhead.
-
-    Args:
-        sorted_list: A list of numbers sorted in ascending order
-        percentiles: A list of percentile values (0-100)
-
-    Returns:
-        A dictionary mapping percentile values to their corresponding data values
-    """
-    n = len(sorted_list)
-
-    if n == 0:
-        return {p: None for p in percentiles}
-
-    results = {}
-
-    for p in percentiles:
-        index = (p / 100) * (n - 1)
-
-        if index.is_integer():
-            results[p] = sorted_list[int(index)]
-        else:
-            lower_index = int(index)
-            upper_index = lower_index + 1
-            weight = index - lower_index
-            results[p] = (
-                sorted_list[lower_index] * (1 - weight)
-                + sorted_list[upper_index] * weight
-            )
-
-    return results
 
 
 @DeveloperAPI
@@ -172,9 +135,9 @@ class Stats:
                     "A window must be specified when reduce is 'percentiles'!"
                 )
             if reduce_per_index_on_aggregate is not False:
-                print(reduce_per_index_on_aggregate)
                 raise ValueError(
-                    "`reduce_per_index_on_aggregate` must be `False` when `percentiles` is not `False`!"
+                    f"`reduce_per_index_on_aggregate` ({reduce_per_index_on_aggregate})"
+                    f" must be `False` when `percentiles` is not `False`!"
                 )
 
             if percentiles is True:
@@ -234,10 +197,11 @@ class Stats:
         self._has_returned_zero = False
 
         # On each `.reduce()` call, we store the result of this call in
-        # reduce_history[0] and the previous `reduce()` result in reduce_history[1].
-        self._reduce_history: deque[List[Any]] = deque(
-            [[np.nan], [np.nan], [np.nan]], maxlen=3
-        )
+        # self._last_reduce.
+        self._last_reduced = [np.nan]
+        # The ID of this Stats instance.
+        self.id_ = str(uuid.uuid4())
+        self._prev_merge_values = defaultdict(int)
 
         self._throughput_ema_coeff = throughput_ema_coeff
         self._throughput_stats = None
@@ -283,7 +247,7 @@ class Stats:
         if self._reduce_method is not None:
             if isinstance(value, np.ndarray) and value.shape == ():
                 return
-            elif (torch and torch.is_tensor(value)) or (tf and tf.is_tensor(value)):
+            elif torch and torch.is_tensor(value):
                 self._is_tensor = True
                 if tuple(value.shape) == ():
                     return
@@ -371,26 +335,12 @@ class Stats:
                 return compute_percentiles(reduced_values, self._percentiles)
             return reduced_value
         else:
-            return_value = self.get_reduce_history()[-1].copy()
+            return_value = self._last_reduced
             if compile:
                 # We don't need to check for self._reduce_method or percentiles here
                 # because we only store the reduced value if there is a reduce method.
                 return_value = return_value[0]
             return return_value
-
-    def get_reduce_history(self) -> List[Any]:
-        """Returns the history of reduced values as a list.
-
-        The history contains the most recent reduced values, with the most recent value
-        at the end of the list. The length of the history is limited by the maxlen of
-        the internal history deque.
-
-        Returns:
-            A list containing the history of reduced values.
-        """
-        # Turning the reduce history into a deque avoids mutating the original reduce
-        # history's elements.
-        return list(self._reduce_history)
 
     @property
     def throughput(self) -> float:
@@ -445,7 +395,7 @@ class Stats:
                 self._set_values(reduced_internal_values_list)
         else:
             reduced_internal_values_list = None
-            reduced = self.get_reduce_history()[-1]
+            reduced = self._last_reduced
 
         reduced = self._numpy_if_necessary(reduced)
 
@@ -454,7 +404,7 @@ class Stats:
             # It only makes sense to extend the history if we are reducing to a single
             # value. We need to make a copy here because the new_values_list is a
             # reference to the internal values list
-            self._reduce_history.append(force_list(reduced.copy()))
+            self._last_reduced = force_list(reduced.copy())
         else:
             # If there is a window and no reduce method, we don't want to use the reduce
             # history to return reduced values in other methods
@@ -607,7 +557,7 @@ class Stats:
         # Mark that we have new values since we modified the values list
         self._has_new_values = True
 
-    def _clear_throughput(self) -> None:
+    def clear_throughput(self) -> None:
         """Clears the throughput Stats, if applicable and `self` has throughput.
 
         Also resets `self._last_throughput_measure_time` to -1 such that the Stats
@@ -751,7 +701,7 @@ class Stats:
             "window": self._window,
             "ema_coeff": self._ema_coeff,
             "clear_on_reduce": self._clear_on_reduce,
-            "_hist": list(self.get_reduce_history()),
+            "_last_reduced": self._last_reduced,
             "_is_tensor": self._is_tensor,
         }
         if self._throughput_stats is not None:
@@ -810,13 +760,13 @@ class Stats:
         # Compatibility to old checkpoints where a reduce sometimes resulted in a single
         # values instead of a list such that the history would be a list of integers
         # instead of a list of lists.
-        # TODO(Artur): Remove this after a few Ray releases.
-        if not isinstance(state["_hist"][0], list):
-            state["_hist"] = list(map(lambda x: [x], state["_hist"]))
-
-        stats._reduce_history = deque(
-            state["_hist"], maxlen=stats._reduce_history.maxlen
-        )
+        if "_hist" in state:
+            # TODO(Artur): Remove this after a few Ray releases.
+            if not isinstance(state["_hist"][0], list):
+                state["_hist"] = list(map(lambda x: [x], state["_hist"]))
+            stats._last_reduced = state["_hist"][-1]
+        else:
+            stats._last_reduced = state.get("_last_reduced", [np.nan])
         return stats
 
     @staticmethod
@@ -851,7 +801,8 @@ class Stats:
             else False,
             throughput_ema_coeff=other._throughput_ema_coeff,
         )
-        stats._reduce_history = other._reduce_history
+        stats.id_ = other.id_
+        stats._last_reduced = other._last_reduced
         return stats
 
     def _set_values(self, new_values):
@@ -936,8 +887,6 @@ class Stats:
             def safe_isnan(value):
                 if torch and isinstance(value, torch.Tensor):
                     return torch.isnan(value)
-                if tf and tf.is_tensor(value):
-                    return tf.math.is_nan(value)
                 return np.isnan(value)
 
             # Convert from numpy to primitive python types, if original `values` are
@@ -967,6 +916,43 @@ class Stats:
 
 
 @DeveloperAPI
+def compute_percentiles(sorted_list, percentiles):
+    """Compute percentiles from an already sorted list.
+
+    Note that this will not raise an error if the list is not sorted to avoid overhead.
+
+    Args:
+        sorted_list: A list of numbers sorted in ascending order
+        percentiles: A list of percentile values (0-100)
+
+    Returns:
+        A dictionary mapping percentile values to their corresponding data values
+    """
+    n = len(sorted_list)
+
+    if n == 0:
+        return {p: None for p in percentiles}
+
+    results = {}
+
+    for p in percentiles:
+        index = (p / 100) * (n - 1)
+
+        if index.is_integer():
+            results[p] = sorted_list[int(index)]
+        else:
+            lower_index = int(index)
+            upper_index = lower_index + 1
+            weight = index - lower_index
+            results[p] = (
+                sorted_list[lower_index] * (1 - weight)
+                + sorted_list[upper_index] * weight
+            )
+
+    return results
+
+
+@DeveloperAPI
 def merge_stats(base_stats: Optional[Stats], incoming_stats: List[Stats]) -> Stats:
     """Merges Stats objects.
 
@@ -991,13 +977,21 @@ def merge_stats(base_stats: Optional[Stats], incoming_stats: List[Stats]) -> Sta
     if new_root_stats:
         # We need to deepcopy here first because stats from incoming_stats may be altered in the future
         base_stats = copy.deepcopy(incoming_stats[0])
-        base_stats._clear_throughput()
+        base_stats.clear_throughput()
         # Note that we may take a mean of means here, which is not the same as a
         # mean of all values. In the future, we could implement a weighted mean
         # of means here by introducing a new Stats object that counts samples
         # for each mean Stats object.
         if len(incoming_stats) > 1:
             base_stats.merge_in_parallel(*incoming_stats[1:])
+        if (
+            base_stats._reduce_method == "sum"
+            and base_stats._inf_window
+            and base_stats._clear_on_reduce is False
+        ):
+            for stat in incoming_stats:
+                base_stats._prev_merge_values[stat.id_] = stat.peek()
+
     elif len(incoming_stats) > 0:
         # Special case: `base_stats` is a lifetime sum (reduce=sum,
         # clear_on_reduce=False) -> We subtract the previous value (from 2
@@ -1016,29 +1010,28 @@ def merge_stats(base_stats: Optional[Stats], incoming_stats: List[Stats]) -> Sta
             for stat in incoming_stats:
                 # Subtract "lifetime counts" from the Stat's values to not count
                 # older "lifetime counts" more than once.
-                _hist = stat.get_reduce_history()
-                prev_reduction, new_reduction = _hist[-2][0], _hist[-1][0]
-                # This may not be populated yet -> use 0 then.
-                if np.isnan(prev_reduction):
-                    prev_reduction = 0
+                prev_reduction = base_stats._prev_merge_values[stat.id_]
+                new_reduction = stat.peek(compile=True)
                 base_stats.values[-1] -= prev_reduction
                 # Keep track of how many counts we actually gained (for throughput
                 # recomputation).
                 added_sum += new_reduction - prev_reduction
+                base_stats._prev_merge_values[stat.id_] = new_reduction
 
+        parallel_merged_stat = copy.deepcopy(incoming_stats[0])
         if len(incoming_stats) > 1:
             # There are more than one incoming parallel others -> Merge all of
             # them in parallel (equal importance).
-            incoming_stats[0].merge_in_parallel(*incoming_stats[1:])
+            parallel_merged_stat.merge_in_parallel(*incoming_stats[1:])
 
         # Merge incoming Stats object into base Stats object on time axis
         # (giving incoming ones priority).
         if base_stats._reduce_method == "mean" and not base_stats._clear_on_reduce:
             # If we don't clear values, values that are not cleared would contribute
             # to the mean multiple times.
-            base_stats._set_values(incoming_stats[0].values.copy())
+            base_stats._set_values(parallel_merged_stat.values.copy())
         else:
-            base_stats.merge_on_time_axis(incoming_stats[0])
+            base_stats.merge_on_time_axis(parallel_merged_stat)
             # Keep track of throughput through the sum of added counts.
             if base_stats.has_throughput:
                 base_stats._recompute_throughput(added_sum)
