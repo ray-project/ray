@@ -6,6 +6,7 @@ import functools
 import logging
 import threading
 from typing import Callable, Any, Union
+from _collections_abc import GenericAlias
 
 import ray
 import cython
@@ -34,8 +35,7 @@ def _set_future_helper(
 
 
 cdef class ObjectRef(BaseID):
-    def __class_getitem__(cls,*args,**kwargs): #hacky way to allow generics
-        return cls
+    __class_getitem__ = classmethod(GenericAlias) #should match how typing.Generic works
 
     def __cinit__(self):
         self.in_core_worker = False
