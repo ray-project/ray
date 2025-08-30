@@ -50,6 +50,7 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     ModelCard,
     ModelList,
     OpenAIHTTPException,
+    ResponseRequest,
     ScoreRequest,
     ScoreResponse,
     to_model_metadata,
@@ -488,6 +489,46 @@ class LLMRouter:
 
             if isinstance(result, EmbeddingResponse):
                 return JSONResponse(content=result.model_dump())
+
+    @fastapi_router_app.post("/v1/responses")
+    async def responses(self, body: ResponseRequest) -> Response:
+        """Create a response using the OpenAI Responses API.
+
+        Args:
+            body: A ResponseRequest object.
+
+        Returns:
+            A response object with the generated response.
+        """
+        async with timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
+            gen = self._get_response(body=body, call_method="responses")
+
+            # Handle streaming vs non-streaming (same pattern as chat/completions)
+            initial_response, gen = await _peek_at_generator(gen)
+
+            if isinstance(initial_response, list):
+                first_chunk = initial_response[0]
+            else:
+                first_chunk = initial_response
+
+            if isinstance(first_chunk, ErrorResponse):
+                raise OpenAIHTTPException(
+                    message=first_chunk.message,
+                    status_code=first_chunk.code,
+                    type=first_chunk.type,
+                )
+
+            # For now, we'll return the chat completion response format
+            # TODO: Convert to proper ResponseResponse format in future iteration
+            if isinstance(first_chunk, str):
+                # Streaming response
+                openai_stream_generator = _openai_json_wrapper(gen)
+                return StreamingResponse(
+                    openai_stream_generator, media_type="text/event-stream"
+                )
+            else:
+                # Non-streaming response
+                return JSONResponse(content=first_chunk.model_dump())
 
     @fastapi_router_app.post("/v1/score")
     async def score(self, body: ScoreRequest) -> Response:

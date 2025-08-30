@@ -19,6 +19,8 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     EmbeddingRequest,
     EmbeddingResponse,
     ErrorResponse,
+    ResponseRequest,
+    ResponseResponse,
     ScoreRequest,
     ScoreResponse,
 )
@@ -195,6 +197,9 @@ class VLLMEngine(LLMEngine):
         self._oai_serving_embedding = state.openai_serving_embedding
         self._oai_serving_scores = state.openai_serving_scores
 
+        # Initialize responses serving component if available
+        self._oai_serving_responses = getattr(state, "openai_serving_responses", None)
+
         self._validate_openai_serving_models()
         self._validate_engine_client()
 
@@ -226,6 +231,11 @@ class VLLMEngine(LLMEngine):
             self._oai_serving_embedding, "create_embedding"
         ), "oai_serving_embedding must have a create_embedding attribute"
 
+    def _validate_openai_serving_responses(self):
+        assert hasattr(
+            self._oai_serving_responses, "create_responses"
+        ), "oai_serving_responses must have a create_responses attribute"
+        
     def _validate_openai_serving_scores(self):
         assert hasattr(
             self._oai_serving_scores, "create_score"
@@ -453,6 +463,32 @@ class VLLMEngine(LLMEngine):
             yield ErrorResponse(**embedding_response.model_dump())
         else:
             yield EmbeddingResponse(**embedding_response.model_dump())
+
+    async def responses(
+        self, request: "ResponseRequest"
+    ) -> AsyncGenerator[Union[str, "ResponseResponse", "ErrorResponse"], None]:
+        """Process Responses API requests using vLLM's native implementation."""
+        self._validate_openai_serving_responses()
+
+        # Create a fake starlette.Request object for vLLM compatibility
+        raw_request = self._create_raw_request(request, "/responses")
+
+        responses_response = await self._oai_serving_responses.create_responses(  # type: ignore[attr-defined]
+            request, raw_request=raw_request
+        )
+
+        if isinstance(responses_response, AsyncGenerator):
+            async for response in responses_response:
+                if not isinstance(response, str):
+                    raise ValueError(
+                        f"Expected create_response to return a stream of strings, got an item with type {type(response)}"
+                    )
+                yield response
+        else:
+            if isinstance(responses_response, VLLMErrorResponse):
+                yield ErrorResponse(**responses_response.model_dump())
+            else:
+                yield responses_response
 
     async def score(
         self, request: ScoreRequest
