@@ -294,6 +294,14 @@ def canonicalize(stats: str, filter_global_stats: bool = True) -> str:
     )
     # Handle floats in (0, 1)
     canonicalized_stats = re.sub(r" (0\.0*[1-9][0-9]*)", " N", canonicalized_stats)
+    # Replace input rows value (0 or non-0) with 'N' while keeping key prefix
+    canonicalized_stats = re.sub(
+        r"(Total input num rows: )\d+(\.\d+)?", r"\g<1>N", canonicalized_stats
+    )
+    # Replace output rows value (0 or non-0) with 'N' while keeping key prefix
+    canonicalized_stats = re.sub(
+        r"(Total output num rows: )\d+(\.\d+)?", r"\g<1>N", canonicalized_stats
+    )
     # Handle zero values specially so we can check for missing values.
     canonicalized_stats = re.sub(r" [0]+(\.[0])?", " Z", canonicalized_stats)
     # Scientific notation for small or large numbers
@@ -1678,14 +1686,8 @@ def test_dataset_throughput(shutdown_only):
     f = dummy_map_batches_sleep(0.01)
     ds = ray.data.range(100).map(f).materialize().map(f).materialize()
 
-    # Pattern to match operator throughput
     operator_pattern = re.compile(
-        r"Operator (\d+).*?"
-        r"Operator throughput:\s*"
-        r"\* Total input num rows: (\d+) rows\s*"
-        r"\* Total output num rows: (\d+) rows\s*"
-        r"\* Ray Data throughput: (\d+\.\d+) rows/s\s*"
-        r"\* Estimated single node throughput: (\d+\.\d+) rows/s",
+        r"Operator (\d+).*?\* Operator throughput:\s*.*?\* Ray Data throughput: (\d+\.\d+) rows/s.*?\* Estimated single node throughput: (\d+\.\d+) rows/s",
         re.DOTALL,
     )
 
