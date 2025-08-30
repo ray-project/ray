@@ -61,6 +61,7 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
+from ray.data.expressions import MultiStageUDFExpr
 from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
 
 logger = logging.getLogger(__name__)
@@ -119,6 +120,18 @@ def plan_project_op(
     columns_rename = op.cols_rename
     exprs = op.exprs
 
+    # Handle multi-stage expressions first
+    for name, expr in list(exprs.items()):
+        if isinstance(expr, MultiStageUDFExpr):
+            input_physical_dag = _plan_multi_stage_expr(
+                expr,
+                input_physical_dag,
+                data_context,
+                output_col_name=name,
+                ray_remote_args=op._ray_remote_args,
+            )
+            del exprs[name]
+
     def fn(block: Block) -> Block:
         try:
             block_accessor = BlockAccessor.for_block(block)
@@ -171,6 +184,133 @@ def plan_project_op(
         ray_remote_args=op._ray_remote_args,
         ray_remote_args_fn=op._ray_remote_args_fn,
     )
+
+
+def _plan_multi_stage_expr(
+    multi_stage_expr: "MultiStageUDFExpr",
+    input_physical_dag: "PhysicalOperator",
+    data_context: "DataContext",
+    *,
+    output_col_name: str,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+) -> "PhysicalOperator":
+    """
+    Lower a MultiStageUDFExpr into a chain of map-batches operators, reusing the
+    standard map-batches transform machinery. The last stage appends the
+    computed column `output_col_name`.
+
+    Notes on behavior (preserved from original):
+    - For CallableClass stages: instantiate with DataContext.get_current(), call with args/kwargs,
+      return the original batch for intermediate stages, and append the final result as a new column
+      at the last stage.
+    - Any generator return is consumed; multiple `pa.Array` results are concatenated, otherwise the
+      first result is used; empty generator -> empty `pa.array([])`.
+    """
+
+    # ---------- Helpers ----------
+
+    def _normalize_arg_to_pa_array(value: Any) -> Any:
+        """Normalize inputs so downstream UDFs see consistent Arrow arrays when appropriate."""
+        if isinstance(value, pa.ChunkedArray):
+            return pa.concat_arrays(value.chunks)
+        # Many batch-backed objects expose to_pylist(); coerce those to pa.Array
+        if hasattr(value, "to_pylist") and not isinstance(value, pa.Array):
+            # Some structures (e.g., Ragged) expose flatten()
+            if hasattr(value, "flatten"):
+                try:
+                    value = value.flatten()
+                except Exception:
+                    pass
+            return pa.array(value.to_pylist())
+        return value
+
+    def _consume_generator_if_needed(result: Any) -> Any:
+        """If `result` is a generator, consume and consolidate as per original semantics."""
+        import types
+
+        if isinstance(result, types.GeneratorType):
+            results = list(result)
+            if not results:
+                return pa.array([])
+            if all(isinstance(r, pa.Array) for r in results):
+                return pa.concat_arrays(results)
+            return results[0]
+        return result
+
+    def _stage_name(fn: Any) -> str:
+        """Human-friendly stage name for operator labeling."""
+        return getattr(fn, "__name__", type(fn).__name__)
+
+    def _make_stage_wrapper(stage: Any, is_last: bool):
+        """
+        Create a per-stage wrapper that:
+        1) Evaluates expr.args/kwargs against the batch
+        2) Calls the underlying fn (CallableClass vs regular function)
+        3) Normalizes/consumes generator outputs
+        4) Returns appropriate batch/table or appends the result at the last stage
+        """
+        is_callable_class = isinstance(stage.expr.fn, CallableClass)
+
+        def wrapper_fn(batch):
+            # 1) Evaluate args/kwargs at runtime
+            args = [
+                _normalize_arg_to_pa_array(eval_expr(a, batch)) for a in stage.expr.args
+            ]
+
+            kwargs = {
+                k: _normalize_arg_to_pa_array(eval_expr(v, batch))
+                for k, v in stage.expr.kwargs.items()
+            }
+
+            # 2) Call underlying function
+            if is_callable_class:
+                # Instantiate with DataContext and call
+                from ray.data import DataContext
+
+                instance = stage.expr.fn(DataContext.get_current())
+                result = instance(*args, **kwargs)
+            else:
+                # Regular function: pass only evaluated args/kwargs
+                result = stage.expr.fn(*args, **kwargs)
+
+            # 3) Normalize result (consume generators, concat arrays, etc.)
+            final_result = _consume_generator_if_needed(result)
+
+            # 4) Return based on stage position/type
+            if is_last:
+                return batch.append_column(output_col_name, final_result)
+
+            # Fallback: leave batch unchanged
+            return batch
+
+        return wrapper_fn
+
+    # ---------- Build the operator chain ----------
+
+    current_dag = input_physical_dag
+
+    for idx, stage in enumerate(multi_stage_expr.stages):
+        is_last = idx == len(multi_stage_expr.stages) - 1
+
+        stage_wrapper = _make_stage_wrapper(stage, is_last)
+        # Convert to Ray Data UDF with init (preserved call signature)
+        stage_fn, init_fn = _get_udf(stage_wrapper, (), {}, None, None)
+
+        transform_fn = _generate_transform_fn_for_map_block(stage_fn)
+        map_transformer = MapTransformer(
+            [BlockMapTransformFn(transform_fn)], init_fn=init_fn
+        )
+
+        current_dag = MapOperator.create(
+            map_transformer,
+            current_dag,
+            data_context,
+            name=f"MultiStageUDF_Stage_{_stage_name(stage.expr.fn)}",
+            compute_strategy=stage.compute_strategy,
+            ray_remote_args=ray_remote_args,
+        )
+
+    return current_dag
 
 
 def plan_streaming_repartition_op(

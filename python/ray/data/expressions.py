@@ -6,7 +6,14 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Dict, List
 
+from ray.data._internal.compute import (
+    ActorPoolStrategy,
+    ComputeStrategy,
+    TaskPoolStrategy,
+)
+from ray.data._internal.downloader import UriPartitionActor, uri_download_bytes
 from ray.data.block import BatchColumn
+from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
@@ -153,6 +160,11 @@ class Expr(ABC):
     def __or__(self, other: Any) -> "Expr":
         """Logical OR operator (|)."""
         return self._bin(other, Operation.OR)
+
+    @property
+    def url(self) -> "UrlExpr":
+        """Accessor for URL-specific operations."""
+        return UrlExpr(self)
 
 
 @DeveloperAPI(stability="alpha")
@@ -323,6 +335,80 @@ def _create_udf_callable(fn: Callable[..., BatchColumn]) -> Callable[..., UDFExp
     return udf_callable
 
 
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True)
+class StageSpec:
+    """Specification for a stage in a multi-stage UDF expression.
+
+    Args:
+        expr: The UDF expression to execute in this stage.
+        compute_strategy: The compute strategy to use for this stage.
+    """
+
+    expr: UDFExpr
+    compute_strategy: ComputeStrategy
+
+    def __eq__(self, other: Any) -> bool:
+        return (
+            isinstance(other, StageSpec)
+            and self.expr.structurally_equals(other.expr)
+            and self.compute_strategy == other.compute_strategy
+        )
+
+
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False)
+class MultiStageUDFExpr(Expr):
+    """Expression that represents a multi-stage UDF.
+
+    Args:
+        stages: The list of stages in the multi-stage UDF.
+    """
+
+    stages: List[StageSpec]
+
+    def structurally_equals(self, other: Any) -> bool:
+        return isinstance(other, MultiStageUDFExpr) and self.stages == other.stages
+
+
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False)
+class UrlExpr(Expr):
+    """Expression that represents a URL.
+
+    Args:
+        base: The base expression that represents the URL column.
+    """
+
+    base: Expr
+
+    def structurally_equals(self, other: Any) -> bool:
+        return isinstance(other, UrlExpr) and self.base.structurally_equals(other.base)
+
+    def download(self) -> "MultiStageUDFExpr":
+        """Two-stage download pipeline: partition (actors) -> download (tasks)."""
+        return MultiStageUDFExpr(
+            stages=(
+                StageSpec(
+                    expr=UDFExpr(
+                        fn=UriPartitionActor,
+                        args=[self.base],
+                        kwargs={},
+                    ),
+                    compute_strategy=ActorPoolStrategy(size=1),
+                ),
+                StageSpec(
+                    expr=UDFExpr(
+                        fn=uri_download_bytes,
+                        args=[self.base, lit(DataContext.get_current())],
+                        kwargs={},
+                    ),
+                    compute_strategy=TaskPoolStrategy(),
+                ),
+            )
+        )
+
+
 @PublicAPI(stability="alpha")
 def udf() -> Callable[..., UDFExpr]:
     """
@@ -375,20 +461,6 @@ def udf() -> Callable[..., UDFExpr]:
         return _create_udf_callable(func)
 
     return decorator
-
-
-@DeveloperAPI(stability="alpha")
-@dataclass(frozen=True, eq=False)
-class DownloadExpr(Expr):
-    """Expression that represents a download operation."""
-
-    uri_column_name: str
-
-    def structurally_equals(self, other: Any) -> bool:
-        return (
-            isinstance(other, DownloadExpr)
-            and self.uri_column_name == other.uri_column_name
-        )
 
 
 @PublicAPI(stability="beta")
@@ -453,34 +525,6 @@ def lit(value: Any) -> LiteralExpr:
     return LiteralExpr(value)
 
 
-@DeveloperAPI(stability="alpha")
-def download(uri_column_name: str) -> DownloadExpr:
-    """
-    Create a download expression that downloads content from URIs.
-
-    This creates an expression that will download bytes from URIs stored in
-    a specified column. When evaluated, it will fetch the content from each URI
-    and return the downloaded bytes.
-
-    Args:
-        uri_column_name: The name of the column containing URIs to download from
-    Returns:
-        A DownloadExpr that will download content from the specified URI column
-
-    Example:
-        >>> from ray.data.expressions import download
-        >>> import ray
-        >>> # Create dataset with URIs
-        >>> ds = ray.data.from_items([
-        ...     {"uri": "s3://bucket/file1.jpg", "id": "1"},
-        ...     {"uri": "s3://bucket/file2.jpg", "id": "2"}
-        ... ])
-        >>> # Add downloaded bytes column
-        >>> ds_with_bytes = ds.with_column("bytes", download("uri"))
-    """
-    return DownloadExpr(uri_column_name=uri_column_name)
-
-
 # ──────────────────────────────────────
 # Public API for evaluation
 # ──────────────────────────────────────
@@ -495,9 +539,10 @@ __all__ = [
     "LiteralExpr",
     "BinaryExpr",
     "UDFExpr",
+    "MultiStageUDFExpr",
+    "StageSpec",
+    "UrlExpr",
     "udf",
-    "DownloadExpr",
     "col",
     "lit",
-    "download",
 ]
