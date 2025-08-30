@@ -289,7 +289,6 @@ ray_cc_library(
         "//src/ray/raylet/scheduling:cluster_resource_scheduler",
         "//src/ray/raylet/scheduling:scheduling_context",
         "//src/ray/raylet_client:raylet_client_lib",
-        "//src/ray/rpc:core_worker_client",
         "//src/ray/rpc:node_manager_client",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
