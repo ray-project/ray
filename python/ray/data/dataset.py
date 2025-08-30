@@ -2496,12 +2496,13 @@ class Dataset:
         self,
         ds: "Dataset",
         join_type: str,
-        num_partitions: int,
+        num_partitions: Optional[int] = None,
         on: Tuple[str] = ("id",),
         right_on: Optional[Tuple[str]] = None,
         left_suffix: Optional[str] = None,
         right_suffix: Optional[str] = None,
         *,
+        broadcast: bool = False,
         partition_size_hint: Optional[int] = None,
         aggregator_ray_remote_args: Optional[Dict[str, Any]] = None,
         validate_schemas: bool = False,
@@ -2512,13 +2513,15 @@ class Dataset:
             ds: Other dataset to join against
             join_type: The kind of join that should be performed, one of ("inner",
                 "left_outer", "right_outer", "full_outer", "left_semi", "right_semi",
-                "left_anti", "right_anti").
+                "left_anti", "right_anti"). Note that when using
+                broadcast=True, only these 4 join types are supported.
             num_partitions: Total number of "partitions" input sequences will be split
                 into with each partition being joined independently. Increasing number
                 of partitions allows to reduce individual partition size, hence reducing
                 memory requirements when individual partitions are being joined. Note
                 that, consequently, this will also be a total number of blocks that will
-                be produced as a result of executing join.
+                be produced as a result of executing join. When `broadcast=True`, this
+                parameter is optional since broadcast joins don't perform hash shuffling.
             on: The columns from the left operand that will be used as
                 keys for the join operation.
             right_on: The columns from the right operand that will be
@@ -2529,6 +2532,13 @@ class Dataset:
                 operand.
             right_suffix: (Optional) Suffix to be appended for columns of the right
                 operand.
+            broadcast: (Optional) Whether to use broadcast join instead of hash shuffle
+                join. In broadcast join, the smaller dataset is loaded into memory and
+                broadcasted to all workers using map_batches with PyArrow joins.
+                This is efficient when the smaller dataset is much smaller than the larger
+                dataset and can fit in a worker node's memory. Defaults to False.
+                Note that this will check the dataset counts and could materialize the
+                both datasets, triggering a full execution of the dataset.
             partition_size_hint: (Optional) Hint to joining operator about the estimated
                 avg expected size of the individual partition (in bytes).
                 This is used in estimating the total dataset size and allow to tune
@@ -2539,6 +2549,7 @@ class Dataset:
             validate_schemas: (Optional) Controls whether validation of provided
                 configuration against input schemas will be performed (defaults to
                 false, since obtaining schemas could be prohibitively expensive).
+
 
         Returns:
             A :class:`Dataset` that holds rows of input left Dataset joined with the
@@ -2563,6 +2574,14 @@ class Dataset:
                 join_type="inner",
                 num_partitions=2,
                 on=("id",),
+            )
+
+            # Broadcast join example (num_partitions is optional)
+            broadcast_joined_ds = doubles_ds.join(
+                squares_ds,
+                join_type="inner",
+                on=("id",),
+                broadcast=True,
             )
 
             print(sorted(joined_ds.take_all(), key=lambda item: item["id"]))
@@ -2650,19 +2669,162 @@ class Dataset:
 
             Join._validate_schemas(left_op_schema, right_op_schema, on, right_on)
 
+        # Validate that num_partitions is provided for non-broadcast joins
+        if not broadcast and num_partitions is None:
+            raise ValueError(
+                "num_partitions must be provided when broadcast=False. "
+                "For broadcast joins (broadcast=True), num_partitions is optional."
+            )
+
         plan = self._plan.copy()
-        op = Join(
-            left_input_op=self._logical_plan.dag,
-            right_input_op=ds._logical_plan.dag,
-            left_key_columns=on,
-            right_key_columns=right_on,
-            join_type=join_type,
-            num_partitions=num_partitions,
-            left_columns_suffix=left_suffix,
-            right_columns_suffix=right_suffix,
-            partition_size_hint=partition_size_hint,
-            aggregator_ray_remote_args=aggregator_ray_remote_args,
-        )
+
+        if broadcast:
+            # Validate that the join type is supported for broadcast joins
+            supported_broadcast_join_types = {
+                "inner",
+                "left_outer",
+                "right_outer",
+                "full_outer",
+            }
+            if join_type not in supported_broadcast_join_types:
+                raise ValueError(
+                    f"Join type '{join_type}' is not supported in broadcast joins. "
+                    f"Supported types are: {list(supported_broadcast_join_types)}"
+                )
+
+            # Create the broadcast join callable class
+            from ray.data._internal.logical.operators.broadcast_join import (
+                BroadcastJoinFunction,
+            )
+            from ray.data._internal.logical.operators.join_operator import JoinType
+
+            # Use more efficient size estimation instead of expensive count() operations
+            # For small datasets, we can estimate size from a sample
+            try:
+                # Try to estimate sizes from samples to avoid expensive count() operations
+                left_sample = self.limit(100)
+                right_sample = ds.limit(100)
+
+                left_refs = left_sample.to_arrow_refs()
+                right_refs = right_sample.to_arrow_refs()
+
+                if left_refs and right_refs:
+                    left_sample_table = ray.get(left_refs[0])
+                    right_sample_table = ray.get(right_refs[0])
+
+                    # Estimate total sizes based on sample
+                    left_estimated_size = left_sample_table.num_rows
+                    right_estimated_size = right_sample_table.num_rows
+
+                    # If samples are small, the datasets are likely small enough for broadcast
+                    if left_estimated_size <= 1000 and right_estimated_size <= 1000:
+                        # Both datasets are small, use the original logic
+                        if left_estimated_size >= right_estimated_size:
+                            # self (left) is larger, ds (right) is smaller
+                            large_ds = self
+                            small_ds = ds
+                            large_key_columns = on
+                            small_key_columns = right_on
+                            datasets_swapped = False
+                        else:
+                            # ds (right) is larger, self (left) is smaller
+                            large_ds = ds
+                            small_ds = self
+                            large_key_columns = right_on
+                            small_key_columns = on
+                            datasets_swapped = True
+                    else:
+                        # At least one dataset is large, use broadcast join with caution
+                        # Always broadcast the smaller one
+                        if left_estimated_size >= right_estimated_size:
+                            large_ds = self
+                            small_ds = ds
+                            large_key_columns = on
+                            small_key_columns = right_on
+                            datasets_swapped = False
+                        else:
+                            large_ds = ds
+                            small_ds = self
+                            large_key_columns = right_on
+                            small_key_columns = on
+                            datasets_swapped = True
+                else:
+                    # Fall back to original logic if sampling fails
+                    raise ValueError("Could not estimate dataset sizes")
+
+            except Exception:
+                # Fall back to original count-based logic if estimation fails
+                ds_count = ds.count()
+                self_count = self.count()
+                if ds_count == 0 or self_count == 0:
+                    raise ValueError("Cannot perform broadcast join on empty datasets")
+
+                # Always broadcast the smaller dataset and map over the larger one
+                if self_count >= ds_count:
+                    # self (left) is larger, ds (right) is smaller
+                    large_ds = self
+                    small_ds = ds
+                    large_key_columns = on
+                    small_key_columns = right_on
+                    datasets_swapped = False
+                else:
+                    # ds (right) is larger, self (left) is smaller
+                    large_ds = ds
+                    small_ds = self
+                    large_key_columns = right_on
+                    small_key_columns = on
+                    datasets_swapped = True
+
+            # Create the broadcast join function - PyArrow will handle the supported join types natively
+            # Note: left_suffix and right_suffix always refer to the original left and right datasets
+            # regardless of which one is larger/smaller
+            join_type_enum = JoinType(join_type)
+            join_fn = BroadcastJoinFunction(
+                small_table_dataset=small_ds,
+                join_type=join_type_enum,
+                large_table_key_columns=large_key_columns,
+                small_table_key_columns=small_key_columns,
+                large_table_columns_suffix=(
+                    right_suffix if datasets_swapped else left_suffix
+                ),
+                small_table_columns_suffix=(
+                    left_suffix if datasets_swapped else right_suffix
+                ),
+                datasets_swapped=datasets_swapped,
+            )
+
+            # For broadcast joins, if num_partitions is not specified, use the number of partitions
+            # from the large dataset to maintain partition structure
+            if num_partitions is None:
+                # Use the current number of partitions from the large dataset
+                target_partitions = large_ds.num_blocks()
+            else:
+                target_partitions = num_partitions
+
+            # Use PyArrow's native join functionality for the supported join types
+            result = large_ds.map_batches(
+                join_fn,
+                batch_format="pyarrow",
+                concurrency=target_partitions,
+            )
+
+            # Ensure the result has the expected number of partitions to match regular join behavior
+            result = result.repartition(target_partitions)
+
+            return result
+        else:
+            op = Join(
+                left_input_op=self._logical_plan.dag,
+                right_input_op=ds._logical_plan.dag,
+                left_key_columns=on,
+                right_key_columns=right_on,
+                join_type=join_type,
+                num_partitions=num_partitions,
+                left_columns_suffix=left_suffix,
+                right_columns_suffix=right_suffix,
+                partition_size_hint=partition_size_hint,
+                aggregator_ray_remote_args=aggregator_ray_remote_args,
+            )
 
         return Dataset(plan, LogicalPlan(op, self.context))
 

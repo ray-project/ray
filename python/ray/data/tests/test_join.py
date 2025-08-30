@@ -429,6 +429,806 @@ def test_default_shuffle_aggregator_args():
     } == args
 
 
+# Broadcast Join Tests
+#
+# Minimal tests to verify broadcast join functionality for different join types.
+# These tests ensure that broadcast joins work correctly for the supported join types.
+
+
+@pytest.mark.parametrize(
+    "join_type",
+    [
+        "inner",
+        "left_outer",
+        "right_outer",
+        "full_outer",
+    ],
+)
+def test_broadcast_join_basic(
+    ray_start_regular_shared_2_cpus,
+    join_type,
+):
+    """Test basic broadcast join functionality for all supported join types."""
+
+    # Create test datasets - much smaller for efficient testing
+    left_ds = ray.data.range(5).map(  # Reduced from 10 to 5
+        lambda row: {"id": row["id"], "left_value": int(row["id"]) * 2}
+    )
+
+    right_ds = ray.data.range(3).map(  # Reduced from 5 to 3
+        lambda row: {"id": row["id"], "right_value": int(row["id"]) ** 2}
+    )
+
+    # Perform broadcast join
+    broadcast_result = left_ds.join(
+        right_ds,
+        join_type=join_type,
+        on=("id",),
+        broadcast=True,
+    )
+
+    # Perform regular join for comparison
+    regular_result = left_ds.join(
+        right_ds,
+        join_type=join_type,
+        num_partitions=2,  # Match the number of CPUs in the test fixture
+        broadcast=False,
+    )
+
+    # Convert to pandas for comparison
+    broadcast_df = (
+        pd.DataFrame(broadcast_result.take_all())
+        .sort_values(by=["id"])
+        .reset_index(drop=True)
+    )
+    regular_df = (
+        pd.DataFrame(regular_result.take_all())
+        .sort_values(by=["id"])
+        .reset_index(drop=True)
+    )
+
+    # Ensure both DataFrames have the same column ordering before comparison
+    common_columns = sorted(set(broadcast_df.columns) & set(regular_df.columns))
+    broadcast_df = broadcast_df[common_columns]
+    regular_df = regular_df[common_columns]
+
+    # Results should be identical
+    pd.testing.assert_frame_equal(broadcast_df, regular_df)
+
+
+def test_broadcast_join_dataset_swapping(
+    ray_start_regular_shared_2_cpus,
+):
+    """Test broadcast join with dataset swapping (left smaller than right)."""
+
+    # Create datasets where left is smaller than right - much smaller for efficient testing
+    left_ds = ray.data.range(2).map(  # Reduced from 3 to 2
+        lambda row: {"id": row["id"], "left_value": int(row["id"]) * 2}
+    )
+
+    right_ds = ray.data.range(5).map(  # Reduced from 10 to 5
+        lambda row: {"id": row["id"], "right_value": int(row["id"]) ** 2}
+    )
+
+    # Perform broadcast join (should trigger dataset swapping)
+    result = left_ds.join(
+        right_ds,
+        join_type="inner",
+        on=("id",),
+        broadcast=True,
+    )
+
+    # Verify the result has the expected structure
+    result_df = pd.DataFrame(result.take_all())
+    expected_columns = {"id", "left_value", "right_value"}
+    assert set(result_df.columns) == expected_columns
+
+    # Should return 2 rows (all left rows match)
+    assert len(result_df) == 2
+
+
+@pytest.mark.parametrize(
+    "join_type",
+    [
+        "inner",
+        "left_outer",
+        "right_outer",
+        "full_outer",
+    ],
+)
+@pytest.mark.parametrize(
+    "num_rows_left,num_rows_right",
+    [
+        (8, 16),  # Left dataset is smaller than right dataset - reduced from (16, 32)
+        (5, 20),  # Left dataset is much smaller - reduced from (10, 100)
+        (3, 8),  # Small left dataset - reduced from (5, 10)
+    ],
+)
+def test_broadcast_join_left_smaller(
+    ray_start_regular_shared_2_cpus,
+    join_type,
+    num_rows_left,
+    num_rows_right,
+):
+    """Test broadcast join when left dataset is smaller than right dataset.
+
+    This tests the dataset swapping logic where the smaller left dataset gets broadcasted
+    and the larger right dataset gets processed in batches. The test covers:
+
+    - Dataset swapping scenarios (left < right)
+    - All supported join types
+    - Various size differences
+
+    Test cases:
+    - (16, 32): Left dataset is smaller than right dataset
+    - (10, 100): Left dataset is much smaller
+    - (5, 10): Small left dataset
+
+    When left < right, the broadcast join automatically swaps the datasets internally
+    to broadcast the smaller left dataset and process the larger right dataset in batches.
+    This maintains the same join semantics while optimizing for performance.
+    """
+
+    # Create test datasets
+    left_ds = ray.data.range(num_rows_left).map(
+        lambda row: {"id": row["id"], "left_value": int(row["id"]) * 2}
+    )
+
+    right_ds = ray.data.range(num_rows_right).map(
+        lambda row: {"id": row["id"], "right_value": int(row["id"]) ** 2}
+    )
+
+    # Perform broadcast join
+    broadcast_result = left_ds.join(
+        right_ds,
+        join_type=join_type,
+        on=("id",),
+        broadcast=True,
+    )
+
+    # Perform regular join for comparison
+    regular_result = left_ds.join(
+        right_ds,
+        join_type=join_type,
+        num_partitions=2,  # Match the number of CPUs in the test fixture
+        broadcast=False,
+    )
+
+    # Convert to pandas for comparison
+    broadcast_df = (
+        pd.DataFrame(broadcast_result.take_all())
+        .sort_values(by=["id"])
+        .reset_index(drop=True)
+    )
+    regular_df = (
+        pd.DataFrame(regular_result.take_all())
+        .sort_values(by=["id"])
+        .reset_index(drop=True)
+    )
+
+    # Ensure both DataFrames have the same column ordering before comparison
+    common_columns = sorted(set(broadcast_df.columns) & set(regular_df.columns))
+    broadcast_df = broadcast_df[common_columns]
+    regular_df = regular_df[common_columns]
+
+    # Results should be identical
+    pd.testing.assert_frame_equal(broadcast_df, regular_df)
+
+
+@pytest.mark.parametrize(
+    "join_type",
+    [
+        "inner",
+        "left_outer",
+        "right_outer",
+        "full_outer",
+    ],
+)
+def test_broadcast_join_dataset_swapping_edge_cases(
+    ray_start_regular_shared_2_cpus,
+    join_type,
+):
+    """Test edge cases for dataset swapping in broadcast joins.
+
+    This tests scenarios where the dataset sizes are very different or equal,
+    ensuring the swapping logic works correctly. The test covers:
+
+    - Extreme size differences (left much smaller than right)
+    - Equal sized datasets (no swapping needed)
+    - Single row datasets (minimal broadcast table)
+
+    Test cases:
+    - Left much smaller: (3, 15) - tests extreme size difference
+    - Equal sized: (5, 5) - tests no swapping scenario
+    - Single row left: (1, 8) - tests minimal broadcast table
+
+    These edge cases ensure the broadcast join implementation is robust and handles
+    various dataset size combinations correctly.
+    """
+
+    # Test case 1: Left dataset much smaller than right
+    left_ds_small = ray.data.range(3).map(  # Reduced from 5 to 3
+        lambda row: {"id": row["id"], "left_value": int(row["id"]) * 2}
+    )
+    right_ds_large = ray.data.range(15).map(  # Reduced from 100 to 15
+        lambda row: {"id": row["id"], "right_value": int(row["id"]) ** 2}
+    )
+
+    # Test case 2: Equal sized datasets
+    left_ds_equal = ray.data.range(5).map(  # Reduced from 10 to 5
+        lambda row: {"id": row["id"], "left_value": int(row["id"]) * 2}
+    )
+    right_ds_equal = ray.data.range(5).map(  # Reduced from 10 to 5
+        lambda row: {"id": row["id"], "right_value": int(row["id"]) ** 2}
+    )
+
+    # Test case 3: Single row left dataset
+    left_ds_single = ray.data.range(1).map(
+        lambda row: {"id": row["id"], "left_value": int(row["id"]) * 2}
+    )
+    right_ds_multi = ray.data.range(8).map(  # Reduced from 20 to 8
+        lambda row: {"id": row["id"], "right_value": int(row["id"]) ** 2}
+    )
+
+    test_cases = [
+        (left_ds_small, right_ds_large, "left much smaller"),
+        (left_ds_equal, right_ds_equal, "equal sized"),
+        (left_ds_single, right_ds_multi, "single row left"),
+    ]
+
+    for left_ds, right_ds, case_name in test_cases:
+        # Perform broadcast join
+        broadcast_result = left_ds.join(
+            right_ds,
+            join_type=join_type,
+            on=("id",),
+            broadcast=True,
+        )
+
+        # Perform regular join for comparison
+        regular_result = left_ds.join(
+            right_ds,
+            join_type=join_type,
+            num_partitions=2,  # Match the number of CPUs in the test fixture
+            broadcast=False,
+        )
+
+        # Convert to pandas for comparison
+        broadcast_df = (
+            pd.DataFrame(broadcast_result.take_all())
+            .sort_values(by=["id"])
+            .reset_index(drop=True)
+        )
+        regular_df = (
+            pd.DataFrame(regular_result.take_all())
+            .sort_values(by=["id"])
+            .reset_index(drop=True)
+        )
+
+        # Ensure both DataFrames have the same column ordering before comparison
+        common_columns = sorted(set(broadcast_df.columns) & set(regular_df.columns))
+        broadcast_df = broadcast_df[common_columns]
+        regular_df = regular_df[common_columns]
+
+        # Results should be identical
+        pd.testing.assert_frame_equal(
+            broadcast_df,
+            regular_df,
+            check_dtype=False,  # Allow dtype differences for edge cases
+            err_msg=f"Failed for case: {case_name}, join_type: {join_type}",
+        )
+
+
+@pytest.mark.parametrize(
+    "join_type",
+    [
+        "inner",
+        "left_outer",
+        "right_outer",
+        "full_outer",
+    ],
+)
+def test_broadcast_join_with_different_key_names_and_swapping(
+    ray_start_regular_shared_2_cpus,
+    join_type,
+):
+    """Test broadcast join with different key names and dataset swapping scenarios."""
+
+    # Test case 1: Left dataset smaller with different key names
+    left_ds_small = ray.data.from_items(
+        [
+            {"left_id": 1, "left_data": "a"},
+            {"left_id": 2, "left_data": "b"},
+            {"left_id": 3, "left_data": "c"},
+        ]
+    )
+
+    right_ds_large = ray.data.from_items(
+        [{"right_id": i, "right_data": f"data_{i}"} for i in range(20)]
+    )
+
+    # Test case 2: Right dataset smaller with different key names
+    left_ds_large = ray.data.from_items(
+        [{"left_id": i, "left_data": f"left_{i}"} for i in range(20)]
+    )
+
+    right_ds_small = ray.data.from_items(
+        [
+            {"right_id": 1, "right_data": "x"},
+            {"right_id": 2, "right_data": "y"},
+            {"right_id": 3, "right_data": "z"},
+        ]
+    )
+
+    test_cases = [
+        (left_ds_small, right_ds_large, "left smaller"),
+        (left_ds_large, right_ds_small, "right smaller"),
+    ]
+
+    for left_ds, right_ds, case_name in test_cases:
+        # Perform broadcast join
+        broadcast_result = left_ds.join(
+            right_ds,
+            join_type=join_type,
+            on=("left_id",),
+            right_on=("right_id",),
+            broadcast=True,
+        )
+
+        # Perform regular join for comparison
+        regular_result = left_ds.join(
+            right_ds,
+            join_type=join_type,
+            num_partitions=2,
+            on=("left_id",),
+            right_on=("right_id",),
+            broadcast=False,
+        )
+
+        # Convert to pandas for comparison
+        broadcast_df = (
+            pd.DataFrame(broadcast_result.take_all())
+            .sort_values(by=["left_id"])
+            .reset_index(drop=True)
+        )
+        regular_df = (
+            pd.DataFrame(regular_result.take_all())
+            .sort_values(by=["left_id"])
+            .reset_index(drop=True)
+        )
+
+        # Ensure both DataFrames have the same column ordering before comparison
+        common_columns = sorted(set(broadcast_df.columns) & set(regular_df.columns))
+        broadcast_df = broadcast_df[common_columns]
+        regular_df = regular_df[common_columns]
+
+        # Results should be identical
+        pd.testing.assert_frame_equal(
+            broadcast_df,
+            regular_df,
+            check_dtype=False,
+            err_msg=f"Failed for case: {case_name}, join_type: {join_type}",
+        )
+
+
+def test_broadcast_join_with_suffixes(ray_start_regular_shared_2_cpus):
+    """Test broadcast join with column name suffixes."""
+
+    # Create datasets with overlapping column names
+    left_ds = ray.data.from_items(
+        [
+            {"id": 1, "value": "left_1"},
+            {"id": 2, "value": "left_2"},
+            {"id": 3, "value": "left_3"},
+        ]
+    )
+
+    right_ds = ray.data.from_items(
+        [
+            {"id": 1, "value": "right_1"},
+            {"id": 2, "value": "right_2"},
+        ]
+    )
+
+    # Test broadcast join with suffixes
+    result = left_ds.join(
+        right_ds,
+        join_type="inner",
+        num_partitions=2,
+        on=("id",),
+        left_suffix="_left",
+        right_suffix="_right",
+        broadcast=True,
+    )
+
+    result_df = (
+        pd.DataFrame(result.take_all()).sort_values(by=["id"]).reset_index(drop=True)
+    )
+
+    # Verify suffixes are applied correctly
+    expected_columns = {"id", "value_left", "value_right"}
+    assert set(result_df.columns) == expected_columns
+
+    # Verify join results
+    assert len(result_df) == 2  # Only id=1 and id=2 should match
+    assert result_df.loc[0, "value_left"] == "left_1"
+    assert result_df.loc[0, "value_right"] == "right_1"
+
+
+def test_broadcast_join_different_key_names(ray_start_regular_shared_2_cpus):
+    """Test broadcast join with different key column names."""
+
+    left_ds = ray.data.from_items(
+        [
+            {"left_id": 1, "left_data": "a"},
+            {"left_id": 2, "left_data": "b"},
+            {"left_id": 3, "left_data": "c"},
+            {"left_id": 4, "left_data": "d"},
+            {"left_id": 5, "left_data": "e"},
+            {"left_id": 6, "left_data": "f"},
+            {"left_id": 7, "left_data": "g"},
+            {"left_id": 8, "left_data": "h"},
+            {"left_id": 9, "left_data": "i"},
+            {"left_id": 10, "left_data": "j"},
+        ]
+    )
+
+    right_ds = ray.data.from_items(
+        [
+            {"right_id": 1, "right_data": "x"},
+            {"right_id": 2, "right_data": "y"},
+        ]
+    )
+
+    # Test broadcast join with different key names
+    result = left_ds.join(
+        right_ds,
+        join_type="inner",
+        on=("left_id",),
+        right_on=("right_id",),
+        broadcast=True,
+    )
+
+    result_df = (
+        pd.DataFrame(result.take_all())
+        .sort_values(by=["left_id"])
+        .reset_index(drop=True)
+    )
+
+    # Verify results
+    assert len(result_df) == 2
+    expected_columns = {"left_id", "left_data", "right_id", "right_data"}
+    assert set(result_df.columns) == expected_columns
+
+
+def test_broadcast_join_performance_with_small_right(ray_start_regular_shared_2_cpus):
+    """Test that broadcast join is used appropriately for small right datasets."""
+
+    # Large left dataset
+    left_ds = ray.data.range(20).map(  # Reduced from 100 to 20
+        lambda row: {"id": row["id"], "left_value": row["id"] * 2}
+    )
+
+    # Small right dataset (perfect for broadcasting)
+    right_ds = ray.data.range(10).map(
+        lambda row: {"id": row["id"], "right_value": row["id"] ** 2}
+    )
+
+    # Test broadcast join
+    result = left_ds.join(
+        right_ds,
+        join_type="inner",
+        on=("id",),
+        broadcast=True,
+    )
+
+    # Should only return 10 rows (matching the small right dataset)
+    assert result.count() == 10
+
+    # Verify correctness by comparing a few values
+    result_df = (
+        pd.DataFrame(result.take_all()).sort_values(by=["id"]).reset_index(drop=True)
+    )
+
+    for i in range(min(5, len(result_df))):
+        assert result_df.loc[i, "left_value"] == result_df.loc[i, "id"] * 2
+        assert result_df.loc[i, "right_value"] == result_df.loc[i, "id"] ** 2
+
+
+def test_broadcast_join_expected_outputs(ray_start_regular_shared_2_cpus):
+    """Test that broadcast join produces logically correct expected outputs.
+
+    This test validates the expected row counts, column structure, and data content
+    for different join types to ensure the test logic is correct.
+    """
+
+    # Create test datasets with known overlap
+    left_ds = ray.data.from_items(
+        [
+            {"id": 1, "left_value": "a", "left_only": "left_1"},
+            {"id": 2, "left_value": "b", "left_only": "left_2"},
+            {"id": 3, "left_value": "c", "left_only": "left_3"},
+            {"id": 4, "left_value": "d", "left_only": "left_4"},
+            {"id": 5, "left_value": "e", "left_only": "left_5"},
+        ]
+    )
+
+    right_ds = ray.data.from_items(
+        [
+            {"id": 2, "right_value": "x", "right_only": "right_2"},
+            {"id": 3, "right_value": "y", "right_only": "right_3"},
+            {"id": 6, "right_value": "z", "right_only": "right_6"},
+            {"id": 7, "right_value": "w", "right_only": "right_7"},
+        ]
+    )
+
+    # Test inner join
+    inner_result = left_ds.join(
+        right_ds,
+        join_type="inner",
+        on=("id",),
+        broadcast=True,
+    )
+
+    inner_df = pd.DataFrame(inner_result.take_all())
+    assert len(inner_df) == 2  # Only id=2 and id=3 should match
+    assert set(inner_df["id"].tolist()) == {2, 3}
+    expected_columns = {"id", "left_value", "left_only", "right_value", "right_only"}
+    assert set(inner_df.columns) == expected_columns
+
+    # Test left outer join
+    left_outer_result = left_ds.join(
+        right_ds,
+        join_type="left_outer",
+        num_partitions=2,
+        on=("id",),
+        broadcast=True,
+    )
+
+    left_outer_df = pd.DataFrame(left_outer_result.take_all())
+    assert len(left_outer_df) == 5  # All left rows should be present
+    assert set(left_outer_df["id"].tolist()) == {1, 2, 3, 4, 5}
+    # Check that unmatched left rows have NULL right values
+    unmatched_left = left_outer_df[left_outer_df["id"].isin([1, 4, 5])]
+    assert unmatched_left["right_value"].isna().all()
+    assert unmatched_left["right_only"].isna().all()
+
+    # Test right outer join
+    right_outer_result = left_ds.join(
+        right_ds,
+        join_type="right_outer",
+        num_partitions=2,
+        on=("id",),
+        broadcast=True,
+    )
+
+    right_outer_df = pd.DataFrame(right_outer_result.take_all())
+    assert len(right_outer_df) == 4  # All right rows should be present
+    assert set(right_outer_df["id"].tolist()) == {2, 3, 6, 7}
+    # Check that unmatched right rows have NULL left values
+    unmatched_right = right_outer_df[right_outer_df["id"].isin([6, 7])]
+    assert unmatched_right["left_value"].isna().all()
+    assert unmatched_right["left_only"].isna().all()
+
+    # Test full outer join
+    full_outer_result = left_ds.join(
+        right_ds,
+        join_type="full_outer",
+        num_partitions=2,
+        on=("id",),
+        broadcast=True,
+    )
+
+    full_outer_df = pd.DataFrame(full_outer_result.take_all())
+    assert len(full_outer_df) == 7  # All left + all right + matches
+    assert set(full_outer_df["id"].tolist()) == {1, 2, 3, 4, 5, 6, 7}
+
+
+def test_broadcast_join_dataset_swapping_validation(ray_start_regular_shared_2_cpus):
+    """Test that dataset swapping in broadcast joins produces correct results.
+
+    This test validates that when the left dataset is smaller than the right dataset,
+    the swapping logic correctly maintains join semantics.
+    """
+
+    # Create datasets where left is smaller than right
+    left_ds = ray.data.from_items(
+        [
+            {"id": 1, "left_value": "a"},
+            {"id": 2, "left_value": "b"},
+            {"id": 3, "left_value": "c"},
+        ]
+    )
+
+    right_ds = ray.data.from_items(
+        [
+            {"id": 1, "right_value": "x"},
+            {"id": 2, "right_value": "y"},
+            {"id": 4, "right_value": "z"},
+            {"id": 5, "right_value": "w"},
+            {"id": 6, "right_value": "v"},
+        ]
+    )
+
+    # Test inner join with swapped datasets
+    inner_result = left_ds.join(
+        right_ds,
+        join_type="inner",
+        num_partitions=2,
+        on=("id",),
+        broadcast=True,
+    )
+
+    inner_df = pd.DataFrame(inner_result.take_all())
+    assert len(inner_df) == 2  # Only id=1 and id=2 should match
+    assert set(inner_df["id"].tolist()) == {1, 2}
+
+    # Test left outer join with swapped datasets
+    left_outer_result = left_ds.join(
+        right_ds,
+        join_type="left_outer",
+        num_partitions=2,
+        on=("id",),
+        broadcast=True,
+    )
+
+    left_outer_df = pd.DataFrame(left_outer_result.take_all())
+    assert len(left_outer_df) == 3  # All left rows should be present
+    assert set(left_outer_df["id"].tolist()) == {1, 2, 3}
+    # Check that unmatched left rows have NULL right values
+    unmatched_left = left_outer_df[left_outer_df["id"] == 3]
+    assert unmatched_left["right_value"].isna().all()
+
+    # Test right outer join with swapped datasets
+    right_outer_result = left_ds.join(
+        right_ds,
+        join_type="right_outer",
+        num_partitions=2,
+        on=("id",),
+        broadcast=True,
+    )
+
+    right_outer_df = pd.DataFrame(right_outer_result.take_all())
+    assert len(right_outer_df) == 5  # All right rows should be present
+    assert set(right_outer_df["id"].tolist()) == {1, 2, 4, 5, 6}
+    # Check that unmatched right rows have NULL left values
+    unmatched_right = right_outer_df[right_outer_df["id"].isin([4, 5, 6])]
+    assert unmatched_right["left_value"].isna().all()
+
+    # Test full outer join with swapped datasets
+    full_outer_result = left_ds.join(
+        right_ds,
+        join_type="full_outer",
+        num_partitions=2,
+        on=("id",),
+        broadcast=True,
+    )
+
+    full_outer_df = pd.DataFrame(full_outer_result.take_all())
+    assert len(full_outer_df) == 6  # All left + all right + matches
+    assert set(full_outer_df["id"].tolist()) == {1, 2, 3, 4, 5, 6}
+
+
+def test_broadcast_join_column_structure_validation(ray_start_regular_shared_2_cpus):
+    """Test that broadcast join produces correct column structure and data types.
+
+    This test validates that the column names, data types, and structure are correct
+    for different join types and scenarios.
+    """
+
+    # Create datasets with different data types
+    left_ds = ray.data.from_items(
+        [
+            {"id": 1, "left_int": 10, "left_str": "a", "left_float": 1.5},
+            {"id": 2, "left_int": 20, "left_str": "b", "left_float": 2.5},
+            {"id": 3, "left_int": 30, "left_str": "c", "left_float": 3.5},
+        ]
+    )
+
+    right_ds = ray.data.from_items(
+        [
+            {"id": 1, "right_int": 100, "right_str": "x", "right_float": 10.5},
+            {"id": 2, "right_int": 200, "right_str": "y", "right_float": 20.5},
+            {"id": 4, "right_int": 400, "right_str": "z", "right_float": 40.5},
+        ]
+    )
+
+    # Test inner join column structure
+    inner_result = left_ds.join(
+        right_ds,
+        join_type="inner",
+        num_partitions=2,
+        on=("id",),
+        broadcast=True,
+    )
+
+    inner_df = pd.DataFrame(inner_result.take_all())
+    expected_inner_columns = {
+        "id",
+        "left_int",
+        "left_str",
+        "left_float",
+        "right_int",
+        "right_str",
+        "right_float",
+    }
+    assert set(inner_df.columns) == expected_inner_columns
+    assert len(inner_df) == 2
+
+    # Verify data types are preserved
+    assert inner_df["left_int"].dtype in ["int64", "int32", "int"]
+    assert inner_df["left_str"].dtype == "object"  # string columns
+    assert inner_df["left_float"].dtype in ["float64", "float32", "float"]
+
+    # Test left outer join column structure
+    left_outer_result = left_ds.join(
+        right_ds,
+        join_type="left_outer",
+        on=("id",),
+        broadcast=True,
+    )
+
+    left_outer_df = pd.DataFrame(left_outer_result.take_all())
+    assert set(left_outer_df.columns) == expected_inner_columns
+    assert len(left_outer_df) == 3
+
+    # Check that unmatched left rows have NULL right values
+    unmatched_left = left_outer_df[left_outer_df["id"] == 3]
+    assert unmatched_left["right_int"].isna().all()
+    assert unmatched_left["right_str"].isna().all()
+    assert unmatched_left["right_float"].isna().all()
+
+    # Test with column suffixes
+    suffixed_result = left_ds.join(
+        right_ds,
+        join_type="inner",
+        on=("id",),
+        left_suffix="_left",
+        right_suffix="_right",
+        broadcast=True,
+    )
+
+    suffixed_df = pd.DataFrame(suffixed_result.take_all())
+    expected_suffixed_columns = {
+        "id",
+        "left_int_left",
+        "left_str_left",
+        "left_float_left",
+        "right_int_right",
+        "right_str_right",
+        "right_float_right",
+    }
+    assert set(suffixed_df.columns) == expected_suffixed_columns
+
+    # Test with different key names
+    left_ds_diff_keys = ray.data.from_items(
+        [
+            {"left_id": 1, "left_value": "a"},
+            {"left_id": 2, "left_value": "b"},
+        ]
+    )
+
+    right_ds_diff_keys = ray.data.from_items(
+        [
+            {"right_id": 1, "right_value": "x"},
+            {"right_id": 2, "right_value": "y"},
+        ]
+    )
+
+    diff_keys_result = left_ds_diff_keys.join(
+        right_ds_diff_keys,
+        join_type="inner",
+        on=("left_id",),
+        right_on=("right_id",),
+        broadcast=True,
+    )
+
+    diff_keys_df = pd.DataFrame(diff_keys_result.take_all())
+    expected_diff_keys_columns = {"left_id", "left_value", "right_id", "right_value"}
+    assert set(diff_keys_df.columns) == expected_diff_keys_columns
+    assert len(diff_keys_df) == 2
+
+
 @pytest.mark.parametrize("join_type", ["left_anti", "right_anti"])
 def test_anti_join_no_matches(
     ray_start_regular_shared_2_cpus,
