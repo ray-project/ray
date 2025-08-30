@@ -53,7 +53,7 @@ def _get_env_value(
     default: Optional[T],
     value_type: Type[T],
     validation_func: Optional[Callable[[T], bool]] = None,
-    expected_value_description: str = None,
+    expected_value_description: Optional[str] = None,
 ) -> Optional[T]:
     """Get environment variable with type conversion and validation.
 
@@ -63,12 +63,13 @@ def _get_env_value(
     Args:
         name: The name of the environment variable.
         default: Default value to use if the environment variable is not set.
-               If None, the function will return None without validation.
+            If None, the function will return None without validation.
         value_type: Type to convert the environment variable value to (e.g., int, float, str).
         validation_func: Optional function that takes the converted value and returns
-                       a boolean indicating whether the value is valid.
+            a boolean indicating whether the value is valid.
         expected_value_description: Description of the expected value characteristics
-                                 (e.g., "positive", "non negative") used in error messages.
+            (e.g., "positive", "non negative") used in error messages.
+            Optional, expected only if validation_func is provided.
 
     Returns:
         The environment variable value converted to the specified type and validated,
@@ -78,6 +79,8 @@ def _get_env_value(
         ValueError: If the environment variable value cannot be converted to the specified
             type, or if it fails the optional validation check.
     """
+    _name_warning(name)
+
     raw = os.environ.get(name, default)
     if raw is None:
         return None
@@ -194,7 +197,7 @@ def get_env_float_non_negative(name: str, default: Optional[float]) -> Optional[
     return _get_env_value(name, default, float, lambda x: x >= 0, "non negative")
 
 
-def get_env_str(name: str, default: Optional[str]) -> str:
+def get_env_str(name: str, default: Optional[str]) -> Optional[str]:
     """Get environment variable as a string.
 
     Args:
@@ -203,11 +206,12 @@ def get_env_str(name: str, default: Optional[str]) -> str:
 
     Returns:
         The environment variable value as a string.
+        Returns `None` if default is `None` and value not found.
     """
-    return os.environ.get(name, default)
+    return _get_env_value(name, default, str)
 
 
-def get_env_bool(name: str, default: Optional[str]) -> bool:
+def get_env_bool(name: str, default: str) -> bool:
     """Get environment variable as a boolean.
 
     Environment variable values of "1" are interpreted as True, all others as False.
@@ -215,11 +219,13 @@ def get_env_bool(name: str, default: Optional[str]) -> bool:
     Args:
         name: The name of the environment variable.
         default: Default value to use if the environment variable is not set.
+            Expects "0" or "1".
 
     Returns:
         True if the environment variable value is "1", False otherwise.
     """
-    return os.environ.get(name, default) == "1"
+    env_value_str = _get_env_value(name, default, str)
+    return env_value_str == "1"
 
 
 def get_env_float_non_zero_with_warning(
@@ -233,7 +239,7 @@ def get_env_float_non_zero_with_warning(
     PROXY_MIN_DRAINING_PERIOD_S
     RAY_SERVE_KV_TIMEOUT_S
 
-    todo: replace this function with 'get_env_float_positive' for the '2.50.0' release.
+    TODO: replace this function with 'get_env_float_positive' for the '2.50.0' release.
     """
     removal_version = "2.50.0"
 
@@ -250,3 +256,21 @@ def get_env_float_non_zero_with_warning(
             stacklevel=2,
         )
     return backward_compatible_result
+
+
+def _name_warning(name: str) -> None:
+    """Warn if a environment variable name doesn't start with `RAY_SERVE_`.
+
+    TODO: remove this function for the '2.50.0' release and add `RAY_SERVE_` prefix to all env variables.
+    """
+    change_version = "2.50.0"
+    required_prefix = "RAY_SERVE_"
+
+    if not name.startswith(required_prefix):
+        warnings.warn(
+            f"Got unexpected environment variable name `{name}`! "
+            f"Starting from version `{change_version}`, all environments variables related to `Ray Serve` will require prefix `{required_prefix}`. "
+            f"Change the name to start with the `{required_prefix}` prefix.",
+            FutureWarning,
+            stacklevel=4,
+        )
