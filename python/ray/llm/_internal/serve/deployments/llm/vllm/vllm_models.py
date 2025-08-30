@@ -93,6 +93,7 @@ class VLLMEngineConfig(BaseModelExtended):
         else:
             engine_kwargs["distributed_executor_backend"] = "ray"
 
+        # TODO (Nikhil): Remove this once vLLM fully deprecates disable_log_requests.
         if "disable_log_requests" in engine_kwargs:
             logger.warning(
                 "disable_log_requests is set in engine_kwargs, but vLLM "
