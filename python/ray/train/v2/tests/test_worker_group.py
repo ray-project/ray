@@ -1,6 +1,7 @@
 import collections
 import os
 import time
+from unittest import mock
 
 import pytest
 
@@ -28,6 +29,7 @@ from ray.train.v2._internal.execution.worker_group import (
     Worker,
     WorkerGroup,
     WorkerGroupContext,
+    WorkerGroupState,
 )
 from ray.train.v2.api.config import RunConfig
 from ray.train.v2.tests.util import DummyObjectRefWrapper, create_dummy_run_context
@@ -495,7 +497,7 @@ def test_worker_group_callback():
     assert hooks.shutdown_hook_called
 
 
-def test_worker_group_abort():
+def test_worker_group_abort(monkeypatch):
     class AssertCallback(WorkerGroupCallback):
         def __init__(self):
             self.abort_hook_called = False
@@ -507,8 +509,18 @@ def test_worker_group_abort():
     wg = _default_inactive_worker_group(callbacks=[hooks])
 
     wg._start()
+
+    # Mock the worker group state shutdown method to track calls
+    shutdown_mock = mock.MagicMock()
+    monkeypatch.setattr(WorkerGroupState, "shutdown", shutdown_mock)
+
     wg.abort()
+    shutdown_mock.assert_called_once()
     assert hooks.abort_hook_called
+
+    # Bypass _assert_active method, allowing for shutdown
+    monkeypatch.setattr(wg, "_assert_active", lambda: None)
+
     wg.shutdown()
 
 
