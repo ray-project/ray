@@ -284,7 +284,7 @@ void NormalTaskSubmitter::ReportWorkerBacklogIfNeeded(
     const SchedulingKey &scheduling_key) {
   auto scheduling_key_iter = scheduling_key_entries_.find(scheduling_key);
   RAY_CHECK(scheduling_key_iter != scheduling_key_entries_.end());
-  const auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+  const auto &scheduling_key_entry = scheduling_key_iter->second;
 
   if (scheduling_key_entry.last_reported_backlog_size !=
       scheduling_key_entry.BacklogSize()) {
@@ -365,9 +365,9 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
         {
           absl::MutexLock lock(&mu_);
 
-          auto scheduling_key_iter = scheduling_key_entries_.find(scheduling_key);
-          RAY_CHECK(scheduling_key_iter != scheduling_key_entries_.end());
-          auto &sched_entry = scheduling_key_iter->second;
+          auto sched_key_iter = scheduling_key_entries_.find(scheduling_key);
+          RAY_CHECK(sched_key_iter != scheduling_key_entries_.end());
+          auto &sched_entry = sched_key_iter->second;
           auto raylet_lease_client =
               raylet_client_pool_->GetOrConnectByAddress(raylet_address);
           sched_entry.pending_lease_requests.erase(lease_id);
