@@ -6,7 +6,7 @@ researchers, and folks that love machine learning. Here's a list of tips for get
 - To post questions or feature requests, check out the `Discussion Board`_!
 - Follow us and spread the word on `Twitter`_!
 - Join our `Meetup Group`_ to connect with others in the community!
-- Use the `[ray]` tag on `StackOverflow`_ to ask and answer questions about Ray usage
+- Use the `[ray]` tag on `StackOverflow`_ to ask and answer questions about Ray usage.
 
 
 .. _`Discussion Board`: https://discuss.ray.io/

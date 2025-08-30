@@ -1,14 +1,14 @@
 Deploying Ray for ML platforms
 ==============================
 
-Here, we describe how you might use or deploy Ray in your infrastructure. There are two main deployment patterns -- pick and choose and within existing platforms.
+Here, we describe how you might use or deploy Ray in your infrastructure. There are two main deployment patterns -- pick and choose, and within existing platforms.
 
 The core idea is that Ray can be **complementary** to your existing infrastructure and integration tools.
 
 Design Principles
 -----------------
 
-* Ray and its libraries handles the heavyweight compute aspects of AI apps and services.
+* Ray and its libraries handle the heavyweight compute aspects of AI apps and services.
 * Ray relies on external integrations (e.g., Tecton, MLFlow, W&B) for Storage and Tracking.
 * Workflow Orchestrators (e.g., AirFlow) are an optional component that can be used for scheduling recurring jobs, launching new Ray clusters for jobs, and running non-Ray compute steps.
 * Lightweight orchestration of task graphs within a single Ray app can be handled using Ray tasks.
