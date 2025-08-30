@@ -423,14 +423,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       /*put_in_local_plasma_callback=*/
       [this](const RayObject &object, const ObjectID &object_id) {
         auto core_worker = GetCoreWorker();
-        auto put_status =
-            core_worker->PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true);
-        if (!put_status.ok()) {
-          RAY_LOG(WARNING).WithField(object_id)
-              << "Failed to put object in plasma store: " << put_status;
-          return put_status;
-        }
-        return Status::OK();
+        RAY_CHECK_OK(
+            core_worker->PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true));
       },
       /* retry_task_callback= */
       [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
