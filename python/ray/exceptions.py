@@ -48,19 +48,16 @@ class RayError(Exception):
         if ray_exception.language == PYTHON:
             try:
                 return pickle.loads(ray_exception.serialized_exception)
-            except Exception as e:
-                msg = "Failed to unpickle serialized exception"
-                # Include a fallback string/stacktrace to aid debugging.
-                #  formatted_exception_string is set in to_bytes() above by calling
+            except Exception:
+                # formatted_exception_string is set in to_bytes() above by calling
                 # traceback.format_exception() on the original exception. It contains
                 # the string representation and stack trace of the original error.
-                formatted = getattr(
+                original_stacktrace = getattr(
                     ray_exception,
                     "formatted_exception_string",
                     "No formatted exception string available.",
                 )
-                msg += f"\nOriginal exception (string repr):\n{formatted}"
-                raise RuntimeError(msg) from e
+                return UnserializableException(original_stacktrace)
         else:
             return CrossLanguageError(ray_exception)
 
@@ -910,6 +907,48 @@ class RayCgraphCapacityExceeded(RaySystemError):
     pass
 
 
+@PublicAPI(stability="alpha")
+class UnserializableException(RayError):
+    """Raised when there is an error deserializing a serialized exception.
+
+    This occurs when deserializing (unpickling) a previously serialized exception
+    fails. In this case, we fall back to raising the string representation of
+    the original exception along with its stack trace that was captured at the
+    time of serialization.
+
+    Common causes of pickle deserialization failure include:
+        - Missing modules or classes: The exception class is not available in the
+          current environment (e.g., custom exception from an unimported module)
+        - Version incompatibility: Exception was pickled with a different Python
+          or library version
+        - Changed class definitions: The exception class definition has changed
+          between serialization and deserialization
+        - Corrupted or invalid serialized data
+        - Memory limitations during deserialization
+        - Non-picklable objects: Exception contains references to lambda functions
+          or other objects that cannot be pickled/unpickled
+        - Special characters or encoding issues that interfere with deserialization
+
+    Args:
+        original_stack_trace: The string representation and stack trace of the
+            original exception that was captured during serialization.
+
+    Pickle limitations: https://docs.python.org/3/library/pickle.html#what-can-be-pickled-and-unpickled
+    """
+
+    def __init__(self, original_stack_trace: str):
+        self._original_stack_trace = original_stack_trace
+
+    def __str__(self):
+        return (
+            "Failed to deserialize exception. This typically occurs when the original "
+            "exception class is not available, there are version incompatibilities, "
+            "or the serialized data is corrupted.\n\n"
+            "Original exception:\n"
+            f"{self._original_stack_trace}"
+        )
+
+
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,
@@ -939,4 +978,5 @@ RAY_EXCEPTION_TYPES = [
     RayChannelTimeoutError,
     OufOfBandObjectRefSerializationException,
     RayCgraphCapacityExceeded,
+    UnserializableException,
 ]
