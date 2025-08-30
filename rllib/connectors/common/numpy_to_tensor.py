@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 import gymnasium as gym
 
@@ -11,6 +11,9 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.rllib.utils.typing import DeviceType
 
 
 @PublicAPI(stability="alpha")
@@ -59,7 +62,7 @@ class NumpyToTensor(ConnectorV2):
         input_action_space: Optional[gym.Space] = None,
         *,
         pin_memory: bool = False,
-        device: Optional[str] = None,
+        device: Optional["DeviceType"] = None,
         **kwargs,
     ):
         """Initializes a NumpyToTensor instance.
