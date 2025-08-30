@@ -192,6 +192,9 @@ class GcsServer {
   void InstallEventListeners();
 
  private:
+  /// Pulls resource loads from raylets periodically based on # of nodes.
+  void PullResourceLoads();
+
   /// Gets the type of KV storage to use from config.
   StorageType GetStorageType() const;
 
