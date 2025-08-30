@@ -1,0 +1,17 @@
+All proto files in this directory are part of public APIs. Therefore, please keep the
+following guidelines in mind when modifying any of these files:
+
+Do NOT include private protos in these files. If you need to, either (i) obtain approval
+from the core team to make the previously private proto public, or (ii) split the proto
+into private and public parts, and move only the public part here.
+
+Do NOT delete existing fields in any proto messages. If renaming is necessary, add a new
+field with the new name, and mark the old field as deprecated.
+
+For consumers of these proto files (end users): you can rely on field names continuing
+to exist, ensuring that applications built on top of these protos do not break
+unexpectedly. However, always design applications with the assumption that fields are
+always optional, and handle missing or deprecated field contents gracefully. While a
+field name may remain, its content could eventually be deprecated and moved to a new
+field. This provides a path for us to deprecate emitting logic without breaking your
+application.
