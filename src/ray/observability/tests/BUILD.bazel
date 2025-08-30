@@ -10,3 +10,16 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+ray_cc_test(
+    name = "ray_event_recorder_test",
+    size = "small",
+    srcs = ["ray_event_recorder_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/observability:ray_driver_job_definition_event",
+        "//src/ray/observability:ray_driver_job_execution_event",
+        "//src/ray/observability:ray_event_recorder",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
