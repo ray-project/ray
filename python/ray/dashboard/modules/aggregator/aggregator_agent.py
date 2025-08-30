@@ -1,25 +1,25 @@
 import asyncio
-import signal
-import time
 import os
-import json
-import queue
 from concurrent.futures import ThreadPoolExecutor
-import threading
 import logging
-from urllib3.util import Retry
-from requests import Session
-from requests.adapters import HTTPAdapter
-from ray._private.protobuf_compat import message_to_json
+from ray.dashboard.modules.aggregator.multi_consumer_event_buffer import (
+    MultiConsumerEventBuffer,
+)
+from ray.dashboard.modules.aggregator.publisher.async_publisher_client import (
+    AsyncHttpPublisherClient,
+)
+from ray.dashboard.modules.aggregator.publisher.ray_event_publisher import (
+    NoopPublisher,
+    RayEventsPublisher,
+)
 
 try:
     import prometheus_client
-    from prometheus_client import Counter
+    from prometheus_client import Counter, Gauge, Histogram
 except ImportError:
     prometheus_client = None
 
 import ray
-from ray._common.utils import get_or_create_event_loop
 from ray._private import ray_constants
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.consts as dashboard_consts
@@ -33,13 +33,9 @@ logger = logging.getLogger(__name__)
 
 # Environment variables for the aggregator agent
 env_var_prefix = "RAY_DASHBOARD_AGGREGATOR_AGENT"
-# Max number of threads for the thread pool executor handling gRPC requests
-GRPC_TPE_MAX_WORKERS = ray_constants.env_integer(
-    f"{env_var_prefix}_GRPC_TPE_MAX_WORKERS", 10
-)
-# Number of worker threads that publish events to the external service
-PUBLISH_EVENT_WORKERS = ray_constants.env_integer(
-    f"{env_var_prefix}_PUBLISH_EVENT_WORKERS", 1
+# Max number of threads for the thread pool executor handling CPU intensive tasks
+THREAD_POOL_EXECUTOR_MAX_WORKERS = ray_constants.env_integer(
+    f"{env_var_prefix}_THREAD_POOL_EXECUTOR_MAX_WORKERS", 1
 )
 # Interval to check the main thread liveness
 CHECK_MAIN_THREAD_LIVENESS_INTERVAL_SECONDS = ray_constants.env_float(
@@ -49,21 +45,9 @@ CHECK_MAIN_THREAD_LIVENESS_INTERVAL_SECONDS = ray_constants.env_float(
 MAX_EVENT_BUFFER_SIZE = ray_constants.env_integer(
     f"{env_var_prefix}_MAX_EVENT_BUFFER_SIZE", 1000000
 )
-# Maximum sleep time between sending batches of events to the external service
-MAX_BUFFER_SEND_INTERVAL_SECONDS = ray_constants.env_float(
-    f"{env_var_prefix}_MAX_BUFFER_SEND_INTERVAL_SECONDS", 0.1
-)
-# Maximum number of events to send in a single batch to the external service
+# Maximum number of events to send in a single batch to the destination
 MAX_EVENT_SEND_BATCH_SIZE = ray_constants.env_integer(
     f"{env_var_prefix}_MAX_EVENT_SEND_BATCH_SIZE", 10000
-)
-# Maximum number of retries for sending events to the external service for a single request
-REQUEST_BACKOFF_MAX = ray_constants.env_integer(
-    f"{env_var_prefix}_REQUEST_BACKOFF_MAX", 5
-)
-# Backoff factor for the request retries
-REQUEST_BACKOFF_FACTOR = ray_constants.env_float(
-    f"{env_var_prefix}_REQUEST_BACKOFF_FACTOR", 1.0
 )
 # Address of the external service to send events with format of "http://<ip>:<port>"
 EVENTS_EXPORT_ADDR = os.environ.get(f"{env_var_prefix}_EVENTS_EXPORT_ADDR", "")
@@ -84,43 +68,65 @@ DEFAULT_EXPOSABLE_EVENT_TYPES = (
 EXPOSABLE_EVENT_TYPES = os.environ.get(
     f"{env_var_prefix}_EXPOSABLE_EVENT_TYPES", DEFAULT_EXPOSABLE_EVENT_TYPES
 )
+# flag to enable publishing events to the external HTTP service
+PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SVC = ray_constants.env_bool(
+    f"{env_var_prefix}_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SVC", True
+)
 
 # Metrics
 if prometheus_client:
     metrics_prefix = "event_aggregator_agent"
     events_received = Counter(
-        f"{metrics_prefix}_events_received",
-        "Total number of events received from the upstream components from the "
-        "AddEvents gRPC call.",
+        f"{metrics_prefix}_events_received_total",
+        "Total number of events received via AddEvents gRPC.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
     events_failed_to_add_to_aggregator = Counter(
-        f"{metrics_prefix}_events_failed_to_add_to_aggregator",
-        "Total number of events failed to add to the event aggregator. The metric "
-        "counts the events received by the aggregator agent from the AddEvents gRPC "
-        "call but failed to add to the buffer due to unexpected errors.",
+        f"{metrics_prefix}_events_buffer_add_failures_total",
+        "Total number of events that failed to be added to the event buffer.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
-    events_dropped_at_event_aggregator = Counter(
-        f"{metrics_prefix}_events_dropped_at_event_aggregator",
-        "Total number of events dropped at the event aggregator due to the buffer "
-        "being full.",
+    events_published_to_http_svc = Counter(
+        f"{metrics_prefix}_http_events_published_total",
+        "Total number of events successfully published to the HTTP service.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
-    events_published = Counter(
-        f"{metrics_prefix}_events_published",
-        "Total number of events successfully published to the external server.",
+    events_filtered_out_before_http_svc_publish = Counter(
+        f"{metrics_prefix}_http_events_filtered_total",
+        "Total number of events filtered out before publishing to the HTTP service.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
-    events_filtered_out = Counter(
-        f"{metrics_prefix}_events_filtered_out",
-        "Total number of events filtered out before publishing to external server. The "
-        "metric counts the events that are received by the aggregator agent but are "
-        "not part of the public API yet.",
+    events_failed_to_publish_to_http_svc = Counter(
+        f"{metrics_prefix}_http_publish_failures_total",
+        "Total number of events that failed to publish to the HTTP service after retries.",
+        tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
+        namespace="ray",
+    )
+    events_dropped_in_http_svc_publish_queue = Counter(
+        f"{metrics_prefix}_http_publish_queue_dropped_events_total",
+        "Total number of events dropped because the HTTP publish queue was full.",
+        tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS) + ("event_type",),
+        namespace="ray",
+    )
+    http_publish_latency_seconds = Histogram(
+        f"{metrics_prefix}_http_publish_duration_seconds",
+        "Duration of HTTP publish calls in seconds.",
+        tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS) + ("Outcome",),
+        namespace="ray",
+    )
+    http_failed_attempts_since_last_success = Gauge(
+        f"{metrics_prefix}_http_publish_consecutive_failures",
+        "Number of consecutive failed publish attempts since the last success.",
+        tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
+        namespace="ray",
+    )
+    http_time_since_last_success_seconds = Gauge(
+        f"{metrics_prefix}_http_time_since_last_success_seconds",
+        "Seconds since the last successful publish to the HTTP service.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
@@ -140,47 +146,21 @@ class AggregatorAgent(
         super().__init__(dashboard_agent)
         self._ip = dashboard_agent.ip
         self._pid = os.getpid()
-        self._event_buffer = queue.Queue(maxsize=MAX_EVENT_BUFFER_SIZE)
-        self._grpc_executor = ThreadPoolExecutor(
-            max_workers=GRPC_TPE_MAX_WORKERS,
-            thread_name_prefix="event_aggregator_agent_grpc_executor",
+        self._event_buffer = MultiConsumerEventBuffer(
+            max_size=MAX_EVENT_BUFFER_SIZE, max_batch_size=MAX_EVENT_SEND_BATCH_SIZE
+        )
+        self._executor = ThreadPoolExecutor(
+            max_workers=THREAD_POOL_EXECUTOR_MAX_WORKERS,
+            thread_name_prefix="event_aggregator_agent_executor",
         )
 
-        self._http_session = Session()
-        retries = Retry(
-            total=REQUEST_BACKOFF_MAX,
-            backoff_factor=REQUEST_BACKOFF_FACTOR,
-            status_forcelist=[500, 502, 503, 504],
-            allowed_methods={"POST"},
-            respect_retry_after_header=True,
-        )
-        self._http_session.mount("http://", HTTPAdapter(max_retries=retries))
-        self._http_session.mount("https://", HTTPAdapter(max_retries=retries))
-
-        self._lock = threading.Lock()
-        self._stop_event = threading.Event()
-        self._publisher_threads = []
+        self._lock = asyncio.Lock()
         self._events_received_since_last_metrics_update = 0
         self._events_failed_to_add_to_aggregator_since_last_metrics_update = 0
         self._events_dropped_at_event_aggregator_since_last_metrics_update = 0
-        self._events_published_since_last_metrics_update = 0
-        self._events_filtered_out_since_last_metrics_update = 0
         self._events_export_addr = (
             dashboard_agent.events_export_addr or EVENTS_EXPORT_ADDR
         )
-
-        self._event_http_target_enabled = bool(self._events_export_addr)
-        if not self._event_http_target_enabled:
-            logger.info(
-                "Event HTTP target not set, skipping sending events to "
-                f"external http service. events_export_addr: {self._events_export_addr}"
-            )
-
-        self._event_processing_enabled = self._event_http_target_enabled
-        if self._event_processing_enabled:
-            logger.info("Event processing enabled")
-        else:
-            logger.info("Event processing disabled")
 
         self._exposable_event_types = {
             event_type.strip()
@@ -188,26 +168,31 @@ class AggregatorAgent(
             if event_type.strip()
         }
 
-        self._orig_sigterm_handler = signal.signal(
-            signal.SIGTERM, self._sigterm_handler
-        )
-
-        self._is_cleanup = False
-        self._cleanup_finished_event = threading.Event()
+        self._event_processing_enabled = False
+        if PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SVC and self._events_export_addr:
+            logger.info(
+                f"Publishing events to external HTTP service is enabled. events_export_addr: {self._events_export_addr}"
+            )
+            self._event_processing_enabled = True
+            self._HttpEndpointPublisher = RayEventsPublisher(
+                name="http-endpoint-publisher",
+                publish_client=AsyncHttpPublisherClient(
+                    endpoint=self._events_export_addr,
+                    executor=self._executor,
+                    events_filter_fn=self._can_expose_event,
+                ),
+                event_buffer=self._event_buffer,
+            )
+        else:
+            logger.info(
+                f"Event HTTP target is not enabled or publishing events to external HTTP service is disabled. Skipping sending events to external HTTP service. events_export_addr: {self._events_export_addr}"
+            )
+            self._HttpEndpointPublisher = NoopPublisher()
 
     async def AddEvents(self, request, context) -> None:
         """
-        gRPC handler for adding events to the event aggregator
-        """
-        loop = get_or_create_event_loop()
-
-        return await loop.run_in_executor(
-            self._grpc_executor, self._receive_events, request
-        )
-
-    def _receive_events(self, request):
-        """
-        Receives events from the request, adds them to the event buffer,
+        gRPC handler for adding events to the event aggregator. Receives events from the
+        request and adds them to the event buffer.
         """
         if not self._event_processing_enabled:
             return events_event_aggregator_service_pb2.AddEventsReply()
@@ -217,25 +202,17 @@ class AggregatorAgent(
         # downstream
         events_data = request.events_data
         for event in events_data.events:
-            with self._lock:
+            async with self._lock:
                 self._events_received_since_last_metrics_update += 1
             try:
-                self._event_buffer.put_nowait(event)
-            except queue.Full:
-                # Remove the oldest event to make room for the new event.
-                self._event_buffer.get_nowait()
-                self._event_buffer.put_nowait(event)
-                with self._lock:
-                    self._events_dropped_at_event_aggregator_since_last_metrics_update += (
-                        1
-                    )
+                await self._event_buffer.add_event(event)
             except Exception as e:
                 logger.error(
                     f"Failed to add event with id={event.event_id.decode()} to buffer. "
                     "Error: %s",
                     e,
                 )
-                with self._lock:
+                async with self._lock:
                     self._events_failed_to_add_to_aggregator_since_last_metrics_update += (
                         1
                     )
@@ -251,167 +228,98 @@ class AggregatorAgent(
             in self._exposable_event_types
         )
 
-    def _send_events_to_external_service(self, event_batch) -> None:
-        """
-        Sends a batch of events to the external service via HTTP POST request
-        """
-        if not event_batch or not self._event_http_target_enabled:
-            return
-
-        filtered_event_batch = [
-            event for event in event_batch if self._can_expose_event(event)
-        ]
-        if not filtered_event_batch:
-            # All events were filtered out, update metrics and return to avoid an empty POST.
-            with self._lock:
-                self._events_filtered_out_since_last_metrics_update += len(event_batch)
-            event_batch.clear()
-            return
-
-        # Convert protobuf objects to JSON dictionaries for HTTP POST
-        filtered_event_batch_json = [
-            json.loads(
-                message_to_json(event, always_print_fields_with_no_presence=True)
-            )
-            for event in filtered_event_batch
-        ]
-
-        try:
-            response = self._http_session.post(
-                f"{self._events_export_addr}", json=filtered_event_batch_json
-            )
-            response.raise_for_status()
-            with self._lock:
-                self._events_published_since_last_metrics_update += len(
-                    filtered_event_batch
-                )
-                self._events_filtered_out_since_last_metrics_update += len(
-                    event_batch
-                ) - len(filtered_event_batch)
-            event_batch.clear()
-        except Exception as e:
-            logger.error("Failed to send events to external service. Error: %s", e)
-
-    def _publish_events(self) -> None:
-        """
-        Continuously publishes events from the event buffer to the external service
-        """
-        event_batch = []
-
-        while True:
-            while len(event_batch) < MAX_EVENT_SEND_BATCH_SIZE:
-                try:
-                    event_proto = self._event_buffer.get(block=False)
-                    event_batch.append(event_proto)
-                except queue.Empty:
-                    break
-
-            if event_batch:
-                # Send the batch of events to the external service.
-                # If failed, event_batch will be reused in the next iteration.
-                # Retry sending with other events in the next iteration.
-                self._send_events_to_external_service(event_batch)
-            else:
-                should_stop = self._stop_event.wait(MAX_BUFFER_SEND_INTERVAL_SECONDS)
-                if should_stop:
-                    # Send any remaining events before stopping.
-                    self._send_events_to_external_service(event_batch)
-                    return
-
-    def _update_metrics(self) -> None:
+    @dashboard_utils.async_loop_forever(METRICS_UPDATE_INTERVAL_SECONDS)
+    async def _update_metrics(self) -> None:
         """
         Updates the Prometheus metrics
         """
         if not prometheus_client:
             return
 
-        with self._lock:
-            _events_received = self._events_received_since_last_metrics_update
-            _events_failed_to_add_to_aggregator = (
-                self._events_failed_to_add_to_aggregator_since_last_metrics_update
-            )
-            _events_dropped_at_event_aggregator = (
-                self._events_dropped_at_event_aggregator_since_last_metrics_update
-            )
-            _events_published = self._events_published_since_last_metrics_update
-            _events_filtered_out = self._events_filtered_out_since_last_metrics_update
-
-            self._events_received_since_last_metrics_update = 0
-            self._events_failed_to_add_to_aggregator_since_last_metrics_update = 0
-            self._events_dropped_at_event_aggregator_since_last_metrics_update = 0
-            self._events_published_since_last_metrics_update = 0
-            self._events_filtered_out_since_last_metrics_update = 0
-
-        labels = {
+        common_labels = {
             "ip": self._ip,
             "pid": self._pid,
             "Version": ray.__version__,
             "Component": "event_aggregator_agent",
             "SessionName": self.session_name,
         }
-        events_received.labels(**labels).inc(_events_received)
-        events_failed_to_add_to_aggregator.labels(**labels).inc(
+
+        http_endpoint_publisher_metrics = await (
+            self._HttpEndpointPublisher.get_and_reset_metrics()
+        )
+
+        async with self._lock:
+            # Aggregator agent metrics
+            _events_received = self._events_received_since_last_metrics_update
+            _events_failed_to_add_to_aggregator = (
+                self._events_failed_to_add_to_aggregator_since_last_metrics_update
+            )
+
+            self._events_received_since_last_metrics_update = 0
+            self._events_failed_to_add_to_aggregator_since_last_metrics_update = 0
+
+            # HTTP service publisher metrics
+            _events_published_to_http_svc = http_endpoint_publisher_metrics.get(
+                "published", 0
+            )
+            _events_filtered_out_before_http_svc_publish = (
+                http_endpoint_publisher_metrics.get("filtered_out", 0)
+            )
+            _events_failed_to_publish_to_http_svc = http_endpoint_publisher_metrics.get(
+                "failed", 0
+            )
+            _events_dropped_in_http_publish_queue_by_type = (
+                http_endpoint_publisher_metrics.get("dropped_events", {})
+            )
+            _http_publish_latency_success_samples = http_endpoint_publisher_metrics.get(
+                "success_latency_seconds", []
+            )
+            _http_publish_latency_failure_samples = http_endpoint_publisher_metrics.get(
+                "failure_latency_seconds", []
+            )
+            _failed_attempts_since_last_success = http_endpoint_publisher_metrics.get(
+                "failed_attempts_since_last_success", 0
+            )
+            _time_since_last_success_seconds = http_endpoint_publisher_metrics.get(
+                "time_since_last_success_seconds", None
+            )
+
+        events_received.labels(**common_labels).inc(_events_received)
+        events_failed_to_add_to_aggregator.labels(**common_labels).inc(
             _events_failed_to_add_to_aggregator
         )
-        events_dropped_at_event_aggregator.labels(**labels).inc(
-            _events_dropped_at_event_aggregator
+        events_published_to_http_svc.labels(**common_labels).inc(
+            _events_published_to_http_svc
         )
-        events_published.labels(**labels).inc(_events_published)
-        events_filtered_out.labels(**labels).inc(_events_filtered_out)
+        events_filtered_out_before_http_svc_publish.labels(**common_labels).inc(
+            _events_filtered_out_before_http_svc_publish
+        )
+        events_failed_to_publish_to_http_svc.labels(**common_labels).inc(
+            _events_failed_to_publish_to_http_svc
+        )
+        for (
+            _event_type,
+            _dropped_count,
+        ) in _events_dropped_in_http_publish_queue_by_type.items():
+            events_dropped_in_http_svc_publish_queue.labels(
+                **common_labels, event_type=str(_event_type)
+            ).inc(_dropped_count)
 
-    def _check_main_thread_liveness(self) -> None:
-        """
-        Continuously checks if the main thread is alive. If the main thread is not alive,
-        it sets the stop event to trigger cleanup and shutdown of the agent.
-        """
-        while True:
-            if not threading.main_thread().is_alive():
-                self._stop_event.set()
-            if self._stop_event.is_set():
-                self._cleanup()
-                break
-            time.sleep(CHECK_MAIN_THREAD_LIVENESS_INTERVAL_SECONDS)
-
-    def _cleanup(self) -> None:
-        """
-        Cleans up the aggregator agent by stopping the publisher threads,
-        sending any remaining events in the buffer, and updating metrics.
-        """
-
-        should_wait_cleanup_finished = False
-        with self._lock:
-            if self._is_cleanup:
-                should_wait_cleanup_finished = True
-            self._is_cleanup = True
-
-        if should_wait_cleanup_finished:
-            # If cleanup is already in progress, wait for it to finish.
-            self._cleanup_finished_event.wait()
-            return
-
-        # Send any remaining events in the buffer
-        event_batch = []
-        while True:
-            try:
-                event_proto = self._event_buffer.get(block=False)
-                event_batch.append(event_proto)
-            except:  # noqa: E722
-                break
-
-        self._send_events_to_external_service(event_batch)
-
-        for thread in self._publisher_threads:
-            thread.join()
-
-        # Update metrics immediately
-        self._update_metrics()
-
-        self._cleanup_finished_event.set()
-
-    def _sigterm_handler(self, signum: int, frame) -> None:
-        self._stop_event.set()
-        self._cleanup()
-        self._orig_sigterm_handler(signum, frame)
+        for _sample in _http_publish_latency_success_samples:
+            http_publish_latency_seconds.labels(
+                **common_labels, Outcome="success"
+            ).observe(float(_sample))
+        for _sample in _http_publish_latency_failure_samples:
+            http_publish_latency_seconds.labels(
+                **common_labels, Outcome="failure"
+            ).observe(float(_sample))
+        http_failed_attempts_since_last_success.labels(**common_labels).set(
+            int(_failed_attempts_since_last_success)
+        )
+        if _time_since_last_success_seconds is not None:
+            http_time_since_last_success_seconds.labels(**common_labels).set(
+                float(_time_since_last_success_seconds)
+            )
 
     async def run(self, server) -> None:
         if server:
@@ -419,25 +327,10 @@ class AggregatorAgent(
                 self, server
             )
 
-        thread = threading.Thread(
-            target=self._check_main_thread_liveness,
-            name="event_aggregator_agent_check_main_thread_liveness",
-            daemon=False,
+        await asyncio.gather(
+            self._HttpEndpointPublisher.run_forever(),
+            self._update_metrics(),
         )
-        thread.start()
-
-        for _ in range(PUBLISH_EVENT_WORKERS):
-            thread = threading.Thread(
-                target=self._publish_events,
-                name="event_aggregator_agent_publish_events",
-                daemon=False,
-            )
-            self._publisher_threads.append(thread)
-            thread.start()
-
-        while True:
-            self._update_metrics()
-            await asyncio.sleep(METRICS_UPDATE_INTERVAL_SECONDS)
 
     @staticmethod
     def is_minimal_module() -> bool:
