@@ -63,6 +63,43 @@ class TestCustomServeMetrics:
         # The final counter value recorded by the controller should be 3
         assert metrics["counter"][-1][0].value == 3
 
+    def test_custom_serve_timeout(self, serve_instance):
+        @serve.deployment(
+            autoscaling_config={
+                "min_replicas": 1,
+                "max_replicas": 5,
+                "target_num_ongoing_requests_per_replica": 2,
+                "upscale_delay_s": 2,
+                "downscale_delay_s": 10,
+            }
+        )
+        class DummyMetricTimeout:
+            def __init__(self):
+                self.counter = 0
+
+            async def __call__(self) -> str:
+                self.counter += 1
+                return "Hello, world"
+
+            async def record_autoscaling_stats(self) -> Dict[str, Any]:
+                # Sleep beyond RAY_SERVE_AUTOSCALING_STATS_TIMEOUT_S
+                time.sleep(12)
+                return {"counter": self.counter}
+
+        app_name = "test_custom_metrics_app"
+        handle = serve.run(DummyMetricTimeout.bind(), name=app_name, route_prefix="/")
+        dep_id = DeploymentID(name="DummyMetricTimeout", app_name=app_name)
+
+        # Call deployment 3 times
+        [handle.remote() for _ in range(3)]
+
+        # Wait for controller to receive new metrics
+        time.sleep(10)
+        metrics = get_autoscaling_metrics_from_controller(serve_instance, dep_id)
+
+        # The should have no counter metric because asyncio timeout would have stopped the method execution
+        assert metrics["counter"] == []
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
