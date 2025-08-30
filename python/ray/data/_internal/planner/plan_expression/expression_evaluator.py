@@ -167,7 +167,11 @@ class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
         comparators=[UnaryOp(op=USub(), operand=Constant(value=1))])
 
         Args:
-            node: The constant value."""
+            node: The constant value.
+
+        Returns:
+            ds.Expression: A PyArrow dataset expression representing the unary operation.
+        """
 
         op = node.op
         if isinstance(op, ast.USub):

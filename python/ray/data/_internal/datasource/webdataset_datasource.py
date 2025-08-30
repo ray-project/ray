@@ -39,6 +39,9 @@ def _valid_sample(sample: Dict[str, Any]):
 
     Args:
         sample: sample to be checked
+
+    Returns:
+        bool: True if the sample is valid, False otherwise.
     """
     return (
         sample is not None
@@ -83,6 +86,9 @@ def _check_suffix(suffix: str, suffixes: Union[list, callable]):
     Args:
         suffix: suffix to be checked
         suffixes: list of valid suffixes
+
+    Returns:
+        bool: True if the suffix is valid according to the suffixes rules, False otherwise.
     """
     if suffixes is None:
         return True
@@ -182,6 +188,9 @@ def _default_decoder(sample: Dict[str, Any], format: Optional[Union[bool, str]] 
 
     Args:
         sample: sample, modified in place
+
+    Returns:
+        Dict[str, Any]: The decoded sample dictionary with appropriate data types for each file extension.
     """
     sample = dict(sample)
     for key, value in sample.items():
@@ -234,6 +243,9 @@ def _default_encoder(sample: Dict[str, Any], format: Optional[Union[str, bool]] 
 
     Args:
         sample (Dict[str, Any]): sample
+
+    Returns:
+        Dict[str, Any]: The encoded sample dictionary with values converted to bytes format.
     """
     sample = dict(sample)
     for key, value in sample.items():

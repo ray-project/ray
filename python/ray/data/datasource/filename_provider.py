@@ -65,6 +65,9 @@ class FilenameProvider:
             write_uuid: The UUID of the write operation.
             task_index: The index of the write task.
             block_index: The index of the block *within* the write task.
+
+        Returns:
+            str: A unique filename for the specified block.
         """
         raise NotImplementedError
 
@@ -97,6 +100,9 @@ class FilenameProvider:
             task_index: The index of the write task.
             block_index: The index of the block *within* the write task.
             row_index: The index of the row *within* the block.
+
+        Returns:
+            str: A unique filename for the specified row.
         """
         raise NotImplementedError
 
