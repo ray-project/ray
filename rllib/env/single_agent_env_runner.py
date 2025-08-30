@@ -266,14 +266,18 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
 
         done_episodes_to_return: List[SingleAgentEpisode] = []
 
-        # Have to reset the env (on all vector sub_envs).
-        if force_reset or num_episodes is not None or self._needs_initial_reset:
+        def _reset_envs():
             episodes = self._episodes = [None for _ in range(self.num_envs)]
             shared_data = self._shared_data = {}
             self._reset_envs(episodes, shared_data, explore)
             # We just reset the env. Don't have to force this again in the next
             # call to `self._sample_timesteps()`.
             self._needs_initial_reset = False
+            return episodes, shared_data
+
+        # Have to reset the env (on all vector sub_envs).
+        if force_reset or num_episodes is not None or self._needs_initial_reset:
+            episodes, shared_data = _reset_envs()
         else:
             episodes = self._episodes
             shared_data = self._shared_data
@@ -335,14 +339,11 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             actions_for_env = to_env.pop(Columns.ACTIONS_FOR_ENV, actions)
             # Try stepping the environment.
             results = self._try_env_step(actions_for_env)
+            # If the env step fails, reset the envs and continue the loop.
             if results == ENV_STEP_FAILURE:
-                return self._sample(
-                    num_timesteps=num_timesteps,
-                    num_episodes=num_episodes,
-                    explore=explore,
-                    random_actions=random_actions,
-                    force_reset=True,
-                )
+                episodes, shared_data = _reset_envs()
+                continue
+
             observations, rewards, terminateds, truncateds, infos = results
             observations, actions = unbatch(observations), unbatch(actions)
 
