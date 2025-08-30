@@ -112,6 +112,16 @@ py_test(
 )
 
 py_test(
+    name = "test_datatype",
+    size = "small",
+    srcs = ["tests/test_datatype.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+)
+
+py_test(
     name = "test_sql",
     size = "small",
     srcs = ["tests/test_sql.py"],

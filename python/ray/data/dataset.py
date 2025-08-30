@@ -806,10 +806,11 @@ class Dataset:
             {'id': 1, 'id_2': 2}
 
             >>> # Using a UDF with with_column
+            >>> from ray.data.datatype import DataType
             >>> from ray.data.expressions import udf
             >>> import pyarrow.compute as pc
             >>>
-            >>> @udf()
+            >>> @udf(return_dtype=DataType.int32())
             ... def add_one(column):
             ...     return pc.add(column, 1)
             >>>
