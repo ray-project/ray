@@ -13,3 +13,4 @@ worker_node_types:
       min_workers: 3
       max_workers: 3
       use_spot: false
+autoscaler_version: v2
