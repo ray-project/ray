@@ -28,8 +28,8 @@
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/gcs_server/gcs_actor.h"
-#include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/gcs_server/manager_interfaces.h"
 #include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
@@ -130,7 +130,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   explicit GcsActorScheduler(
       instrumented_io_context &io_context,
       GcsActorTable &gcs_actor_table,
-      const GcsNodeManager &gcs_node_manager,
+      const NodeManagerInterface &gcs_node_manager,
       ClusterLeaseManager &cluster_lease_manager_,
       GcsActorSchedulerFailureCallback schedule_failure_handler,
       GcsActorSchedulerSuccessCallback schedule_success_handler,
@@ -377,8 +377,8 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   absl::flat_hash_map<NodeID,
                       absl::flat_hash_map<WorkerID, std::shared_ptr<GcsLeasedWorker>>>
       node_to_workers_when_creating_;
-  /// Reference of GcsNodeManager.
-  const GcsNodeManager &gcs_node_manager_;
+  /// Reference of NodeManagerInterface.
+  const NodeManagerInterface &gcs_node_manager_;
   /// The cluster lease manager.
   ClusterLeaseManager &cluster_lease_manager_;
   /// The handler to handle the scheduling failures.

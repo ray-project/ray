@@ -29,7 +29,7 @@ namespace gcs {
 GcsActorScheduler::GcsActorScheduler(
     instrumented_io_context &io_context,
     GcsActorTable &gcs_actor_table,
-    const GcsNodeManager &gcs_node_manager,
+    const NodeManagerInterface &gcs_node_manager,
     ClusterLeaseManager &cluster_lease_manager,
     GcsActorSchedulerFailureCallback schedule_failure_handler,
     GcsActorSchedulerSuccessCallback schedule_success_handler,
