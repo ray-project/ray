@@ -161,3 +161,28 @@ result_grid = tuner.fit()
 
 assert not result_grid.errors
 assert len(result_grid[0].best_checkpoints) == NUM_EPOCHS // CHECKPOINT_FREQ
+
+# __callback_api_checkpointing_start__
+from ray import tune
+from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME
+from ray.tune.experiment import Trial
+
+
+class CheckpointByStepsTaken(tune.Callback):
+    def __init__(self, steps_per_checkpoint: int):
+        self.steps_per_checkpoint = steps_per_checkpoint
+        self._trials_last_checkpoint = {}
+
+    def on_trial_result(
+        self, iteration: int, trials: list[Trial], trial: Trial, result: dict, **info
+    ):
+        current_step = result[ENV_RUNNER_RESULTS][NUM_ENV_STEPS_SAMPLED_LIFETIME]
+        if (
+            current_step - self._trials_last_checkpoint.get(trial, -1)
+            >= self.steps_per_checkpoint
+        ):
+            trial.checkpoint_now()
+            self._trials_last_checkpoint[trial] = current_step
+
+
+# __callback_api_checkpointing_end__
