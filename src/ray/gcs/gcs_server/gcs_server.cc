@@ -36,6 +36,7 @@
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/gcs/store_client/store_client.h"
 #include "ray/pubsub/publisher.h"
+#include "ray/raylet_client/raylet_client.h"
 #include "ray/stats/stats.h"
 #include "ray/util/network_util.h"
 
