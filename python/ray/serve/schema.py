@@ -986,17 +986,10 @@ class MetricsHealth(str, Enum):
 
 
 @PublicAPI(stability="alpha")
-class ScalingSource(str, Enum):
-    DEFAULT = "default"
-    CUSTOM = "custom"
-    EXTERNAL = "external"
-
-
-@PublicAPI(stability="alpha")
 class ScalingStatus(str, Enum):
-    SCALING_UP = "scaling_up"
-    SCALING_DOWN = "scaling_down"
-    STABLE = "stable"
+    UPSCALING = "UPSCALING"
+    DOWNSCALING = "DOWNSCALING"
+    STABLE = "STABLE"
 
 
 @PublicAPI(stability="alpha")
@@ -1005,9 +998,6 @@ class ScalingDecision(BaseModel):
 
     timestamp_s: float = Field(
         ..., description="Unix time (seconds) when the decision was made."
-    )
-    source: ScalingSource = Field(
-        ..., description="Who made this decision: default/custom/external."
     )
     reason: str = Field(
         ..., description="Short, human-readable reason for the decision."
@@ -1162,28 +1152,6 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
     application_details_route_prefix_format = validator(
         "route_prefix", allow_reuse=True
     )(_route_prefix_format)
-
-
-@PublicAPI(stability="alpha")
-class ServeAutoscalerObservability(BaseModel):
-    """Top-level envelope returned by controller for `serve status -v`."""
-
-    class Config:
-        extra = Extra.forbid
-
-    timestamp_s: float = Field(
-        ..., description="Unix time (seconds) when this snapshot was generated."
-    )
-    version: str = Field("v1", description="Schema version.")
-
-    deployments: List[DeploymentDetails] = Field(
-        default_factory=list,
-        description="Deployment details including autoscaler fields.",
-    )
-    applications: List[ApplicationDetails] = Field(
-        default_factory=list,
-        description="Application details including autoscaler fields.",
-    )
 
 
 @PublicAPI(stability="stable")
