@@ -37,6 +37,7 @@ def disable_state_actor_polling(monkeypatch):
     yield
 
 
+@pytest.fixture
 def mock_runtime_context(monkeypatch):
     @ray.remote
     class DummyActor:
