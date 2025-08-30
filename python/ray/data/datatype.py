@@ -7,9 +7,10 @@ import pyarrow as pa
 from ray.air.util.tensor_extensions.arrow import (
     _infer_pyarrow_type,
 )
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
+@DeveloperAPI
 class PyArrowCompat:
     """
     Centralized PyArrow compatibility class that reuses existing utilities.
