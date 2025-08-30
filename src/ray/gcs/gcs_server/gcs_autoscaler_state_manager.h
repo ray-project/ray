@@ -26,9 +26,9 @@
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
-#include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/gcs/gcs_server/grpc_service_interfaces.h"
+#include "ray/gcs/gcs_server/manager_interfaces.h"
 #include "ray/gcs/gcs_server/state_util.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/node_manager/raylet_client_pool.h"
@@ -41,7 +41,7 @@ namespace gcs {
 class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateServiceHandler {
  public:
   GcsAutoscalerStateManager(std::string session_name,
-                            GcsNodeManager &gcs_node_manager,
+                            NodeManagerInterface &gcs_node_manager,
                             GcsActorManager &gcs_actor_manager,
                             const GcsPlacementGroupManager &gcs_placement_group_manager,
                             rpc::RayletClientPool &raylet_client_pool,
@@ -178,7 +178,7 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateService
   const std::string session_name_;
 
   /// Gcs node manager that provides node status information.
-  GcsNodeManager &gcs_node_manager_;
+  NodeManagerInterface &gcs_node_manager_;
 
   /// Gcs actor manager that provides actor information.
   GcsActorManager &gcs_actor_manager_;

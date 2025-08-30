@@ -24,9 +24,9 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
-#include "ray/gcs/gcs_server/manager_interfaces.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/grpc_service_interfaces.h"
+#include "ray/gcs/gcs_server/manager_interfaces.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/node_manager/raylet_client_pool.h"
 #include "ray/stats/metric_defs.h"
@@ -44,7 +44,8 @@ class GcsStateTest;
 /// GcsNodeManager is responsible for managing and monitoring nodes as well as handing
 /// node and resource related rpc requests.
 /// This class is not thread-safe.
-class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler, NodeManagerInterface {
+class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler,
+                       public NodeManagerInterface {
  public:
   /// Create a GcsNodeManager.
   ///
@@ -105,8 +106,9 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler, NodeManagerInterfa
   /// \param node_id The ID of the draining node. This node must already
   /// be in the alive nodes.
   /// \param request The drain node request.
-  void SetNodeDraining(const NodeID &node_id,
-                       std::shared_ptr<rpc::autoscaler::DrainNodeRequest> request);
+  void SetNodeDraining(
+      const NodeID &node_id,
+      std::shared_ptr<rpc::autoscaler::DrainNodeRequest> request) override;
 
   /// Remove a node from alive nodes. The node's death information will also be set.
   ///
@@ -122,19 +124,19 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler, NodeManagerInterfa
   /// \param node_id The id of the node.
   /// \return the node if it is alive. Optional empty value if it is not alive.
   std::optional<std::shared_ptr<rpc::GcsNodeInfo>> GetAliveNode(
-      const NodeID &node_id) const;
+      const NodeID &node_id) const override;
 
   /// Get all alive nodes.
   ///
   /// \return all alive nodes.
   const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &GetAllAliveNodes()
-      const {
+      const override {
     return alive_nodes_;
   }
 
   /// Get all dead nodes.
   const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &GetAllDeadNodes()
-      const {
+      const override {
     return dead_nodes_;
   }
 

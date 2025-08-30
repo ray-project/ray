@@ -28,7 +28,7 @@ namespace gcs {
 
 GcsAutoscalerStateManager::GcsAutoscalerStateManager(
     std::string session_name,
-    GcsNodeManager &gcs_node_manager,
+    NodeManagerInterface &gcs_node_manager,
     GcsActorManager &gcs_actor_manager,
     const GcsPlacementGroupManager &gcs_placement_group_manager,
     rpc::RayletClientPool &raylet_client_pool,

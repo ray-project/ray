@@ -25,9 +25,9 @@
 #include "ray/common/bundle_location_index.h"
 #include "ray/common/id.h"
 #include "ray/common/scheduling/scheduling_ids.h"
-#include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/gcs_server/manager_interfaces.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/policy/scheduling_context.h"
 #include "ray/raylet_client/raylet_client.h"
@@ -293,7 +293,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param raylet_client_pool Pool to get remote raylet client connections.
   GcsPlacementGroupScheduler(instrumented_io_context &io_context,
                              gcs::GcsTableStorage &gcs_table_storage,
-                             const GcsNodeManager &gcs_node_manager,
+                             const NodeManagerInterface &gcs_node_manager,
                              ClusterResourceScheduler &cluster_resource_scheduler,
                              rpc::RayletClientPool &raylet_client_pool);
 
@@ -487,8 +487,8 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// Used to update placement group information upon creation, deletion, etc.
   gcs::GcsTableStorage &gcs_table_storage_;
 
-  /// Reference of GcsNodeManager.
-  const GcsNodeManager &gcs_node_manager_;
+  /// Reference of NodeManagerInterface.
+  const NodeManagerInterface &gcs_node_manager_;
 
   /// Reference of ClusterResourceScheduler.
   ClusterResourceScheduler &cluster_resource_scheduler_;

@@ -28,7 +28,7 @@ namespace gcs {
 GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
     instrumented_io_context &io_context,
     gcs::GcsTableStorage &gcs_table_storage,
-    const gcs::GcsNodeManager &gcs_node_manager,
+    const gcs::NodeManagerInterface &gcs_node_manager,
     ClusterResourceScheduler &cluster_resource_scheduler,
     rpc::RayletClientPool &raylet_client_pool)
     : io_context_(io_context),
