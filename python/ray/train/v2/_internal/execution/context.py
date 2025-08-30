@@ -7,6 +7,7 @@ from queue import Queue
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import ray
+from ray.actor import ActorHandle
 from ray.data import DataIterator, Dataset
 from ray.train import BackendConfig, Checkpoint, DataConfig
 from ray.train._internal import session
@@ -15,6 +16,7 @@ from ray.train.v2._internal.execution.checkpoint.sync_actor import Synchronizati
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.util import _copy_doc, invoke_context_managers
 from ray.train.v2.api.config import RunConfig, ScalingConfig
+from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
 if TYPE_CHECKING:
     from ray.train.v2._internal.data_integration.interfaces import (
@@ -96,8 +98,11 @@ class TrainContext:
     distributed_context: DistributedContext
     execution_context: ExecutionContext
     storage_context: StorageContext
+    controller_actor: ActorHandle
+
     dataset_shard_provider: "DatasetShardProvider"
     checkpoint: Optional[Checkpoint] = None
+    num_report_calls: int = 0
 
     @_copy_doc(session.get_experiment_name)
     def get_experiment_name(self) -> str:
@@ -136,6 +141,13 @@ class TrainContext:
 
     def get_checkpoint(self):
         return self.checkpoint
+
+    def get_all_reported_checkpoints(self) -> List[ReportedCheckpoint]:
+        return ray.get(
+            self.controller_actor.get_all_reported_checkpoints.remote(
+                self.num_report_calls
+            )
+        )
 
     def get_dataset_shard(self, dataset_info: "DatasetShardMetadata") -> DataIterator:
         """Returns the :class:`ray.data.DataIterator` shard for this worker.
@@ -265,6 +277,7 @@ class TrainContext:
             # TODO (hpguo): Add a metrics to track the blocking time waiting for the
             # training result to be consumed by the controller.
             self.get_result_queue().put(training_result)
+            self.num_report_calls += 1
 
 
 # The global variable holding the current TrainContext

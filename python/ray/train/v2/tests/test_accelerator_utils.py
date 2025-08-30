@@ -98,7 +98,7 @@ def test_missing_accelerator():
         )
 
 
-def test_accelerator_setup_callback(mock_gpu_cluster):
+def test_accelerator_setup_callback(mock_gpu_cluster, mock_runtime_context):
     """The accelerator setup callback should set the CUDA_VISIBLE_DEVICES
     on each worker properly."""
 
