@@ -876,7 +876,6 @@ py_test_module_list(
         "test_actor_failures.py",
         "test_cancel.py",
         "test_chaos.py",
-        "test_core_worker_fault_tolerance.py",
         "test_failure.py",
         "test_failure_2.py",
         "test_generators.py",
@@ -892,6 +891,23 @@ py_test_module_list(
     tags = [
         "exclusive",
         "large_size_python_tests_shard_0",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "small",
+    files = [
+        "test_core_worker_fault_tolerance.py",
+        "test_raylet_fault_tolerance.py",
+    ],
+    tags = [
+        "exclusive",
+        "small_size_python_tests",
         "team:core",
     ],
     deps = [
