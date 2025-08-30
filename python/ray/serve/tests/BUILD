@@ -39,6 +39,7 @@ py_test_module_list(
         "test_constructor_failure.py",
         "test_controller.py",
         "test_custom_metrics.py",
+        "test_custom_metrics_non_default.py",
         "test_deployment_version.py",
         "test_enable_task_events.py",
         "test_expected_versions.py",

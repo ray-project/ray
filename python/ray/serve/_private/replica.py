@@ -274,9 +274,6 @@ class ReplicaMetricsManager:
 
     def should_collect_metrics(self) -> bool:
 
-        logger.info(
-            f"RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE {RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE}, config: {self._autoscaling_config}"
-        )
         return (
             not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
             and self._autoscaling_config
@@ -340,7 +337,6 @@ class ReplicaMetricsManager:
     def _push_autoscaling_metrics(self) -> Dict[str, Any]:
         look_back_period = self._autoscaling_config.look_back_period_s
         window_start = time.time() - look_back_period
-        logger.info(f"self._metrics_store.data {self._metrics_store.data}")
         self._metrics_store.prune_keys_and_compact_data(window_start)
         self._controller_handle.record_autoscaling_metrics.remote(
             replica_id=self._replica_id,
@@ -353,17 +349,12 @@ class ReplicaMetricsManager:
         return {self._replica_id: self._num_ongoing_requests}
 
     def _add_autoscaling_metrics_point(self) -> None:
-        logger.info("[SYNC] Called _add_autoscaling_metrics_point (scheduling async).")
         # Schedule the async method on the event loop
         asyncio.run_coroutine_threadsafe(
             self._add_autoscaling_metrics_point_async(), self._event_loop
         )
 
     async def _add_autoscaling_metrics_point_async(self) -> None:
-        logger.info("[ASYNC] Entered _add_autoscaling_metrics_point_async.")
-        logger.info(
-            f"[ASYNC] autoscaling_stats_method: {self.autoscaling_stats_method}"
-        )
         metrics_dict = self._replica_ongoing_requests()
 
         if self.autoscaling_stats_method:
@@ -780,7 +771,6 @@ class ReplicaBase(ABC):
             # Ensure that initialization is only performed once.
             # When controller restarts, it will call this method again.
             async with self._user_callable_initialized_lock:
-                logger.info("INITIALIZING")
                 self._initialization_start_time = time.time()
                 if not self._user_callable_initialized:
                     self._user_callable_asgi_app = (
@@ -1540,9 +1530,6 @@ class UserCallableWrapper:
         self._user_autoscaling_stats = getattr(
             self._callable, RAY_SERVE_AUTOSCALING_STATS_METHOD, None
         )
-        logger.info(
-            f"+++++++++ INITIALIZING RAY_SERVE_AUTOSCALING_STATS_METHOD {self._user_autoscaling_stats} {self._callable}"
-        )
 
         logger.info(
             "Finished initializing replica.",
@@ -1602,7 +1589,6 @@ class UserCallableWrapper:
     @_run_user_code
     async def _call_user_autoscaling_stats(self) -> Dict[str, Any]:
         result, _ = await self._call_func_or_gen(self._user_autoscaling_stats)
-        logger.info(f"THE RESULT {result}")
         return result
 
     @_run_user_code
