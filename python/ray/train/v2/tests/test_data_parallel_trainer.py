@@ -3,6 +3,7 @@ import os
 import signal
 import tempfile
 from pathlib import Path
+from unittest.mock import create_autospec
 
 import pyarrow.fs
 import pytest
@@ -235,15 +236,30 @@ def test_report_mixed_checkpoint_upload_modes(tmp_path):
         assert metrics["metric"] == f"iteration_{i}_shard_0"
 
 
-def test_report_checkpoint_upload_error():
+def test_report_checkpoint_upload_error(monkeypatch, tmp_path):
     """Check that the trainer shuts down when an error occurs during checkpoint upload."""
 
     def train_fn():
-        rank = ray.train.get_context().get_world_rank()
-        if rank == 0:
+
+        if ray.train.get_context().get_world_rank() == 0:
+
+            # Mock persist_current_checkpoint to raise an error
+            mock_persist_current_checkpoint = create_autospec(
+                ray.train.get_context().get_storage().persist_current_checkpoint
+            )
+            mock_persist_current_checkpoint.side_effect = ValueError("error")
+            monkeypatch.setattr(
+                ray.train.get_context().get_storage(),
+                "persist_current_checkpoint",
+                mock_persist_current_checkpoint,
+            )
+
+            # Report minimal valid checkpoint
+            local_checkpoint_dir = os.path.join(tmp_path, "local_checkpoint_dir")
+            os.makedirs(local_checkpoint_dir, exist_ok=True)
             ray.train.report(
                 {},
-                Checkpoint("invalid_path"),
+                Checkpoint.from_directory(local_checkpoint_dir),
                 checkpoint_upload_mode=CheckpointUploadMode.ASYNC,
             )
         else:
@@ -254,6 +270,7 @@ def test_report_checkpoint_upload_error():
     trainer = DataParallelTrainer(
         train_fn,
         scaling_config=ScalingConfig(num_workers=2),
+        run_config=RunConfig(storage_path=str(tmp_path)),
     )
     with pytest.raises(WorkerGroupError) as exc_info:
         trainer.fit()
