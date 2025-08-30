@@ -108,6 +108,7 @@ void NormalTaskSubmitter::AddWorkerLeaseClient(
       std::move(raylet_client), expiration, assigned_resources, scheduling_key, lease_id};
   worker_to_lease_entry_.emplace(addr, new_lease_entry);
 
+  RAY_CHECK(scheduling_key_entries_.contains(scheduling_key));
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
   RAY_CHECK(scheduling_key_entry.active_workers.emplace(addr).second);
   RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
@@ -120,6 +121,7 @@ void NormalTaskSubmitter::ReturnWorkerLease(const rpc::Address &addr,
                                             const SchedulingKey &scheduling_key) {
   RAY_LOG(DEBUG) << "Returning worker " << WorkerID::FromBinary(addr.worker_id())
                  << " to raylet " << NodeID::FromBinary(addr.node_id());
+  RAY_CHECK(scheduling_key_entries_.contains(scheduling_key));
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
   RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
   auto &lease_entry = worker_to_lease_entry_[addr];
@@ -135,6 +137,7 @@ void NormalTaskSubmitter::ReturnWorkerLease(const rpc::Address &addr,
     scheduling_key_entries_.erase(scheduling_key);
   }
 
+  RAY_CHECK(!WorkerID::FromBinary(addr.worker_id()).IsNil());
   auto status =
       lease_entry.raylet_client->ReturnWorkerLease(addr.port(),
                                                    WorkerID::FromBinary(addr.worker_id()),
@@ -158,7 +161,7 @@ void NormalTaskSubmitter::OnWorkerIdle(
   if (!lease_entry.raylet_client) {
     return;
   }
-
+  RAY_CHECK(scheduling_key_entries_.contains(scheduling_key));
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
   auto &current_queue = scheduling_key_entry.task_queue;
   // Return the worker if there was an error executing the previous task,
@@ -197,10 +200,14 @@ void NormalTaskSubmitter::OnWorkerIdle(
 
     CancelWorkerLeaseIfNeeded(scheduling_key);
   }
+  if (!scheduling_key_entries_.contains(scheduling_key)) {
+    return;
+  }
   RequestNewWorkerIfNeeded(scheduling_key);
 }
 
 void NormalTaskSubmitter::CancelWorkerLeaseIfNeeded(const SchedulingKey &scheduling_key) {
+  RAY_CHECK(scheduling_key_entries_.contains(scheduling_key));
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
   auto &task_queue = scheduling_key_entry.task_queue;
   if (!task_queue.empty()) {
@@ -230,6 +237,9 @@ void NormalTaskSubmitter::CancelWorkerLeaseIfNeeded(const SchedulingKey &schedul
             // request again. In the latter case, the in-flight lease request
             // should already have been removed from our local state, so we no
             // longer need to cancel.
+            if (!scheduling_key_entries_.contains(scheduling_key)) {
+              return;
+            }
             CancelWorkerLeaseIfNeeded(scheduling_key);
           }
         });
@@ -269,6 +279,7 @@ void NormalTaskSubmitter::ReportWorkerBacklogInternal() {
 
 void NormalTaskSubmitter::ReportWorkerBacklogIfNeeded(
     const SchedulingKey &scheduling_key) {
+  RAY_CHECK(scheduling_key_entries_.contains(scheduling_key));
   const auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
 
   if (scheduling_key_entry.last_reported_backlog_size !=
@@ -279,6 +290,7 @@ void NormalTaskSubmitter::ReportWorkerBacklogIfNeeded(
 
 void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduling_key,
                                                    const rpc::Address *raylet_address) {
+  RAY_CHECK(scheduling_key_entries_.contains(scheduling_key));
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
 
   const size_t kMaxPendingLeaseRequestsPerSchedulingCategory =
@@ -348,6 +360,7 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
         {
           absl::MutexLock lock(&mu_);
 
+          RAY_CHECK(scheduling_key_entries_.contains(scheduling_key));
           auto &sched_entry = scheduling_key_entries_[scheduling_key];
           auto raylet_lease_client =
               raylet_client_pool_->GetOrConnectByAddress(raylet_address);
@@ -563,6 +576,7 @@ void NormalTaskSubmitter::PushNormalTask(
 
           // Decrement the total number of tasks in flight to any worker with the current
           // scheduling_key.
+          RAY_CHECK(scheduling_key_entries_.contains(scheduling_key));
           auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
           RAY_CHECK_GE(scheduling_key_entry.active_workers.size(), 1u);
           RAY_CHECK_GE(scheduling_key_entry.num_busy_workers, 1u);
@@ -704,6 +718,7 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
       return Status::OK();
     }
 
+    RAY_CHECK(scheduling_key_entries_.contains(scheduling_key));
     auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
     auto &scheduling_tasks = scheduling_key_entry.task_queue;
     // This cancels tasks that have completed dependencies and are awaiting
