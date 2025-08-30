@@ -7,7 +7,7 @@ from ray.rllib.core.models.configs import (
     MLPHeadConfig,
     FreeLogStdMLPHeadConfig,
 )
-from ray.rllib.core.models.base import Encoder, ActorCriticEncoder, Model
+from ray.rllib.core.models.base import Encoder, ActorCriticEncoder
 from ray.rllib.utils import override
 from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 
@@ -127,7 +127,7 @@ class PPOCatalog(Catalog):
         )
 
     @OverrideToImplementCustomLogic
-    def build_pi_head(self, framework: str) -> Model:
+    def build_pi_head(self, framework: str):
         """Builds the policy head.
 
         The default behavior is to build the head from the pi_head_config.
@@ -176,7 +176,7 @@ class PPOCatalog(Catalog):
         return self.pi_head_config.build(framework=framework)
 
     @OverrideToImplementCustomLogic
-    def build_vf_head(self, framework: str) -> Model:
+    def build_vf_head(self, framework: str):
         """Builds the value function head.
 
         The default behavior is to build the head from the vf_head_config.
