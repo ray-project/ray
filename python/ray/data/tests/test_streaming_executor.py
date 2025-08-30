@@ -401,13 +401,14 @@ def test_select_ops_to_run():
 def test_dispatch_next_task():
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
-    o1_state = OpState(o1, [])
+    options = ExecutionOptions()
+    o1_state = OpState(o1, [], options)
     o2 = MapOperator.create(
         make_map_transformer(lambda block: [b * -1 for b in block]),
         o1,
         DataContext.get_current(),
     )
-    op_state = OpState(o2, [o1_state.output_queue])
+    op_state = OpState(o2, [o1_state.output_queue], options)
 
     # TODO: test multiple inqueues with the union operator.
     ref1 = make_ref_bundle("dummy1")

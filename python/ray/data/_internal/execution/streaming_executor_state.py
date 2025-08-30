@@ -31,6 +31,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.execution.operators.hash_shuffle import (
     HashShuffleProgressBarMixin,
+    HashShufflingOperatorBase,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.resource_manager import (
@@ -190,7 +191,12 @@ class OpState:
     operator queues to be shared across threads.
     """
 
-    def __init__(self, op: PhysicalOperator, inqueues: List[OpBufferQueue]):
+    def __init__(
+        self,
+        op: PhysicalOperator,
+        inqueues: List[OpBufferQueue],
+        options: ExecutionOptions,
+    ):
         # Each input queue is connected to another operator's output queue.
         assert len(inqueues) == len(op.input_dependencies), (op, inqueues)
         self.input_queues: List[OpBufferQueue] = inqueues
@@ -212,6 +218,7 @@ class OpState:
         self._scheduling_status = OpSchedulingStatus()
         self._schema: Optional["Schema"] = None
         self._warned_on_schema_divergence: bool = False
+        self._options = options
 
     def __repr__(self):
         return f"OpState({self.op.name})"
@@ -352,6 +359,8 @@ class OpState:
         for i, inqueue in enumerate(self.input_queues):
             ref = inqueue.pop()
             if ref is not None:
+                if not self.op._started:
+                    self.op.start(self._options)
                 self.op.add_input(ref, input_index=i)
                 return
 
@@ -435,9 +444,14 @@ def build_streaming_topology(
             inqueues.append(parent_state.output_queue)
 
         # Create state.
-        op_state = OpState(op, inqueues)
+        op_state = OpState(op, inqueues, options)
         topology[op] = op_state
-        op.start(options)
+        should_start_now = len(op.input_dependencies) == 0 or not any(
+            isinstance(dep, (AllToAllOperator, HashShufflingOperatorBase))
+            for dep in op.input_dependencies
+        )
+        if should_start_now:
+            op.start(options)
         return op_state
 
     setup_state(dag)
@@ -559,6 +573,8 @@ def process_completed_tasks(
 
     # Pull any operator outputs into the streaming op state.
     for op, op_state in topology.items():
+        if not op._started:
+            continue
         while op.has_next():
             op_state.add_output(op.get_next())
 
@@ -590,13 +606,30 @@ def update_operator_states(topology: Topology) -> None:
     # For each op, if all of its downstream operators have completed.
     # call mark_execution_finished() to also complete this op.
     for op, op_state in reversed(list(topology.items())):
-        if op.completed():
+        if op._started and op.completed():
             continue
         dependents_completed = len(op.output_dependencies) > 0 and all(
             dep.completed() for dep in op.output_dependencies
         )
         if dependents_completed:
             op.mark_execution_finished()
+
+    # Start operators that were blocked by a barrier once their upstream AllToAlls finish.
+    for op, op_state in topology.items():
+        if op._started:
+            continue
+        # If any immediate upstream is an unfinished AllToAll, keep it blocked.
+        if any(
+            (
+                isinstance(dep, AllToAllOperator)
+                or isinstance(dep, HashShufflingOperatorBase)
+            )
+            and not dep.execution_finished()
+            for dep in op.input_dependencies
+        ):
+            continue
+        # Otherwise it's unblocked now — start it.
+        op.start(op_state._options)
 
 
 def get_eligible_operators(
