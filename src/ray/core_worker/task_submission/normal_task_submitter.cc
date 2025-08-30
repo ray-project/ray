@@ -108,8 +108,9 @@ void NormalTaskSubmitter::AddWorkerLeaseClient(
       std::move(raylet_client), expiration, assigned_resources, scheduling_key, lease_id};
   worker_to_lease_entry_.emplace(addr, new_lease_entry);
 
-  RAY_CHECK(scheduling_key_entries_.contains(scheduling_key));
-  auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+  auto scheduling_key_iter = scheduling_key_entries_.find(scheduling_key);
+  RAY_CHECK(scheduling_key_iter != scheduling_key_entries_.end());
+  auto &scheduling_key_entry = scheduling_key_iter->second;
   RAY_CHECK(scheduling_key_entry.active_workers.emplace(addr).second);
   RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
 }
@@ -121,8 +122,9 @@ void NormalTaskSubmitter::ReturnWorkerLease(const rpc::Address &addr,
                                             const SchedulingKey &scheduling_key) {
   RAY_LOG(DEBUG) << "Returning worker " << WorkerID::FromBinary(addr.worker_id())
                  << " to raylet " << NodeID::FromBinary(addr.node_id());
-  RAY_CHECK(scheduling_key_entries_.contains(scheduling_key));
-  auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+  auto scheduling_key_iter = scheduling_key_entries_.find(scheduling_key);
+  RAY_CHECK(scheduling_key_iter != scheduling_key_entries_.end());
+  auto &scheduling_key_entry = scheduling_key_iter->second;
   RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
   auto &lease_entry = worker_to_lease_entry_[addr];
   RAY_CHECK(lease_entry.raylet_client);
@@ -137,7 +139,6 @@ void NormalTaskSubmitter::ReturnWorkerLease(const rpc::Address &addr,
     scheduling_key_entries_.erase(scheduling_key);
   }
 
-  RAY_CHECK(!WorkerID::FromBinary(addr.worker_id()).IsNil());
   auto status =
       lease_entry.raylet_client->ReturnWorkerLease(addr.port(),
                                                    WorkerID::FromBinary(addr.worker_id()),
@@ -161,8 +162,9 @@ void NormalTaskSubmitter::OnWorkerIdle(
   if (!lease_entry.raylet_client) {
     return;
   }
-  RAY_CHECK(scheduling_key_entries_.contains(scheduling_key));
-  auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+  auto scheduling_key_iter = scheduling_key_entries_.find(scheduling_key);
+  RAY_CHECK(scheduling_key_iter != scheduling_key_entries_.end());
+  auto &scheduling_key_entry = scheduling_key_iter->second;
   auto &current_queue = scheduling_key_entry.task_queue;
   // Return the worker if there was an error executing the previous task,
   // the lease is expired; Return the worker if there are no more applicable
@@ -207,8 +209,9 @@ void NormalTaskSubmitter::OnWorkerIdle(
 }
 
 void NormalTaskSubmitter::CancelWorkerLeaseIfNeeded(const SchedulingKey &scheduling_key) {
-  RAY_CHECK(scheduling_key_entries_.contains(scheduling_key));
-  auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+  auto scheduling_key_iter = scheduling_key_entries_.find(scheduling_key);
+  RAY_CHECK(scheduling_key_iter != scheduling_key_entries_.end());
+  auto &scheduling_key_entry = scheduling_key_iter->second;
   auto &task_queue = scheduling_key_entry.task_queue;
   if (!task_queue.empty()) {
     // There are still pending tasks so let the worker lease request succeed.
@@ -279,7 +282,8 @@ void NormalTaskSubmitter::ReportWorkerBacklogInternal() {
 
 void NormalTaskSubmitter::ReportWorkerBacklogIfNeeded(
     const SchedulingKey &scheduling_key) {
-  RAY_CHECK(scheduling_key_entries_.contains(scheduling_key));
+  auto scheduling_key_iter = scheduling_key_entries_.find(scheduling_key);
+  RAY_CHECK(scheduling_key_iter != scheduling_key_entries_.end());
   const auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
 
   if (scheduling_key_entry.last_reported_backlog_size !=
@@ -290,8 +294,9 @@ void NormalTaskSubmitter::ReportWorkerBacklogIfNeeded(
 
 void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduling_key,
                                                    const rpc::Address *raylet_address) {
-  RAY_CHECK(scheduling_key_entries_.contains(scheduling_key));
-  auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+  auto scheduling_key_iter = scheduling_key_entries_.find(scheduling_key);
+  RAY_CHECK(scheduling_key_iter != scheduling_key_entries_.end());
+  auto &scheduling_key_entry = scheduling_key_iter->second;
 
   const size_t kMaxPendingLeaseRequestsPerSchedulingCategory =
       lease_request_rate_limiter_->GetMaxPendingLeaseRequestsPerSchedulingCategory();
@@ -360,8 +365,9 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
         {
           absl::MutexLock lock(&mu_);
 
-          RAY_CHECK(scheduling_key_entries_.contains(scheduling_key));
-          auto &sched_entry = scheduling_key_entries_[scheduling_key];
+          auto scheduling_key_iter = scheduling_key_entries_.find(scheduling_key);
+          RAY_CHECK(scheduling_key_iter != scheduling_key_entries_.end());
+          auto &sched_entry = scheduling_key_iter->second;
           auto raylet_lease_client =
               raylet_client_pool_->GetOrConnectByAddress(raylet_address);
           sched_entry.pending_lease_requests.erase(lease_id);
@@ -576,8 +582,9 @@ void NormalTaskSubmitter::PushNormalTask(
 
           // Decrement the total number of tasks in flight to any worker with the current
           // scheduling_key.
-          RAY_CHECK(scheduling_key_entries_.contains(scheduling_key));
-          auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+          auto scheduling_key_iter = scheduling_key_entries_.find(scheduling_key);
+          RAY_CHECK(scheduling_key_iter != scheduling_key_entries_.end());
+          auto &scheduling_key_entry = scheduling_key_iter->second;
           RAY_CHECK_GE(scheduling_key_entry.active_workers.size(), 1u);
           RAY_CHECK_GE(scheduling_key_entry.num_busy_workers, 1u);
           scheduling_key_entry.num_busy_workers--;
@@ -718,8 +725,9 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
       return Status::OK();
     }
 
-    RAY_CHECK(scheduling_key_entries_.contains(scheduling_key));
-    auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+    auto scheduling_key_iter = scheduling_key_entries_.find(scheduling_key);
+    RAY_CHECK(scheduling_key_iter != scheduling_key_entries_.end());
+    auto &scheduling_key_entry = scheduling_key_iter->second;
     auto &scheduling_tasks = scheduling_key_entry.task_queue;
     // This cancels tasks that have completed dependencies and are awaiting
     // a worker lease.
