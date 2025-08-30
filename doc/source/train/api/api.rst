@@ -135,7 +135,6 @@ Ray Train Utilities
     :toctree: doc/
 
     ~train.Checkpoint
-    ~train.ReportedCheckpoint
     ~train.v2.api.context.TrainContext
 
 **Functions**
@@ -144,7 +143,6 @@ Ray Train Utilities
     :nosignatures:
     :toctree: doc/
 
-    ~train.get_all_reported_checkpoints
     ~train.get_checkpoint
     ~train.get_context
     ~train.get_dataset_shard
