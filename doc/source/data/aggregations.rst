@@ -8,9 +8,14 @@ Ray Data provides a flexible and performant API for performing aggregations on :
 Basic Aggregations
 ------------------
 
-Ray Data provides several built-in aggregation functions like 
-* :class:`~ray.data.aggregate.Count`, * :class:`~ray.data.aggregate.Sum`, * :class:`~ray.data.aggregate.Mean`,
-* :class:`~ray.data.aggregate.Min`, * :class:`~ray.data.aggregate.Max`, * :class:`~ray.data.aggregate.Std`,
+Ray Data provides several built-in aggregation functions like:
+
+* :class:`~ray.data.aggregate.Count`
+* :class:`~ray.data.aggregate.Sum`
+* :class:`~ray.data.aggregate.Mean`
+* :class:`~ray.data.aggregate.Min`
+* :class:`~ray.data.aggregate.Max`
+* :class:`~ray.data.aggregate.Std`
 * :class:`~ray.data.aggregate.Quantile`
  
 These can be used directly with datasets like shown below:
