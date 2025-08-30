@@ -100,7 +100,8 @@ class CoreWorkerPlasmaStoreProvider {
       ReferenceCounter &reference_counter,
       std::function<Status()> check_signals,
       bool warmup,
-      std::function<std::string()> get_current_call_site = nullptr);
+      std::function<std::string()> get_current_call_site = nullptr,
+      std::shared_ptr<plasma::PlasmaClientInterface> injected_plasma_client = nullptr);
 
   ~CoreWorkerPlasmaStoreProvider();
 
@@ -203,6 +204,10 @@ class CoreWorkerPlasmaStoreProvider {
 
   std::shared_ptr<plasma::PlasmaClient> &store_client() { return store_client_; }
 
+  // Test-only hook to override the plasma client used for IO in tests.
+  void SetPlasmaClientForTest(
+      const std::shared_ptr<plasma::PlasmaClientInterface> &client);
+
  private:
   /// Ask the raylet to pull a set of objects and then attempt to get them
   /// from the local plasma store. Successfully fetched objects will be removed
@@ -237,6 +242,8 @@ class CoreWorkerPlasmaStoreProvider {
 
   const std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client_;
   std::shared_ptr<plasma::PlasmaClient> store_client_;
+  // Optional client injected from higher layers for IO (e.g., tests).
+  std::shared_ptr<plasma::PlasmaClientInterface> injected_plasma_client_;
   /// Used to look up a plasma object's owner.
   ReferenceCounter &reference_counter_;
   std::function<Status()> check_signals_;

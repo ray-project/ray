@@ -67,15 +67,17 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     ReferenceCounter &reference_counter,
     std::function<Status()> check_signals,
     bool warmup,
-    std::function<std::string()> get_current_call_site)
+    std::function<std::string()> get_current_call_site,
+    std::shared_ptr<plasma::PlasmaClientInterface> injected_plasma_client)
     : raylet_ipc_client_(raylet_ipc_client),
       // We can turn on exit_on_connection_failure on for the core worker plasma
       // client to early exit core worker after the raylet's death because on the
       // raylet side, we never proactively close the plasma store connection even
       // during shutdown. So any error from the raylet side should be a sign of raylet
       // death.
-      store_client_(
-          std::make_shared<plasma::PlasmaClient>(/*exit_on_connection_failure*/ true)),
+      store_client_(std::make_shared<plasma::PlasmaClient>(
+          /*exit_on_connection_failure*/ true)),
+      injected_plasma_client_(std::move(injected_plasma_client)),
       reference_counter_(reference_counter),
       check_signals_(std::move(check_signals)) {
   if (get_current_call_site != nullptr) {
@@ -85,7 +87,9 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
   }
   object_store_full_delay_ms_ = RayConfig::instance().object_store_full_delay_ms();
   buffer_tracker_ = std::make_shared<BufferTracker>();
-  RAY_CHECK_OK(store_client_->Connect(store_socket));
+  if (!injected_plasma_client_ && !store_socket.empty()) {
+    RAY_CHECK_OK(store_client_->Connect(store_socket));
+  }
   if (warmup) {
     RAY_CHECK_OK(WarmupStore());
   }
@@ -187,7 +191,9 @@ Status CoreWorkerPlasmaStoreProvider::PullObjectsAndGetFromPlasmaStore(
   RAY_RETURN_NOT_OK(raylet_ipc_client_->AsyncGetObjects(batch_ids, owner_addresses));
 
   std::vector<plasma::ObjectBuffer> plasma_results;
-  RAY_RETURN_NOT_OK(store_client_->Get(batch_ids, timeout_ms, &plasma_results));
+  plasma::PlasmaClientInterface *client =
+      injected_plasma_client_ ? injected_plasma_client_.get() : store_client_.get();
+  RAY_RETURN_NOT_OK(client->Get(batch_ids, timeout_ms, &plasma_results));
 
   // Add successfully retrieved objects to the result map and remove them from
   // the set of IDs to get.
@@ -224,9 +230,9 @@ Status CoreWorkerPlasmaStoreProvider::GetIfLocal(
     const std::vector<ObjectID> &object_ids,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results) {
   std::vector<plasma::ObjectBuffer> plasma_results;
-  RAY_RETURN_NOT_OK(store_client_->Get(object_ids,
-                                       /*timeout_ms=*/0,
-                                       &plasma_results));
+  plasma::PlasmaClientInterface *client =
+      injected_plasma_client_ ? injected_plasma_client_.get() : store_client_.get();
+  RAY_RETURN_NOT_OK(client->Get(object_ids, /*timeout_ms=*/0, &plasma_results));
 
   for (size_t i = 0; i < object_ids.size(); i++) {
     if (plasma_results[i].data != nullptr || plasma_results[i].metadata != nullptr) {
@@ -253,7 +259,9 @@ Status CoreWorkerPlasmaStoreProvider::GetIfLocal(
 
 Status CoreWorkerPlasmaStoreProvider::GetExperimentalMutableObject(
     const ObjectID &object_id, std::unique_ptr<plasma::MutableObject> *mutable_object) {
-  return store_client_->GetExperimentalMutableObject(object_id, mutable_object);
+  plasma::PlasmaClientInterface *client =
+      injected_plasma_client_ ? injected_plasma_client_.get() : store_client_.get();
+  return client->GetExperimentalMutableObject(object_id, mutable_object);
 }
 
 Status UnblockIfNeeded(
@@ -287,8 +295,8 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   int64_t total_size = static_cast<int64_t>(object_ids.size());
   for (int64_t start = 0; start < total_size; start += batch_size) {
     batch_ids.clear();
-    for (int64_t i = start; i < batch_size && i < total_size; i++) {
-      batch_ids.push_back(id_vector[start + i]);
+    for (int64_t i = start; i < start + batch_size && i < total_size; i++) {
+      batch_ids.push_back(id_vector[i]);
     }
     RAY_RETURN_NOT_OK(
         PullObjectsAndGetFromPlasmaStore(remaining,
@@ -418,6 +426,10 @@ Status CoreWorkerPlasmaStoreProvider::Delete(
 }
 
 StatusOr<std::string> CoreWorkerPlasmaStoreProvider::GetMemoryUsage() {
+  if (injected_plasma_client_) {
+    return Status::NotImplemented(
+        "GetMemoryUsage unsupported by injected plasma client in this context");
+  }
   return store_client_->GetMemoryUsage();
 }
 

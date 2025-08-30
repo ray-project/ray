@@ -24,11 +24,16 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "fakes/ray/common/asio/fake_periodical_runner.h"
+#include "fakes/ray/object_manager/plasma/fake_plasma_client.h"
 #include "fakes/ray/pubsub/publisher.h"
 #include "fakes/ray/pubsub/subscriber.h"
 #include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
+#include "mock/ray/object_manager/plasma/client.h"
+#include "ray/common/buffer.h"
+#include "ray/common/ray_config.h"
 #include "ray/core_worker/actor_creator.h"
 #include "ray/core_worker/actor_manager.h"
 #include "ray/core_worker/context.h"
@@ -37,6 +42,7 @@
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/task_submission/actor_task_submitter.h"
 #include "ray/core_worker/task_submission/normal_task_submitter.h"
 #include "ray/ipc/fake_raylet_ipc_client.h"
@@ -48,6 +54,20 @@ namespace core {
 using ::testing::_;
 using ::testing::InvokeWithoutArgs;
 using ::testing::Return;
+
+namespace {
+struct ConfigGuard {
+  ConfigGuard(int64_t &config_var, int64_t new_val)
+      : config_var_(config_var), original_val_(config_var) {
+    config_var_ = new_val;
+  }
+  ~ConfigGuard() { config_var_ = original_val_; }
+
+ private:
+  int64_t &config_var_;
+  int64_t original_val_;
+};
+}  // namespace
 
 class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
  public:
@@ -479,6 +499,51 @@ TEST_F(CoreWorkerHandleGetObjectStatusTest, ObjectOutOfScope) {
   // Not calling io_service_.run_one() because the callback is called on the main thread
   ASSERT_TRUE(future2.get().ok());
   EXPECT_EQ(reply2.status(), rpc::GetObjectStatusReply::OUT_OF_SCOPE);
+}
+
+TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
+  auto fake_raylet = std::make_shared<ipc::FakeRayletIpcClient>();
+  // Build a ReferenceCounter with minimal dependencies.
+  rpc::Address addr;
+  addr.set_ip_address("127.0.0.1");
+  auto is_node_dead = [](const NodeID &) { return false; };
+  ReferenceCounter ref_counter(addr,
+                               /*object_info_publisher=*/nullptr,
+                               /*object_info_subscriber=*/nullptr,
+                               is_node_dead);
+
+  // Set fetch batch size to 2 with guard to restore after test.
+  ConfigGuard guard(RayConfig::instance().worker_fetch_request_size(), 2);
+
+  // Fake plasma client that records Get calls.
+  std::vector<std::vector<ObjectID>> observed_batches;
+  auto fake_plasma = std::make_shared<ray::fakes::FakePlasmaClient>(&observed_batches);
+
+  CoreWorkerPlasmaStoreProvider provider(
+      /*store_socket=*/"",
+      fake_raylet,
+      ref_counter,
+      /*check_signals=*/[] { return Status::OK(); },
+      /*warmup=*/false,
+      /*get_current_call_site=*/nullptr,
+      /*injected_plasma_client=*/fake_plasma);
+
+  // Build a set of 5 object ids.
+  std::vector<ObjectID> ids;
+  for (int i = 0; i < 5; i++) ids.push_back(ObjectID::FromRandom());
+  absl::flat_hash_set<ObjectID> idset(ids.begin(), ids.end());
+
+  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> results;
+  bool got_exception = false;
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+
+  ASSERT_TRUE(provider.Get(idset, /*timeout_ms=*/-1, ctx, &results, &got_exception).ok());
+
+  // Assert: batches seen by plasma Get are [2,2,1].
+  ASSERT_EQ(observed_batches.size(), 3U);
+  EXPECT_EQ(observed_batches[0].size(), 2U);
+  EXPECT_EQ(observed_batches[1].size(), 2U);
+  EXPECT_EQ(observed_batches[2].size(), 1U);
 }
 
 }  // namespace core
