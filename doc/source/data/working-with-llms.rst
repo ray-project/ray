@@ -25,7 +25,7 @@ The following example uses the :class:`vLLMEngineProcessorConfig <ray.data.llm.v
 
 To run this example, install vLLM, which is a popular and optimized LLM inference engine.
 
-.. testcode::
+.. code-block:: bash
 
     # Later versions *should* work but are not tested yet.
     pip install -U vllm==0.7.2
@@ -34,72 +34,34 @@ The :class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>` 
 It contains the model name, the number of GPUs to use, and the number of shards to use, along with other vLLM engine configurations.
 Upon execution, the Processor object instantiates replicas of the vLLM engine (using :meth:`map_batches <ray.data.Dataset.map_batches>` under the hood).
 
-.. testcode::
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __basic_llm_example_start__
+    :end-before: __basic_llm_example_end__
 
-    import ray
-    from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
-    
-    config = vLLMEngineProcessorConfig(
-        model_source="unsloth/Llama-3.1-8B-Instruct",
-        engine_kwargs={
-            "enable_chunked_prefill": True,
-            "max_num_batched_tokens": 4096,
-            "max_model_len": 16384,
-        },
-        concurrency=1,
-        batch_size=64,
-    )
-    processor = build_llm_processor(
-        config,
-        preprocess=lambda row: dict(
-            messages=[
-                {"role": "system", "content": "You are a bot that responds with haikus."},
-                {"role": "user", "content": row["item"]}
-            ],
-            sampling_params=dict(
-                temperature=0.3,
-                max_tokens=250,
-            )
-        ),
-        postprocess=lambda row: dict(
-            answer=row["generated_text"],
-            **row  # This will return all the original columns in the dataset.
-        ),
-    )
+Here's a simple configuration example:
 
-    ds = ray.data.from_items(["Start of the haiku is: Complete this for me..."])
-
-    ds = processor(ds)
-    ds.show(limit=1)
-
-.. testoutput::
-    :options: +MOCK
-
-    {'answer': 'Snowflakes gently fall\nBlanketing the winter scene\nFrozen peaceful hush'}
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :lines: 28-37
 
 Each processor requires specific input columns. You can find more info by using the following API:
 
-.. testcode::
+The processor requires specific input columns. Here's how to check what columns are needed:
 
-    processor.log_input_column_names()
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :lines: 65-67
 
-.. testoutput::
-    :options: +MOCK
+The output shows:
 
-    The first stage of the processor is ChatTemplateStage.
-    Required input columns:
-            messages: A list of messages in OpenAI chat format. See https://platform.openai.com/docs/api-reference/chat/create for details.
+- **ChatTemplateStage**: Required input columns: messages (OpenAI chat format)
 
 Some models may require a Hugging Face token to be specified. You can specify the token in the `runtime_env` argument.
 
-.. testcode::
-
-    config = vLLMEngineProcessorConfig(
-        model_source="unsloth/Llama-3.1-8B-Instruct",
-        runtime_env={"env_vars": {"HF_TOKEN": "your_huggingface_token"}},
-        concurrency=1,
-        batch_size=64,
-    )
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :lines: 267-276
 
 .. _vllm_llm:
 
@@ -108,33 +70,19 @@ Configure vLLM for LLM inference
 
 Use the :class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>` to configure the vLLM engine.
 
-.. testcode::
-
-    from ray.data.llm import vLLMEngineProcessorConfig
-
-    config = vLLMEngineProcessorConfig(
-        model_source="unsloth/Llama-3.1-8B-Instruct",
-        engine_kwargs={"max_model_len": 20000},
-        concurrency=1,
-        batch_size=64,
-    )
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: # Basic vLLM configuration
+    :end-before: # Create sample dataset
+    :dedent: 0
 
 For handling larger models, specify model parallelism.
 
-.. testcode::
-
-    config = vLLMEngineProcessorConfig(
-        model_source="unsloth/Llama-3.1-8B-Instruct",
-        engine_kwargs={
-            "max_model_len": 16384,
-            "tensor_parallel_size": 2,
-            "pipeline_parallel_size": 2,
-            "enable_chunked_prefill": True,
-            "max_num_batched_tokens": 2048,
-        },
-        concurrency=1,
-        batch_size=64,
-    )
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: # Model parallelism configuration
+    :end-before: # RunAI streamer configuration
+    :dedent: 0
 
 The underlying :class:`Processor <ray.data.llm.Processor>` object instantiates replicas of the vLLM engine and automatically
 configure parallel workers to handle model parallelism (for tensor parallelism and pipeline parallelism,
@@ -145,45 +93,27 @@ To optimize model loading, you can configure the `load_format` to `runai_streame
 .. note::
     In this case, install vLLM with runai dependencies: `pip install -U "vllm[runai]==0.7.2"`
 
-.. testcode::
-
-    config = vLLMEngineProcessorConfig(
-        model_source="unsloth/Llama-3.1-8B-Instruct",
-        engine_kwargs={"load_format": "runai_streamer"},
-        concurrency=1,
-        batch_size=64,
-    )
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: # RunAI streamer configuration
+    :end-before: # S3 hosted model configuration
+    :dedent: 0
 
 If your model is hosted on AWS S3, you can specify the S3 path in the `model_source` argument, and specify `load_format="runai_streamer"` in the `engine_kwargs` argument.
 
-.. testcode::
-
-    config = vLLMEngineProcessorConfig(
-        model_source="s3://your-bucket/your-model/",  # Make sure adding the trailing slash!
-        engine_kwargs={"load_format": "runai_streamer"},
-        runtime_env={"env_vars": {
-            "AWS_ACCESS_KEY_ID": "your_access_key_id",
-            "AWS_SECRET_ACCESS_KEY": "your_secret_access_key",
-            "AWS_REGION": "your_region",
-        }},
-        concurrency=1,
-        batch_size=64,
-    )
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: # S3 hosted model configuration
+    :end-before: # Multi-LoRA configuration
+    :dedent: 0
 
 To do multi-LoRA batch inference, you need to set LoRA related parameters in `engine_kwargs`. See :doc:`the vLLM with LoRA example</llm/examples/batch/vllm-with-lora>` for details.
 
-.. testcode::
-
-    config = vLLMEngineProcessorConfig(
-        model_source="unsloth/Llama-3.1-8B-Instruct",
-        engine_kwargs={
-            enable_lora=True,
-            max_lora_rank=32,
-            max_loras=1,
-        },
-        concurrency=1,
-        batch_size=64,
-    )
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: # Multi-LoRA configuration
+    :end-before: # __basic_llm_example_end__
+    :dedent: 0
 
 .. _vision_language_model:
 
@@ -199,90 +129,33 @@ This example applies 2 adjustments on top of the previous example:
 - set `has_image=True` in `vLLMEngineProcessorConfig`
 - prepare image input inside preprocessor
 
-.. testcode::
+First, install the required dependencies:
 
-    # Load "LMMs-Eval-Lite" dataset from Hugging Face.
-    vision_dataset_llms_lite = datasets.load_dataset("lmms-lab/LMMs-Eval-Lite", "coco2017_cap_val")
-    vision_dataset = ray.data.from_huggingface(vision_dataset_llms_lite["lite"])
+.. code-block:: bash
 
-    vision_processor_config = vLLMEngineProcessorConfig(
-        model_source="Qwen/Qwen2.5-VL-3B-Instruct",
-        engine_kwargs=dict(
-            tensor_parallel_size=1,
-            pipeline_parallel_size=1,
-            max_model_len=4096,
-            enable_chunked_prefill=True,
-            max_num_batched_tokens=2048,
-        ),
-        # Override Ray's runtime env to include the Hugging Face token. Ray Data uses Ray under the hood to orchestrate the inference pipeline.
-        runtime_env=dict(
-            env_vars=dict(
-                HF_TOKEN=HF_TOKEN,
-                VLLM_USE_V1="1",
-            ),
-        ),
-        batch_size=16,
-        accelerator_type="L4",
-        concurrency=1,
-        has_image=True,
-    )
+    # Install required dependencies for vision-language models
+    pip install datasets>=4.0.0
 
-    def vision_preprocess(row: dict) -> dict:
-        choice_indices = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
-        return dict(
-            messages=[
-                {
-                    "role": "system",
-                    "content": """Analyze the image and question carefully, using step-by-step reasoning.
-    First, describe any image provided in detail. Then, present your reasoning. And finally your final answer in this format:
-    Final Answer: <answer>
-    where <answer> is:
-    - The single correct letter choice A, B, C, D, E, F, etc. when options are provided. Only include the letter.
-    - Your direct answer if no options are given, as a single phrase or number.
-    - If your answer is a number, only include the number without any unit.
-    - If your answer is a word or phrase, do not paraphrase or reformat the text you see in the image.
-    - You cannot answer that the question is unanswerable. You must either pick an option or provide a direct answer.
-    IMPORTANT: Remember, to end your answer with Final Answer: <answer>.""",
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": row["question"] + "\n\n"
-                        },
-                        {
-                            "type": "image",
-                            # Ray Data accepts PIL Image or image URL.
-                            "image": Image.open(BytesIO(row["image"]["bytes"]))
-                        },
-                        {
-                            "type": "text",
-                            "text": "\n\nChoices:\n" + "\n".join([f"{choice_indices[i]}. {choice}" for i, choice in enumerate(row["answer"])])
-                        }
-                    ]
-                },
-            ],
-            sampling_params=dict(
-                temperature=0.3,
-                max_tokens=150,
-                detokenize=False,
-            ),
-        )
+Complete VLM example:
 
-    def vision_postprocess(row: dict) -> dict:
-        return {
-            "resp": row["generated_text"],
-        }
+.. literalinclude:: doc_code/working-with-llms/vlm_example.py
+    :language: python
+    :start-after: __vlm_example_start__
+    :end-before: __vlm_example_end__
 
-    vision_processor = build_llm_processor(
-        vision_processor_config,
-        preprocess=vision_preprocess,
-        postprocess=vision_postprocess,
-    )
+Here's a simple VLM configuration:
 
-    vision_processed_ds = vision_processor(vision_dataset).materialize()
-    vision_processed_ds.show(3)
+.. literalinclude:: doc_code/working-with-llms/vlm_example.py
+    :language: python
+    :lines: 62-81
+
+For a comprehensive VLM configuration example:
+
+.. literalinclude:: doc_code/working-with-llms/vlm_example.py
+    :language: python
+    :start-after: def create_vlm_config():
+    :end-before: def run_vlm_example():
+    :dedent: 0
 
 .. _embedding_models:
 
@@ -349,40 +222,26 @@ Batch inference with an OpenAI-compatible endpoint
 
 You can also make calls to deployed models that have an OpenAI compatible API endpoint.
 
-.. testcode::
+Complete OpenAI API example:
 
-    import ray
-    import os
-    from ray.data.llm import HttpRequestProcessorConfig, build_llm_processor
+.. literalinclude:: doc_code/working-with-llms/openai_api_example.py
+    :language: python
+    :start-after: __openai_example_start__
+    :end-before: __openai_example_end__
 
-    OPENAI_KEY = os.environ["OPENAI_API_KEY"]
-    ds = ray.data.from_items(["Hand me a haiku."])
+Here's a simple OpenAI API configuration:
 
+.. literalinclude:: doc_code/working-with-llms/openai_api_example.py
+    :language: python
+    :lines: 40-44
 
-    config = HttpRequestProcessorConfig(
-        url="https://api.openai.com/v1/chat/completions",
-        headers={"Authorization": f"Bearer {OPENAI_KEY}"},
-        qps=1,
-    )
+For a comprehensive configuration and usage demo:
 
-    processor = build_llm_processor(
-        config,
-        preprocess=lambda row: dict(
-            payload=dict(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "You are a bot that responds with haikus."},
-                    {"role": "user", "content": row["item"]}
-                ],
-                temperature=0.0,
-                max_tokens=150,
-            ),
-        ),
-        postprocess=lambda row: dict(response=row["http_response"]["choices"][0]["message"]["content"]),
-    )
-
-    ds = processor(ds)
-    print(ds.take_all())
+.. literalinclude:: doc_code/working-with-llms/openai_api_example.py
+    :language: python
+    :start-after: def run_openai_demo():
+    :end-before: # __openai_example_end__
+    :dedent: 4
 
 Usage Data Collection
 --------------------------
@@ -407,6 +266,7 @@ Frequently Asked Questions (FAQs)
 --------------------------------------------------
 
 .. TODO(#55491): Rewrite this section once the restriction is lifted.
+.. TODO(#55405): Cross-node TP in progress.
 .. _cross_node_parallelism:
 
 How to configure LLM stage to parallelize across multiple nodes?
@@ -437,7 +297,7 @@ storage (AWS S3 or Google Cloud Storage) for more stable model loading.
 
 Ray Data LLM provides the following utility to help uploading models to remote object storage.
 
-.. testcode::
+.. code-block:: bash
 
     # Download model from HuggingFace, and upload to GCS
     python -m ray.llm.utils.upload_model \
@@ -450,9 +310,14 @@ Ray Data LLM provides the following utility to help uploading models to remote o
 
 And later you can use remote object store URI as `model_source` in the config.
 
-.. testcode::
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :lines: 103-111
 
-    config = vLLMEngineProcessorConfig(
-        model_source="gs://my-bucket/path/to/facebook-opt-350m",  # or s3://my-bucket/path/to/model_name
-        ...
-    )
+For a more comprehensive S3 configuration example with environment variables:
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: def create_s3_config():
+    :end-before: def create_lora_config():
+    :dedent: 4
