@@ -2,9 +2,16 @@ import asyncio
 import sys
 
 import pytest
+from toolz.tests.test_dicttoolz import defaultdict
 
 from ray._common.test_utils import async_wait_for_condition
-from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
+from ray.serve._private.metrics_utils import (
+    QUEUED_REQUESTS_KEY,
+    InMemoryMetricsStore,
+    MetricsPusher,
+    TimeStampedValue,
+    merge_timeseries_dicts,
+)
 from ray.serve._private.test_utils import MockAsyncTimer
 
 
@@ -136,13 +143,26 @@ class TestMetricsPusher:
         await metrics_pusher.graceful_shutdown()
 
 
+def assert_timeseries_equal(actual, expected):
+    assert len(actual) == len(
+        expected
+    ), f"Length mismatch: {len(actual)} vs {len(expected)}"
+    for i, (a, e) in enumerate(zip(actual, expected)):
+        assert (
+            a.timestamp == e.timestamp
+        ), f"Timestamp mismatch at {i}: {a.timestamp} vs {e.timestamp}"
+        assert a.value == e.value, f"Value mismatch at {i}: {a.value} vs {e.value}"
+
+
 class TestInMemoryMetricsStore:
     def test_basics(self):
         s = InMemoryMetricsStore()
         s.add_metrics_point({"m1": 1}, timestamp=1)
         s.add_metrics_point({"m1": 2}, timestamp=2)
-        assert s.window_average("m1", window_start_timestamp_s=0) == 1.5
-        assert s.max("m1", window_start_timestamp_s=0) == 2
+        assert s.aggregate_avg(["m1"]) == (1.5, 1)
+        assert s.aggregate_max(["m1"]) == (2, 1)
+        assert s.aggregate_min(["m1"]) == (1, 1)
+        assert s.get_latest("m1") == 2
 
     def test_out_of_order_insert(self):
         s = InMemoryMetricsStore()
@@ -151,53 +171,42 @@ class TestInMemoryMetricsStore:
         s.add_metrics_point({"m1": 3}, timestamp=3)
         s.add_metrics_point({"m1": 2}, timestamp=2)
         s.add_metrics_point({"m1": 4}, timestamp=4)
-        assert s.window_average("m1", window_start_timestamp_s=0) == 3
-        assert s.max("m1", window_start_timestamp_s=0) == 5
+        assert s.aggregate_avg(["m1"]) == (3, 1)
+        assert s.aggregate_max(["m1"]) == (5, 1)
+        assert s.aggregate_min(["m1"]) == (1, 1)
 
     def test_window_start_timestamp(self):
         s = InMemoryMetricsStore()
-        assert s.window_average("m1", window_start_timestamp_s=0) is None
-        assert s.max("m1", window_start_timestamp_s=0) is None
+        assert s.aggregate_avg(["m1"]) == (None, 0)
+        assert s.aggregate_max(["m1"]) == (None, 0)
+        assert s.aggregate_min(["m1"]) == (None, 0)
 
         s.add_metrics_point({"m1": 1}, timestamp=2)
-        assert s.window_average("m1", window_start_timestamp_s=0) == 1
-        assert (
-            s.window_average("m1", window_start_timestamp_s=10, do_compact=False)
-            is None
-        )
-
-    def test_compaction_window(self):
-        s = InMemoryMetricsStore()
-
-        s.add_metrics_point({"m1": 1}, timestamp=1)
-        s.add_metrics_point({"m1": 2}, timestamp=2)
-
-        assert (
-            s.window_average("m1", window_start_timestamp_s=0, do_compact=False) == 1.5
-        )
-        s.window_average("m1", window_start_timestamp_s=1.1, do_compact=True)
-        # First record should be removed.
-        assert s.window_average("m1", window_start_timestamp_s=0, do_compact=False) == 2
-
-    def test_compaction_max(self):
-        s = InMemoryMetricsStore()
-
-        s.add_metrics_point({"m1": 1}, timestamp=2)
-        s.add_metrics_point({"m1": 2}, timestamp=1)
-
-        assert s.max("m1", window_start_timestamp_s=0, do_compact=False) == 2
-
-        s.window_average("m1", window_start_timestamp_s=1.1, do_compact=True)
-
-        assert s.window_average("m1", window_start_timestamp_s=0, do_compact=False) == 1
+        assert s.aggregate_avg(["m1"]) == (1, 1)
+        s.prune_keys_and_compact_data(10)
+        assert s.aggregate_avg(["m1"]) == (None, 0)
 
     def test_multiple_metrics(self):
         s = InMemoryMetricsStore()
         s.add_metrics_point({"m1": 1, "m2": -1}, timestamp=1)
         s.add_metrics_point({"m1": 2, "m2": -2}, timestamp=2)
-        assert s.window_average("m1", window_start_timestamp_s=0) == 1.5
-        assert s.max("m1", window_start_timestamp_s=0) == 2
-        assert s.max("m2", window_start_timestamp_s=0) == -1
+        assert s.aggregate_avg(["m1"]) == (1.5, 1)
+        assert s.aggregate_avg(["m2"]) == (-1.5, 1)
+        assert s.aggregate_avg(["m1", "m2"]) == (0, 2)
+        assert s.aggregate_max(["m1"]) == (2, 1)
+        assert s.aggregate_max(["m2"]) == (-1, 1)
+        assert s.aggregate_max(["m1", "m2"]) == (2, 2)
+        assert s.aggregate_min(["m1"]) == (1, 1)
+        assert s.aggregate_min(["m2"]) == (-2, 1)
+        assert s.aggregate_min(["m1", "m2"]) == (-2, 2)
+
+    def test_empty_key_mix(self):
+        s = InMemoryMetricsStore()
+        s.add_metrics_point({"m1": 1}, timestamp=1)
+        assert s.aggregate_avg(["m1", "m2"]) == (1, 1)
+        assert s.aggregate_max(["m1", "m2"]) == (1, 1)
+        assert s.aggregate_min(["m1", "m2"]) == (1, 1)
+        assert s.aggregate_avg(["m2"]) == (None, 0)
 
     def test_prune_keys_and_compact_data(self):
         s = InMemoryMetricsStore()
@@ -209,6 +218,71 @@ class TestInMemoryMetricsStore:
         assert len(s.data["m1"]) == 2 and s.data["m1"] == s._get_datapoints("m1", 1.1)
         assert len(s.data["m2"]) == 2 and s.data["m2"] == s._get_datapoints("m2", 1.1)
         assert len(s.data["m3"]) == 1 and s.data["m3"] == s._get_datapoints("m3", 1.1)
+
+    def test_merge_metrics_stores(self):
+        s1 = InMemoryMetricsStore()
+        s2 = InMemoryMetricsStore()
+        s3 = InMemoryMetricsStore()
+        s1.add_metrics_point(
+            {"m1": 1, "m2": 2, "m3": 3, QUEUED_REQUESTS_KEY: 1}, timestamp=1
+        )
+        s2.add_metrics_point({"m1": 2, "m2": 2, QUEUED_REQUESTS_KEY: 1}, timestamp=2)
+        s3.add_metrics_point({"m2": 10, QUEUED_REQUESTS_KEY: 10}, timestamp=2)
+        merged = merge_timeseries_dicts(s1.data, s2.data, s3.data, window_s=1)
+
+        assert_timeseries_equal(
+            merged["m1"], [TimeStampedValue(1, 1), TimeStampedValue(2, 2)]
+        )
+        assert_timeseries_equal(
+            merged["m2"], [TimeStampedValue(1, 2), TimeStampedValue(2, 12)]
+        )
+        assert_timeseries_equal(merged["m3"], [TimeStampedValue(1, 3)])
+        assert_timeseries_equal(
+            merged[QUEUED_REQUESTS_KEY],
+            [TimeStampedValue(1, 1), TimeStampedValue(2, 11)],
+        )
+
+        s4 = InMemoryMetricsStore()
+        s4.add_metrics_point(
+            {"m1": 100, "m2": 100, "m3": 100, QUEUED_REQUESTS_KEY: 10}, timestamp=0
+        )
+
+        merged = merge_timeseries_dicts(s1.data, s2.data, s3.data, s4.data, window_s=2)
+
+        assert_timeseries_equal(
+            merged["m1"],
+            [TimeStampedValue(0, 100), TimeStampedValue(2, 1), TimeStampedValue(4, 2)],
+        )
+        assert_timeseries_equal(
+            merged["m2"],
+            [TimeStampedValue(0, 100), TimeStampedValue(2, 2), TimeStampedValue(4, 12)],
+        )
+        assert_timeseries_equal(
+            merged["m3"], [TimeStampedValue(0, 100), TimeStampedValue(2, 3)]
+        )
+        assert_timeseries_equal(
+            merged[QUEUED_REQUESTS_KEY],
+            [TimeStampedValue(0, 10), TimeStampedValue(2, 1), TimeStampedValue(4, 11)],
+        )
+
+        s1_s2 = merge_timeseries_dicts(s1.data, s2.data, window_s=1)
+        s2_s1 = merge_timeseries_dicts(s2.data, s1.data, window_s=1)
+        s1_s2_s3_s4 = merge_timeseries_dicts(
+            s1.data, s2.data, s3.data, s4.data, window_s=1
+        )
+        s4_s1_s3_s2 = merge_timeseries_dicts(
+            s4.data, s1.data, s3.data, s2.data, window_s=1
+        )
+
+        # dict equality -> compare per-key time series
+        for k in s1_s2:
+            assert_timeseries_equal(s1_s2[k], s2_s1[k])
+        for k in s1_s2_s3_s4:
+            assert_timeseries_equal(s1_s2_s3_s4[k], s4_s1_s3_s2[k])
+
+        a1_none = merge_timeseries_dicts(s1.data, defaultdict(list), window_s=1)
+        for k in a1_none:
+            assert_timeseries_equal(a1_none[k], s1.data[k])
 
 
 if __name__ == "__main__":
