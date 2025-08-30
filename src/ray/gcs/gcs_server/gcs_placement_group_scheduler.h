@@ -32,7 +32,6 @@
 #include "ray/raylet/scheduling/policy/scheduling_context.h"
 #include "ray/raylet_client/raylet_client_interface.h"
 #include "ray/raylet_client/raylet_client_pool.h"
-#include "ray/rpc/worker/core_worker_client.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
