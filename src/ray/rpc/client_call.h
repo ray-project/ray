@@ -206,6 +206,10 @@ class ClientCallManager {
   ///
   /// \param[in] main_service The main event loop, to which the callback functions will be
   /// posted.
+  /// \param record_stats Whether to record stats for calls made with this client
+  /// \param cluster_id UUID of the destination cluster
+  /// \param num_threads The number of threads used for polling for completion events
+  /// \param call_timeout_ms Set's the default call timeout for requests on this client
   ///
   explicit ClientCallManager(instrumented_io_context &main_service,
                              bool record_stats,
