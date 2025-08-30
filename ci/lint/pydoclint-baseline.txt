@@ -169,7 +169,7 @@ python/ray/_private/runtime_env/utils.py
 python/ray/_private/services.py
     DOC201: Function `_build_python_executable_command_memory_profileable` does not have a return section in docstring
     DOC101: Function `get_ray_address_from_environment`: Docstring contains fewer arguments than in function signature.
-    DOC103: Function `get_ray_address_from_environment`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [addr: str, temp_dir: Optional[str]].
+    DOC103: Function `get_ray_address_from_environment`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [addr: Optional[str], temp_dir: Optional[str]].
     DOC201: Function `wait_for_node` does not have a return section in docstring
     DOC101: Function `canonicalize_bootstrap_address`: Docstring contains fewer arguments than in function signature.
     DOC103: Function `canonicalize_bootstrap_address`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [addr: str, temp_dir: Optional[str]].
