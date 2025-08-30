@@ -52,6 +52,8 @@ if TYPE_CHECKING:
         EmbeddingRequest,
         EmbeddingResponse,
         ErrorResponse,
+        ResponseRequest,
+        ResponseResponse,
     )
 
 logger = get_logger(__name__)
@@ -93,6 +95,15 @@ class _LLMServerBase(ABC):
     ]:
         """
         Inferencing to the engine for completion api, and return the response.
+        """
+        ...
+
+    @abstractmethod
+    async def responses(
+        self, request: "ResponseRequest"
+    ) -> AsyncGenerator[Union[str, "ResponseResponse", "ErrorResponse"], None]:
+        """
+        Process Responses API requests (first pass without state).
         """
         ...
 
@@ -371,6 +382,24 @@ class LLMServer(_LLMServerBase):
         return await self._run_request(
             request,
             engine_method="completions",
+            batch_output_stream=True,
+        )
+
+    async def responses(
+        self, request: "ResponseRequest"
+    ) -> AsyncGenerator[Union[str, "ResponseResponse", "ErrorResponse"], None]:
+        """Runs a responses request to the LLM engine and returns the response.
+
+        Args:
+            request: A ResponseRequest object.
+
+        Returns:
+            An AsyncGenerator of the response. If stream is True and batching is enabled, then the generator will yield a list of responses streaming responses (strings of the format data: {response_json}\n\n). Otherwise, it will yield the ResponseResponse object directly.
+        """
+        # Delegate to vLLM's native responses implementation
+        return await self._run_request(
+            request,
+            engine_method="responses",
             batch_output_stream=True,
         )
 

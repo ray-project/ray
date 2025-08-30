@@ -13,6 +13,8 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     EmbeddingRequest,
     EmbeddingResponse,
     ErrorResponse,
+    ResponseRequest,
+    ResponseResponse,
 )
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
@@ -209,6 +211,131 @@ class MockVLLMEngine(LLMEngine):
             )
 
             yield response
+
+    async def responses(
+        self, request: ResponseRequest
+    ) -> AsyncGenerator[Union[str, ResponseResponse, ErrorResponse], None]:
+        """Mock responses API."""
+        if not self.started:
+            raise RuntimeError("Engine not started")
+
+        # Convert responses request to chat format for processing
+        messages = [{"role": "user", "content": request.input}]
+        chat_request = ChatCompletionRequest(
+            model=request.model,
+            messages=messages,
+            stream=request.stream,
+            max_tokens=getattr(request, "max_output_tokens", None) or randint(1, 10),
+        )
+
+        # Generate response using existing chat logic
+        if request.stream:
+            # For streaming, we need to convert chat streaming to responses streaming format
+            # For now, just pass through the chat streaming format
+            async for chunk in self._generate_chat_response(
+                request=chat_request,
+                prompt_text=request.input,
+                max_tokens=chat_request.max_tokens,
+            ):
+                yield chunk
+        else:
+            # For non-streaming, convert to ResponseResponse format
+            async for chat_response in self._generate_chat_response(
+                request=chat_request,
+                prompt_text=request.input,
+                max_tokens=chat_request.max_tokens,
+            ):
+                if isinstance(chat_response, ChatCompletionResponse):
+                    # Convert ChatCompletionResponse to ResponseResponse format
+                    output_content = ""
+                    if chat_response.choices and chat_response.choices[0].message:
+                        output_content = chat_response.choices[0].message.content
+
+                    # Create a minimal ResponseResponse that satisfies vLLM's protocol
+                    # Use vLLM's from_request method if available, or create manually
+                    try:
+                        # Try to use vLLM's response creation method
+                        from vllm.entrypoints.openai.protocol import ResponsesResponse
+                        from vllm.sampling_params import SamplingParams
+
+                        # Create minimal sampling params
+                        sampling_params = SamplingParams(
+                            temperature=1.0,
+                            top_p=1.0,
+                            max_tokens=10,
+                        )
+
+                        response = ResponsesResponse.from_request(
+                            request=request,
+                            sampling_params=sampling_params,
+                            model_name=chat_response.model,
+                            created_time=chat_response.created,
+                            output=[],  # Empty output for now
+                            status="completed",
+                            usage=chat_response.usage,
+                        )
+
+                        # Override the output with our mock content
+                        response.output = [
+                            {
+                                "type": "message",
+                                "id": f"msg_{random.randint(1000, 9999)}",
+                                "role": "assistant",
+                                "content": [
+                                    {
+                                        "type": "output_text",
+                                        "text": output_content,
+                                        "annotations": [],
+                                    }
+                                ],
+                                "status": "completed",
+                            }
+                        ]
+
+                    except Exception:
+                        # Fallback: Return a simplified response that the router can handle
+                        class SimpleResponse:
+                            def __init__(self, **kwargs):
+                                for k, v in kwargs.items():
+                                    setattr(self, k, v)
+
+                            def model_dump(self):
+                                return {
+                                    "id": self.id,
+                                    "object": "response",
+                                    "created_at": self.created_at,
+                                    "model": self.model,
+                                    "output": self.output,
+                                    "status": "completed",
+                                    "usage": self.usage,
+                                }
+
+                        response = SimpleResponse(
+                            id=f"resp_{random.randint(1000, 9999)}",
+                            object="response",
+                            created_at=chat_response.created,
+                            model=chat_response.model,
+                            output=[
+                                {
+                                    "type": "message",
+                                    "id": f"msg_{random.randint(1000, 9999)}",
+                                    "role": "assistant",
+                                    "content": [
+                                        {
+                                            "type": "output_text",
+                                            "text": output_content,
+                                            "annotations": [],
+                                        }
+                                    ],
+                                    "status": "completed",
+                                }
+                            ],
+                            status="completed",
+                            usage=chat_response.usage.model_dump()
+                            if hasattr(chat_response.usage, "model_dump")
+                            else chat_response.usage,
+                        )
+                    yield response
 
     async def _generate_completion_response(
         self, request: CompletionRequest, prompt_text: str, max_tokens: int

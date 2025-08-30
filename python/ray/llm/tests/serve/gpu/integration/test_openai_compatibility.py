@@ -121,6 +121,52 @@ class TestOpenAICompatibility:
                 pass
         assert "Could not find" in str(exc_info.value)
 
+    def test_responses(self, testing_model):  # noqa: F811
+        client, model = testing_model
+        # create a response
+        response = client.responses.create(
+            model=model,
+            input="Hello world",
+            store=False,  # Disable storage for basic test
+        )
+        assert response
+        assert response.id
+        assert response.object == "response"
+        assert response.status == "completed"
+        assert isinstance(response.output, list)
+        assert len(response.output) > 0
+
+    def test_responses_stream(self, testing_model):  # noqa: F811
+        client, model = testing_model
+        i = 0
+        for response_chunk in client.responses.create(
+            model=model,
+            input="Hello world",
+            stream=True,
+            store=False,
+        ):
+            i += 1
+            assert response_chunk
+            assert response_chunk.id
+            # Responses API streaming has different format than chat completions
+            if hasattr(response_chunk, "delta"):
+                # Streaming delta format
+                assert hasattr(response_chunk, "delta")
+            else:
+                # Event-based streaming format
+                assert hasattr(response_chunk, "type")
+        assert i > 0
+
+    def test_responses_missing_model(self, testing_model):  # noqa: F811
+        client, _ = testing_model
+        with pytest.raises(openai.NotFoundError) as exc_info:
+            client.responses.create(
+                model="notarealmodel",
+                input="Hello world",
+                store=False,
+            )
+        assert "Could not find" in str(exc_info.value)
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
