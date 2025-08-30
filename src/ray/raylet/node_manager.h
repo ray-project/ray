@@ -285,9 +285,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       rpc::ResizeLocalResourceInstancesReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `ReturnWorkerLease` request.
+  void HandleReturnWorkerLease(rpc::ReturnWorkerLeaseRequest request,
+                               rpc::ReturnWorkerLeaseReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
+
  private:
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
-  FRIEND_TEST(NodeManagerReturnWorkerLeaseIdempotentTest, TestDifferentRequestArgs);
 
   // Removes the worker from node_manager's leased_workers_ map.
   // Warning: this does NOT release the worker's resources, or put the leased worker
@@ -557,11 +561,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                         rpc::SendReplyCallback send_reply_callback,
                                         WorkerPoolInterface &worker_pool,
                                         LocalLeaseManagerInterface &local_lease_manager);
-
-  /// Handle a `ReturnWorkerLease` request.
-  void HandleReturnWorkerLease(rpc::ReturnWorkerLeaseRequest request,
-                               rpc::ReturnWorkerLeaseReply *reply,
-                               rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ReleaseUnusedActorWorkers` request.
   // On GCS restart, there's a pruning effort. GCS sends raylet a list of actor workers it
