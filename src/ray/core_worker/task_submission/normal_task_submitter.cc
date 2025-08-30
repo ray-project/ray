@@ -724,9 +724,12 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
       // The task is finished or failed so marking the task as cancelled is sufficient.
       return Status::OK();
     }
-
+    // The task is already completed or failed so we've already returned the lease for the
+    // task
     auto scheduling_key_iter = scheduling_key_entries_.find(scheduling_key);
-    RAY_CHECK(scheduling_key_iter != scheduling_key_entries_.end());
+    if (scheduling_key_iter == scheduling_key_entries_.end()) {
+      return Status::OK();
+    }
     auto &scheduling_key_entry = scheduling_key_iter->second;
     auto &scheduling_tasks = scheduling_key_entry.task_queue;
     // This cancels tasks that have completed dependencies and are awaiting
