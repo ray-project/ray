@@ -979,14 +979,14 @@ class ReplicaDetails(ServeActorDetails, frozen=True):
 
 
 @PublicAPI(stability="alpha")
-class MetricsHealth(str, Enum):
+class AutoscalingMetricsHealth(str, Enum):
     HEALTHY = "healthy"
     DELAYED = "delayed"
     UNAVAILABLE = "unavailable"
 
 
 @PublicAPI(stability="alpha")
-class ScalingStatus(str, Enum):
+class AutoscalingStatus(str, Enum):
     UPSCALING = "UPSCALING"
     DOWNSCALING = "DOWNSCALING"
     STABLE = "STABLE"
@@ -1015,10 +1015,7 @@ class ScalingDecision(BaseModel):
 class DeploymentAutoscalingDetail(BaseModel):
     """Deployment-level autoscaler observability."""
 
-    class Config:
-        extra = Extra.forbid
-
-    scaling_status: ScalingStatus = Field(
+    scaling_status: AutoscalingStatus = Field(
         ..., description="Current scaling direction or stability."
     )
     decisions: List[ScalingDecision] = Field(
@@ -1027,8 +1024,9 @@ class DeploymentAutoscalingDetail(BaseModel):
     metrics: Optional[Dict[str, Any]] = Field(
         None, description="Aggregated metrics for this deployment."
     )
-    metrics_health: MetricsHealth = Field(
-        MetricsHealth.HEALTHY, description="Health of metrics collection pipeline."
+    metrics_health: AutoscalingMetricsHealth = Field(
+        AutoscalingMetricsHealth.HEALTHY,
+        description="Health of metrics collection pipeline.",
     )
     errors: List[str] = Field(
         default_factory=list, description="Recent errors/abnormal events."

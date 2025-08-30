@@ -102,8 +102,8 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.schema.ServeStatus
    serve.schema.DeploymentStatusOverview
    serve.schema.EncodingType
-   serve.schema.MetricsHealth
-   serve.schema.ScalingStatus
+   serve.schema.AutoscalingMetricsHealth
+   serve.schema.AutoscalingStatus
    serve.schema.ScalingDecision
    serve.schema.DeploymentAutoscalingDetail
 ```
