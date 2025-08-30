@@ -41,9 +41,7 @@ LocalLeaseManager::LocalLeaseManager(
     std::function<bool(const std::vector<ObjectID> &object_ids,
                        std::vector<std::unique_ptr<RayObject>> *results)>
         get_lease_arguments,
-    size_t max_pinned_lease_arguments_bytes,
-    std::function<int64_t(void)> get_time_ms,
-    int64_t sched_cls_cap_interval_ms)
+    size_t max_pinned_lease_arguments_bytes)
     : self_node_id_(self_node_id),
       self_scheduling_node_id_(self_node_id.Binary()),
       cluster_resource_scheduler_(cluster_resource_scheduler),
@@ -54,18 +52,14 @@ LocalLeaseManager::LocalLeaseManager(
       worker_pool_(worker_pool),
       leased_workers_(leased_workers),
       get_lease_arguments_(get_lease_arguments),
-      max_pinned_lease_arguments_bytes_(max_pinned_lease_arguments_bytes),
-      get_time_ms_(get_time_ms),
-      sched_cls_cap_enabled_(RayConfig::instance().worker_cap_enabled()),
-      sched_cls_cap_interval_ms_(sched_cls_cap_interval_ms),
-      sched_cls_cap_max_ms_(RayConfig::instance().worker_cap_max_backoff_delay_ms()) {}
+      max_pinned_lease_arguments_bytes_(max_pinned_lease_arguments_bytes) {}
 
 void LocalLeaseManager::QueueAndScheduleLease(std::shared_ptr<internal::Work> work) {
   // If the local node is draining, the cluster lease manager will
   // guarantee that the local node is not selected for scheduling.
   RAY_CHECK(!cluster_resource_scheduler_.GetLocalResourceManager().IsLocalNodeDraining());
-  // The local node must be feasible if the cluster lease manager decides to run the task
-  // locally.
+  // The local node must be feasible if the cluster lease manager decides to grant the
+  // lease locally.
   RAY_CHECK(cluster_resource_scheduler_.GetClusterResourceManager().HasFeasibleResources(
       self_scheduling_node_id_,
       ResourceMapToResourceRequest(work->lease_.GetLeaseSpecification()
@@ -180,7 +174,7 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
     // requests.
     size_t num_classes_with_cpu = 0;
     for (const auto &[_, cur_dispatch_queue] : leases_to_grant_) {
-      // Only need to check the first because all tasks with the same scheduling class
+      // Only need to check the first because all leases with the same scheduling class
       // have the same CPU resource requirements.
       RAY_CHECK(!cur_dispatch_queue.empty());
       const auto &work = cur_dispatch_queue.front();
@@ -241,12 +235,8 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
         continue;
       }
     }
-
-    /// We cap the maximum granted leases of a scheduling class to avoid
-    /// granting too many leases of a single type/depth, when there are
-    /// deeper/other functions that should be run. We need to apply back
-    /// pressure to limit the number of worker processes started in scenarios
-    /// with nested tasks.
+    // NOTE: sched_cls_info.granted_leases.size() can be greater than
+    // sched_cls_info.capacity at this point due to oversubscription
     bool is_infeasible = false;
     for (auto work_it = leases_to_grant_queue.begin();
          work_it != leases_to_grant_queue.end();) {
@@ -257,41 +247,6 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
       if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
         work_it++;
         continue;
-      }
-
-      // Check if the scheduling class is at capacity now.
-      if (sched_cls_cap_enabled_ &&
-          sched_cls_info.granted_leases.size() >= sched_cls_info.capacity &&
-          work->GetState() == internal::WorkStatus::WAITING) {
-        RAY_LOG(DEBUG) << "Hit cap! time=" << get_time_ms_()
-                       << " next update time=" << sched_cls_info.next_update_time;
-        if (get_time_ms_() < sched_cls_info.next_update_time) {
-          // We're over capacity and it's not time to grant a new lease yet.
-          // Calculate the next time we should grant a new lease.
-          int64_t current_capacity = sched_cls_info.granted_leases.size();
-          int64_t allowed_capacity = sched_cls_info.capacity;
-          int64_t exp = current_capacity - allowed_capacity;
-          int64_t wait_time = sched_cls_cap_interval_ms_ * (1L << exp);
-          if (wait_time > sched_cls_cap_max_ms_) {
-            wait_time = sched_cls_cap_max_ms_;
-            RAY_LOG(WARNING) << "Starting too many worker processes for a single type of "
-                                "task. Worker process startup is being throttled.";
-          }
-
-          int64_t target_time = get_time_ms_() + wait_time;
-          sched_cls_info.next_update_time =
-              std::min(target_time, sched_cls_info.next_update_time);
-
-          // While we're over capacity and cannot grant the lease,
-          // try to spill to a node that can.
-          bool did_spill = TrySpillback(work, is_infeasible);
-          if (did_spill) {
-            work_it = leases_to_grant_queue.erase(work_it);
-            continue;
-          }
-
-          break;
-        }
       }
 
       bool args_missing = false;
@@ -351,11 +306,6 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
         }
         work_it = leases_to_grant_queue.erase(work_it);
       } else {
-        // Force us to recalculate the next update time the next time a task
-        // comes through this queue. We should only do this when we're
-        // confident we're ready to dispatch the task after all checks have
-        // passed.
-        sched_cls_info.next_update_time = std::numeric_limits<int64_t>::max();
         sched_cls_info.granted_leases.insert(lease_id);
         // The local node has the available resources to grant the lease, so we should
         // grant it.
@@ -364,7 +314,7 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
         bool is_detached_actor = spec.IsDetachedActor();
         auto &owner_address = spec.CallerAddress();
         /// TODO(scv119): if a worker is not started, the resources are leaked and
-        // task might be hanging.
+        // lease might be hanging.
         worker_pool_.PopWorker(
             spec,
             [this, lease_id, scheduling_class, work, is_detached_actor, owner_address](
@@ -374,8 +324,8 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
               // TODO(hjiang): After getting the ready-to-use worker and lease id, we're
               // able to get physical execution context.
               //
-              // ownership chain: raylet has-a node manager, node manager has-a local task
-              // manager.
+              // ownership chain: raylet has-a node manager, node manager has-a local
+              // lease manager.
               //
               // - PID: could get from available worker
               // - Attempt id: could pass a global attempt id generator from raylet
@@ -395,7 +345,7 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
     }
     // In the beginning of the loop, we add scheduling_class
     // to the `info_by_sched_cls_` map.
-    // In cases like dead owners, we may not add any tasks
+    // In cases like dead owners, we may not add any leases
     // to `granted_leases` so we can remove the map entry
     // for that scheduling_class to prevent memory leaks.
     if (sched_cls_info.granted_leases.size() == 0) {
@@ -409,10 +359,9 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
                      << front_lease.DebugString();
       auto leases_to_grant_queue_iter = leases_to_grant_queue.begin();
       while (leases_to_grant_queue_iter != leases_to_grant_queue.end()) {
-        CancelLeaseToGrant(
-            *leases_to_grant_queue_iter,
-            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
-            "Lease granting failed due to the lease becoming infeasible.");
+        CancelLease(*leases_to_grant_queue_iter,
+                    rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
+                    "Lease granting failed due to the lease becoming infeasible.");
         leases_to_grant_queue_iter =
             leases_to_grant_queue.erase(leases_to_grant_queue_iter);
       }
@@ -589,7 +538,7 @@ bool LocalLeaseManager::PoppedWorkerHandler(
       };
 
   if (canceled) {
-    // Task has been canceled.
+    // Lease has been canceled.
     RAY_LOG(DEBUG) << "Lease " << lease_id << " has been canceled when worker popped";
     RemoveFromGrantedLeasesIfExists(lease);
     // All the cleaning work has been done when canceled lease. Just return
@@ -603,7 +552,7 @@ bool LocalLeaseManager::PoppedWorkerHandler(
     cluster_resource_scheduler_.GetLocalResourceManager().ReleaseWorkerResources(
         work->allocated_instances_);
     work->allocated_instances_ = nullptr;
-    // Release pinned task args.
+    // Release pinned lease args.
     ReleaseLeaseArgs(lease_id);
     RemoveFromGrantedLeasesIfExists(lease);
 
@@ -613,10 +562,10 @@ bool LocalLeaseManager::PoppedWorkerHandler(
            "to grant the lease: status "
         << status;
     if (status == PopWorkerStatus::RuntimeEnvCreationFailed) {
-      // In case of runtime env creation failed, we cancel this task
+      // In case of runtime env creation failed, we cancel this lease
       // directly and raise a `RuntimeEnvSetupError` exception to user
-      // eventually. The task will be removed from dispatch queue in
-      // `CancelTask`.
+      // eventually. The lease will be removed from leases_to_grant queue in
+      // `CancelLease`.
       CancelLeases(
           [lease_id](const auto &w) {
             return lease_id == w->lease_.GetLeaseSpecification().LeaseId();
@@ -624,13 +573,13 @@ bool LocalLeaseManager::PoppedWorkerHandler(
           rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED,
           /*scheduling_failure_message*/ runtime_env_setup_error_message);
     } else if (status == PopWorkerStatus::JobFinished) {
-      // The task job finished.
-      // Just remove the task from dispatch queue.
+      // The lease job finished.
+      // Just remove the lease from leases_to_grant queue.
       RAY_LOG(DEBUG) << "Call back to a job finished lease, lease id = " << lease_id;
       erase_from_leases_to_grant_queue_fn(work, scheduling_class);
     } else {
-      // In other cases, set the work status `WAITING` to make this task
-      // could be re-dispatched.
+      // In other cases, set the work status `WAITING` to make this lease
+      // could be re-granted.
       internal::UnscheduledWorkCause cause =
           internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST;
       if (status == PopWorkerStatus::JobConfigMissing) {
@@ -774,7 +723,7 @@ bool LocalLeaseManager::PinLeaseArgsIfMemoryAvailable(
   RAY_LOG(DEBUG) << "RayLease " << lease_spec.LeaseId() << " has args of size "
                  << lease_arg_bytes;
   PinLeaseArgs(lease_spec, std::move(args));
-  RAY_LOG(DEBUG) << "Size of pinned task args is now " << pinned_lease_arguments_bytes_;
+  RAY_LOG(DEBUG) << "Size of pinned lease args is now " << pinned_lease_arguments_bytes_;
   if (max_pinned_lease_arguments_bytes_ == 0) {
     // Max threshold for pinned args is not set.
     return true;
@@ -859,15 +808,15 @@ bool LocalLeaseManager::CancelLeases(
     std::function<bool(const std::shared_ptr<internal::Work> &)> predicate,
     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
     const std::string &scheduling_failure_message) {
-  bool tasks_cancelled = false;
+  bool leases_cancelled = false;
 
   ray::erase_if<SchedulingClass, std::shared_ptr<internal::Work>>(
       leases_to_grant_, [&](const std::shared_ptr<internal::Work> &work) {
         if (!predicate(work)) {
           return false;
         }
-        CancelLeaseToGrant(work, failure_type, scheduling_failure_message);
-        tasks_cancelled = true;
+        CancelLease(work, failure_type, scheduling_failure_message);
+        leases_cancelled = true;
         return true;
       });
 
@@ -880,17 +829,17 @@ bool LocalLeaseManager::CancelLeases(
                 work->lease_.GetLeaseSpecification().LeaseId());
           }
           waiting_leases_index_.erase(work->lease_.GetLeaseSpecification().LeaseId());
-          tasks_cancelled = true;
+          leases_cancelled = true;
           return true;
         } else {
           return false;
         }
       });
 
-  return tasks_cancelled;
+  return leases_cancelled;
 }
 
-void LocalLeaseManager::CancelLeaseToGrant(
+void LocalLeaseManager::CancelLease(
     const std::shared_ptr<internal::Work> &work,
     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
     const std::string &scheduling_failure_message) {

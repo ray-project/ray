@@ -70,11 +70,6 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   /// \param get_lease_arguments: A callback for getting a leases' arguments by
   ///                            their ids.
   /// \param max_pinned_lease_arguments_bytes: The cap on pinned arguments.
-  /// \param get_time_ms: A callback which returns the current time in milliseconds.
-  /// \param sched_cls_cap_interval_ms: The time before we increase the cap
-  ///                                   on the number of leases that can run per
-  ///                                   scheduling class. If set to 0, there is no
-  ///                                   cap. If it's a large number, the cap is hard.
   LocalLeaseManager(
       const NodeID &self_node_id,
       ClusterResourceScheduler &cluster_resource_scheduler,
@@ -85,11 +80,7 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
       std::function<bool(const std::vector<ObjectID> &object_ids,
                          std::vector<std::unique_ptr<RayObject>> *results)>
           get_lease_arguments,
-      size_t max_pinned_lease_arguments_bytes,
-      std::function<int64_t(void)> get_time_ms =
-          []() { return static_cast<int64_t>(absl::GetCurrentTimeNanos() / 1e6); },
-      int64_t sched_cls_cap_interval_ms =
-          RayConfig::instance().worker_cap_initial_backoff_delay_ms());
+      size_t max_pinned_lease_arguments_bytes);
 
   /// Queue lease and schedule.
   void QueueAndScheduleLease(std::shared_ptr<internal::Work> work) override;
@@ -201,12 +192,12 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
                            const rpc::Address &owner_address,
                            const std::string &runtime_env_setup_error_message);
 
-  /// Cancels a lease in leases_to_grant_. Does not remove it from leases_to_grant_.
-  void CancelLeaseToGrant(
-      const std::shared_ptr<internal::Work> &work,
-      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
-          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
-      const std::string &scheduling_failure_message = "");
+  /// Cancels a queued lease in leases_to_grant_. Does not remove it from
+  /// leases_to_grant_.
+  void CancelLease(const std::shared_ptr<internal::Work> &work,
+                   rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
+                       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
+                   const std::string &scheduling_failure_message = "");
 
   /// Attempts to grant all leases which are ready to run. A lease
   /// will be granted if it is on `leases_to_grant_` and there are still
@@ -286,16 +277,13 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   /// class. This information is used to place a cap on the number of
   /// granted leases per scheduling class.
   struct SchedulingClassInfo {
-    explicit SchedulingClassInfo(int64_t cap)
-        : capacity(cap), next_update_time(std::numeric_limits<int64_t>::max()) {}
+    explicit SchedulingClassInfo(int64_t cap) : capacity(cap) {}
     /// Track the granted lease ids in this scheduling class.
     ///
     /// TODO(hjiang): Store cgroup manager along with lease id as the value for map.
     absl::flat_hash_set<LeaseID> granted_leases;
     /// The total number of leases that can run from this scheduling class.
     uint64_t capacity;
-    /// The next time that a new lease of this scheduling class may be dispatched.
-    int64_t next_update_time;
   };
 
   /// Mapping from scheduling class to information about the granted leases of
@@ -369,17 +357,6 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
 
   /// The maximum amount of bytes that can be used by granted lease arguments.
   size_t max_pinned_lease_arguments_bytes_;
-
-  /// Returns the current time in milliseconds.
-  std::function<int64_t()> get_time_ms_;
-
-  /// Whether or not to enable the worker process cap.
-  const bool sched_cls_cap_enabled_;
-
-  /// The initial interval before the cap on the number of worker processes is increased.
-  const int64_t sched_cls_cap_interval_ms_;
-
-  const int64_t sched_cls_cap_max_ms_;
 
   size_t num_lease_spilled_ = 0;
   size_t num_waiting_lease_spilled_ = 0;
