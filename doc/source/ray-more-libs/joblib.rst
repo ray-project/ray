@@ -52,7 +52,7 @@ a multi-node Ray cluster instead.
       search.fit(digits.data, digits.target)
 
 You can also set the ``ray_remote_args`` argument in ``parallel_backend`` to :func:`configure
-the Ray Actors <ray.remote>` making up the Pool. This can be used to eg. :ref:`assign resources
+the Ray Actors <ray.remote>` making up the Pool. This can be used to e.g., :ref:`assign resources
 to Actors, such as GPUs <actor-resource-guide>`.
 
 .. code-block:: python
@@ -67,7 +67,7 @@ Run on a Cluster
 This section assumes that you have a running Ray cluster. To start a Ray cluster,
 see the :ref:`cluster setup <cluster-index>` instructions.
 
-To connect a scikit-learn to a running Ray cluster, you have to specify the address of the
+To connect scikit-learn to a running Ray cluster, you have to specify the address of the
 head node by setting the ``RAY_ADDRESS`` environment variable.
 
 You can also start Ray manually by calling ``ray.init()`` (with any of its supported
