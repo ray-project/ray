@@ -18,6 +18,7 @@ from ray.train.v2._internal.util import ObjectRefWrapper
 
 @pytest.mark.parametrize("created_nested_threads", [True, False])
 def test_worker_finished_after_all_threads_finish(monkeypatch, created_nested_threads):
+    # Disable this to avoid TypeError from logging MagicMock
     monkeypatch.setenv(ENABLE_WORKER_STRUCTURED_LOGGING_ENV_VAR, False)
 
     # Initialize RayTrainWorker state
