@@ -22,6 +22,7 @@
 #pragma once
 
 #include "ray/common/status.h"
+#include "src/ray/protobuf/autoscaler.grpc.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
@@ -34,6 +35,48 @@ using SendReplyCallback = std::function<void(
   reply->mutable_status()->set_code(static_cast<int>(status.code())); \
   reply->mutable_status()->set_message(status.message());             \
   send_reply_callback(ray::Status::OK(), nullptr, nullptr)
+
+class ActorInfoGcsServiceHandler {
+ public:
+  virtual ~ActorInfoGcsServiceHandler() = default;
+
+  virtual void HandleRegisterActor(RegisterActorRequest request,
+                                   RegisterActorReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleRestartActorForLineageReconstruction(
+      RestartActorForLineageReconstructionRequest request,
+      RestartActorForLineageReconstructionReply *reply,
+      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleCreateActor(CreateActorRequest request,
+                                 CreateActorReply *reply,
+                                 SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetActorInfo(GetActorInfoRequest request,
+                                  GetActorInfoReply *reply,
+                                  SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetNamedActorInfo(GetNamedActorInfoRequest request,
+                                       GetNamedActorInfoReply *reply,
+                                       SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleListNamedActors(rpc::ListNamedActorsRequest request,
+                                     rpc::ListNamedActorsReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllActorInfo(GetAllActorInfoRequest request,
+                                     GetAllActorInfoReply *reply,
+                                     SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleKillActorViaGcs(KillActorViaGcsRequest request,
+                                     KillActorViaGcsReply *reply,
+                                     SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleReportActorOutOfScope(ReportActorOutOfScopeRequest request,
+                                           ReportActorOutOfScopeReply *reply,
+                                           SendReplyCallback send_reply_callback) = 0;
+};
 
 class NodeInfoGcsServiceHandler {
  public:
@@ -64,6 +107,27 @@ class NodeInfoGcsServiceHandler {
                                     SendReplyCallback send_reply_callback) = 0;
 };
 
+class NodeResourceInfoGcsServiceHandler {
+ public:
+  virtual ~NodeResourceInfoGcsServiceHandler() = default;
+
+  virtual void HandleGetAllAvailableResources(GetAllAvailableResourcesRequest request,
+                                              GetAllAvailableResourcesReply *reply,
+                                              SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllTotalResources(GetAllTotalResourcesRequest request,
+                                          GetAllTotalResourcesReply *reply,
+                                          SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetDrainingNodes(GetDrainingNodesRequest request,
+                                      GetDrainingNodesReply *reply,
+                                      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllResourceUsage(GetAllResourceUsageRequest request,
+                                         GetAllResourceUsageReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
+};
+
 class InternalPubSubGcsServiceHandler {
  public:
   virtual ~InternalPubSubGcsServiceHandler() = default;
@@ -79,10 +143,6 @@ class InternalPubSubGcsServiceHandler {
   virtual void HandleGcsSubscriberCommandBatch(GcsSubscriberCommandBatchRequest request,
                                                GcsSubscriberCommandBatchReply *reply,
                                                SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGcsUnregisterSubscriber(GcsUnregisterSubscriberRequest request,
-                                             GcsUnregisterSubscriberReply *reply,
-                                             SendReplyCallback send_reply_callback) = 0;
 };
 
 class JobInfoGcsServiceHandler {
@@ -152,6 +212,127 @@ class WorkerInfoGcsServiceHandler {
       UpdateWorkerNumPausedThreadsReply *reply,
       SendReplyCallback send_reply_callback) = 0;
 };
+
+class InternalKVGcsServiceHandler {
+ public:
+  virtual ~InternalKVGcsServiceHandler() = default;
+  virtual void HandleInternalKVKeys(InternalKVKeysRequest request,
+                                    InternalKVKeysReply *reply,
+                                    SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleInternalKVGet(InternalKVGetRequest request,
+                                   InternalKVGetReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleInternalKVMultiGet(InternalKVMultiGetRequest request,
+                                        InternalKVMultiGetReply *reply,
+                                        SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleInternalKVPut(InternalKVPutRequest request,
+                                   InternalKVPutReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleInternalKVDel(InternalKVDelRequest request,
+                                   InternalKVDelReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleInternalKVExists(InternalKVExistsRequest request,
+                                      InternalKVExistsReply *reply,
+                                      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetInternalConfig(GetInternalConfigRequest request,
+                                       GetInternalConfigReply *reply,
+                                       SendReplyCallback send_reply_callback) = 0;
+};
+
+class TaskInfoGcsServiceHandler {
+ public:
+  virtual ~TaskInfoGcsServiceHandler() = default;
+
+  virtual void HandleAddTaskEventData(AddTaskEventDataRequest request,
+                                      AddTaskEventDataReply *reply,
+                                      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetTaskEvents(GetTaskEventsRequest request,
+                                   GetTaskEventsReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
+};
+
+class PlacementGroupInfoGcsServiceHandler {
+ public:
+  virtual ~PlacementGroupInfoGcsServiceHandler() = default;
+
+  virtual void HandleCreatePlacementGroup(CreatePlacementGroupRequest request,
+                                          CreatePlacementGroupReply *reply,
+                                          SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleRemovePlacementGroup(RemovePlacementGroupRequest request,
+                                          RemovePlacementGroupReply *reply,
+                                          SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetPlacementGroup(GetPlacementGroupRequest request,
+                                       GetPlacementGroupReply *reply,
+                                       SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllPlacementGroup(GetAllPlacementGroupRequest request,
+                                          GetAllPlacementGroupReply *reply,
+                                          SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleWaitPlacementGroupUntilReady(
+      WaitPlacementGroupUntilReadyRequest request,
+      WaitPlacementGroupUntilReadyReply *reply,
+      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetNamedPlacementGroup(GetNamedPlacementGroupRequest request,
+                                            GetNamedPlacementGroupReply *reply,
+                                            SendReplyCallback send_reply_callback) = 0;
+};
+
+namespace autoscaler {
+
+class AutoscalerStateServiceHandler {
+ public:
+  virtual ~AutoscalerStateServiceHandler() = default;
+
+  virtual void HandleGetClusterResourceState(GetClusterResourceStateRequest request,
+                                             GetClusterResourceStateReply *reply,
+                                             SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleReportAutoscalingState(ReportAutoscalingStateRequest request,
+                                            ReportAutoscalingStateReply *reply,
+                                            SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleRequestClusterResourceConstraint(
+      RequestClusterResourceConstraintRequest request,
+      RequestClusterResourceConstraintReply *reply,
+      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetClusterStatus(GetClusterStatusRequest request,
+                                      GetClusterStatusReply *reply,
+                                      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleDrainNode(DrainNodeRequest request,
+                               DrainNodeReply *reply,
+                               SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleReportClusterConfig(ReportClusterConfigRequest request,
+                                         ReportClusterConfigReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
+};
+
+}  // namespace autoscaler
+
+namespace events {
+
+class RayEventExportGcsServiceHandler {
+ public:
+  virtual ~RayEventExportGcsServiceHandler() = default;
+  virtual void HandleAddEvents(events::AddEventsRequest request,
+                               events::AddEventsReply *reply,
+                               SendReplyCallback send_reply_callback) = 0;
+};
+
+}  // namespace events
 
 }  // namespace rpc
 }  // namespace ray

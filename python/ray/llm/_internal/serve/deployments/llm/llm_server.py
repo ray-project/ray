@@ -54,6 +54,8 @@ if TYPE_CHECKING:
         ErrorResponse,
         ResponseRequest,
         ResponseResponse,
+        ScoreRequest,
+        ScoreResponse,
     )
 
 logger = get_logger(__name__)
@@ -317,7 +319,10 @@ class LLMServer(_LLMServerBase):
     async def _run_request(
         self,
         request: Union[
-            "ChatCompletionRequest", "CompletionRequest", "EmbeddingRequest"
+            "ChatCompletionRequest",
+            "CompletionRequest",
+            "EmbeddingRequest",
+            "ScoreRequest",
         ],
         *,
         engine_method: str,
@@ -419,6 +424,24 @@ class LLMServer(_LLMServerBase):
         # NOTE: Embeddings does not need batching.
         return await self._run_request(
             request, engine_method="embeddings", batch_output_stream=False
+        )
+
+    async def score(
+        self, request: "ScoreRequest"
+    ) -> AsyncGenerator[Union["ScoreResponse", "ErrorResponse"], None]:
+        """Runs a score request to the engine and returns the response.
+
+        Returns an AsyncGenerator over the ScoreResponse object. This is so that the caller can have a consistent interface across all the methods of chat, completions, embeddings, and score.
+
+        Args:
+            request: A ScoreRequest object.
+
+        Returns:
+            An AsyncGenerator over the ScoreResponse object.
+        """
+        # NOTE: Score does not need batching, similar to embeddings.
+        return await self._run_request(
+            request, engine_method="score", batch_output_stream=False
         )
 
     async def check_health(self) -> None:

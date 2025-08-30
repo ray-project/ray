@@ -99,7 +99,8 @@ void TaskSpecification::ComputeResources() {
     // A static nil object is used here to avoid allocating the empty object every time.
     required_resources_ = ResourceSet::Nil();
   } else {
-    required_resources_.reset(new ResourceSet(MapFromProtobuf(required_resources)));
+    required_resources_ =
+        std::make_shared<ResourceSet>(MapFromProtobuf(required_resources));
   }
 
   auto &required_placement_resources = message_->required_placement_resources().empty()
@@ -109,8 +110,8 @@ void TaskSpecification::ComputeResources() {
   if (required_placement_resources.empty()) {
     required_placement_resources_ = ResourceSet::Nil();
   } else {
-    required_placement_resources_.reset(
-        new ResourceSet(MapFromProtobuf(required_placement_resources)));
+    required_placement_resources_ =
+        std::make_shared<ResourceSet>(MapFromProtobuf(required_placement_resources));
   }
 
   // Set LabelSelector required for scheduling if specified. Parses string map
@@ -166,12 +167,7 @@ const std::string TaskSpecification::GetSerializedActorHandle() const {
   return message_->actor_creation_task_spec().serialized_actor_handle();
 }
 
-JobID TaskSpecification::JobId() const {
-  if (message_->job_id().empty() /* e.g., empty proto default */) {
-    return JobID::Nil();
-  }
-  return JobID::FromBinary(message_->job_id());
-}
+JobID TaskSpecification::JobId() const { return JobID::FromBinary(message_->job_id()); }
 
 const rpc::JobConfig &TaskSpecification::JobConfig() const {
   return message_->job_config();
