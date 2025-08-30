@@ -54,6 +54,7 @@ from ray.serve._private.constants import (
     GRPC_CONTEXT_ARG_NAME,
     HEALTH_CHECK_METHOD,
     RAY_SERVE_AUTOSCALING_STATS_METHOD,
+    RAY_SERVE_AUTOSCALING_STATS_TIMEOUT_S,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
@@ -376,11 +377,14 @@ class ReplicaMetricsManager:
                 try:
                     async with self._autoscaling_stats_lock:
                         res = await asyncio.wait_for(
-                            self.autoscaling_stats_method(), timeout=5.0
+                            self.autoscaling_stats_method(),
+                            timeout=RAY_SERVE_AUTOSCALING_STATS_TIMEOUT_S,
                         )
                         metrics_dict.update(res)
                 except asyncio.TimeoutError:
-                    logger.warning("Replica autoscaling stats timed out.")
+                    logger.warning(
+                        f"Replica autoscaling stats timed out after {RAY_SERVE_AUTOSCALING_STATS_TIMEOUT_S}s."
+                    )
                 except Exception as ex:
                     logger.warning(f"Replica autoscaling stats failed. {ex}")
 
