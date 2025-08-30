@@ -7,6 +7,9 @@ import pytest
 
 os.environ["RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE"] = "0"
 os.environ["RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S"] = "3"
+os.environ[
+    "RAY_SERVE_AUTOSCALING_STATS_METHOD"
+] = "record_autoscaling_stats_non_default_method"
 
 import ray
 from ray import serve
@@ -22,10 +25,8 @@ def get_autoscaling_metrics_from_controller(
     return metrics.get(deployment_id, {})
 
 
-class TestCustomServeMetrics:
-    """Check that redeploying a deployment doesn't reset its start time."""
-
-    def test_custom_serve_metrics(self, serve_instance):
+class TestCustomServeMetricsNonDefault:
+    def test_custom_serve_metrics_non_default(self, serve_instance):
         @serve.deployment(
             autoscaling_config={
                 "min_replicas": 1,
@@ -35,7 +36,7 @@ class TestCustomServeMetrics:
                 "downscale_delay_s": 10,
             }
         )
-        class DummyMetricIncrementer:
+        class DummyMetricDeploymentNonDefault:
             def __init__(self):
                 self.counter = 0
 
@@ -47,11 +48,17 @@ class TestCustomServeMetrics:
                 # Increments each time the deployment has been called
                 return {"counter": self.counter}
 
-        app_name = "test_custom_metrics_app"
+            async def record_autoscaling_stats_non_default_method(
+                self,
+            ) -> Dict[str, Any]:
+                # Enabled only by setting RAY_SERVE_AUTOSCALING_STATS_METHOD env var
+                return {"non_default_method_autoscaling_metric": 42}
+
+        app_name = "test_custom_metrics_app_non_default"
         handle = serve.run(
-            DummyMetricIncrementer.bind(), name=app_name, route_prefix="/"
+            DummyMetricDeploymentNonDefault.bind(), name=app_name, route_prefix="/"
         )
-        dep_id = DeploymentID(name="DummyMetricIncrementer", app_name=app_name)
+        dep_id = DeploymentID(name="DummyMetricDeploymentNonDefault", app_name=app_name)
 
         # Call deployment 3 times
         [handle.remote() for _ in range(3)]
@@ -60,8 +67,8 @@ class TestCustomServeMetrics:
         time.sleep(10)
         metrics = get_autoscaling_metrics_from_controller(serve_instance, dep_id)
 
-        # The final counter value recorded by the controller should be 3
-        assert metrics["counter"][-1][0].value == 3
+        # The final counter value recorded by the controller should be 42
+        assert metrics["non_default_method_autoscaling_metric"][-1][0].value == 42
 
 
 if __name__ == "__main__":
