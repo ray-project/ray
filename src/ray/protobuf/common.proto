@@ -457,6 +457,7 @@ message StreamingGeneratorReturnIdInfo {
 }
 
 message LeaseSpec {
+  //Lease ID is nil for Driver
   bytes lease_id = 1;
   bytes job_id = 2;
   Address caller_address = 3;
