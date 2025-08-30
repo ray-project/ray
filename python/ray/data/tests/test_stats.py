@@ -296,6 +296,14 @@ def canonicalize(stats: str, filter_global_stats: bool = True) -> str:
     )
     # Handle floats in (0, 1)
     canonicalized_stats = re.sub(r" (0\.0*[1-9][0-9]*)", " N", canonicalized_stats)
+    # Replace input rows value (0 or non-0) with 'N' while keeping key prefix
+    canonicalized_stats = re.sub(
+        r"(Total input num rows: )\d+(\.\d+)?", r"\g<1>N", canonicalized_stats
+    )
+    # Replace output rows value (0 or non-0) with 'N' while keeping key prefix
+    canonicalized_stats = re.sub(
+        r"(Total output num rows: )\d+(\.\d+)?", r"\g<1>N", canonicalized_stats
+    )
     # Handle zero values specially so we can check for missing values.
     canonicalized_stats = re.sub(r" [0]+(\.[0])?", " Z", canonicalized_stats)
     # Scientific notation for small or large numbers
@@ -384,6 +392,8 @@ def test_streaming_split_stats(ray_start_regular_shared, restore_data_context):
 * Output rows per task: N min, N max, N mean, N tasks used
 * Tasks per node: N min, N max, N mean; N nodes used
 * Operator throughput:
+    * Total input num rows: N rows
+    * Total output num rows: N rows
     * Ray Data throughput: N rows/s
     * Estimated single node throughput: N rows/s
 * Extra metrics: {extra_metrics_1}
@@ -448,6 +458,8 @@ def test_large_args_scheduling_strategy(
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
         f"* Tasks per node: N min, N max, N mean; N nodes used\n"
         f"* Operator throughput:\n"
+        f"    * Total input num rows: N rows\n"
+        f"    * Total output num rows: N rows\n"
         f"    * Ray Data throughput: N rows/s\n"
         f"    * Estimated single node throughput: N rows/s\n"
         f"{read_extra_metrics}\n"
@@ -461,6 +473,8 @@ def test_large_args_scheduling_strategy(
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
         f"* Tasks per node: N min, N max, N mean; N nodes used\n"
         f"* Operator throughput:\n"
+        f"    * Total input num rows: N rows\n"
+        f"    * Total output num rows: N rows\n"
         f"    * Ray Data throughput: N rows/s\n"
         f"    * Estimated single node throughput: N rows/s\n"
         f"{map_extra_metrics}"
@@ -505,6 +519,8 @@ def test_dataset_stats_basic(
                 f"* Output rows per task: N min, N max, N mean, N tasks used\n"
                 f"* Tasks per node: N min, N max, N mean; N nodes used\n"
                 f"* Operator throughput:\n"
+                f"    * Total input num rows: N rows\n"
+                f"    * Total output num rows: N rows\n"
                 f"    * Ray Data throughput: N rows/s\n"
                 f"    * Estimated single node throughput: N rows/s\n"
                 f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE, verbose_stats_logs)}"  # noqa: E501
@@ -530,6 +546,8 @@ def test_dataset_stats_basic(
                 f"* Output rows per task: N min, N max, N mean, N tasks used\n"
                 f"* Tasks per node: N min, N max, N mean; N nodes used\n"
                 f"* Operator throughput:\n"
+                f"    * Total input num rows: N rows\n"
+                f"    * Total output num rows: N rows\n"
                 f"    * Ray Data throughput: N rows/s\n"
                 f"    * Estimated single node throughput: N rows/s\n"
                 f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE, verbose_stats_logs)}"  # noqa: E501
@@ -560,6 +578,8 @@ def test_dataset_stats_basic(
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
         f"* Tasks per node: N min, N max, N mean; N nodes used\n"
         f"* Operator throughput:\n"
+        f"    * Total input num rows: N rows\n"
+        f"    * Total output num rows: N rows\n"
         f"    * Ray Data throughput: N rows/s\n"
         f"    * Estimated single node throughput: N rows/s\n"
         f"{extra_metrics}\n"
@@ -573,6 +593,8 @@ def test_dataset_stats_basic(
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
         f"* Tasks per node: N min, N max, N mean; N nodes used\n"
         f"* Operator throughput:\n"
+        f"    * Total input num rows: N rows\n"
+        f"    * Total output num rows: N rows\n"
         f"    * Ray Data throughput: N rows/s\n"
         f"    * Estimated single node throughput: N rows/s\n"
         f"{extra_metrics}\n"
@@ -615,6 +637,8 @@ def test_block_location_nums(ray_start_regular_shared, restore_data_context):
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
         f"* Tasks per node: N min, N max, N mean; N nodes used\n"
         f"* Operator throughput:\n"
+        f"    * Total input num rows: N rows\n"
+        f"    * Total output num rows: N rows\n"
         f"    * Ray Data throughput: N rows/s\n"
         f"    * Estimated single node throughput: N rows/s\n"
         f"\n"
@@ -1006,6 +1030,8 @@ def test_dataset_stats_shuffle(ray_start_regular_shared):
     * Output rows per task: N min, N max, N mean, N tasks used
     * Tasks per node: N min, N max, N mean; N nodes used
     * Operator throughput:
+        * Total input num rows: N rows
+        * Total output num rows: N rows
         * Ray Data throughput: N rows/s
         * Estimated single node throughput: N rows/s
 
@@ -1019,6 +1045,8 @@ def test_dataset_stats_shuffle(ray_start_regular_shared):
     * Output rows per task: N min, N max, N mean, N tasks used
     * Tasks per node: N min, N max, N mean; N nodes used
     * Operator throughput:
+        * Total input num rows: N rows
+        * Total output num rows: N rows
         * Ray Data throughput: N rows/s
         * Estimated single node throughput: N rows/s
 
@@ -1034,6 +1062,8 @@ Operator N Repartition: executed in T
     * Output rows per task: N min, N max, N mean, N tasks used
     * Tasks per node: N min, N max, N mean; N nodes used
     * Operator throughput:
+        * Total input num rows: N rows
+        * Total output num rows: N rows
         * Ray Data throughput: N rows/s
         * Estimated single node throughput: N rows/s
 
@@ -1047,6 +1077,8 @@ Operator N Repartition: executed in T
     * Output rows per task: N min, N max, N mean, N tasks used
     * Tasks per node: N min, N max, N mean; N nodes used
     * Operator throughput:
+        * Total input num rows: N rows
+        * Total output num rows: N rows
         * Ray Data throughput: N rows/s
         * Estimated single node throughput: N rows/s
 
@@ -1106,6 +1138,8 @@ def test_dataset_stats_range(ray_start_regular_shared, tmp_path):
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
         f"* Tasks per node: N min, N max, N mean; N nodes used\n"
         f"* Operator throughput:\n"
+        f"    * Total input num rows: N rows\n"
+        f"    * Total output num rows: N rows\n"
         f"    * Ray Data throughput: N rows/s\n"
         f"    * Estimated single node throughput: N rows/s\n"
         f"\n"
@@ -1135,6 +1169,8 @@ def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
             f"* Output rows per task: N min, N max, N mean, N tasks used\n"
             f"* Tasks per node: N min, N max, N mean; N nodes used\n"
             f"* Operator throughput:\n"
+            f"    * Total input num rows: N rows\n"
+            f"    * Total output num rows: N rows\n"
             f"    * Ray Data throughput: N rows/s\n"
             f"    * Estimated single node throughput: N rows/s\n"
             f"\n"
@@ -1148,6 +1184,8 @@ def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
             f"* Output rows per task: N min, N max, N mean, N tasks used\n"
             f"* Tasks per node: N min, N max, N mean; N nodes used\n"
             f"* Operator throughput:\n"
+            f"    * Total input num rows: N rows\n"
+            f"    * Total output num rows: N rows\n"
             f"    * Ray Data throughput: N rows/s\n"
             f"    * Estimated single node throughput: N rows/s\n"
             f"\n"
@@ -1161,6 +1199,8 @@ def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
             f"* Output rows per task: N min, N max, N mean, N tasks used\n"
             f"* Tasks per node: N min, N max, N mean; N nodes used\n"
             f"* Operator throughput:\n"
+            f"    * Total input num rows: N rows\n"
+            f"    * Total output num rows: N rows\n"
             f"    * Ray Data throughput: N rows/s\n"
             f"    * Estimated single node throughput: N rows/s\n"
             f"\n"
@@ -1361,6 +1401,8 @@ def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
 * Output rows per task: N min, N max, N mean, N tasks used
 * Tasks per node: N min, N max, N mean; N nodes used
 * Operator throughput:
+    * Total input num rows: N rows
+    * Total output num rows: N rows
     * Ray Data throughput: N rows/s
     * Estimated single node throughput: N rows/s
 
@@ -1399,6 +1441,8 @@ def test_write_ds_stats(ray_start_regular_shared, tmp_path):
 * Output rows per task: N min, N max, N mean, N tasks used
 * Tasks per node: N min, N max, N mean; N nodes used
 * Operator throughput:
+    * Total input num rows: N rows
+    * Total output num rows: N rows
     * Ray Data throughput: N rows/s
     * Estimated single node throughput: N rows/s
 
@@ -1430,6 +1474,8 @@ Dataset throughput:
 * Output rows per task: N min, N max, N mean, N tasks used
 * Tasks per node: N min, N max, N mean; N nodes used
 * Operator throughput:
+    * Total input num rows: N rows
+    * Total output num rows: N rows
     * Ray Data throughput: N rows/s
     * Estimated single node throughput: N rows/s
 
@@ -1443,6 +1489,8 @@ Operator N Write: {EXECUTION_STRING}
 * Output rows per task: N min, N max, N mean, N tasks used
 * Tasks per node: N min, N max, N mean; N nodes used
 * Operator throughput:
+    * Total input num rows: N rows
+    * Total output num rows: N rows
     * Ray Data throughput: N rows/s
     * Estimated single node throughput: N rows/s
 
@@ -1640,9 +1688,8 @@ def test_dataset_throughput(shutdown_only):
     f = dummy_map_batches_sleep(0.01)
     ds = ray.data.range(100).map(f).materialize().map(f).materialize()
 
-    # Pattern to match operator throughput
     operator_pattern = re.compile(
-        r"Operator (\d+).*?Ray Data throughput: (\d+\.\d+) rows/s.*?Estimated single node throughput: (\d+\.\d+) rows/s",  # noqa: E501
+        r"Operator (\d+).*?\* Operator throughput:\s*.*?\* Ray Data throughput: (\d+\.\d+) rows/s.*?\* Estimated single node throughput: (\d+\.\d+) rows/s",
         re.DOTALL,
     )
 
@@ -1686,6 +1733,8 @@ def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
         f"* Tasks per node: N min, N max, N mean; N nodes used\n"
         f"* Operator throughput:\n"
+        f"    * Total input num rows: N rows\n"
+        f"    * Total output num rows: N rows\n"
         f"    * Ray Data throughput: N rows/s\n"
         f"    * Estimated single node throughput: N rows/s\n"
         f"{extra_metrics}\n"
