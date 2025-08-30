@@ -154,6 +154,10 @@ scripts/nodes.txt
 .benchmarks
 python-driver-*
 
+# Ray train local mode logs
+lightning_logs/
+hf-internal-testing/
+
 # Vscode
 .vscode/
 
