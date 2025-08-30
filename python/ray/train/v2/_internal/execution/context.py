@@ -2,6 +2,7 @@ import logging
 import sys
 import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from queue import Queue
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
@@ -13,8 +14,13 @@ from ray.train._internal import session
 from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.storage import StorageContext
-from ray.train.v2._internal.util import _copy_doc, invoke_context_managers
+from ray.train.v2._internal.util import (
+    _copy_doc,
+    construct_user_exception_with_traceback,
+    invoke_context_managers,
+)
 from ray.train.v2.api.config import RunConfig, ScalingConfig
+from ray.train.v2.api.report_config import CheckpointUploadMode
 
 if TYPE_CHECKING:
     from ray.train.v2._internal.data_integration.interfaces import (
@@ -26,6 +32,10 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__file__)
+
+
+# TODO: make this value manually or automatically configurable.
+MAX_CHECKPOINT_UPLOAD_THREADS = 5
 
 
 @dataclass(frozen=True)
@@ -98,6 +108,12 @@ class TrainContext:
     storage_context: StorageContext
     dataset_shard_provider: "DatasetShardProvider"
     checkpoint: Optional[Checkpoint] = None
+    num_reported_checkpoints: int = 0
+    num_attempted_reported_checkpoints: int = 0
+    report_order_condition: threading.Condition = threading.Condition()
+    checkpoint_uploads: ThreadPoolExecutor = ThreadPoolExecutor(
+        max_workers=MAX_CHECKPOINT_UPLOAD_THREADS
+    )
 
     @_copy_doc(session.get_experiment_name)
     def get_experiment_name(self) -> str:
@@ -209,11 +225,32 @@ class TrainContext:
 
         return _TrainingResult(checkpoint=persisted_checkpoint, metrics=metrics)
 
+    def _wait_then_report(
+        self, training_result: _TrainingResult, current_report_attempt_number: int
+    ) -> None:
+        """Thread waits for its turn before reporting training result to result queue.
+
+        The queue size is set to 1 to avoid accumulating unprocessed results.
+        If the queue is full, the put operation blocks until a result is consumed.
+
+        TODO: Add a metric to track the blocking time waiting for the
+        training result to be consumed by the controller.
+        """
+        with self.report_order_condition:
+            self.report_order_condition.wait_for(
+                lambda: self.num_reported_checkpoints
+                == current_report_attempt_number - 1
+            )
+            self.get_result_queue().put(training_result)
+            self.num_reported_checkpoints += 1
+            self.report_order_condition.notify_all()
+
     def report(
         self,
         metrics: Dict[str, Any],
         checkpoint: Optional[Checkpoint] = None,
         checkpoint_dir_name: Optional[str] = None,
+        checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
     ) -> None:
         """
         Upload checkpoint to remote storage and put a training
@@ -226,6 +263,8 @@ class TrainContext:
                 in this iteration. Note: If not set, the checkpoint will
                 be stored in the default storage path. If set, make sure
                 this value is unique for each iteration.
+            checkpoint_upload_mode: The manner in which we want to upload the checkpoint.
+                If not provided, the checkpoint will be uploaded synchronously.
 
         TODO: the report function should be implemented in the worker instead
         of in the train context. The train context should only keep the train
@@ -250,21 +289,61 @@ class TrainContext:
                 for callback in self.execution_context.train_context_callbacks
             ]
         ):
-            # Step 1: sync the checkpoint dir name across ranks.
+            self.num_attempted_reported_checkpoints += 1
+            current_report_attempt_number = self.num_attempted_reported_checkpoints
+
+            # Sync the checkpoint dir name across ranks.
             checkpoint_dir_name = self._sync_checkpoint_dir_name_across_ranks(
                 checkpoint_dir_name
             )
-            # Step 2: save the checkpoint to remote storage.
-            training_result = self._save_checkpoint(
-                checkpoint_dir_name, metrics, checkpoint
-            )
-            # Step 3: Report the training result to the result queue.
-            # The queue size is set to 1 to avoid accumulating unprocessed results.
-            # If the queue is full, the put operation blocks until a result is consumed.
 
-            # TODO (hpguo): Add a metrics to track the blocking time waiting for the
-            # training result to be consumed by the controller.
-            self.get_result_queue().put(training_result)
+            # Upload checkpoint, wait for turn, and report.
+            if checkpoint_upload_mode == CheckpointUploadMode.SYNC:
+                training_result = self._save_checkpoint(
+                    checkpoint_dir_name, metrics, checkpoint
+                )
+                self._wait_then_report(training_result, current_report_attempt_number)
+
+            elif checkpoint_upload_mode == CheckpointUploadMode.NO_UPLOAD:
+                training_result = _TrainingResult(
+                    checkpoint=checkpoint, metrics=metrics
+                )
+                self._wait_then_report(training_result, current_report_attempt_number)
+
+            elif checkpoint_upload_mode == CheckpointUploadMode.ASYNC:
+
+                def _upload_checkpoint_and_report(
+                    checkpoint_dir_name: str,
+                    metrics: Dict[str, Any],
+                    checkpoint: Optional[Checkpoint],
+                    current_report_attempt_number: int,
+                ) -> None:
+                    try:
+                        training_result = self._save_checkpoint(
+                            checkpoint_dir_name, metrics, checkpoint
+                        )
+                        self._wait_then_report(
+                            training_result, current_report_attempt_number
+                        )
+                    except Exception as e:
+                        logger.exception(
+                            "Async checkpoint upload failed - shutting down workers"
+                        )
+                        self.execution_context.training_thread_runner.get_exception_queue().put(
+                            construct_user_exception_with_traceback(e)
+                        )
+
+                self.checkpoint_uploads.submit(
+                    _upload_checkpoint_and_report,
+                    checkpoint_dir_name,
+                    metrics,
+                    checkpoint,
+                    current_report_attempt_number,
+                )
+            else:
+                raise ValueError(
+                    f"Invalid checkpoint upload mode: {checkpoint_upload_mode}"
+                )
 
 
 # The global variable holding the current TrainContext

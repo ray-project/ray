@@ -3,11 +3,14 @@ import os
 import signal
 import tempfile
 from pathlib import Path
+from unittest.mock import create_autospec
 
 import pyarrow.fs
 import pytest
 
 import ray
+import ray.cloudpickle as ray_pickle
+import ray.train.collective
 from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.train import BackendConfig, Checkpoint, RunConfig, ScalingConfig, UserCallback
 from ray.train.backend import Backend
@@ -16,6 +19,7 @@ from ray.train.tests.util import create_dict_checkpoint
 from ray.train.v2._internal.constants import is_v2_enabled
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.v2.api.exceptions import WorkerGroupError
+from ray.train.v2.api.report_config import CheckpointUploadMode
 from ray.train.v2.api.result import Result
 
 assert is_v2_enabled()
@@ -139,6 +143,138 @@ def test_report_checkpoint_multirank(tmp_path):
     result.checkpoint.to_directory(tmp_path / "validate")
     for rank in ranks_to_report:
         assert tmp_path.joinpath("validate", str(rank)).exists()
+
+
+def test_report_mixed_checkpoint_upload_modes(tmp_path):
+    """Run all 10 possible pairs of checkpoint upload modes."""
+
+    def train_fn():
+        # When reporting with async checkpointing, write the checkpoint to
+        # tmp_path, which stays alive for the duration of the test, instead of
+        # tempfile.TemporaryDirectory(), which might get deleted before the
+        # async checkpoint upload completes.
+        tmpdir = os.path.join(tmp_path, "tmpdir")
+        os.makedirs(tmpdir, exist_ok=True)
+
+        # Run all 10 possible pairs of checkpoint upload modes
+        rank = ray.train.get_context().get_world_rank()
+        if rank == 0:
+            ASYNC_ITERATIONS = [0, 1, 2, 3]
+            SYNC_ITERATIONS = [4, 5, 6]
+            NO_UPLOAD_ITERATIONS = [7, 8]
+            NO_CHECKPOINT_ITERATIONS = [9]
+        else:
+            ASYNC_ITERATIONS = [0]
+            SYNC_ITERATIONS = [1, 4]
+            NO_UPLOAD_ITERATIONS = [2, 5, 7]
+            NO_CHECKPOINT_ITERATIONS = [3, 6, 8, 9]
+
+        for i in range(10):
+            # Set variables
+            if i in ASYNC_ITERATIONS:
+                checkpoint_upload_mode = CheckpointUploadMode.ASYNC
+            elif i in SYNC_ITERATIONS:
+                checkpoint_upload_mode = CheckpointUploadMode.SYNC
+            else:
+                checkpoint_upload_mode = CheckpointUploadMode.NO_UPLOAD
+            checkpoint_dir_name = ray.train.collective.broadcast_from_rank_zero(
+                f"checkpoint_iteration_{i}"
+            )
+            metrics = {"metric": f"iteration_{i}_shard_{rank}"}
+
+            # Upload and report checkpoint
+            if i in NO_CHECKPOINT_ITERATIONS:
+                ray.train.report(metrics=metrics, checkpoint=None)
+            else:
+                checkpoint_contents = f"iteration_{i}_shard_{rank}"
+
+                # Upload directly to the storage path
+                if i in NO_UPLOAD_ITERATIONS:
+                    remote_checkpoint_dir = (
+                        ray.train.get_context()
+                        .get_storage()
+                        .build_checkpoint_path_from_name(checkpoint_dir_name)
+                    )
+                    os.makedirs(remote_checkpoint_dir, exist_ok=True)
+                    with open(
+                        os.path.join(remote_checkpoint_dir, f"shard_{rank}"), "wb"
+                    ) as f:
+                        ray_pickle.dump(checkpoint_contents, f)
+                    checkpoint = Checkpoint(remote_checkpoint_dir)
+                    ray.train.report(
+                        metrics=metrics,
+                        checkpoint=checkpoint,
+                        checkpoint_upload_mode=checkpoint_upload_mode,
+                        checkpoint_dir_name=checkpoint_dir_name,
+                    )
+
+                # Upload to local directory which gets uploaded to storage path
+                else:
+                    local_checkpoint_dir = os.path.join(tmpdir, checkpoint_dir_name)
+                    os.makedirs(local_checkpoint_dir, exist_ok=True)
+                    with open(
+                        os.path.join(local_checkpoint_dir, f"shard_{rank}"), "wb"
+                    ) as f:
+                        ray_pickle.dump(checkpoint_contents, f)
+                    checkpoint = Checkpoint.from_directory(local_checkpoint_dir)
+                    ray.train.report(
+                        metrics=metrics,
+                        checkpoint=checkpoint,
+                        checkpoint_upload_mode=checkpoint_upload_mode,
+                        checkpoint_dir_name=checkpoint_dir_name,
+                    )
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=2),
+        run_config=RunConfig(storage_path=str(tmp_path)),
+    )
+    result = trainer.fit()
+    assert len(result.best_checkpoints) == 9
+    for i, (checkpoint, metrics) in enumerate(result.best_checkpoints):
+        assert checkpoint.path.endswith(f"checkpoint_iteration_{i}")
+        assert metrics["metric"] == f"iteration_{i}_shard_0"
+
+
+def test_report_checkpoint_upload_error(monkeypatch, tmp_path):
+    """Check that the trainer shuts down when an error occurs during checkpoint upload."""
+
+    def train_fn():
+
+        if ray.train.get_context().get_world_rank() == 0:
+
+            # Mock persist_current_checkpoint to raise an error
+            mock_persist_current_checkpoint = create_autospec(
+                ray.train.get_context().get_storage().persist_current_checkpoint
+            )
+            mock_persist_current_checkpoint.side_effect = ValueError("error")
+            monkeypatch.setattr(
+                ray.train.get_context().get_storage(),
+                "persist_current_checkpoint",
+                mock_persist_current_checkpoint,
+            )
+
+            # Report minimal valid checkpoint
+            local_checkpoint_dir = os.path.join(tmp_path, "local_checkpoint_dir")
+            os.makedirs(local_checkpoint_dir, exist_ok=True)
+            ray.train.report(
+                {},
+                Checkpoint.from_directory(local_checkpoint_dir),
+                checkpoint_upload_mode=CheckpointUploadMode.ASYNC,
+            )
+        else:
+            ray.train.report(
+                {}, None, checkpoint_upload_mode=CheckpointUploadMode.ASYNC
+            )
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=2),
+        run_config=RunConfig(storage_path=str(tmp_path)),
+    )
+    with pytest.raises(WorkerGroupError) as exc_info:
+        trainer.fit()
+        assert isinstance(exc_info.value.worker_failures[0], ValueError)
 
 
 def test_error(tmp_path):
