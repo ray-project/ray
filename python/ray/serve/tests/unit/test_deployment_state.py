@@ -5007,7 +5007,9 @@ class TestDeploymentRankManagerIntegrationE2E:
 
         # Deploy with 3 replicas
         info_1, v1 = deployment_info(num_replicas=3, version="1")
-        dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+        target_state_changed = dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+        assert target_state_changed
+        dsm.save_checkpoint()
         ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
 
         # Create replicas and get them running
@@ -5064,7 +5066,9 @@ class TestDeploymentRankManagerIntegrationE2E:
 
         # Deploy with 4 replicas
         info_1, v1 = deployment_info(num_replicas=4, version="1")
-        dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+        target_state_changed = dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+        assert target_state_changed
+        dsm.save_checkpoint()
         ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
 
         # Create replicas and get them running
