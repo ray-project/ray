@@ -46,7 +46,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve
         --except-tags post_wheel_build,gpu,ha_integration,serve_tracing
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name servebuild --test-env=EXPECTED_PYTHON_VERSION=3.9
+        --build-name servebuild --test-env=EXPECTED_PYTHON_VERSION=3.9 --test-env=PYTHONASYNCIODEBUG=1
     depends_on: "servebuild"
 
   - label: ":ray-serve: serve: pydantic < 2.0 tests"
@@ -61,6 +61,7 @@ steps:
         --except-tags post_wheel_build,gpu,ha_integration,serve_tracing
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name servepydantic1build --test-env=EXPECTED_PYTHON_VERSION=3.9 --test-env=EXPECTED_PYDANTIC_VERSION=1.10.12
+        --test-env=PYTHONASYNCIODEBUG=1
     depends_on: servepydantic1build
 
   - label: ":ray-serve: serve: same event loop tests"
@@ -75,6 +76,7 @@ steps:
         --except-tags post_wheel_build,gpu,ha_integration,serve_tracing
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name servebuild --test-env=EXPECTED_PYTHON_VERSION=3.9 --test-env=RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0
+        --test-env=PYTHONASYNCIODEBUG=1
     depends_on: "servebuild"
 
   - label: ":ray-serve: serve: python {{matrix.python}} tests ({{matrix.worker_id}})"
