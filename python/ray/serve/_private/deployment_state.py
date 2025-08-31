@@ -463,8 +463,6 @@ class ActorReplicaWrapper:
                     if self._deployment_is_cross_language
                     else deployment_info.replica_config.serialized_init_args
                 )
-            # TODO(abrar): Fill in the correct rank
-            rank = 0
             init_args = (
                 self.replica_id,
                 cloudpickle.dumps(deployment_info.replica_config.deployment_def)
@@ -622,8 +620,6 @@ class ActorReplicaWrapper:
             deployment_config.user_config = self._format_user_config(
                 deployment_config.user_config
             )
-            # TODO(abrar): FIll in the correct rank
-            rank = 0
             self._ready_obj_ref = self._actor_handle.reconfigure.remote(
                 deployment_config,
                 rank,
@@ -2484,7 +2480,7 @@ class DeploymentState:
                     # data structure with RUNNING state.
                     # Recover rank from the replica actor during controller restart
                     replica_id = replica.replica_id.unique_id
-                    recovered_rank = replica._actor.rank
+                    recovered_rank = replica.rank
                     self._rank_manager.recover_rank(replica_id, recovered_rank)
                 # This replica should be now be added to handle's replica
                 # set.
