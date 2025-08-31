@@ -283,7 +283,8 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   int port_;
   /// Connection state of a worker.
   std::shared_ptr<ClientConnection> connection_;
-  /// The lease id of the worker's currently assigned lease. Is always Nil for the driver.
+  /// The lease id of the worker's currently assigned lease.
+  /// It is always Nil for the driver.
   LeaseID lease_id_;
   /// Job ID for the worker's current assigned lease.
   JobID assigned_job_id_;
