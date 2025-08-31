@@ -1331,7 +1331,9 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   lease_dependency_manager_.CancelWaitRequest(worker->WorkerId());
 
   // Erase any lease metadata.
-  ReleaseWorker(worker->GetGrantedLeaseId());
+  if (leased_workers_.contains(worker->GetGrantedLeaseId())) {
+    ReleaseWorker(worker->GetGrantedLeaseId());
+  }
 
   if (creation_task_exception != nullptr) {
     RAY_LOG(INFO).WithField(worker->WorkerId())
@@ -1936,33 +1938,39 @@ void NodeManager::HandleReturnWorkerLease(rpc::ReturnWorkerLeaseRequest request,
                                           rpc::SendReplyCallback send_reply_callback) {
   // Read the resource spec submitted by the client.
   auto lease_id = LeaseID::FromBinary(request.lease_id());
-  std::shared_ptr<WorkerInterface> worker = leased_workers_[lease_id];
 
+  // Check if this message is a retry
+  if (!leased_workers_.contains(lease_id)) {
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
+
+  std::shared_ptr<WorkerInterface> worker = leased_workers_[lease_id];
   ReleaseWorker(lease_id);
-  if (worker) {
-    if (request.disconnect_worker()) {
-      // The worker should be destroyed.
-      DisconnectClient(
-          worker->Connection(),
-          /*graceful=*/false,
-          rpc::WorkerExitType::SYSTEM_ERROR,
-          absl::StrCat("The leased worker has unrecoverable failure. Worker is requested "
-                       "to be destroyed when it is returned. ",
-                       request.disconnect_worker_error_detail()));
-    } else {
-      if (worker->IsBlocked()) {
-        // Handle the edge case where the worker was returned before we got the
-        // unblock RPC by unblocking it immediately (unblock is idempotent).
-        HandleDirectCallTaskUnblocked(worker);
-      }
-      local_lease_manager_.ReleaseWorkerResources(worker);
-      // If the worker is exiting, don't add it to our pool. The worker will cleanup
-      // and terminate itself.
-      if (!request.worker_exiting()) {
-        HandleWorkerAvailable(worker);
-      }
+
+  if (request.disconnect_worker()) {
+    // The worker should be destroyed.
+    DisconnectClient(
+        worker->Connection(),
+        /*graceful=*/false,
+        rpc::WorkerExitType::SYSTEM_ERROR,
+        absl::StrCat("The leased worker has unrecoverable failure. Worker is requested "
+                     "to be destroyed when it is returned. ",
+                     request.disconnect_worker_error_detail()));
+  } else {
+    if (worker->IsBlocked()) {
+      // Handle the edge case where the worker was returned before we got the
+      // unblock RPC by unblocking it immediately (unblock is idempotent).
+      HandleDirectCallTaskUnblocked(worker);
+    }
+    local_lease_manager_.ReleaseWorkerResources(worker);
+    // If the worker is exiting, don't add it to our pool. The worker will cleanup
+    // and terminate itself.
+    if (!request.worker_exiting()) {
+      HandleWorkerAvailable(worker);
     }
   }
+
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
