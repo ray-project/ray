@@ -64,7 +64,6 @@ LeaseSpecification::LeaseSpecification(const rpc::TaskSpec &task_spec)
   ComputeResources();
 }
 
-// Lease ID is nil for Driver
 LeaseID LeaseSpecification::LeaseId() const {
   return LeaseID::FromBinary(message_->lease_id());
 }
