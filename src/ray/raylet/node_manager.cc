@@ -1159,13 +1159,6 @@ Status NodeManager::RegisterForNewDriver(
     const ray::protocol::RegisterClientRequest *message,
     std::function<void(Status, int)> send_reply_callback) {
   worker->SetProcess(Process::FromPid(pid));
-  // Compute a dummy driver lease id from a given driver.
-  // The lease id set in the worker here should be consistent with the lease
-  // id set in the core worker.
-  // TODO(#56010): We shouldn't need to have a special lease id for the driver, just check
-  // the worker type instead
-  const LeaseID driver_lease_id = LeaseID::DriverLeaseId(worker->WorkerId());
-  worker->GrantLeaseId(driver_lease_id);
   rpc::JobConfig job_config;
   job_config.ParseFromString(message->serialized_job_config()->str());
 
@@ -1250,6 +1243,7 @@ void NodeManager::SendPortAnnouncementResponse(
 
 void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &worker) {
   RAY_CHECK(worker);
+  RAY_CHECK_NE(worker->GetWorkerType(), rpc::WorkerType::DRIVER);
 
   if (worker->GetWorkerType() == rpc::WorkerType::SPILL_WORKER) {
     // Return the worker to the idle pool.
