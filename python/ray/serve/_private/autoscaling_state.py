@@ -365,7 +365,7 @@ class AutoscalingState:
 
         return total_requests
 
-    def get_replica_metrics(self, agg_func: str) -> float:
+    def get_replica_metrics(self, agg_func: str) -> Dict[ReplicaID, List[Any]]:
         """Get the raw replica metrics dict."""
         # arcyleung TODO: pass agg_func from autoscaling policy https://github.com/ray-project/ray/pull/51905
         # Dummy implementation of mean agg_func across all values of the same metrics key
@@ -425,7 +425,9 @@ class AutoscalingStateManager:
             for deployment_id in self._autoscaling_states
         }
 
-    def get_all_metrics(self, agg_func="mean") -> Dict[DeploymentID, float]:
+    def get_all_metrics(
+        self, agg_func="mean"
+    ) -> Dict[DeploymentID, Dict[ReplicaID, List[Any]]]:
         return {
             deployment_id: self._autoscaling_states[deployment_id].get_replica_metrics(
                 agg_func
