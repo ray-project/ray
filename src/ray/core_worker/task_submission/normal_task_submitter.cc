@@ -310,7 +310,7 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
     return;
   }
   // Counter for generating unique lease IDs.
-  static uint32_t lease_id_counter = 1;
+  static uint32_t lease_id_counter = 0;
   const LeaseID lease_id = LeaseID::FromWorker(worker_id_, lease_id_counter++);
   rpc::LeaseSpec lease_spec_msg = scheduling_key_entry.lease_spec.GetMessage();
   lease_spec_msg.set_lease_id(lease_id.Binary());
