@@ -2057,14 +2057,14 @@ TEST_F(WorkerPoolDriverRegisteredTest, CacheWorkersByRuntimeEnvHash) {
                        LeaseID::FromRandom(),
                        ExampleRuntimeEnvInfoFromString("mock_runtime_env_1"));
   const auto lease_spec_1 =
-      ExampleLeaseSpec(actor_creation_id,
+      ExampleLeaseSpec(ActorID::Nil(),
                        Language::PYTHON,
                        JOB_ID,
                        /*dynamic_worker_options=*/{},
                        LeaseID::FromRandom(),
                        ExampleRuntimeEnvInfoFromString("mock_runtime_env_1"));
   const auto lease_spec_2 =
-      ExampleLeaseSpec(actor_creation_id,
+      ExampleLeaseSpec(ActorID::Nil(),
                        Language::PYTHON,
                        JOB_ID,
                        /*dynamic_worker_options=*/{},
