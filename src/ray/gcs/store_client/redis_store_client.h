@@ -24,10 +24,10 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
+#include "ray/common/asio/asio_util.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/postable.h"
-#include "ray/common/ray_config.h"
-#include "ray/gcs/redis_client.h"
-#include "ray/gcs/redis_context.h"
+#include "ray/gcs/store_client/redis_context.h"
 #include "ray/gcs/store_client/store_client.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -48,10 +48,10 @@ struct RedisMatchPattern {
     static const RedisMatchPattern kAny("*");
     return kAny;
   }
-  const std::string escaped;
+  const std::string escaped_;
 
  private:
-  explicit RedisMatchPattern(std::string escaped) : escaped(std::move(escaped)) {}
+  explicit RedisMatchPattern(std::string escaped) : escaped_(std::move(escaped)) {}
 };
 
 struct RedisCommand {
@@ -90,7 +90,25 @@ inline std::ostream &operator<<(std::ostream &os, const RedisConcurrencyKey &key
   return os;
 }
 
+struct RedisClientOptions {
+  // Redis server address.
+  std::string ip;
+  int port;
+
+  // Redis username and password.
+  std::string username = "";
+  std::string password = "";
+
+  // Whether to use TLS/SSL for the connection.
+  bool enable_ssl = false;
+};
+
 // StoreClient using Redis as persistence backend.
+//
+// The StoreClient does not currently handle any failures (transient or otherwise) of
+// the Redis server. A periodic health check runs in the background and it will crash
+// the process if the Redis server cannot be reached.
+//
 // Note in redis term a "key" points to a hash table and a "field" is a key, a "value"
 // is just a value. We double quote "key" and "field" to avoid confusion.
 //
@@ -110,44 +128,54 @@ inline std::ostream &operator<<(std::ostream &os, const RedisConcurrencyKey &key
 // [1] https://github.com/ray-project/ray/pull/35123#issuecomment-1546549046
 class RedisStoreClient : public StoreClient {
  public:
-  explicit RedisStoreClient(std::shared_ptr<RedisClient> redis_client);
+  /// Connect to Redis. Not thread safe.
+  ///
+  /// \param io_service The event loop for this client. Must be single threaded.
+  /// \param options The options for connecting to Redis.
+  explicit RedisStoreClient(instrumented_io_context &io_service,
+                            const RedisClientOptions &options);
 
-  Status AsyncPut(const std::string &table_name,
-                  const std::string &key,
-                  std::string data,
-                  bool overwrite,
-                  Postable<void(bool)> callback) override;
+  void AsyncPut(const std::string &table_name,
+                const std::string &key,
+                std::string data,
+                bool overwrite,
+                Postable<void(bool)> callback) override;
 
-  Status AsyncGet(const std::string &table_name,
-                  const std::string &key,
-                  ToPostable<OptionalItemCallback<std::string>> callback) override;
+  void AsyncGet(const std::string &table_name,
+                const std::string &key,
+                ToPostable<OptionalItemCallback<std::string>> callback) override;
 
-  Status AsyncGetAll(
+  void AsyncGetAll(
       const std::string &table_name,
       Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) override;
 
-  Status AsyncMultiGet(
+  void AsyncMultiGet(
       const std::string &table_name,
       const std::vector<std::string> &keys,
       Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) override;
 
-  Status AsyncDelete(const std::string &table_name,
-                     const std::string &key,
-                     Postable<void(bool)> callback) override;
+  void AsyncDelete(const std::string &table_name,
+                   const std::string &key,
+                   Postable<void(bool)> callback) override;
 
-  Status AsyncBatchDelete(const std::string &table_name,
-                          const std::vector<std::string> &keys,
-                          Postable<void(int64_t)> callback) override;
+  void AsyncBatchDelete(const std::string &table_name,
+                        const std::vector<std::string> &keys,
+                        Postable<void(int64_t)> callback) override;
 
-  Status AsyncGetNextJobID(Postable<void(int)> callback) override;
+  void AsyncGetNextJobID(Postable<void(int)> callback) override;
 
-  Status AsyncGetKeys(const std::string &table_name,
-                      const std::string &prefix,
-                      Postable<void(std::vector<std::string>)> callback) override;
+  void AsyncGetKeys(const std::string &table_name,
+                    const std::string &prefix,
+                    Postable<void(std::vector<std::string>)> callback) override;
 
-  Status AsyncExists(const std::string &table_name,
-                     const std::string &key,
-                     Postable<void(bool)> callback) override;
+  void AsyncExists(const std::string &table_name,
+                   const std::string &key,
+                   Postable<void(bool)> callback) override;
+
+  // Check if Redis is available.
+  //
+  // \param callback The callback that will be called with a Status. OK means healthy.
+  void AsyncCheckHealth(Postable<void(Status)> callback);
 
  private:
   /// \class RedisScanner
@@ -167,13 +195,13 @@ class RedisStoreClient : public StoreClient {
     // Don't call this. Use ScanKeysAndValues instead.
     explicit RedisScanner(
         PrivateCtorTag tag,
-        std::shared_ptr<RedisClient> redis_client,
+        std::shared_ptr<RedisContext> primary_context,
         RedisKey redis_key,
         RedisMatchPattern match_pattern,
         Postable<void(absl::flat_hash_map<std::string, std::string>)> callback);
 
     static void ScanKeysAndValues(
-        std::shared_ptr<RedisClient> redis_client,
+        std::shared_ptr<RedisContext> primary_context,
         RedisKey redis_key,
         RedisMatchPattern match_pattern,
         Postable<void(absl::flat_hash_map<std::string, std::string>)> callback);
@@ -185,6 +213,7 @@ class RedisStoreClient : public StoreClient {
     void Scan();
 
     void OnScanCallback(const std::shared_ptr<CallbackReply> &reply);
+
     /// The table name that the scanner will scan.
     RedisKey redis_key_;
 
@@ -204,7 +233,7 @@ class RedisStoreClient : public StoreClient {
     /// The pending shard scan count.
     std::atomic<size_t> pending_request_count_{0};
 
-    std::shared_ptr<RedisClient> redis_client_;
+    std::shared_ptr<RedisContext> primary_context_;
 
     Postable<void(absl::flat_hash_map<std::string, std::string>)> callback_;
 
@@ -232,9 +261,9 @@ class RedisStoreClient : public StoreClient {
   std::vector<std::function<void()>> TakeRequestsFromSendingQueue(
       const std::vector<RedisConcurrencyKey> &keys) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  Status DeleteByKeys(const std::string &table_name,
-                      const std::vector<std::string> &keys,
-                      Postable<void(int64_t)> callback);
+  void DeleteByKeys(const std::string &table_name,
+                    const std::vector<std::string> &keys,
+                    Postable<void(int64_t)> callback);
 
   // Send the redis command to the server. This method will make request to be
   // serialized for each key in keys. At a given time, only one request for a {table_name,
@@ -260,8 +289,15 @@ class RedisStoreClient : public StoreClient {
                   const std::vector<std::string> &keys,
                   Postable<void(absl::flat_hash_map<std::string, std::string>)> callback);
 
+  instrumented_io_context &io_service_;
+
+  RedisClientOptions options_;
+
   std::string external_storage_namespace_;
-  std::shared_ptr<RedisClient> redis_client_;
+
+  // The following context writes everything to the primary shard.
+  std::shared_ptr<RedisContext> primary_context_;
+
   absl::Mutex mu_;
 
   // The pending redis requests queue for each key.

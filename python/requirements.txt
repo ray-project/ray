@@ -13,7 +13,7 @@ filelock
 jsonschema
 msgpack<2.0.0,>=1.0.0
 packaging
-protobuf!=3.19.5,>=3.15.3
+protobuf>=3.20.3
 pyyaml
 requests
 watchfiles
@@ -41,7 +41,7 @@ opentelemetry-api
 opentelemetry-exporter-prometheus
 opentelemetry-proto
 fastapi
-gymnasium==1.0.0
+gymnasium==1.1.1
 virtualenv!=20.21.1,>=20.0.24
 opencensus
 aiohttp_cors
@@ -61,3 +61,4 @@ py-spy>=0.2.0; python_version < '3.12'
 py-spy>=0.4.0; python_version >= '3.12'
 memray; sys_platform != "win32" # memray is not supported on Windows
 pyOpenSSL
+celery

@@ -46,9 +46,12 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     LLMChatResponse,
     LLMCompletionsResponse,
     LLMEmbeddingsResponse,
+    LLMScoreResponse,
     ModelCard,
     ModelList,
     OpenAIHTTPException,
+    ScoreRequest,
+    ScoreResponse,
     to_model_metadata,
 )
 from ray.llm._internal.serve.configs.server_models import LLMConfig
@@ -77,6 +80,31 @@ else:
 logger = get_logger(__name__)
 
 T = TypeVar("T")
+
+
+def _sanitize_chat_completion_request(
+    request: ChatCompletionRequest,
+) -> ChatCompletionRequest:
+    """Sanitize ChatCompletionRequest to fix Pydantic ValidatorIterator serialization issue.
+
+    This addresses a known Pydantic bug where tool_calls fields become ValidatorIterator
+    objects that cannot be pickled for Ray remote calls.
+
+    References:
+    - vLLM PR that introduces the workaround: https://github.com/vllm-project/vllm/pull/9951
+    - Pydantic Issue: https://github.com/pydantic/pydantic/issues/9467
+    - Related Issue: https://github.com/pydantic/pydantic/issues/9541
+    - Official Workaround: https://github.com/pydantic/pydantic/issues/9467#issuecomment-2442097291
+
+    TODO(seiji): Remove when we update to Pydantic v2.11+ with the fix.
+    """
+    from vllm.transformers_utils.tokenizers.mistral import maybe_serialize_tool_calls
+
+    maybe_serialize_tool_calls(request)
+
+    return request
+
+
 StreamResponseType = Union[
     ChatCompletionStreamResponse,
     CompletionStreamResponse,
@@ -285,10 +313,18 @@ class LLMRouter:
     async def _get_response(
         self,
         *,
-        body: Union[CompletionRequest, ChatCompletionRequest, EmbeddingRequest],
+        body: Union[
+            CompletionRequest, ChatCompletionRequest, EmbeddingRequest, ScoreRequest
+        ],
         call_method: str,
     ) -> AsyncGenerator[
-        Union[LLMChatResponse, LLMCompletionsResponse, LLMEmbeddingsResponse], None
+        Union[
+            LLMChatResponse,
+            LLMCompletionsResponse,
+            LLMEmbeddingsResponse,
+            LLMScoreResponse,
+        ],
+        None,
     ]:
         """Calls the model deployment and returns the stream."""
         model: str = body.model
@@ -301,6 +337,11 @@ class LLMRouter:
             )
 
         model_handle = self._get_configured_serve_handle(model)
+
+        # TODO(seiji): Remove when we update to Pydantic v2.11+ with the fix
+        # for tool calling ValidatorIterator serialization issue.
+        if isinstance(body, ChatCompletionRequest):
+            body = _sanitize_chat_completion_request(body)
 
         async for response in getattr(model_handle, call_method).remote(body):
             yield response
@@ -446,6 +487,32 @@ class LLMRouter:
                 )
 
             if isinstance(result, EmbeddingResponse):
+                return JSONResponse(content=result.model_dump())
+
+    @fastapi_router_app.post("/v1/score")
+    async def score(self, body: ScoreRequest) -> Response:
+        """Create scores for the provided text pairs.
+
+        Note: This is a vLLM specific endpoint.
+
+        Args:
+            body: The score request containing input text pairs to score.
+
+        Returns:
+            A response object with scores.
+        """
+
+        async with timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
+            results = self._get_response(body=body, call_method="score")
+            result = await results.__anext__()
+            if isinstance(result, ErrorResponse):
+                raise OpenAIHTTPException(
+                    message=result.message,
+                    status_code=result.code,
+                    type=result.type,
+                )
+
+            if isinstance(result, ScoreResponse):
                 return JSONResponse(content=result.model_dump())
 
     @classmethod

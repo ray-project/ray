@@ -22,7 +22,6 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/stats/metric_defs.h"
-#include "ray/util/util.h"
 
 namespace ray {
 
@@ -51,7 +50,7 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
       pinned_objects_.emplace(object_id, std::move(object));
     } else {
       auto original_worker_id =
-          WorkerID::FromBinary(inserted.first->second.owner_address.worker_id());
+          WorkerID::FromBinary(inserted.first->second.owner_address_.worker_id());
       auto new_worker_id = WorkerID::FromBinary(owner_address.worker_id());
       if (original_worker_id != new_worker_id) {
         // TODO(swang): Handle this case. We should use the new owner address
@@ -72,7 +71,7 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
       wait_request->set_generator_id(generator_id.Binary());
     }
     rpc::Address subscriber_address;
-    subscriber_address.set_raylet_id(self_node_id_.Binary());
+    subscriber_address.set_node_id(self_node_id_.Binary());
     subscriber_address.set_ip_address(self_node_address_);
     subscriber_address.set_port(self_node_port_);
     wait_request->mutable_subscriber_address()->CopyFrom(subscriber_address);
@@ -82,43 +81,43 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
     auto subscription_callback = [this, owner_address](const rpc::PubMessage &msg) {
       RAY_CHECK(msg.has_worker_object_eviction_message());
       const auto &object_eviction_msg = msg.worker_object_eviction_message();
-      const auto object_id = ObjectID::FromBinary(object_eviction_msg.object_id());
-      ReleaseFreedObject(object_id);
+      const auto obj_id = ObjectID::FromBinary(object_eviction_msg.object_id());
+      ReleaseFreedObject(obj_id);
       core_worker_subscriber_->Unsubscribe(
-          rpc::ChannelType::WORKER_OBJECT_EVICTION, owner_address, object_id.Binary());
+          rpc::ChannelType::WORKER_OBJECT_EVICTION, owner_address, obj_id.Binary());
     };
 
     // Callback that is invoked when the owner of the object id is dead.
     auto owner_dead_callback = [this, owner_address](const std::string &object_id_binary,
                                                      const Status &) {
-      const auto object_id = ObjectID::FromBinary(object_id_binary);
-      ReleaseFreedObject(object_id);
+      const auto obj_id = ObjectID::FromBinary(object_id_binary);
+      ReleaseFreedObject(obj_id);
     };
 
     auto sub_message = std::make_unique<rpc::SubMessage>();
     sub_message->mutable_worker_object_eviction_message()->Swap(wait_request.get());
 
-    RAY_CHECK(core_worker_subscriber_->Subscribe(std::move(sub_message),
-                                                 rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                                 owner_address,
-                                                 object_id.Binary(),
-                                                 /*subscribe_done_callback=*/nullptr,
-                                                 subscription_callback,
-                                                 owner_dead_callback));
+    core_worker_subscriber_->Subscribe(std::move(sub_message),
+                                       rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                                       owner_address,
+                                       object_id.Binary(),
+                                       /*subscribe_done_callback=*/nullptr,
+                                       subscription_callback,
+                                       owner_dead_callback);
   }
 }
 
 void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
   // Only free the object if it is not already freed.
   auto it = local_objects_.find(object_id);
-  if (it == local_objects_.end() || it->second.is_freed) {
+  if (it == local_objects_.end() || it->second.is_freed_) {
     return;
   }
   // Mark the object as freed. NOTE(swang): We have to mark this instead of
   // deleting the entry immediately in case the object is currently being
   // spilled. In that case, we should process the free event once the object
   // spill is complete.
-  it->second.is_freed = true;
+  it->second.is_freed_ = true;
 
   RAY_LOG(DEBUG) << "Unpinning object " << object_id;
   // The object should be in one of these states: pinned, spilling, or spilled.
@@ -326,13 +325,13 @@ void LocalObjectManager::SpillObjectsInternal(
       RAY_CHECK(it != objects_pending_spill_.end());
       auto freed_it = local_objects_.find(object_id);
       // If the object hasn't already been freed, spill it.
-      if (freed_it == local_objects_.end() || freed_it->second.is_freed) {
+      if (freed_it == local_objects_.end() || freed_it->second.is_freed_) {
         num_bytes_pending_spill_ -= it->second->GetSize();
         objects_pending_spill_.erase(it);
       } else {
         auto ref = request.add_object_refs_to_spill();
         ref->set_object_id(object_id.Binary());
-        ref->mutable_owner_address()->CopyFrom(freed_it->second.owner_address);
+        ref->mutable_owner_address()->CopyFrom(freed_it->second.owner_address_);
         RAY_LOG(DEBUG) << "Sending spill request for object " << object_id;
         requested_objects_to_spill.push_back(object_id);
       }
@@ -423,19 +422,19 @@ void LocalObjectManager::OnObjectSpilled(const std::vector<ObjectID> &object_ids
 
     // Asynchronously Update the spilled URL.
     auto freed_it = local_objects_.find(object_id);
-    if (freed_it == local_objects_.end() || freed_it->second.is_freed) {
+    if (freed_it == local_objects_.end() || freed_it->second.is_freed_) {
       RAY_LOG(DEBUG) << "Spilled object already freed, skipping send of spilled URL to "
                         "object directory for object "
                      << object_id;
       continue;
     }
-    const auto &worker_addr = freed_it->second.owner_address;
+    const auto &worker_addr = freed_it->second.owner_address_;
     object_directory_->ReportObjectSpilled(
         object_id,
         self_node_id_,
         worker_addr,
         object_url,
-        freed_it->second.generator_id.value_or(ObjectID::Nil()),
+        freed_it->second.generator_id_.value_or(ObjectID::Nil()),
         is_external_storage_type_fs_);
   }
 }
@@ -555,7 +554,7 @@ void LocalObjectManager::ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_siz
       // Update current spilled objects metrics
       RAY_CHECK(local_objects_.contains(object_id))
           << "local objects should contain the spilled object: " << object_id;
-      spilled_bytes_current_ -= local_objects_.at(object_id).object_size;
+      spilled_bytes_current_ -= local_objects_.at(object_id).object_size_;
     } else {
       // If the object was not spilled, it gets pinned again. Unpin here to
       // prevent a memory leak.

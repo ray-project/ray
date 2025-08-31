@@ -24,6 +24,8 @@ adagio==0.2.4
     #   qpd
 adal==1.2.7
     # via msrestazure
+adlfs==2023.8.0
+    # via -r python/requirements/cloud-requirements.txt
 aim==3.23.0 ; python_version < "3.12"
     # via -r python/requirements/ml/tune-test-requirements.txt
 aim-ui==3.23.0
@@ -50,6 +52,7 @@ aiohttp==3.11.16
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
+    #   adlfs
     #   aiobotocore
     #   aiohttp-cors
     #   delta-sharing
@@ -79,6 +82,8 @@ alembic==1.12.1
     #   optuna
 altair==5.1.2
     # via gradio
+amqp==5.3.1
+    # via kombu
 annotated-types==0.6.0
     # via pydantic
 antlr4-python3-runtime==4.11.1
@@ -158,15 +163,19 @@ azure-common==1.1.28
     #   smart-open
 azure-core==1.29.5
     # via
+    #   adlfs
     #   azure-identity
     #   azure-mgmt-core
     #   azure-storage-blob
     #   msrest
     #   smart-open
+azure-datalake-store==0.0.53
+    # via adlfs
 azure-identity==1.17.1
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
+    #   adlfs
 azure-mgmt-compute==31.0.0
     # via -r python/requirements/test-requirements.txt
 azure-mgmt-core==1.4.0
@@ -180,7 +189,9 @@ azure-mgmt-network==25.4.0
 azure-mgmt-resource==23.1.1
     # via -r python/requirements/test-requirements.txt
 azure-storage-blob==12.22.0
-    # via smart-open
+    # via
+    #   adlfs
+    #   smart-open
 babel==2.13.1
     # via
     #   jupyterlab-server
@@ -203,6 +214,8 @@ beautifulsoup4==4.11.1
     # via
     #   -r python/requirements/test-requirements.txt
     #   nbconvert
+billiard==4.2.1
+    # via celery
 black==22.10.0
     # via -r python/requirements/lint-requirements.txt
 bleach==6.1.0
@@ -249,6 +262,8 @@ cachetools==5.5.2
     #   google-auth
     #   mlflow-skinny
     #   pyiceberg
+celery==5.5.3
+    # via -r python/requirements.txt
 certifi==2025.1.31
     # via
     #   -r python/requirements/cloud-requirements.txt
@@ -264,6 +279,7 @@ certifi==2025.1.31
 cffi==1.16.0
     # via
     #   argon2-cffi-bindings
+    #   azure-datalake-store
     #   cryptography
     #   pymunk
     #   pynacl
@@ -285,7 +301,11 @@ click==8.1.7
     #   -r python/requirements/cloud-requirements.txt
     #   aim
     #   black
+    #   celery
+    #   click-didyoumean
     #   click-option-group
+    #   click-plugins
+    #   click-repl
     #   dask
     #   distributed
     #   flask
@@ -298,8 +318,14 @@ click==8.1.7
     #   typer
     #   uvicorn
     #   wandb
+click-didyoumean==0.3.1
+    # via celery
 click-option-group==0.5.6
     # via semgrep
+click-plugins==1.1.1.2
+    # via celery
+click-repl==0.3.0
+    # via celery
 clickhouse-connect==0.8.10
     # via -r python/requirements/ml/data-test-requirements.txt
 cloudpickle==2.2.0 ; python_version < "3.12"
@@ -550,6 +576,7 @@ fs==2.4.16
 fsspec==2023.5.0
     # via
     #   -r python/requirements.txt
+    #   adlfs
     #   dask
     #   datasets
     #   delta-sharing
@@ -695,7 +722,7 @@ gsutil==5.27
     # via -r python/requirements/docker/ray-docker-requirements.txt
 gunicorn==20.1.0
     # via mlflow
-gymnasium==1.0.0
+gymnasium==1.1.1
     # via
     #   -r python/requirements.txt
     #   minigrid
@@ -963,6 +990,8 @@ kiwisolver==1.4.5
     # via matplotlib
 knack==0.11.0
     # via azure-cli-core
+kombu==5.5.4
+    # via celery
 kubernetes==24.2.0
     # via -r python/requirements/test-requirements.txt
 labmaze==1.0.6
@@ -1078,6 +1107,7 @@ mpmath==1.3.0
 msal==1.28.1
     # via
     #   azure-cli-core
+    #   azure-datalake-store
     #   azure-identity
     #   msal-extensions
 msal-extensions==1.2.0b1
@@ -1332,7 +1362,7 @@ opt-einsum==3.3.0
     #   tensorflow
 optuna==4.1.0
     # via -r python/requirements/ml/tune-requirements.txt
-orjson==3.9.10
+orjson==3.9.15
     # via
     #   gradio
     #   tensordict
@@ -1363,6 +1393,7 @@ packaging==23.0
     #   jupyterlab-server
     #   jupytext
     #   knack
+    #   kombu
     #   lazy-loader
     #   lightning-utilities
     #   matplotlib
@@ -1466,7 +1497,7 @@ plotly==5.23.0
     # via ax-platform
 pluggy==1.3.0
     # via pytest
-polars==1.30.0
+polars==1.32.3
     # via -r python/requirements/test-requirements.txt
 portalocker==2.8.2
     # via
@@ -1484,7 +1515,9 @@ prometheus-client==0.19.0
 promise==2.3
     # via tensorflow-datasets
 prompt-toolkit==3.0.41
-    # via ipython
+    # via
+    #   click-repl
+    #   ipython
 propcache==0.3.0
     # via
     #   aiohttp
@@ -1735,6 +1768,7 @@ python-dateutil==2.8.2
     #   aim
     #   arrow
     #   botocore
+    #   celery
     #   freezegun
     #   google-cloud-bigquery
     #   graphene
@@ -1839,6 +1873,7 @@ requests==2.32.3
     #   aim
     #   azure-cli-core
     #   azure-core
+    #   azure-datalake-store
     #   comet-ml
     #   databricks-sdk
     #   datasets
@@ -2381,6 +2416,8 @@ typing-extensions==4.12.2
     #   tensorflow
     #   torch
     #   typer
+tzdata==2025.2
+    # via kombu
 tzlocal==5.3
     # via -r python/requirements/cloud-requirements.txt
 ujson==5.10.0
@@ -2405,6 +2442,8 @@ urllib3==1.26.19
     #   sentry-sdk
 utilsforecast==0.2.0
     # via statsforecast
+uv==0.8.9
+    # via -r python/requirements/test-requirements.txt
 uvicorn==0.22.0
     # via
     #   -r python/requirements.txt
@@ -2433,6 +2472,11 @@ uvloop==0.21.0
     #   vmc-draas-client-bindings
     #   vsphere-automation-sdk
     # via vsphere-automation-sdk
+vine==5.1.0
+    # via
+    #   amqp
+    #   celery
+    #   kombu
 virtualenv==20.29.1
     # via
     #   -r python/requirements.txt
