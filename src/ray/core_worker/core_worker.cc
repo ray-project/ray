@@ -47,7 +47,6 @@
 #include "ray/util/container_util.h"
 #include "ray/util/event.h"
 #include "ray/util/subreaper.h"
-#include "ray/util/util.h"
 
 using json = nlohmann::json;
 using MessageType = ray::protocol::MessageType;
@@ -2214,18 +2213,16 @@ Status CoreWorker::CreatePlacementGroup(
   }
   const PlacementGroupID placement_group_id = PlacementGroupID::Of(GetCurrentJobId());
   PlacementGroupSpecBuilder builder;
-  builder.SetPlacementGroupSpec(
-      placement_group_id,
-      placement_group_creation_options.name_,
-      placement_group_creation_options.bundles_,
-      placement_group_creation_options.strategy_,
-      placement_group_creation_options.is_detached_,
-      placement_group_creation_options.max_cpu_fraction_per_node_,
-      placement_group_creation_options.soft_target_node_id_,
-      worker_context_->GetCurrentJobID(),
-      worker_context_->GetCurrentActorID(),
-      worker_context_->CurrentActorDetached(),
-      placement_group_creation_options.bundle_label_selector_);
+  builder.SetPlacementGroupSpec(placement_group_id,
+                                placement_group_creation_options.name_,
+                                placement_group_creation_options.bundles_,
+                                placement_group_creation_options.strategy_,
+                                placement_group_creation_options.is_detached_,
+                                placement_group_creation_options.soft_target_node_id_,
+                                worker_context_->GetCurrentJobID(),
+                                worker_context_->GetCurrentActorID(),
+                                worker_context_->CurrentActorDetached(),
+                                placement_group_creation_options.bundle_label_selector_);
   PlacementGroupSpecification placement_group_spec = builder.Build();
   *return_placement_group_id = placement_group_id;
   RAY_LOG(INFO).WithField(placement_group_id)
@@ -3099,7 +3096,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
   waiter->IncrementObjectGenerated();
 
   client->ReportGeneratorItemReturns(
-      request,
+      std::move(request),
       [waiter, generator_id, return_id, item_index](
           const Status &status, const rpc::ReportGeneratorItemReturnsReply &reply) {
         RAY_LOG(DEBUG) << "ReportGeneratorItemReturns replied. " << generator_id
@@ -4055,7 +4052,6 @@ void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request
     }
     (*used_resources_map)[resource_name] = allocations;
   }
-  stats->set_actor_title(actor_title_);
   google::protobuf::Map<std::string, std::string> webui_map(webui_display_.begin(),
                                                             webui_display_.end());
   (*stats->mutable_webui_display()) = webui_map;
@@ -4387,11 +4383,6 @@ void CoreWorker::SetActorId(const ActorID &actor_id) {
 void CoreWorker::SetWebuiDisplay(const std::string &key, const std::string &message) {
   absl::MutexLock lock(&mutex_);
   webui_display_[key] = message;
-}
-
-void CoreWorker::SetActorTitle(const std::string &title) {
-  absl::MutexLock lock(&mutex_);
-  actor_title_ = title;
 }
 
 void CoreWorker::SetActorReprName(const std::string &repr_name) {

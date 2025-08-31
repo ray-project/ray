@@ -9,8 +9,19 @@ FROM ${BASE_IMAGE}
 ENV TZ=America/Los_Angeles
 ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
+
 # TODO(ilr) $HOME seems to point to result in "" instead of "/home/ray"
-ENV PATH "/home/ray/anaconda3/bin:$PATH"
+# Q: Why add paths like /usr/local/nvidia/lib64 and /usr/local/nvidia/bin?
+# A: The NVIDIA GPU operator version used by GKE injects these into the container
+# after it's mounted to a pod.
+# Issue is tracked here:
+# https://github.com/GoogleCloudPlatform/compute-gpu-installation/issues/46
+# More context here:
+# https://github.com/NVIDIA/nvidia-container-toolkit/issues/275
+# and here:
+# https://gitlab.com/nvidia/container-images/cuda/-/issues/27
+ENV PATH "/home/ray/anaconda3/bin:$PATH:/usr/local/nvidia/bin"
+ENV LD_LIBRARY_PATH "$LD_LIBRARY_PATH:/usr/local/nvidia/lib64"
 ARG DEBIAN_FRONTEND=noninteractive
 ARG PYTHON_VERSION=3.9
 
@@ -106,6 +117,7 @@ PIP_PKGS=(
     cryptography
     google-api-python-client
     google-oauth
+    "adlfs[abfs]"
 )
 
 # Install uv

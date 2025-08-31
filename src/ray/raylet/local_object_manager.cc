@@ -22,7 +22,6 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/stats/metric_defs.h"
-#include "ray/util/util.h"
 
 namespace ray {
 
@@ -98,13 +97,13 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
     auto sub_message = std::make_unique<rpc::SubMessage>();
     sub_message->mutable_worker_object_eviction_message()->Swap(wait_request.get());
 
-    RAY_CHECK(core_worker_subscriber_->Subscribe(std::move(sub_message),
-                                                 rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                                 owner_address,
-                                                 object_id.Binary(),
-                                                 /*subscribe_done_callback=*/nullptr,
-                                                 subscription_callback,
-                                                 owner_dead_callback));
+    core_worker_subscriber_->Subscribe(std::move(sub_message),
+                                       rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                                       owner_address,
+                                       object_id.Binary(),
+                                       /*subscribe_done_callback=*/nullptr,
+                                       subscription_callback,
+                                       owner_dead_callback);
   }
 }
 

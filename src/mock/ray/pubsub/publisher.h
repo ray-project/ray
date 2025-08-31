@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#pragma once
+
+#include "gmock/gmock.h"
 #include "ray/pubsub/publisher_interface.h"
 
 namespace ray {
@@ -26,7 +29,7 @@ class MockPublisher : public PublisherInterface {
                google::protobuf::RepeatedPtrField<rpc::PubMessage> *pub_messages,
                rpc::SendReplyCallback send_reply_callback),
               (override));
-  MOCK_METHOD(bool,
+  MOCK_METHOD(void,
               RegisterSubscription,
               (const rpc::ChannelType channel_type,
                const UniqueID &subscriber_id,
@@ -37,7 +40,7 @@ class MockPublisher : public PublisherInterface {
               PublishFailure,
               (const rpc::ChannelType channel_type, const std::string &key_id),
               (override));
-  MOCK_METHOD(bool,
+  MOCK_METHOD(void,
               UnregisterSubscription,
               (const rpc::ChannelType channel_type,
                const UniqueID &subscriber_id,
