@@ -114,6 +114,7 @@ py_test_module_list(
         "test_fastapi.py",
         "test_gcs_failure.py",
         "test_gradio.py",
+        "test_replica_ranks.py",
     ],
     tags = [
         "exclusive",
