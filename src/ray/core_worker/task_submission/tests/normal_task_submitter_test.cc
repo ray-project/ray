@@ -1755,7 +1755,7 @@ TEST_F(NormalTaskSubmitterTest, TestKillExecutingTask) {
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
 
   // Try non-force kill, worker returns normally
-  submitter.CancelTask(task, false, false).ok();
+  submitter.CancelTask(task, false, false);
   ASSERT_TRUE(worker_client->ReplyPushTask());
   ASSERT_EQ(worker_client->kill_requests.front().intended_task_id(), task.TaskIdBinary());
   ASSERT_EQ(worker_client->callbacks.size(), 0);
@@ -1776,7 +1776,7 @@ TEST_F(NormalTaskSubmitterTest, TestKillPendingTask) {
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
-  submitter.CancelTask(task, true, false).ok();
+  submitter.CancelTask(task, true, false);
   ASSERT_EQ(worker_client->kill_requests.size(), 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
