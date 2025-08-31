@@ -948,19 +948,14 @@ TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesClamps) {
   EXPECT_EQ(reply.total_resources().at("CPU"), 6.0);
 }
 
-struct ReturnWorkerLeaseRequestParams {
-  bool disconnect_worker;
-  bool worker_exiting;
-};
-
 class NodeManagerReturnWorkerLeaseIdempotentTest
     : public NodeManagerTest,
-      public testing::WithParamInterface<ReturnWorkerLeaseRequestParams> {};
+      public testing::WithParamInterface<std::tuple<bool, bool>> {};
 
 TEST_P(NodeManagerReturnWorkerLeaseIdempotentTest, TestDifferentRequestArgs) {
   const auto &params = GetParam();
-  bool disconnect_worker = params.disconnect_worker;
-  bool worker_exiting = params.worker_exiting;
+  bool disconnect_worker = std::get<0>(params);
+  bool worker_exiting = std::get<1>(params);
 
   LeaseID lease_id = LeaseID::FromRandom();
   leased_workers_[lease_id] = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
@@ -1002,9 +997,7 @@ TEST_P(NodeManagerReturnWorkerLeaseIdempotentTest, TestDifferentRequestArgs) {
 
 INSTANTIATE_TEST_SUITE_P(NodeManagerReturnWorkerLeaseIdempotentVariations,
                          NodeManagerReturnWorkerLeaseIdempotentTest,
-                         testing::Values(ReturnWorkerLeaseRequestParams{true, false},
-                                         ReturnWorkerLeaseRequestParams{false, true},
-                                         ReturnWorkerLeaseRequestParams{false, false}));
+                         testing::Combine(testing::Bool(), testing::Bool()));
 
 }  // namespace ray::raylet
 
