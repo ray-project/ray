@@ -14,9 +14,6 @@
 
 #pragma once
 
-#include <limits.h>
-#include <stdint.h>
-
 /// Default value for enable_task_events within core.
 constexpr bool kDefaultTaskEventEnabled = true;
 

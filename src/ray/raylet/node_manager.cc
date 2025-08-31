@@ -31,8 +31,8 @@
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/buffer.h"
-#include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
+#include "ray/common/flatbuf_utils.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/memory_monitor.h"
@@ -1090,7 +1090,7 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
         ray::protocol::CreateRegisterClientReply(fbb,
                                                  status.ok(),
                                                  fbb.CreateString(status.ToString()),
-                                                 to_flatbuf(fbb, self_node_id_),
+                                                 flatbuf::to_flatbuf(fbb, self_node_id_),
                                                  assigned_port);
     fbb.Finish(reply);
     client->WriteMessageAsync(
@@ -1478,9 +1478,10 @@ void NodeManager::ProcessWaitRequestMessage(
     // If we don't need to wait for any, return immediately after making the pull
     // requests through AsyncGetOrWait above.
     flatbuffers::FlatBufferBuilder fbb;
-    auto wait_reply = protocol::CreateWaitReply(fbb,
-                                                to_flatbuf(fbb, std::vector<ObjectID>{}),
-                                                to_flatbuf(fbb, std::vector<ObjectID>{}));
+    auto wait_reply =
+        protocol::CreateWaitReply(fbb,
+                                  flatbuf::to_flatbuf(fbb, std::vector<ObjectID>{}),
+                                  flatbuf::to_flatbuf(fbb, std::vector<ObjectID>{}));
     fbb.Finish(wait_reply);
     const auto status =
         client->WriteMessage(static_cast<int64_t>(protocol::MessageType::WaitReply),
@@ -1505,7 +1506,7 @@ void NodeManager::ProcessWaitRequestMessage(
         // Write the data.
         flatbuffers::FlatBufferBuilder fbb;
         flatbuffers::Offset<protocol::WaitReply> wait_reply = protocol::CreateWaitReply(
-            fbb, to_flatbuf(fbb, ready), to_flatbuf(fbb, remaining));
+            fbb, flatbuf::to_flatbuf(fbb, ready), flatbuf::to_flatbuf(fbb, remaining));
         fbb.Finish(wait_reply);
 
         auto status =

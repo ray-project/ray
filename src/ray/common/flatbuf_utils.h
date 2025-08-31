@@ -18,10 +18,9 @@
 
 #include <unordered_set>
 
-#include "ray/common/id.h"
-#include "src/ray/protobuf/common.pb.h"
-
 namespace ray {
+
+namespace flatbuf {
 
 using flatbuffers::FlatBufferBuilder;
 using flatbuffers::Offset;
@@ -35,56 +34,39 @@ Offset<String> to_flatbuf(FlatBufferBuilder &fbb, const ID &id) {
 }
 
 template <typename ID>
-void flatbuf_push_string(FlatBufferBuilder &fbb, const ID &id) {
-  fbb.PreAlign<uoffset_t>(id.Size() + 1);
-  fbb.Pad(1);
-  fbb.PushBytes(id.Data(), id.Size());
-  fbb.PushElement<uoffset_t>(static_cast<uoffset_t>(id.Size()));
-}
-
-template <typename ID>
 Offset<Vector<Offset<String>>> to_flatbuf(FlatBufferBuilder &fbb,
                                           ID ids[],
                                           int64_t num_ids) {
-  fbb.StartVector<Offset<String>>(num_ids);
+  std::vector<flatbuffers::Offset<flatbuffers::String>> results;
+  results.reserve(num_ids);
   for (int64_t i = 0; i < num_ids; i++) {
-    flatbuf_push_string(fbb, ids[i]);
+    results.push_back(to_flatbuf(fbb, ids[i]));
   }
-  return fbb.EndVector(num_ids);
+  return fbb.CreateVector(results);
 }
 
 template <typename ID>
 Offset<Vector<Offset<String>>> to_flatbuf(FlatBufferBuilder &fbb,
                                           const std::vector<ID> &ids) {
-  fbb.StartVector<Offset<String>>(ids.size());
+  std::vector<flatbuffers::Offset<flatbuffers::String>> results;
+  results.reserve(ids.size());
   for (const auto &id : ids) {
-    flatbuf_push_string(fbb, id);
+    results.push_back(to_flatbuf(fbb, id));
   }
-  return fbb.EndVector(ids.size());
+  return fbb.CreateVector(results);
 }
 
 template <typename ID>
 Offset<Vector<Offset<String>>> to_flatbuf(FlatBufferBuilder &fbb,
                                           const std::unordered_set<ID> &ids) {
-  fbb.StartVector<Offset<String>>(ids.size());
+  std::vector<flatbuffers::Offset<flatbuffers::String>> results;
+  results.reserve(ids.size());
   for (const auto &id : ids) {
-    flatbuf_push_string(fbb, id);
+    results.push_back(to_flatbuf(fbb, id));
   }
-  return fbb.EndVector(ids.size());
+  return fbb.CreateVector(results);
 }
 
-inline ObjectID ObjectRefToId(const rpc::ObjectReference &object_ref) {
-  return ObjectID::FromBinary(object_ref.object_id());
-}
-
-inline std::vector<ObjectID> ObjectRefsToIds(
-    const std::vector<rpc::ObjectReference> &object_refs) {
-  std::vector<ObjectID> object_ids;
-  object_ids.reserve(object_refs.size());
-  for (const auto &ref : object_refs) {
-    object_ids.push_back(ObjectRefToId(ref));
-  }
-  return object_ids;
-}
+}  // namespace flatbuf
 
 }  // namespace ray

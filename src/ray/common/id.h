@@ -14,20 +14,15 @@
 
 #pragma once
 
-#include <inttypes.h>
-#include <limits.h>
-
-#include <chrono>
 #include <cstring>
 #include <msgpack.hpp>
-#include <mutex>
-#include <random>
 #include <string>
 
 #include "ray/common/constants.h"
 #include "ray/util/logging.h"
 #include "ray/util/random.h"
 #include "ray/util/visibility.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 
@@ -596,6 +591,20 @@ template <>
 struct DefaultLogKey<LeaseID> {
   constexpr static std::string_view key = kLogKeyLeaseID;
 };
+
+inline ObjectID ObjectRefToId(const rpc::ObjectReference &object_ref) {
+  return ObjectID::FromBinary(object_ref.object_id());
+}
+
+inline std::vector<ObjectID> ObjectRefsToIds(
+    const std::vector<rpc::ObjectReference> &object_refs) {
+  std::vector<ObjectID> object_ids;
+  object_ids.reserve(object_refs.size());
+  for (const auto &ref : object_refs) {
+    object_ids.push_back(ObjectRefToId(ref));
+  }
+  return object_ids;
+}
 
 }  // namespace ray
 

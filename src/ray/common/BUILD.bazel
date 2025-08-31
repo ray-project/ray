@@ -122,19 +122,27 @@ ray_cc_library(
         "id.cc",
     ],
     hdrs = [
-        "common_protocol.h",
         "id.h",
         "id_def.h",
     ],
     deps = [
         ":constants",
-        ":status",
         "//src/ray/protobuf:common_cc_proto",
-        "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/thirdparty:sha256",
+        "//src/ray/util:logging",
         "//src/ray/util:random",
-        "@com_github_google_flatbuffers//:flatbuffers",
+        "//src/ray/util:visibility",
         "@msgpack",
+    ],
+)
+
+ray_cc_library(
+    name = "flatbuf_utils",
+    hdrs = [
+        "flatbuf_utils.h",
+    ],
+    deps = [
+        "@com_github_google_flatbuffers//:flatbuffers",
     ],
 )
 
