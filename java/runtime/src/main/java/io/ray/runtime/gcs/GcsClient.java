@@ -131,7 +131,7 @@ public class GcsClient {
                 new ActorInfo(
                     ActorId.fromBytes(info.getActorId().toByteArray()),
                     ActorState.fromValue(info.getState().getNumber()),
-                    info.getNumRestarts(),
+                    info.getNumActorRestarts(),
                     new Address(
                         nodeId, info.getAddress().getIpAddress(), info.getAddress().getPort()),
                     info.getName()));
@@ -161,7 +161,7 @@ public class GcsClient {
     } catch (InvalidProtocolBufferException e) {
       throw new RuntimeException("Received invalid protobuf data from GCS.");
     }
-    return actorTableData.getNumRestarts() != 0;
+    return actorTableData.getNumActorRestarts() != 0;
   }
 
   public JobId nextJobId() {
