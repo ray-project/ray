@@ -1,6 +1,5 @@
 import pytest
 import sys
-import asyncio
 
 from ray.dashboard.modules.aggregator.task_metadata_buffer import TaskMetadataBuffer
 from ray.core.generated.events_event_aggregator_service_pb2 import TaskEventsMetadata

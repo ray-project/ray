@@ -141,37 +141,37 @@ if prometheus_client:
     )
     # GCS publisher metrics
     events_published_to_gcs = Counter(
-        f"{metrics_prefix}_gcs_events_published_total",
+        f"{metrics_prefix}_gcs_publisher_events_published_total",
         "Total number of events successfully published to GCS.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
     events_failed_to_publish_to_gcs = Counter(
-        f"{metrics_prefix}_gcs_publish_failures_total",
+        f"{metrics_prefix}_gcs_publisher_publish_failures_total",
         "Total number of events failed to publish to GCS after retries.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
     events_dropped_in_gcs_publish_queue = Counter(
-        f"{metrics_prefix}_gcs_publish_queue_dropped_events_total",
+        f"{metrics_prefix}_gcs_publisher_queue_dropped_events_total",
         "Total number of events dropped due to the GCS publish queue being full.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS) + ("event_type",),
         namespace="ray",
     )
     gcs_publish_latency_seconds = Histogram(
-        f"{metrics_prefix}_gcs_publish_duration_seconds",
+        f"{metrics_prefix}_gcs_publisher_publish_duration_seconds",
         "Duration of GCS publish calls in seconds.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS) + ("Outcome",),
         namespace="ray",
     )
     gcs_failed_attempts_since_last_success = Gauge(
-        f"{metrics_prefix}_gcs_publish_consecutive_failures",
+        f"{metrics_prefix}_gcs_publisher_consecutive_failures_since_last_success",
         "Number of consecutive failed publish attempts since the last success.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
     gcs_time_since_last_success_seconds = Gauge(
-        f"{metrics_prefix}_gcs_time_since_last_success_seconds",
+        f"{metrics_prefix}_gcs_publisher_time_since_last_success_seconds",
         "Seconds since the last successful publish to GCS.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
@@ -263,7 +263,7 @@ class AggregatorAgent(
                 task_metadata_buffer=self._task_metadata_buffer,
             )
         else:
-            logger.info(f"Publishing events to GCS is disabled")
+            logger.info("Publishing events to GCS is disabled")
             self._gcs_publisher = NoopPublisher()
 
     async def AddEvents(self, request, context) -> None:
@@ -470,6 +470,9 @@ class AggregatorAgent(
             self._gcs_publisher.run_forever(),
             self._update_metrics(),
         )
+
+        self._executor.shutdown()
+        self._async_gcs_channel.close()
 
     @staticmethod
     def is_minimal_module() -> bool:

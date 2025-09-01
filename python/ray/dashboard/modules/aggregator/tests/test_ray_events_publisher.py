@@ -20,7 +20,6 @@ from ray.dashboard.modules.aggregator.multi_consumer_event_buffer import (
 )
 from ray.core.generated import (
     events_base_event_pb2,
-    events_event_aggregator_service_pb2,
 )
 from typing import Optional
 from google.protobuf.timestamp_pb2 import Timestamp

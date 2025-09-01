@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 import asyncio
 import logging
 import random
-from typing import Dict, List, Optional, TYPE_CHECKING
+from typing import Dict, List, Optional
 
 from ray.dashboard.modules.aggregator.task_metadata_buffer import TaskMetadataBuffer
 

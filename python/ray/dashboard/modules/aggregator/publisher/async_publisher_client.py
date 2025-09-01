@@ -70,12 +70,18 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
     ) -> PublishStats:
         if not events_batch:
             # Nothing to publish -> success but nothing published
-            return PublishStats(True, 0, 0)
+            return PublishStats(
+                publish_status=True, num_events_published=0, num_events_filtered_out=0
+            )
         filtered = [e for e in events_batch if self._events_filter_fn(e)]
         num_filtered_out = len(events_batch) - len(filtered)
         if not filtered:
             # All filtered out -> success but nothing published
-            return PublishStats(True, 0, num_filtered_out)
+            return PublishStats(
+                publish_status=True,
+                num_events_published=0,
+                num_events_filtered_out=num_filtered_out,
+            )
 
         # Convert protobuf objects to python dictionaries for HTTP POST. Run in executor to avoid blocking the event loop.
         filtered_json = await get_or_create_event_loop().run_in_executor(
@@ -96,7 +102,9 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
             return await self._send_http_request(filtered_json, num_filtered_out)
         except Exception as e:
             logger.error("Failed to send events to external service. Error: %s", e)
-            return PublishStats(False, 0, 0)
+            return PublishStats(
+                publish_status=False, num_events_published=0, num_events_filtered_out=0
+            )
 
     async def _send_http_request(self, json_data, num_filtered_out):
         async with self._session.post(
@@ -104,7 +112,11 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
             json=json_data,
         ) as resp:
             resp.raise_for_status()
-            return PublishStats(True, len(json_data), num_filtered_out)
+            return PublishStats(
+                publish_status=True,
+                num_events_published=len(json_data),
+                num_events_filtered_out=num_filtered_out,
+            )
 
     def count_num_events_in_batch(
         self, events_batch: list[events_base_event_pb2.RayEvent]
@@ -144,7 +156,7 @@ class AsyncGCSPublisherClient(PublisherClientInterface):
             not task_events_metadata
             or len(task_events_metadata.dropped_task_attempts) == 0
         ):
-            # nothing to publish
+            # Nothing to publish -> success but nothing published
             return PublishStats(
                 publish_status=True, num_events_published=0, num_events_filtered_out=0
             )
@@ -179,11 +191,8 @@ class AsyncGCSPublisherClient(PublisherClientInterface):
             events_event_aggregator_service_pb2.TaskEventsMetadata,
         ],
     ) -> int:
-        try:
-            events, _ = events_batch
-            return len(events)
-        except (TypeError, ValueError):
-            return 0
+        events, _ = events_batch
+        return len(events)
 
     def _create_ray_events_data(
         self,

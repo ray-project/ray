@@ -518,8 +518,8 @@ def test_metrics_export_event_aggregator_agent(
 
     def test_case_stats_exist():
         _, metric_descriptors, _ = fetch_prometheus(prom_addresses)
-        metrics_names = set(metric_descriptors.keys())
-        required_metrics = {
+        metrics_names = metric_descriptors.keys()
+        event_aggregator_metrics = [
             "ray_event_aggregator_agent_events_received_total",
             "ray_event_aggregator_agent_events_buffer_add_failures_total",
             # HTTP publisher metrics
@@ -533,27 +533,32 @@ def test_metrics_export_event_aggregator_agent(
             "ray_event_aggregator_agent_http_publisher_publish_duration_seconds_count",
             "ray_event_aggregator_agent_http_publisher_publish_duration_seconds_sum",
             # GCS publisher metrics
-            "ray_event_aggregator_agent_gcs_events_published_total",
-            "ray_event_aggregator_agent_gcs_publish_failures_total",
-            "ray_event_aggregator_agent_gcs_publish_queue_dropped_events_total",
-            "ray_event_aggregator_agent_gcs_publish_duration_seconds_bucket",
-            "ray_event_aggregator_agent_gcs_publish_duration_seconds_count",
-            "ray_event_aggregator_agent_gcs_publish_duration_seconds_sum",
-            "ray_event_aggregator_agent_gcs_publish_consecutive_failures",
-            "ray_event_aggregator_agent_gcs_time_since_last_success_seconds",
+            "ray_event_aggregator_agent_gcs_publisher_events_published_total",
+            "ray_event_aggregator_agent_gcs_publisher_publish_failures_total",
+            "ray_event_aggregator_agent_gcs_publisher_queue_dropped_events_total",
+            "ray_event_aggregator_agent_gcs_publisher_publish_duration_seconds_bucket",
+            "ray_event_aggregator_agent_gcs_publisher_publish_duration_seconds_count",
+            "ray_event_aggregator_agent_gcs_publisher_publish_duration_seconds_sum",
+            "ray_event_aggregator_agent_gcs_publisher_consecutive_failures_since_last_success",
+            "ray_event_aggregator_agent_gcs_publisher_time_since_last_success_seconds",
             # Task metadata buffer metrics
             "ray_event_aggregator_agent_task_metadata_buffer_dropped_events_total",
-        }
-        if not required_metrics.issubset(metrics_names):
-            return False
-        return True
+        ]
+        return all(metric in metrics_names for metric in event_aggregator_metrics)
 
     def test_case_value_correct():
         _, _, metric_samples = fetch_prometheus(prom_addresses)
         expected_metrics_values = {
             "ray_event_aggregator_agent_events_received_total": 3.0,
-            "ray_event_aggregator_agent_http_events_published_total": 1.0,
+            "ray_event_aggregator_agent_http_publisher_published_events_total": 2.0,
+            "ray_event_aggregator_agent_gcs_events_published_total": 3.0,
         }
+        for descriptor, expected_value in expected_metrics_values.items():
+            samples = [m for m in metric_samples if m.name == descriptor]
+            if not samples:
+                return False
+            if samples[0].value != expected_value:
+                return False
         return True
 
     now = time.time_ns()
