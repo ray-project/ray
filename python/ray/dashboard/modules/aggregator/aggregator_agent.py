@@ -74,11 +74,11 @@ EXPOSABLE_EVENT_TYPES = os.environ.get(
 )
 # flag to enable publishing events to the external HTTP service
 PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SVC = ray_constants.env_bool(
-    f"{env_var_prefix}_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SVC", True
+    f"{env_var_prefix}_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SVC", False
 )
 # flag to enable publishing events to GCS
 PUBLISH_EVENTS_TO_GCS = ray_constants.env_bool(
-    f"{env_var_prefix}_PUBLISH_EVENTS_TO_GCS", False
+    f"{env_var_prefix}_PUBLISH_EVENTS_TO_GCS", True
 )
 
 # Metrics
