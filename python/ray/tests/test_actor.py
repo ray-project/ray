@@ -1695,7 +1695,7 @@ def test_get_actor_after_same_name_actor_dead(shutdown_only):
     a = Actor.options(name=ACTOR_NAME, max_restarts=0, max_task_retries=-1).remote()
 
     pid = ray.get(a.get_pid.remote())
-    os.kill(pid, signal.SIGKILL)
+    os.kill(pid, signal.SIGTERM)
     a_actor_id = a._actor_id.hex()
 
     wait_for_condition(lambda: ray.state.actors(a_actor_id)["State"] == "DEAD")
