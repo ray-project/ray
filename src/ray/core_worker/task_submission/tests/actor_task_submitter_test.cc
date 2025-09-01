@@ -42,7 +42,7 @@ TaskSpecification CreateActorTaskHelper(ActorID actor_id,
                                         TaskID caller_id = TaskID::Nil()) {
   TaskSpecification task;
   task.GetMutableMessage().set_task_id(TaskID::FromRandom(actor_id.JobId()).Binary());
-  task.GetMutableMessage().set_attempt_number(0);
+  task.GetMutableMessage().set_num_task_attempts(0);
   task.GetMutableMessage().set_caller_id(caller_id.Binary());
   task.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
   task.GetMutableMessage().mutable_caller_address()->set_worker_id(
@@ -62,7 +62,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
                      rpc::ClientCallback<rpc::PushTaskReply> &&callback) override {
     received_seq_nos.push_back(request->sequence_number());
     callbacks.emplace(std::make_pair(TaskID::FromBinary(request->task_spec().task_id()),
-                                     request->task_spec().attempt_number()),
+                                     request->task_spec().num_task_attempts()),
                       callback);
   }
 
@@ -461,11 +461,11 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartRetry) {
   ASSERT_EQ(io_context.poll_one(), 1);
   // Tasks 2 and 3 get retried. In the real world, the seq_no of these two tasks should be
   // updated to 4 and 5 by `CoreWorker::InternalHeartbeat`.
-  task2.GetMutableMessage().set_attempt_number(task2.TaskAttemptNumber() + 1);
+  task2.GetMutableMessage().set_num_task_attempts(task2.TaskAttemptNumber() + 1);
   task2.GetMutableMessage().mutable_actor_task_spec()->set_sequence_number(4);
   ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
   ASSERT_EQ(io_context.poll_one(), 1);
-  task3.GetMutableMessage().set_attempt_number(task2.TaskAttemptNumber() + 1);
+  task3.GetMutableMessage().set_num_task_attempts(task2.TaskAttemptNumber() + 1);
   task3.GetMutableMessage().mutable_actor_task_spec()->set_sequence_number(5);
   ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
   ASSERT_EQ(io_context.poll_one(), 1);
@@ -524,7 +524,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderRetry) {
 
   // Upon re-connect, task 2 (failed) should be retried.
   // Retry task 2 manually (simulating task_manager and SendPendingTask's behavior)
-  task2.GetMutableMessage().set_attempt_number(task2.TaskAttemptNumber() + 1);
+  task2.GetMutableMessage().set_num_task_attempts(task2.TaskAttemptNumber() + 1);
   task2.GetMutableMessage().mutable_actor_task_spec()->set_sequence_number(3);
   ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
   ASSERT_EQ(io_context.poll_one(), 1);
@@ -674,12 +674,12 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFailInflightTasks) {
   auto task2_second_attempt = CreateActorTaskHelper(actor_id, caller_worker_id, 3);
   task2_second_attempt.GetMutableMessage().set_task_id(
       task2_first_attempt.TaskIdBinary());
-  task2_second_attempt.GetMutableMessage().set_attempt_number(
+  task2_second_attempt.GetMutableMessage().set_num_task_attempts(
       task2_first_attempt.TaskAttemptNumber() + 1);
   auto task3_second_attempt = CreateActorTaskHelper(actor_id, caller_worker_id, 4);
   task3_second_attempt.GetMutableMessage().set_task_id(
       task3_first_attempt.TaskIdBinary());
-  task3_second_attempt.GetMutableMessage().set_attempt_number(
+  task3_second_attempt.GetMutableMessage().set_num_task_attempts(
       task3_first_attempt.TaskAttemptNumber() + 1);
   ASSERT_TRUE(submitter_.SubmitTask(task2_second_attempt).ok());
   ASSERT_EQ(io_context.poll_one(), 1);

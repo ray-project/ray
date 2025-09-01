@@ -36,7 +36,7 @@ class LeaseSpecification : public MessageWrapper<rpc::LeaseSpec> {
  public:
   explicit LeaseSpecification(const rpc::TaskSpec &task_spec);
 
-  /// Construct an empty t  ask specification. This should not be used directly.
+  /// Construct an empty task specification. This should not be used directly.
   LeaseSpecification() { ComputeResources(); }
 
   explicit LeaseSpecification(rpc::LeaseSpec lease_spec)
