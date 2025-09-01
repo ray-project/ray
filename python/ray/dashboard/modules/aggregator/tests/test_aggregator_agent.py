@@ -880,7 +880,7 @@ def test_aggregator_agent_receive_driver_job_execution_event(
     ],
     indirect=True,
 )
-def test_aggregator_agent_publish_disabled_does_not_send_http(
+def test_aggregator_agent_http_svc_publish_disabled(
     ray_start_cluster_head_with_env_vars, httpserver, fake_timestamp
 ):
     cluster = ray_start_cluster_head_with_env_vars

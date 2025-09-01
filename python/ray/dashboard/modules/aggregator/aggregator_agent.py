@@ -89,43 +89,43 @@ if prometheus_client:
         namespace="ray",
     )
     events_published_to_http_svc = Counter(
-        f"{metrics_prefix}_http_events_published_total",
+        f"{metrics_prefix}_http_publisher_published_events_total",
         "Total number of events successfully published to the HTTP service.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
     events_filtered_out_before_http_svc_publish = Counter(
-        f"{metrics_prefix}_http_events_filtered_total",
+        f"{metrics_prefix}_http_publisher_filtered_events_total",
         "Total number of events filtered out before publishing to the HTTP service.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
     events_failed_to_publish_to_http_svc = Counter(
-        f"{metrics_prefix}_http_publish_failures_total",
+        f"{metrics_prefix}_http_publisher_failures_total",
         "Total number of events that failed to publish to the HTTP service after retries.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
     events_dropped_in_http_svc_publish_queue = Counter(
-        f"{metrics_prefix}_http_publish_queue_dropped_events_total",
+        f"{metrics_prefix}_http_publisher_queue_dropped_events_total",
         "Total number of events dropped because the HTTP publish queue was full.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS) + ("event_type",),
         namespace="ray",
     )
     http_publish_latency_seconds = Histogram(
-        f"{metrics_prefix}_http_publish_duration_seconds",
+        f"{metrics_prefix}_http_publisher_publish_duration_seconds",
         "Duration of HTTP publish calls in seconds.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS) + ("Outcome",),
         namespace="ray",
     )
     http_failed_attempts_since_last_success = Gauge(
-        f"{metrics_prefix}_http_publish_consecutive_failures",
+        f"{metrics_prefix}_http_publisher_consecutive_failures_since_last_success",
         "Number of consecutive failed publish attempts since the last success.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
     http_time_since_last_success_seconds = Gauge(
-        f"{metrics_prefix}_http_time_since_last_success_seconds",
+        f"{metrics_prefix}_http_publisher_time_since_last_success_seconds",
         "Seconds since the last successful publish to the HTTP service.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
@@ -174,7 +174,7 @@ class AggregatorAgent(
                 f"Publishing events to external HTTP service is enabled. events_export_addr: {self._events_export_addr}"
             )
             self._event_processing_enabled = True
-            self._HttpEndpointPublisher = RayEventsPublisher(
+            self._http_endpoint_publisher = RayEventsPublisher(
                 name="http-endpoint-publisher",
                 publish_client=AsyncHttpPublisherClient(
                     endpoint=self._events_export_addr,
@@ -187,7 +187,7 @@ class AggregatorAgent(
             logger.info(
                 f"Event HTTP target is not enabled or publishing events to external HTTP service is disabled. Skipping sending events to external HTTP service. events_export_addr: {self._events_export_addr}"
             )
-            self._HttpEndpointPublisher = NoopPublisher()
+            self._http_endpoint_publisher = NoopPublisher()
 
     async def AddEvents(self, request, context) -> None:
         """
@@ -245,11 +245,11 @@ class AggregatorAgent(
         }
 
         http_endpoint_publisher_metrics = await (
-            self._HttpEndpointPublisher.get_and_reset_metrics()
+            self._http_endpoint_publisher.get_and_reset_metrics()
         )
 
+        # Aggregator agent metrics
         async with self._lock:
-            # Aggregator agent metrics
             _events_received = self._events_received_since_last_metrics_update
             _events_failed_to_add_to_aggregator = (
                 self._events_failed_to_add_to_aggregator_since_last_metrics_update
@@ -258,31 +258,31 @@ class AggregatorAgent(
             self._events_received_since_last_metrics_update = 0
             self._events_failed_to_add_to_aggregator_since_last_metrics_update = 0
 
-            # HTTP service publisher metrics
-            _events_published_to_http_svc = http_endpoint_publisher_metrics.get(
-                "published", 0
-            )
-            _events_filtered_out_before_http_svc_publish = (
-                http_endpoint_publisher_metrics.get("filtered_out", 0)
-            )
-            _events_failed_to_publish_to_http_svc = http_endpoint_publisher_metrics.get(
-                "failed", 0
-            )
-            _events_dropped_in_http_publish_queue_by_type = (
-                http_endpoint_publisher_metrics.get("dropped_events", {})
-            )
-            _http_publish_latency_success_samples = http_endpoint_publisher_metrics.get(
-                "success_latency_seconds", []
-            )
-            _http_publish_latency_failure_samples = http_endpoint_publisher_metrics.get(
-                "failure_latency_seconds", []
-            )
-            _failed_attempts_since_last_success = http_endpoint_publisher_metrics.get(
-                "failed_attempts_since_last_success", 0
-            )
-            _time_since_last_success_seconds = http_endpoint_publisher_metrics.get(
-                "time_since_last_success_seconds", None
-            )
+        # HTTP service publisher metrics
+        _events_published_to_http_svc = http_endpoint_publisher_metrics.get(
+            "published", 0
+        )
+        _events_filtered_out_before_http_svc_publish = (
+            http_endpoint_publisher_metrics.get("filtered_out", 0)
+        )
+        _events_failed_to_publish_to_http_svc = http_endpoint_publisher_metrics.get(
+            "failed", 0
+        )
+        _events_dropped_in_http_publish_queue_by_type = (
+            http_endpoint_publisher_metrics.get("dropped_events", {})
+        )
+        _http_publish_latency_success_samples = http_endpoint_publisher_metrics.get(
+            "success_latency_seconds", []
+        )
+        _http_publish_latency_failure_samples = http_endpoint_publisher_metrics.get(
+            "failure_latency_seconds", []
+        )
+        _failed_attempts_since_last_success = http_endpoint_publisher_metrics.get(
+            "failed_attempts_since_last_success", 0
+        )
+        _time_since_last_success_seconds = http_endpoint_publisher_metrics.get(
+            "time_since_last_success_seconds", None
+        )
 
         events_received.labels(**common_labels).inc(_events_received)
         events_failed_to_add_to_aggregator.labels(**common_labels).inc(
@@ -328,7 +328,7 @@ class AggregatorAgent(
             )
 
         await asyncio.gather(
-            self._HttpEndpointPublisher.run_forever(),
+            self._http_endpoint_publisher.run_forever(),
             self._update_metrics(),
         )
 

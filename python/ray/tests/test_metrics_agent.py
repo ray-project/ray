@@ -509,15 +509,15 @@ def test_metrics_export_event_aggregator_agent(
         event_aggregator_metrics = [
             "ray_event_aggregator_agent_events_received_total",
             "ray_event_aggregator_agent_events_buffer_add_failures_total",
-            "ray_event_aggregator_agent_http_events_published_total",
-            "ray_event_aggregator_agent_http_events_filtered_total",
-            "ray_event_aggregator_agent_http_publish_failures_total",
-            "ray_event_aggregator_agent_http_publish_queue_dropped_events_total",
-            "ray_event_aggregator_agent_http_publish_consecutive_failures",
-            "ray_event_aggregator_agent_http_time_since_last_success_seconds",
-            "ray_event_aggregator_agent_http_publish_duration_seconds_bucket",
-            "ray_event_aggregator_agent_http_publish_duration_seconds_count",
-            "ray_event_aggregator_agent_http_publish_duration_seconds_sum",
+            "ray_event_aggregator_agent_http_publisher_published_events_total",
+            "ray_event_aggregator_agent_http_publisher_filtered_events_total",
+            "ray_event_aggregator_agent_http_publisher_failures_total",
+            "ray_event_aggregator_agent_http_publisher_queue_dropped_events_total",
+            "ray_event_aggregator_agent_http_publisher_consecutive_failures_since_last_success",
+            "ray_event_aggregator_agent_http_publisher_time_since_last_success_seconds",
+            "ray_event_aggregator_agent_http_publisher_publish_duration_seconds_bucket",
+            "ray_event_aggregator_agent_http_publisher_publish_duration_seconds_count",
+            "ray_event_aggregator_agent_http_publisher_publish_duration_seconds_sum",
         ]
         return all(metric in metrics_names for metric in event_aggregator_metrics)
 
@@ -526,9 +526,9 @@ def test_metrics_export_event_aggregator_agent(
         expected_metrics_values = {
             "ray_event_aggregator_agent_events_received_total": 3.0,
             "ray_event_aggregator_agent_events_buffer_add_failures_total": 0.0,
-            "ray_event_aggregator_agent_http_events_published_total": 1.0,
-            "ray_event_aggregator_agent_http_events_filtered_total": 1.0,
-            "ray_event_aggregator_agent_http_publish_failures_total": 0.0,
+            "ray_event_aggregator_agent_http_publisher_published_events_total": 1.0,
+            "ray_event_aggregator_agent_http_publisher_filtered_events_total": 1.0,
+            "ray_event_aggregator_agent_http_publisher_failures_total": 0.0,
         }
         for descriptor, expected_value in expected_metrics_values.items():
             samples = [m for m in metric_samples if m.name == descriptor]
