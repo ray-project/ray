@@ -38,8 +38,16 @@ constexpr int64_t kTaskFailureThrottlingThreshold = 50;
 // Throttle task failure logs to once this interval.
 constexpr int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
-static inline rpc::ErrorType MapStatusToErrorType(const Status &status) {
+namespace {
+
+rpc::ErrorType MapPlasmaPutStatusToErrorType(const Status &status) {
+  // Only the following should be returned from plasma put paths today.
+  RAY_DCHECK(status.IsObjectStoreFull() || status.IsTransientObjectStoreFull() ||
+             status.IsOutOfDisk() || status.IsIOError())
+      << "Unexpected status from plasma put: " << status;
+
   if (status.IsObjectStoreFull() || status.IsTransientObjectStoreFull()) {
+    // TODO(codope): add a dedicated OBJECT_STORE_FULL error type and map to it.
     return rpc::ErrorType::OUT_OF_MEMORY;
   }
   if (status.IsOutOfDisk()) {
@@ -51,6 +59,8 @@ static inline rpc::ErrorType MapStatusToErrorType(const Status &status) {
   }
   return rpc::ErrorType::WORKER_DIED;
 }
+
+}  // namespace
 
 absl::flat_hash_set<ObjectID> ObjectRefStream::GetItemsUnconsumed() const {
   absl::flat_hash_set<ObjectID> result;
@@ -602,6 +612,7 @@ StatusOr<bool> TaskManager::HandleTaskReturn(const ObjectID &object_id,
       if (!s.ok()) {
         return s;
       }
+      in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id);
     } else {
       in_memory_store_.Put(object, object_id);
       direct_return = true;
@@ -936,7 +947,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
         RAY_LOG(WARNING).WithField(object_id)
             << "Failed to handle dynamic task return: " << direct_or.status();
         Status st = direct_or.status();
-        rpc::ErrorType err_type = MapStatusToErrorType(st);
+        rpc::ErrorType err_type = MapPlasmaPutStatusToErrorType(st);
         rpc::RayErrorInfo err_info;
         err_info.set_error_message(st.ToString());
         FailOrRetryPendingTask(task_id,
@@ -964,7 +975,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
       // If storing return in plasma failed, treat as system failure for this attempt.
       // Do not proceed with normal completion. Mark task failed immediately.
       Status st = direct_or.status();
-      rpc::ErrorType err_type = MapStatusToErrorType(st);
+      rpc::ErrorType err_type = MapPlasmaPutStatusToErrorType(st);
       rpc::RayErrorInfo err_info;
       err_info.set_error_message(st.ToString());
       FailOrRetryPendingTask(task_id,
@@ -1108,7 +1119,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                 << "Failed to handle generator return during app error propagation: "
                 << res.status();
             Status st = res.status();
-            rpc::ErrorType err_type = MapStatusToErrorType(st);
+            rpc::ErrorType err_type = MapPlasmaPutStatusToErrorType(st);
             rpc::RayErrorInfo err_info;
             err_info.set_error_message(st.ToString());
             FailOrRetryPendingTask(spec.TaskId(),
