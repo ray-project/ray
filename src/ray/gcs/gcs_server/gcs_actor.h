@@ -85,8 +85,9 @@ class GcsActor {
     const auto &actor_creation_task_spec = task_spec_->actor_creation_task_spec();
     actor_table_data_.set_actor_id(actor_creation_task_spec.actor_id());
     actor_table_data_.set_job_id(task_spec_->job_id());
-    actor_table_data_.set_max_restarts(actor_creation_task_spec.max_actor_restarts());
-    actor_table_data_.set_num_restarts(0);
+    actor_table_data_.set_max_actor_restarts(
+        actor_creation_task_spec.max_actor_restarts());
+    actor_table_data_.set_num_actor_restarts(0);
     actor_table_data_.set_num_restarts_due_to_lineage_reconstruction(0);
 
     actor_table_data_.mutable_function_descriptor()->CopyFrom(

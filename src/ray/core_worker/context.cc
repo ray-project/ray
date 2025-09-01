@@ -94,7 +94,7 @@ struct WorkerThreadContext {
   void SetCurrentTask(const TaskSpecification &task_spec) {
     RAY_CHECK(task_index_ == 0);
     RAY_CHECK(put_counter_ == 0);
-    SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber());
+    SetCurrentTaskId(task_spec.TaskId(), task_spec.TaskAttemptNumber());
     SetCurrentPlacementGroupId(task_spec.PlacementGroupBundleId().first);
     SetPlacementGroupCaptureChildTasks(task_spec.PlacementGroupCaptureChildTasks());
     current_task_ = std::make_shared<const TaskSpecification>(task_spec);

@@ -219,7 +219,7 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
       << "received notification on actor, state: " << actor_state
       << ", ip address: " << actor_data.address().ip_address()
       << ", port: " << actor_data.address().port()
-      << ", num_restarts: " << actor_data.num_restarts() << ", death context type="
+      << ", num_restarts: " << actor_data.num_actor_restarts() << ", death context type="
       << gcs::GetActorDeathCauseString(actor_data.death_cause());
   if (actor_data.preempted()) {
     actor_task_submitter_.SetPreempted(actor_id);
@@ -227,14 +227,14 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
 
   if (actor_data.state() == rpc::ActorTableData::RESTARTING) {
     actor_task_submitter_.DisconnectActor(actor_id,
-                                          actor_data.num_restarts(),
+                                          actor_data.num_actor_restarts(),
                                           /*dead=*/false,
                                           actor_data.death_cause(),
                                           /*is_restartable=*/true);
   } else if (actor_data.state() == rpc::ActorTableData::DEAD) {
     OnActorKilled(actor_id);
     actor_task_submitter_.DisconnectActor(actor_id,
-                                          actor_data.num_restarts(),
+                                          actor_data.num_actor_restarts(),
                                           /*dead=*/true,
                                           actor_data.death_cause(),
                                           gcs::IsActorRestartable(actor_data));
@@ -243,7 +243,7 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
     // otherwise we crash when bulk unsubscribing all actor handles.
   } else if (actor_data.state() == rpc::ActorTableData::ALIVE) {
     actor_task_submitter_.ConnectActor(
-        actor_id, actor_data.address(), actor_data.num_restarts());
+        actor_id, actor_data.address(), actor_data.num_actor_restarts());
   } else {
     // The actor is being created and not yet ready, just ignore!
   }

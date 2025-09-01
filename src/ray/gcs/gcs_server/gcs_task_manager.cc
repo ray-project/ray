@@ -617,7 +617,7 @@ void GcsTaskManager::GcsTaskManagerStorage::RecordDataLossFromWorker(
     const rpc::TaskEventData &data) {
   for (const auto &dropped_attempt : data.dropped_task_attempts()) {
     const auto task_id = TaskID::FromBinary(dropped_attempt.task_id());
-    auto attempt_number = dropped_attempt.attempt_number();
+    auto attempt_number = dropped_attempt.num_task_attempts();
     auto job_id = task_id.JobId();
     job_task_summary_[job_id].RecordTaskAttemptDropped(
         std::make_pair(task_id, attempt_number));

@@ -610,7 +610,7 @@ std::unique_ptr<rpc::TaskEventData> TaskEventBufferImpl::CreateTaskEventDataToSe
   for (auto &task_attempt : dropped_task_attempts_to_send) {
     rpc::TaskAttempt rpc_task_attempt;
     rpc_task_attempt.set_task_id(task_attempt.first.Binary());
-    rpc_task_attempt.set_attempt_number(task_attempt.second);
+    rpc_task_attempt.set_num_task_attempts(task_attempt.second);
     *(data->add_dropped_task_attempts()) = std::move(rpc_task_attempt);
   }
   size_t num_profile_events_dropped = stats_counter_.Get(
@@ -645,7 +645,7 @@ TaskEventBufferImpl::CreateRayEventsDataToSend(
   for (auto &task_attempt : dropped_task_attempts_to_send) {
     rpc::TaskAttempt rpc_task_attempt;
     rpc_task_attempt.set_task_id(task_attempt.first.Binary());
-    rpc_task_attempt.set_attempt_number(task_attempt.second);
+    rpc_task_attempt.set_num_task_attempts(task_attempt.second);
     *(metadata->add_dropped_task_attempts()) = std::move(rpc_task_attempt);
   }
   return data;

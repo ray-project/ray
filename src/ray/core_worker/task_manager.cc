@@ -330,7 +330,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
       spec.TaskId(),
       spec.JobId(),
-      spec.AttemptNumber(),
+      spec.TaskAttemptNumber(),
       spec,
       rpc::TaskStatus::PENDING_ARGS_AVAIL,
       /* include_task_info */ true));
@@ -391,7 +391,7 @@ std::optional<rpc::ErrorType> TaskManager::ResubmitTask(
   // retried after its retry count has reached zero. Additional information in github
   // issue #54260.
   RAY_LOG(INFO) << "Resubmitting task that produced lost plasma object, attempt #"
-                << spec.AttemptNumber() << ": " << spec.DebugString();
+                << spec.TaskAttemptNumber() << ": " << spec.DebugString();
   retry_task_callback_(spec, /*object_recovery*/ true, /*delay_ms*/ 0);
 
   return std::nullopt;
@@ -406,7 +406,7 @@ void TaskManager::SetupTaskEntryForResubmit(TaskEntry &task_entry) {
                 rpc::TaskStatus::PENDING_ARGS_AVAIL,
                 /* state_update */ std::nullopt,
                 /* include_task_info */ true,
-                task_entry.spec_.AttemptNumber() + 1);
+                task_entry.spec_.TaskAttemptNumber() + 1);
   num_pending_tasks_++;
 
   // The task is pending again, so it's no longer counted as lineage. If
@@ -769,7 +769,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   const auto &generator_id = ObjectID::FromBinary(request.generator_id());
   const auto &task_id = generator_id.TaskId();
   int64_t item_index = request.item_index();
-  uint64_t attempt_number = request.attempt_number();
+  int32_t attempt_number = request.attempt_number();
   // Every generated object has the same task id.
   RAY_LOG(DEBUG) << "Received an intermediate result of index " << item_index
                  << " generator_id: " << generator_id;
@@ -780,7 +780,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     auto it = submissible_tasks_.find(task_id);
     if (it != submissible_tasks_.end()) {
       backpressure_threshold = it->second.spec_.GeneratorBackpressureNumObjects();
-      if (it->second.spec_.AttemptNumber() > attempt_number) {
+      if (it->second.spec_.TaskAttemptNumber() > attempt_number) {
         // Generator task reports can arrive at any time. If the first attempt
         // fails, we may receive a report from the first executor after the
         // second attempt has started. In this case, we should ignore the first
@@ -1176,7 +1176,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                     rpc::TaskStatus::PENDING_ARGS_AVAIL,
                     /* state_update */ std::nullopt,
                     /* include_task_info */ true,
-                    task_entry.spec_.AttemptNumber() + 1);
+                    task_entry.spec_.TaskAttemptNumber() + 1);
     }
   }
 
@@ -1189,10 +1189,10 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                 << ", task failed due to oom: " << task_failed_due_to_oom;
   if (will_retry) {
     RAY_LOG(INFO) << "Attempting to resubmit task " << spec.TaskId()
-                  << " for attempt number: " << spec.AttemptNumber();
+                  << " for attempt number: " << spec.TaskAttemptNumber();
     int32_t delay_ms = task_failed_due_to_oom
                            ? ExponentialBackoff::GetBackoffMs(
-                                 spec.AttemptNumber(),
+                                 spec.TaskAttemptNumber(),
                                  RayConfig::instance().task_oom_retry_delay_base_ms())
                            : RayConfig::instance().task_retry_delay_ms();
     retry_task_callback_(spec, /*object_recovery*/ false, delay_ms);
@@ -1591,7 +1591,7 @@ void TaskManager::AddTaskStatusInfo(rpc::CoreWorkerStats *stats) const {
       continue;
     }
     ref->set_task_status(it->second.GetStatus());
-    ref->set_attempt_number(it->second.spec_.AttemptNumber());
+    ref->set_num_task_attempts(it->second.spec_.TaskAttemptNumber());
   }
 }
 
@@ -1637,7 +1637,7 @@ void TaskManager::SetTaskStatus(
   task_entry.SetStatus(status);
 
   const int32_t attempt_number_to_record =
-      attempt_number.value_or(task_entry.spec_.AttemptNumber());
+      attempt_number.value_or(task_entry.spec_.TaskAttemptNumber());
   const auto state_update_to_record =
       state_update.value_or(worker::TaskStatusEvent::TaskStateUpdate());
   RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(task_entry.spec_.TaskId(),

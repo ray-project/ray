@@ -2734,14 +2734,15 @@ Status CoreWorker::ExecuteTask(
     RAY_UNUSED(
         task_event_buffer_->RecordTaskStatusEventIfNeeded(task_spec.TaskId(),
                                                           task_spec.JobId(),
-                                                          task_spec.AttemptNumber(),
+                                                          task_spec.TaskAttemptNumber(),
                                                           task_spec,
                                                           rpc::TaskStatus::RUNNING,
                                                           /*include_task_info=*/false,
                                                           update));
 
     worker_context_->SetCurrentTask(task_spec);
-    SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
+    SetCurrentTaskId(
+        task_spec.TaskId(), task_spec.TaskAttemptNumber(), task_spec.GetName());
   }
   {
     absl::MutexLock lock(&mutex_);
@@ -2769,7 +2770,7 @@ Status CoreWorker::ExecuteTask(
   // the first execution.
   if (!task_spec.ReturnsDynamic()) {
     dynamic_return_objects = nullptr;
-  } else if (task_spec.AttemptNumber() > 0) {
+  } else if (task_spec.TaskAttemptNumber() > 0) {
     for (const auto &dynamic_return_id : task_spec.DynamicReturnIds()) {
       // Increase the put index so that when the generator creates a new obj
       // the object id won't conflict.
@@ -2834,7 +2835,7 @@ Status CoreWorker::ExecuteTask(
       application_error,
       defined_concurrency_groups,
       name_of_concurrency_group_to_execute,
-      /*is_reattempt=*/task_spec.AttemptNumber() > 0,
+      /*is_reattempt=*/task_spec.TaskAttemptNumber() > 0,
       /*is_streaming_generator=*/task_spec.IsStreamingGenerator(),
       /*retry_exception=*/task_spec.ShouldRetryExceptions(),
       /*generator_backpressure_num_objects=*/
@@ -3320,7 +3321,7 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
   std::string func_name =
       FunctionDescriptorBuilder::FromProto(request.task_spec().function_descriptor())
           ->CallString();
-  task_counter_.IncPending(func_name, request.task_spec().attempt_number() > 0);
+  task_counter_.IncPending(func_name, request.task_spec().num_task_attempts() > 0);
 
   // For actor tasks, we just need to post a HandleActorTask instance to the task
   // execution service.
@@ -4536,7 +4537,7 @@ void CoreWorker::UpdateTaskIsDebuggerPaused(const TaskID &task_id,
   RAY_UNUSED(task_event_buffer_->RecordTaskStatusEventIfNeeded(
       task_id,
       worker_context_->GetCurrentJobID(),
-      running_task_it->second.AttemptNumber(),
+      running_task_it->second.TaskAttemptNumber(),
       running_task_it->second,
       rpc::TaskStatus::NIL,
       /*include_task_info=*/false,
@@ -4546,7 +4547,7 @@ void CoreWorker::UpdateTaskIsDebuggerPaused(const TaskID &task_id,
 void CoreWorker::TaskManagerRetryTask(TaskSpecification &spec,
                                       bool object_recovery,
                                       uint32_t delay_ms) {
-  spec.GetMutableMessage().set_attempt_number(spec.AttemptNumber() + 1);
+  spec.GetMutableMessage().set_num_task_attempts(spec.TaskAttemptNumber() + 1);
   if (!object_recovery) {
     // Retry after a delay to emulate the existing Raylet reconstruction
     // behaviour. TODO(ekl) backoff exponentially.

@@ -45,22 +45,37 @@ LeaseSpecification::LeaseSpecification(const rpc::TaskSpec &task_spec)
   message_->mutable_function_descriptor()->CopyFrom(task_spec.function_descriptor());
   message_->set_language(task_spec.language());
   message_->mutable_runtime_env_info()->CopyFrom(task_spec.runtime_env_info());
-  message_->set_attempt_number(task_spec.attempt_number());
   message_->set_root_detached_actor_id(task_spec.root_detached_actor_id());
   message_->set_task_name(task_spec.name());
   message_->set_type(task_spec.type());
   if (IsActorCreationTask()) {
     message_->set_actor_id(task_spec.actor_creation_task_spec().actor_id());
     message_->set_is_detached_actor(task_spec.actor_creation_task_spec().is_detached());
-    message_->set_max_actor_restarts(
-        task_spec.actor_creation_task_spec().max_actor_restarts());
     for (const auto &option :
          task_spec.actor_creation_task_spec().dynamic_worker_options()) {
       message_->add_dynamic_worker_options(option);
     }
-  } else {
-    message_->set_max_retries(task_spec.max_retries());
   }
+  bool is_retry = true;
+  bool is_retriable = true;
+  if (IsActorCreationTask() &&
+      task_spec.actor_creation_task_spec().num_actor_restarts() == 0) {
+    is_retry = false;
+  } else if (IsNormalTask() && task_spec.num_task_attempts() == 0) {
+    is_retry = false;
+  }
+  if (IsActorCreationTask() &&
+      (task_spec.actor_creation_task_spec().max_actor_restarts() == 0 ||
+       task_spec.actor_creation_task_spec().num_actor_restarts() ==
+           task_spec.actor_creation_task_spec().max_actor_restarts())) {
+    is_retriable = false;
+  } else if (IsNormalTask() &&
+             (task_spec.max_task_retries() == 0 ||
+              task_spec.num_task_attempts() == task_spec.max_task_retries())) {
+    is_retriable = false;
+  }
+  message_->set_is_retry(is_retry);
+  message_->set_is_retriable(is_retriable);
   ComputeResources();
 }
 
@@ -135,29 +150,9 @@ BundleID LeaseSpecification::PlacementGroupBundleId() const {
                         pg.placement_group_bundle_index());
 }
 
-int64_t LeaseSpecification::MaxActorRestarts() const {
-  RAY_CHECK(IsActorCreationTask());
-  return message_->max_actor_restarts();
-}
+bool LeaseSpecification::IsRetriable() const { return message_->is_retriable(); }
 
-int32_t LeaseSpecification::MaxRetries() const {
-  RAY_CHECK(IsNormalTask());
-  return message_->max_retries();
-}
-
-bool LeaseSpecification::IsRetriable() const {
-  if (IsActorCreationTask() && MaxActorRestarts() == 0) {
-    return false;
-  }
-  if (IsNormalTask() && MaxRetries() == 0) {
-    return false;
-  }
-  return true;
-}
-
-uint64_t LeaseSpecification::AttemptNumber() const { return message_->attempt_number(); }
-
-bool LeaseSpecification::IsRetry() const { return AttemptNumber() > 0; }
+bool LeaseSpecification::IsRetry() const { return message_->is_retry(); }
 
 std::string LeaseSpecification::GetTaskName() const { return message_->task_name(); }
 
@@ -215,16 +210,13 @@ std::string LeaseSpecification::DebugString() const {
   stream << FunctionDescriptor()->ToString();
 
   stream << ", lease_id=" << LeaseId() << ", task_name=" << GetTaskName()
-         << ", job_id=" << JobId() << ", depth=" << GetDepth()
-         << ", attempt_number=" << AttemptNumber();
+         << ", job_id=" << JobId() << ", depth=" << GetDepth() << std::boolalpha
+         << ", is_retry=" << IsRetry() << ", is_retriable=" << IsRetriable();
 
   if (IsActorCreationTask()) {
     // Print actor creation task spec.
     stream << ", actor_creation_task_spec={actor_id=" << ActorId()
-           << ", max_restarts=" << MaxActorRestarts()
            << ", is_detached=" << IsDetachedActor() << "}";
-  } else {
-    stream << ", normal_task_spec={max_retries=" << MaxRetries() << "}";
   }
 
   // Print non-sensitive runtime env info.
