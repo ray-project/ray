@@ -266,7 +266,7 @@ documentation, sorted alphabetically.
     .. TODO: Inference
 
     Job
-        A Ray job is a packaged ray application that can be executed on a
+        A Ray job is a packaged Ray application that can be executed on a
         (remote) Ray cluster. :ref:`Learn more<jobs-overview>`.
 
     Lineage
