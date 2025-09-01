@@ -1,4 +1,4 @@
-# Scalable video processing
+# Face mask detection pipeline
 
 This tutorial builds an end-to-end face mask detection pipeline that leverages distributed fine-tuning, large-scale batch inference, video analytics, and scalable serving:
 
