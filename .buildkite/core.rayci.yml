@@ -65,8 +65,7 @@ steps:
 
   - label: ":ray: core: cgraph + gpu objects cpu python tests"
     tags:
-      - compiled_graphs
-      - gpu_objects
+      - cgraphs_gpu_objects
     instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/dag/... core
@@ -473,8 +472,7 @@ steps:
   - label: ":ray: core: multi gpu tests"
     key: core-multi-gpu-tests
     tags:
-      - compiled_graphs
-      - gpu_objects
+      - cgraphs_gpu_objects
       - gpu
     instance_type: gpu-large
     # we're running some cgraph doc tests here as well since they need gpus

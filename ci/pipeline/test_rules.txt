@@ -84,7 +84,10 @@ python/requirements/
 
 python/ray/dag/
 python/ray/experimental/channel/
-@ python compiled_graphs
+python/ray/experimental/gpu_object_manager/
+python/ray/experimental/collective/
+python/ray/tests/gpu_objects/
+@ python cgraphs_gpu_objects
 ;
 
 python/ray/util/client/
@@ -222,13 +225,7 @@ src/
 
 src/ray/core_worker/experimental*.h
 src/ray/core_worker/experimental*.cc
-@ compiled_graphs
-;
-
-python/ray/experimental/gpu_object_manager/
-python/ray/experimental/collective/
-python/ray/tests/gpu_objects/
-@ python gpu_objects
+@ cgraphs_gpu_objects
 ;
 
 .github/

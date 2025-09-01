@@ -11,7 +11,7 @@ from typing import List, Optional, Set, Tuple
 _ALL_TAGS = set(
     """
     always
-    lint python cpp core_cpp java workflow compiled_graphs gpu_objects dashboard ray_client
+    lint python cpp core_cpp java workflow cgraphs_gpu_objects dashboard ray_client
     data dask serve ml tune train llm rllib rllib_gpu rllib_directly
     linux_wheels macos_wheels docker doc python_dependencies tools
     release_tests compiled_python spark_on_ray runtime_env_container
