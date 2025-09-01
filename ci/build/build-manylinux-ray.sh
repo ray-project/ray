@@ -12,4 +12,4 @@ if [[ "${RAY_INSTALL_JAVA}" == "1" ]]; then
 fi
 
 # Build dashboard
-bash ./ci/build/build-dashboard.sh
+bash ./ci/build/build-manylinux-dashboard.sh
