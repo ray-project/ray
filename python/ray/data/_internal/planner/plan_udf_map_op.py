@@ -413,7 +413,7 @@ def _try_wrap_udf_exception(e: Exception, item: Any = None):
         raise e
     else:
         raise UserCodeException() from e
-
+        raise UserCodeException("UDF failed to process a data block.") from e
 
 # Following are util functions for converting UDFs to `MapTransformCallable`s.
 
