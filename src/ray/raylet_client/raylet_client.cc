@@ -20,8 +20,6 @@
 #include <utility>
 #include <vector>
 
-#include "absl/synchronization/notification.h"
-#include "ray/common/common_protocol.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 

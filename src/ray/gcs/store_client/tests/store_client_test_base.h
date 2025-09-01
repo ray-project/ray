@@ -29,6 +29,7 @@
 #include "ray/common/test_util.h"
 #include "ray/gcs/store_client/store_client.h"
 #include "ray/util/logging.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 

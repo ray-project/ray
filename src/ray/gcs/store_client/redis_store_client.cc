@@ -100,7 +100,7 @@ void RedisStoreClient::MGetValues(
                           shared_callback,
                           key_value_map](const std::shared_ptr<CallbackReply> &reply) {
       if (!reply->IsNil()) {
-        auto value = reply->ReadAsStringArray();
+        const auto &value = reply->ReadAsStringArray();
         for (size_t index = 0; index < value.size(); ++index) {
           if (value[index].has_value()) {
             (*key_value_map)[args[index]] = *(value[index]);
