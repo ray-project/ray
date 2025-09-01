@@ -48,11 +48,11 @@ class ProcessorConfig(BaseModelExtended):
     concurrency: Union[int, Tuple[int, int]] = Field(
         default=1,
         description="The number of workers for data parallelism. Default to 1. "
-        "If ``concurrency`` is a tuple ``(m, n)``, Ray will use "
-        "an autoscaling actor pool from ``m`` to ``n`` workers. "
-        "If ``concurrency`` is an integer ``n``, it depends on "
-        "the processor and stage what number of workers will be used. "
-        "Possible values are ``n, (1, n), or (n, n)``.",
+        "If ``concurrency`` is a ``tuple`` ``(m, n)``, Ray creates an autoscaling "
+        "actor pool that scales between ``m`` and ``n`` workers (``1 <= m <= n``). "
+        "If ``concurrency`` is an ``int`` ``n``, Ray uses either a fixed pool of ``n`` "
+        "workers or an autoscaling pool from ``1`` to ``n`` workers, depending on "
+        "the processor and stage.",
     )
 
     experimental: Dict[str, Any] = Field(
