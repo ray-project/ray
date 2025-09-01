@@ -412,7 +412,6 @@ def _try_wrap_udf_exception(e: Exception, item: Any = None):
     if _is_ray_debugger_post_mortem_enabled() or ctx.raise_original_map_exception:
         raise e
     else:
-        raise UserCodeException() from e
         raise UserCodeException("UDF failed to process a data block.") from e
 
 # Following are util functions for converting UDFs to `MapTransformCallable`s.
