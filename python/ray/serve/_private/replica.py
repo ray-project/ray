@@ -163,7 +163,7 @@ class ReplicaMetricsManager:
         event_loop: asyncio.BaseEventLoop,
         autoscaling_config: Optional[AutoscalingConfig],
         ingress: bool,
-        autoscaling_stats_method: Optional[Callable],
+        user_callable_wrapper: Optional,
     ):
         self._replica_id = replica_id
         self._metrics_pusher = MetricsPusher()
@@ -230,7 +230,7 @@ class ReplicaMetricsManager:
         )
 
         self.set_autoscaling_config(autoscaling_config)
-        self.autoscaling_stats_method = autoscaling_stats_method
+        self.user_callable_wrapper = user_callable_wrapper
 
         if self._cached_metrics_enabled:
             self._event_loop.create_task(self._report_cached_metrics_forever())
@@ -369,7 +369,7 @@ class ReplicaMetricsManager:
     async def _add_autoscaling_metrics_point_async(self) -> None:
         metrics_dict = self._replica_ongoing_requests()
 
-        if self.autoscaling_stats_method:
+        if self.user_callable_wrapper._user_autoscaling_stats:
             # Try to acquire the lock without waiting; skip if already running
             if self._autoscaling_stats_lock.locked():
                 logger.debug("Previous autoscaling stats call still running, skipping.")
@@ -377,7 +377,7 @@ class ReplicaMetricsManager:
                 try:
                     async with self._autoscaling_stats_lock:
                         res = await asyncio.wait_for(
-                            self.autoscaling_stats_method(),
+                            self.user_callable_wrapper.call_record_autoscaling_stats(),
                             timeout=RAY_SERVE_AUTOSCALING_STATS_TIMEOUT_S,
                         )
                         metrics_dict.update(res)
@@ -462,7 +462,7 @@ class ReplicaBase(ABC):
             event_loop=self._event_loop,
             autoscaling_config=self._deployment_config.autoscaling_config,
             ingress=ingress,
-            autoscaling_stats_method=self._user_callable_wrapper.call_record_autoscaling_stats,
+            user_callable_wrapper=self._user_callable_wrapper,
         )
 
         self._internal_grpc_port: Optional[int] = None
