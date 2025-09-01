@@ -183,6 +183,9 @@ class RayEventsPublisher(RayEventsPublisherInterface):
     async def wait_until_running(self, timeout: Optional[float] = None) -> bool:
         """Wait until the publisher has started.
 
+        Args:
+            timeout: Maximum time to wait in seconds. If None, waits indefinitely.
+
         Returns:
             True if the publisher started before the timeout, False otherwise.
             If timeout is None, waits indefinitely.

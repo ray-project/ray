@@ -79,6 +79,10 @@ class MultiConsumerEventBuffer:
         Arguments:
             consumer_id: id of the consumer consuming the batch
             timeout_seconds: maximum time to wait for a batch
+
+        Returns:
+            A list of up to max_batch_size events ready for consumption.
+            The list always contains at least one event.
         """
         max_batch = self._max_batch_size
         async with self._lock:
