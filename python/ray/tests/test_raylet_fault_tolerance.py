@@ -5,8 +5,6 @@ import sys
 # Not testing response as HandleReturnWorkerLease is clearly idempotent and
 # testing the edge case mentioned in #55469 makes the test brittle since a
 # minor change in the implementation/config variables means the edge case is not tested
-
-
 def test_return_worker_lease_retry_and_idempotency(monkeypatch, shutdown_only):
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
