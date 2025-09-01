@@ -1,8 +1,10 @@
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import TYPE_CHECKING, Any, Dict
 
-from ray.train import Checkpoint
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.train import Checkpoint
 
 
 @dataclass
@@ -15,5 +17,5 @@ class ReportedCheckpoint:
         metrics: The metrics associated with that checkpoint.
     """
 
-    checkpoint: Checkpoint
+    checkpoint: "Checkpoint"
     metrics: Dict[str, Any]

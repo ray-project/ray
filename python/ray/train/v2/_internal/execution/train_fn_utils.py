@@ -1,14 +1,16 @@
 import threading
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ray.data import DataIterator
-from ray.train import Checkpoint
 from ray.train.v2._internal.execution import collective_impl
 from ray.train.v2._internal.execution.context import (
     get_train_context as get_internal_train_context,
 )
 from ray.train.v2.api.context import TrainContext as ExternalTrainContext
-from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
+
+if TYPE_CHECKING:
+    from ray.train import Checkpoint
+    from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
 
 class TrainFnUtils:
@@ -22,7 +24,7 @@ class TrainFnUtils:
     def report(
         self,
         metrics: Dict[str, Any],
-        checkpoint: Optional[Checkpoint] = None,
+        checkpoint: Optional["Checkpoint"] = None,
         checkpoint_dir_name: Optional[str] = None,
     ) -> None:
         """Upload checkpoint to remote storage and put a training result on the result queue.
@@ -47,7 +49,7 @@ class TrainFnUtils:
         """
         return get_internal_train_context().get_checkpoint()
 
-    def get_all_reported_checkpoints(self) -> List[ReportedCheckpoint]:
+    def get_all_reported_checkpoints(self) -> List["ReportedCheckpoint"]:
         """Get all the checkpoints reported by the workers.
 
         Returns:
