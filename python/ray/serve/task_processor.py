@@ -409,10 +409,10 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
             )
 
         if self._config.failed_task_queue_name:
-            task_failure.connect(self._handle_task_failure, weak=False)
+            task_failure.connect(self._handle_task_failure)
 
         if self._config.unprocessable_task_queue_name:
-            task_unknown.connect(self._handle_unknown_task, weak=False)
+            task_unknown.connect(self._handle_unknown_task)
 
     def register_task_handle(self, func, name=None):
         task_options = {

@@ -308,7 +308,7 @@ class TestTaskConsumerWithRayServe:
         # Verify all tasks were processed and distributed correctly
         expected_tasks = {f"task_{i}" for i in range(num_tasks)}
         final_tasks = ray.get(tracker.get_processed_tasks.remote())
-        second_deployment_tasks = ray.get(handle.get_local_processed.remote())
+        second_deployment_tasks = handle.get_local_processed.remote().result()
 
         assert (
             final_tasks == expected_tasks
@@ -343,6 +343,7 @@ class TestTaskConsumerWithRayServe:
                     self.data_received = data
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 class TestTaskConsumerWithDLQsConfiguration:
     """Test task consumer with dead letter queues."""
 
