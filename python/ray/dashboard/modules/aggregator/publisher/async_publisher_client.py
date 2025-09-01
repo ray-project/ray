@@ -69,6 +69,7 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
         self, events_batch: list[events_base_event_pb2.RayEvent]
     ) -> PublishStats:
         if not events_batch:
+            # Nothing to publish -> success but nothing published
             return PublishStats(True, 0, 0)
         filtered = [e for e in events_batch if self._events_filter_fn(e)]
         num_filtered_out = len(events_batch) - len(filtered)
@@ -76,7 +77,7 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
             # All filtered out -> success but nothing published
             return PublishStats(True, 0, num_filtered_out)
 
-        # Convert protobuf objects to python dictionaries for HTTP POST
+        # Convert protobuf objects to python dictionaries for HTTP POST. Run in executor to avoid blocking the event loop.
         filtered_json = await get_or_create_event_loop().run_in_executor(
             self._executor,
             lambda: [

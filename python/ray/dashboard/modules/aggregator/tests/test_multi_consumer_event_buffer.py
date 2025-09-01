@@ -83,8 +83,8 @@ class TestMultiConsumerEventBuffer:
         assert evicted_events_count[first_event_type_name] == 1
 
     @pytest.mark.asyncio
-    async def test_wait_for_batch_multiple_events_immediate(self):
-        """Test waiting for batch when multiple events are immediately available."""
+    async def test_wait_for_batch_multiple_events(self):
+        """Test waiting for batch when multiple events are immediately available and when when not all events are available."""
         buffer = MultiConsumerEventBuffer(max_size=10, max_batch_size=3)
         consumer_id = await buffer.register_consumer()
 

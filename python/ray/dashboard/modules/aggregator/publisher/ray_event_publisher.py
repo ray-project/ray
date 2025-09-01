@@ -43,10 +43,9 @@ class RayEventsPublisherInterface(ABC):
 
 
 class RayEventsPublisher(RayEventsPublisherInterface):
-    """RayEvents publisher that publishes batches of events to a destination using a dedicated async worker.
+    """RayEvents publisher that publishes batches of events to a destination by running a worker loop.
 
-    The publisher is single-threaded and uses a queue to store batches of events.
-    The worker loop continuously pulls batches from the queue and publishes them.
+    The worker loop continuously pulls batches from the event buffer and publishes them to the destination.
     """
 
     def __init__(
@@ -83,7 +82,6 @@ class RayEventsPublisher(RayEventsPublisherInterface):
         self._event_buffer_consumer_id = None
 
         # Internal metrics (since last get_and_reset_metrics call)
-        # using thread lock as non publisher threads can also call get_and_reset_metrics
         self._metrics_lock = asyncio.Lock()
         self._metric_events_published_since_last: int = 0
         self._metric_events_filtered_out_since_last: int = 0
@@ -118,17 +116,27 @@ class RayEventsPublisher(RayEventsPublisherInterface):
                 await self._async_publish_with_retries(events_batch)
         except asyncio.CancelledError:
             logger.info(f"Publisher {self._name} cancelled, shutting down gracefully")
+            self._started_event.clear()
             await self._publish_client.close()
             raise
         except Exception as e:
             logger.error(f"Publisher {self._name} encountered error: {e}")
+            self._started_event.clear()
             await self._publish_client.close()
             raise
 
     async def get_and_reset_metrics(self) -> Dict[str, int]:
         """Return a snapshot of internal metrics since last call and reset them.
 
-        Returns a dict with keys: 'published', 'filtered_out', 'failed', 'queue_dropped'.
+        Returns a dict with the following keys:
+            published: Number of events successfully published since last call
+            filtered_out: Number of events filtered out before publishing since last call
+            failed: Number of events that failed to publish since last call
+            success_latency_seconds: List of publish latencies for successful attempts since last call
+            failure_latency_seconds: List of publish latencies for failed attempts since last call
+            failed_attempts_since_last_success: Number of consecutive failed publish attempts since last successful publish
+            time_since_last_success_seconds: Time elapsed since last successful publish, or None if never succeeded
+            dropped_events: Dict mapping event types to counts of events dropped from buffer
         """
         async with self._metrics_lock:
             if self._metric_last_publish_success_timestamp is None:

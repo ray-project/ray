@@ -98,43 +98,43 @@ if prometheus_client:
     )
     # External HTTP service publisher metrics
     events_published_to_http_svc = Counter(
-        f"{metrics_prefix}_http_events_published_total",
+        f"{metrics_prefix}_http_publisher_published_events_total",
         "Total number of events successfully published to the HTTP service.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
     events_filtered_out_before_http_svc_publish = Counter(
-        f"{metrics_prefix}_http_events_filtered_total",
+        f"{metrics_prefix}_http_publisher_filtered_events_total",
         "Total number of events filtered out before publishing to the HTTP service.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
     events_failed_to_publish_to_http_svc = Counter(
-        f"{metrics_prefix}_http_publish_failures_total",
+        f"{metrics_prefix}_http_publisher_failures_total",
         "Total number of events that failed to publish to the HTTP service after retries.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
     events_dropped_in_http_svc_publish_queue = Counter(
-        f"{metrics_prefix}_http_publish_queue_dropped_events_total",
+        f"{metrics_prefix}_http_publisher_queue_dropped_events_total",
         "Total number of events dropped because the HTTP publish queue was full.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS) + ("event_type",),
         namespace="ray",
     )
     http_publish_latency_seconds = Histogram(
-        f"{metrics_prefix}_http_publish_duration_seconds",
+        f"{metrics_prefix}_http_publisher_publish_duration_seconds",
         "Duration of HTTP publish calls in seconds.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS) + ("Outcome",),
         namespace="ray",
     )
     http_failed_attempts_since_last_success = Gauge(
-        f"{metrics_prefix}_http_publish_consecutive_failures",
+        f"{metrics_prefix}_http_publisher_consecutive_failures_since_last_success",
         "Number of consecutive failed publish attempts since the last success.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
     http_time_since_last_success_seconds = Gauge(
-        f"{metrics_prefix}_http_time_since_last_success_seconds",
+        f"{metrics_prefix}_http_publisher_time_since_last_success_seconds",
         "Seconds since the last successful publish to the HTTP service.",
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
@@ -230,7 +230,7 @@ class AggregatorAgent(
                 f"Publishing events to external HTTP service is enabled. events_export_addr: {self._events_export_addr}"
             )
             self._event_processing_enabled = True
-            self._HttpEndpointPublisher = RayEventsPublisher(
+            self._http_endpoint_publisher = RayEventsPublisher(
                 name="http-endpoint-publisher",
                 publish_client=AsyncHttpPublisherClient(
                     endpoint=self._events_export_addr,
@@ -243,7 +243,7 @@ class AggregatorAgent(
             logger.info(
                 f"Event HTTP target is not enabled or publishing events to external HTTP service is disabled. Skipping sending events to external HTTP service. events_export_addr: {self._events_export_addr}"
             )
-            self._HttpEndpointPublisher = NoopPublisher()
+            self._http_endpoint_publisher = NoopPublisher()
 
         if PUBLISH_EVENTS_TO_GCS:
             logger.info("Publishing events to GCS is enabled")
@@ -320,7 +320,7 @@ class AggregatorAgent(
         }
 
         http_endpoint_publisher_metrics = await (
-            self._HttpEndpointPublisher.get_and_reset_metrics()
+            self._http_endpoint_publisher.get_and_reset_metrics()
         )
         gcs_publisher_metrics = await self._gcs_publisher.get_and_reset_metrics()
         task_metadata_buffer_metrics = (
@@ -466,7 +466,7 @@ class AggregatorAgent(
             )
 
         await asyncio.gather(
-            self._HttpEndpointPublisher.run_forever(),
+            self._http_endpoint_publisher.run_forever(),
             self._gcs_publisher.run_forever(),
             self._update_metrics(),
         )
