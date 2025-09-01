@@ -2,9 +2,9 @@ import ray
 import pytest
 import sys
 
-# Not testing response as HandleReturnWorkerLease is clearly idempotent and
-# testing the edge case mentioned in #55469 makes the test brittle since a
-# minor change in the implementation/config variables means the edge case is not tested
+# Not testing response failure as HandleReturnWorkerLease idempotency is tested
+# with a C++ unit test and testing the response failure case mentioned in #55469
+# requires setting multiple env variables + specific timing, making the test brittle
 def test_return_worker_lease_retry_and_idempotency(monkeypatch, shutdown_only):
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
@@ -14,7 +14,7 @@ def test_return_worker_lease_retry_and_idempotency(monkeypatch, shutdown_only):
         num_cpus=1,
     )
 
-    # Create two functions with different names to ensure the scheduler class changes
+    # Create two functions with different names to ensure the SchedulingKey changes
     # and a new lease request is sent for each call
     @ray.remote
     def simple_task_1():
