@@ -2,7 +2,6 @@ import os
 import random
 import sys
 import tempfile
-import signal
 
 import numpy as np
 import pytest
@@ -1695,7 +1694,7 @@ def test_get_actor_after_same_name_actor_dead(shutdown_only):
     a = Actor.options(name=ACTOR_NAME, max_restarts=0, max_task_retries=-1).remote()
 
     pid = ray.get(a.get_pid.remote())
-    os.kill(pid, signal.SIGTERM)
+    psutil.Process(pid).kill()
     a_actor_id = a._actor_id.hex()
 
     wait_for_condition(lambda: ray.state.actors(a_actor_id)["State"] == "DEAD")
@@ -1728,7 +1727,7 @@ def test_get_actor_after_same_name_actor_dead(shutdown_only):
     _ = ray.get_actor(ACTOR_NAME, namespace=NAMESPACE_NAME)
 
     pid = ray.get(c.get_pid.remote())
-    os.kill(pid, signal.SIGKILL)
+    psutil.Process(pid).kill()
 
     wait_for_condition(lambda: ray.state.actors(c._actor_id.hex())["State"] == "DEAD")
 
