@@ -8,7 +8,7 @@ This section describes how to pass arguments to your applications using an appli
 When writing an application, there are often parameters that you want to be able to easily change in development or production.
 For example, you might have a path to trained model weights and want to test out a newly trained model.
 In Ray Serve, these parameters are typically passed to the constructor of your deployments using `.bind()`.
-This pattern allows you to configure deployments using ordinary Python code but it requires modifying the code anytime one of the parameters needs to change.
+This pattern allows you to configure deployments using ordinary Python code, but it requires modifying the code whenever one of the parameters needs to change.
 
 To pass arguments without changing the code, define an "application builder" function that takes an arguments dictionary (or [Pydantic object](typed-app-builders)) and returns the built application to be run.
 
