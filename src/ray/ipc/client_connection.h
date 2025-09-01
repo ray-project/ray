@@ -25,7 +25,6 @@
 #include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/common_protocol.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 
@@ -232,7 +231,7 @@ class ClientConnection : public ServerConnection {
   /// ProcessClientMessage handler will be called.
   void ProcessMessages();
 
-  const std::string GetDebugLabel() const { return debug_label_; }
+  std::string GetDebugLabel() const { return debug_label_; }
 
  protected:
   /// A protected constructor for a node client connection.
