@@ -225,6 +225,7 @@ ray_cc_library(
         ":worker_killing_policy",
         ":worker_pool",
         "//src/ray/common:buffer",
+        "//src/ray/common:flatbuf_utils",
         "//src/ray/common:lease",
         "//src/ray/common:memory_monitor",
         "//src/ray/core_worker:experimental_mutable_object_provider",
