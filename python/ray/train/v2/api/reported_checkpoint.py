@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Any, Dict
 
-from ray.train._checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.util.annotations import PublicAPI
 
 

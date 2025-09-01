@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional
 
-from ray.train._checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.util.annotations import DeveloperAPI
 

@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from ray.train._checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
 from ray.train.v2.api.context import TrainContext
 from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
