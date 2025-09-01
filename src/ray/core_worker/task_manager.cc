@@ -23,7 +23,6 @@
 
 #include "absl/strings/match.h"
 #include "ray/common/buffer.h"
-#include "ray/common/common_protocol.h"
 #include "ray/core_worker/actor_manager.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/util/exponential_backoff.h"

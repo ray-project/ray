@@ -119,8 +119,6 @@ struct NodeManagerConfig {
   // If true, core worker enables resource isolation by adding itself into appropriate
   // cgroup.
   bool enable_resource_isolation = false;
-
-  void AddDefaultLabels(const std::string &self_node_id);
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler,

@@ -25,6 +25,7 @@
 #include "nlohmann/json.hpp"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/cgroup/cgroup_manager.h"
+#include "ray/common/constants.h"
 #include "ray/common/id.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/ray_config.h"
@@ -498,7 +499,12 @@ int main(int argc, char *argv[]) {
                    << ", object_chunk_size = " << object_manager_config.object_chunk_size;
     RAY_LOG(INFO).WithField(raylet_node_id) << "Setting node ID";
 
-    node_manager_config.AddDefaultLabels(raylet_node_id.Hex());
+    std::vector<std::string> default_keys = {kLabelKeyNodeID};
+    for (const auto &key : default_keys) {
+      RAY_CHECK(!node_manager_config.labels.contains(key))
+          << "The label key name " << key << " should never be set by the user.";
+    }
+    node_manager_config.labels[kLabelKeyNodeID] = raylet_node_id.Hex();
 
     worker_pool = std::make_unique<ray::raylet::WorkerPool>(
         main_service,

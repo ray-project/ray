@@ -22,7 +22,6 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/gcs/store_client/store_client.h"
 #include "ray/util/concurrent_flat_map.h"
-#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray::gcs {
 

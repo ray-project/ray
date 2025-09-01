@@ -22,14 +22,11 @@
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
-#include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/postable.h"
 #include "ray/gcs/store_client/redis_context.h"
 #include "ray/gcs/store_client/store_client.h"
-#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
@@ -96,8 +93,8 @@ struct RedisClientOptions {
   int port;
 
   // Redis username and password.
-  std::string username = "";
-  std::string password = "";
+  std::string username;
+  std::string password;
 
   // Whether to use TLS/SSL for the connection.
   bool enable_ssl = false;
