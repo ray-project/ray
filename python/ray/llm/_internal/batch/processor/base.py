@@ -2,7 +2,7 @@ import logging
 from collections import OrderedDict
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 import ray
 from ray.data import Dataset
@@ -62,8 +62,39 @@ class ProcessorConfig(BaseModelExtended):
         "`max_tasks_in_flight_per_actor`: The maximum number of tasks in flight per actor. Default to 4.",
     )
 
+    @field_validator("concurrency")
+    def validate_concurrency(
+        cls, concurrency: Union[int, Tuple[int, int]]
+    ) -> Union[int, Tuple[int, int]]:
+        """Validate that `concurrency` is either:
+        - a positive int, or
+        - a 2-tuple `(min, max)` of positive ints with `min <= max`.
+        """
+
+        def require(condition: bool, message: str) -> None:
+            if not condition:
+                raise ValueError(message)
+
+        if isinstance(concurrency, int):
+            require(
+                concurrency > 0,
+                f"A positive integer for `concurrency` is expected! Got: `{concurrency}`.",
+            )
+        elif isinstance(concurrency, tuple):
+            require(
+                all(c > 0 for c in concurrency),
+                f"`concurrency` tuple items must be positive integers! Got: `{concurrency}`.",
+            )
+
+            min_concurrency, max_concurrency = concurrency
+            require(
+                min_concurrency <= max_concurrency,
+                f"min > max in the concurrency tuple `{concurrency}`!",
+            )
+        return concurrency
+
     def concurrency_tuple(self, static: bool = False):
-        """Validate and normalize `concurrency` into a `(min, max)` scaling pair.
+        """Normalize `concurrency` into a `(min, max)` scaling pair.
 
         Behavior:
           - If `concurrency` is an int `n`:
@@ -78,9 +109,6 @@ class ProcessorConfig(BaseModelExtended):
         Returns:
             A tuple `(min, max)` representing the allowed worker range.
 
-        Raises:
-            ValueError: If `concurrency` validation fails.
-
         Examples:
             >>> self.concurrency = (2, 4)
             >>> self.concurrency_tuple()
@@ -92,42 +120,12 @@ class ProcessorConfig(BaseModelExtended):
             >>> self.concurrency_tuple(static=True)
             (4, 4)
         """
-        self._validate_concurrency(self.concurrency)
         if isinstance(self.concurrency, int):
             if static:
                 return self.concurrency, self.concurrency
             else:
                 return 1, self.concurrency
         return self.concurrency
-
-    @staticmethod
-    def _validate_concurrency(concurrency: Union[int, Tuple[int, int]]) -> None:
-        """Validate that `concurrency` is either:
-        - a positive int, or
-        - a 2-tuple `(min, max)` of positive ints with `min <= max`.
-        """
-        if isinstance(concurrency, int):
-            if concurrency <= 0:
-                raise ValueError(
-                    f"A positive integer for `concurrency` is expected! Got: `{concurrency}`."
-                )
-        elif isinstance(concurrency, tuple):
-            if len(concurrency) != 2:
-                raise ValueError(
-                    f"`concurrency` tuple must have exactly `2` items! Got: `{len(concurrency)}`."
-                )
-            elif not all(isinstance(c, int) and c > 0 for c in concurrency):
-                raise ValueError(
-                    f"`concurrency` tuple items must be positive integers! Got: `{concurrency}`."
-                )
-            min_concurrency, max_concurrency = concurrency
-            if min_concurrency > max_concurrency:
-                raise ValueError(f"min > max in the concurrency tuple `{concurrency}`!")
-        else:
-            raise ValueError(
-                f"Unexpected type `{type(concurrency).__name__}` for `concurrency`! "
-                f"Expected: `{int.__name__}` or `{tuple.__name__}`."
-            )
 
     class Config:
         validate_assignment = True

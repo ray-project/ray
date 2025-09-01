@@ -216,34 +216,47 @@ class TestProcessorConfig:
 
     @pytest.mark.parametrize("n", [1, 2, 10])
     def test_positive_int_not_fail(self, n):
-        assert ProcessorConfig._validate_concurrency(n) is None
+        conf = ProcessorConfig(concurrency=n)
+        assert conf.concurrency == n
+
+    def test_positive_int_unusual_not_fail(self):
+        assert ProcessorConfig(concurrency="1").concurrency == 1
+        assert ProcessorConfig(concurrency=1.0).concurrency == 1
+        assert ProcessorConfig(concurrency="1.0").concurrency == 1
 
     @pytest.mark.parametrize("pair", [(1, 1), (1, 2), (2, 8)])
     def test_valid_tuple_not_fail(self, pair):
-        assert ProcessorConfig._validate_concurrency(pair) is None
+        conf = ProcessorConfig(concurrency=pair)
+        assert conf.concurrency == pair
+
+    def test_valid_tuple_unusual_not_fail(self):
+        assert ProcessorConfig(concurrency=("1", 2)).concurrency == (1, 2)
+        assert ProcessorConfig(concurrency=(1, "2")).concurrency == (1, 2)
+        assert ProcessorConfig(concurrency=[1, "2"]).concurrency == (1, 2)
 
     @pytest.mark.parametrize(
         "bad,msg_part",
         [
             (0, "positive integer"),
             (-5, "positive integer"),
-            ((1, 2, 3), "exactly `2` items"),
+            ((1, 2, 3), "at most 2 items"),
             ((0, 1), "positive integers"),
             ((1, 0), "positive integers"),
             ((-1, 2), "positive integers"),
             ((1, -2), "positive integers"),
-            ((1, 2.5), "positive integers"),
-            (["1", 2], "Unexpected type"),
-            ("2", "Unexpected type"),
+            ((1, 2.5), "a number with a fractional part"),
+            ("2.1", "unable to parse string"),
             ((5, 2), "min > max"),
         ],
     )
     def test_invalid_inputs_raise(self, bad, msg_part):
-        with pytest.raises(ValueError) as e:
-            ProcessorConfig._validate_concurrency(bad)
+        with pytest.raises(pydantic.ValidationError) as e:
+            ProcessorConfig(concurrency=bad)
         assert msg_part in str(e.value)
 
-    @pytest.mark.parametrize("n,expected", [(1, (1, 1)), (4, (1, 4)), (10, (1, 10))])
+    @pytest.mark.parametrize(
+        "n,expected", [(1, (1, 1)), (4, (1, 4)), (10, (1, 10)), ("10", (1, 10))]
+    )
     def test_with_int_concurrency_scaling(self, n, expected):
         conf = ProcessorConfig(concurrency=n)
         assert conf.concurrency_tuple() == expected
