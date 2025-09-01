@@ -110,7 +110,7 @@ Each of [Ray's](../ray-air/getting-started) five native libraries distributes a 
 - [Serve](../serve/index): Scalable and programmable serving to deploy models for online inference, with optional microbatching to improve performance.
 - [RLlib](../rllib/index): Scalable distributed reinforcement learning workloads.
 
-Ray's libraries are for both data scientists and ML engineers alike. For data scientists, these libraries can be used to scale individual workloads, and also end-to-end ML applications. For ML engineers, these libraries provide scalable platform abstractions that can be used to easily onboard and integrate tooling from the broader ML ecosystem.
+Ray's libraries are for both data scientists and ML engineers. For data scientists, these libraries can be used to scale individual workloads and end-to-end ML applications. For ML engineers, these libraries provide scalable platform abstractions that can be used to easily onboard and integrate tooling from the broader ML ecosystem.
 
 For custom applications, the [Ray Core](../ray-core/walkthrough) library enables Python developers to easily build scalable, distributed systems that can run on a laptop, cluster, cloud, or Kubernetes. It's the foundation that Ray AI libraries and third-party integrations (Ray ecosystem) are built on.
 
