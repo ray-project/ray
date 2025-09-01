@@ -24,9 +24,9 @@ esac
 
 NODE_BASE_URL="https://nodejs.org/dist/v${NODE_VERSION_FULL}"
 NODE_TARBALL="node-v${NODE_VERSION_FULL}-linux-${NODE_ARCH}.tar.xz"
-NODE_DIR="$HOME/nodejs"
+NODE_DIR="/usr/local/nodejs"
 
-mkdir -p "$NODE_DIR"
+sudo mkdir -p "$NODE_DIR"
 
 # Download tarball
 curl -fsSL "${NODE_BASE_URL}/${NODE_TARBALL}" -o "$HOME/${NODE_TARBALL}"
@@ -35,7 +35,7 @@ curl -fsSL "${NODE_BASE_URL}/${NODE_TARBALL}" -o "$HOME/${NODE_TARBALL}"
 echo "$NODE_SHASUM256  $HOME/${NODE_TARBALL}" | sha256sum -c -
 
 # Extract
-tar -xJf "$HOME/$NODE_TARBALL" -C "$NODE_DIR"
+sudo tar -xJf "$HOME/$NODE_TARBALL" -C "$NODE_DIR"
 rm -f "$HOME/$NODE_TARBALL"
 
 # Add Node to PATH for this session
