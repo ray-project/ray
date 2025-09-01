@@ -826,19 +826,15 @@ class ActorMethod:
                     f'Currently, methods with .options(tensor_transport="{tensor_transport.name}") are not supported when enable_tensor_transport=False. '
                     "Please set @ray.remote(enable_tensor_transport=True) on the actor class definition."
                 )
-            # NIXL doesn't need to be specified on actor creation because it's one-sided and doesn't require a collective group.
-            if tensor_transport != TensorTransportEnum.NIXL:
-                gpu_object_manager = (
-                    ray._private.worker.global_worker.gpu_object_manager
+            gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
+            if not gpu_object_manager.actor_has_tensor_transport(
+                self._actor, tensor_transport
+            ):
+                raise ValueError(
+                    f'{self._actor} does not have tensor transport {tensor_transport.name} available. If using a collective-based transport ("nccl" or "gloo"), please create a communicator with '
+                    "`ray.experimental.collective.create_collective_group` "
+                    "before calling actor tasks with non-default tensor_transport."
                 )
-                if gpu_object_manager.actor_has_tensor_transport(
-                    self._actor, tensor_transport
-                ):
-                    raise ValueError(
-                        f"{self._actor} does not have tensor transport {tensor_transport.name} available. Please create a communicator with "
-                        "`ray.experimental.collective.create_collective_group` "
-                        "before calling actor tasks with non-default tensor_transport."
-                    )
 
         args = args or []
         kwargs = kwargs or {}

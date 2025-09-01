@@ -24,7 +24,7 @@
 #include "absl/synchronization/mutex.h"
 #include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/task/task.h"
+#include "ray/common/lease/lease.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
@@ -77,11 +77,11 @@ struct GcsServerMocker {
 
   class MockRayletClient : public FakeRayletClient {
    public:
-    ray::Status ReturnWorker(int worker_port,
-                             const WorkerID &worker_id,
-                             bool disconnect_worker,
-                             const std::string &disconnect_worker_error_detail,
-                             bool worker_exiting) override {
+    ray::Status ReturnWorkerLease(int worker_port,
+                                  const WorkerID &worker_id,
+                                  bool disconnect_worker,
+                                  const std::string &disconnect_worker_error_detail,
+                                  bool worker_exiting) override {
       if (disconnect_worker) {
         num_workers_disconnected++;
       } else {
@@ -90,17 +90,17 @@ struct GcsServerMocker {
       return Status::OK();
     }
 
-    void GetTaskFailureCause(
-        const TaskID &task_id,
-        const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
+    void GetWorkerFailureCause(
+        const LeaseID &lease_id,
+        const ray::rpc::ClientCallback<ray::rpc::GetWorkerFailureCauseReply> &callback)
         override {
-      ray::rpc::GetTaskFailureCauseReply reply;
+      ray::rpc::GetWorkerFailureCauseReply reply;
       callback(Status::OK(), std::move(reply));
       num_get_task_failure_causes += 1;
     }
 
     void RequestWorkerLease(
-        const rpc::TaskSpec &spec,
+        const rpc::LeaseSpec &spec,
         bool grant_or_reject,
         const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
         const int64_t backlog_size,
@@ -124,7 +124,7 @@ struct GcsServerMocker {
     }
 
     void CancelWorkerLease(
-        const TaskID &task_id,
+        const LeaseID &lease_id,
         const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override {
       num_leases_canceled += 1;
       cancel_callbacks.push_back(callback);

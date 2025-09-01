@@ -12,22 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
+#include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
+
+#include <gtest/gtest.h>
 
 #include <memory>
 #include <string>
 #include <vector>
 
-// clang-format off
-#include "gtest/gtest.h"
+#include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
+#include "mock/ray/pubsub/publisher.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/gcs/gcs_server/tests/gcs_server_test_util.h"
+#include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/tests/gcs_test_util.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/util/counter_map.h"
-#include "mock/ray/pubsub/publisher.h"
-#include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
-// clang-format on
 
 namespace ray {
 namespace gcs {
@@ -817,9 +816,9 @@ TEST_F(GcsPlacementGroupManagerTest, TestSchedulerReinitializeAfterGcsRestart) {
       /* cpu_num */ 1.0,
       /* job_id */ job_id);
   auto job_table_data = Mocker::GenJobTableData(job_id);
-  RAY_CHECK_OK(gcs_table_storage_->JobTable().Put(
-      job_id, *job_table_data, {[](auto) {}, io_service_}));
-  std::atomic<int> registered_placement_group_count(0);
+  gcs_table_storage_->JobTable().Put(
+      job_id, *job_table_data, {[](auto) {}, io_service_});
+  std::atomic<int> registered_placement_group_count{0};
   RegisterPlacementGroup(request, [&registered_placement_group_count](Status status) {
     ++registered_placement_group_count;
   });
@@ -1245,10 +1244,9 @@ TEST_F(GcsPlacementGroupManagerTest, TestCheckCreatorJobIsDeadWhenGcsRestart) {
       /* job_id */ job_id);
   auto job_table_data = Mocker::GenJobTableData(job_id);
   job_table_data->set_is_dead(true);
-  RAY_CHECK_OK(gcs_table_storage_->JobTable().Put(
-      job_id, *job_table_data, {[](auto) {}, io_service_}));
-
-  std::atomic<int> registered_placement_group_count(0);
+  gcs_table_storage_->JobTable().Put(
+      job_id, *job_table_data, {[](auto) {}, io_service_});
+  std::atomic<int> registered_placement_group_count{0};
   RegisterPlacementGroup(request, [&registered_placement_group_count](Status status) {
     ++registered_placement_group_count;
   });

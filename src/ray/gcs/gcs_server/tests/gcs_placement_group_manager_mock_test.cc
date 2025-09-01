@@ -12,21 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+
 #include <memory>
 #include <utility>
-// clang-format off
-#include "gtest/gtest.h"
-#include "gmock/gmock.h"
-#include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
-#include "ray/raylet/scheduling/cluster_resource_manager.h"
+
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
-#include "mock/ray/gcs/gcs_server/gcs_placement_group_mgr.h"
 #include "mock/ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
 #include "mock/ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "mock/ray/gcs/store_client/store_client.h"
-#include "ray/util/counter_map.h"
+#include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/gcs/tests/gcs_test_util.h"
-// clang-format on
+#include "ray/raylet/scheduling/cluster_resource_manager.h"
+#include "ray/util/counter_map.h"
 
 using namespace ::testing;  // NOLINT
 using namespace ray;        // NOLINT
@@ -77,7 +76,7 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule) {
   SchedulePgRequest request;
   std::unique_ptr<Postable<void(bool)>> put_cb;
   EXPECT_CALL(*store_client_, AsyncPut(_, _, _, _, _))
-      .WillOnce(DoAll(SaveArgToUniquePtr<4>(&put_cb), Return(Status::OK())));
+      .WillOnce(DoAll(SaveArgToUniquePtr<4>(&put_cb)));
   EXPECT_CALL(*gcs_placement_group_scheduler_, ScheduleUnplacedBundles(_))
       .WillOnce(DoAll(SaveArg<0>(&request)));
   auto now = absl::GetCurrentTimeNanos();
@@ -104,7 +103,7 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed) {
   SchedulePgRequest request;
   std::unique_ptr<Postable<void(bool)>> put_cb;
   EXPECT_CALL(*store_client_, AsyncPut(_, _, _, _, _))
-      .WillOnce(DoAll(SaveArgToUniquePtr<4>(&put_cb), Return(Status::OK())));
+      .WillOnce(DoAll(SaveArgToUniquePtr<4>(&put_cb)));
   EXPECT_CALL(*gcs_placement_group_scheduler_, ScheduleUnplacedBundles(_))
       .Times(2)
       .WillRepeatedly(DoAll(SaveArg<0>(&request)));
@@ -162,7 +161,7 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityOrder) {
   std::unique_ptr<Postable<void(bool)>> put_cb;
   EXPECT_CALL(*store_client_, AsyncPut(_, _, _, _, _))
       .Times(2)
-      .WillRepeatedly(DoAll(SaveArgToUniquePtr<4>(&put_cb), Return(Status::OK())));
+      .WillRepeatedly(DoAll(SaveArgToUniquePtr<4>(&put_cb)));
   EXPECT_CALL(*gcs_placement_group_scheduler_, ScheduleUnplacedBundles(_))
       .Times(2)
       .WillRepeatedly(DoAll(SaveArg<0>(&request)));
