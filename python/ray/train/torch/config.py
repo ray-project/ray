@@ -113,6 +113,11 @@ def _setup_torch_process_group(
         )
     logger.debug(f"using {backend}")
 
+     # Hard guard: if *anything* already initialized the default group, bail out.
+    if dist.is_initialized():
+        logger.info("Process group already initialized. Skipping.")
+        return
+
     if backend == "nccl":
         # See https://github.com/pytorch/pytorch/blob/c263bd43e8e8502d4726643bc6fd046f0130ac0e/torch/distributed/distributed_c10d.py#L803-L823 # noqa: E501
         # We do not use TORCH_NCCL_BLOCKING_WAIT due to performance overhead.
@@ -135,6 +140,10 @@ def _setup_torch_process_group(
         register_custom_torch_dist_backend(backend)
     elif backend == "xla":
         import torch_xla.distributed.xla_backend
+        # General backend setup for other backends (gloo, nccl, etc.)
+        if dist.is_initialized():
+            logger.warning("Process group already initialized. Skipping.")
+            return
         dist.init_process_group(
             backend='xla',
             init_method='xla://',
@@ -142,6 +151,7 @@ def _setup_torch_process_group(
             # world_size=world_size,
             # timeout=timedelta(seconds=timeout_s),
         )
+        return
 
 
 
@@ -222,14 +232,16 @@ class _TorchBackend(Backend):
             if backend_config.backend == "xla":
                 # set pjrt envs
                 coordinator = f"{master_addr}:{master_port}"
-                def _set_pjrt_envs(coord, world_size, rank):
+                def _set_pjrt_envs(coord, world_size, world_rank):
+                    context = ray.train.get_context()
                     os.environ["PJRT_DEVICE"] = "CUDA"
                     os.environ["PJRT_DIST_SERVICE_ADDR"] = coord
-                    os.environ["PJRT_WORLD_SIZE"] = str(world_size)
-                    os.environ["PJRT_LOCAL_PROCESS_RANK"] = str(rank)
-                    os.environ["PJRT_LOCAL_PROCESS_COUNT"] = str(rank)
+                    os.environ["PJRT_WORLD_SIZE"] = str(context.get_world_size())
+                    os.environ["PJRT_LOCAL_PROCESS_RANK"] = str(context.get_world_rank())
+                    os.environ["PJRT_LOCAL_PROCESS_COUNT"] = str(context.get_local_world_size())
+
                 for i in range(len(worker_group)):
-                    worker_group.execute_single(i, _set_pjrt_envs, coord=coordinator, world_size=len(worker_group), rank=i)
+                    worker_group.execute_single(i, _set_pjrt_envs, coord=coordinator, world_size=len(worker_group), world_rank=i)
                     logger.info(f"set pjrt envs for worker {i}")
 
             # it might be related since we will need these env var before pjrt init and xla process group init
@@ -262,68 +274,9 @@ class _TorchBackend(Backend):
     def on_training_start(
         self, worker_group: WorkerGroup, backend_config: BackendConfig
     ):
+        if backend_config.backend == 'xla':
+            return 
         worker_group.execute(_set_torch_distributed_env_vars)
-
-
-class _TorchTPUBackend(Backend):
-    """Backend for TPU/GPU training using torch_xla with XLA backend.
-
-    This backend initializes PyTorch distributed training with the XLA backend
-    using dist.init_process_group("xla", init_method='xla://') for TPU/GPU training.
-    Supports both TPU and GPU training with proper device separation for multi-worker setups.
-    """
-
-    def on_start(self, worker_group: WorkerGroup, backend_config: TorchConfig):
-        """Logic ran right before training is started.
-
-        This method initializes the XLA distributed process group and sets up
-        the environment, similar to how TorchBackend works.
-        """
-        if not backend_config.backend == "xla_tpu":
-            raise ValueError("TPU backend requires backend='xla_tpu' in TorchConfig")
-
-        # Get master address and port from the first worker.
-        master_addr, master_port = worker_group.execute_single(0, get_address_and_port)
-
-        def set_env_vars(addr, port):
-            os.environ["MASTER_ADDR"] = addr
-            os.environ["MASTER_PORT"] = str(port)
-
-        # Set the env vars on all workers.
-        worker_group.execute(set_env_vars, addr=master_addr, port=master_port)
-
-        # Initialize XLA distributed process group (like TorchBackend does)
-        # This eliminates the race condition by setting up process group before training starts
-        # Run setup on each worker individually with proper rank assignment
-        setup_futures = []
-        for i in range(len(worker_group)):
-            setup_futures.append(
-                worker_group.execute_single_async(
-                    i,
-                    _setup_xla_torch_process_group,
-                    world_rank=i,
-                    world_size=len(worker_group),
-                )
-            )
-        ray.get(setup_futures)
-
-    def on_training_start(
-        self, worker_group: WorkerGroup, backend_config: BackendConfig
-    ):
-        """Set up environment variables for distributed training.
-
-        The XLA distributed process group is already initialized in on_start,
-        so this method only needs to set environment variables, just like TorchBackend.
-        """
-        # Set up environment variables for distributed training
-        worker_group.execute(_set_torch_distributed_env_vars)
-
-    def on_shutdown(self, worker_group: WorkerGroup, backend_config: BackendConfig):
-        """Clean up TPU resources."""
-        worker_group.execute(
-            _shutdown_tpu_torch,
-            destroy_process_group=len(worker_group) > 1,
-        )
 
 
 def _setup_xla_torch_process_group(world_rank: int, world_size: int):
