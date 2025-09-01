@@ -62,7 +62,7 @@ Ray has native integration to ``pdb``. You can simply add ``breakpoint()`` to Ac
 
 
 Running out of file descriptors (``Too many open files``)
---------------------------------------------------------
+---------------------------------------------------------
 
 In a Ray cluster, arbitrary two system components can communicate with each other and make 1 or more connections.
 For example, some workers may need to communicate with GCS to schedule Actors (worker <-> GCS connection).
