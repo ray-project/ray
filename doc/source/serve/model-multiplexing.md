@@ -38,11 +38,10 @@ This code example uses the PyTorch Model object. You can also define your own mo
 :::
 
 
-`serve.get_multiplexed_model_id` is used to retrieve the model id from the request header, and the model_id is then passed into the `get_model` function. If the model id is not found in the replica, Serve will load the model from the S3 bucket and cache it in the replica. If the model id is found in the replica, Serve will return the cached model.
+`serve.get_multiplexed_model_id` retrieves the model ID from the request header. This ID is then passed to the `get_model` function. If the model is not already cached in the replica, Serve loads it from the S3 bucket. Otherwise, the cached model is returned.
 
 :::{note}
-Internally, the Serve router will route the traffic to the corresponding replica based on the model id in the request header.
-If all replicas holding the model are over-subscribed, Ray Serve sends the request to a new replica that doesn't have the model loaded. The replica will load the model from the S3 bucket and cache it.
+Internally, the Serve router uses the model ID in the request header to route traffic to a corresponding replica. If all replicas that have the model are over-subscribed, Ray Serve routes the request to a new replica, which then loads and caches the model from the S3 bucket.
 :::
 
 To send a request to a specific model, include the `serve_multiplexed_model_id` field in the request header, and set the value to the model ID to which you want to send the request.
