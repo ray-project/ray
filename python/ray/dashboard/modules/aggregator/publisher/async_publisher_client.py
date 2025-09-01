@@ -71,14 +71,16 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
         if not events_batch:
             # Nothing to publish -> success but nothing published
             return PublishStats(
-                publish_status=True, num_events_published=0, num_events_filtered_out=0
+                is_publish_successful=True,
+                num_events_published=0,
+                num_events_filtered_out=0,
             )
         filtered = [e for e in events_batch if self._events_filter_fn(e)]
         num_filtered_out = len(events_batch) - len(filtered)
         if not filtered:
             # All filtered out -> success but nothing published
             return PublishStats(
-                publish_status=True,
+                is_publish_successful=True,
                 num_events_published=0,
                 num_events_filtered_out=num_filtered_out,
             )
@@ -103,7 +105,9 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
         except Exception as e:
             logger.error("Failed to send events to external service. Error: %s", e)
             return PublishStats(
-                publish_status=False, num_events_published=0, num_events_filtered_out=0
+                is_publish_successful=False,
+                num_events_published=0,
+                num_events_filtered_out=0,
             )
 
     async def _send_http_request(self, json_data, num_filtered_out):
@@ -113,7 +117,7 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
         ) as resp:
             resp.raise_for_status()
             return PublishStats(
-                publish_status=True,
+                is_publish_successful=True,
                 num_events_published=len(json_data),
                 num_events_filtered_out=num_filtered_out,
             )
@@ -158,7 +162,9 @@ class AsyncGCSPublisherClient(PublisherClientInterface):
         ):
             # Nothing to publish -> success but nothing published
             return PublishStats(
-                publish_status=True, num_events_published=0, num_events_filtered_out=0
+                is_publish_successful=True,
+                num_events_published=0,
+                num_events_filtered_out=0,
             )
         try:
             events_data = self._create_ray_events_data(events, task_events_metadata)
@@ -169,19 +175,21 @@ class AsyncGCSPublisherClient(PublisherClientInterface):
             if response.status.code != 0:
                 logger.error(f"GCS AddEvents failed: {response.status.message}")
                 return PublishStats(
-                    publish_status=False,
+                    is_publish_successful=False,
                     num_events_published=0,
                     num_events_filtered_out=0,
                 )
             return PublishStats(
-                publish_status=True,
+                is_publish_successful=True,
                 num_events_published=len(events),
                 num_events_filtered_out=0,
             )
         except Exception as e:
             logger.error(f"Failed to send events to GCS: {e}")
             return PublishStats(
-                publish_status=False, num_events_published=0, num_events_filtered_out=0
+                is_publish_successful=False,
+                num_events_published=0,
+                num_events_filtered_out=0,
             )
 
     def count_num_events_in_batch(

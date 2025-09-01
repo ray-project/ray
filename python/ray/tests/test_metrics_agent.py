@@ -42,6 +42,7 @@ from ray._common.network_utils import build_address
 from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
 from ray.util.metrics import Counter, Gauge, Histogram, Metric
+from ray._raylet import JobID, TaskID
 
 os.environ["RAY_event_stats"] = "1"
 
@@ -550,20 +551,32 @@ def test_metrics_export_event_aggregator_agent(
         _, _, metric_samples = fetch_prometheus(prom_addresses)
         expected_metrics_values = {
             "ray_event_aggregator_agent_events_received_total": 3.0,
-            "ray_event_aggregator_agent_http_publisher_published_events_total": 2.0,
-            "ray_event_aggregator_agent_gcs_events_published_total": 3.0,
+            "ray_event_aggregator_agent_events_buffer_add_failures_total": 0.0,
+            "ray_event_aggregator_agent_http_publisher_published_events_total": 1.0,
+            "ray_event_aggregator_agent_http_publisher_filtered_events_total": 1.0,  # Profile event is filtered out
+            "ray_event_aggregator_agent_http_publisher_failures_total": 0.0,
+            "ray_event_aggregator_agent_http_publisher_queue_dropped_events_total": 1.0,  # dropped due to max buffer size
+            "ray_event_aggregator_agent_gcs_publisher_events_published_total": 2.0,
+            "ray_event_aggregator_agent_gcs_publisher_publish_failures_total": 0.0,
+            "ray_event_aggregator_agent_gcs_publisher_queue_dropped_events_total": 1.0,  # dropped due to max buffer size
         }
         for descriptor, expected_value in expected_metrics_values.items():
             samples = [m for m in metric_samples if m.name == descriptor]
             if not samples:
+                print(f"Metric {descriptor} not found")
                 return False
             if samples[0].value != expected_value:
+                print(
+                    f"Metric {descriptor} value {samples[0].value} does not match expected {expected_value}"
+                )
                 return False
         return True
 
     now = time.time_ns()
     seconds, nanos = divmod(now, 10**9)
     timestamp = Timestamp(seconds=seconds, nanos=nanos)
+    job_id = JobID.from_int(1)
+    valid_task_id_bytes = TaskID.for_fake_task(job_id).binary()
     request = AddEventsRequest(
         events_data=RayEventsData(
             events=[
@@ -595,7 +608,7 @@ def test_metrics_export_event_aggregator_agent(
             task_events_metadata=TaskEventsMetadata(
                 dropped_task_attempts=[
                     TaskAttempt(
-                        task_id=b"1",
+                        task_id=valid_task_id_bytes,
                         attempt_number=1,
                     ),
                 ],
