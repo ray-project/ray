@@ -47,8 +47,8 @@ ray_cc_library(
     deps = [
         "//src/ray/common:asio",
         "//src/ray/common:status",
+        "//src/ray/gcs/gcs_server:grpc_service_interfaces",
         "//src/ray/protobuf:gcs_cc_proto",
-        "//src/ray/rpc:gcs_server",
     ],
 )
 
@@ -59,6 +59,7 @@ ray_cc_library(
         ":gcs_kv_manager",
         "//src/ray/common:asio",
         "//src/ray/common:constants",
+        "//src/ray/common:id",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
@@ -67,10 +68,6 @@ ray_cc_library(
     name = "gcs_node_manager",
     srcs = ["gcs_node_manager.cc"],
     hdrs = ["gcs_node_manager.h"],
-    implementation_deps = [
-        "//src/ray/gcs:gcs_pb_util",
-        "@com_google_absl//absl/container:flat_hash_set",
-    ],
     deps = [
         ":gcs_init_data",
         ":gcs_table_storage",
@@ -78,13 +75,41 @@ ray_cc_library(
         "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
+        "//src/ray/gcs:gcs_pb_util",
         "//src/ray/gcs/pubsub:gcs_pub_sub_lib",
+        "//src/ray/protobuf:autoscaler_cc_proto",
         "//src/ray/protobuf:gcs_service_cc_proto",
         "//src/ray/protobuf:ray_syncer_cc_proto",
         "//src/ray/rpc:node_manager_client",
+        "//src/ray/stats:stats_metric",
         "//src/ray/util:event",
         "//src/ray/util:logging",
         "//src/ray/util:time",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_resource_manager",
+    srcs = ["gcs_resource_manager.cc"],
+    hdrs = ["gcs_resource_manager.h"],
+    deps = [
+        ":gcs_init_data",
+        ":gcs_node_manager",
+        ":gcs_state_util",
+        ":grpc_service_interfaces",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:ray_syncer",
+        "//src/ray/common:task_common",
+        "//src/ray/protobuf:gcs_service_cc_proto",
+        "//src/ray/protobuf:ray_syncer_cc_proto",
+        "//src/ray/raylet/scheduling:cluster_lease_manager",
+        "//src/ray/raylet/scheduling:cluster_resource_manager",
+        "//src/ray/stats:stats_metric",
+        "//src/ray/util:logging",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
@@ -115,9 +140,9 @@ ray_cc_library(
     srcs = ["pubsub_handler.cc"],
     hdrs = ["pubsub_handler.h"],
     deps = [
+        "//src/ray/gcs/gcs_server:grpc_service_interfaces",
         "//src/ray/gcs/pubsub:gcs_pub_sub_lib",
         "//src/ray/protobuf:gcs_service_cc_proto",
-        "//src/ray/rpc:gcs_server",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
@@ -128,10 +153,12 @@ ray_cc_library(
     srcs = ["runtime_env_handler.cc"],
     hdrs = ["runtime_env_handler.h"],
     deps = [
+        ":grpc_service_interfaces",
+        "//src/ray/common:asio",
         "//src/ray/common:runtime_env",
         "//src/ray/protobuf:gcs_cc_proto",
-        "//src/ray/rpc:gcs_server",
         "//src/ray/util:thread_checker",
+        "@boost//:asio",
     ],
 )
 
@@ -143,8 +170,8 @@ ray_cc_library(
         ":gcs_kv_manager",
         ":gcs_table_storage",
         ":gcs_usage_stats_client",
+        ":grpc_service_interfaces",
         "//src/ray/gcs/pubsub:gcs_pub_sub_lib",
-        "//src/ray/rpc:gcs_server",
         "//src/ray/stats:stats_metric",
     ],
 )
@@ -166,11 +193,26 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "gcs_ray_event_converter",
+    srcs = ["gcs_ray_event_converter.cc"],
+    hdrs = ["gcs_ray_event_converter.h"],
+    deps = [
+        "//src/ray/common:grpc_util",
+        "//src/ray/common:id",
+        "//src/ray/protobuf:events_event_aggregator_service_cc_proto",
+        "//src/ray/protobuf:gcs_service_cc_proto",
+        "//src/ray/util:logging",
+    ],
+)
+
+ray_cc_library(
     name = "gcs_task_manager",
     srcs = ["gcs_task_manager.cc"],
     hdrs = ["gcs_task_manager.h"],
     deps = [
+        ":gcs_ray_event_converter",
         ":gcs_usage_stats_client",
+        ":grpc_service_interfaces",
         "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
@@ -178,6 +220,7 @@ ray_cc_library(
         "//src/ray/gcs:gcs_pb_util",
         "//src/ray/protobuf:events_event_aggregator_service_cc_proto",
         "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/stats:stats_metric",
         "//src/ray/util:counter_map",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -206,16 +249,72 @@ ray_cc_library(
         ":gcs_function_manager",
         ":gcs_init_data",
         ":gcs_table_storage",
+        ":grpc_service_interfaces",
         "//src/ray/common:runtime_env",
         "//src/ray/gcs:gcs_pb_util",
         "//src/ray/gcs/pubsub:gcs_pub_sub_lib",
         "//src/ray/rpc:core_worker_client",
-        "//src/ray/rpc:gcs_server",
         "//src/ray/stats:stats_metric",
         "//src/ray/util:event",
         "//src/ray/util:thread_checker",
         "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_placement_group",
+    srcs = ["gcs_placement_group.cc"],
+    hdrs = ["gcs_placement_group.h"],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/common:task_common",
+        "//src/ray/protobuf:gcs_service_cc_proto",
+        "//src/ray/stats:stats_lib",
+        "//src/ray/util:counter_map",
+        "//src/ray/util:time",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_placement_group_scheduler",
+    srcs = ["gcs_placement_group_scheduler.cc"],
+    hdrs = ["gcs_placement_group_scheduler.h"],
+    deps = [
+        ":gcs_node_manager",
+        ":gcs_placement_group",
+        ":gcs_table_storage",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/common:task_common",
+        "//src/ray/raylet/scheduling:cluster_resource_scheduler",
+        "//src/ray/raylet/scheduling:scheduling_context",
+        "//src/ray/raylet_client:raylet_client_lib",
+        "//src/ray/rpc:node_manager_client",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_placement_group_manager",
+    srcs = ["gcs_placement_group_manager.cc"],
+    hdrs = ["gcs_placement_group_manager.h"],
+    deps = [
+        ":gcs_init_data",
+        ":gcs_node_manager",
+        ":gcs_placement_group",
+        ":gcs_placement_group_scheduler",
+        ":gcs_resource_manager",
+        ":gcs_table_storage",
+        ":gcs_usage_stats_client",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/common:task_common",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/util:counter_map",
+        "//src/ray/util:exponential_backoff",
+        "//src/ray/util:time",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -227,6 +326,7 @@ ray_cc_library(
     visibility = ["//visibility:private"],
     deps = [
         "//src/ray/common:status",
+        "//src/ray/protobuf:autoscaler_cc_grpc",
         "//src/ray/protobuf:gcs_service_cc_grpc",
     ],
 )
@@ -244,6 +344,7 @@ ray_cc_library(
         ":grpc_service_interfaces",
         "//src/ray/common:asio",
         "//src/ray/common:id",
+        "//src/ray/protobuf:autoscaler_cc_grpc",
         "//src/ray/protobuf:gcs_service_cc_grpc",
         "//src/ray/rpc:grpc_server",
         "//src/ray/rpc:server_call",
@@ -252,33 +353,154 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "gcs_server_lib",
+    name = "gcs_actor",
+    srcs = [
+        "gcs_actor.cc",
+    ],
+    hdrs = [
+        "gcs_actor.h",
+    ],
+    implementation_deps = [
+        "//src/ray/util:logging",
+    ],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/common:lease",
+        "//src/ray/common:task_common",
+        "//src/ray/protobuf:core_worker_cc_proto",
+        "//src/ray/protobuf:export_event_cc_proto",
+        "//src/ray/protobuf:gcs_service_cc_proto",
+        "//src/ray/util:counter_map",
+        "//src/ray/util:event",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_actor_scheduler",
+    srcs = [
+        "gcs_actor_scheduler.cc",
+    ],
+    hdrs = [
+        "gcs_actor_scheduler.h",
+    ],
+    implementation_deps = [
+        "//src/ray/common:ray_config",
+        "//src/ray/util:time",
+    ],
+    deps = [
+        ":gcs_actor",
+        ":gcs_node_manager",
+        ":gcs_table_storage",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/common:task_common",
+        "//src/ray/protobuf:gcs_service_cc_proto",
+        "//src/ray/raylet/scheduling:cluster_lease_manager",
+        "//src/ray/raylet_client:raylet_client_lib",
+        "//src/ray/rpc:core_worker_client",
+        "//src/ray/rpc:node_manager_client",
+        "//src/ray/util:logging",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_actor_manager",
     srcs = [
         "gcs_actor_manager.cc",
-        "gcs_actor_scheduler.cc",
-        "gcs_autoscaler_state_manager.cc",
-        "gcs_placement_group_mgr.cc",
-        "gcs_placement_group_scheduler.cc",
-        "gcs_resource_manager.cc",
-        "gcs_server.cc",
     ],
     hdrs = [
         "gcs_actor_manager.h",
-        "gcs_actor_scheduler.h",
+    ],
+    implementation_deps = [
+        "//src/ray/common:ray_config",
+        "//src/ray/common:task_common",
+        "//src/ray/gcs:gcs_pb_util",
+        "//src/ray/stats:stats_lib",
+        "//src/ray/util:logging",
+        "//src/ray/util:time",
+    ],
+    deps = [
+        ":gcs_actor",
+        ":gcs_actor_scheduler",
+        ":gcs_function_manager",
+        ":gcs_init_data",
+        ":gcs_table_storage",
+        ":gcs_usage_stats_client",
+        ":grpc_service_interfaces",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/gcs/pubsub:gcs_pub_sub_lib",
+        "//src/ray/protobuf:gcs_service_cc_proto",
+        "//src/ray/rpc:core_worker_client",
+        "//src/ray/util:counter_map",
+        "//src/ray/util:logging",
+        "//src/ray/util:thread_checker",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_autoscaler_state_manager",
+    srcs = [
+        "gcs_autoscaler_state_manager.cc",
+    ],
+    hdrs = [
         "gcs_autoscaler_state_manager.h",
-        "gcs_placement_group_mgr.h",
-        "gcs_placement_group_scheduler.h",
-        "gcs_resource_manager.h",
+    ],
+    implementation_deps = [
+        "//src/ray/common:ray_config",
+        "//src/ray/gcs:gcs_pb_util",
+        "//src/ray/util:logging",
+        "//src/ray/util:string_utils",
+        "//src/ray/util:time",
+    ],
+    deps = [
+        ":gcs_actor_manager",
+        ":gcs_init_data",
+        ":gcs_kv_manager",
+        ":gcs_node_manager",
+        ":gcs_placement_group_manager",
+        ":gcs_state_util",
+        ":grpc_service_interfaces",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/gcs/pubsub:gcs_pub_sub_lib",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/util:thread_checker",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_server_lib",
+    srcs = [
+        "gcs_server.cc",
+    ],
+    hdrs = [
         "gcs_server.h",
     ],
     deps = [
+        ":gcs_actor",
+        ":gcs_actor_manager",
+        ":gcs_actor_scheduler",
+        ":gcs_autoscaler_state_manager",
         ":gcs_function_manager",
         ":gcs_health_check_manager",
         ":gcs_init_data",
         ":gcs_job_manager",
         ":gcs_kv_manager",
         ":gcs_node_manager",
+        ":gcs_placement_group",
+        ":gcs_placement_group_manager",
+        ":gcs_placement_group_scheduler",
         ":gcs_pubsub_handler",
+        ":gcs_resource_manager",
         ":gcs_runtime_env_handler",
         ":gcs_server_io_context_policy",
         ":gcs_state_util",
@@ -300,7 +522,7 @@ ray_cc_library(
         "//src/ray/raylet/scheduling:scheduler",
         "//src/ray/raylet_client:raylet_client_lib",
         "//src/ray/rpc:core_worker_client",
-        "//src/ray/rpc:gcs_server",
+        "//src/ray/rpc:grpc_server",
         "//src/ray/rpc:metrics_agent_client",
         "//src/ray/rpc:node_manager_client",
         "//src/ray/util:counter_map",
@@ -324,6 +546,7 @@ ray_cc_binary(
     deps = [
         ":gcs_server_lib",
         "//src/ray/stats:stats_lib",
+        "//src/ray/util:event",
         "//src/ray/util:raii",
         "//src/ray/util:stream_redirection",
         "//src/ray/util:stream_redirection_options",

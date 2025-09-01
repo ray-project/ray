@@ -19,13 +19,13 @@ package ray.rpc;
 import "src/ray/protobuf/common.proto";
 import "src/ray/protobuf/gcs.proto";
 import "src/ray/protobuf/autoscaler.proto";
-import "src/ray/protobuf/runtime_env_common.proto";
+import "src/ray/protobuf/public/runtime_environment.proto";
 
 message WorkerBacklogReport {
-  // TaskSpec indicating the scheduling class.
+  // LeaseSpec indicating the scheduling class.
   // Cannot send scheduling class directly
   // since it's local to each process.
-  TaskSpec resource_spec = 1;
+  LeaseSpec lease_spec = 1;
   // Size of the backlog for the above scheduling class.
   int64 backlog_size = 2;
 }
@@ -41,8 +41,8 @@ message ReportWorkerBacklogReply {}
 
 // Request a worker from the raylet with the specified resources.
 message RequestWorkerLeaseRequest {
-  // TaskSpec containing the requested resources.
-  TaskSpec resource_spec = 1;
+  // LeaseSpec containing the requested resources.
+  LeaseSpec lease_spec = 1;
   // Worker's backlog size for this spec's shape.
   int64 backlog_size = 2;
   // If it's true, either grant the lease if the task is
@@ -144,10 +144,10 @@ message ResizeLocalResourceInstancesReply {
 }
 
 // Release a worker back to its raylet.
-message ReturnWorkerRequest {
+message ReturnWorkerLeaseRequest {
   // Port of the leased worker that we are now returning.
   int32 worker_port = 1;
-  // Unique id of the leased worker we are now returning.
+  // The worker id of the lease we are now returning.
   bytes worker_id = 2;
   // If true, there was some unrecoverable error and the raylet should
   // disconnect the worker.
@@ -158,7 +158,7 @@ message ReturnWorkerRequest {
   string disconnect_worker_error_detail = 5;
 }
 
-message ReturnWorkerReply {}
+message ReturnWorkerLeaseReply {}
 
 message ReleaseUnusedActorWorkersRequest {
   repeated bytes worker_ids_in_use = 1;
@@ -174,8 +174,8 @@ message ShutdownRayletRequest {
 message ShutdownRayletReply {}
 
 message CancelWorkerLeaseRequest {
-  // The task to cancel.
-  bytes task_id = 1;
+  // The lease to cancel.
+  bytes lease_id = 1;
 }
 
 message CancelWorkerLeaseReply {
@@ -308,7 +308,7 @@ message GetResourceLoadReply {
   ResourcesData resources = 1;
 }
 
-message CancelTasksWithResourceShapesRequest {
+message CancelLeasesWithResourceShapesRequest {
   message ResourceShape {
     // A map from resource name to the quantity of that resource. This map represents
     // the resource request shape of a task.
@@ -318,7 +318,7 @@ message CancelTasksWithResourceShapesRequest {
   repeated ResourceShape resource_shapes = 1;
 }
 
-message CancelTasksWithResourceShapesReply {
+message CancelLeasesWithResourceShapesReply {
   // Empty
 }
 
@@ -326,11 +326,11 @@ message NotifyGCSRestartRequest {}
 
 message NotifyGCSRestartReply {}
 
-message GetTaskFailureCauseRequest {
-  bytes task_id = 1;
+message GetWorkerFailureCauseRequest {
+  bytes lease_id = 1;
 }
 
-message GetTaskFailureCauseReply {
+message GetWorkerFailureCauseReply {
   optional RayErrorInfo failure_cause = 1;
   bool fail_task_immediately = 2;
 }
@@ -414,8 +414,8 @@ service NodeManagerService {
   // request.
   // Failure: This doesn't explicitly retry, only logs on failure, but autoscaler will
   // keep calling this so it will be retried at a layer above.
-  rpc CancelTasksWithResourceShapes(CancelTasksWithResourceShapesRequest)
-      returns (CancelTasksWithResourceShapesReply);
+  rpc CancelLeasesWithResourceShapes(CancelLeasesWithResourceShapesRequest)
+      returns (CancelLeasesWithResourceShapesReply);
   // Request a worker from the raylet.
   // Failure: Does retry if request to remote raylet fails. Just logs warning if request
   // to local raylet fails.
@@ -430,7 +430,7 @@ service NodeManagerService {
   rpc ReportWorkerBacklog(ReportWorkerBacklogRequest) returns (ReportWorkerBacklogReply);
   // Release a worker back to its raylet.
   // Failure:  TODO: Failure behavior needs to be fixed.
-  rpc ReturnWorker(ReturnWorkerRequest) returns (ReturnWorkerReply);
+  rpc ReturnWorkerLease(ReturnWorkerLeaseRequest) returns (ReturnWorkerLeaseReply);
   // This method is only used by GCS, and the purpose is to release leased workers
   // that may be leaked. When GCS restarts, it doesn't know which workers it has leased
   // in the previous lifecycle. In this case, GCS will send a list of worker ids that
@@ -500,10 +500,11 @@ service NodeManagerService {
   // [State API] Get the all object information of the node.
   // Failure: State API user can retry.
   rpc GetObjectsInfo(GetObjectsInfoRequest) returns (GetObjectsInfoReply);
-  // Gets the task execution result. May contain a result if
-  // the task completed in error.
+  // Gets the worker failure cause. May contain a result if
+  // the worker executing the task failed.
   // Failure: Gives user error message on failure.
-  rpc GetTaskFailureCause(GetTaskFailureCauseRequest) returns (GetTaskFailureCauseReply);
+  rpc GetWorkerFailureCause(GetWorkerFailureCauseRequest)
+      returns (GetWorkerFailureCauseReply);
   // Failure: TODO: Handle network failure for cgraphs.
   rpc RegisterMutableObject(RegisterMutableObjectRequest)
       returns (RegisterMutableObjectReply);

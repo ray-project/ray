@@ -19,7 +19,8 @@
 #include <utility>
 
 #include "ray/common/ray_config.h"
-#include "ray/stats/metric_defs.h"
+#include "ray/gcs/gcs_server/state_util.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 namespace gcs {
@@ -28,15 +29,15 @@ GcsResourceManager::GcsResourceManager(instrumented_io_context &io_context,
                                        ClusterResourceManager &cluster_resource_manager,
                                        GcsNodeManager &gcs_node_manager,
                                        NodeID local_node_id,
-                                       ClusterTaskManager *cluster_task_manager)
+                                       raylet::ClusterLeaseManager *cluster_lease_manager)
     : io_context_(io_context),
       cluster_resource_manager_(cluster_resource_manager),
       gcs_node_manager_(gcs_node_manager),
       local_node_id_(std::move(local_node_id)),
-      cluster_task_manager_(cluster_task_manager) {}
+      cluster_lease_manager_(cluster_lease_manager) {}
 
 void GcsResourceManager::ConsumeSyncMessage(
-    std::shared_ptr<const syncer::RaySyncMessage> message) {
+    std::shared_ptr<const rpc::syncer::RaySyncMessage> message) {
   // ConsumeSyncMessage is called by ray_syncer which might not run
   // in a dedicated thread for performance.
   // GcsResourceManager is a module always run in the main thread, so we just
@@ -199,10 +200,10 @@ void GcsResourceManager::HandleGetAllResourceUsage(
       batch.add_batch()->CopyFrom(usage.second);
     }
 
-    if (cluster_task_manager_ != nullptr) {
+    if (cluster_lease_manager_ != nullptr) {
       // Fill the gcs info when gcs actor scheduler is enabled.
       rpc::ResourcesData gcs_resources_data;
-      cluster_task_manager_->FillPendingActorInfo(gcs_resources_data);
+      cluster_lease_manager_->FillPendingActorInfo(gcs_resources_data);
       // Aggregate the load (pending actor info) of gcs.
       FillAggregateLoad(gcs_resources_data, &aggregate_load);
       // We only export gcs's pending info without adding the corresponding
