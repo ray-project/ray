@@ -30,6 +30,7 @@ ray_cc_library(
     hdrs = [
         "node_manager_client.h",
     ],
+    visibility = [":__subpackages__"],
     deps = [
         ":raylet_client_interface",
         "//src/ray/common:id",
