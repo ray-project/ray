@@ -80,6 +80,8 @@ class JobErrorType(str, Enum):
     JOB_SUPERVISOR_ACTOR_UNSCHEDULABLE = "JOB_SUPERVISOR_ACTOR_UNSCHEDULABLE"
     # Job supervisor actor failed for unknown exception
     JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE = "JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE"
+    # Job supervisor actor died
+    JOB_SUPERVISOR_ACTOR_DIED = "JOB_SUPERVISOR_ACTOR_DIED"
     # Job driver script failed to start due to exception
     JOB_ENTRYPOINT_COMMAND_START_ERROR = "JOB_ENTRYPOINT_COMMAND_START_ERROR"
     # Job driver script failed due to non-zero exit code
