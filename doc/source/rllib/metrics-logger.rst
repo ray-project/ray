@@ -192,7 +192,7 @@ to :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`:
 
 You should pass additional arguments like ``reduce=None`` and ``clear_on_reduce=True`` to the
 :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.log_value` method on each call.
-Otherwise, MetricsLogger will emit warnings to ensure that its behaviour is always as expected.
+Otherwise, MetricsLogger will emit warnings to ensure that its behavior is always as expected.
 
 
 Logging a set of nested scalar values
