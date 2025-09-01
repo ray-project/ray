@@ -570,7 +570,31 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
 
   // Fake plasma client that records Get calls.
   std::vector<std::vector<ObjectID>> observed_batches;
-  auto fake_plasma = std::make_shared<ray::fakes::FakePlasmaClient>(&observed_batches);
+  class RecordingPlasmaGetClient : public ray::fakes::FakePlasmaClient {
+   public:
+    explicit RecordingPlasmaGetClient(std::vector<std::vector<ObjectID>> *observed)
+        : observed_(observed) {}
+    Status Get(const std::vector<ObjectID> &object_ids,
+               int64_t timeout_ms,
+               std::vector<plasma::ObjectBuffer> *object_buffers) override {
+      if (observed_ != nullptr) {
+        observed_->push_back(object_ids);
+      }
+      object_buffers->resize(object_ids.size());
+      for (size_t i = 0; i < object_ids.size(); i++) {
+        uint8_t byte = 0;
+        auto parent = std::make_shared<LocalMemoryBuffer>(&byte, 1, /*copy_data=*/true);
+        (*object_buffers)[i].data = SharedMemoryBuffer::Slice(parent, 0, 1);
+        (*object_buffers)[i].metadata = SharedMemoryBuffer::Slice(parent, 0, 1);
+      }
+      return Status::OK();
+    }
+
+   private:
+    std::vector<std::vector<ObjectID>> *observed_;
+  };
+
+  auto fake_plasma = std::make_shared<RecordingPlasmaGetClient>(&observed_batches);
 
   CoreWorkerPlasmaStoreProvider provider(
       /*store_socket=*/"",

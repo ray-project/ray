@@ -20,14 +20,8 @@
 
 // A simple fake implementation of PlasmaClientInterface for use in unit tests.
 //
-// This fake is intended to be generic and easily extensible for future tests.
-// By default, it provides:
-// - Recording of Get() invocation batches via an optional external vector.
-// - Non-null data/metadata buffers to simulate presence in the store.
-// - No-ops for unrelated methods, returning OK or NotImplemented as appropriate.
-//
-// Extend this class to add more behavior (e.g., simulating timeouts,
-// missing objects, etc.) without impacting production code.
+// This base fake does nothing (returns OK for most methods, empty results for Get).
+// Extend it in test files to add behavior (recording batches, timeouts, missing objects).
 
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
@@ -39,8 +33,7 @@ namespace fakes {
 
 class FakePlasmaClient : public plasma::PlasmaClientInterface {
  public:
-  explicit FakePlasmaClient(std::vector<std::vector<ObjectID>> *observed_batches)
-      : observed_batches_(observed_batches) {}
+  FakePlasmaClient() = default;
 
   Status Connect(const std::string &, const std::string &, int) override {
     return Status::OK();
@@ -55,22 +48,13 @@ class FakePlasmaClient : public plasma::PlasmaClientInterface {
   Status Get(const std::vector<ObjectID> &object_ids,
              int64_t /*timeout_ms*/,
              std::vector<plasma::ObjectBuffer> *object_buffers) override {
-    if (observed_batches_ != nullptr) {
-      observed_batches_->push_back(object_ids);
-    }
-    object_buffers->resize(object_ids.size());
-    for (size_t i = 0; i < object_ids.size(); i++) {
-      uint8_t byte = 0;
-      auto parent = std::make_shared<LocalMemoryBuffer>(&byte, 1, /*copy_data=*/true);
-      (*object_buffers)[i].data = SharedMemoryBuffer::Slice(parent, 0, 1);
-      (*object_buffers)[i].metadata = SharedMemoryBuffer::Slice(parent, 0, 1);
-    }
+    object_buffers->assign(object_ids.size(), plasma::ObjectBuffer{});
     return Status::OK();
   }
 
   Status GetExperimentalMutableObject(const ObjectID &,
                                       std::unique_ptr<plasma::MutableObject> *) override {
-    return Status::NotImplemented("unused in tests");
+    return Status::OK();
   }
 
   Status Seal(const ObjectID &) override { return Status::OK(); }
@@ -86,7 +70,7 @@ class FakePlasmaClient : public plasma::PlasmaClientInterface {
                                 std::shared_ptr<Buffer> *,
                                 plasma::flatbuf::ObjectSource,
                                 int) override {
-    return Status::NotImplemented("unused in tests");
+    return Status::OK();
   }
 
   Status TryCreateImmediately(const ObjectID &,
@@ -97,13 +81,10 @@ class FakePlasmaClient : public plasma::PlasmaClientInterface {
                               std::shared_ptr<Buffer> *,
                               plasma::flatbuf::ObjectSource,
                               int) override {
-    return Status::NotImplemented("unused in tests");
+    return Status::OK();
   }
 
   Status Delete(const std::vector<ObjectID> &) override { return Status::OK(); }
-
- private:
-  std::vector<std::vector<ObjectID>> *observed_batches_;
 };
 
 }  // namespace fakes

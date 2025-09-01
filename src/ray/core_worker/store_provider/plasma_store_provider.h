@@ -202,7 +202,7 @@ class CoreWorkerPlasmaStoreProvider {
 
   StatusOr<std::string> GetMemoryUsage();
 
-  std::shared_ptr<plasma::PlasmaClient> &store_client() { return store_client_; }
+  std::shared_ptr<plasma::PlasmaClientInterface> &store_client() { return store_client_; }
 
   // Test-only hook to override the plasma client used for IO in tests.
   void SetPlasmaClientForTest(
@@ -241,9 +241,7 @@ class CoreWorkerPlasmaStoreProvider {
   Status WarmupStore();
 
   const std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client_;
-  std::shared_ptr<plasma::PlasmaClient> store_client_;
-  // Optional client injected from higher layers for IO (e.g., tests).
-  std::shared_ptr<plasma::PlasmaClientInterface> injected_plasma_client_;
+  std::shared_ptr<plasma::PlasmaClientInterface> store_client_;
   /// Used to look up a plasma object's owner.
   ReferenceCounter &reference_counter_;
   std::function<Status()> check_signals_;
