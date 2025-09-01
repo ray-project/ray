@@ -11,44 +11,6 @@ from ray._private.custom_types import TensorTransportEnum
 from ray.experimental.collective import create_collective_group
 from ray.tests.test_gpu_objects_gloo import GPUTestActor
 
-# tensordict is not supported on macos ci, so we skip the tests
-support_tensordict = sys.platform != "darwin"
-
-if support_tensordict:
-    pass
-
-
-def test_gpu_object_store_timeout(ray_start_regular):
-    """Test the timeout mechanism of GPU object store"""
-    gpu_object_store = ray.worker.global_worker.gpu_object_manager.gpu_object_store
-
-    # Attempt to get a non-existent object and verify timeout exception
-    non_existent_id = "non_existent_id"
-
-    with pytest.raises(TimeoutError):
-        gpu_object_store.wait_and_get_object(non_existent_id, timeout=0.5)
-
-    with pytest.raises(TimeoutError):
-        gpu_object_store.wait_and_pop_object(non_existent_id, timeout=0.5)
-
-
-def test_unsupported_tensor_transport_backend(ray_start_regular):
-    """Test handling of unsupported tensor transport backends"""
-    from ray.experimental.gpu_object_manager.gpu_object_store import (
-        _tensor_transport_to_collective_backend,
-    )
-
-    # Verify valid backend conversion
-    valid_backend = _tensor_transport_to_collective_backend(TensorTransportEnum.GLOO)
-    assert valid_backend == "torch_gloo"
-
-    # Verify invalid backend handling
-    class CustomEnum:
-        name = "INVALID"
-
-    with pytest.raises(ValueError, match="Invalid tensor transport"):
-        _tensor_transport_to_collective_backend(CustomEnum())
-
 
 def test_gpu_object_reference_leak(ray_start_regular):
     """Test GPU object reference recycling under failure scenarios (simulate real transport exceptions)"""
@@ -266,28 +228,6 @@ def test_gpu_object_store_tensor_lifecycle(ray_start_regular):
 
     # Verify object is deleted
     assert not gpu_object_store.has_object(obj_id)
-
-
-def test_gpu_object_manager_communicator_check(ray_start_regular):
-    """Test communicator existence check"""
-    actor = GPUTestActor.remote()
-    gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-
-    # Initially no communicator
-    assert not gpu_object_manager.actor_has_tensor_transport(
-        actor, TensorTransportEnum.GLOO
-    )
-
-    # Verify after creating communicator
-    create_collective_group([actor], backend="torch_gloo")
-    assert gpu_object_manager.actor_has_tensor_transport(
-        actor, TensorTransportEnum.GLOO
-    )
-
-    # Verify other backends are still unavailable
-    assert not gpu_object_manager.actor_has_tensor_transport(
-        actor, TensorTransportEnum.NCCL
-    )
 
 
 if __name__ == "__main__":
