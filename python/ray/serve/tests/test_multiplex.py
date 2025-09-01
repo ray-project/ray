@@ -34,6 +34,8 @@ def start_serve_with_context():
         ),
         servable_object=None,
         _deployment_config=DeploymentConfig(),
+        rank=0,
+        world_size=1,
     )
     try:
         yield

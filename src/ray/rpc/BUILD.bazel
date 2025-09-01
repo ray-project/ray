@@ -128,7 +128,6 @@ ray_cc_library(
     srcs = ["node_manager/raylet_client_pool.cc"],
     hdrs = [
         "node_manager/node_manager_client.h",
-        "node_manager/node_manager_server.h",
         "node_manager/raylet_client_pool.h",
     ] + [
         # TODO(eoakes): these are needed due to a circular dependency:
@@ -183,26 +182,6 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "gcs_server",
-    hdrs = [
-        "gcs/gcs_rpc_server.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":grpc_server",
-        ":server_call",
-        "//src/ray/common:asio",
-        "//src/ray/common:id",
-        "//src/ray/common:ray_config",
-        "//src/ray/protobuf:autoscaler_cc_grpc",
-        "//src/ray/protobuf:events_event_aggregator_service_cc_grpc",
-        "//src/ray/protobuf:gcs_service_cc_grpc",
-        "@boost//:asio",
-        "@com_github_grpc_grpc//:grpc++",
-    ],
-)
-
-ray_cc_library(
     name = "object_manager_client",
     hdrs = [
         "object_manager/object_manager_client.h",
@@ -242,7 +221,6 @@ ray_cc_library(
     hdrs = [
         "worker/core_worker_client.h",
         "worker/core_worker_client_pool.h",
-        "worker/core_worker_server.h",
     ],
     deps = [
         "//src/ray/common:id",

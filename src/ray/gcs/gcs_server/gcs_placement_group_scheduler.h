@@ -26,19 +26,17 @@
 #include "ray/common/id.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
+#include "ray/gcs/gcs_server/gcs_placement_group.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/policy/scheduling_context.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/node_manager/raylet_client_pool.h"
-#include "ray/rpc/worker/core_worker_client.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
 namespace gcs {
-
-class GcsPlacementGroup;
 
 using PGSchedulingFailureCallback =
     std::function<void(std::shared_ptr<GcsPlacementGroup>, bool)>;
@@ -465,7 +463,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// Create scheduling options.
   SchedulingOptions CreateSchedulingOptions(const PlacementGroupID &placement_group_id,
                                             rpc::PlacementStrategy strategy,
-                                            double max_cpu_fraction_per_node,
                                             NodeID soft_target_node_id);
 
   /// Try to release bundle resource to cluster resource manager.
@@ -514,6 +511,11 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// The bundles that waiting to be destroyed and release resources.
   std::list<std::pair<NodeID, std::shared_ptr<const BundleSpecification>>>
       waiting_removed_bundles_;
+
+  friend class GcsPlacementGroupSchedulerTest;
+  FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestCheckingWildcardResource);
+  FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestWaitingRemovedBundles);
+  FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestBundlesRemovedWhenNodeDead);
 };
 
 }  // namespace gcs

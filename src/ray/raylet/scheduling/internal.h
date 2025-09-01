@@ -17,10 +17,9 @@
 #include <memory>
 #include <utility>
 
+#include "ray/common/lease/lease.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
-#include "ray/common/task/task.h"
-#include "ray/common/task/task_common.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray::raylet::internal {
@@ -51,23 +50,23 @@ enum class UnscheduledWorkCause {
 };
 
 /// Work represents all the information needed to make a scheduling decision.
-/// This includes the task, the information we need to communicate to
+/// This includes the lease, the information we need to communicate to
 /// dispatch/spillback and the callback to trigger it.
 class Work {
  public:
-  RayTask task_;
+  RayLease lease_;
   bool grant_or_reject_;
   bool is_selected_based_on_locality_;
   rpc::RequestWorkerLeaseReply *reply_;
   std::function<void(void)> callback_;
   std::shared_ptr<TaskResourceInstances> allocated_instances_;
-  Work(RayTask task,
+  Work(RayLease lease,
        bool grant_or_reject,
        bool is_selected_based_on_locality,
        rpc::RequestWorkerLeaseReply *reply,
        std::function<void(void)> callback,
        WorkStatus status = WorkStatus::WAITING)
-      : task_(std::move(task)),
+      : lease_(std::move(lease)),
         grant_or_reject_(grant_or_reject),
         is_selected_based_on_locality_(is_selected_based_on_locality),
         reply_(reply),

@@ -79,8 +79,6 @@ class RedisStoreClientTest : public StoreClientTestBase {
     store_client_ = std::make_shared<RedisStoreClient>(io_context, options);
   }
 
-  void DisconnectStoreClient() override { store_client_.reset(); }
-
  protected:
   std::unique_ptr<std::thread> t_;
   std::atomic<bool> stopped_ = false;
@@ -98,31 +96,27 @@ TEST_F(RedisStoreClientTest, BasicSimple) {
   for (size_t i = 0; i < 100; ++i) {
     for (size_t j = 0; j < 20; ++j) {
       ++*cnt;
-      ASSERT_TRUE(store_client_
-                      ->AsyncPut("T",
-                                 absl::StrCat("A", std::to_string(j)),
-                                 std::to_string(i),
-                                 true,
-                                 {[i, cnt](auto r) {
-                                    --*cnt;
-                                    ASSERT_TRUE((i == 0 && r) || (i != 0 && !r));
-                                  },
-                                  *io_service_pool_->Get()})
-                      .ok());
+      store_client_->AsyncPut("T",
+                              absl::StrCat("A", std::to_string(j)),
+                              std::to_string(i),
+                              true,
+                              {[i, cnt](auto r) {
+                                 --*cnt;
+                                 ASSERT_TRUE((i == 0 && r) || (i != 0 && !r));
+                               },
+                               *io_service_pool_->Get()});
     }
   }
   for (size_t j = 0; j < 20; ++j) {
     ++*cnt;
-    ASSERT_TRUE(store_client_
-                    ->AsyncGet("T",
-                               absl::StrCat("A", std::to_string(j)),
-                               {[cnt](auto s, auto r) {
-                                  --*cnt;
-                                  ASSERT_TRUE(r.has_value());
-                                  ASSERT_EQ(*r, "99");
-                                },
-                                *io_service_pool_->Get()})
-                    .ok());
+    store_client_->AsyncGet("T",
+                            absl::StrCat("A", std::to_string(j)),
+                            {[cnt](auto s, auto r) {
+                               --*cnt;
+                               ASSERT_TRUE(r.has_value());
+                               ASSERT_EQ(*r, "99");
+                             },
+                             *io_service_pool_->Get()});
   }
   ASSERT_TRUE(WaitForCondition([cnt]() { return *cnt == 0; }, 5000));
 }
@@ -137,19 +131,17 @@ TEST_F(RedisStoreClientTest, Complicated) {
     for (int j = i; j < i + window; ++j) {
       ++sent;
       RAY_LOG(INFO) << "S AsyncPut: " << ("P_" + std::to_string(j));
-      ASSERT_TRUE(store_client_
-                      ->AsyncPut("N",
-                                 "P_" + std::to_string(j),
-                                 std::to_string(j),
-                                 true,
-                                 {[&finished, j](auto r) mutable {
-                                    RAY_LOG(INFO)
-                                        << "F AsyncPut: " << ("P_" + std::to_string(j));
-                                    ++finished;
-                                    ASSERT_TRUE(r);
-                                  },
-                                  *io_service_pool_->Get()})
-                      .ok());
+      store_client_->AsyncPut("N",
+                              "P_" + std::to_string(j),
+                              std::to_string(j),
+                              true,
+                              {[&finished, j](auto r) mutable {
+                                 RAY_LOG(INFO)
+                                     << "F AsyncPut: " << ("P_" + std::to_string(j));
+                                 ++finished;
+                                 ASSERT_TRUE(r);
+                               },
+                               *io_service_pool_->Get()});
       keys.push_back(std::to_string(j));
     }
 
@@ -165,89 +157,73 @@ TEST_F(RedisStoreClientTest, Complicated) {
 
     ++sent;
     RAY_LOG(INFO) << "S AsyncMultiGet: " << absl::StrJoin(p_keys, ",");
-    ASSERT_TRUE(
-        store_client_
-            ->AsyncMultiGet(
-                "N",
-                p_keys,
-                {[&finished, i, keys, window, &sent, p_keys, n_keys, this](
-                     absl::flat_hash_map<std::string, std::string> m) mutable -> void {
-                   RAY_LOG(INFO) << "F SendAsyncMultiGet: " << absl::StrJoin(p_keys, ",");
-                   ++finished;
-                   ASSERT_EQ(keys.size(), m.size());
-                   for (auto &key : keys) {
-                     ASSERT_EQ(m["P_" + key], key);
-                   }
+    store_client_->AsyncMultiGet(
+        "N",
+        p_keys,
+        {[&finished, i, keys, window, &sent, p_keys, n_keys, this](
+             absl::flat_hash_map<std::string, std::string> m) mutable -> void {
+           RAY_LOG(INFO) << "F SendAsyncMultiGet: " << absl::StrJoin(p_keys, ",");
+           ++finished;
+           ASSERT_EQ(keys.size(), m.size());
+           for (auto &key : keys) {
+             ASSERT_EQ(m["P_" + key], key);
+           }
 
-                   if ((i / window) % 2 == 0) {
-                     // Delete non exist keys
-                     for (size_t jj = 0; jj < keys.size(); ++jj) {
-                       ++sent;
-                       RAY_LOG(INFO) << "S AsyncDelete: " << n_keys[jj];
-                       ASSERT_TRUE(
-                           store_client_
-                               ->AsyncDelete("N",
-                                             n_keys[jj],
-                                             {[&finished, n_keys, jj](auto b) mutable {
-                                                RAY_LOG(INFO)
-                                                    << "F AsyncDelete: " << n_keys[jj];
-                                                ++finished;
-                                                ASSERT_FALSE(b);
-                                              },
-                                              *this->io_service_pool_->Get()})
-                               .ok());
+           if ((i / window) % 2 == 0) {
+             // Delete non exist keys
+             for (size_t jj = 0; jj < keys.size(); ++jj) {
+               ++sent;
+               RAY_LOG(INFO) << "S AsyncDelete: " << n_keys[jj];
+               store_client_->AsyncDelete("N",
+                                          n_keys[jj],
+                                          {[&finished, n_keys, jj](auto b) mutable {
+                                             RAY_LOG(INFO)
+                                                 << "F AsyncDelete: " << n_keys[jj];
+                                             ++finished;
+                                             ASSERT_FALSE(b);
+                                           },
+                                           *this->io_service_pool_->Get()});
 
-                       ++sent;
-                       RAY_LOG(INFO) << "S AsyncExists: " << p_keys[jj];
-                       ASSERT_TRUE(
-                           store_client_
-                               ->AsyncExists("N",
-                                             p_keys[jj],
-                                             {[&finished, p_keys, jj](auto b) mutable {
-                                                RAY_LOG(INFO)
-                                                    << "F AsyncExists: " << p_keys[jj];
-                                                ++finished;
-                                                ASSERT_TRUE(b);
-                                              },
-                                              *this->io_service_pool_->Get()})
-                               .ok());
-                     }
-                   } else {
-                     ++sent;
-                     RAY_LOG(INFO)
-                         << "S AsyncBatchDelete: " << absl::StrJoin(p_keys, ",");
-                     ASSERT_TRUE(store_client_
-                                     ->AsyncBatchDelete(
-                                         "N",
-                                         p_keys,
-                                         {[&finished, p_keys, keys](auto n) mutable {
-                                            RAY_LOG(INFO) << "F AsyncBatchDelete: "
-                                                          << absl::StrJoin(p_keys, ",");
-                                            ++finished;
-                                            ASSERT_EQ(n, keys.size());
-                                          },
-                                          *this->io_service_pool_->Get()})
-                                     .ok());
+               ++sent;
+               RAY_LOG(INFO) << "S AsyncExists: " << p_keys[jj];
+               store_client_->AsyncExists("N",
+                                          p_keys[jj],
+                                          {[&finished, p_keys, jj](auto b) mutable {
+                                             RAY_LOG(INFO)
+                                                 << "F AsyncExists: " << p_keys[jj];
+                                             ++finished;
+                                             ASSERT_TRUE(b);
+                                           },
+                                           *this->io_service_pool_->Get()});
+             }
+           } else {
+             ++sent;
+             RAY_LOG(INFO) << "S AsyncBatchDelete: " << absl::StrJoin(p_keys, ",");
+             store_client_->AsyncBatchDelete(
+                 "N",
+                 p_keys,
+                 {[&finished, p_keys, keys](auto n) mutable {
+                    RAY_LOG(INFO) << "F AsyncBatchDelete: " << absl::StrJoin(p_keys, ",");
+                    ++finished;
+                    ASSERT_EQ(n, keys.size());
+                  },
+                  *this->io_service_pool_->Get()});
 
-                     for (auto p_key : p_keys) {
-                       ++sent;
-                       RAY_LOG(INFO) << "S AsyncExists: " << p_key;
-                       ASSERT_TRUE(store_client_
-                                       ->AsyncExists("N",
-                                                     p_key,
-                                                     {[&finished, p_key](auto b) mutable {
-                                                        RAY_LOG(INFO)
-                                                            << "F AsyncExists: " << p_key;
-                                                        ++finished;
-                                                        ASSERT_FALSE(false);
-                                                      },
-                                                      *this->io_service_pool_->Get()})
-                                       .ok());
-                     }
-                   }
-                 },
-                 *io_service_pool_->Get()})
-            .ok());
+             for (auto p_key : p_keys) {
+               ++sent;
+               RAY_LOG(INFO) << "S AsyncExists: " << p_key;
+               store_client_->AsyncExists("N",
+                                          p_key,
+                                          {[&finished, p_key](auto b) mutable {
+                                             RAY_LOG(INFO) << "F AsyncExists: " << p_key;
+                                             ++finished;
+                                             ASSERT_FALSE(false);
+                                           },
+                                           *this->io_service_pool_->Get()});
+             }
+           }
+         },
+         *io_service_pool_->Get()});
   }
   ASSERT_TRUE(WaitForCondition(
       [&finished, &sent]() {
@@ -281,16 +257,15 @@ TEST_F(RedisStoreClientTest, Random) {
     }
     RAY_LOG(INFO) << "m_multi_get Sending: " << idx;
     *counter += 1;
-    RAY_CHECK_OK(store_client_->AsyncMultiGet("N",
-                                              keys,
-                                              {[result, idx, counter](auto m) mutable {
-                                                 RAY_LOG(INFO)
-                                                     << "m_multi_get Finished: " << idx
-                                                     << " " << m.size();
-                                                 *counter -= 1;
-                                                 ASSERT_TRUE(m == result);
-                                               },
-                                               *io_service_pool_->Get()}));
+    store_client_->AsyncMultiGet("N",
+                                 keys,
+                                 {[result, idx, counter](auto m) mutable {
+                                    RAY_LOG(INFO) << "m_multi_get Finished: " << idx
+                                                  << " " << m.size();
+                                    *counter -= 1;
+                                    ASSERT_TRUE(m == result);
+                                  },
+                                  *io_service_pool_->Get()});
   };
 
   auto m_batch_delete = [&, counter, this](size_t idx) mutable {
@@ -301,15 +276,15 @@ TEST_F(RedisStoreClientTest, Random) {
     }
     RAY_LOG(INFO) << "m_batch_delete Sending: " << idx;
     *counter += 1;
-    RAY_CHECK_OK(store_client_->AsyncBatchDelete(
-        "N",
-        keys,
-        {[&counter, deleted_num, idx](auto v) mutable {
-           RAY_LOG(INFO) << "m_batch_delete Finished: " << idx << " " << v;
-           *counter -= 1;
-           ASSERT_EQ(v, deleted_num);
-         },
-         *io_service_pool_->Get()}));
+    store_client_->AsyncBatchDelete("N",
+                                    keys,
+                                    {[&counter, deleted_num, idx](auto v) mutable {
+                                       RAY_LOG(INFO) << "m_batch_delete Finished: " << idx
+                                                     << " " << v;
+                                       *counter -= 1;
+                                       ASSERT_EQ(v, deleted_num);
+                                     },
+                                     *io_service_pool_->Get()});
   };
 
   auto m_delete = [&, this](size_t idx) mutable {
@@ -317,16 +292,15 @@ TEST_F(RedisStoreClientTest, Random) {
     bool deleted = dict.erase(k) > 0;
     RAY_LOG(INFO) << "m_delete Sending: " << idx << " " << k;
     *counter += 1;
-    RAY_CHECK_OK(store_client_->AsyncDelete("N",
-                                            k,
-                                            {[counter, k, idx, deleted](auto r) {
-                                               RAY_LOG(INFO)
-                                                   << "m_delete Finished: " << idx << " "
-                                                   << k << " " << deleted;
-                                               *counter -= 1;
-                                               ASSERT_EQ(deleted, r);
-                                             },
-                                             *io_service_pool_->Get()}));
+    store_client_->AsyncDelete("N",
+                               k,
+                               {[counter, k, idx, deleted](auto r) {
+                                  RAY_LOG(INFO) << "m_delete Finished: " << idx << " "
+                                                << k << " " << deleted;
+                                  *counter -= 1;
+                                  ASSERT_EQ(deleted, r);
+                                },
+                                *io_service_pool_->Get()});
   };
 
   auto m_get = [&, counter, this](size_t idx) {
@@ -337,16 +311,15 @@ TEST_F(RedisStoreClientTest, Random) {
     }
     RAY_LOG(INFO) << "m_get Sending: " << idx;
     *counter += 1;
-    RAY_CHECK_OK(store_client_->AsyncGet("N",
-                                         k,
-                                         {[counter, idx, v](auto, auto r) {
-                                            RAY_LOG(INFO)
-                                                << "m_get Finished: " << idx << " "
-                                                << (r ? *r : std::string("-"));
-                                            *counter -= 1;
-                                            ASSERT_EQ(v, r);
-                                          },
-                                          *io_service_pool_->Get()}));
+    store_client_->AsyncGet("N",
+                            k,
+                            {[counter, idx, v](auto, auto r) {
+                               RAY_LOG(INFO) << "m_get Finished: " << idx << " "
+                                             << (r ? *r : std::string("-"));
+                               *counter -= 1;
+                               ASSERT_EQ(v, r);
+                             },
+                             *io_service_pool_->Get()});
   };
 
   auto m_exists = [&, counter, this](size_t idx) {
@@ -354,15 +327,15 @@ TEST_F(RedisStoreClientTest, Random) {
     bool existed = dict.count(k);
     RAY_LOG(INFO) << "m_exists Sending: " << idx;
     *counter += 1;
-    RAY_CHECK_OK(store_client_->AsyncExists(
-        "N",
-        k,
-        {[k, existed, counter, idx](auto r) mutable {
-           RAY_LOG(INFO) << "m_exists Finished: " << idx << " " << k << " " << r;
-           *counter -= 1;
-           ASSERT_EQ(existed, r) << " exists check " << k;
-         },
-         *io_service_pool_->Get()}));
+    store_client_->AsyncExists("N",
+                               k,
+                               {[k, existed, counter, idx](auto r) mutable {
+                                  RAY_LOG(INFO) << "m_exists Finished: " << idx << " "
+                                                << k << " " << r;
+                                  *counter -= 1;
+                                  ASSERT_EQ(existed, r) << " exists check " << k;
+                                },
+                                *io_service_pool_->Get()});
   };
 
   auto m_puts = [&, counter, this](size_t idx) mutable {
@@ -375,18 +348,17 @@ TEST_F(RedisStoreClientTest, Random) {
     dict[k] = v;
     RAY_LOG(INFO) << "m_put Sending: " << idx << " " << k << " " << v;
     *counter += 1;
-    RAY_CHECK_OK(store_client_->AsyncPut("N",
-                                         k,
-                                         v,
-                                         true,
-                                         {[idx, added, k, counter](bool r) mutable {
-                                            RAY_LOG(INFO)
-                                                << "m_put Finished: "
-                                                << " " << idx << " " << k << " " << r;
-                                            *counter -= 1;
-                                            ASSERT_EQ(r, added);
-                                          },
-                                          *io_service_pool_->Get()}));
+    store_client_->AsyncPut("N",
+                            k,
+                            v,
+                            true,
+                            {[idx, added, k, counter](bool r) mutable {
+                               RAY_LOG(INFO)
+                                   << "m_put Finished: " << idx << " " << k << " " << r;
+                               *counter -= 1;
+                               ASSERT_EQ(r, added);
+                             },
+                             *io_service_pool_->Get()});
   };
 
   std::vector<std::function<void(size_t idx)>> ops{
