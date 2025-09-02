@@ -8,15 +8,15 @@ from unittest import mock
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
 import ray.experimental.internal_kv as kv
+from ray._common.test_utils import wait_for_condition
 from ray._private.ray_constants import RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR
-from ray._private.utils import get_directory_size_bytes
 from ray._private.test_utils import (
     chdir,
     check_local_files_gced,
     find_free_port,
 )
+from ray._private.utils import get_directory_size_bytes
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -113,8 +113,8 @@ class TestGC:
         @ray.remote(num_cpus=1)
         class A:
             def test_import(self):
-                import test_module
                 import pip_install_test  # noqa: F401
+                import test_module
 
                 test_module.one()
 
@@ -239,8 +239,8 @@ class TestGC:
         @ray.remote
         class A:
             def test_import(self):
-                import test_module
                 import pip_install_test  # noqa: F401
+                import test_module
 
                 test_module.one()
 

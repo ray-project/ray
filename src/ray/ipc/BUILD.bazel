@@ -31,6 +31,7 @@ ray_cc_library(
         ":client_connection",
         "//src/ray/common:asio",
         "//src/ray/common:buffer",
+        "//src/ray/common:flatbuf_utils",
         "//src/ray/common:id",
         "//src/ray/common:status",
         "//src/ray/flatbuffers:node_manager_generated",

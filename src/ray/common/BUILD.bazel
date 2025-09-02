@@ -11,14 +11,18 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "test_util",
-    srcs = ["test_util.cc"],
-    hdrs = ["test_util.h"],
+    name = "test_utils",
+    srcs = ["test_utils.cc"],
+    hdrs = ["test_utils.h"],
     deps = [
         ":asio",
         ":id",
         ":ray_object",
+        ":task_common",
+        "//src/ray/protobuf:autoscaler_cc_grpc",
         "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/protobuf:gcs_service_cc_grpc",
         "//src/ray/util:cmd_line_utils",
         "//src/ray/util:network_util",
         "//src/ray/util:path_utils",
@@ -119,23 +123,30 @@ ray_cc_library(
 ray_cc_library(
     name = "id",
     srcs = [
-        "common_protocol.cc",
         "id.cc",
     ],
     hdrs = [
-        "common_protocol.h",
         "id.h",
         "id_def.h",
     ],
     deps = [
         ":constants",
-        ":status",
         "//src/ray/protobuf:common_cc_proto",
-        "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/thirdparty:sha256",
+        "//src/ray/util:logging",
         "//src/ray/util:random",
-        "@com_github_google_flatbuffers//:flatbuffers",
+        "//src/ray/util:visibility",
         "@msgpack",
+    ],
+)
+
+ray_cc_library(
+    name = "flatbuf_utils",
+    hdrs = [
+        "flatbuf_utils.h",
+    ],
+    deps = [
+        "@com_github_google_flatbuffers//:flatbuffers",
     ],
 )
 
@@ -326,4 +337,12 @@ ray_cc_library(
     name = "source_location",
     srcs = ["source_location.cc"],
     hdrs = ["source_location.h"],
+)
+
+ray_cc_library(
+    name = "gcs_callbacks",
+    hdrs = ["gcs_callbacks.h"],
+    deps = [
+        "//src/ray/common:status",
+    ],
 )

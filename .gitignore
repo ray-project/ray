@@ -38,7 +38,7 @@ python/ray/autoscaler/kuberay/config
 # Python byte code files
 *.pyc
 python/.eggs
-
+.eggs
 # Backup files
 *.bak
 
