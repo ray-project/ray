@@ -16,10 +16,6 @@ namespace ray {
 
 class MockRayletClientInterface : public RayletClientInterface {
  public:
-  MOCK_METHOD(ray::Status,
-              WaitForActorCallArgs,
-              (const std::vector<rpc::ObjectReference> &references, int64_t tag),
-              (override));
   MOCK_METHOD(std::shared_ptr<grpc::Channel>, GetChannel, (), (const));
   MOCK_METHOD(void,
               ReportWorkerBacklog,
@@ -29,14 +25,14 @@ class MockRayletClientInterface : public RayletClientInterface {
   MOCK_METHOD(
       void,
       RequestWorkerLease,
-      (const rpc::TaskSpec &resource_spec,
+      (const rpc::LeaseSpec &lease_spec,
        bool grant_or_reject,
        const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
        const int64_t backlog_size,
        const bool is_selected_based_on_locality),
       (override));
   MOCK_METHOD(ray::Status,
-              ReturnWorker,
+              ReturnWorkerLease,
               (int worker_port,
                const WorkerID &worker_id,
                bool disconnect_worker,
@@ -44,9 +40,9 @@ class MockRayletClientInterface : public RayletClientInterface {
                bool worker_exiting),
               (override));
   MOCK_METHOD(void,
-              GetTaskFailureCause,
-              (const TaskID &task_id,
-               const rpc::ClientCallback<rpc::GetTaskFailureCauseReply> &callback),
+              GetWorkerFailureCause,
+              (const LeaseID &lease_id,
+               const rpc::ClientCallback<rpc::GetWorkerFailureCauseReply> &callback),
               (override));
   MOCK_METHOD(void,
               PrestartWorkers,
@@ -60,7 +56,7 @@ class MockRayletClientInterface : public RayletClientInterface {
               (override));
   MOCK_METHOD(void,
               CancelWorkerLease,
-              (const TaskID &task_id,
+              (const LeaseID &lease_id,
                const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback),
               (override));
   MOCK_METHOD(
@@ -136,9 +132,9 @@ class MockRayletClientInterface : public RayletClientInterface {
               (override));
   MOCK_METHOD(
       void,
-      CancelTasksWithResourceShapes,
+      CancelLeasesWithResourceShapes,
       ((const std::vector<google::protobuf::Map<std::string, double>>)&resource_shapes,
-       const rpc::ClientCallback<rpc::CancelTasksWithResourceShapesReply> &callback),
+       const rpc::ClientCallback<rpc::CancelLeasesWithResourceShapesReply> &callback),
       (override));
   MOCK_METHOD(void,
               IsLocalWorkerDead,
@@ -150,6 +146,11 @@ class MockRayletClientInterface : public RayletClientInterface {
               (const rpc::GetNodeStatsRequest &request,
                const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback),
               (override));
+  MOCK_METHOD(void,
+              GlobalGC,
+              (const rpc::ClientCallback<rpc::GlobalGCReply> &callback),
+              (override));
+  MOCK_METHOD(int64_t, GetPinsInFlight, (), (const, override));
 };
 
 }  // namespace ray

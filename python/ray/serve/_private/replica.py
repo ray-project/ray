@@ -34,6 +34,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 import ray
 from ray import cloudpickle
 from ray._common.utils import get_or_create_event_loop
+from ray._private.ray_logging.filters import CoreContextFilter
 from ray.actor import ActorClass, ActorHandle
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
@@ -52,7 +53,7 @@ from ray.serve._private.constants import (
     HEALTH_CHECK_METHOD,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
-    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
+    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING,
@@ -61,6 +62,12 @@ from ray.serve._private.constants import (
     REQUEST_LATENCY_BUCKETS_MS,
     REQUEST_ROUTING_STATS_METHOD,
     SERVE_CONTROLLER_NAME,
+    SERVE_LOG_APPLICATION,
+    SERVE_LOG_COMPONENT,
+    SERVE_LOG_DEPLOYMENT,
+    SERVE_LOG_REPLICA,
+    SERVE_LOG_REQUEST_ID,
+    SERVE_LOG_ROUTE,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
@@ -97,7 +104,7 @@ from ray.serve.exceptions import (
     DeploymentUnavailableError,
     RayServeException,
 )
-from ray.serve.schema import LoggingConfig
+from ray.serve.schema import EncodingType, LoggingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -108,6 +115,7 @@ ReplicaMetadata = Tuple[
     Optional[float],
     Optional[int],
     Optional[str],
+    int,
 ]
 
 
@@ -282,7 +290,7 @@ class ReplicaMetricsManager:
                 self.RECORD_METRICS_TASK_NAME,
                 self._add_autoscaling_metrics_point,
                 min(
-                    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
+                    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
                     self._autoscaling_config.metrics_interval_s,
                 ),
             )
@@ -349,6 +357,7 @@ class ReplicaBase(ABC):
         version: DeploymentVersion,
         ingress: bool,
         route_prefix: str,
+        rank: int,
     ):
         self._version = version
         self._replica_id = replica_id
@@ -395,7 +404,7 @@ class ReplicaBase(ABC):
 
         # Set metadata for logs and metrics.
         # servable_object will be populated in `initialize_and_get_metadata`.
-        self._set_internal_replica_context(servable_object=None)
+        self._set_internal_replica_context(servable_object=None, rank=rank)
 
         self._metrics_manager = create_replica_metrics_manager(
             replica_id=replica_id,
@@ -415,19 +424,27 @@ class ReplicaBase(ABC):
         return self._metrics_manager.get_num_ongoing_requests()
 
     def get_metadata(self) -> ReplicaMetadata:
+        current_rank = ray.serve.context._get_internal_replica_context().rank
         return (
             self._version.deployment_config,
             self._version,
             self._initialization_latency,
             self._port,
             self._docs_path,
+            current_rank,
         )
 
-    def _set_internal_replica_context(self, *, servable_object: Callable = None):
+    def _set_internal_replica_context(
+        self, *, servable_object: Callable = None, rank: int = None
+    ):
+        # Calculate world_size from deployment config instead of storing it
+        world_size = self._deployment_config.num_replicas
         ray.serve.context._set_internal_replica_context(
             replica_id=self._replica_id,
             servable_object=servable_object,
             _deployment_config=self._deployment_config,
+            rank=rank,
+            world_size=world_size,
         )
 
     def _configure_logger_and_profilers(
@@ -451,6 +468,33 @@ class ReplicaBase(ABC):
             component_name=self._component_name,
             component_id=self._component_id,
         )
+
+        if logging_config.encoding == EncodingType.JSON:
+            # Create logging context for access logs as a performance optimization.
+            # While logging_utils can automatically add Ray core and Serve access log context,
+            # we pre-compute it here since context evaluation is expensive and this context
+            # will be reused for multiple access log entries.
+            ray_core_logging_context = CoreContextFilter.get_ray_core_logging_context()
+            # remove task level log keys from ray core logging context, it would be nice
+            # to have task level log keys here but we are letting those go in favor of
+            # performance optimization. Also we cannot include task level log keys here because
+            # they would referance the current task (__init__) and not the task that is logging.
+            for key in CoreContextFilter.TASK_LEVEL_LOG_KEYS:
+                ray_core_logging_context.pop(key, None)
+            self._access_log_context = {
+                **ray_core_logging_context,
+                SERVE_LOG_DEPLOYMENT: self._component_name,
+                SERVE_LOG_REPLICA: self._component_id,
+                SERVE_LOG_COMPONENT: ServeComponentType.REPLICA,
+                SERVE_LOG_APPLICATION: self._deployment_id.app_name,
+                "skip_context_filter": True,
+                "serve_access_log": True,
+            }
+        else:
+            self._access_log_context = {
+                "skip_context_filter": True,
+                "serve_access_log": True,
+            }
 
     def _can_accept_request(self, request_metadata: RequestMetadata) -> bool:
         # This replica gates concurrent request handling with an asyncio.Semaphore.
@@ -537,7 +581,11 @@ class ReplicaBase(ABC):
         else:
             status_str = "ERROR"
 
-        # Set in _wrap_request.
+        # Mutating self._access_log_context is not thread safe, but since this
+        # is only called from the same thread, it is safe. Mutating the same object
+        # because creating a new dict is expensive.
+        self._access_log_context[SERVE_LOG_ROUTE] = http_route
+        self._access_log_context[SERVE_LOG_REQUEST_ID] = request_metadata.request_id
         logger.info(
             access_log_msg(
                 method=http_method or "CALL",
@@ -546,7 +594,7 @@ class ReplicaBase(ABC):
                 status=status_code or status_str,
                 latency_ms=latency_ms,
             ),
-            extra={"serve_access_log": True},
+            extra=self._access_log_context,
         )
         self._metrics_manager.record_request_metrics(
             route=http_route,
@@ -713,7 +761,12 @@ class ReplicaBase(ABC):
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
 
-    async def reconfigure(self, deployment_config: DeploymentConfig):
+    async def reconfigure(
+        self,
+        deployment_config: DeploymentConfig,
+        rank: int,
+        route_prefix: Optional[str] = None,
+    ):
         try:
             user_config_changed = (
                 deployment_config.user_config != self._deployment_config.user_config
@@ -724,7 +777,7 @@ class ReplicaBase(ABC):
             )
             self._deployment_config = deployment_config
             self._version = DeploymentVersion.from_deployment_version(
-                self._version, deployment_config
+                self._version, deployment_config, route_prefix
             )
 
             self._metrics_manager.set_autoscaling_config(
@@ -742,10 +795,14 @@ class ReplicaBase(ABC):
                 )
 
             # We need to update internal replica context to reflect the new
-            # deployment_config.
+            # deployment_config and rank.
             self._set_internal_replica_context(
-                servable_object=self._user_callable_wrapper.user_callable
+                servable_object=self._user_callable_wrapper.user_callable,
+                rank=rank,
             )
+
+            self._route_prefix = self._version.route_prefix
+
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
 
@@ -851,8 +908,11 @@ class ReplicaBase(ABC):
 
 class Replica(ReplicaBase):
     async def _on_initialized(self):
+        # Get current rank from replica context during initialization
+        current_rank = ray.serve.context._get_internal_replica_context().rank
         self._set_internal_replica_context(
-            servable_object=self._user_callable_wrapper.user_callable
+            servable_object=self._user_callable_wrapper.user_callable,
+            rank=current_rank,
         )
 
         # Save the initialization latency if the replica is initializing
@@ -926,6 +986,7 @@ class ReplicaActor:
         version: DeploymentVersion,
         ingress: bool,
         route_prefix: str,
+        rank: int,
     ):
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
@@ -942,6 +1003,7 @@ class ReplicaActor:
             version=version,
             ingress=ingress,
             route_prefix=route_prefix,
+            rank=rank,
         )
 
     def push_proxy_handle(self, handle: ActorHandle):
@@ -1003,8 +1065,10 @@ class ReplicaActor:
     async def record_routing_stats(self) -> Dict[str, Any]:
         return await self._replica_impl.record_routing_stats()
 
-    async def reconfigure(self, deployment_config) -> ReplicaMetadata:
-        await self._replica_impl.reconfigure(deployment_config)
+    async def reconfigure(
+        self, deployment_config, rank: int, route_prefix: Optional[str] = None
+    ) -> ReplicaMetadata:
+        await self._replica_impl.reconfigure(deployment_config, rank, route_prefix)
         return self._replica_impl.get_metadata()
 
     def _preprocess_request_args(
@@ -1167,7 +1231,8 @@ class UserCallableWrapper:
         self._run_user_code_in_separate_thread = run_user_code_in_separate_thread
         self._warned_about_sync_method_change = False
         self._cached_user_method_info: Dict[str, UserMethodInfo] = {}
-
+        # This is for performance optimization https://docs.python.org/3/howto/logging.html#optimization
+        self._is_enabled_for_debug = logger.isEnabledFor(logging.DEBUG)
         # Will be populated in `initialize_callable`.
         self._callable = None
 
@@ -1621,10 +1686,11 @@ class UserCallableWrapper:
         """
         self._raise_if_not_initialized("_call_http_entrypoint")
 
-        logger.info(
-            f"Started executing request to method '{user_method_info.name}'.",
-            extra={"log_to_stderr": False, "serve_access_log": True},
-        )
+        if self._is_enabled_for_debug:
+            logger.debug(
+                f"Started executing request to method '{user_method_info.name}'.",
+                extra={"log_to_stderr": False, "serve_access_log": True},
+            )
 
         if user_method_info.is_asgi_app:
             request_args = (scope, receive, send)
@@ -1754,10 +1820,11 @@ class UserCallableWrapper:
             or inspect.isasyncgenfunction(callable)
         )
 
-        logger.info(
-            f"Started executing request to method '{user_method_info.name}'.",
-            extra={"log_to_stderr": False, "serve_access_log": True},
-        )
+        if self._is_enabled_for_debug:
+            logger.debug(
+                f"Started executing request to method '{user_method_info.name}'.",
+                extra={"log_to_stderr": False, "serve_access_log": True},
+            )
 
         async def _call_generator_async() -> AsyncGenerator[Any, None]:
             gen = callable(*request_args, **request_kwargs)
@@ -1813,10 +1880,11 @@ class UserCallableWrapper:
         """
         self._raise_if_not_initialized("call_user_method")
 
-        logger.info(
-            f"Started executing request to method '{request_metadata.call_method}'.",
-            extra={"log_to_stderr": False, "serve_access_log": True},
-        )
+        if self._is_enabled_for_debug:
+            logger.debug(
+                f"Started executing request to method '{request_metadata.call_method}'.",
+                extra={"log_to_stderr": False, "serve_access_log": True},
+            )
 
         user_method_info = self.get_user_method_info(request_metadata.call_method)
         result, _ = await self._call_func_or_gen(
@@ -1849,7 +1917,7 @@ class UserCallableWrapper:
         actually call the destructor.
         """
         if self._callable is None:
-            logger.info(
+            logger.debug(
                 "This replica has not yet started running user code. "
                 "Skipping __del__."
             )

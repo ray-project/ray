@@ -5,13 +5,13 @@ ray_cc_library(
     srcs = ["object_manager.cc"],
     hdrs = ["object_manager.h"],
     deps = [
-        "spilled_object_reader",
         ":chunk_object_reader",
         ":object_buffer_pool",
         ":object_directory",
         ":object_manager_common",
         ":pull_manager",
         ":push_manager",
+        ":spilled_object_reader",
         "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
@@ -67,7 +67,7 @@ ray_cc_library(
         "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/gcs/gcs_client:gcs_client_lib",
-        "//src/ray/pubsub:subscriber",
+        "//src/ray/pubsub:subscriber_interface",
         "//src/ray/rpc:core_worker_client",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
@@ -110,6 +110,7 @@ ray_cc_library(
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
     ],
 )
 

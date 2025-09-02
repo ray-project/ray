@@ -82,7 +82,7 @@ def get_vllm_cli_args(llm_config):
     # subprocesses are resolved we can remove these constraints
     engine_kwargs.pop("tokenizer_pool_extra_config", None)
     engine_kwargs.pop("tokenizer_pool_size", None)
-    engine_kwargs["tokenizer_pool_type"] = None
+    engine_kwargs.pop("tokenizer_pool_type", None)
 
     cli_args = ["--model", llm_config["model_loading_config"]["model_id"]]
     for key, value in engine_kwargs.items():

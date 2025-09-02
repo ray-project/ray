@@ -44,7 +44,7 @@ repos:
         args: [ --fix, --exit-non-zero-on-fix ]
       - id: ruff
         args: [ --select, "I", --fix, --exit-non-zero-on-fix ]
-        files: '^python/ray/serve/|^python/ray/train|^python/ray/data|^python/ray/_private/|^python/ray/llm/|^python/ray/tune/'
+        files: '^python/ray/serve/|^python/ray/train|^python/ray/data|^python/ray/_private/|^python/ray/llm/|^python/ray/tune/|^python/ray/dag/'
 
   - repo: https://github.com/jsh9/pydoclint
     rev: "0.6.6"
@@ -73,7 +73,7 @@ repos:
     hooks:
       - id: cpplint
         args: ["--filter=-whitespace/braces,-whitespace/line_length,-build/c++11,-build/c++14,-build/c++17,-readability/braces,-whitespace/indent_namespace,-runtime/int,-runtime/references,-build/include_order"]
-        files: ^src/ray/(common/cgroup2|common/ray_syncer|util|raylet_client|internal|scheduling|pubsub|object_manager|rpc(?:/.*)?|raylet|core_worker)/.*\.(h|cc)$
+        files: ^src/ray/(common/cgroup2|common/scheduling|common/ray_syncer|common/test|util|raylet_client|internal|scheduling|pubsub|object_manager|rpc(?:/.*)?|raylet|core_worker|ipc)/.*\.(h|cc)$
         exclude: |
           (?x)^(
             src/ray/raylet/scheduling/.*\.(h|cc)$ |

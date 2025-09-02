@@ -15,7 +15,10 @@
 #include "ray/common/scheduling/resource_set.h"
 
 #include <cmath>
+#include <set>
 #include <sstream>
+#include <string>
+#include <unordered_map>
 
 #include "ray/util/logging.h"
 

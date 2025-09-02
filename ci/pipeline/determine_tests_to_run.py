@@ -5,9 +5,8 @@ import fnmatch
 import os
 import subprocess
 import sys
-from typing import List, Optional, Set, Tuple
 from pprint import pformat
-
+from typing import List, Optional, Set, Tuple
 
 _ALL_TAGS = set(
     """
@@ -15,7 +14,7 @@ _ALL_TAGS = set(
     lint python cpp core_cpp java workflow compiled_graphs dashboard ray_client
     data dask serve ml tune train llm rllib rllib_gpu rllib_directly
     linux_wheels macos_wheels docker doc python_dependencies tools
-    release_tests compiled_python spark_on_ray
+    release_tests compiled_python spark_on_ray runtime_env_container
     """.split()
 )
 

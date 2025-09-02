@@ -30,6 +30,7 @@ from ray._common.utils import (
     get_or_create_event_loop,
     get_user_temp_dir,
 )
+from ray._common.network_utils import parse_address
 from ray._private.utils import get_system_memory
 from ray.dashboard.modules.reporter.gpu_providers import (
     GpuMetricProvider,
@@ -40,8 +41,7 @@ from ray._private import utils
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_STATUS,
-    RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_AGENT,
-    RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE,
+    RAY_ENABLE_OPEN_TELEMETRY,
     env_integer,
 )
 from ray._private.telemetry.open_telemetry_metric_recorder import (
@@ -417,7 +417,7 @@ class ReporterAgent(
         self._gcs_client = dashboard_agent.gcs_client
         self._ip = dashboard_agent.ip
         self._log_dir = dashboard_agent.log_dir
-        self._is_head_node = self._ip == dashboard_agent.gcs_address.split(":")[0]
+        self._is_head_node = self._ip == parse_address(dashboard_agent.gcs_address)[0]
         self._hostname = socket.gethostname()
         # (pid, created_time) -> psutil.Process
         self._workers = {}
@@ -533,6 +533,17 @@ class ReporterAgent(
         return reporter_pb2.MemoryProfilingReply(
             output=output, success=success, warning=warning
         )
+
+    async def HealthCheck(
+        self,
+        _request: reporter_pb2.HealthCheckRequest,
+        _context: ServicerContext,
+    ) -> reporter_pb2.HealthCheckReply:
+        """This is a health check endpoint for the reporter agent.
+
+        It is used to check if the reporter agent is ready to receive requests.
+        """
+        return reporter_pb2.HealthCheckReply()
 
     async def ReportOCMetrics(self, request, context):
         # Do nothing if metrics collection is disabled.
@@ -882,7 +893,7 @@ class ReporterAgent(
     def _generate_worker_key(self, proc: psutil.Process) -> Tuple[int, float]:
         return (proc.pid, proc.create_time())
 
-    def _get_workers(self, gpus: Optional[List[GpuUtilizationInfo]] = None):
+    def _get_worker_processes(self):
         raylet_proc = self._get_raylet_proc()
         if raylet_proc is None:
             return []
@@ -899,7 +910,13 @@ class ReporterAgent(
                     self._generate_worker_key(proc): proc
                     for proc in raylet_proc.children()
                 }
+            return workers
 
+    def _get_workers(self, gpus: Optional[List[GpuUtilizationInfo]] = None):
+        workers = self._get_worker_processes()
+        if not workers:
+            return []
+        else:
             # We should keep `raylet_proc.children()` in `self` because
             # when `cpu_percent` is first called, it returns the meaningless 0.
             # See more: https://github.com/ray-project/ray/issues/29848
@@ -926,7 +943,7 @@ class ReporterAgent(
                     processes = gpu.get("processes_pids")
                     if processes:
                         for proc in processes.values():
-                            gpu_pid_mapping[proc.pid].append(proc)
+                            gpu_pid_mapping[proc["pid"]].append(proc)
 
             result = []
             for w in self._workers.values():
@@ -989,7 +1006,9 @@ class ReporterAgent(
         if self._gcs_pid:
             gcs_proc = psutil.Process(self._gcs_pid)
             if gcs_proc:
-                return gcs_proc.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
+                dictionary = gcs_proc.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
+                dictionary["cpu_percent"] = gcs_proc.cpu_percent(interval=1)
+                return dictionary
         return {}
 
     def _get_raylet(self):
@@ -1319,10 +1338,12 @@ class ReporterAgent(
     def _to_records(self, stats, cluster_stats) -> List[Record]:
         records_reported = []
         ip = stats["ip"]
-        is_head_node = str(self._is_head_node).lower()
+        ray_node_type = "head" if self._is_head_node else "worker"
+        is_head_node = "true" if self._is_head_node else "false"
 
         # Common tags for node-level metrics
-        node_tags = {"ip": ip, "IsHeadNode": is_head_node}
+        # We use RayNodeType to mark head/worker node, IsHeadNode is retained for backward compatibility
+        node_tags = {"ip": ip, "RayNodeType": ray_node_type, "IsHeadNode": is_head_node}
 
         # -- Instance count of cluster --
         # Only report cluster stats on head node
@@ -1729,7 +1750,7 @@ class ReporterAgent(
 
             records = self._to_records(stats, cluster_stats)
 
-            if RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_AGENT:
+            if RAY_ENABLE_OPEN_TELEMETRY:
                 self._open_telemetry_metric_recorder.record_and_export(
                     records,
                     global_tags={
@@ -1748,12 +1769,21 @@ class ReporterAgent(
 
             self._metrics_agent.clean_all_dead_worker_metrics()
 
+        # Convert processes_pids back to a list of dictionaries to maintain backwards-compatibility
+        for gpu in stats["gpus"]:
+            if isinstance(gpu.get("processes_pids"), dict):
+                gpu["processes_pids"] = list(gpu["processes_pids"].values())
+
+        # TODO(aguo): Add a pydantic model for this dict to maintain compatibility
+        # with the Ray Dashboard API and UI code.
+
+        # NOTE: This converts keys to "Google style", (e.g: "processes_pids" -> "processesPids")
         return jsonify_asdict(stats)
 
     async def run(self, server):
         if server:
             reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
-            if RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE:
+            if RAY_ENABLE_OPEN_TELEMETRY:
                 metrics_service_pb2_grpc.add_MetricsServiceServicer_to_server(
                     self, server
                 )

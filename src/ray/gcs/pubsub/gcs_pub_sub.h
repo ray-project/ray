@@ -16,21 +16,16 @@
 
 #include <deque>
 #include <memory>
-#include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
-#include "ray/common/ray_config.h"
 #include "ray/gcs/callback.h"
-#include "ray/pubsub/publisher.h"
-#include "ray/pubsub/subscriber.h"
+#include "ray/pubsub/publisher_interface.h"
+#include "ray/pubsub/subscriber_interface.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
-#include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
 namespace gcs {
@@ -43,15 +38,13 @@ class GcsPublisher {
   /// Initializes GcsPublisher with GCS based publishers.
   /// Publish*() member functions below would be incrementally converted to use the GCS
   /// based publisher, if available.
-  explicit GcsPublisher(std::unique_ptr<pubsub::Publisher> publisher)
+  explicit GcsPublisher(std::unique_ptr<pubsub::PublisherInterface> publisher)
       : publisher_(std::move(publisher)) {
     RAY_CHECK(publisher_);
   }
 
-  virtual ~GcsPublisher() = default;
-
   /// Returns the underlying pubsub::Publisher. Caller does not take ownership.
-  pubsub::Publisher &GetPublisher() const { return *publisher_; }
+  pubsub::PublisherInterface &GetPublisher() const { return *publisher_; }
 
   /// Each publishing method below publishes to a different "channel".
   /// ID is the entity which the message is associated with, e.g. ActorID for Actor data.
@@ -63,38 +56,22 @@ class GcsPublisher {
   /// TODO: Verify GCS pubsub satisfies the streaming semantics.
   /// TODO: Implement optimization for channels where only latest data per ID is useful.
 
-  Status PublishActor(const ActorID &id,
-                      rpc::ActorTableData message,
-                      const StatusCallback &done);
+  void PublishActor(const ActorID &id, rpc::ActorTableData message);
 
-  // TODO(dayshah): Look at possibility of moving all of these rpc messages
+  void PublishJob(const JobID &id, rpc::JobTableData message);
 
-  Status PublishJob(const JobID &id,
-                    const rpc::JobTableData &message,
-                    const StatusCallback &done);
-
-  virtual Status PublishNodeInfo(const NodeID &id,
-                                 const rpc::GcsNodeInfo &message,
-                                 const StatusCallback &done);
+  void PublishNodeInfo(const NodeID &id, rpc::GcsNodeInfo message);
 
   /// Actually rpc::WorkerDeltaData is not a delta message.
-  Status PublishWorkerFailure(const WorkerID &id,
-                              const rpc::WorkerDeltaData &message,
-                              const StatusCallback &done);
+  void PublishWorkerFailure(const WorkerID &id, rpc::WorkerDeltaData message);
 
-  virtual Status PublishError(const std::string &id,
-                              const rpc::ErrorTableData &message,
-                              const StatusCallback &done);
-
-  /// TODO: remove once it is converted to GRPC-based push broadcasting.
-  Status PublishResourceBatch(const rpc::ResourceUsageBatchData &message,
-                              const StatusCallback &done);
+  void PublishError(std::string id, rpc::ErrorTableData message);
 
   /// Prints debugging info for the publisher.
   std::string DebugString() const;
 
  private:
-  const std::unique_ptr<pubsub::Publisher> publisher_;
+  const std::unique_ptr<pubsub::PublisherInterface> publisher_;
 };
 
 /// \class GcsSubscriber
@@ -104,9 +81,9 @@ class GcsSubscriber {
  public:
   /// Initializes GcsSubscriber with GCS based GcsSubscribers.
   // TODO(mwtian): Support restarted GCS publisher, at the same or a different address.
-  GcsSubscriber(const rpc::Address &gcs_address,
-                std::unique_ptr<pubsub::Subscriber> subscriber)
-      : gcs_address_(gcs_address), subscriber_(std::move(subscriber)) {}
+  GcsSubscriber(rpc::Address gcs_address,
+                std::unique_ptr<pubsub::SubscriberInterface> subscriber)
+      : gcs_address_(std::move(gcs_address)), subscriber_(std::move(subscriber)) {}
 
   /// Subscribe*() member functions below would be incrementally converted to use the GCS
   /// based subscriber, if available.
@@ -141,11 +118,11 @@ class GcsSubscriber {
 // This client is only supposed to be used from Cython / Python
 class RAY_EXPORT PythonGcsSubscriber {
  public:
-  explicit PythonGcsSubscriber(const std::string &gcs_address,
-                               int gcs_port,
-                               rpc::ChannelType channel_type,
-                               const std::string &subscriber_id,
-                               const std::string &worker_id);
+  PythonGcsSubscriber(const std::string &gcs_address,
+                      int gcs_port,
+                      rpc::ChannelType channel_type,
+                      std::string subscriber_id,
+                      std::string worker_id);
 
   /// Register a subscription for the subscriber's channel type.
   ///
@@ -160,9 +137,6 @@ class RAY_EXPORT PythonGcsSubscriber {
   /// Polls for new log messages.
   Status PollLogs(std::string *key_id, int64_t timeout_ms, rpc::LogBatch *data);
 
-  /// Polls for actor messages.
-  Status PollActor(std::string *key_id, int64_t timeout_ms, rpc::ActorTableData *data);
-
   /// Closes the subscriber and its active subscription.
   Status Close();
 
@@ -173,22 +147,23 @@ class RAY_EXPORT PythonGcsSubscriber {
 
   mutable absl::Mutex mu_;
 
-  std::unique_ptr<rpc::InternalPubSubGcsService::Stub> pubsub_stub_;
   std::shared_ptr<grpc::Channel> channel_;
+  std::unique_ptr<rpc::InternalPubSubGcsService::Stub> pubsub_stub_;
+
   const rpc::ChannelType channel_type_;
   const std::string subscriber_id_;
   std::string publisher_id_;
   const std::string worker_id_;
-  int64_t max_processed_sequence_id_ ABSL_GUARDED_BY(mu_);
-  int64_t last_batch_size_ ABSL_GUARDED_BY(mu_);
+  int64_t max_processed_sequence_id_ ABSL_GUARDED_BY(mu_) = 0;
+  int64_t last_batch_size_ ABSL_GUARDED_BY(mu_) = 0;
   std::deque<rpc::PubMessage> queue_ ABSL_GUARDED_BY(mu_);
-  bool closed_ ABSL_GUARDED_BY(mu_);
+  bool closed_ ABSL_GUARDED_BY(mu_) = false;
   std::shared_ptr<grpc::ClientContext> current_polling_context_ ABSL_GUARDED_BY(mu_);
 };
 
 /// Get the .lines() attribute of a LogBatch as a std::vector
 /// (this is needed so it can be wrapped in Cython)
-std::vector<std::string> PythonGetLogBatchLines(const rpc::LogBatch &log_batch);
+std::vector<std::string> PythonGetLogBatchLines(rpc::LogBatch log_batch);
 
 }  // namespace gcs
 }  // namespace ray
