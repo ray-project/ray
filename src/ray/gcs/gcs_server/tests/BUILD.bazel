@@ -337,6 +337,7 @@ ray_cc_test(
         "//src/ray/common:asio",
         "//src/ray/common:test_utils",
         "//src/ray/gcs/gcs_server:gcs_autoscaler_state_manager",
+        "//src/ray/gcs:gcs_pb_util",
         "//src/ray/gcs/gcs_server:gcs_init_data",
         "//src/ray/gcs/gcs_server:gcs_resource_manager",
         "//src/ray/gcs/gcs_server:gcs_store_client_kv",
