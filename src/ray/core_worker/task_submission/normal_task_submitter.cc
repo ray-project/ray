@@ -22,7 +22,7 @@
 #include <vector>
 
 #include "ray/common/lease/lease_spec.h"
-#include "ray/gcs/pb_util.h"
+#include "ray/common/protobuf_utils.h"
 
 namespace ray {
 namespace core {

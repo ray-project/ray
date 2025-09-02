@@ -39,7 +39,7 @@
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/status.h"
 #include "ray/flatbuffers/node_manager_generated.h"
-#include "ray/gcs/pb_util.h"
+#include "ray/common/protobuf_utils.h"
 #include "ray/ipc/client_connection.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/worker_killing_policy.h"

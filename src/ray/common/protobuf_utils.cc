@@ -19,7 +19,7 @@
 #include <utility>
 
 #include "absl/strings/str_format.h"
-#include "ray/gcs/pb_util.h"
+#include "ray/common/protobuf_utils.h"
 
 namespace ray::gcs {
 

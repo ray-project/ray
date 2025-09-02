@@ -27,7 +27,7 @@
 #include "ray/gcs/gcs_server/gcs_ray_event_converter.h"
 #include "ray/gcs/gcs_server/grpc_service_interfaces.h"
 #include "ray/gcs/gcs_server/usage_stats_client.h"
-#include "ray/gcs/pb_util.h"
+#include "ray/common/protobuf_utils.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/counter_map.h"
 #include "src/ray/protobuf/gcs.pb.h"
