@@ -10,5 +10,6 @@ ray_cc_library(
         "//src/ray/common:test_util",
         "//src/ray/protobuf:autoscaler_cc_grpc",
         "//src/ray/protobuf:gcs_service_cc_grpc",
+        "//src/ray/util:time",
     ],
 )
