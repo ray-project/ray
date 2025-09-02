@@ -497,6 +497,20 @@ def test_worker_group_callback():
     assert hooks.shutdown_hook_called
 
 
+def test_worker_log_file_paths():
+    """Test that log file paths are correctly assigned to workers."""
+    wg = _default_inactive_worker_group()
+    wg._start()
+
+    # Check that all workers have log file paths assigned
+    workers = wg.get_workers()
+    for worker in workers:
+        assert worker.log_file_path is not None
+        assert "ray-train-app-worker" in worker.log_file_path
+
+    wg.shutdown()
+
+
 def test_worker_group_abort(monkeypatch):
     class AssertCallback(WorkerGroupCallback):
         def __init__(self):
@@ -520,20 +534,6 @@ def test_worker_group_abort(monkeypatch):
 
     # Bypass _assert_active method, allowing for shutdown
     monkeypatch.setattr(wg, "_assert_active", lambda: None)
-
-    wg.shutdown()
-
-
-def test_worker_log_file_paths():
-    """Test that log file paths are correctly assigned to workers."""
-    wg = _default_inactive_worker_group()
-    wg._start()
-
-    # Check that all workers have log file paths assigned
-    workers = wg.get_workers()
-    for worker in workers:
-        assert worker.log_file_path is not None
-        assert "ray-train-app-worker" in worker.log_file_path
 
     wg.shutdown()
 
