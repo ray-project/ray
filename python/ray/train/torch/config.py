@@ -112,6 +112,7 @@ def _setup_torch_process_group(
             f"world_size={world_size}]"
         )
     logger.debug(f"using {backend}")
+    logger.info(f"using world_rank={world_rank}, world_size={world_size}, backend={backend}")
 
      # Hard guard: if *anything* already initialized the default group, bail out.
     if dist.is_initialized():
@@ -140,6 +141,7 @@ def _setup_torch_process_group(
         register_custom_torch_dist_backend(backend)
     elif backend == "xla":
         import torch_xla.distributed.xla_backend
+        assert xr.using_spmd(), "XLA_USE_SPMD must be 1 before PG init"
         # General backend setup for other backends (gloo, nccl, etc.)
         if dist.is_initialized():
             logger.warning("Process group already initialized. Skipping.")
@@ -254,6 +256,9 @@ class _TorchBackend(Backend):
                     os.environ["PJRT_COORDINATOR_ADDRESS"] = coord
                     os.environ["PJRT_NUM_PROCESSES"] = str(context.get_world_size())
                     os.environ["PJRT_PROCESS_INDEX"] = str(context.get_world_rank())
+
+                    # once again, turn on spmd
+                    os.environ["XLA_USE_SPMD"] = "1"
                     
                     # CRITICAL: Use Ray's world size and rank for consistency
                     # os.environ["PJRT_WORLD_SIZE"] = str(context.get_world_size())
