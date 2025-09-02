@@ -417,10 +417,12 @@ You can configure execution options with the global DataContext. The options are
 
 .. code-block::
 
-   ctx = ray.data.DataContext.get_current()
-   ctx.execution_options.resource_limits.cpu = 10
-   ctx.execution_options.resource_limits.gpu = 5
-   ctx.execution_options.resource_limits.object_store_memory = 10e9
+    ctx = ray.data.DataContext.get_current()
+    ctx.execution_options.resource_limits = ctx.execution_options.resource_limits.copy(
+        cpu=10,
+        gpu=5,
+        object_store_memory=10e9,
+    )
 
 .. note::
     It's **not** recommended to modify the Ray Core object store memory limit, as this can reduce available memory for task execution. The one exception to this is if you are using machines with a very large amount of RAM (1 TB or more each); then it's recommended to set the object store to ~30-40%.
