@@ -135,7 +135,6 @@ Ray Train Utilities
     :toctree: doc/
 
     ~train.Checkpoint
-    ~train.ReportedCheckpoint
     ~train.v2.api.context.TrainContext
 
 **Functions**
@@ -167,6 +166,7 @@ Ray Train Output
     :template: autosummary/class_without_autosummary.rst
     :toctree: doc/
 
+    ~train.ReportedCheckpoint
     ~train.Result
 
 Ray Train Errors
