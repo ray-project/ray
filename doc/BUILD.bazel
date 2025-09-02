@@ -202,6 +202,17 @@ py_test(
     ],
 )
 
+ py_test( 
+     name = "doc_code_direct_transport_gloo", 
+     size = "small", 
+     srcs = ["source/ray-core/doc_code/direct_transport_gloo.py"], 
+     main = "source/ray-core/doc_code/direct_transport_gloo.py", 
+     tags = [ 
+         "exclusive", 
+         "team:core", 
+     ], 
+ ) 
+
 py_test_run_all_subdirectory(
     size = "medium",
     include = ["source/ray-core/doc_code/*.py"],
