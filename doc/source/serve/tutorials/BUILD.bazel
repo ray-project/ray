@@ -8,6 +8,6 @@ filegroup(
 # Discover the CI config files to trigger the release test CI
 filegroup(
     name = "deployment_serve_llm_example_configs",
-    srcs = glob(["deployment-serve-llm/**/*/.yaml"]),
+    srcs = glob(["deployment-serve-llm/**/*.yaml"]),
     visibility = ["//release:__pkg__"],
 )
