@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "ray/common/protobuf_utils.h"
+#include "ray/util/time.h"
 
 namespace ray {
 namespace core {

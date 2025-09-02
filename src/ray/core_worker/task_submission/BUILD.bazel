@@ -57,6 +57,9 @@ ray_cc_library(
     name = "actor_task_submitter",
     srcs = ["actor_task_submitter.cc"],
     hdrs = ["actor_task_submitter.h"],
+    implementation_deps = [
+        "//src/ray/util:time",
+    ],
     visibility = [
         ":__subpackages__",
         "//src/ray/core_worker:__pkg__",
