@@ -22,8 +22,8 @@
 #include "mock/ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
 #include "mock/ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "mock/ray/gcs/store_client/store_client.h"
+#include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
-#include "ray/gcs/tests/gcs_test_util.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/util/counter_map.h"
 
@@ -69,14 +69,13 @@ class GcsPlacementGroupManagerMockTest : public Test {
 TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule) {
   // Test priority works
   //   When return with reschedule, it should be given with the highest pri
-  auto req =
-      Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
+  auto req = GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
   auto pg = std::make_shared<GcsPlacementGroup>(req, "", counter_);
   auto cb = [](Status s) {};
   SchedulePgRequest request;
   std::unique_ptr<Postable<void(bool)>> put_cb;
   EXPECT_CALL(*store_client_, AsyncPut(_, _, _, _, _))
-      .WillOnce(DoAll(SaveArgToUniquePtr<4>(&put_cb), Return(Status::OK())));
+      .WillOnce(DoAll(SaveArgToUniquePtr<4>(&put_cb)));
   EXPECT_CALL(*gcs_placement_group_scheduler_, ScheduleUnplacedBundles(_))
       .WillOnce(DoAll(SaveArg<0>(&request)));
   auto now = absl::GetCurrentTimeNanos();
@@ -96,14 +95,13 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule) {
 TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed) {
   // Test priority works
   //   When return with a failure, exp backoff should work
-  auto req =
-      Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
+  auto req = GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
   auto pg = std::make_shared<GcsPlacementGroup>(req, "", counter_);
   auto cb = [](Status s) {};
   SchedulePgRequest request;
   std::unique_ptr<Postable<void(bool)>> put_cb;
   EXPECT_CALL(*store_client_, AsyncPut(_, _, _, _, _))
-      .WillOnce(DoAll(SaveArgToUniquePtr<4>(&put_cb), Return(Status::OK())));
+      .WillOnce(DoAll(SaveArgToUniquePtr<4>(&put_cb)));
   EXPECT_CALL(*gcs_placement_group_scheduler_, ScheduleUnplacedBundles(_))
       .Times(2)
       .WillRepeatedly(DoAll(SaveArg<0>(&request)));
@@ -150,18 +148,16 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityOrder) {
   // Test priority works
   //   Add two pgs
   //   Fail one and make sure it's scheduled later
-  auto req1 =
-      Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
+  auto req1 = GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
   auto pg1 = std::make_shared<GcsPlacementGroup>(req1, "", counter_);
-  auto req2 =
-      Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
+  auto req2 = GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
   auto pg2 = std::make_shared<GcsPlacementGroup>(req2, "", counter_);
   auto cb = [](Status s) {};
   SchedulePgRequest request;
   std::unique_ptr<Postable<void(bool)>> put_cb;
   EXPECT_CALL(*store_client_, AsyncPut(_, _, _, _, _))
       .Times(2)
-      .WillRepeatedly(DoAll(SaveArgToUniquePtr<4>(&put_cb), Return(Status::OK())));
+      .WillRepeatedly(DoAll(SaveArgToUniquePtr<4>(&put_cb)));
   EXPECT_CALL(*gcs_placement_group_scheduler_, ScheduleUnplacedBundles(_))
       .Times(2)
       .WillRepeatedly(DoAll(SaveArg<0>(&request)));
