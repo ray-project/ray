@@ -273,8 +273,7 @@ class FileBasedDatasource(Datasource):
                     num_threads = 0
 
                 if num_threads > 0:
-                    if len(read_paths) < num_threads:
-                        num_threads = len(read_paths)
+                    num_threads = min(num_threads, len(read_paths))
 
                     logger.debug(
                         f"Reading {len(read_paths)} files with {num_threads} threads."
