@@ -29,7 +29,7 @@ def benchmark_fn():
             image = Image.open(io.BytesIO(b)).convert("RGB")
             images.append(np.array(image))
         del batch["image_bytes"]
-        batch["image"] = np.stack(images)
+        batch["image"] = np.array(images, dtype=object)
         return batch
 
     def convert_key(table):
