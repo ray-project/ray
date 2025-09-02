@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
+#include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 
 #include <gtest/gtest.h>
 
@@ -816,9 +816,9 @@ TEST_F(GcsPlacementGroupManagerTest, TestSchedulerReinitializeAfterGcsRestart) {
       /* cpu_num */ 1.0,
       /* job_id */ job_id);
   auto job_table_data = Mocker::GenJobTableData(job_id);
-  RAY_CHECK_OK(gcs_table_storage_->JobTable().Put(
-      job_id, *job_table_data, {[](auto) {}, io_service_}));
-  std::atomic<int> registered_placement_group_count(0);
+  gcs_table_storage_->JobTable().Put(
+      job_id, *job_table_data, {[](auto) {}, io_service_});
+  std::atomic<int> registered_placement_group_count{0};
   RegisterPlacementGroup(request, [&registered_placement_group_count](Status status) {
     ++registered_placement_group_count;
   });
@@ -1244,10 +1244,9 @@ TEST_F(GcsPlacementGroupManagerTest, TestCheckCreatorJobIsDeadWhenGcsRestart) {
       /* job_id */ job_id);
   auto job_table_data = Mocker::GenJobTableData(job_id);
   job_table_data->set_is_dead(true);
-  RAY_CHECK_OK(gcs_table_storage_->JobTable().Put(
-      job_id, *job_table_data, {[](auto) {}, io_service_}));
-
-  std::atomic<int> registered_placement_group_count(0);
+  gcs_table_storage_->JobTable().Put(
+      job_id, *job_table_data, {[](auto) {}, io_service_});
+  std::atomic<int> registered_placement_group_count{0};
   RegisterPlacementGroup(request, [&registered_placement_group_count](Status status) {
     ++registered_placement_group_count;
   });

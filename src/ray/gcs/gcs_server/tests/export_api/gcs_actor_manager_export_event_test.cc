@@ -28,7 +28,6 @@
 #include "ray/gcs/gcs_server/gcs_actor.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
-#include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/tests/gcs_test_util.h"
 #include "ray/pubsub/publisher.h"
@@ -75,7 +74,7 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
   MOCK_METHOD3(CancelOnLeasing,
                void(const NodeID &node_id,
                     const ActorID &actor_id,
-                    const TaskID &task_id));
+                    const LeaseID &lease_id));
 
   std::vector<std::shared_ptr<gcs::GcsActor>> actors;
 };

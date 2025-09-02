@@ -29,7 +29,6 @@
 #include "ray/gcs/gcs_server/gcs_actor.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
-#include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/tests/gcs_test_util.h"
 #include "ray/pubsub/publisher.h"
@@ -72,7 +71,7 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
   MOCK_METHOD3(CancelOnLeasing,
                void(const NodeID &node_id,
                     const ActorID &actor_id,
-                    const TaskID &task_id));
+                    const LeaseID &lease_id));
 
   std::vector<std::shared_ptr<gcs::GcsActor>> actors;
 };
@@ -713,6 +712,24 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionWorkerFailure) {
   ASSERT_TRUE(absl::StrContains(
       actor->GetActorTableData().death_cause().actor_died_error_context().error_message(),
       "worker process has died."));
+  ASSERT_EQ(gcs_actor_manager_->GetActorIDByName(actor_name, "test"),
+            actor->GetActorID());
+
+  // Detached actor has no reply of WaitForActorRefDeleted request.
+  ASSERT_FALSE(worker_client_->Reply());
+  // Kill this detached actor
+  rpc::KillActorViaGcsReply reply;
+  rpc::KillActorViaGcsRequest request;
+  request.set_actor_id(actor->GetActorID().Binary());
+  request.set_force_kill(true);
+  request.set_no_restart(true);
+  gcs_actor_manager_->HandleKillActorViaGcs(
+      request,
+      &reply,
+      /*send_reply_callback*/
+      [](Status status, std::function<void()> success, std::function<void()> failure) {});
+  io_service_.run_one();
+
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName(actor_name, "test"), ActorID::Nil());
 
   // Create an actor with the same name. This ensures that the name has been properly
@@ -907,9 +924,8 @@ TEST_F(GcsActorManagerTest, TestRaceConditionCancelLease) {
   address.set_worker_id(worker_id.Binary());
   actor->UpdateAddress(address);
   const auto &actor_id = actor->GetActorID();
-  const auto &task_id = TaskID::FromBinary(
-      registered_actor->GetCreationTaskSpecification().GetMessage().task_id());
-  EXPECT_CALL(*mock_actor_scheduler_, CancelOnLeasing(node_id, actor_id, task_id));
+  // LeaseID is randomly generated, so we can't check for a specific lease ID.
+  EXPECT_CALL(*mock_actor_scheduler_, CancelOnLeasing(node_id, actor_id, _));
   gcs_actor_manager_->OnWorkerDead(owner_node_id, owner_worker_id);
   io_service_.run_one();
   ASSERT_TRUE(actor->GetActorTableData().death_cause().has_actor_died_error_context());

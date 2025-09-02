@@ -22,9 +22,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "ray/common/common_protocol.h"
 #include "ray/common/id.h"
-#include "ray/common/task/task.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/util/counter_map.h"
 
@@ -32,36 +30,36 @@ namespace ray {
 
 namespace raylet {
 
-/// Used for unit-testing the ClusterTaskManager, which requests dependencies
-/// for queued tasks.
-class TaskDependencyManagerInterface {
+/// Used for unit-testing the ClusterLeaseManager, which requests dependencies
+/// for queued leases.
+class LeaseDependencyManagerInterface {
  public:
-  virtual bool RequestTaskDependencies(
-      const TaskID &task_id,
+  virtual bool RequestLeaseDependencies(
+      const LeaseID &lease_id,
       const std::vector<rpc::ObjectReference> &required_objects,
-      const TaskMetricsKey &task_key) = 0;
-  virtual void RemoveTaskDependencies(const TaskID &task_id) = 0;
-  virtual bool TaskDependenciesBlocked(const TaskID &task_id) const = 0;
+      const TaskMetricsKey &lease_key) = 0;
+  virtual void RemoveLeaseDependencies(const LeaseID &lease_id) = 0;
+  virtual bool LeaseDependenciesBlocked(const LeaseID &lease_id) const = 0;
   virtual bool CheckObjectLocal(const ObjectID &object_id) const = 0;
-  virtual ~TaskDependencyManagerInterface(){};
+  virtual ~LeaseDependencyManagerInterface() = default;
 };
 
-/// \class DependencyManager
+/// \class LeaseDependencyManager
 ///
 /// Responsible for managing object dependencies for local workers calling
 /// `ray.get` or `ray.wait` and arguments of queued tasks. The caller can
-/// request object dependencies for a task or worker. The task manager will
+/// request object dependencies for a lease or worker. The lease manager will
 /// determine which object dependencies are remote and will request that these
 /// objects be made available locally, either via the object manager or by
 /// storing an error if the object is lost.
-class DependencyManager : public TaskDependencyManagerInterface {
+class LeaseDependencyManager : public LeaseDependencyManagerInterface {
  public:
-  /// Create a task dependency manager.
-  explicit DependencyManager(ObjectManagerInterface &object_manager)
+  /// Create a lease dependency manager.
+  explicit LeaseDependencyManager(ObjectManagerInterface &object_manager)
       : object_manager_(object_manager) {
-    waiting_tasks_counter_.SetOnChangeCallback(
+    waiting_leases_counter_.SetOnChangeCallback(
         [this](std::pair<std::string, bool> key) mutable {
-          int64_t num_total = waiting_tasks_counter_.Get(key);
+          int64_t num_total = waiting_leases_counter_.Get(key);
           // Of the waiting tasks of this name, some fraction may be inactive (blocked on
           // object store memory availability). Get this breakdown by querying the pull
           // manager.
@@ -94,7 +92,7 @@ class DependencyManager : public TaskDependencyManagerInterface {
   ///
   /// \param object_id The object to check for.
   /// \return Whether the object is local.
-  bool CheckObjectLocal(const ObjectID &object_id) const;
+  bool CheckObjectLocal(const ObjectID &object_id) const override;
 
   /// Get the address of the owner of this object. An address will only be
   /// returned if the caller previously specified that this object is required
@@ -141,54 +139,54 @@ class DependencyManager : public TaskDependencyManagerInterface {
                                const std::vector<rpc::ObjectReference> &required_objects);
 
   /// Cancel a worker's `ray.get` request. We will no longer attempt to fetch
-  /// any objects that this worker requested previously, if no other task or
+  /// any objects that this worker requested previously, if no other lease or
   /// worker requires them.
   ///
   /// \param worker_id The ID of the worker whose `ray.get` request we should
   /// cancel.
   void CancelGetRequest(const WorkerID &worker_id);
 
-  /// Request dependencies for a queued task. This will attempt to make any
-  /// remote objects local until the caller cancels the task's dependencies.
+  /// Request dependencies for a queued lease. This will attempt to make any
+  /// remote objects local until the caller cancels the lease's dependencies.
   ///
-  /// This method can only be called once per task, until the task has been
+  /// This method can only be called once per lease, until the lease has been
   /// canceled.
   ///
-  /// \param task_id The task that requires the objects.
-  /// \param required_objects The objects required by the task.
-  bool RequestTaskDependencies(const TaskID &task_id,
-                               const std::vector<rpc::ObjectReference> &required_objects,
-                               const TaskMetricsKey &task_key);
+  /// \param lease_id The lease that requires the objects.
+  /// \param required_objects The objects required by the lease.
+  bool RequestLeaseDependencies(const LeaseID &lease_id,
+                                const std::vector<rpc::ObjectReference> &required_objects,
+                                const TaskMetricsKey &task_key) override;
 
-  /// Cancel a task's dependencies. We will no longer attempt to fetch any
-  /// remote dependencies, if no other task or worker requires them.
+  /// Cancel a lease's dependencies. We will no longer attempt to fetch any
+  /// remote dependencies, if no other lease or worker requires them.
   ///
-  /// This method can only be called on a task whose dependencies were added.
+  /// This method can only be called on a lease whose dependencies were added.
   ///
-  /// \param task_id The task that requires the objects.
-  /// \param required_objects The objects required by the task.
-  void RemoveTaskDependencies(const TaskID &task_id);
+  /// \param lease_id The lease that requires the objects.
+  /// \param required_objects The objects required by the lease.
+  void RemoveLeaseDependencies(const LeaseID &lease_id) override;
 
   /// Handle an object becoming locally available.
   ///
   /// \param object_id The object ID of the object to mark as locally
   /// available.
-  /// \return A list of task IDs. This contains all added tasks that now have
+  /// \return A list of lease IDs. This contains all granted leases that now have
   /// all of their dependencies fulfilled.
-  std::vector<TaskID> HandleObjectLocal(const ray::ObjectID &object_id);
+  std::vector<LeaseID> HandleObjectLocal(const ray::ObjectID &object_id);
 
   /// Handle an object that is no longer locally available.
   ///
   /// \param object_id The object ID of the object that was previously locally
   /// available.
-  /// \return A list of task IDs. This contains all added tasks that previously
+  /// \return A list of lease IDs. This contains all granted leases that previously
   /// had all of their dependencies fulfilled, but are now missing this object
   /// dependency.
-  std::vector<TaskID> HandleObjectMissing(const ray::ObjectID &object_id);
+  std::vector<LeaseID> HandleObjectMissing(const ray::ObjectID &object_id);
 
-  /// Check whether a requested task's dependencies are not being fetched to
+  /// Check whether a requested lease's dependencies are not being fetched to
   /// the local node due to lack of memory.
-  bool TaskDependenciesBlocked(const TaskID &task_id) const;
+  bool LeaseDependenciesBlocked(const LeaseID &lease_id) const override;
 
   /// Returns debug string for class.
   ///
@@ -200,13 +198,13 @@ class DependencyManager : public TaskDependencyManagerInterface {
 
  private:
   /// Metadata for an object that is needed by at least one executing worker
-  /// and/or one queued task.
+  /// and/or one queued lease.
   struct ObjectDependencies {
     explicit ObjectDependencies(const rpc::ObjectReference &ref)
         : owner_address(ref.owner_address()) {}
-    /// The tasks that depend on this object, either because the object is a task argument
-    /// or because the task called `ray.get` on the object.
-    std::unordered_set<TaskID> dependent_tasks;
+    /// The leases that depend on this object, either because the object is a lease
+    /// argument or because the lease of the lease called `ray.get` on the object.
+    std::unordered_set<LeaseID> dependent_leases;
     /// The workers that depend on this object because they called `ray.get` on the
     /// object.
     std::unordered_set<WorkerID> dependent_get_requests;
@@ -220,26 +218,26 @@ class DependencyManager : public TaskDependencyManagerInterface {
     rpc::Address owner_address;
 
     bool Empty() const {
-      return dependent_tasks.empty() && dependent_get_requests.empty() &&
+      return dependent_leases.empty() && dependent_get_requests.empty() &&
              dependent_wait_requests.empty();
     }
   };
 
   /// A struct to represent the object dependencies of a task.
-  struct TaskDependencies {
-    TaskDependencies(const absl::flat_hash_set<ObjectID> &deps,
-                     CounterMap<std::pair<std::string, bool>> &counter_map,
-                     const TaskMetricsKey &task_key)
+  struct LeaseDependencies {
+    LeaseDependencies(absl::flat_hash_set<ObjectID> deps,
+                      CounterMap<std::pair<std::string, bool>> &counter_map,
+                      TaskMetricsKey task_key)
         : dependencies_(std::move(deps)),
           num_missing_dependencies_(dependencies_.size()),
           waiting_task_counter_map_(counter_map),
-          task_key_(task_key) {
+          task_key_(std::move(task_key)) {
       if (num_missing_dependencies_ > 0) {
         waiting_task_counter_map_.Increment(task_key_);
       }
     }
-    /// The objects that the task depends on. These are the arguments to the
-    /// task. These must all be simultaneously local before the task is ready
+    /// The objects that the lease depends on. These are the arguments to the
+    /// lease. These must all be simultaneously local before the lease is ready
     /// to execute. Objects are removed from this set once
     /// UnsubscribeGetDependencies is called.
     absl::flat_hash_set<ObjectID> dependencies_;
@@ -268,7 +266,10 @@ class DependencyManager : public TaskDependencyManagerInterface {
       }
     }
 
-    ~TaskDependencies() {
+    LeaseDependencies(const LeaseDependencies &) = delete;
+    LeaseDependencies &operator=(const LeaseDependencies &) = delete;
+
+    ~LeaseDependencies() {
       if (num_missing_dependencies_ > 0) {
         waiting_task_counter_map_.Decrement(task_key_);
       }
@@ -280,16 +281,16 @@ class DependencyManager : public TaskDependencyManagerInterface {
   void RemoveObjectIfNotNeeded(
       absl::flat_hash_map<ObjectID, ObjectDependencies>::iterator required_object_it);
 
-  /// Start tracking an object that is needed by a worker and/or queued task.
+  /// Start tracking an object that is needed by a worker and/or queued lease.
   absl::flat_hash_map<ObjectID, ObjectDependencies>::iterator GetOrInsertRequiredObject(
       const ObjectID &object_id, const rpc::ObjectReference &ref);
 
   /// The object manager, used to fetch required objects from remote nodes.
   ObjectManagerInterface &object_manager_;
 
-  /// A map from the ID of a queued task to metadata about whether the task's
+  /// A map from the ID of a queued lease to metadata about whether the lease's
   /// dependencies are all local or not.
-  absl::flat_hash_map<TaskID, std::unique_ptr<TaskDependencies>> queued_task_requests_;
+  absl::flat_hash_map<LeaseID, std::unique_ptr<LeaseDependencies>> queued_lease_requests_;
 
   /// A map from worker ID to the set of objects that the worker called
   /// `ray.get` on and a pull request ID for these objects. The pull request ID
@@ -303,20 +304,20 @@ class DependencyManager : public TaskDependencyManagerInterface {
   /// or the worker cancels the `ray.wait` request.
   absl::flat_hash_map<WorkerID, absl::flat_hash_set<ObjectID>> wait_requests_;
 
-  /// Deduplicated pool of objects required by all queued tasks and workers.
-  /// Objects are removed from this set once there are no more tasks or workers
+  /// Deduplicated pool of objects required by all queued leases and workers.
+  /// Objects are removed from this set once there are no more leases or workers
   /// that require it.
   absl::flat_hash_map<ObjectID, ObjectDependencies> required_objects_;
 
   /// The set of locally available objects. This is used to determine which
-  /// tasks are ready to run and which `ray.wait` requests can be finished.
-  std::unordered_set<ray::ObjectID> local_objects_;
+  /// leases are ready to run and which `ray.wait` requests can be finished.
+  absl::flat_hash_set<ray::ObjectID> local_objects_;
 
-  /// Counts the number of active task dependency fetches by task name. The counter
-  /// total will be less than or equal to the size of queued_task_requests_.
-  CounterMap<TaskMetricsKey> waiting_tasks_counter_;
+  /// Counts the number of active lease dependency fetches by lease name. The counter
+  /// total will be less than or equal to the size of queued_lease_requests_.
+  CounterMap<TaskMetricsKey> waiting_leases_counter_;
 
-  friend class DependencyManagerTest;
+  friend class LeaseDependencyManagerTest;
 };
 
 }  // namespace raylet
