@@ -2,7 +2,6 @@ import sys
 import torch
 import pytest
 import ray
-import time
 
 
 @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
@@ -79,7 +78,6 @@ def test_put_and_get_object(ray_start_regular):
     ref1 = dst_actor.consume.remote(ref)
     result = ray.get(ref1)
     assert result == 45
-    time.sleep(5)
 
 
 if __name__ == "__main__":
