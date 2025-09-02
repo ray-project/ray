@@ -22,6 +22,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
+#include "ray/util/time.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
