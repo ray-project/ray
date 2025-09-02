@@ -82,11 +82,6 @@ bool ShutdownCoordinator::RequestShutdown(
   return true;
 }
 
-bool ShutdownCoordinator::TryInitiateShutdown(ShutdownReason reason) {
-  // Legacy compatibility - delegate to graceful shutdown by default
-  return RequestShutdown(false, reason, "", kInfiniteTimeout, nullptr);
-}
-
 bool ShutdownCoordinator::TryTransitionToDisconnecting() {
   std::lock_guard<std::mutex> lock(mu_);
   if (state_ != ShutdownState::kShuttingDown) {
