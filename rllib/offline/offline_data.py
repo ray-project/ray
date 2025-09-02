@@ -90,6 +90,9 @@ class OfflineData:
                 }
             )
 
+        # TODO (simon): Factorize this into a method that can be customized in derived
+        #   classes. See examples/offline/classes/minari_offline_data.py for an example
+        #   where this could help a lot.
         try:
             # Load the dataset.
             start_time = time.perf_counter()
