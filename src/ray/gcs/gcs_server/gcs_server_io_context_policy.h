@@ -37,7 +37,7 @@ struct GcsServerIOContextPolicy {
   static constexpr int GetDedicatedIOContextIndex() {
     if constexpr (std::is_same_v<T, GcsTaskManager>) {
       return IndexOf("task_io_context");
-    } else if constexpr (std::is_same_v<T, GcsPublisher>) {
+    } else if constexpr (std::is_same_v<T, pubsub::GcsPublisher>) {
       return IndexOf("pubsub_io_context");
     } else if constexpr (std::is_same_v<T, syncer::RaySyncer>) {
       return IndexOf("ray_syncer_io_context");
