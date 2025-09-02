@@ -141,6 +141,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
+        "//src/ray/common:protobuf_utils",
         "//src/ray/common:test_utils",
         "//src/ray/gcs/gcs_server:gcs_task_manager",
         "@com_google_googletest//:gtest_main",
