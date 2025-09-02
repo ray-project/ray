@@ -44,6 +44,16 @@ class FakeShutdownExecutor : public ShutdownExecutorInterface {
   std::string last_detail;
   mutable std::mutex mu_;
 
+  std::string GetLastExitType() const {
+    std::lock_guard<std::mutex> lk(mu_);
+    return last_exit_type;
+  }
+
+  std::string GetLastDetail() const {
+    std::lock_guard<std::mutex> lk(mu_);
+    return last_detail;
+  }
+
   void ExecuteGracefulShutdown(std::string_view exit_type,
                                std::string_view detail,
                                std::chrono::milliseconds timeout_ms) override {
@@ -383,7 +393,8 @@ TEST_F(ShutdownCoordinatorTest, Concurrent_DoubleForce_ForceExecutesOnce) {
   // Verify that only one forced shutdown was called
   EXPECT_EQ(fake_ptr->force_calls.load(), 1);
   EXPECT_EQ(fake_ptr->graceful_calls.load(), 0);
-  EXPECT_TRUE(fake_ptr->last_detail == "force1" || fake_ptr->last_detail == "force2");
+  EXPECT_TRUE(fake_ptr->GetLastDetail() == "force1" ||
+              fake_ptr->GetLastDetail() == "force2");
 }
 
 }  // namespace core
