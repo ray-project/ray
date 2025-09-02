@@ -6,16 +6,15 @@ from typing import List
 import pytest
 
 import ray
-from ray import ObjectRef
-from ray._common.test_utils import wait_for_condition
 import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
 import ray.experimental.internal_kv as internal_kv
+from ray import ObjectRef
+from ray._common.test_utils import wait_for_condition
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
     DEBUG_AUTOSCALING_STATUS,
 )
-from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
 from ray._private.test_utils import (
     convert_actor_state,
     generate_system_config_map,
@@ -25,6 +24,7 @@ from ray._private.test_utils import (
     run_string_as_driver,
 )
 from ray.autoscaler._private.commands import debug_status
+from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
 from ray.exceptions import RaySystemError
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
