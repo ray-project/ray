@@ -73,8 +73,14 @@ def render_yaml_template(template: str, env: Optional[Dict] = None):
         ) from e
 
 
-def get_working_dir(test: "Test", test_definition_root: Optional[str] = None) -> str:
-    if _bazel_workspace_dir and test_definition_root:
+def get_working_dir(
+    test: "Test",
+    test_definition_root: Optional[str] = None,
+    bazel_workspace_dir: Optional[str] = None,
+) -> str:
+    if not bazel_workspace_dir:
+        bazel_workspace_dir = _bazel_workspace_dir
+    if bazel_workspace_dir and test_definition_root:
         raise ReleaseTestConfigError(
             "test_definition_root should not be specified when running with Bazel."
         )
@@ -85,8 +91,8 @@ def get_working_dir(test: "Test", test_definition_root: Optional[str] = None) ->
         working_dir = working_dir.lstrip("//")
     else:
         working_dir = os.path.join("release", working_dir)
-    if _bazel_workspace_dir:
-        return os.path.join(_bazel_workspace_dir, working_dir)
+    if bazel_workspace_dir:
+        return os.path.join(bazel_workspace_dir, working_dir)
     else:
         return bazel_runfile(working_dir)
 
