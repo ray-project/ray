@@ -240,11 +240,7 @@ def _array_payload_to_array(payload: "PicklableArrayPayload") -> "pyarrow.Array"
     """Reconstruct an Arrow Array from a possibly nested PicklableArrayPayload."""
     import pyarrow as pa
 
-    from ray.air.util.tensor_extensions.arrow import get_arrow_extension_tensor_types
-
     children = [child_payload.to_array() for child_payload in payload.children]
-
-    tensor_extension_types = get_arrow_extension_tensor_types()
 
     if pa.types.is_dictionary(payload.type):
         # Dedicated path for reconstructing a DictionaryArray, since
@@ -258,16 +254,10 @@ def _array_payload_to_array(payload: "PicklableArrayPayload") -> "pyarrow.Array"
         assert len(children) == 3, len(children)
         offsets, keys, items = children
         return pa.MapArray.from_arrays(offsets, keys, items)
-    elif isinstance(
-        payload.type,
-        tensor_extension_types,
-    ):
-        # Dedicated path for reconstructing an ArrowTensorArray or
-        # ArrowVariableShapedTensorArray, both of which can't be reconstructed by the
-        # Array.from_buffers() API.
+    elif isinstance(payload.type, (pa.ExtensionType, pa.BaseExtensionType)):
         assert len(children) == 1, len(children)
         storage = children[0]
-        return pa.ExtensionArray.from_storage(payload.type, storage)
+        return payload.type.wrap_array(storage)
     else:
         # Common case: use Array.from_buffers() to construct an array of a certain type.
         return pa.Array.from_buffers(
@@ -287,10 +277,6 @@ def _array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPayload":
     type.
     """
     import pyarrow as pa
-
-    from ray.air.util.tensor_extensions.arrow import get_arrow_extension_tensor_types
-
-    tensor_extension_types = get_arrow_extension_tensor_types()
 
     if _is_dense_union(a.type):
         # Dense unions are not supported.
@@ -319,9 +305,7 @@ def _array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPayload":
         return _dictionary_array_to_array_payload(a)
     elif pa.types.is_map(a.type):
         return _map_array_to_array_payload(a)
-    elif isinstance(a.type, tensor_extension_types):
-        return _tensor_array_to_array_payload(a)
-    elif isinstance(a.type, pa.ExtensionType):
+    elif isinstance(a.type, (pa.ExtensionType, pa.BaseExtensionType)):
         return _extension_array_to_array_payload(a)
     else:
         raise ValueError("Unhandled Arrow array type:", a.type)
@@ -649,11 +633,15 @@ def _tensor_array_to_array_payload(a: "ArrowTensorArray") -> "PicklableArrayPayl
 def _extension_array_to_array_payload(
     a: "pyarrow.ExtensionArray",
 ) -> "PicklableArrayPayload":
-    payload = _array_to_array_payload(a.storage)
-    payload.type = a.type
-    payload.length = len(a)
-    payload.null_count = a.null_count
-    return payload
+    storage_payload = _array_to_array_payload(a.storage)
+    return PicklableArrayPayload(
+        type=a.type,
+        length=len(a),
+        buffers=[],
+        null_count=a.null_count,
+        offset=0,
+        children=[storage_payload],
+    )
 
 
 def _copy_buffer_if_needed(
