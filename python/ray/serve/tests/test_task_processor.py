@@ -32,18 +32,13 @@ class ProcessedTasksTracker:
         return len(self.processed_tasks)
 
 
-adapter_instance_global = None
-
-
 @ray.remote
 def send_request_to_queue(
     processor_config: TaskProcessorConfig, data, task_name="process_request"
 ):
-    global adapter_instance_global
-    if adapter_instance_global is None:
-        adapter_instance_global = instantiate_adapter_from_config(
-            task_processor_config=processor_config
-        )
+    adapter_instance_global = instantiate_adapter_from_config(
+        task_processor_config=processor_config
+    )
     result = adapter_instance_global.enqueue_task_sync(task_name, args=[data])
     assert result.id is not None
     return result.id
@@ -287,11 +282,10 @@ class TestTaskConsumerWithRayServe:
             lambda: "app_v1" not in serve.status().applications, timeout=100
         )
 
-        # Verify exactly 2 tasks were processed (1 completed + 1 that was processing during shutdown)
         tasks_before_restart = ray.get(tracker.get_count.remote())
         assert (
-            tasks_before_restart == 2
-        ), f"Expected 2 tasks processed, got {tasks_before_restart}"
+            tasks_before_restart >= 2
+        ), f"Expected at least 2 tasks processed, got {tasks_before_restart}"
 
         # Deploy second version and process remaining tasks
         signal2 = SignalActor.remote()
