@@ -1,10 +1,11 @@
-import logging.config
-import pytest
-import ray
-import logging
-import sys
 import json
+import logging
+import logging.config
+import sys
 
+import pytest
+
+import ray
 from ray._private.ray_logging.filters import CoreContextFilter
 from ray._private.ray_logging.formatters import JSONFormatter, TextFormatter
 from ray._private.ray_logging.logging_config import LoggingConfig
