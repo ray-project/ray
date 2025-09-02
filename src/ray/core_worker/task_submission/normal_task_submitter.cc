@@ -197,14 +197,14 @@ void NormalTaskSubmitter::OnWorkerIdle(
 
     CancelWorkerLeaseIfNeeded(scheduling_key);
   }
-  if (!scheduling_key_entries_.contains(scheduling_key)) {
-    return;
-  }
   RequestNewWorkerIfNeeded(scheduling_key);
 }
 
 void NormalTaskSubmitter::CancelWorkerLeaseIfNeeded(const SchedulingKey &scheduling_key) {
-  auto &scheduling_key_entry = map_find_or_die(scheduling_key_entries_, scheduling_key);
+  if (!scheduling_key_entries_.contains(scheduling_key)) {
+    return;
+  }
+  auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
   auto &task_queue = scheduling_key_entry.task_queue;
   if (!task_queue.empty()) {
     // There are still pending tasks so let the worker lease request succeed.
@@ -233,9 +233,6 @@ void NormalTaskSubmitter::CancelWorkerLeaseIfNeeded(const SchedulingKey &schedul
             // request again. In the latter case, the in-flight lease request
             // should already have been removed from our local state, so we no
             // longer need to cancel.
-            if (!scheduling_key_entries_.contains(scheduling_key)) {
-              return;
-            }
             CancelWorkerLeaseIfNeeded(scheduling_key);
           }
         });
@@ -275,7 +272,10 @@ void NormalTaskSubmitter::ReportWorkerBacklogInternal() {
 
 void NormalTaskSubmitter::ReportWorkerBacklogIfNeeded(
     const SchedulingKey &scheduling_key) {
-  auto &scheduling_key_entry = map_find_or_die(scheduling_key_entries_, scheduling_key);
+  if (!scheduling_key_entries_.contains(scheduling_key)) {
+    return;
+  }
+  auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
 
   if (scheduling_key_entry.last_reported_backlog_size !=
       scheduling_key_entry.BacklogSize()) {
@@ -285,7 +285,10 @@ void NormalTaskSubmitter::ReportWorkerBacklogIfNeeded(
 
 void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduling_key,
                                                    const rpc::Address *raylet_address) {
-  auto &scheduling_key_entry = map_find_or_die(scheduling_key_entries_, scheduling_key);
+  if (!scheduling_key_entries_.contains(scheduling_key)) {
+    return;
+  }
+  auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
 
   const size_t kMaxPendingLeaseRequestsPerSchedulingCategory =
       lease_request_rate_limiter_->GetMaxPendingLeaseRequestsPerSchedulingCategory();
