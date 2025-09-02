@@ -5,8 +5,8 @@ ray_cc_library(
     srcs = ["gcs_pub_sub.cc"],
     hdrs = ["gcs_pub_sub.h"],
     deps = [
-        "//src/ray/common:ray_config",
         "//src/ray/common:gcs_callbacks",
+        "//src/ray/common:ray_config",
         "//src/ray/pubsub:publisher_interface",
         "//src/ray/pubsub:subscriber_interface",
         "//src/ray/rpc:gcs_client",
