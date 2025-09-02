@@ -275,7 +275,7 @@ void NormalTaskSubmitter::ReportWorkerBacklogIfNeeded(
   if (!scheduling_key_entries_.contains(scheduling_key)) {
     return;
   }
-  auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+  const auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
 
   if (scheduling_key_entry.last_reported_backlog_size !=
       scheduling_key_entry.BacklogSize()) {
