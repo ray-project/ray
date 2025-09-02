@@ -285,7 +285,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       rpc::ResizeLocalResourceInstancesReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `ReturnWorkerLease` request.
   void HandleReturnWorkerLease(rpc::ReturnWorkerLeaseRequest request,
                                rpc::ReturnWorkerLeaseReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
@@ -796,7 +795,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   absl::flat_hash_map<NodeID, std::pair<std::string, int32_t>>
       remote_node_manager_addresses_;
 
-  /// Map of workers to their worker ids.
+  /// Map of leased workers to their lease ids.
   absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers_;
 
   /// Optional extra information about why the worker failed.
