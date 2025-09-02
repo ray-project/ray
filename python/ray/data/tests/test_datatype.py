@@ -194,7 +194,7 @@ class TestDataTypeConversions:
     def test_to_arrow_dtype_python_conversion(self):
         """Test conversion from Python to Arrow types."""
         dt = DataType.from_python(int)
-        result = dt.to_arrow_dtype()
+        result = dt.to_arrow_dtype([1])
         # Python int should map to int64 in Arrow
         assert result == pa.int64()
 
