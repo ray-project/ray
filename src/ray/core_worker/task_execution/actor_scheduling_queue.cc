@@ -99,7 +99,7 @@ void ActorSchedulingQueue::Add(
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
         task_id,
         task_spec.JobId(),
-        task_spec.AttemptNumber(),
+        task_spec.TaskAttemptNumber(),
         task_spec,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
         /* include_task_info */ false));
@@ -122,7 +122,7 @@ void ActorSchedulingQueue::Add(
         RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
             inbound_req_task_spec.TaskId(),
             inbound_req_task_spec.JobId(),
-            inbound_req_task_spec.AttemptNumber(),
+            inbound_req_task_spec.TaskAttemptNumber(),
             inbound_req_task_spec,
             rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
             /* include_task_info */ false));
@@ -134,7 +134,7 @@ void ActorSchedulingQueue::Add(
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
         task_id,
         task_spec.JobId(),
-        task_spec.AttemptNumber(),
+        task_spec.TaskAttemptNumber(),
         task_spec,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
         /* include_task_info */ false));

@@ -464,21 +464,20 @@ message LeaseSpec {
   bytes actor_id = 5;
   bool is_detached_actor = 6;
   bytes root_detached_actor_id = 7;
-  int64 max_actor_restarts = 8;
-  map<string, double> required_resources = 9;
-  map<string, double> required_placement_resources = 10;
-  SchedulingStrategy scheduling_strategy = 11;
-  map<string, string> label_selector = 12;
-  int64 depth = 13;
-  RuntimeEnvInfo runtime_env_info = 14;
-  repeated ObjectReference dependencies = 15;
-  bytes parent_task_id = 16;
-  Language language = 17;
-  FunctionDescriptor function_descriptor = 18;
-  repeated string dynamic_worker_options = 19;
-  int32 max_retries = 20;
-  uint64 attempt_number = 21;
-  string task_name = 22;
+  bool is_retriable = 8;
+  bool is_retry = 9;
+  map<string, double> required_resources = 10;
+  map<string, double> required_placement_resources = 11;
+  SchedulingStrategy scheduling_strategy = 12;
+  map<string, string> label_selector = 13;
+  int64 depth = 14;
+  RuntimeEnvInfo runtime_env_info = 15;
+  repeated ObjectReference dependencies = 16;
+  bytes parent_task_id = 17;
+  Language language = 18;
+  FunctionDescriptor function_descriptor = 19;
+  repeated string dynamic_worker_options = 20;
+  string task_name = 21;
 }
 
 /// The task specification encapsulates all immutable information about the
@@ -524,7 +523,7 @@ message TaskSpec {
   // This field is only valid when `type == ACTOR_TASK`.
   ActorTaskSpec actor_task_spec = 16;
   // Number of times this task may be retried on worker failure.
-  int32 max_retries = 17;
+  int32 max_task_retries = 17;
   // Breakpoint if this task should drop into the debugger when it starts executing
   // and "" if the task should not drop into the debugger.
   bytes debugger_breakpoint = 22;
@@ -544,7 +543,7 @@ message TaskSpec {
   SchedulingStrategy scheduling_strategy = 28;
   // A count of the number of times this task has been attempted so far. 0
   // means this is the first execution.
-  uint64 attempt_number = 29;
+  int32 num_task_attempts = 29;
   // This task returns a dynamic number of objects.
   bool returns_dynamic = 30;
   // A list of ObjectIDs that were created by this task but that should be
@@ -644,7 +643,7 @@ message TaskAttempt {
   // The task id of the task attempt.
   bytes task_id = 1;
   // The attempt number of the task attempt.
-  int32 attempt_number = 2;
+  int32 num_task_attempts = 2;
 }
 
 message Bundle {
@@ -774,41 +773,45 @@ message ReturnObject {
 // Task spec of an actor creation task.
 message ActorCreationTaskSpec {
   // ID of the actor that will be created by this task.
-  bytes actor_id = 2;
+  bytes actor_id = 1;
   // The max number of times this actor should be restarted.
   // If this number is 0 the actor won't be restarted.
   // If this number is -1 the actor will be restarted indefinitely.
-  int64 max_actor_restarts = 3;
+  int64 max_actor_restarts = 2;
   // The max number of times tasks submitted on this actor should be retried
   // if the actor fails and is restarted.
   // If this number is 0 the tasks won't be resubmitted.
   // If this number is -1 the tasks will be resubmitted indefinitely.
-  int64 max_task_retries = 4;
+  int64 max_task_retries = 3;
   // The dynamic options used in the worker command when starting a worker process for
   // an actor creation task. If the list isn't empty, the options will be used to replace
   // the placeholder string `RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER` in the worker command.
   // Used by Java workers for JVM options.
-  repeated string dynamic_worker_options = 5;
+  repeated string dynamic_worker_options = 4;
   // The max number of concurrent calls for default concurrency group of this actor.
-  int32 max_concurrency = 6;
+  int32 max_concurrency = 5;
   // Whether the actor is persistent.
-  bool is_detached = 7;
+  bool is_detached = 6;
   // Globally-unique name of the actor. Should only be populated when is_detached is true.
-  string name = 8;
+  string name = 7;
   // The namespace of the actor. Should only be populated when is_detached is true.
-  string ray_namespace = 9;
+  string ray_namespace = 8;
   // Whether the actor use async actor calls.
-  bool is_asyncio = 10;
+  bool is_asyncio = 9;
   // Field used for storing application-level extensions to the actor definition.
-  string extension_data = 11;
+  string extension_data = 10;
   // Serialized bytes of the Handle to the actor that will be created by this task.
-  bytes serialized_actor_handle = 12;
+  bytes serialized_actor_handle = 11;
   // The concurrency groups of this actor.
-  repeated ConcurrencyGroup concurrency_groups = 13;
+  repeated ConcurrencyGroup concurrency_groups = 12;
   // Whether to enable out of order execution.
-  bool allow_out_of_order_execution = 14;
+  bool allow_out_of_order_execution = 13;
   // The max number of pending actor calls.
-  int32 max_pending_calls = 15;
+  int32 max_pending_calls = 14;
+  // Number of restarts that has been tried on this actor.
+  // This will be greater by 1 than what's published before in ALIVE.
+  // ALIVE:0 RESTARTING:1 ALIVE:1 RESTARTING:2, etc
+  int64 num_actor_restarts = 15;
 }
 
 // Task spec of an actor task.
@@ -943,7 +946,7 @@ message ObjectRefInfo {
   TaskStatus task_status = 8;
   // A count of the number of times this task has been attempted so far. 0
   // means this is the first execution.
-  uint64 attempt_number = 9;
+  int32 num_task_attempts = 9;
 }
 
 // Details about the allocation of a given resource. Some resources

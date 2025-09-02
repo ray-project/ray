@@ -159,7 +159,7 @@ std::string TaskSpecification::TaskIdBinary() const {
 }
 
 TaskAttempt TaskSpecification::GetTaskAttempt() const {
-  return std::make_pair(TaskId(), AttemptNumber());
+  return std::make_pair(TaskId(), TaskAttemptNumber());
 }
 
 const std::string TaskSpecification::GetSerializedActorHandle() const {
@@ -223,11 +223,23 @@ bool TaskSpecification::HasRuntimeEnv() const {
   return !IsRuntimeEnvEmpty(SerializedRuntimeEnv());
 }
 
-uint64_t TaskSpecification::AttemptNumber() const { return message_->attempt_number(); }
+int32_t TaskSpecification::TaskAttemptNumber() const {
+  return message_->num_task_attempts();
+}
 
-bool TaskSpecification::IsRetry() const { return AttemptNumber() > 0; }
+int64_t TaskSpecification::ActorRestartNumber() const {
+  return message_->actor_creation_task_spec().num_actor_restarts();
+}
 
-int32_t TaskSpecification::MaxRetries() const { return message_->max_retries(); }
+bool TaskSpecification::IsRetry() const {
+  if (IsActorCreationTask()) {
+    return ActorRestartNumber() > 0;
+  } else {
+    return TaskAttemptNumber() > 0;
+  }
+}
+
+int32_t TaskSpecification::MaxRetries() const { return message_->max_task_retries(); }
 
 int TaskSpecification::GetRuntimeEnvHash() const { return runtime_env_hash_; }
 
@@ -566,12 +578,13 @@ std::string TaskSpecification::DebugString() const {
   stream << ", task_id=" << TaskId() << ", task_name=" << GetName()
          << ", job_id=" << JobId() << ", num_args=" << NumArgs()
          << ", num_returns=" << NumReturns() << ", max_retries=" << MaxRetries()
-         << ", depth=" << GetDepth() << ", attempt_number=" << AttemptNumber();
+         << ", depth=" << GetDepth() << ", attempt_number=" << TaskAttemptNumber();
 
   if (IsActorCreationTask()) {
     // Print actor creation task spec.
     stream << ", actor_creation_task_spec={actor_id=" << ActorCreationId()
            << ", max_restarts=" << MaxActorRestarts()
+           << ", num_restarts=" << ActorRestartNumber()
            << ", max_concurrency=" << MaxActorConcurrency()
            << ", is_asyncio_actor=" << IsAsyncioActor()
            << ", is_detached=" << IsDetachedActor() << "}";
@@ -629,10 +642,12 @@ bool TaskSpecification::IsRetriable() const {
   if (IsActorTask()) {
     return false;
   }
-  if (IsActorCreationTask() && MaxActorRestarts() == 0) {
+  if (IsActorCreationTask() &&
+      (MaxActorRestarts() == 0 ||
+       message_->actor_creation_task_spec().num_actor_restarts() == MaxActorRestarts())) {
     return false;
   }
-  if (IsNormalTask() && MaxRetries() == 0) {
+  if (IsNormalTask() && (MaxRetries() == 0 || TaskAttemptNumber() == MaxRetries())) {
     return false;
   }
   return true;

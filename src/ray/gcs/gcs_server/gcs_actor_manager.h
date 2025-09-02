@@ -369,10 +369,10 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
     actor_delta.set_state(actor.state());
     actor_delta.mutable_death_cause()->CopyFrom(actor.death_cause());
     actor_delta.mutable_address()->CopyFrom(actor.address());
-    actor_delta.set_num_restarts(actor.num_restarts());
+    actor_delta.set_num_actor_restarts(actor.num_actor_restarts());
     actor_delta.set_num_restarts_due_to_node_preemption(
         actor.num_restarts_due_to_node_preemption());
-    actor_delta.set_max_restarts(actor.max_restarts());
+    actor_delta.set_max_actor_restarts(actor.max_actor_restarts());
     actor_delta.set_timestamp(actor.timestamp());
     actor_delta.set_pid(actor.pid());
     actor_delta.set_start_time(actor.start_time());

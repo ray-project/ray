@@ -281,7 +281,7 @@ class CoreWorker {
 
   int64_t GetCurrentTaskAttemptNumber() const {
     return worker_context_->GetCurrentTask() != nullptr
-               ? worker_context_->GetCurrentTask()->AttemptNumber()
+               ? worker_context_->GetCurrentTask()->TaskAttemptNumber()
                : 0;
   }
 

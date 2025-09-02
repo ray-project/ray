@@ -302,7 +302,7 @@ bool AbstractRayRuntime::WasCurrentActorRestarted() {
     throw RayException("Received invalid protobuf data from GCS.");
   }
 
-  return actor_table_data.num_restarts() != 0;
+  return actor_table_data.num_actor_restarts() != 0;
 }
 
 ray::PlacementGroup AbstractRayRuntime::CreatePlacementGroup(

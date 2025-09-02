@@ -71,6 +71,7 @@ class LeaseSpecification : public MessageWrapper<rpc::LeaseSpec> {
   NodeID CallerNodeId() const;
   BundleID PlacementGroupBundleId() const;
   bool IsRetriable() const;
+  bool IsRetry() const;
   TaskID ParentTaskId() const;
   bool IsDetachedActor() const;
   std::string DebugString() const;
@@ -82,10 +83,6 @@ class LeaseSpecification : public MessageWrapper<rpc::LeaseSpec> {
   int64_t GetDepth() const;
   ActorID RootDetachedActorId() const;
   ray::FunctionDescriptor FunctionDescriptor() const;
-  int64_t MaxActorRestarts() const;
-  int32_t MaxRetries() const;
-  uint64_t AttemptNumber() const;
-  bool IsRetry() const;
   std::string GetTaskName() const;
   std::string GetFunctionOrActorName() const;
   std::vector<std::string> DynamicWorkerOptionsOrEmpty() const;

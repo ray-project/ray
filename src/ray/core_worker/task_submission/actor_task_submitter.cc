@@ -594,7 +594,7 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
         HandlePushTaskReply(status, reply, addr, task_spec);
       };
 
-  const TaskAttempt task_attempt = std::make_pair(task_id, task_spec.AttemptNumber());
+  const TaskAttempt task_attempt = std::make_pair(task_id, task_spec.TaskAttemptNumber());
   queue.inflight_task_callbacks_.emplace(task_attempt, std::move(reply_callback));
   rpc::ClientCallback<rpc::PushTaskReply> wrapped_callback =
       [this, task_attempt, actor_id](const Status &status, rpc::PushTaskReply &&reply) {

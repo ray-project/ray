@@ -99,11 +99,11 @@ message ActorTableData {
   ActorState state = 6;
   // Max number of times this actor should be restarted,
   // a value of -1 indicates an infinite number of reconstruction attempts.
-  int64 max_restarts = 7;
+  int64 max_actor_restarts = 7;
   // Number of restarts that has been tried on this actor.
   // This will be greater by 1 than what's published before in ALIVE.
   // ALIVE:0 RESTARTING:1 ALIVE:1 RESTARTING:2, etc
-  uint64 num_restarts = 8;
+  int64 num_actor_restarts = 8;
   // The address of the actor.
   Address address = 9;
   // The address of the actor's owner (parent).

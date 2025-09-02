@@ -1317,8 +1317,8 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
   // If the need_reschedule is set to false, then set the `remaining_restarts` to 0
   // so that the actor will never be rescheduled.
-  int64_t max_restarts = mutable_actor_table_data->max_restarts();
-  uint64_t num_restarts = mutable_actor_table_data->num_restarts();
+  int64_t max_restarts = mutable_actor_table_data->max_actor_restarts();
+  uint64_t num_restarts = mutable_actor_table_data->num_actor_restarts();
   uint64_t num_restarts_due_to_node_preemption =
       mutable_actor_table_data->num_restarts_due_to_node_preemption();
 
@@ -1353,7 +1353,10 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
       mutable_actor_table_data->set_num_restarts_due_to_node_preemption(
           num_restarts_due_to_node_preemption + 1);
     }
-    mutable_actor_table_data->set_num_restarts(num_restarts + 1);
+    mutable_actor_table_data->set_num_actor_restarts(num_restarts + 1);
+    actor->GetMutableTaskSpec()
+        ->mutable_actor_creation_task_spec()
+        ->set_num_actor_restarts(num_restarts + 1);
     actor->UpdateState(rpc::ActorTableData::RESTARTING);
     // Make sure to reset the address before flushing to GCS. Otherwise,
     // GCS will mistakenly consider this lease request succeeds when restarting.

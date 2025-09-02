@@ -43,7 +43,7 @@ ProfileEvent::ProfileEvent(TaskEventBuffer &task_event_buffer,
   event_ = std::make_unique<TaskProfileEvent>(
       worker_context.GetCurrentTaskID(),
       worker_context.GetCurrentJobID(),
-      task_spec == nullptr ? 0 : task_spec->AttemptNumber(),
+      task_spec == nullptr ? 0 : task_spec->TaskAttemptNumber(),
       WorkerTypeString(worker_context.GetWorkerType()),
       worker_context.GetWorkerID().Binary(),
       node_ip_address,

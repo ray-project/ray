@@ -46,7 +46,9 @@ void InboundRequest::Cancel(const Status &status) {
 
 ray::TaskID InboundRequest::TaskID() const { return task_spec_.TaskId(); }
 
-uint64_t InboundRequest::AttemptNumber() const { return task_spec_.AttemptNumber(); }
+uint64_t InboundRequest::TaskAttemptNumber() const {
+  return task_spec_.TaskAttemptNumber();
+}
 
 const std::string &InboundRequest::ConcurrencyGroupName() const {
   return task_spec_.ConcurrencyGroupName();

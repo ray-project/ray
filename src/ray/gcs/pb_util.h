@@ -181,12 +181,12 @@ inline bool IsActorRestartable(const rpc::ActorTableData &actor) {
   return actor.death_cause().context_case() == ContextCase::kActorDiedErrorContext &&
          actor.death_cause().actor_died_error_context().reason() ==
              rpc::ActorDiedErrorContext::OUT_OF_SCOPE &&
-         ((actor.max_restarts() == -1) ||
-          (actor.max_restarts() > 0 && actor.preempted()) ||
+         ((actor.max_actor_restarts() == -1) ||
+          (actor.max_actor_restarts() > 0 && actor.preempted()) ||
           // Restarts due to node preemption do not count towards max_restarts.
-          (static_cast<int64_t>(actor.num_restarts() -
+          (static_cast<int64_t>(actor.num_actor_restarts() -
                                 actor.num_restarts_due_to_node_preemption()) <
-           actor.max_restarts()));
+           actor.max_actor_restarts()));
 }
 
 inline std::string RayErrorInfoToString(const ray::rpc::RayErrorInfo &error_info) {

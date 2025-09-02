@@ -108,9 +108,10 @@ void OutOfOrderActorSchedulingQueue::Add(
       if (queued_actor_tasks_.contains(task_id)) {
         // There is already an attempt of the same task queued,
         // keep the one with larger attempt number and cancel the other one.
-        RAY_CHECK_NE(queued_actor_tasks_[task_id].AttemptNumber(),
-                     request.AttemptNumber());
-        if (queued_actor_tasks_[task_id].AttemptNumber() > request.AttemptNumber()) {
+        RAY_CHECK_NE(queued_actor_tasks_[task_id].TaskAttemptNumber(),
+                     request.TaskAttemptNumber());
+        if (queued_actor_tasks_[task_id].TaskAttemptNumber() >
+            request.TaskAttemptNumber()) {
           // This can happen if the PushTaskRequest arrives out of order.
           request_to_cancel = request;
         } else {
@@ -180,7 +181,7 @@ void OutOfOrderActorSchedulingQueue::RunRequest(InboundRequest request) {
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
         task_spec.TaskId(),
         task_spec.JobId(),
-        task_spec.AttemptNumber(),
+        task_spec.TaskAttemptNumber(),
         task_spec,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
         /* include_task_info */ false));
@@ -193,7 +194,7 @@ void OutOfOrderActorSchedulingQueue::RunRequest(InboundRequest request) {
       RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
           task.TaskId(),
           task.JobId(),
-          task.AttemptNumber(),
+          task.TaskAttemptNumber(),
           task,
           rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
           /* include_task_info */ false));
@@ -205,7 +206,7 @@ void OutOfOrderActorSchedulingQueue::RunRequest(InboundRequest request) {
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
         task_spec.TaskId(),
         task_spec.JobId(),
-        task_spec.AttemptNumber(),
+        task_spec.TaskAttemptNumber(),
         task_spec,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
         /* include_task_info */ false));
