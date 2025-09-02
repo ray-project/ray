@@ -52,6 +52,12 @@ DEFAULT_INSTALL_COMMANDS = [
     ),
     help="Global config to use for test execution.",
 )
+@click.option(
+    "--frequency",
+    default="manual",
+    type=click.Choice(["manual", "nightly", "nightly-3x", "weekly"]),
+    help="Run frequency of the test",
+)
 def main(
     test_collection_file: Tuple[str],
     run_jailed_tests: bool = False,
