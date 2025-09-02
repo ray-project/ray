@@ -1,4 +1,4 @@
-load("//bazel:ray.bzl", "ray_cc_library", "ray_cc_test")
+load("//bazel:ray.bzl", "ray_cc_library")
 
 ray_cc_library(
     name = "compat",
@@ -19,10 +19,11 @@ ray_cc_library(
         ":id",
         ":ray_object",
         "//src/ray/protobuf:common_cc_proto",
-        "//src/ray/util",
         "//src/ray/util:cmd_line_utils",
         "//src/ray/util:network_util",
         "//src/ray/util:path_utils",
+        "//src/ray/util:process",
+        "//src/ray/util:time",
         "@boost//:optional",
         "@com_google_googletest//:gtest",
     ],
@@ -61,7 +62,6 @@ ray_cc_library(
     deps = [
         ":ray_config",
         ":status",
-        "//src/ray/util",
         "//src/ray/util:logging",
         "//src/ray/util:type_traits",
         "@com_github_grpc_grpc//:grpc++",
@@ -80,7 +80,7 @@ ray_cc_library(
     deps = [
         ":asio",
         ":ray_config",
-        "//src/ray/util",
+        "//src/ray/util:process",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_prod",
@@ -94,7 +94,6 @@ ray_cc_library(
     hdrs = ["file_system_monitor.h"],
     deps = [
         ":asio",
-        "//src/ray/util",
         "//src/ray/util:event",
         "@com_google_googletest//:gtest_prod",
     ],
@@ -120,25 +119,35 @@ ray_cc_library(
 ray_cc_library(
     name = "id",
     srcs = [
-        "common_protocol.cc",
         "id.cc",
     ],
     hdrs = [
-        "common_protocol.h",
         "id.h",
         "id_def.h",
     ],
     deps = [
         ":constants",
-        ":status",
         "//src/ray/protobuf:common_cc_proto",
-        "//src/ray/protobuf:gcs_cc_proto",
-        "//src/ray/util",
+        "//src/ray/thirdparty:sha256",
+        "//src/ray/util:logging",
         "//src/ray/util:random",
-        "@com_github_google_flatbuffers//:flatbuffers",
+        "//src/ray/util:visibility",
         "@msgpack",
     ],
 )
+
+ray_cc_library(
+    name = "flatbuf_utils",
+    hdrs = [
+        "flatbuf_utils.h",
+    ],
+    deps = [
+        "@com_github_google_flatbuffers//:flatbuffers",
+    ],
+)
+
+# TODO(#55922): split out the scheduling dependencies into a separate bazel target
+# and have lease and task bazel targets depend on this
 
 ray_cc_library(
     name = "task_common",
@@ -153,7 +162,6 @@ ray_cc_library(
         "scheduling/resource_instance_set.cc",
         "scheduling/resource_set.cc",
         "scheduling/scheduling_ids.cc",
-        "task/task.cc",
         "task/task_spec.cc",
     ],
     hdrs = [
@@ -167,7 +175,6 @@ ray_cc_library(
         "scheduling/resource_instance_set.h",
         "scheduling/resource_set.h",
         "scheduling/scheduling_ids.h",
-        "task/task.h",
         "task/task_common.h",
         "task/task_spec.h",
         "task/task_util.h",
@@ -180,13 +187,28 @@ ray_cc_library(
         ":ray_object",
         ":runtime_env",
         "//src/ray/flatbuffers:node_manager_generated",
-        "//src/ray/util",
         "//src/ray/util:container_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "lease",
+    srcs = [
+        "lease/lease_spec.cc",
+    ],
+    hdrs = [
+        "lease/lease.h",
+        "lease/lease_spec.h",
+    ],
+    deps = [
+        ":id",
+        ":task_common",
+        "//src/ray/protobuf:common_cc_proto",
     ],
 )
 
@@ -209,7 +231,6 @@ ray_cc_library(
     deps = [
         ":event_stats",
         ":ray_config",
-        "//src/ray/util",
         "//src/ray/util:array",
         "//src/ray/util:function_traits",
         "@boost//:asio",
@@ -229,7 +250,6 @@ ray_cc_library(
     deps = [
         ":ray_config",
         "//src/ray/stats:stats_metric",
-        "//src/ray/util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
     ],
@@ -244,8 +264,8 @@ ray_cc_library(
         "ray_internal_flag_def.h",
     ],
     deps = [
-        "//src/ray/util",
-        "@com_google_absl//absl/algorithm",
+        "//src/ray/util:logging",
+        "@boost//:algorithm",
         "@com_google_absl//absl/strings",
         "@nlohmann_json",
     ],
@@ -282,7 +302,9 @@ ray_cc_library(
     srcs = ["status.cc"],
     hdrs = ["status.h"],
     deps = [
+        ":macros",
         ":source_location",
+        "//src/ray/util:logging",
         "//src/ray/util:macros",
         "//src/ray/util:visibility",
         "@boost//:system",
@@ -311,15 +333,4 @@ ray_cc_library(
     name = "source_location",
     srcs = ["source_location.cc"],
     hdrs = ["source_location.h"],
-)
-
-ray_cc_test(
-    name = "source_location_test",
-    size = "small",
-    srcs = ["source_location_test.cc"],
-    tags = ["team:core"],
-    deps = [
-        ":source_location",
-        "@com_google_googletest//:gtest_main",
-    ],
 )

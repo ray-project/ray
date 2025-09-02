@@ -26,6 +26,7 @@ from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.join_operator import Join
 from ray.data._internal.logical.operators.map_operator import (
     AbstractUDFMap,
+    Download,
     Filter,
     Project,
     StreamingRepartition,
@@ -36,6 +37,7 @@ from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.operators.streaming_split_operator import StreamingSplit
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
+from ray.data._internal.planner.plan_download_op import plan_download_op
 from ray.data._internal.planner.plan_read_op import plan_read_op
 from ray.data._internal.planner.plan_udf_map_op import (
     plan_filter_op,
@@ -157,6 +159,7 @@ class Planner:
         StreamingRepartition: plan_streaming_repartition_op,
         Join: plan_join_op,
         StreamingSplit: plan_streaming_split_op,
+        Download: plan_download_op,
     }
 
     def plan(self, logical_plan: LogicalPlan) -> PhysicalPlan:
@@ -214,8 +217,11 @@ class Planner:
                 break
 
             curr_physical_op.set_logical_operators(logical_op)
-            queue.extend(physical_op.input_dependencies)
+            # Add this operator to the op_map so optimizer can find it
+            op_map[curr_physical_op] = logical_op
+            queue.extend(curr_physical_op.input_dependencies)
 
+        # Also add the final operator (in case the loop didn't catch it)
         op_map[physical_op] = logical_op
         return physical_op, op_map
 

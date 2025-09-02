@@ -657,6 +657,59 @@ print("remote", ray.get(check.remote()))
     )
 
 
+# https://github.com/ray-project/ray/issues/54868
+def test_not_override_accelerator_ids_when_num_accelerators_is_zero():
+    not_override_check_script = """
+import ray
+ray.init()
+
+
+@ray.remote(num_gpus=0)
+def check():
+    import os
+    assert "CUDA_VISIBLE_DEVICES" not in os.environ
+
+@ray.remote(num_gpus=0)
+class Actor:
+    def check(self):
+        import os
+        assert "CUDA_VISIBLE_DEVICES" not in os.environ
+
+print("task check", ray.get(check.remote()))
+print("actor check", ray.get(Actor.options(num_gpus=0).remote().check.remote()))
+"""
+
+    run_string_as_driver(
+        not_override_check_script,
+        dict(
+            os.environ,
+            **{"RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO": "0"},
+        ),
+    )
+
+    override_check_script = """
+import ray
+ray.init()
+
+
+@ray.remote(num_gpus=0)
+def check():
+    import os
+    assert os.environ.get("CUDA_VISIBLE_DEVICES") == ""
+
+@ray.remote(num_gpus=0)
+class Actor:
+    def check(self):
+        import os
+        assert os.environ.get("CUDA_VISIBLE_DEVICES") == ""
+
+print("task check", ray.get(check.remote()))
+print("actor check", ray.get(Actor.options(num_gpus=0).remote().check.remote()))
+"""
+
+    run_string_as_driver(override_check_script)
+
+
 def test_put_get(shutdown_only):
     ray.init(num_cpus=0)
 
@@ -1190,6 +1243,16 @@ def test_failed_task(ray_start_shared_local_modes, error_pubsub):
     else:
         # ray.get should throw an exception.
         assert False
+
+
+def test_base_exception_raised(ray_start_shared_local_modes):
+    @ray.remote
+    def f():
+        raise BaseException("rip")
+        return 1
+
+    with pytest.raises(BaseException):
+        ray.get(f.remote())
 
 
 def test_import_ray_does_not_import_grpc():

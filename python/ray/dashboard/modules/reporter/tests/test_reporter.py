@@ -200,11 +200,11 @@ def enable_open_telemetry(request):
     Fixture to enable OpenTelemetry for the test.
     """
     if request.param:
-        os.environ["RAY_experimental_enable_open_telemetry_on_agent"] = "1"
+        os.environ["RAY_enable_open_telemetry"] = "1"
     else:
-        os.environ["RAY_experimental_enable_open_telemetry_on_agent"] = "0"
+        os.environ["RAY_enable_open_telemetry"] = "0"
     yield
-    os.environ.pop("RAY_experimental_enable_open_telemetry_on_agent", None)
+    os.environ.pop("RAY_enable_open_telemetry", None)
 
 
 @pytest.mark.skipif(prometheus_client is None, reason="prometheus_client not installed")
@@ -313,6 +313,7 @@ def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_
 
 def test_report_stats():
     dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
     agent = ReporterAgent(dashboard_agent)
     # Assume it is a head node.
     agent._is_head_node = True
@@ -374,6 +375,7 @@ def test_report_stats():
 
 def test_report_stats_gpu():
     dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
     agent = ReporterAgent(dashboard_agent)
     # Assume it is a head node.
     agent._is_head_node = True
@@ -494,6 +496,7 @@ def test_report_stats_gpu():
 
 def test_report_per_component_stats_gpu():
     dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
     agent = ReporterAgent(dashboard_agent)
     # Assume it is a head node.
     agent._is_head_node = True
@@ -509,58 +512,256 @@ def test_report_per_component_stats_gpu():
     """
     GPU_MEMORY = 22731
 
-    STATS_TEMPLATE["gpus"] = [
-        {
-            "index": 0,
-            "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b396",
-            "name": "NVIDIA A10G",
-            "utilization_gpu": 0,  # NOTE: this is a dummy value
-            "memory_used": 0,
-            "memory_total": GPU_MEMORY,
-            "processes_pids": {
-                2297322: {
-                    "pid": 2297322,
-                    "gpu_memory_usage": 26,
-                    "gpu_utilization": None,
-                }
+    # Prepare the stats data that would be collected by _collect_stats
+    mock_collected_stats = {
+        "now": 1614826393.975763,
+        "hostname": "fake_hostname.local",
+        "ip": "127.0.0.1",
+        "cpu": 57.4,
+        "cpus": (8, 4),
+        "mem": (17179869184, 5723353088, 66.7, 9234341888),
+        "shm": 456,
+        "workers": [
+            {
+                "memory_info": Bunch(
+                    rss=55934976, vms=7026937856, pfaults=15354, pageins=0
+                ),
+                "memory_full_info": Bunch(uss=51428381),
+                "cpu_percent": 0.0,
+                "num_fds": 10,
+                "cmdline": ["ray::IDLE", "", "", "", "", "", "", "", "", "", "", ""],
+                "create_time": 1614826391.338613,
+                "pid": 7174,
+                "cpu_times": Bunch(
+                    user=0.607899328,
+                    system=0.274044032,
+                    children_user=0.0,
+                    children_system=0.0,
+                ),
             },
-        },
-        {
-            "index": 1,
-            "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b397",
-            "name": "NVIDIA A10G",
-            "utilization_gpu": 1,
-            "memory_used": 1,
-            "memory_total": GPU_MEMORY,
-            "processes_pids": {
-                2297332: {
-                    "pid": 2297332,
-                    "gpu_memory_usage": 26,
-                    "gpu_utilization": None,
-                }
+            {
+                "memory_info": Bunch(
+                    rss=55934976, vms=7026937856, pfaults=15354, pageins=0
+                ),
+                "memory_full_info": Bunch(uss=51428381),
+                "cpu_percent": 10.0,
+                "num_fds": 5,
+                "cmdline": [
+                    "ray::TorchGPUWorker.dummy_method",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                ],
+                "create_time": 1614826391.338613,
+                "pid": 7175,
+                "cpu_times": Bunch(
+                    user=0.607899328,
+                    system=0.274044032,
+                    children_user=0.0,
+                    children_system=0.0,
+                ),
             },
+        ],
+        "gcs": {
+            "memory_info": Bunch(rss=18354171, vms=6921486336, pfaults=6203, pageins=2),
+            "memory_full_info": Bunch(uss=51428384),
+            "cpu_percent": 5.0,
+            "num_fds": 14,
+            "cmdline": ["fake gcs cmdline"],
+            "create_time": 1614826395.274854,
+            "pid": 7154,
+            "cpu_times": Bunch(
+                user=0.01683138,
+                system=0.045913716,
+                children_user=0.0,
+                children_system=0.0,
+            ),
         },
-    ]
-    gpu_worker = STATS_TEMPLATE["workers"][0].copy()
-    gpu_worker.update(
-        {"pid": 7175, "cmdline": ["ray::TorchGPUWorker.dummy_method", ""]}
-    )
+        "raylet": {
+            "memory_info": Bunch(rss=18354176, vms=6921486336, pfaults=6206, pageins=3),
+            "cpu_percent": 0.0,
+            "num_fds": 10,
+            "cmdline": ["fake raylet cmdline"],
+            "create_time": 1614826390.274854,
+            "pid": 7153,
+            "cpu_times": Bunch(
+                user=0.03683138,
+                system=0.035913716,
+                children_user=0.0,
+                children_system=0.0,
+            ),
+        },
+        "agent": {
+            "memory_info": Bunch(rss=18354176, vms=6921486336, pfaults=6206, pageins=3),
+            "cpu_percent": 0.0,
+            "num_fds": 10,
+            "cmdline": ["fake raylet cmdline"],
+            "create_time": 1614826390.274854,
+            "pid": 7154,
+            "cpu_times": Bunch(
+                user=0.03683138,
+                system=0.035913716,
+                children_user=0.0,
+                children_system=0.0,
+            ),
+        },
+        "bootTime": 1612934656.0,
+        "loadAvg": ((4.4521484375, 3.61083984375, 3.5400390625), (0.56, 0.45, 0.44)),
+        "disk_io": (100, 100, 100, 100),
+        "disk_io_speed": (100, 100, 100, 100),
+        "disk": {
+            "/": Bunch(
+                total=250790436864, used=11316781056, free=22748921856, percent=33.2
+            ),
+            "/tmp": Bunch(
+                total=250790436864, used=209532035072, free=22748921856, percent=90.2
+            ),
+        },
+        "gpus": [
+            {
+                "index": 0,
+                "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b396",
+                "name": "NVIDIA A10G",
+                "utilization_gpu": 0,  # NOTE: this is a dummy value
+                "memory_used": 0,
+                "memory_total": GPU_MEMORY,
+                "processes_pids": {
+                    2297322: {
+                        "pid": 2297322,
+                        "gpu_memory_usage": 26,
+                        "gpu_utilization": None,
+                    }
+                },
+            },
+            {
+                "index": 1,
+                "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b397",
+                "name": "NVIDIA A10G",
+                "utilization_gpu": 1,
+                "memory_used": 1,
+                "memory_total": GPU_MEMORY,
+                "processes_pids": {
+                    2297332: {
+                        "pid": 2297332,
+                        "gpu_memory_usage": 26,
+                        "gpu_utilization": None,
+                    }
+                },
+            },
+        ],
+        "gpu_processes": {},
+        "tpus": [],
+        "network": (13621160960, 11914936320),
+        "network_speed": (8.435062128545095, 7.378462703142336),
+        "cmdline": ["fake raylet cmdline"],
+    }
+
     gpu_metrics_aggregatd = {
         "component_gpu_utilization": 0,
         "component_gpu_memory_usage": 0,
     }
-    STATS_TEMPLATE["workers"].append(gpu_worker)
 
+    def create_mock_agent_proc():
+        """Helper function to create a mock agent process."""
+        mock_agent_proc = MagicMock()
+        mock_agent_proc.pid = agent_proc_pid
+        mock_agent_proc.create_time.return_value = agent_proc_create_time
+        return mock_agent_proc
+
+    agent_proc_pid = 22334
+    agent_proc_create_time = 1614826392.338613
+    agent_proc_mock = create_mock_agent_proc()
+
+    def create_mock_worker_processes():
+        """Helper function to create mock worker processes for testing."""
+        mock_workers = {}
+
+        # Create mock worker processes that match what _get_workers expects
+        for i, worker_data in enumerate(mock_collected_stats["workers"]):
+            mock_proc = MagicMock()
+            mock_proc.status.return_value = psutil.STATUS_RUNNING
+            mock_proc.as_dict.return_value = {
+                "pid": worker_data["pid"],
+                "cmdline": worker_data["cmdline"],
+                "cpu_percent": worker_data["cpu_percent"],
+                "memory_info": worker_data["memory_info"],
+                "memory_full_info": worker_data["memory_full_info"],
+                "num_fds": worker_data["num_fds"],
+                "create_time": worker_data["create_time"],
+                "cpu_times": worker_data["cpu_times"],
+            }
+            mock_workers[f"worker_{i}"] = mock_proc
+
+        # Add the agent process to the mock workers
+        mock_workers[agent._generate_worker_key(agent_proc_mock)] = agent_proc_mock
+        return mock_workers
+
+    # Mock all the individual methods that _collect_stats calls to return predictable data
+    mock_patches = {
+        "_get_network_stats": lambda: (13621160960, 11914936320),
+        "_get_disk_io_stats": lambda: (100, 100, 100, 100),
+        "_get_gpu_usage": lambda: mock_collected_stats["gpus"],
+        "_get_cpu_percent": lambda _: 57.4,
+        "_get_mem_usage": lambda: (17179869184, 5723353088, 66.7, 9234341888),
+        "_get_shm_usage": lambda: 456,
+        "_get_raylet": lambda: mock_collected_stats["raylet"],
+        "_get_agent": lambda: mock_collected_stats["agent"],
+        "_get_boot_time": lambda: 1612934656.0,
+        "_get_load_avg": lambda: (
+            (4.4521484375, 3.61083984375, 3.5400390625),
+            (0.56, 0.45, 0.44),
+        ),
+        "_get_disk_usage": lambda: mock_collected_stats["disk"],
+        "_get_tpu_usage": lambda: [],
+        "_get_gcs": lambda: mock_collected_stats["gcs"],
+        "_get_worker_processes": lambda: create_mock_worker_processes(),
+        "_get_agent_proc": lambda: agent_proc_mock,
+    }
+
+    with patch.multiple(agent, **mock_patches):
+        # Call _collect_stats to actually run through the collection process
+        collected_stats_result = agent._collect_stats()
+
+        # Verify that _collect_stats was called and returned the expected structure
+        assert "gpus" in collected_stats_result
+        assert "workers" in collected_stats_result
+        assert "gcs" in collected_stats_result  # Should be present for head node
+        assert len(collected_stats_result["gpus"]) == 2
+        assert len(collected_stats_result["workers"]) == 2
+        assert collected_stats_result["cpu"] == 57.4
+        assert collected_stats_result["mem"] == (
+            17179869184,
+            5723353088,
+            66.7,
+            9234341888,
+        )
+        assert collected_stats_result["shm"] == 456
+        assert collected_stats_result["network"] == (13621160960, 11914936320)
+        assert collected_stats_result["disk_io"] == (100, 100, 100, 100)
+
+        # Now add the GPU processes data to the collected stats result
     NVSMI_OUTPUT_TWO_TASK_ON_TWO_GPUS = (
         "# gpu         pid   type     sm    mem    enc    dec    jpg    ofa    command \n"
         "# Idx           #    C/G      %      %      %      %      %      %    name \n"
         "    0       7175     C     84     26      -      -      -      -    ray::TorchGPUWo\n"
         "    1       7175     C     86     26      -      -      -      -    ray::TorchGPUWo\n"
     )
-    STATS_TEMPLATE["gpu_processes"] = NvidiaGpuProvider._parse_nvsmi_pmon_output(
-        NVSMI_OUTPUT_TWO_TASK_ON_TWO_GPUS, STATS_TEMPLATE["gpus"]
+    collected_stats_result[
+        "gpu_processes"
+    ] = NvidiaGpuProvider._parse_nvsmi_pmon_output(
+        NVSMI_OUTPUT_TWO_TASK_ON_TWO_GPUS, collected_stats_result["gpus"]
     )
-    records = agent._to_records(STATS_TEMPLATE, {})
+
+    # Use the collected stats result for _to_records instead of STATS_TEMPLATE
+    records = agent._to_records(collected_stats_result, {})
 
     gpu_component_records = defaultdict(list)
 
@@ -587,21 +788,50 @@ def test_report_per_component_stats_gpu():
         "    0       7176     C     77     22      -      -      -      -    ray::TorchGPUWo\n"
         "    1          -     -      -      -      -      -      -      -    -      \n"
     )
-    STATS_TEMPLATE["gpu_processes"] = NvidiaGpuProvider._parse_nvsmi_pmon_output(
-        NVSMI_OUTPUT_TWO_TASK_ON_ONE_GPUS, STATS_TEMPLATE["gpus"]
+
+    # Update the collected stats result for the second test scenario
+    collected_stats_result[
+        "gpu_processes"
+    ] = NvidiaGpuProvider._parse_nvsmi_pmon_output(
+        NVSMI_OUTPUT_TWO_TASK_ON_ONE_GPUS, collected_stats_result["gpus"]
     )
     # Move process from GPU 1 to GPU 0
-    gpu1_process = STATS_TEMPLATE["gpus"][1]["processes_pids"][2297332]
-    STATS_TEMPLATE["gpus"][0]["processes_pids"][2297332] = gpu1_process
-    STATS_TEMPLATE["gpus"][1]["processes_pids"] = {}
+    gpu1_process = collected_stats_result["gpus"][1]["processes_pids"][2297332]
+    collected_stats_result["gpus"][0]["processes_pids"][2297332] = gpu1_process
+    collected_stats_result["gpus"][1]["processes_pids"] = {}
 
-    gpu_worker = gpu_worker.copy()
-    gpu_worker.update(
-        {"pid": 7176, "cmdline": ["ray::TorchGPUWorker.dummy_method_2", ""]}
-    )
-    STATS_TEMPLATE["workers"].append(gpu_worker)
+    # Add the second GPU worker to the collected stats result
+    gpu_worker_2 = {
+        "memory_info": Bunch(rss=55934976, vms=7026937856, pfaults=15354, pageins=0),
+        "memory_full_info": Bunch(uss=51428381),
+        "cpu_percent": 15.0,
+        "num_fds": 6,
+        "cmdline": [
+            "ray::TorchGPUWorker.dummy_method_2",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
+        "create_time": 1614826391.338613,
+        "pid": 7176,
+        "cpu_times": Bunch(
+            user=0.607899328,
+            system=0.274044032,
+            children_user=0.0,
+            children_system=0.0,
+        ),
+    }
+    collected_stats_result["workers"].append(gpu_worker_2)
 
-    records = agent._to_records(STATS_TEMPLATE, {})
+    records = agent._to_records(collected_stats_result, {})
 
     gpu_component_records = defaultdict(list)
     for record in records:
@@ -630,6 +860,7 @@ def test_report_per_component_stats_gpu():
 
 def test_get_tpu_usage():
     dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
     agent = ReporterAgent(dashboard_agent)
 
     fake_metrics_content = """
@@ -686,6 +917,7 @@ def test_get_tpu_usage():
 
 def test_report_stats_tpu():
     dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
     agent = ReporterAgent(dashboard_agent)
 
     STATS_TEMPLATE["tpus"] = [
@@ -758,6 +990,7 @@ def test_report_stats_tpu():
 
 def test_report_per_component_stats():
     dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
     agent = ReporterAgent(dashboard_agent)
     # Assume it is a head node.
     agent._is_head_node = True
@@ -1016,6 +1249,9 @@ def test_reporter_worker_cpu_percent():
 
         def _generate_worker_key(self, proc):
             return (proc.pid, proc.create_time())
+
+        def _get_worker_processes(self):
+            return ReporterAgent._get_worker_processes(self)
 
     obj = ReporterAgentDummy()
 

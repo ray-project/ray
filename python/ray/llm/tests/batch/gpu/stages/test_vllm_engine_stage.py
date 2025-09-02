@@ -46,6 +46,7 @@ def mock_vllm_wrapper():
                     "num_generated_tokens": 3,
                     "time_per_token": 0.1,
                 },
+                0.1,  # time_taken_llm
             )
 
         mock_instance.generate_async.side_effect = mock_generate
@@ -298,10 +299,11 @@ async def test_vllm_wrapper_generate(model_llama_3_2_216M):
     tasks = [asyncio.create_task(wrapper.generate_async(row)) for row in batch]
 
     for resp in asyncio.as_completed(tasks):
-        request, output = await resp
+        request, output, time_taken_llm = await resp
         params = request.params
         max_tokens = params.max_tokens
         assert max_tokens == output["num_generated_tokens"]
+        assert time_taken_llm > 0
 
     # Clean up GPU memory
     wrapper.shutdown()
@@ -332,8 +334,9 @@ async def test_vllm_wrapper_embed(model_opt_125m):
     tasks = [asyncio.create_task(wrapper.generate_async(row)) for row in batch]
 
     for resp in asyncio.as_completed(tasks):
-        _, output = await resp
+        _, output, time_taken_llm = await resp
         assert output["embeddings"].shape == (768,)
+        assert time_taken_llm > 0
 
     # Clean up GPU memory
     wrapper.shutdown()
@@ -380,10 +383,11 @@ async def test_vllm_wrapper_lora(model_llama_3_2_216M, model_llama_3_2_216M_lora
     tasks = [asyncio.create_task(wrapper.generate_async(row)) for row in batch]
 
     for resp in asyncio.as_completed(tasks):
-        request, output = await resp
+        request, output, time_taken_llm = await resp
         params = request.params
         max_tokens = params.max_tokens
         assert max_tokens == output["num_generated_tokens"]
+        assert time_taken_llm > 0
 
     # Clean up GPU memory
     wrapper.shutdown()
@@ -430,12 +434,13 @@ async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct):
     tasks = [asyncio.create_task(wrapper.generate_async(row)) for row in batch]
 
     for resp in asyncio.as_completed(tasks):
-        _, output = await resp
+        _, output, time_taken_llm = await resp
         json_obj = json.loads(output["generated_text"])
         assert "answer" in json_obj
         assert isinstance(json_obj["answer"], int)
         assert "explain" in json_obj
         assert isinstance(json_obj["explain"], str)
+        assert time_taken_llm > 0
 
     # Clean up GPU memory
     wrapper.shutdown()
