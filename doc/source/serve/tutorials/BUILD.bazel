@@ -7,7 +7,7 @@ filegroup(
 # deployment-serve-llm/ to be used as an Anyscale template
 # Discover the CI config files to trigger the release test CI
 filegroup(
-    name = "deployment_serve_llm_configs",
+    name = "deployment_serve_llm_example_configs",
     srcs = glob(["deployment-serve-llm/**/*/.yaml"]),
     visibility = ["//release:__pkg__"],
 )
