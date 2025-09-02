@@ -38,7 +38,9 @@ class HudiDatasource(Datasource):
         self._hudi_options = hudi_options or {}
         self._storage_options = storage_options or {}
 
-    def get_read_tasks(self, parallelism: int) -> List["ReadTask"]:
+    def get_read_tasks(
+        self, parallelism: int, per_block_limit: Optional[int] = None
+    ) -> List["ReadTask"]:
         import numpy as np
         import pyarrow
         from hudi import HudiTableBuilder
@@ -135,6 +137,7 @@ class HudiDatasource(Datasource):
                 ),
                 metadata=metadata,
                 schema=schema,
+                per_block_limit=per_block_limit,
             )
             read_tasks.append(read_task)
 

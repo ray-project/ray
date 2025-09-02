@@ -335,7 +335,9 @@ class ParquetDatasource(Datasource):
             total_size += file_metadata.total_byte_size
         return total_size * self._encoding_ratio
 
-    def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+    def get_read_tasks(
+        self, parallelism: int, per_block_limit: Optional[int] = None
+    ) -> List[ReadTask]:
         # NOTE: We override the base class FileBasedDatasource.get_read_tasks()
         # method in order to leverage pyarrow's ParquetDataset abstraction,
         # which simplifies partitioning logic. We still use
@@ -419,6 +421,7 @@ class ParquetDatasource(Datasource):
                     ),
                     meta,
                     schema=self._inferred_schema,
+                    per_block_limit=per_block_limit,
                 )
             )
 
