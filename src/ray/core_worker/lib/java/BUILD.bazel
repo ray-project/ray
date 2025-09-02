@@ -26,6 +26,7 @@ ray_cc_binary(
         "//src/ray/core_worker:core_worker_lib",
         "//src/ray/gcs/gcs_client:global_state_accessor_lib",
         "//src/ray/stats:stats_lib",
+        "//src/ray/util:time",
         "@bazel_tools//tools/jdk:jni",
     ],
 )

@@ -21,8 +21,8 @@
 
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/protobuf_utils.h"
 #include "ray/common/ray_config.h"
-#include "ray/gcs/pb_util.h"
 #include "ray/stats/metric_defs.h"
 #include "src/ray/protobuf/gcs.pb.h"
 

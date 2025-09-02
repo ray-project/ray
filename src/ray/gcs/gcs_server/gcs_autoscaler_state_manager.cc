@@ -19,7 +19,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/gcs/pb_util.h"
+#include "ray/common/protobuf_utils.h"
 #include "ray/util/string_utils.h"
 #include "ray/util/time.h"
 

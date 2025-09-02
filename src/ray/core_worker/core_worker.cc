@@ -38,15 +38,16 @@
 #include "ray/common/cgroup/cgroup_context.h"
 #include "ray/common/cgroup/cgroup_manager.h"
 #include "ray/common/cgroup/constants.h"
+#include "ray/common/protobuf_utils.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/task/task_util.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
-#include "ray/gcs/pb_util.h"
 #include "ray/rpc/event_aggregator_client.h"
 #include "ray/util/container_util.h"
 #include "ray/util/event.h"
 #include "ray/util/subreaper.h"
+#include "ray/util/time.h"
 
 using json = nlohmann::json;
 using MessageType = ray::protocol::MessageType;
