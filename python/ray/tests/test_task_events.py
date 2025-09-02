@@ -21,6 +21,15 @@ from ray.util.state import list_tasks
 
 from ray._private.worker import RayContext
 
+
+# Run every test in this module twice: default and with core-worker to aggregator feature flag enabled
+pytestmark = [
+    pytest.mark.parametrize(
+        "event_routing_config", ["default", "aggregator"], indirect=True
+    ),
+    pytest.mark.usefixtures("event_routing_config"),
+]
+
 _SYSTEM_CONFIG = {
     "task_events_report_interval_ms": 100,
     "metrics_report_interval_ms": 200,

@@ -30,6 +30,14 @@ from ray.util.state import (
 )
 import psutil
 
+# Run every test in this module twice: default and aggregator-enabled
+pytestmark = [
+    pytest.mark.parametrize(
+        "event_routing_config", ["default", "aggregator"], indirect=True
+    ),
+    pytest.mark.usefixtures("event_routing_config"),
+]
+
 _SYSTEM_CONFIG = {
     "task_events_report_interval_ms": 100,
     "metrics_report_interval_ms": 200,
