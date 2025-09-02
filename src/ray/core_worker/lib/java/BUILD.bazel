@@ -24,6 +24,7 @@ ray_cc_binary(
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
         "//src/ray/core_worker:core_worker_lib",
+        "//src/ray/util:time",
         "//src/ray/gcs/gcs_client:global_state_accessor_lib",
         "//src/ray/stats:stats_lib",
         "@bazel_tools//tools/jdk:jni",

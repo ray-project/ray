@@ -13,6 +13,9 @@ ray_cc_library(
         "core_worker_rpc_proxy.h",
         "core_worker_shutdown_executor.h",
     ],
+    implementation_deps = [
+        "//src/ray/util:time",
+    ],
     deps = [
         ":actor_handle",
         ":actor_manager",

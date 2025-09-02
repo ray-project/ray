@@ -26,6 +26,7 @@
 #include "jni_utils.h"  // NOLINT(build/include_subdir)
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
+#include "ray/util/time.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/core_worker.h"
 
