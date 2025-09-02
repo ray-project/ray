@@ -178,7 +178,6 @@ class ParquetDatasource(Datasource):
         shuffle: Union[Literal["files"], None] = None,
         include_paths: bool = False,
         file_extensions: Optional[List[str]] = None,
-        keep_unresolved_paths: bool = False,
     ):
         _check_pyarrow_version()
 
@@ -197,9 +196,6 @@ class ParquetDatasource(Datasource):
             self._local_scheduling = NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(), soft=False
             )
-
-        if keep_unresolved_paths:
-            self._unresolved_paths = paths
 
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         filesystem = RetryingPyFileSystem.wrap(

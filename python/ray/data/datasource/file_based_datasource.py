@@ -121,7 +121,6 @@ class FileBasedDatasource(Datasource):
         shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
         include_paths: bool = False,
         file_extensions: Optional[List[str]] = None,
-        keep_unresolved_paths: bool = False,
     ):
         _check_pyarrow_version()
 
@@ -141,8 +140,6 @@ class FileBasedDatasource(Datasource):
         self._partitioning = partitioning
         self._ignore_missing_paths = ignore_missing_paths
         self._include_paths = include_paths
-        if keep_unresolved_paths:
-            self._unresolved_paths = paths
 
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         self._filesystem = RetryingPyFileSystem.wrap(
