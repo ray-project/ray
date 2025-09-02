@@ -33,10 +33,10 @@
 #include "mock/ray/rpc/worker/core_worker_client.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_utils.h"
-#include "ray/gcs/pb_util.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
+#include "ray/gcs/pb_util.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 
 namespace ray {
