@@ -49,6 +49,23 @@ class RayError(Exception):
             try:
                 return pickle.loads(ray_exception.serialized_exception)
             except Exception:
+                # Before falling back, try deserializing using any serializers
+                # registered via ray.util.register_serializer(), if available.
+                
+                try:
+                    import ray
+
+                    worker = ray._private.worker.global_worker
+                    if worker is not None and getattr(worker, "connected", False):
+                        context = worker.get_serialization_context()
+                        try:
+                            return context._deserialize_pickle5_data(
+                                ray_exception.serialized_exception, None
+                            )
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
                 # formatted_exception_string is set in to_bytes() above by calling
                 # traceback.format_exception() on the original exception. It contains
                 # the string representation and stack trace of the original error.
