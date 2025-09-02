@@ -2,15 +2,15 @@
 
 set -euo pipefail
 
-SED_CMD=sed
+SED_CMD="sed"
 # On macos, use gnu-sed because 'sed -i' may not be used with stdin
 if [[ "$(uname)" == "Darwin" ]]; then
 	# check if gsed is available
 	if ! command -v gsed &> /dev/null; then
-		echo "--- gsed is not installed. Install via `brew install gnu-sed`"
+		echo "--- gsed is not installed. Install via 'brew install gnu-sed'"
 		exit 1
 	fi
-	SED_CMD=gsed
+	SED_CMD="gsed"
 fi
 
 PYTHON_CODE="$(python -c "import sys; v=sys.version_info; print(f'py{v.major}{v.minor}')")"
