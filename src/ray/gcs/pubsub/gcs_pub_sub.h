@@ -21,7 +21,7 @@
 #include <vector>
 
 #include "absl/synchronization/mutex.h"
-#include "ray/gcs/callback.h"
+#include "ray/common/gcs_callbacks.h"
 #include "ray/pubsub/publisher_interface.h"
 #include "ray/pubsub/subscriber_interface.h"
 #include "src/ray/protobuf/gcs.pb.h"
