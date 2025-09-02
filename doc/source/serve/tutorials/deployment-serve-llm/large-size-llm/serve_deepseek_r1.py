@@ -24,6 +24,7 @@ llm_config = LLMConfig(
         # Split weights among 8 GPUs in the node
         tensor_parallel_size=8,
         pipeline_parallel_size=2,
+        reasoning_parser='deepseek_r1', # Optional: separate reasoning content from the final answer
     ),
 )
 

@@ -24,6 +24,7 @@ A large size LLM is typically deployed across multiple nodes with multiple GPUs.
 
 Ray Serve LLM provides multiple [Python APIs](https://docs.ray.io/en/latest/serve/api/index.html#llm-api) for defining your application. Use [`build_openai_app`](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.llm.build_openai_app.html#ray.serve.llm.build_openai_app) to build a full application from your [`LLMConfig`](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.llm.LLMConfig.html#ray.serve.llm.LLMConfig) object.
 
+**Optional:** Since Deepseek-R1 is a reasoning model, we use vLLM’s built-in reasoning parser to correctly separate its reasoning content from the final response. See [Deploying a reasoning LLM: Parse reasoning outputs](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/reasoning-llm/README.html#parse-reasoning-outputs).
 
 ```python
 #serve_deepseek_r1.py
@@ -50,8 +51,9 @@ llm_config = LLMConfig(
         max_model_len=16384,
         # Split weights among 8 GPUs in the node
         tensor_parallel_size=8,
-        pipeline_parallel_size=2
-    )
+        pipeline_parallel_size=2,
+        reasoning_parser='deepseek_r1', # Optional: separate reasoning content from the final answer
+    ),
 )
 
 app = build_openai_app({"llm_configs": [llm_config]})
