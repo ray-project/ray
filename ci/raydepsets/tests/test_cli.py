@@ -1,4 +1,3 @@
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -127,7 +126,7 @@ class TestCli(unittest.TestCase):
             output_file = Path(
                 _runfiles.Rlocation(f"{tmpdir}/requirements_compiled.txt")
             )
-            shutil.copy(compiled_file, output_file)
+            save_file_as(compiled_file, output_file)
             manager = _create_test_manager(tmpdir)
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
