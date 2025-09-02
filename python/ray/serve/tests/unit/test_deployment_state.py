@@ -2878,7 +2878,7 @@ class TestAutoscaling:
                 replica._actor.set_done_stopping()
 
             dsm.update()
-            astate = asm._autoscaling_states[TEST_DEPLOYMENT_ID]
+            astate = asm._deployment_autoscaling_states[TEST_DEPLOYMENT_ID]
             assert len(astate._replica_requests) == 0
 
         # status=HEALTHY, status_trigger=UPSCALE/DOWNSCALE
@@ -2897,7 +2897,7 @@ class TestAutoscaling:
             replica._actor.set_done_stopping()
         dsm.update()
         assert TEST_DEPLOYMENT_ID not in dsm._deployment_states
-        assert TEST_DEPLOYMENT_ID not in asm._autoscaling_states
+        assert TEST_DEPLOYMENT_ID not in asm._deployment_autoscaling_states
 
     @pytest.mark.parametrize(
         "target_startup_status",

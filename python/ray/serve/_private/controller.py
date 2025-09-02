@@ -192,6 +192,7 @@ class ServeController:
         # Manage all applications' state
         self.application_state_manager = ApplicationStateManager(
             self.deployment_state_manager,
+            self.application_state_manager,
             self.endpoint_state,
             self.kv_store,
             self.global_logging_config,

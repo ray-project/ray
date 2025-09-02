@@ -556,6 +556,15 @@ class ServeApplicationSchema(BaseModel):
             "must be shut down and restarted with the new port instead."
         ),
     )
+
+    autoscaling_policy: Optional[Dict] = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "Cross deployment autoscaling policy "
+            "name of the custom autoscaling policy for the application. "
+        ),
+    )
+
     deployments: List[DeploymentSchema] = Field(
         default=[],
         description="Deployment options that override options specified in the code.",

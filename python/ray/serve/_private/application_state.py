@@ -30,6 +30,8 @@ from ray.serve._private.deploy_utils import (
     get_deploy_args,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.application_state import ApplicationStateManager
+from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.logging_utils import configure_component_logger
@@ -222,6 +224,7 @@ class ApplicationState:
         self,
         name: str,
         deployment_state_manager: DeploymentStateManager,
+        autoscaling_state_manager: AutoscalingStateManager,
         endpoint_state: EndpointState,
         logging_config: LoggingConfig,
     ):
@@ -236,6 +239,7 @@ class ApplicationState:
         self._name = name
         self._status_msg = ""
         self._deployment_state_manager = deployment_state_manager
+        self._autoscaling_state_manager = autoscaling_state_manager
         self._endpoint_state = endpoint_state
         self._route_prefix: Optional[str] = None
         self._ingress_deployment_name: Optional[str] = None
@@ -422,6 +426,26 @@ class ApplicationState:
         """
         return self._target_state.deleting and len(self._get_live_deployments()) == 0
 
+    def should_autoscale(self):
+        return (
+            self._target_state.config is not None
+            and self._target_state.config.autoscaling_policy is not None
+        )
+
+    def autoscale(self):
+        deployments: Dict[str, DeploymentDetails] = self.list_deployment_details()
+        decisions: Dict[str, int] = (
+            self._autoscaling_state_manager.apply_autoscaling_decision(deployments)
+        )
+
+        for deployment_name, decision_num_replicas in decisions.items():
+            deployment_id: DeploymentID = DeploymentID(
+                name=deployment_name, app_name=self._name
+            )
+            self._deployment_state_manager._deployment_states[deployment_id].autoscale(
+                target_num_replicas=decision_num_replicas
+            )
+
     def apply_deployment_info(
         self,
         deployment_name: str,
@@ -432,6 +456,14 @@ class ApplicationState:
         if route_prefix is not None and not route_prefix.startswith("/"):
             raise RayServeException(
                 f'Invalid route prefix "{route_prefix}", it must start with "/"'
+            )
+
+        if (
+            self._target_state.config is not None
+            and self._target_state.config.autoscaling_policy is not None
+        ):
+            self._autoscaling_state_manager.register_application(
+                self._name, self._target_state.config
             )
 
         deployment_id = DeploymentID(name=deployment_name, app_name=self._name)
@@ -888,11 +920,13 @@ class ApplicationStateManager:
     def __init__(
         self,
         deployment_state_manager: DeploymentStateManager,
+        autoscaling_state_manager: AutoscalingStateManager,
         endpoint_state: EndpointState,
         kv_store: KVStoreBase,
         logging_config: LoggingConfig,
     ):
         self._deployment_state_manager = deployment_state_manager
+        self._autoscaling_state_manager = autoscaling_state_manager
         self._endpoint_state = endpoint_state
         self._kv_store = kv_store
         self._logging_config = logging_config
@@ -957,6 +991,7 @@ class ApplicationStateManager:
                 self._application_states[name] = ApplicationState(
                     name,
                     self._deployment_state_manager,
+                    self._autoscaling_state_manager,
                     self._endpoint_state,
                     self._logging_config,
                 )
@@ -1089,8 +1124,11 @@ class ApplicationStateManager:
     def update(self):
         """Update each application state"""
         apps_to_be_deleted = []
-        for name, app in self._application_states.items():
-            ready_to_be_deleted = app.update()
+        for name, application_state in self._application_states.items():
+            if application_state.should_autoscale():
+                application_state.autoscale()
+
+            ready_to_be_deleted = application_state.update()
             if ready_to_be_deleted:
                 apps_to_be_deleted.append(name)
                 logger.debug(f"Application '{name}' deleted successfully.")
