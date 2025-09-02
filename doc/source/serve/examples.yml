@@ -74,7 +74,7 @@ examples:
       - natural language processing
     link: tutorials/serve-deepseek
     related_technology: llm applications
-  - title: Deploying a small size LLM
+  - title: Deploying a small-sized LLM
     skill_level: beginner
     use_cases:
       - generative ai
@@ -82,7 +82,7 @@ examples:
       - natural language processing
     link: tutorials/deployment-serve-llm/small-size-llm/notebook
     related_technology: llm applications
-  - title: Deploying a medium size LLM
+  - title: Deploying a medium-sized LLM
     skill_level: beginner
     use_cases:
       - generative ai
@@ -90,7 +90,7 @@ examples:
       - natural language processing
     link: tutorials/deployment-serve-llm/medium-size-llm/notebook
     related_technology: llm applications
-  - title: Deploying a large size LLM
+  - title: Deploying a large-sized LLM
     skill_level: beginner
     use_cases:
       - generative ai
@@ -98,7 +98,7 @@ examples:
       - natural language processing
     link: tutorials/deployment-serve-llm/large-size-llm/notebook
     related_technology: llm applications
-  - title: Deploying a Vision LLM
+  - title: Deploying a vision LLM
     skill_level: beginner
     use_cases:
       - generative ai
