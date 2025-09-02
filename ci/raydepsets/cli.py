@@ -158,6 +158,7 @@ class DependencySetManager:
     ):
         """Compile a dependency set."""
         args = DEFAULT_UV_FLAGS.copy()
+        stdin = None
         if self._uv_cache_dir:
             args.extend(["--cache-dir", self._uv_cache_dir])
         if override_flags:
@@ -171,8 +172,8 @@ class DependencySetManager:
             for requirement in requirements:
                 args.extend([requirement])
         if packages:
-            # need to add a dash to process stdin
-            args = ["-"] + args
+            # add a dash to process stdin
+            args.append("-")
             stdin = _get_bytes(packages)
         if output:
             args.extend(["-o", output])
