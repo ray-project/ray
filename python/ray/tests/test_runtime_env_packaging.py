@@ -11,9 +11,6 @@ from filecmp import dircmp
 from pathlib import Path
 from shutil import copytree, make_archive, rmtree
 from unittest.mock import MagicMock, patch
-import zipfile
-import ray
-
 
 import pytest
 
