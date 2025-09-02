@@ -85,6 +85,9 @@ ray_cc_library(
         ":__subpackages__",
         "//src/ray/core_worker:__pkg__",
     ],
+    implementation_deps = [
+        "//src/ray/util:time",
+    ],
     deps = [
         ":dependency_resolver",
         "//src/ray/common:id",
