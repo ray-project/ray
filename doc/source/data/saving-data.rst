@@ -173,7 +173,7 @@ Writing into Partitioned Dataset
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 When writing partitioned dataset (using Hive-style, folder-based partitioning) it's recommended to repartition the dataset by the partition columns prior to writing into it. 
-This allows you to *have the control over the file-sizes and their number*. When the dataset is repartitioned by the partition columns every block should contain all of the rows corresponding to particular partition, 
+This allows you to *have control over the file sizes and their number*. When the dataset is repartitioned by the partition columns every block should contain all of the rows corresponding to particular partition, 
 meaning that the number of files created should be controlled based on the configuration provided to, 
 for example, `write_parquet` method (such as `min_rows_per_file`, `max_rows_per_file`). 
 Since every block is written out independently, when writing the dataset without prior 
