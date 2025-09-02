@@ -151,6 +151,17 @@ def _setup_torch_process_group(
             world_size=world_size,
             timeout=timedelta(seconds=timeout_s),
         )
+        # Sanity logs
+        try:
+            import torch_xla.runtime as xr
+            logger.info(
+                f">>> [XLA PG] dist rank/size=({dist.get_rank()}/{dist.get_world_size()}), "
+                f"xr world_size={xr.world_size()}, "
+                f"global_device_count={xr.global_device_count()}, "
+                f"local_device_count={xr.local_device_count()}"
+            )
+        except Exception:
+            pass
         return
 
 
@@ -260,7 +271,7 @@ class _TorchBackend(Backend):
                                 f"RANK={context.get_world_rank()}, "
                                 f"COORDINATOR={coord}")
 
-                worker_group.execute(_set_pjrt_envs, coordinator_addr=coordinator)
+                worker_group.execute(_set_pjrt_envs, coord=coordinator)
                 logger.info(f"PJRT environment configured with coordinator: {coordinator}")
 
                 # Wait a moment for env vars to propagate
