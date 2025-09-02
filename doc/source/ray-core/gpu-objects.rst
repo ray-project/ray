@@ -114,7 +114,7 @@ Passing GPU objects to the actor that produced them
 *************************************
 
 GPU :class:`ray.ObjectRefs <ray.ObjectRef>` can also be passed to the actor that produced them.
-This avoids any copies and just returns the ``torch.Tensors`` directly back to the same actor.
+This avoids any copies and just provides a reference to the same ``torch.Tensor`` that was previously created.
 For example:
 
 .. literalinclude:: doc_code/gpu_objects_gloo.py
