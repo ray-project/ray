@@ -31,7 +31,7 @@
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/task/task_util.h"
-#include "ray/common/test_util.h"
+#include "ray/common/test_utils.h"
 #include "ray/raylet/local_lease_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/tests/util.h"

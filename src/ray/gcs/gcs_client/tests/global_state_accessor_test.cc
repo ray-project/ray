@@ -20,8 +20,8 @@
 
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
-#include "ray/gcs/tests/gcs_test_util.h"
 #include "ray/rpc/gcs/gcs_rpc_client.h"
 #include "ray/util/path_utils.h"
 #include "ray/util/raii.h"
@@ -132,7 +132,7 @@ TEST_P(GlobalStateAccessorTest, TestJobTable) {
   ASSERT_EQ(global_state_->GetAllJobInfo().size(), 0);
   for (int index = 0; index < job_count; ++index) {
     auto job_id = JobID::FromInt(index);
-    auto job_table_data = Mocker::GenJobTableData(job_id);
+    auto job_table_data = GenJobTableData(job_id);
     std::promise<bool> promise;
     gcs_client_->Jobs().AsyncAdd(
         job_table_data, [&promise](Status status) { promise.set_value(status.ok()); });
@@ -148,7 +148,7 @@ TEST_P(GlobalStateAccessorTest, TestJobTableWithSubmissionId) {
   ASSERT_EQ(global_state_->GetAllJobInfo().size(), 0);
   for (int index = 0; index < job_count; ++index) {
     auto job_id = JobID::FromInt(index);
-    auto job_table_data = Mocker::GenJobTableData(job_id);
+    auto job_table_data = GenJobTableData(job_id);
     if (index % 2 == 0) {
       (*job_table_data->mutable_config()->mutable_metadata())["job_submission_id"] =
           std::to_string(index);
@@ -166,10 +166,9 @@ TEST_P(GlobalStateAccessorTest, TestNodeTable) {
   ASSERT_EQ(global_state_->GetAllNodeInfo().size(), 0);
   // It's useful to check if index value will be marked as address suffix.
   for (int index = 0; index < node_count; ++index) {
-    auto node_table_data =
-        Mocker::GenNodeInfo(index,
-                            std::string("127.0.0.") + std::to_string(index),
-                            "Mocker_node_" + std::to_string(index * 10));
+    auto node_table_data = GenNodeInfo(index,
+                                       std::string("127.0.0.") + std::to_string(index),
+                                       "Mocker_node_" + std::to_string(index * 10));
     std::promise<bool> promise;
     gcs_client_->Nodes().AsyncRegister(
         *node_table_data, [&promise](Status status) { promise.set_value(status.ok()); });
@@ -192,7 +191,7 @@ TEST_P(GlobalStateAccessorTest, TestGetAllTotalResources) {
   ASSERT_EQ(global_state_->GetAllTotalResources().size(), 0);
 
   // Register node
-  auto node_table_data = Mocker::GenNodeInfo();
+  auto node_table_data = GenNodeInfo();
   node_table_data->mutable_resources_total()->insert({"CPU", 1});
   node_table_data->mutable_resources_total()->insert({"GPU", 10});
 
@@ -222,7 +221,7 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   resource_usage_batch_data.ParseFromString(*resources.get());
   ASSERT_EQ(resource_usage_batch_data.batch_size(), 0);
 
-  auto node_table_data = Mocker::GenNodeInfo();
+  auto node_table_data = GenNodeInfo();
   node_table_data->mutable_resources_total()->insert({"CPU", 1});
 
   std::promise<bool> promise;
@@ -267,7 +266,7 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
 TEST_P(GlobalStateAccessorTest, TestWorkerTable) {
   ASSERT_EQ(global_state_->GetAllWorkerInfo().size(), 0);
   // Add worker info
-  auto worker_table_data = Mocker::GenWorkerTableData();
+  auto worker_table_data = GenWorkerTableData();
   worker_table_data->mutable_worker_address()->set_worker_id(
       WorkerID::FromRandom().Binary());
   ASSERT_TRUE(global_state_->AddWorkerInfo(worker_table_data->SerializeAsString()));
@@ -277,7 +276,7 @@ TEST_P(GlobalStateAccessorTest, TestWorkerTable) {
   ASSERT_TRUE(global_state_->GetWorkerInfo(worker_id));
 
   // Add another worker info
-  auto another_worker_data = Mocker::GenWorkerTableData();
+  auto another_worker_data = GenWorkerTableData();
   another_worker_data->mutable_worker_address()->set_worker_id(
       WorkerID::FromRandom().Binary());
   ASSERT_TRUE(global_state_->AddWorkerInfo(another_worker_data->SerializeAsString()));
@@ -287,7 +286,7 @@ TEST_P(GlobalStateAccessorTest, TestWorkerTable) {
 TEST_P(GlobalStateAccessorTest, TestUpdateWorkerDebuggerPort) {
   ASSERT_EQ(global_state_->GetAllWorkerInfo().size(), 0);
   // Add worker info
-  auto worker_table_data = Mocker::GenWorkerTableData();
+  auto worker_table_data = GenWorkerTableData();
   worker_table_data->mutable_worker_address()->set_worker_id(
       WorkerID::FromRandom().Binary());
   ASSERT_TRUE(global_state_->AddWorkerInfo(worker_table_data->SerializeAsString()));
@@ -301,7 +300,7 @@ TEST_P(GlobalStateAccessorTest, TestUpdateWorkerDebuggerPort) {
   ASSERT_TRUE(global_state_->UpdateWorkerDebuggerPort(worker_id, debugger_port));
 
   // Verify the debugger port
-  auto another_worker_table_data = Mocker::GenWorkerTableData();
+  auto another_worker_table_data = GenWorkerTableData();
   auto worker_info = global_state_->GetWorkerInfo(worker_id);
   ASSERT_TRUE(another_worker_table_data->ParseFromString(*worker_info));
   ASSERT_EQ(another_worker_table_data->debugger_port(), debugger_port);
@@ -310,7 +309,7 @@ TEST_P(GlobalStateAccessorTest, TestUpdateWorkerDebuggerPort) {
 TEST_P(GlobalStateAccessorTest, TestUpdateWorkerNumPausedThreads) {
   ASSERT_EQ(global_state_->GetAllWorkerInfo().size(), 0);
   // Add worker info
-  auto worker_table_data = Mocker::GenWorkerTableData();
+  auto worker_table_data = GenWorkerTableData();
   worker_table_data->mutable_worker_address()->set_worker_id(
       WorkerID::FromRandom().Binary());
   ASSERT_TRUE(global_state_->AddWorkerInfo(worker_table_data->SerializeAsString()));
@@ -325,7 +324,7 @@ TEST_P(GlobalStateAccessorTest, TestUpdateWorkerNumPausedThreads) {
       global_state_->UpdateWorkerNumPausedThreads(worker_id, num_paused_threads_delta));
 
   // Verify the num paused threads is equal to num_paused_threads_delta
-  auto another_worker_table_data = Mocker::GenWorkerTableData();
+  auto another_worker_table_data = GenWorkerTableData();
   auto worker_info = global_state_->GetWorkerInfo(worker_id);
   ASSERT_TRUE(another_worker_table_data->ParseFromString(*worker_info));
   ASSERT_EQ(another_worker_table_data->num_paused_threads(), num_paused_threads_delta);
