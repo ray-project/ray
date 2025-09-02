@@ -791,13 +791,11 @@ def dedupe_schemas_with_validation(
         return bundle, diverged
 
     diverged = True
-    if warn and not enforce_schemas:
-        old_schema_string = _add_ellipsis_for_string(str(old_schema), 300)
-        new_schema_string = _add_ellipsis_for_string(str(bundle.schema), 300)
+    if warn and enforce_schemas:
         logger.warning(
             f"Operator produced a RefBundle with a different schema "
-            f"than the previous one. Previous schema: {old_schema_string}, "
-            f"new schema: {new_schema_string}. This may lead to unexpected behavior."
+            f"than the previous one. Previous schema: {old_schema}, "
+            f"new schema: {bundle.schema}. This may lead to unexpected behavior."
         )
     if enforce_schemas:
         old_schema = unify_schemas_with_validation([old_schema, bundle.schema])
