@@ -41,11 +41,9 @@ Deploy models that can switch between reasoning and non-reasoning modes for flex
 ```{toctree}
 :hidden:
 
-small-size-llm/README.ipynb
-medium-size-llm/README.ipynb
-large-size-llm/README.ipynb
-vision-llm/README.ipynb
-reasoning-llm/README.ipynb
-hybrid-reasoning-llm/README.ipynb
+small-size-llm/notebook.ipynb
+medium-size-llm/notebook.ipynb
+vision-llm/notebook.ipynb
+reasoning-llm/notebook.ipynb
+hybrid-reasoning-llm/notebook.ipynb
 ```
-
