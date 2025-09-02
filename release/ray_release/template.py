@@ -83,11 +83,8 @@ def get_working_dir(test: "Test", test_definition_root: Optional[str] = None) ->
         return os.path.join(test_definition_root, working_dir)
     if working_dir.startswith("//"):
         working_dir = working_dir.lstrip("//")
-        if _bazel_workspace_dir:
-            return os.path.join(_bazel_workspace_dir, working_dir)
-        else:
-            return bazel_runfile(working_dir)
-    working_dir = os.path.join("release", working_dir)
+    else:
+        working_dir = os.path.join("release", working_dir)
     if _bazel_workspace_dir:
         return os.path.join(_bazel_workspace_dir, working_dir)
     else:
