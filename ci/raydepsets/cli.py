@@ -67,6 +67,7 @@ def build(
         config_path=config_path,
         workspace_dir=workspace_dir,
         uv_cache_dir=uv_cache_dir,
+        check=check,
     )
     if name:
         manager.execute_single(_get_depset(manager.config.depsets, name))
@@ -127,10 +128,10 @@ class DependencySetManager:
             ):
                 diffs.append(diff)
         if len(diffs) > 0:
-            click.echo("".join(diffs))
             self.cleanup_temp_dir()
             raise RuntimeError(
-                "Lock files are not up to date. Please update lock files and push the changes."
+                "Lock files are not up to date. Please update lock files and push the changes.\n"
+                + "".join(diffs)
             )
         click.echo("Lock files are up to date.")
         self.cleanup_temp_dir()

@@ -614,6 +614,8 @@ class TestCli(unittest.TestCase):
                 "Lock files are not up to date. Please update lock files and push the changes."
                 in str(e.exception)
             )
+            assert "+emoji==2.8.0" in str(e.exception)
+            assert "-emoji==2.9.0" in str(e.exception)
 
     def test_diff_lock_files_up_to_date(self):
         with tempfile.TemporaryDirectory() as tmpdir:
