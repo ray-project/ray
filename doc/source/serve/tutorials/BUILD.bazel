@@ -3,3 +3,11 @@ filegroup(
     srcs = glob(["**/*.md"]),
     visibility = ["//python/ray/serve:__subpackages__"],
 )
+
+# deployment-serve-llm/ to be used as an Anyscale template
+# Discover the CI config files to trigger the release test CI
+filegroup(
+    name = "deployment_serve_llm_configs",
+    srcs = glob(["deployment-serve-llm/**/*/.yaml"]),
+    visibility = ["//release:__pkg__"],
+)
