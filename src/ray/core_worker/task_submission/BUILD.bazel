@@ -99,7 +99,7 @@ ray_cc_library(
         "//src/ray/core_worker:lease_policy",
         "//src/ray/core_worker:memory_store",
         "//src/ray/core_worker:task_manager_interface",
-        "//src/ray/raylet_client:raylet_client_lib",
+        "//src/ray/raylet_client:raylet_client_interface",
         "//src/ray/rpc:core_worker_client",
         "@com_google_absl//absl/base:core_headers",
     ],
