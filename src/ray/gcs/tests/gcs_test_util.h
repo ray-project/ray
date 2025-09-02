@@ -123,42 +123,6 @@ struct Mocker {
     return request;
   }
 
-  static std::vector<std::shared_ptr<const BundleSpecification>> GenBundleSpecifications(
-      const PlacementGroupID &placement_group_id,
-      absl::flat_hash_map<std::string, double> &unit_resource,
-      int bundles_size = 1) {
-    std::vector<std::shared_ptr<const BundleSpecification>> bundle_specs;
-    for (int i = 0; i < bundles_size; i++) {
-      rpc::Bundle bundle;
-      auto mutable_bundle_id = bundle.mutable_bundle_id();
-      // The bundle index is start from 1.
-      mutable_bundle_id->set_bundle_index(i + 1);
-      mutable_bundle_id->set_placement_group_id(placement_group_id.Binary());
-      auto mutable_unit_resources = bundle.mutable_unit_resources();
-      for (auto &resource : unit_resource) {
-        mutable_unit_resources->insert({resource.first, resource.second});
-      }
-      bundle_specs.emplace_back(std::make_shared<BundleSpecification>(bundle));
-    }
-    return bundle_specs;
-  }
-
-  // TODO(@clay4444): Remove this once we did the batch rpc request refactor.
-  static BundleSpecification GenBundleCreation(
-      const PlacementGroupID &placement_group_id,
-      const int bundle_index,
-      absl::flat_hash_map<std::string, double> &unit_resource) {
-    rpc::Bundle bundle;
-    auto mutable_bundle_id = bundle.mutable_bundle_id();
-    mutable_bundle_id->set_bundle_index(bundle_index);
-    mutable_bundle_id->set_placement_group_id(placement_group_id.Binary());
-    auto mutable_unit_resources = bundle.mutable_unit_resources();
-    for (auto &resource : unit_resource) {
-      mutable_unit_resources->insert({resource.first, resource.second});
-    }
-    return BundleSpecification(bundle);
-  }
-
   static PlacementGroupSpecification GenPlacementGroupCreation(
       const std::string &name,
       std::vector<std::unordered_map<std::string, double>> &bundles,

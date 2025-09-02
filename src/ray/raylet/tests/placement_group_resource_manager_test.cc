@@ -25,6 +25,45 @@
 #include "ray/common/id.h"
 #include "ray/common/scheduling/resource_set.h"
 
+namespace {
+
+BundleSpecification GenBundleCreation(
+    const PlacementGroupID &placement_group_id,
+    const int bundle_index,
+    absl::flat_hash_map<std::string, double> &unit_resource) {
+  rpc::Bundle bundle;
+  auto mutable_bundle_id = bundle.mutable_bundle_id();
+  mutable_bundle_id->set_bundle_index(bundle_index);
+  mutable_bundle_id->set_placement_group_id(placement_group_id.Binary());
+  auto mutable_unit_resources = bundle.mutable_unit_resources();
+  for (auto &resource : unit_resource) {
+    mutable_unit_resources->insert({resource.first, resource.second});
+  }
+  return BundleSpecification(bundle);
+}
+
+std::vector<std::shared_ptr<const BundleSpecification>> GenBundleSpecifications(
+    const PlacementGroupID &placement_group_id,
+    absl::flat_hash_map<std::string, double> &unit_resource,
+    int bundles_size = 1) {
+  std::vector<std::shared_ptr<const BundleSpecification>> bundle_specs;
+  for (int i = 0; i < bundles_size; i++) {
+    rpc::Bundle bundle;
+    auto mutable_bundle_id = bundle.mutable_bundle_id();
+    // The bundle index is start from 1.
+    mutable_bundle_id->set_bundle_index(i + 1);
+    mutable_bundle_id->set_placement_group_id(placement_group_id.Binary());
+    auto mutable_unit_resources = bundle.mutable_unit_resources();
+    for (auto &resource : unit_resource) {
+      mutable_unit_resources->insert({resource.first, resource.second});
+    }
+    bundle_specs.emplace_back(std::make_shared<BundleSpecification>(bundle));
+  }
+  return bundle_specs;
+}
+
+}  // namespace
+
 namespace ray {
 
 class NewPlacementGroupResourceManagerTest : public ::testing::Test {
@@ -147,7 +186,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewPrepareBundleResource) {
   auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
-  auto bundle_specs = Mocker::GenBundleSpecifications(group_id, unit_resource, 1);
+  auto bundle_specs = GenBundleSpecifications(group_id, unit_resource, 1);
   /// 2. init local available resource.
   InitLocalAvailableResource(unit_resource);
   /// 3. prepare bundle resource.
@@ -162,7 +201,7 @@ TEST_F(NewPlacementGroupResourceManagerTest,
   auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 2.0});
-  auto bundle_specs = Mocker::GenBundleSpecifications(group_id, unit_resource, 1);
+  auto bundle_specs = GenBundleSpecifications(group_id, unit_resource, 1);
   /// 2. init local available resource.
   absl::flat_hash_map<std::string, double> init_unit_resource;
   init_unit_resource.insert({"CPU", 1.0});
@@ -176,9 +215,9 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewPrepareBundleDuringDraining)
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto group1_id = PlacementGroupID::Of(JobID::FromInt(1));
-  auto bundle1_specs = Mocker::GenBundleSpecifications(group1_id, unit_resource, 1);
+  auto bundle1_specs = GenBundleSpecifications(group1_id, unit_resource, 1);
   auto group2_id = PlacementGroupID::Of(JobID::FromInt(2));
-  auto bundle2_specs = Mocker::GenBundleSpecifications(group2_id, unit_resource, 1);
+  auto bundle2_specs = GenBundleSpecifications(group2_id, unit_resource, 1);
   /// 2. init local available resource.
   absl::flat_hash_map<std::string, double> init_unit_resource;
   init_unit_resource.insert({"CPU", 2.0});
@@ -215,7 +254,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewCommitBundleResource) {
   auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
-  auto bundle_specs = Mocker::GenBundleSpecifications(group_id, unit_resource, 1);
+  auto bundle_specs = GenBundleSpecifications(group_id, unit_resource, 1);
   /// 2. init local available resource.
   InitLocalAvailableResource(unit_resource);
   /// 3. prepare and commit bundle resource.
@@ -244,7 +283,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewReturnBundleResource) {
   auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
-  auto bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
+  auto bundle_spec = GenBundleCreation(group_id, 1, unit_resource);
   /// 2. init local available resource.
   InitLocalAvailableResource(unit_resource);
   /// 3. prepare and commit bundle resource.
@@ -265,8 +304,8 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewMultipleBundlesCommitAndRetu
   auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
-  auto first_bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
-  auto second_bundle_spec = Mocker::GenBundleCreation(group_id, 2, unit_resource);
+  auto first_bundle_spec = GenBundleCreation(group_id, 1, unit_resource);
+  auto second_bundle_spec = GenBundleCreation(group_id, 2, unit_resource);
   /// 2. init local available resource.
   absl::flat_hash_map<std::string, double> init_unit_resource;
   init_unit_resource.insert({"CPU", 2.0});
@@ -332,7 +371,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithMultiPrepare)
   auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
-  auto bundle_specs = Mocker::GenBundleSpecifications(group_id, unit_resource, 1);
+  auto bundle_specs = GenBundleSpecifications(group_id, unit_resource, 1);
   /// 2. init local available resource.
   absl::flat_hash_map<std::string, double> available_resource = {
       std::make_pair("CPU", 3.0)};
@@ -354,7 +393,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithRandomOrder) 
   auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
-  auto bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
+  auto bundle_spec = GenBundleCreation(group_id, 1, unit_resource);
   /// 2. init local available resource.
   absl::flat_hash_map<std::string, double> available_resource = {
       std::make_pair("CPU", 3.0)};
@@ -410,7 +449,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestPreparedResourceBatched) {
   auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
-  auto bundle_specs = Mocker::GenBundleSpecifications(group_id, unit_resource, 4);
+  auto bundle_specs = GenBundleSpecifications(group_id, unit_resource, 4);
   // 2. init local available resource with 3 CPUs.
   absl::flat_hash_map<std::string, double> available_resource = {
       std::make_pair("CPU", 3.0)};
@@ -469,7 +508,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestCommiteResourceBatched) {
   auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"GPU", 2.0});
-  auto bundle_specs = Mocker::GenBundleSpecifications(group_id, unit_resource, 4);
+  auto bundle_specs = GenBundleSpecifications(group_id, unit_resource, 4);
   // 2. init local available resource with 4 CPUs.
   absl::flat_hash_map<std::string, double> available_resource = {
       std::make_pair("GPU", 10.0)};
@@ -517,7 +556,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewReturnBundleFailure) {
   auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
-  auto bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
+  auto bundle_spec = GenBundleCreation(group_id, 1, unit_resource);
   /// init local available resource.
   InitLocalAvailableResource(unit_resource);
   /// prepare and commit bundle resource.
