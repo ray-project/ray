@@ -1,18 +1,19 @@
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from ray.train import Checkpoint
 from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
 from ray.train.v2.api.context import TrainContext
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data import DataIterator
+    from ray.train import Checkpoint
+    from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
 
 @PublicAPI(stability="stable")
 def report(
     metrics: Dict[str, Any],
-    checkpoint: Optional[Checkpoint] = None,
+    checkpoint: Optional["Checkpoint"] = None,
     checkpoint_dir_name: Optional[str] = None,
 ):
     """Report metrics and optionally save a checkpoint.
@@ -107,7 +108,7 @@ def get_context() -> TrainContext:
 
 
 @PublicAPI(stability="stable")
-def get_checkpoint() -> Optional[Checkpoint]:
+def get_checkpoint() -> Optional["Checkpoint"]:
     """Access the latest reported checkpoint to resume from if one exists.
 
     Example:
@@ -149,6 +150,51 @@ def get_checkpoint() -> Optional[Checkpoint]:
             Otherwise, return None.
     """
     return get_train_fn_utils().get_checkpoint()
+
+
+@PublicAPI(stability="alpha")
+def get_all_reported_checkpoints() -> List["ReportedCheckpoint"]:
+    """Get all the reported checkpoints so far.
+
+    Blocks until Ray Train has finished processing every `ray.train.report` call.
+
+    Example:
+
+        .. testcode::
+
+            import tempfile
+
+            from ray import train
+            from ray.train import Checkpoint
+            from ray.train.torch import TorchTrainer
+
+
+            def train_func(config):
+                start_epoch = 0
+
+                for epoch in range(start_epoch, config.get("num_epochs", 10)):
+                    # Do training...
+
+                    metrics = {"loss": ...}
+
+                    with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+                       # Save the checkpoint...
+
+                        checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
+                        train.report(metrics, checkpoint=checkpoint)
+
+                reported_checkpoints = train.get_all_reported_checkpoints()
+                # Report artifacts/metrics to experiment tracking framework...
+
+            trainer = TorchTrainer(
+                train_func, scaling_config=train.ScalingConfig(num_workers=2)
+            )
+
+    Returns:
+        List of ReportedCheckpoint objects that represent the checkpoints and
+            corresponding metrics reported by the workers.
+    """
+    return get_train_fn_utils().get_all_reported_checkpoints()
 
 
 @PublicAPI(stability="stable")
