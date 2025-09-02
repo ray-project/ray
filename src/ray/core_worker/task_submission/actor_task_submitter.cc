@@ -174,8 +174,8 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   bool task_queued = false;
   uint64_t send_pos = 0;
   {
-    // We must release the mu_ before resolving the task dependencies since
-    // the callback that reacquires mu_ may get called in the same call stack.
+    // We must release mu_ before resolving the task dependencies since the callback that
+    // reacquires mu_ may get called in the same call stack.
     absl::MutexLock lock(&mu_);
     auto queue = client_queues_.find(actor_id);
     RAY_CHECK(queue != client_queues_.end());
