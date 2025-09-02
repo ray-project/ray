@@ -24,7 +24,7 @@ namespace ray {
 namespace raylet {
 
 bool LeaseDependencyManager::CheckObjectLocal(const ObjectID &object_id) const {
-  return local_objects_.count(object_id) == 1;
+  return local_objects_.contains(object_id);
 }
 
 bool LeaseDependencyManager::GetOwnerAddress(const ObjectID &object_id,
@@ -70,7 +70,7 @@ void LeaseDependencyManager::StartOrUpdateWaitRequest(
   auto &wait_request = wait_requests_[worker_id];
   for (const auto &ref : required_objects) {
     const auto obj_id = ObjectRefToId(ref);
-    if (local_objects_.count(obj_id)) {
+    if (local_objects_.contains(obj_id)) {
       // Object is already local. No need to fetch it.
       continue;
     }
@@ -133,7 +133,10 @@ void LeaseDependencyManager::StartOrUpdateGetRequest(
     for (auto &obj_id : get_request.first) {
       auto it = required_objects_.find(obj_id);
       RAY_CHECK(it != required_objects_.end());
-      refs.push_back(ObjectIdToRef(obj_id, it->second.owner_address));
+      ray::rpc::ObjectReference ref;
+      ref.set_object_id(obj_id.Binary());
+      ref.mutable_owner_address()->CopyFrom(it->second.owner_address);
+      refs.push_back(std::move(ref));
     }
     // Pull the new dependencies before canceling the old request, in case some
     // of the old dependencies are still being fetched.
@@ -198,7 +201,7 @@ bool LeaseDependencyManager::RequestLeaseDependencies(
   }
 
   for (const auto &obj_id : lease_entry->dependencies_) {
-    if (local_objects_.count(obj_id)) {
+    if (local_objects_.contains(obj_id)) {
       lease_entry->DecrementMissingDependencies();
     }
   }

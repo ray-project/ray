@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/common/id.h"
+
 #include <gtest/gtest.h>
 
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
-#include "ray/common/common_protocol.h"
 
 namespace ray {
 
