@@ -232,17 +232,34 @@ class _TorchBackend(Backend):
             if backend_config.backend == "xla":
                 # set pjrt envs
                 coordinator = f"{master_addr}:{master_port}"
-                def _set_pjrt_envs(coord, world_size, world_rank):
+                def _set_pjrt_envs(coord):
                     context = ray.train.get_context()
+                    # Core PJRT settings
                     os.environ["PJRT_DEVICE"] = "CUDA"
                     os.environ["PJRT_DIST_SERVICE_ADDR"] = coord
+                    
+                    # CRITICAL: Use Ray's world size and rank for consistency
                     os.environ["PJRT_WORLD_SIZE"] = str(context.get_world_size())
                     os.environ["PJRT_LOCAL_PROCESS_RANK"] = str(context.get_world_rank())
+                    
+                    # For multi-node setups
                     os.environ["PJRT_LOCAL_PROCESS_COUNT"] = str(context.get_local_world_size())
+                    os.environ["PJRT_NODE_ID"] = str(context.get_node_rank())
+                    
+                    # Additional XLA settings for GPU
+                    os.environ["GPU_NUM_DEVICES"] = "1"  # One GPU per Ray worker
+                    
+                    logger.info(f"PJRT env vars set for worker {context.get_world_rank()}: "
+                                f"WORLD_SIZE={context.get_world_size()}, "
+                                f"RANK={context.get_world_rank()}, "
+                                f"COORDINATOR={coord}")
 
-                for i in range(len(worker_group)):
-                    worker_group.execute_single(i, _set_pjrt_envs, coord=coordinator, world_size=len(worker_group), world_rank=i)
-                    logger.info(f"set pjrt envs for worker {i}")
+                worker_group.execute(_set_pjrt_envs, coordinator_addr=coordinator)
+                logger.info(f"PJRT environment configured with coordinator: {coordinator}")
+
+                # Wait a moment for env vars to propagate
+                import time
+                time.sleep(1)
 
             # it might be related since we will need these env var before pjrt init and xla process group init
             worker_group.execute(_set_torch_distributed_env_vars)
