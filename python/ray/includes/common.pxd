@@ -158,7 +158,7 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
 
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
-    cdef cppclass CLanguage "Language":
+    cdef cppclass CLanguage "ray::Language":
         pass
     cdef cppclass CWorkerType "ray::core::WorkerType":
         pass
@@ -243,9 +243,9 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
 # This is a workaround for C++ enum class since Cython has no corresponding
 # representation.
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
-    cdef CLanguage LANGUAGE_PYTHON "Language::PYTHON"
-    cdef CLanguage LANGUAGE_CPP "Language::CPP"
-    cdef CLanguage LANGUAGE_JAVA "Language::JAVA"
+    cdef CLanguage LANGUAGE_PYTHON "ray::Language::PYTHON"
+    cdef CLanguage LANGUAGE_CPP "ray::Language::CPP"
+    cdef CLanguage LANGUAGE_JAVA "ray::Language::JAVA"
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CWorkerType WORKER_TYPE_WORKER "ray::core::WorkerType::WORKER"
