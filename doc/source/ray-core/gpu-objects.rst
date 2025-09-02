@@ -110,7 +110,7 @@ Here is a full example:
 When the :class:`ray.ObjectRef` is passed to another task, Ray will use Gloo to transfer the tensor directly from the source actor to the destination actor instead of the default object store.
 This is done by submitting an additional Ray task to each actor, which executes the send and receive operations on a background thread.
 
-Passing GPU objects to the same actor
+Passing GPU objects to the actor that produced them
 *************************************
 
 GPU :class:`ray.ObjectRefs <ray.ObjectRef>` can also be passed to the same actor.
