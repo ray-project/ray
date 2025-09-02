@@ -29,7 +29,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:asio",
-        "//src/ray/common:test_util",
+        "//src/ray/common:test_utils",
         "//src/ray/core_worker/task_execution:concurrency_group_manager",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
@@ -42,7 +42,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:asio",
-        "//src/ray/common:test_util",
+        "//src/ray/common:test_utils",
         "//src/ray/core_worker/task_execution:actor_scheduling_queue",
         "//src/ray/core_worker/task_execution:normal_scheduling_queue",
         "//src/ray/core_worker/task_execution:out_of_order_actor_scheduling_queue",
@@ -58,7 +58,7 @@ ray_cc_test(
     deps = [
         "//:ray_mock",
         "//src/ray/common:asio",
-        "//src/ray/common:test_util",
+        "//src/ray/common:test_utils",
         "//src/ray/core_worker/task_execution:task_receiver",
         "//src/ray/rpc:core_worker_client",
         "//src/ray/util:time",
