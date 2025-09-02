@@ -36,7 +36,7 @@ def benchmark_fn():
         col = table["key"]
         t = col.type
         new_col = pc.binary_join_element_wise(
-            pa.scalar("s3://" + BUCKET, type=t), col, pa.scalar("", type=t)
+            pa.scalar("s3://" + BUCKET, type=t), col, pa.scalar("/", type=t)
         )
         return table.set_column(table.schema.get_field_index("key"), "key", new_col)
 
