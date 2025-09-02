@@ -161,6 +161,10 @@ class ProtocolsProvider:
             ):
                 raise ValueError(f"Invalid ABFSS URI format: {uri}")
 
+            # Validate container@account format in netloc
+            if "@" not in parsed.netloc:
+                raise ValueError(f"Invalid ABFSS URI format, missing container@: {uri}")
+
             # Extract storage account name from hostname (account.dfs.core.windows.net)
             azure_storage_account_name = parsed.hostname.split(".")[0]
 

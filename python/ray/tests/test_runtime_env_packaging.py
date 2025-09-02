@@ -933,11 +933,12 @@ class TestAbfssStorageAccountExtraction:
         for uri in invalid_uris:
             parsed = urlparse(uri)
 
-            # Test the validation logic
+            # Test the validation logic (same as in protocol.py)
             should_be_invalid = (
                 not parsed.scheme == "abfss"
                 or not parsed.hostname
                 or not parsed.hostname.endswith(".dfs.core.windows.net")
+                or "@" not in parsed.netloc
             )
 
             assert should_be_invalid, f"URI should be considered invalid: {uri}"
@@ -988,6 +989,7 @@ class TestAbfssStorageAccountExtraction:
                         not parsed.scheme == "abfss"
                         or not parsed.hostname
                         or not parsed.hostname.endswith(".dfs.core.windows.net")
+                        or "@" not in parsed.netloc
                     ):
                         raise ValueError(f"Invalid ABFSS URI format: {uri}")
 
