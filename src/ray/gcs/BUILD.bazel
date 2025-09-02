@@ -14,11 +14,3 @@ ray_cc_library(
         "//src/ray/util:time",
     ],
 )
-
-ray_cc_library(
-    name = "gcs_callback",
-    hdrs = ["callback.h"],
-    deps = [
-        "//src/ray/common:status",
-    ],
-)

@@ -20,9 +20,9 @@
 
 #include "ray/common/asio/io_service_pool.h"
 #include "ray/common/asio/postable.h"
+#include "ray/common/gcs_callbacks.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-#include "ray/gcs/callback.h"
 
 namespace ray {
 

@@ -20,11 +20,11 @@
 #include <vector>
 
 #include "absl/types/optional.h"
+#include "ray/common/gcs_callbacks.h"
 #include "ray/common/id.h"
 #include "ray/common/placement_group.h"
 #include "ray/common/status_or.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/gcs/callback.h"
 #include "ray/rpc/client_call.h"
 #include "ray/util/sequencer.h"
 #include "src/ray/protobuf/autoscaler.pb.h"

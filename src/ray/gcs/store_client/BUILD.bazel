@@ -5,9 +5,9 @@ ray_cc_library(
     hdrs = ["store_client.h"],
     deps = [
         "//src/ray/common:asio",
+        "//src/ray/common:gcs_callbacks",
         "//src/ray/common:id",
         "//src/ray/common:status",
-        "//src/ray/gcs:gcs_callback",
     ],
 )
 
@@ -29,7 +29,6 @@ ray_cc_library(
         "//src/ray/common:asio",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
-        "//src/ray/gcs:gcs_callback",
         "//src/ray/stats:stats_lib",
         "//src/ray/util:container_util",
         "//src/ray/util:exponential_backoff",
@@ -47,7 +46,6 @@ ray_cc_library(
     deps = [
         ":store_client",
         "//src/ray/common:asio",
-        "//src/ray/gcs:gcs_callback",
         "//src/ray/util:concurrent_flat_map",
         "@com_google_absl//absl/container:node_hash_map",
     ],
@@ -59,6 +57,5 @@ ray_cc_library(
     hdrs = ["observable_store_client.h"],
     deps = [
         ":store_client",
-        "//src/ray/gcs:gcs_callback",
     ],
 )
