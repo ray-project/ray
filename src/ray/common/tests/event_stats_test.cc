@@ -26,7 +26,7 @@ TEST(EventStatsTest, TestRecordEnd) {
   ASSERT_EQ(event_stats.cum_count, 1);
   ASSERT_EQ(event_stats.curr_count, 1);
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  event_tracker.RecordEnd(std::move(handle), false);
+  event_tracker.RecordEnd(std::move(handle));
   event_stats = event_tracker.get_event_stats("method").value();
   ASSERT_EQ(event_stats.cum_count, 1);
   ASSERT_EQ(event_stats.curr_count, 0);
@@ -48,8 +48,7 @@ TEST(EventStatsTest, TestRecordExecution) {
         event_stats = event_tracker.get_event_stats("method").value();
         ASSERT_EQ(event_stats.running_count, 1);
       },
-      std::move(handle),
-      false);
+      std::move(handle));
   event_stats = event_tracker.get_event_stats("method").value();
   ASSERT_EQ(event_stats.cum_count, 1);
   ASSERT_EQ(event_stats.curr_count, 0);
