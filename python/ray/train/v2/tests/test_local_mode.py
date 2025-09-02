@@ -57,15 +57,12 @@ else:
 pl = import_lightning()
 
 
-def test_data_parallel_trainer_local_mode():
-    def train_fn():
-        with create_dict_checkpoint({}) as checkpoint:
-            ray.train.report(metrics={"test": 1}, checkpoint=checkpoint)
-
-    trainer = DataParallelTrainer(train_fn, scaling_config=ScalingConfig(num_workers=0))
-    result = trainer.fit()
-    assert result.metrics == {"test": 1}
-    assert result.checkpoint
+@pytest.fixture
+def ray_start_6_cpus():
+    address_info = ray.init(num_cpus=6)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
 
 
 @pytest.fixture
@@ -84,6 +81,17 @@ def ray_tpu_single_host(monkeypatch):
 
         yield cluster
         ray.shutdown()
+
+
+def test_data_parallel_trainer_local_mode():
+    def train_fn():
+        with create_dict_checkpoint({}) as checkpoint:
+            ray.train.report(metrics={"test": 1}, checkpoint=checkpoint)
+
+    trainer = DataParallelTrainer(train_fn, scaling_config=ScalingConfig(num_workers=0))
+    result = trainer.fit()
+    assert result.metrics == {"test": 1}
+    assert result.checkpoint
 
 
 def test_jax_trainer_local_mode(ray_tpu_single_host, monkeypatch):
@@ -107,14 +115,6 @@ def test_jax_trainer_local_mode(ray_tpu_single_host, monkeypatch):
     result = trainer.fit()
     assert result.error is None
     assert result.metrics == {"result": ["TPU:0"]}
-
-
-@pytest.fixture
-def ray_start_6_cpus():
-    address_info = ray.init(num_cpus=6)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
 
 
 def test_lightgbm_trainer_local_mode(ray_start_6_cpus):
@@ -201,17 +201,15 @@ def test_lightgbm_trainer_local_mode(ray_start_6_cpus):
     assert checkpoint is not None
 
 
-@pytest.mark.parametrize("strategy_name", ["ddp"])
-@pytest.mark.parametrize("accelerator", ["cpu"])
 @pytest.mark.parametrize("datasource", ["dataloader", "datamodule"])
-def test_lightning_trainer_local_mode(
-    ray_start_6_cpus, strategy_name, accelerator, datasource
-):
+def test_lightning_trainer_local_mode(ray_start_6_cpus, datasource):
 
     num_epochs = 1
     batch_size = 8
     dataset_size = 256
     dataset_shard_size = 1
+    strategy_name = "ddp"
+    accelerator = "cpu"
 
     strategy_map = {"ddp": RayDDPStrategy(), "fsdp": RayFSDPStrategy()}
 
@@ -311,137 +309,53 @@ HF_MODEL_NAME = "hf-internal-testing/tiny-random-BloomForCausalLM"
 HF_MAX_EPOCHS = 1
 HF_TRAIN_DATASET_SIZE = 16
 
-# Transformers Trainer Configurations
-def get_transformers_configurations():
-    """Get configurations with dynamic step calculations based on number of workers."""
-    steps_per_epoch = HF_TRAIN_DATASET_SIZE // HF_BATCH_SIZE_PER_WORKER
-    return {
-        "epoch_gpu": {
-            "evaluation_strategy": "epoch",
-            "save_strategy": "epoch",
-            "logging_strategy": "epoch",
-            "eval_steps": None,
-            "save_steps": None,
-            "logging_steps": None,
-            "no_cuda": False,
-        },
-        "steps_gpu": {
-            "evaluation_strategy": "steps",
-            "save_strategy": "steps",
-            "logging_strategy": "steps",
-            "eval_steps": steps_per_epoch,
-            "save_steps": steps_per_epoch * 2,
-            "logging_steps": 1,
-            "no_cuda": False,
-        },
-        "steps_cpu": {
-            "evaluation_strategy": "steps",
-            "save_strategy": "steps",
-            "logging_strategy": "steps",
-            "eval_steps": steps_per_epoch,
-            "save_steps": steps_per_epoch,
-            "logging_steps": 1,
-            "no_cuda": True,
-        },
-        "steps_cpu_local": {
-            "evaluation_strategy": "steps",
-            "save_strategy": "steps",
-            "logging_strategy": "steps",
-            "eval_steps": steps_per_epoch,
-            "save_steps": steps_per_epoch,
-            "logging_steps": 1,
-            "no_cuda": True,
-        },
-    }
 
+@pytest.mark.parametrize("use_ray_data", [False, True])
+def test_e2e_hf_local_mode(ray_start_4_cpus, use_ray_data):
+    def get_transformers_configurations():
+        """Get configurations with dynamic step calculations based on number of workers."""
+        steps_per_epoch = HF_TRAIN_DATASET_SIZE // HF_BATCH_SIZE_PER_WORKER
+        return {
+            "epoch_gpu": {
+                "evaluation_strategy": "epoch",
+                "save_strategy": "epoch",
+                "logging_strategy": "epoch",
+                "eval_steps": None,
+                "save_steps": None,
+                "logging_steps": None,
+                "no_cuda": False,
+            },
+            "steps_gpu": {
+                "evaluation_strategy": "steps",
+                "save_strategy": "steps",
+                "logging_strategy": "steps",
+                "eval_steps": steps_per_epoch,
+                "save_steps": steps_per_epoch * 2,
+                "logging_steps": 1,
+                "no_cuda": False,
+            },
+            "steps_cpu": {
+                "evaluation_strategy": "steps",
+                "save_strategy": "steps",
+                "logging_strategy": "steps",
+                "eval_steps": steps_per_epoch,
+                "save_steps": steps_per_epoch,
+                "logging_steps": 1,
+                "no_cuda": True,
+            },
+            "steps_cpu_local": {
+                "evaluation_strategy": "steps",
+                "save_strategy": "steps",
+                "logging_strategy": "steps",
+                "eval_steps": steps_per_epoch,
+                "save_steps": steps_per_epoch,
+                "logging_steps": 1,
+                "no_cuda": True,
+            },
+        }
 
-@pytest.mark.parametrize("config_id", ["steps_cpu_local"])
-def test_e2e_hf_data_local_mode(ray_start_4_cpus, config_id):
-    """Test local mode (NUM_WORKERS=0) with HuggingFace datasets."""
-
-    def train_func(config):
-        # Datasets
-        if config["use_ray_data"]:
-            train_ds_shard = ray.train.get_dataset_shard("train")
-            eval_ds_shard = ray.train.get_dataset_shard("eval")
-
-            train_dataset = train_ds_shard.iter_torch_batches(
-                batch_size=HF_BATCH_SIZE_PER_WORKER
-            )
-            eval_dataset = eval_ds_shard.iter_torch_batches(
-                batch_size=HF_BATCH_SIZE_PER_WORKER
-            )
-        else:
-            train_df = pd.read_json(train_data)
-            validation_df = pd.read_json(validation_data)
-
-            train_dataset = Dataset.from_pandas(train_df)
-            eval_dataset = Dataset.from_pandas(validation_df)
-
-        # Model
-        model_config = AutoConfig.from_pretrained(HF_MODEL_NAME)
-        model = AutoModelForCausalLM.from_config(model_config)
-
-        # HF Transformers Trainer
-        training_args = TrainingArguments(
-            f"{HF_MODEL_NAME}-wikitext2",
-            evaluation_strategy=config["evaluation_strategy"],
-            logging_strategy=config["logging_strategy"],
-            save_strategy=config["save_strategy"],
-            eval_steps=config["eval_steps"],
-            save_steps=config["save_steps"],
-            logging_steps=config["logging_steps"],
-            num_train_epochs=config.get("num_train_epochs", HF_MAX_EPOCHS),
-            max_steps=config.get("max_steps", -1),
-            learning_rate=config.get("learning_rate", 2e-5),
-            per_device_train_batch_size=HF_BATCH_SIZE_PER_WORKER,
-            per_device_eval_batch_size=HF_BATCH_SIZE_PER_WORKER,
-            weight_decay=0.01,
-            disable_tqdm=True,
-            no_cuda=config["no_cuda"],
-            report_to="none",
-        )
-        trainer = Trainer(
-            model=model,
-            args=training_args,
-            train_dataset=train_dataset,
-            eval_dataset=eval_dataset,
-        )
-
-        # Report to Ray Train
-        trainer.add_callback(HuggingFaceRayTrainReportCallback())
-        trainer = prepare_trainer(trainer)
-
-        # Start Training
-        trainer.train()
-
-    configurations = get_transformers_configurations()
-    train_loop_config = configurations[config_id]
-
-    # Specify `num_train_epochs` for Map-style Dataset
-    train_loop_config["use_ray_data"] = False
-    train_loop_config["num_train_epochs"] = HF_MAX_EPOCHS
-
-    # Calculate the num of Ray training iterations
-    max_steps = HF_MAX_EPOCHS * HF_TRAIN_DATASET_SIZE // HF_BATCH_SIZE_PER_WORKER
-
-    use_gpu = not train_loop_config["no_cuda"]
-
-    trainer = TorchTrainer(
-        train_func,
-        train_loop_config=train_loop_config,
-        scaling_config=ScalingConfig(num_workers=0, use_gpu=use_gpu),
-    )
-    result = trainer.fit()
-
-    assert result.metrics["epoch"] == HF_MAX_EPOCHS
-    assert result.metrics["step"] == max_steps
-    assert "eval_loss" in result.metrics
-
-
-@pytest.mark.parametrize("config_id,num_workers", [("steps_cpu_local", 0)])
-def test_e2e_hf_ray_data_local_mode(ray_start_4_cpus, config_id, num_workers):
-    """Test local mode (NUM_WORKERS=0) with huggingface and Ray datasets."""
+    config_id = "steps_cpu_local"
+    num_workers = 0
 
     def train_func(config):
         # Datasets
@@ -502,18 +416,25 @@ def test_e2e_hf_ray_data_local_mode(ray_start_4_cpus, config_id, num_workers):
     configurations = get_transformers_configurations()
     train_loop_config = configurations[config_id]
 
-    # Must specify `max_steps` for Iterable Dataset
-    max_steps = HF_MAX_EPOCHS * HF_TRAIN_DATASET_SIZE // HF_BATCH_SIZE_PER_WORKER
-    train_loop_config["use_ray_data"] = True
-    train_loop_config["max_steps"] = max_steps
-
     # Calculate the num of Ray training iterations
+    max_steps = HF_MAX_EPOCHS * HF_TRAIN_DATASET_SIZE // HF_BATCH_SIZE_PER_WORKER
 
-    train_df = pd.read_json(train_data)
-    validation_df = pd.read_json(validation_data)
+    train_loop_config["use_ray_data"] = use_ray_data
 
-    ray_train_ds = ray.data.from_pandas(train_df)
-    ray_eval_ds = ray.data.from_pandas(validation_df)
+    datasets = None
+    if use_ray_data:
+        # Must specify `max_steps` for Iterable Dataset
+        train_loop_config["max_steps"] = max_steps
+
+        train_df = pd.read_json(train_data)
+        validation_df = pd.read_json(validation_data)
+
+        ray_train_ds = ray.data.from_pandas(train_df)
+        ray_eval_ds = ray.data.from_pandas(validation_df)
+        datasets = {"train": ray_train_ds, "eval": ray_eval_ds}
+    else:
+        # Specify `num_train_epochs` for Map-style Dataset
+        train_loop_config["num_train_epochs"] = HF_MAX_EPOCHS
 
     use_gpu = not train_loop_config["no_cuda"]
 
@@ -521,19 +442,20 @@ def test_e2e_hf_ray_data_local_mode(ray_start_4_cpus, config_id, num_workers):
         train_func,
         train_loop_config=train_loop_config,
         scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
-        datasets={"train": ray_train_ds, "eval": ray_eval_ds},
+        datasets=datasets,
     )
     result = trainer.fit()
 
     assert result.metrics["step"] == max_steps
     assert "eval_loss" in result.metrics
+    if not use_ray_data:
+        assert result.metrics["epoch"] == HF_MAX_EPOCHS
 
 
 def test_xgboost_trainer_local_mode(ray_start_4_cpus):
-    def xgboost_train_fn_per_worker(
-        label_column: str,
-        dataset_keys: set,
-    ):
+    def xgboost_train_fn_per_worker():
+        label_column = "target"
+        dataset_keys = {TRAIN_DATASET_KEY, "valid"}
         checkpoint = ray.train.get_checkpoint()
         starting_model = None
         remaining_iters = 10
@@ -582,10 +504,7 @@ def test_xgboost_trainer_local_mode(ray_start_4_cpus):
     valid_dataset = ray.data.from_pandas(test_df)
     scale_config = ScalingConfig(num_workers=0)
     trainer = XGBoostTrainer(
-        train_loop_per_worker=lambda: xgboost_train_fn_per_worker(
-            label_column="target",
-            dataset_keys={TRAIN_DATASET_KEY, "valid"},
-        ),
+        train_loop_per_worker=xgboost_train_fn_per_worker,
         train_loop_config={
             "tree_method": "approx",
             "objective": "binary:logistic",

@@ -119,7 +119,7 @@ class RuntimeEnvConfig(dict):
     def default_config(cls):
         return RuntimeEnvConfig(**cls._default_config)
 
-    def build_proto_runtime_env_config(self) -> Any:
+    def build_proto_runtime_env_config(self) -> ProtoRuntimeEnvConfig:
         runtime_env_config = ProtoRuntimeEnvConfig()
         runtime_env_config.setup_timeout_seconds = self["setup_timeout_seconds"]
         runtime_env_config.eager_install = self["eager_install"]

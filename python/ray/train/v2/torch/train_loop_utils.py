@@ -19,8 +19,7 @@ import ray.train.torch
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.train.torch.train_loop_utils import (
     _WrappedDataLoader,
-    # TODO(xgui): refactor this since it is fragile to cause circular import
-    get_devices as get_devices_v1,
+    get_devices as get_devices_distributed,
 )
 from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
 from ray.util.annotations import Deprecated, PublicAPI
@@ -45,9 +44,10 @@ def get_device() -> torch.device:
 
 def get_devices() -> List[torch.device]:
     if get_train_fn_utils().is_distributed():
-        return get_devices_v1()
+        return get_devices_distributed()
     else:
         # Local mode, we defer to torch.cuda
+        # TODO(xgui): Use `ScalingConfig.use_gpu` instead
         if torch.cuda.is_available():
             return [torch.device(f"cuda:{torch.cuda.current_device()}")]
         else:

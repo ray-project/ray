@@ -3,7 +3,6 @@ import threading
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-
 from ray.data import DataIterator
 from ray.train.v2._internal.execution import collective_impl
 from ray.train.v2._internal.execution.context import (
@@ -27,8 +26,6 @@ class TrainFnUtils(ABC):
         and :class:`~ray.train.v2.api.context.TrainContext`.
 
     It should be set before the users' training function is called.
-    For distributed mode, it is set during training workers initialization.
-    For local mode, it is set during the initialization of :class:`~ray.train.v2.api.data_parallel_trainer.DataParallelTrainer`.
     This class can be patched if new user APIs behaviors is wanted.
     """
 
@@ -52,7 +49,7 @@ class TrainFnUtils(ABC):
         pass
 
     @abstractmethod
-    def get_checkpoint(self) -> Optional[Checkpoint]:
+    def get_checkpoint(self) -> Optional["Checkpoint"]:
         """Get the latest checkpoint to resume training from.
 
         Returns:
@@ -124,7 +121,7 @@ class DistributedTrainFnUtils(TrainFnUtils):
     def report(
         self,
         metrics: Dict[str, Any],
-        checkpoint: Optional[Checkpoint] = None,
+        checkpoint: Optional["Checkpoint"] = None,
         checkpoint_dir_name: Optional[str] = None,
     ) -> None:
         return get_internal_train_context().report(
@@ -154,7 +151,7 @@ class DistributedTrainFnUtils(TrainFnUtils):
 
     def broadcast_from_rank_zero(self, data: Any) -> Any:
         return collective_impl.broadcast_from_rank_zero(data)
-    
+
     def get_all_reported_checkpoints(self) -> List["ReportedCheckpoint"]:
         return get_internal_train_context().get_all_reported_checkpoints()
 
@@ -175,14 +172,14 @@ class LocalTrainFnUtils(TrainFnUtils):
     def report(
         self,
         metrics: Dict[str, Any],
-        checkpoint: Optional[Checkpoint] = None,
+        checkpoint: Optional["Checkpoint"] = None,
         checkpoint_dir_name: Optional[str] = None,
     ) -> None:
         self._last_metrics = metrics
         self._last_checkpoint = checkpoint
         logger.info(f"Reported metrics: {metrics}")
 
-    def get_checkpoint(self) -> Optional[Checkpoint]:
+    def get_checkpoint(self) -> Optional["Checkpoint"]:
         return self._last_checkpoint
 
     def get_dataset_shard(self, dataset_name: str) -> DataIterator:
@@ -208,9 +205,10 @@ class LocalTrainFnUtils(TrainFnUtils):
         This function should only be called by LocalController
         """
         return self._last_metrics
-    
+
     def get_all_reported_checkpoints(self) -> List["ReportedCheckpoint"]:
         return []
+
 
 _train_fn_utils: Optional[TrainFnUtils] = None
 _train_fn_utils_lock = threading.Lock()
