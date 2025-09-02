@@ -27,7 +27,7 @@
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/grpc_service_interfaces.h"
 #include "ray/pubsub/gcs_publisher.h"
-#include "ray/rpc/node_manager/raylet_client_pool.h"
+#include "ray/raylet_client/raylet_client_pool.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/event.h"
 #include "src/ray/protobuf/autoscaler.pb.h"
