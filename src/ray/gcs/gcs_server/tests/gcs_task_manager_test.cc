@@ -28,7 +28,7 @@
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/status.h"
 #include "ray/common/test_utils.h"
-#include "ray/gcs/pb_util.h"
+#include "ray/common/protobuf_utils.h"
 
 namespace ray {
 namespace gcs {
