@@ -12,21 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// clang-format off
 #include "ray/raylet/placement_group_resource_manager.h"
 
 #include <memory>
-#include <vector>
-#include <utility>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "gtest/gtest.h"
+#include "mock/ray/gcs/gcs_client/gcs_client.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/id.h"
 #include "ray/common/scheduling/resource_set.h"
-#include "ray/gcs/tests/gcs_test_util.h"
-#include "mock/ray/gcs/gcs_client/gcs_client.h"
-// clang-format on
 
 namespace ray {
 
