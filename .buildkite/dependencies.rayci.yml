@@ -51,9 +51,7 @@ steps:
       - pip wheel python/ --no-deps -w .whl/ --use-pep517
       - ls -a .whl
       # compile rayimg dependencies
-      - echo "ray[all]==100.0.0-dev" > python/ray-requirement.txt
       - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/rayimg.depsets.yaml
-      - rm python/ray-requirement.txt
     depends_on:
       - minbuild-core
     job_env: minbuild-core-py{{matrix}}
