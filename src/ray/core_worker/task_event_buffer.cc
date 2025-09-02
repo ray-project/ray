@@ -193,8 +193,8 @@ void TaskStatusEvent::PopulateRpcRayTaskDefinitionEvent(T &definition_event_data
   definition_event_data.mutable_runtime_env_info()->CopyFrom(
       task_spec_->RuntimeEnvInfo());
   definition_event_data.set_job_id(job_id_.Binary());
-  // NOTE: we set the parent task id of a task to the submitter's task id. The submitter
-  // task id is:
+  // NOTE: we set the parent task id of a task to the submitter
+  // The submitter task id is:
   // - For concurrent actors: the actor creation task's task id.
   // - Otherwise: the CoreWorker main thread's task id.
   definition_event_data.set_parent_task_id(task_spec_->SubmitterTaskId().Binary());
