@@ -3,10 +3,10 @@ import warnings
 
 import pytest
 
-from ray.util.annotations import Deprecated
 from ray._private.test_utils import (
     run_string_as_driver,
 )
+from ray.util.annotations import Deprecated
 
 
 # Use default filterwarnings behavior for this test
