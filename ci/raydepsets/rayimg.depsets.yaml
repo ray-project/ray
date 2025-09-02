@@ -14,12 +14,26 @@ build_arg_sets:
 
 
 depsets:
+  # - name: ray_img_depset_${PYTHON_SHORT}
+  #   requirements:
+  #     - ray[all]==100.0.0-dev
+  #   constraints:
+  #     - python/requirements_compiled.txt
+  #   output: python/lock_files/ray_img/py${PYTHON_SHORT}.lock
+  #   operation: compile
+  #   append_flags:
+  #     - --python-version=${PYTHON_VERSION}
+  #     - --find-links=.whl/
+  #   build_arg_sets:
+  #     - py39
+  #     - py310
+  #     - py311
+  #     - py312
+
   - name: ray_img_depset_${PYTHON_SHORT}
-    requirements:
-      - ray[all]==100.0.0-dev
-    constraints:
-      - python/requirements_compiled.txt
-    output: python/lock_files/ray_img/py${PYTHON_SHORT}.lock
+    packages:
+      - emoji==2.1.0
+    output: python/lock_files/ray_img/test_py${PYTHON_SHORT}.lock
     operation: compile
     append_flags:
       - --python-version=${PYTHON_VERSION}
