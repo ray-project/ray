@@ -254,11 +254,10 @@ class TrainContext:
         """
         with self.report_order_condition:
             self.report_order_condition.wait_for(
-                lambda: self.num_reported_checkpoints
-                == current_report_attempt_number - 1
+                lambda: self.num_report_calls == current_report_attempt_number - 1
             )
             self.get_result_queue().put(training_result)
-            self.num_reported_checkpoints += 1
+            self.num_report_calls += 1
             self.report_order_condition.notify_all()
 
     def report(
@@ -331,7 +330,7 @@ class TrainContext:
                 def _upload_checkpoint_and_report(
                     checkpoint_dir_name: str,
                     metrics: Dict[str, Any],
-                    checkpoint: Optional[Checkpoint],
+                    checkpoint: Optional["Checkpoint"],
                     current_report_attempt_number: int,
                 ) -> None:
                     try:

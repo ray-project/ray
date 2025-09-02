@@ -35,6 +35,7 @@ def test_worker_finished_after_all_threads_finish(monkeypatch, created_nested_th
         synchronization_actor=create_autospec(ActorHandle, instance=True),
         storage_context=create_autospec(StorageContext, instance=True),
         worker_callbacks=[],
+        controller_actor=create_autospec(ActorHandle, instance=True),
     )
     global_queue = queue.Queue()
 
