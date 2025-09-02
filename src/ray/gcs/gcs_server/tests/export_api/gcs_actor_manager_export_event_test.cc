@@ -227,7 +227,7 @@ class GcsActorManagerTest : public ::testing::Test {
       const std::string &name = "",
       const std::string &ray_namespace = "test") {
     std::promise<std::shared_ptr<gcs::GcsActor>> promise;
-    auto request = Mocker::GenRegisterActorRequest(
+    auto request = GenRegisterActorRequest(
         job_id, max_restarts, detached, name, ray_namespace);
     // `DestroyActor` triggers some asynchronous operations.
     // If we register an actor after destroying an actor, it may result in multithreading
@@ -318,7 +318,7 @@ TEST_F(GcsActorManagerTest, TestBasic) {
       "DEPENDENCIES_UNREADY", "PENDING_CREATION", "ALIVE", "DEAD"};
   std::vector<std::string> vc;
   for (int i = 0; i < num_retry; i++) {
-    Mocker::ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_ACTOR.log");
+    ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_ACTOR.log");
     if (static_cast<int>(vc.size()) == num_export_events) {
       for (int event_idx = 0; event_idx < num_export_events; event_idx++) {
         json export_event_as_json = json::parse(vc[event_idx]);
@@ -342,7 +342,7 @@ TEST_F(GcsActorManagerTest, TestBasic) {
       vc.clear();
     }
   }
-  Mocker::ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_ACTOR.log");
+  ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_ACTOR.log");
   std::ostringstream lines;
   for (auto line : vc) {
     lines << line << "\n";

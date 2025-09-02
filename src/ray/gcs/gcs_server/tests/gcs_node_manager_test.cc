@@ -52,7 +52,7 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
                                    client_pool_.get(),
                                    ClusterID::Nil());
   // Test Add/Get/Remove functionality.
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
 
   node_manager.AddNode(node);
@@ -77,7 +77,7 @@ TEST_F(GcsNodeManagerTest, TestListener) {
         added_nodes.emplace_back(std::move(node));
       });
   for (int i = 0; i < node_count; ++i) {
-    auto node = Mocker::GenNodeInfo();
+    auto node = GenNodeInfo();
     node_manager.AddNode(node);
   }
   ASSERT_EQ(node_count, added_nodes.size());
@@ -114,7 +114,7 @@ TEST_F(GcsNodeManagerTest, TestUpdateAliveNode) {
                                    ClusterID::Nil());
 
   // Create a test node
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
 
   // Add the node to the manager

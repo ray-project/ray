@@ -201,7 +201,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
       bool is_draining = false,
       int64_t draining_deadline_timestamp_ms = -1) {
     rpc::ResourcesData resources_data;
-    Mocker::FillResourcesData(resources_data,
+    FillResourcesData(resources_data,
                               node_id,
                               available_resources,
                               total_resources,
@@ -225,7 +225,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
   void UpdateResourceLoads(const std::string &node_id,
                            std::vector<rpc::ResourceDemand> demands) {
     rpc::ResourcesData data;
-    Mocker::FillResourcesData(data, node_id, demands);
+    FillResourcesData(data, node_id, demands);
     gcs_autoscaler_state_manager_->UpdateResourceLoadAndUsage(data);
   }
 
@@ -384,7 +384,7 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGenPlacementConstraintForPlacementGrou
 }
 
 TEST_F(GcsAutoscalerStateManagerTest, TestNodeAddUpdateRemove) {
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
 
   // Adding a node.
   {
@@ -426,7 +426,7 @@ TEST_F(GcsAutoscalerStateManagerTest, TestNodeAddUpdateRemove) {
 }
 
 TEST_F(GcsAutoscalerStateManagerTest, TestGetClusterStatusBasic) {
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
 
   // Test basic cluster resource.
   {
@@ -457,7 +457,7 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGetClusterStatusBasic) {
 TEST_F(GcsAutoscalerStateManagerTest, TestNodeDynamicLabelsWithPG) {
   /// Check if PGs are created on a node, the node status should include
   /// the PG labels.
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
 
   // Adding a node.
   node->mutable_resources_total()->insert({"CPU", 2});
@@ -485,7 +485,7 @@ TEST_F(GcsAutoscalerStateManagerTest, TestNodeDynamicLabelsWithPG) {
 }
 
 TEST_F(GcsAutoscalerStateManagerTest, TestBasicResourceRequests) {
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
   node->mutable_resources_total()->insert({"CPU", 2});
   node->mutable_resources_total()->insert({"GPU", 1});
   node->set_instance_id("instance_1");
@@ -501,12 +501,12 @@ TEST_F(GcsAutoscalerStateManagerTest, TestBasicResourceRequests) {
   // Update resource usages.
   {
     UpdateResourceLoads(node->node_id(),
-                        {Mocker::GenResourceDemand({{"CPU", 1}},
+                        {GenResourceDemand({{"CPU", 1}},
                                                    /* nun_ready_queued */ 1,
                                                    /* nun_infeasible */ 1,
                                                    /* num_backlog */ 0,
                                                    /* label_selectors */ {}),
-                         Mocker::GenResourceDemand({{"CPU", 4}, {"GPU", 2}},
+                         GenResourceDemand({{"CPU", 4}, {"GPU", 2}},
                                                    /* num_ready_queued */ 0,
                                                    /* num_infeasible */ 1,
                                                    /* num_backlog */ 1,
@@ -526,7 +526,7 @@ TEST_F(GcsAutoscalerStateManagerTest, TestBasicResourceRequests) {
 }
 
 TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsBasic) {
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
   node->mutable_resources_total()->insert({"CPU", 1});
   node->set_instance_id("instance_1");
   // Adding a node.
@@ -544,7 +544,7 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsBasic) {
     auto pg = PlacementGroupID::Of(job_id);
     EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
         .WillOnce(
-            Return(Mocker::GenPlacementGroupLoad({Mocker::GenPlacementGroupTableData(
+            Return(GenPlacementGroupLoad({GenPlacementGroupTableData(
                 pg,
                 job_id,
                 {{{"CPU", 1}}, {{"GPU", 1}}},
@@ -565,7 +565,7 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsBasic) {
     auto pg = PlacementGroupID::Of(job_id);
     EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
         .WillOnce(
-            Return(Mocker::GenPlacementGroupLoad({Mocker::GenPlacementGroupTableData(
+            Return(GenPlacementGroupLoad({GenPlacementGroupTableData(
                 pg,
                 job_id,
                 {{{"CPU", 1}}, {{"GPU", 1}}},
@@ -583,7 +583,7 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsBasic) {
 }
 
 TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsNonStrict) {
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
   node->set_instance_id("instance_1");
   node->mutable_resources_total()->insert({"CPU", 1});
   // Adding a node.
@@ -597,14 +597,14 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsNonStrict) {
     auto pg1 = PlacementGroupID::Of(job_id1);
     auto pg2 = PlacementGroupID::Of(job_id2);
     EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
-        .WillOnce(Return(Mocker::GenPlacementGroupLoad(
-            {Mocker::GenPlacementGroupTableData(pg1,
+        .WillOnce(Return(GenPlacementGroupLoad(
+            {GenPlacementGroupTableData(pg1,
                                                 job_id1,
                                                 {{{"CPU", 1}, {"GPU", 2}}},
                                                 {""},
                                                 rpc::PlacementStrategy::PACK,
                                                 rpc::PlacementGroupTableData::PENDING),
-             Mocker::GenPlacementGroupTableData(
+             GenPlacementGroupTableData(
                  pg2,
                  job_id2,
                  {{{"TPU", 1}}},
@@ -621,7 +621,7 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsNonStrict) {
 }
 
 TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsPartialRescheduling) {
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
   node->set_instance_id("instance_1");
   node->mutable_resources_total()->insert({"CPU", 1});
   // Adding a node.
@@ -633,7 +633,7 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsPartialReschedulin
 
     EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
         .WillOnce(
-            Return(Mocker::GenPlacementGroupLoad({Mocker::GenPlacementGroupTableData(
+            Return(GenPlacementGroupLoad({GenPlacementGroupTableData(
                 pg1,
                 job_id1,
                 {{{"CPU_failed_1", 1}}, {{"CPU_success_2", 2}}},
@@ -662,7 +662,7 @@ TEST_F(GcsAutoscalerStateManagerTest, TestClusterResourcesConstraint) {
   // Generate one constraint.
   {
     RequestClusterResourceConstraint(
-        Mocker::GenClusterResourcesConstraint({{{"CPU", 2}, {"GPU", 1}}}, {1}));
+        GenClusterResourcesConstraint({{{"CPU", 2}, {"GPU", 1}}}, {1}));
     const auto &state = GetClusterResourceStateSync();
     ASSERT_EQ(state.cluster_resource_constraints_size(), 1);
     ASSERT_EQ(state.cluster_resource_constraints(0).resource_requests_size(), 1);
@@ -673,7 +673,7 @@ TEST_F(GcsAutoscalerStateManagerTest, TestClusterResourcesConstraint) {
 
   // Override it
   {
-    RequestClusterResourceConstraint(Mocker::GenClusterResourcesConstraint(
+    RequestClusterResourceConstraint(GenClusterResourcesConstraint(
         {{{"CPU", 4}, {"GPU", 5}, {"TPU", 1}}}, {1}));
     const auto &state = GetClusterResourceStateSync();
     ASSERT_EQ(state.cluster_resource_constraints_size(), 1);
@@ -726,7 +726,7 @@ TEST_F(GcsAutoscalerStateManagerTest, TestReportAutoscalingState) {
 }
 
 TEST_F(GcsAutoscalerStateManagerTest, TestDrainNonAliveNode) {
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
 
   // Adding a node.
   node->mutable_resources_total()->insert({"CPU", 2});
@@ -751,7 +751,7 @@ TEST_F(GcsAutoscalerStateManagerTest, TestDrainNonAliveNode) {
 }
 
 TEST_F(GcsAutoscalerStateManagerTest, TestDrainingStatus) {
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
 
   // Adding a node.
   node->mutable_resources_total()->insert({"CPU", 2});
@@ -786,7 +786,7 @@ TEST_F(GcsAutoscalerStateManagerTest, TestDrainingStatus) {
 }
 
 TEST_F(GcsAutoscalerStateManagerTest, TestDrainNodeRaceCondition) {
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
 
   // Adding a node.
   node->mutable_resources_total()->insert({"CPU", 2});
@@ -818,7 +818,7 @@ TEST_F(GcsAutoscalerStateManagerTest, TestDrainNodeRaceCondition) {
 }
 
 TEST_F(GcsAutoscalerStateManagerTest, TestIdleTime) {
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
 
   // Adding a node.
   node->mutable_resources_total()->insert({"CPU", 2});
@@ -879,8 +879,8 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGcsKvManagerInternalConfig) {
 TEST_F(GcsAutoscalerStateManagerTest,
        TestGetPerNodeInfeasibleResourceRequests_NoInfeasibleRequests) {
   // Prepare
-  auto node_1 = Mocker::GenNodeInfo();
-  auto node_2 = Mocker::GenNodeInfo();
+  auto node_1 = GenNodeInfo();
+  auto node_2 = GenNodeInfo();
 
   // Add nodes
   {
@@ -895,23 +895,23 @@ TEST_F(GcsAutoscalerStateManagerTest,
   // Update resource usages
   {
     UpdateResourceLoads(node_1->node_id(),
-                        {Mocker::GenResourceDemand({{"GPU", 1}},
+                        {GenResourceDemand({{"GPU", 1}},
                                                    /* nun_ready_queued */ 1,
                                                    /* nun_infeasible */ 1,
                                                    /* num_backlog */ 0,
                                                    /* label_selectors */ {}),
-                         Mocker::GenResourceDemand({{"CPU", 1}},
+                         GenResourceDemand({{"CPU", 1}},
                                                    /* nun_ready_queued */ 1,
                                                    /* nun_infeasible */ 0,
                                                    /* num_backlog */ 1,
                                                    /* label_selectors */ {}),
-                         Mocker::GenResourceDemand({{"CPU", 3}},
+                         GenResourceDemand({{"CPU", 3}},
                                                    /* num_ready_queued */ 0,
                                                    /* num_infeasible */ 1,
                                                    /* num_backlog */ 1,
                                                    /* label_selectors */ {})});
     UpdateResourceLoads(node_2->node_id(),
-                        {Mocker::GenResourceDemand({{"CPU", 2}},
+                        {GenResourceDemand({{"CPU", 2}},
                                                    /* nun_ready_queued */ 1,
                                                    /* nun_infeasible */ 0,
                                                    /* num_backlog */ 1,
@@ -942,8 +942,8 @@ TEST_F(GcsAutoscalerStateManagerTest,
 TEST_F(GcsAutoscalerStateManagerTest,
        TestGetPerNodeInfeasibleResourceRequests_WithInfeasibleRequests) {
   // Prepare
-  auto node_1 = Mocker::GenNodeInfo();
-  auto node_2 = Mocker::GenNodeInfo();
+  auto node_1 = GenNodeInfo();
+  auto node_2 = GenNodeInfo();
 
   // Add nodes
   {
@@ -958,23 +958,23 @@ TEST_F(GcsAutoscalerStateManagerTest,
   // Update resource usages
   {
     UpdateResourceLoads(node_1->node_id(),
-                        {Mocker::GenResourceDemand({{"GPU", 1}},
+                        {GenResourceDemand({{"GPU", 1}},
                                                    /* nun_ready_queued */ 1,
                                                    /* nun_infeasible */ 1,
                                                    /* num_backlog */ 0),
                          /* label_selectors */ {},
-                         Mocker::GenResourceDemand({{"CPU", 1}},
+                         GenResourceDemand({{"CPU", 1}},
                                                    /* nun_ready_queued */ 1,
                                                    /* nun_infeasible */ 0,
                                                    /* num_backlog */ 1),
                          /* label_selectors */ {},
-                         Mocker::GenResourceDemand({{"CPU", 3}},
+                         GenResourceDemand({{"CPU", 3}},
                                                    /* num_ready_queued */ 0,
                                                    /* num_infeasible */ 1,
                                                    /* num_backlog */ 1,
                                                    /* label_selectors */ {})});
     UpdateResourceLoads(node_2->node_id(),
-                        {Mocker::GenResourceDemand({{"CPU", 2}},
+                        {GenResourceDemand({{"CPU", 2}},
                                                    /* nun_ready_queued */ 1,
                                                    /* nun_infeasible */ 0,
                                                    /* num_backlog */ 1,
@@ -1021,7 +1021,7 @@ TEST_F(GcsAutoscalerStateManagerTest,
 }
 
 TEST_F(GcsAutoscalerStateManagerTest, TestNodeLabelsAdded) {
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
   node->mutable_resources_total()->insert({"CPU", 2});
   node->set_instance_id("instance_1");
   (*node->mutable_labels())["accelerator-type"] = "TPU";
@@ -1036,7 +1036,7 @@ TEST_F(GcsAutoscalerStateManagerTest, TestNodeLabelsAdded) {
 }
 
 TEST_F(GcsAutoscalerStateManagerTest, TestGetPendingResourceRequestsWithLabelSelectors) {
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
   node->mutable_resources_total()->insert({"CPU", 2});
   node->set_instance_id("instance_1");
   AddNode(node);
@@ -1061,7 +1061,7 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGetPendingResourceRequestsWithLabelSel
 
     // Simulate an infeasible request with a label selector
     UpdateResourceLoads(node->node_id(),
-                        {Mocker::GenResourceDemand({{"CPU", 2}},
+                        {GenResourceDemand({{"CPU", 2}},
                                                    /*ready=*/0,
                                                    /*infeasible=*/1,
                                                    /*backlog=*/0,

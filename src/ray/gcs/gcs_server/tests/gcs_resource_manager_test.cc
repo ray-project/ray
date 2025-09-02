@@ -71,7 +71,7 @@ TEST_F(GcsResourceManagerTest, TestBasic) {
   absl::flat_hash_map<std::string, double> resource_map;
   resource_map[cpu_resource] = 10;
 
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
   node->mutable_resources_total()->insert(resource_map.begin(), resource_map.end());
   // Add node resources.
   gcs_resource_manager_->OnNodeAdd(*node);
@@ -103,7 +103,7 @@ TEST_F(GcsResourceManagerTest, TestBasic) {
 }
 
 TEST_F(GcsResourceManagerTest, TestResourceUsageAPI) {
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
   node->mutable_resources_total()->insert({"CPU", 2});
   auto node_id = NodeID::FromBinary(node->node_id());
   rpc::GetAllResourceUsageRequest get_all_request;
@@ -140,7 +140,7 @@ TEST_F(GcsResourceManagerTest, TestResourceUsageAPI) {
 }
 
 TEST_F(GcsResourceManagerTest, TestResourceUsageFromDifferentSyncMsgs) {
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
   node->mutable_resources_total()->insert({"CPU", 10});
   gcs_resource_manager_->OnNodeAdd(*node);
 
@@ -188,7 +188,7 @@ TEST_F(GcsResourceManagerTest, TestResourceUsageFromDifferentSyncMsgs) {
 }
 
 TEST_F(GcsResourceManagerTest, TestSetAvailableResourcesWhenNodeDead) {
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
   node->mutable_resources_total()->insert({"CPU", 10});
 
   gcs_resource_manager_->OnNodeAdd(*node);
@@ -212,7 +212,7 @@ TEST_F(GcsResourceManagerTest, TestNodeLabels) {
   absl::flat_hash_map<std::string, std::string> labels = {{"key", "value"},
                                                           {"gpu_type", "a100"}};
 
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
   node->mutable_resources_total()->insert(resource_map.begin(), resource_map.end());
   node->mutable_labels()->insert(labels.begin(), labels.end());
   // Add node resources.
@@ -226,7 +226,7 @@ TEST_F(GcsResourceManagerTest, TestNodeLabels) {
 }
 
 TEST_F(GcsResourceManagerTest, TestGetDrainingNodes) {
-  auto node1 = Mocker::GenNodeInfo();
+  auto node1 = GenNodeInfo();
   node1->mutable_resources_total()->insert({"CPU", 10});
   gcs_resource_manager_->OnNodeAdd(*node1);
   UpdateFromResourceViewSync(
@@ -237,7 +237,7 @@ TEST_F(GcsResourceManagerTest, TestGetDrainingNodes) {
       /* is_draining */ true,
       /* draining_deadline_timestamp_ms */ std::numeric_limits<int64_t>::max());
 
-  auto node2 = Mocker::GenNodeInfo();
+  auto node2 = GenNodeInfo();
   node2->mutable_resources_total()->insert({"CPU", 1});
   gcs_resource_manager_->OnNodeAdd(*node2);
   UpdateFromResourceViewSync(NodeID::FromBinary(node2->node_id()),

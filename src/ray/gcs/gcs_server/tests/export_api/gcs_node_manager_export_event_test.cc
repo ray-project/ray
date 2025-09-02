@@ -89,7 +89,7 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventRegisterNode) {
                                    io_service_,
                                    client_pool_.get(),
                                    ClusterID::Nil());
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
 
   rpc::RegisterNodeRequest register_request;
   register_request.mutable_node_info()->CopyFrom(*node);
@@ -101,7 +101,7 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventRegisterNode) {
   io_service_.poll();
 
   std::vector<std::string> vc;
-  Mocker::ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_NODE.log");
+  ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_NODE.log");
   ASSERT_EQ((int)vc.size(), 1);
   json event_data = json::parse(vc[0])["event_data"].get<json>();
   ASSERT_EQ(event_data["state"], "ALIVE");
@@ -114,7 +114,7 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventUnregisterNode) {
                                    io_service_,
                                    client_pool_.get(),
                                    ClusterID::Nil());
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
   node_manager.AddNode(node);
 
@@ -132,7 +132,7 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventUnregisterNode) {
   io_service_.poll();
 
   std::vector<std::string> vc;
-  Mocker::ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_NODE.log");
+  ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_NODE.log");
   ASSERT_EQ((int)vc.size(), 1);
   json event_data = json::parse(vc[0])["event_data"].get<json>();
   ASSERT_EQ(event_data["state"], "DEAD");

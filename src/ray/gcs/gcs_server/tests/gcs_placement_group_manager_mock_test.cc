@@ -70,7 +70,7 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule) {
   // Test priority works
   //   When return with reschedule, it should be given with the highest pri
   auto req =
-      Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
+      GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
   auto pg = std::make_shared<GcsPlacementGroup>(req, "", counter_);
   auto cb = [](Status s) {};
   SchedulePgRequest request;
@@ -97,7 +97,7 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed) {
   // Test priority works
   //   When return with a failure, exp backoff should work
   auto req =
-      Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
+      GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
   auto pg = std::make_shared<GcsPlacementGroup>(req, "", counter_);
   auto cb = [](Status s) {};
   SchedulePgRequest request;
@@ -151,10 +151,10 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityOrder) {
   //   Add two pgs
   //   Fail one and make sure it's scheduled later
   auto req1 =
-      Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
+      GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
   auto pg1 = std::make_shared<GcsPlacementGroup>(req1, "", counter_);
   auto req2 =
-      Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
+      GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
   auto pg2 = std::make_shared<GcsPlacementGroup>(req2, "", counter_);
   auto cb = [](Status s) {};
   SchedulePgRequest request;
