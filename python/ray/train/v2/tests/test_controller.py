@@ -36,6 +36,8 @@ from ray.train.v2.tests.util import (
     create_dummy_run_context,
 )
 
+pytestmark = pytest.mark.usefixtures("mock_runtime_context")
+
 
 @pytest.fixture(autouse=True)
 def patch_worker_group(monkeypatch):
