@@ -2,6 +2,15 @@ group: dependencies
 depends_on:
   - forge
 steps:
+  # builds
+  - name: min-allpython
+    label: "wanda: min-allpython"
+    wanda: ci/docker/min.allpython.wanda.yaml
+    depends_on: oss-ci-base_build
+    env:
+      DEFAULT_PYTHON_VERSION: "3.9"
+    tags: cibase
+
   # dependencies
   - label: ":tapioca: build: pip-compile dependencies"
     key: pip_compile_dependencies
@@ -24,5 +33,5 @@ steps:
     tags: always
     instance_type: small
     command: ./ci/test_compile_llm_requirements.sh
-    job_env: oss-ci-base_test-py3.11
-    depends_on: oss-ci-base_test-multipy
+    job_env: min-allpython
+    depends_on: min-allpython

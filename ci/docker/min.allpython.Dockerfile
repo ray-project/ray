@@ -3,6 +3,8 @@
 ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build
 FROM $DOCKER_IMAGE_BASE_BUILD
 
+ARG DEFAULT_PYTHON_VERSION=3.9
+
 SHELL ["/bin/bash", "-ice"]
 
 COPY . .
@@ -19,6 +21,6 @@ wget -qO- https://astral.sh/uv/install.sh | sudo env UV_UNMANAGED_INSTALL="/usr/
 uv python install 3.9 3.10 3.11 3.12
 
 # Set default Python version
-uv python pin 3.9
+uv python pin ${DEFAULT_PYTHON_VERSION}
 
 EOF
