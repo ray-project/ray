@@ -19,7 +19,8 @@
 #include <string_view>
 #include <utility>
 
-#include "absl/strings/str_format.h"
+#include "ray/common/ray_config.h"
+#include "ray/util/time.h"
 
 namespace ray {
 namespace gcs {

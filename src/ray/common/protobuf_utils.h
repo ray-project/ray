@@ -19,11 +19,8 @@
 #include <utility>
 
 #include "absl/time/time.h"
-#include "ray/common/constants.h"
 #include "ray/common/id.h"
-#include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/util/time.h"
 #include "src/ray/protobuf/autoscaler.pb.h"
 #include "src/ray/protobuf/export_task_event.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
