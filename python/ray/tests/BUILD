@@ -609,7 +609,7 @@ py_test_module_list(
 )
 
 py_test_module_list(
-    size = "medium",
+    size = "large",
     files = [
         "gpu_objects/test_gpu_objects_gloo.py",
     ],

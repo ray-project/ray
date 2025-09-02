@@ -14,7 +14,8 @@
 
 #pragma once
 
-#include "ray/raylet_client/raylet_client.h"
+#include "ray/common/scheduling/scheduling_ids.h"
+#include "ray/raylet_client/raylet_client_interface.h"
 
 namespace ray {
 
