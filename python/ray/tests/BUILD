@@ -609,7 +609,7 @@ py_test_module_list(
 )
 
 py_test_module_list(
-    size = "medium",
+    size = "large",
     files = [
         "test_gpu_objects_gloo.py",
     ],
@@ -731,6 +731,7 @@ py_test_module_list(
     size = "medium",
     files = [
         "test_autoscaler.py",
+        "test_symmetric_run.py",
     ],
     tags = [
         "exclusive",

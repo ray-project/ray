@@ -20,10 +20,9 @@
 #include <utility>
 #include <vector>
 
-#include "absl/synchronization/notification.h"
-#include "ray/common/common_protocol.h"
+#include "ray/common/bundle_spec.h"
 #include "ray/common/ray_config.h"
-#include "ray/common/task/task_spec.h"
+#include "ray/raylet_client/node_manager_client.h"
 #include "ray/util/logging.h"
 
 namespace ray::raylet {
@@ -37,7 +36,7 @@ RayletClient::RayletClient(const rpc::Address &address,
                                      std::move(raylet_unavailable_timeout_callback)))) {}
 
 void RayletClient::RequestWorkerLease(
-    const rpc::TaskSpec &task_spec,
+    const rpc::LeaseSpec &lease_spec,
     bool grant_or_reject,
     const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
     const int64_t backlog_size,
@@ -46,11 +45,11 @@ void RayletClient::RequestWorkerLease(
   auto request =
       google::protobuf::Arena::CreateMessage<rpc::RequestWorkerLeaseRequest>(&arena);
   // The unsafe allocating here is actually safe because the life-cycle of
-  // task_spec is longer than request.
+  // lease_spec is longer than request.
   // Request will be sent before the end of this call, and after that, it won't be
   // used any more.
-  request->unsafe_arena_set_allocated_resource_spec(
-      const_cast<rpc::TaskSpec *>(&task_spec));
+  request->unsafe_arena_set_allocated_lease_spec(
+      const_cast<rpc::LeaseSpec *>(&lease_spec));
   request->set_grant_or_reject(grant_or_reject);
   request->set_backlog_size(backlog_size);
   request->set_is_selected_based_on_locality(is_selected_based_on_locality);
@@ -77,35 +76,35 @@ void RayletClient::ReportWorkerBacklog(
       request,
       [](const Status &status, rpc::ReportWorkerBacklogReply &&reply /*unused*/) {
         RAY_LOG_IF_ERROR(INFO, status)
-            << "Error reporting task backlog information: " << status;
+            << "Error reporting lease backlog information: " << status;
       });
 }
 
-Status RayletClient::ReturnWorker(int worker_port,
-                                  const WorkerID &worker_id,
-                                  bool disconnect_worker,
-                                  const std::string &disconnect_worker_error_detail,
-                                  bool worker_exiting) {
-  rpc::ReturnWorkerRequest request;
+Status RayletClient::ReturnWorkerLease(int worker_port,
+                                       const WorkerID &worker_id,
+                                       bool disconnect_worker,
+                                       const std::string &disconnect_worker_error_detail,
+                                       bool worker_exiting) {
+  rpc::ReturnWorkerLeaseRequest request;
   request.set_worker_port(worker_port);
   request.set_worker_id(worker_id.Binary());
   request.set_disconnect_worker(disconnect_worker);
   request.set_disconnect_worker_error_detail(disconnect_worker_error_detail);
   request.set_worker_exiting(worker_exiting);
-  grpc_client_->ReturnWorker(
-      request, [](const Status &status, rpc::ReturnWorkerReply &&reply /*unused*/) {
+  grpc_client_->ReturnWorkerLease(
+      request, [](const Status &status, rpc::ReturnWorkerLeaseReply &&reply /*unused*/) {
         RAY_LOG_IF_ERROR(INFO, status) << "Error returning worker: " << status;
       });
   return Status::OK();
 }
 
-void RayletClient::GetTaskFailureCause(
-    const TaskID &task_id,
-    const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback) {
-  rpc::GetTaskFailureCauseRequest request;
-  request.set_task_id(task_id.Binary());
-  grpc_client_->GetTaskFailureCause(
-      request, [callback](const Status &status, rpc::GetTaskFailureCauseReply &&reply) {
+void RayletClient::GetWorkerFailureCause(
+    const LeaseID &lease_id,
+    const ray::rpc::ClientCallback<ray::rpc::GetWorkerFailureCauseReply> &callback) {
+  rpc::GetWorkerFailureCauseRequest request;
+  request.set_lease_id(lease_id.Binary());
+  grpc_client_->GetWorkerFailureCause(
+      request, [callback](const Status &status, rpc::GetWorkerFailureCauseReply &&reply) {
         RAY_LOG_IF_ERROR(INFO, status) << "Error getting task result: " << status;
         callback(status, std::move(reply));
       });
@@ -189,10 +188,10 @@ void RayletClient::ReleaseUnusedActorWorkers(
 }
 
 void RayletClient::CancelWorkerLease(
-    const TaskID &task_id,
+    const LeaseID &lease_id,
     const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) {
   rpc::CancelWorkerLeaseRequest request;
-  request.set_task_id(task_id.Binary());
+  request.set_lease_id(lease_id.Binary());
   grpc_client_->CancelWorkerLease(request, callback);
 }
 
@@ -312,19 +311,19 @@ void RayletClient::GetResourceLoad(
   grpc_client_->GetResourceLoad(request, callback);
 }
 
-void RayletClient::CancelTasksWithResourceShapes(
+void RayletClient::CancelLeasesWithResourceShapes(
     const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,
-    const rpc::ClientCallback<rpc::CancelTasksWithResourceShapesReply> &callback) {
-  rpc::CancelTasksWithResourceShapesRequest request;
+    const rpc::ClientCallback<rpc::CancelLeasesWithResourceShapesReply> &callback) {
+  rpc::CancelLeasesWithResourceShapesRequest request;
 
   for (const auto &resource_shape : resource_shapes) {
-    rpc::CancelTasksWithResourceShapesRequest::ResourceShape *resource_shape_proto =
+    rpc::CancelLeasesWithResourceShapesRequest::ResourceShape *resource_shape_proto =
         request.add_resource_shapes();
     resource_shape_proto->mutable_resource_shape()->insert(resource_shape.begin(),
                                                            resource_shape.end());
   }
 
-  grpc_client_->CancelTasksWithResourceShapes(request, callback);
+  grpc_client_->CancelLeasesWithResourceShapes(request, callback);
 }
 
 void RayletClient::NotifyGCSRestart(

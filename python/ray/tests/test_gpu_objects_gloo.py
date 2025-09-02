@@ -1,14 +1,15 @@
-import sys
 import random
-import torch
-import pytest
+import sys
 import threading
-import ray
 import time
-from ray.experimental.collective import create_collective_group
+
+import pytest
+import torch
+
+import ray
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.custom_types import TensorTransportEnum
-from ray._common.test_utils import wait_for_condition
-from ray._common.test_utils import SignalActor
+from ray.experimental.collective import create_collective_group
 
 # tensordict is not supported on macos ci, so we skip the tests
 support_tensordict = sys.platform != "darwin"
@@ -36,6 +37,10 @@ class GPUTestActor:
         if support_tensordict and isinstance(data, TensorDict):
             return data.apply(lambda x: x * 2)
         return data * 2
+
+    def increment(self, data):
+        data += 1
+        return data
 
     def get_out_of_band_tensors(self, obj_id: str, timeout=None):
         gpu_object_store = (
@@ -221,7 +226,7 @@ def test_p2p_errors_before_group_creation(ray_start_regular):
 
     with pytest.raises(
         ValueError,
-        match="Actor.* does not have tensor transport GLOO available. Please create a communicator with `ray.experimental.collective.create_collective_group` before calling actor tasks with non-default tensor_transport.",
+        match="Actor.* does not have tensor transport GLOO available.*",
     ):
         sender.echo.remote(small_tensor)
 
@@ -384,6 +389,29 @@ def test_mix_cpu_gpu_data(ray_start_regular):
 
     tensor = torch.randn((1,))
     cpu_data = random.randint(0, 100)
+
+    data = [tensor, cpu_data]
+
+    sender, receiver = actors[0], actors[1]
+    ref = sender.echo.remote(data)
+    ref = receiver.double.remote(ref)
+    result = ray.get(ref)
+
+    assert result[0] == pytest.approx(tensor * 2)
+    assert result[1] == cpu_data * 2
+
+
+def test_object_in_plasma(ray_start_regular):
+    """
+    This test uses a CPU object that is large enough to be stored
+    in plasma instead of being inlined in the gRPC message.
+    """
+    world_size = 2
+    actors = [GPUTestActor.remote() for _ in range(world_size)]
+    create_collective_group(actors, backend="torch_gloo")
+
+    tensor = torch.randn((1,))
+    cpu_data = b"1" * 1000 * 1000
     data = [tensor, cpu_data]
 
     sender, receiver = actors[0], actors[1]
@@ -810,6 +838,41 @@ def test_wait_tensor_freed_double_tensor(ray_start_regular):
     ray.experimental.wait_tensor_freed(tensor)
     gc_thread.join()
     assert not gpu_object_store.has_object(obj_id2)
+
+
+def test_duplicate_objectref_transfer(ray_start_regular):
+    world_size = 2
+    actors = [GPUTestActor.remote() for _ in range(world_size)]
+    create_collective_group(actors, backend="torch_gloo")
+    actor0, actor1 = actors[0], actors[1]
+
+    small_tensor = torch.randn((1,))
+
+    # Store the original value for comparison
+    original_value = small_tensor
+
+    ref = actor0.echo.remote(small_tensor)
+
+    # Pass the same ref to actor1 twice
+    result1 = actor1.increment.remote(ref)
+    result2 = actor1.increment.remote(ref)
+
+    # Both should return original_value + 1 because each increment task should receive the same object value.
+    val1 = ray.get(result1)
+    val2 = ray.get(result2)
+
+    # Check for correctness
+    assert val1 == pytest.approx(
+        original_value + 1
+    ), f"Result1 incorrect: got {val1}, expected {original_value + 1}"
+    assert val2 == pytest.approx(
+        original_value + 1
+    ), f"Result2 incorrect: got {val2}, expected {original_value + 1}"
+
+    # Additional check: results should be equal (both got clean copies)
+    assert val1 == pytest.approx(
+        val2
+    ), f"Results differ: result1={val1}, result2={val2}"
 
 
 if __name__ == "__main__":

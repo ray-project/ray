@@ -107,7 +107,7 @@ class MockSubscriber : public pubsub::SubscriberInterface {
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
   void UpdateObjectLocationBatch(
-      const rpc::UpdateObjectLocationBatchRequest &request,
+      rpc::UpdateObjectLocationBatchRequest &&request,
       const rpc::ClientCallback<rpc::UpdateObjectLocationBatchReply> &callback) override {
     for (const auto &object_location_update : request.object_location_updates()) {
       ASSERT_TRUE(object_location_update.has_spilled_location_update());

@@ -56,16 +56,22 @@ class TaskArgByReference : public TaskArg {
   ///
   /// \param[in] object_id Id of the argument.
   /// \return The task argument.
-  TaskArgByReference(const ObjectID &object_id,
-                     const rpc::Address &owner_address,
-                     const std::string &call_site)
-      : id_(object_id), owner_address_(owner_address), call_site_(call_site) {}
+  TaskArgByReference(
+      const ObjectID &object_id,
+      const rpc::Address &owner_address,
+      const std::string &call_site,
+      const rpc::TensorTransport &tensor_transport = rpc::TensorTransport::OBJECT_STORE)
+      : id_(object_id),
+        owner_address_(owner_address),
+        call_site_(call_site),
+        tensor_transport_(tensor_transport) {}
 
   void ToProto(rpc::TaskArg *arg_proto) const {
     auto ref = arg_proto->mutable_object_ref();
     ref->set_object_id(id_.Binary());
     ref->mutable_owner_address()->CopyFrom(owner_address_);
     ref->set_call_site(call_site_);
+    ref->set_tensor_transport(tensor_transport_);
   }
 
  private:
@@ -73,6 +79,7 @@ class TaskArgByReference : public TaskArg {
   const ObjectID id_;
   const rpc::Address owner_address_;
   const std::string call_site_;
+  const rpc::TensorTransport tensor_transport_;
 };
 
 class TaskArgByValue : public TaskArg {
