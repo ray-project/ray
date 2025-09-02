@@ -81,12 +81,12 @@ ray_cc_library(
     name = "normal_task_submitter",
     srcs = ["normal_task_submitter.cc"],
     hdrs = ["normal_task_submitter.h"],
+    implementation_deps = [
+        "//src/ray/util:time",
+    ],
     visibility = [
         ":__subpackages__",
         "//src/ray/core_worker:__pkg__",
-    ],
-    implementation_deps = [
-        "//src/ray/util:time",
     ],
     deps = [
         ":dependency_resolver",
