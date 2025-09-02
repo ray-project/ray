@@ -113,7 +113,7 @@ This is done by submitting an additional Ray task to each actor, which executes 
 Passing GPU objects to the actor that produced them
 *************************************
 
-GPU :class:`ray.ObjectRefs <ray.ObjectRef>` can also be passed to the same actor.
+GPU :class:`ray.ObjectRefs <ray.ObjectRef>` can also be passed to the actor that produced them.
 This avoids any copies and just returns the ``torch.Tensors`` directly back to the same actor.
 For example:
 
