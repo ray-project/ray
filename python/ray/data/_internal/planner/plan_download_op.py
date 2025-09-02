@@ -60,6 +60,7 @@ def plan_download_op(
         compute_strategy=partition_compute,  # Use actor-based compute for callable class
         ray_remote_args=op._ray_remote_args,
         ray_remote_args_fn=op._ray_remote_args_fn,
+        supports_fusion=False,  # Prevent fusion with upstream operations that use different compute strategies
     )
 
     fn, init_fn = _get_udf(
