@@ -18,6 +18,7 @@
 
 #include <chrono>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -41,26 +42,36 @@ class FakeShutdownExecutor : public ShutdownExecutorInterface {
 
   std::string last_exit_type;
   std::string last_detail;
+  mutable std::mutex mu_;
 
   void ExecuteGracefulShutdown(std::string_view exit_type,
                                std::string_view detail,
                                std::chrono::milliseconds timeout_ms) override {
     graceful_calls++;
-    last_exit_type = std::string(exit_type);
-    last_detail = std::string(detail);
+    {
+      std::lock_guard<std::mutex> lk(mu_);
+      last_exit_type = std::string(exit_type);
+      last_detail = std::string(detail);
+    }
   }
   void ExecuteForceShutdown(std::string_view exit_type,
                             std::string_view detail) override {
     force_calls++;
-    last_exit_type = std::string(exit_type);
-    last_detail = std::string(detail);
+    {
+      std::lock_guard<std::mutex> lk(mu_);
+      last_exit_type = std::string(exit_type);
+      last_detail = std::string(detail);
+    }
   }
   void ExecuteWorkerExit(std::string_view exit_type,
                          std::string_view detail,
                          std::chrono::milliseconds timeout_ms) override {
     worker_exit_calls++;
-    last_exit_type = std::string(exit_type);
-    last_detail = std::string(detail);
+    {
+      std::lock_guard<std::mutex> lk(mu_);
+      last_exit_type = std::string(exit_type);
+      last_detail = std::string(detail);
+    }
   }
   void ExecuteExit(std::string_view exit_type,
                    std::string_view detail,
@@ -68,15 +79,21 @@ class FakeShutdownExecutor : public ShutdownExecutorInterface {
                    const std::shared_ptr<::ray::LocalMemoryBuffer>
                        &creation_task_exception_pb_bytes) override {
     worker_exit_calls++;
-    last_exit_type = std::string(exit_type);
-    last_detail = std::string(detail);
+    {
+      std::lock_guard<std::mutex> lk(mu_);
+      last_exit_type = std::string(exit_type);
+      last_detail = std::string(detail);
+    }
   }
   void ExecuteHandleExit(std::string_view exit_type,
                          std::string_view detail,
                          std::chrono::milliseconds timeout_ms) override {
     handle_exit_calls++;
-    last_exit_type = std::string(exit_type);
-    last_detail = std::string(detail);
+    {
+      std::lock_guard<std::mutex> lk(mu_);
+      last_exit_type = std::string(exit_type);
+      last_detail = std::string(detail);
+    }
   }
   void KillChildProcessesImmediately() override {}
   bool ShouldWorkerIdleExit() const override { return idle_exit_allowed.load(); }
