@@ -22,7 +22,7 @@
 #include "mock/ray/core_worker/actor_creator.h"
 #include "mock/ray/core_worker/reference_count.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
-#include "ray/common/test_util.h"
+#include "ray/common/test_utils.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray::core {
