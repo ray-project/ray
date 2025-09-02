@@ -54,3 +54,16 @@ ray_cc_library(
         "@com_google_absl//absl/synchronization",
     ],
 )
+
+ray_cc_library(
+    name = "gcs_subscriber",
+    srcs = ["gcs_subscriber.cc"],
+    hdrs = ["gcs_subscriber.h"],
+    deps = [
+        "//src/ray/common:ray_config",
+        "//src/ray/gcs:gcs_callback",
+        "//src/ray/pubsub:publisher_interface",
+        "//src/ray/pubsub:subscriber_interface",
+        "//src/ray/rpc:gcs_client",
+    ],
+)

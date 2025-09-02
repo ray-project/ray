@@ -23,6 +23,7 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/gcs/callback.h"
 #include "ray/pubsub/publisher_interface.h"
+#include "ray/pubsub/subscriber_interface.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
@@ -71,6 +72,47 @@ class GcsPublisher {
 
  private:
   const std::unique_ptr<pubsub::PublisherInterface> publisher_;
+};
+
+/// \class GcsSubscriber
+///
+/// Supports subscribing to an entity or a channel from GCS. Thread safe.
+class GcsSubscriber {
+ public:
+  /// Initializes GcsSubscriber with GCS based GcsSubscribers.
+  // TODO(mwtian): Support restarted GCS publisher, at the same or a different address.
+  GcsSubscriber(rpc::Address gcs_address,
+                std::unique_ptr<pubsub::SubscriberInterface> subscriber)
+      : gcs_address_(std::move(gcs_address)), subscriber_(std::move(subscriber)) {}
+
+  /// Subscribe*() member functions below would be incrementally converted to use the GCS
+  /// based subscriber, if available.
+  /// The `subscribe` callbacks must not be empty. The `done` callbacks can optionally be
+  /// empty.
+
+  /// Uses GCS pubsub when created with `subscriber`.
+  Status SubscribeActor(const ActorID &id,
+                        const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+                        const StatusCallback &done);
+  Status UnsubscribeActor(const ActorID &id);
+
+  bool IsActorUnsubscribed(const ActorID &id);
+
+  Status SubscribeAllJobs(const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
+                          const StatusCallback &done);
+
+  void SubscribeAllNodeInfo(const ItemCallback<rpc::GcsNodeInfo> &subscribe,
+                            const StatusCallback &done);
+
+  Status SubscribeAllWorkerFailures(const ItemCallback<rpc::WorkerDeltaData> &subscribe,
+                                    const StatusCallback &done);
+
+  /// Prints debugging info for the subscriber.
+  std::string DebugString() const;
+
+ private:
+  const rpc::Address gcs_address_;
+  const std::unique_ptr<pubsub::SubscriberInterface> subscriber_;
 };
 
 // This client is only supposed to be used from Cython / Python
