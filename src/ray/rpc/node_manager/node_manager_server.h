@@ -65,7 +65,7 @@ class NodeManagerServiceHandler {
   /// Handlers. For all of the following handlers, the implementations can
   /// handle the request asynchronously. When handling is done, the
   /// `send_reply_callback` should be called. See
-  /// src/ray/rpc/node_manager/node_manager_client.h and
+  /// src/ray/raylet_client/node_manager_client.h and
   /// src/ray/protobuf/node_manager.proto for a description of the
   /// functionality of each handler.
   ///
