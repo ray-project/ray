@@ -142,7 +142,7 @@ and the rules that govern environment transitions when applying actions.
 
     A simple **RL environment** where an agent starts with an initial observation returned by the ``reset()`` method.
     The agent, possibly controlled by a neural network policy, sends actions, like ``right`` or ``jump``,
-    to the environment's ``step()`` method, which returns a reward. Here, the reward values are +5 for reaching the goal
+    to the environmant's ``step()`` method, which returns a reward. Here, the reward values are +5 for reaching the goal
     and 0 otherwise. The environment also returns a boolean flag indicating whether the episode is complete.
 
 Environments may vary in complexity, from simple tasks, like navigating a grid world, to highly intricate systems, like autonomous
@@ -179,16 +179,12 @@ RLlib's :ref:`EnvRunners <rllib-key-concepts-env-runners>` use them for computin
     many submodules, each itself an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` instance and
     identified by a ``ModuleID``, allowing you to implement arbitrarily complex multi-model and multi-agent algorithms.
 
-.. container:: section-divider
-    
-   ----
-
 In a nutshell, an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` carries the neural
 network models and defines how to use them during the three phases of its RL lifecycle:
 **Exploration**, for collecting training data, **inference** when computing actions for evaluation or in production,
 and **training** for computing the loss function inputs.
 
-You can choose to use :ref:`RLlib's built-in default models and configure these <rllib-default-rl-modules-docs>` as needed,
+You can chose to use :ref:`RLlib's built-in default models and configure these <rllib-default-rl-modules-docs>` as needed,
 for example for changing the number of layers or the activation functions, or
 :ref:`write your own custom models in PyTorch <rllib-implementing-custom-rl-modules>`,
 allowing you to implement any architecture and computation logic.
@@ -199,10 +195,6 @@ allowing you to implement any architecture and computation logic.
 
     **An RLModule inside an EnvRunner actor**: The :py:class:`~ray.rllib.env.env_runner.EnvRunner` operates on its own copy of an
     inference-only version of the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, using it only to compute actions.
-
-.. container:: section-divider
-
-   ----
 
 Each :py:class:`~ray.rllib.env.env_runner.EnvRunner` actor, managed by the :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` of the Algorithm,
 has a copy of the user's :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
@@ -220,10 +212,6 @@ not required for bare action computation, for example a value function estimate,
     an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, computing the loss function inputs, the loss itself,
     and the model's gradients, then updating the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`
     through the :py:class:`~ray.rllib.core.learner.learner.Learner`'s optimizers.
-
-.. container:: section-divider
-
-   ----
 
 
 .. _rllib-key-concepts-episodes:
