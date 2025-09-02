@@ -26,12 +26,11 @@
 #include "fakes/ray/rpc/worker/core_worker_client.h"
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/common/asio/asio_util.h"
-#include "ray/common/test_util.h"
+#include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server/gcs_actor.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
-#include "ray/gcs/tests/gcs_test_util.h"
 #include "ray/util/counter_map.h"
 
 namespace ray {
@@ -177,15 +176,14 @@ class GcsActorSchedulerTest : public ::testing::Test {
 
     required_resources.insert(required_placement_resources.begin(),
                               required_placement_resources.end());
-    auto actor_creating_task_spec =
-        Mocker::GenActorCreationTask(job_id,
-                                     /*max_restarts=*/1,
-                                     /*detached=*/true,
-                                     /*name=*/"",
-                                     "",
-                                     owner_address,
-                                     required_resources,
-                                     required_placement_resources);
+    auto actor_creating_task_spec = GenActorCreationTask(job_id,
+                                                         /*max_restarts=*/1,
+                                                         /*detached=*/true,
+                                                         /*name=*/"",
+                                                         "",
+                                                         owner_address,
+                                                         required_resources,
+                                                         required_placement_resources);
     return std::make_shared<gcs::GcsActor>(actor_creating_task_spec.GetMessage(),
                                            /*ray_namespace=*/"",
                                            counter);
@@ -193,7 +191,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
 
   std::shared_ptr<rpc::GcsNodeInfo> AddNewNode(
       std::unordered_map<std::string, double> node_resources) {
-    auto node_info = Mocker::GenNodeInfo();
+    auto node_info = GenNodeInfo();
     node_info->mutable_resources_total()->insert(node_resources.begin(),
                                                  node_resources.end());
     gcs_node_manager_->AddNode(node_info);
@@ -230,7 +228,7 @@ TEST_F(GcsActorSchedulerTest, TestScheduleFailedWithZeroNode) {
   ASSERT_EQ(0, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto job_id = JobID::FromInt(1);
-  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
+  auto create_actor_request = GenCreateActorRequest(job_id);
   auto actor =
       std::make_shared<gcs::GcsActor>(create_actor_request.task_spec(), "", counter);
 
@@ -246,13 +244,13 @@ TEST_F(GcsActorSchedulerTest, TestScheduleFailedWithZeroNode) {
 }
 
 TEST_F(GcsActorSchedulerTest, TestScheduleActorSuccess) {
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
   gcs_node_manager_->AddNode(node);
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto job_id = JobID::FromInt(1);
-  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
+  auto create_actor_request = GenCreateActorRequest(job_id);
   auto actor =
       std::make_shared<gcs::GcsActor>(create_actor_request.task_spec(), "", counter);
 
@@ -284,13 +282,13 @@ TEST_F(GcsActorSchedulerTest, TestScheduleActorSuccess) {
 }
 
 TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenLeasing) {
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
   gcs_node_manager_->AddNode(node);
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto job_id = JobID::FromInt(1);
-  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
+  auto create_actor_request = GenCreateActorRequest(job_id);
   auto actor =
       std::make_shared<gcs::GcsActor>(create_actor_request.task_spec(), "", counter);
 
@@ -335,13 +333,13 @@ TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenLeasing) {
 }
 
 TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenCreating) {
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
   gcs_node_manager_->AddNode(node);
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto job_id = JobID::FromInt(1);
-  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
+  auto create_actor_request = GenCreateActorRequest(job_id);
   auto actor =
       std::make_shared<gcs::GcsActor>(create_actor_request.task_spec(), "", counter);
 
@@ -379,13 +377,13 @@ TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenCreating) {
 }
 
 TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenLeasing) {
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
   gcs_node_manager_->AddNode(node);
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto job_id = JobID::FromInt(1);
-  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
+  auto create_actor_request = GenCreateActorRequest(job_id);
   auto actor =
       std::make_shared<gcs::GcsActor>(create_actor_request.task_spec(), "", counter);
 
@@ -421,13 +419,13 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenLeasing) {
 }
 
 TEST_F(GcsActorSchedulerTest, TestLeasingCancelledWhenLeasing) {
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
   gcs_node_manager_->AddNode(node);
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto job_id = JobID::FromInt(1);
-  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
+  auto create_actor_request = GenCreateActorRequest(job_id);
   auto actor =
       std::make_shared<gcs::GcsActor>(create_actor_request.task_spec(), "", counter);
 
@@ -458,13 +456,13 @@ TEST_F(GcsActorSchedulerTest, TestLeasingCancelledWhenLeasing) {
 }
 
 TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenCreating) {
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
   gcs_node_manager_->AddNode(node);
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto job_id = JobID::FromInt(1);
-  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
+  auto create_actor_request = GenCreateActorRequest(job_id);
   auto actor =
       std::make_shared<gcs::GcsActor>(create_actor_request.task_spec(), "", counter);
 
@@ -504,13 +502,13 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenCreating) {
 }
 
 TEST_F(GcsActorSchedulerTest, TestWorkerFailedWhenCreating) {
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
   gcs_node_manager_->AddNode(node);
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto job_id = JobID::FromInt(1);
-  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
+  auto create_actor_request = GenCreateActorRequest(job_id);
   auto actor =
       std::make_shared<gcs::GcsActor>(create_actor_request.task_spec(), "", counter);
 
@@ -546,13 +544,13 @@ TEST_F(GcsActorSchedulerTest, TestWorkerFailedWhenCreating) {
 }
 
 TEST_F(GcsActorSchedulerTest, TestSpillback) {
-  auto node1 = Mocker::GenNodeInfo();
+  auto node1 = GenNodeInfo();
   auto node_id_1 = NodeID::FromBinary(node1->node_id());
   gcs_node_manager_->AddNode(node1);
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto job_id = JobID::FromInt(1);
-  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
+  auto create_actor_request = GenCreateActorRequest(job_id);
   auto actor =
       std::make_shared<gcs::GcsActor>(create_actor_request.task_spec(), "", counter);
 
@@ -564,13 +562,13 @@ TEST_F(GcsActorSchedulerTest, TestSpillback) {
   ASSERT_EQ(0, worker_client_->GetNumCallbacks());
 
   // Add another node.
-  auto node2 = Mocker::GenNodeInfo();
+  auto node2 = GenNodeInfo();
   auto node_id_2 = NodeID::FromBinary(node2->node_id());
   gcs_node_manager_->AddNode(node2);
   ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
 
   // Grant with an invalid spillback node, and schedule again.
-  auto invalid_node_id = NodeID::FromBinary(Mocker::GenNodeInfo()->node_id());
+  auto invalid_node_id = NodeID::FromBinary(GenNodeInfo()->node_id());
   ASSERT_TRUE(raylet_client_->GrantWorkerLease(node2->node_manager_address(),
                                                node2->node_manager_port(),
                                                WorkerID::Nil(),
@@ -613,14 +611,14 @@ TEST_F(GcsActorSchedulerTest, TestSpillback) {
 }
 
 TEST_F(GcsActorSchedulerTest, TestReschedule) {
-  auto node1 = Mocker::GenNodeInfo();
+  auto node1 = GenNodeInfo();
   auto node_id_1 = NodeID::FromBinary(node1->node_id());
   gcs_node_manager_->AddNode(node1);
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   // 1.Actor is already tied to a leased worker.
   auto job_id = JobID::FromInt(1);
-  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
+  auto create_actor_request = GenCreateActorRequest(job_id);
   auto actor =
       std::make_shared<gcs::GcsActor>(create_actor_request.task_spec(), "", counter);
   rpc::Address address;
@@ -669,7 +667,7 @@ TEST_F(GcsActorSchedulerTest, TestReleaseUnusedActorWorkers) {
   // if there is still a pending `ReleaseUnusedActorWorkers` request.
 
   // Add a node to the cluster.
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
   gcs_node_manager_->AddNode(node);
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
@@ -687,7 +685,7 @@ TEST_F(GcsActorSchedulerTest, TestReleaseUnusedActorWorkers) {
   // `GcsActorScheduler` won't send `RequestWorkerLease` request to node immediately. But
   // instead, it will invoke the `RetryLeasingWorkerFromNode` to retry later.
   auto job_id = JobID::FromInt(1);
-  auto request = Mocker::GenCreateActorRequest(job_id);
+  auto request = GenCreateActorRequest(job_id);
   auto actor = std::make_shared<gcs::GcsActor>(request.task_spec(), "", counter);
   gcs_actor_scheduler_->ScheduleByRaylet(actor);
   ASSERT_EQ(2, gcs_actor_scheduler_->num_retry_leasing_count_);
