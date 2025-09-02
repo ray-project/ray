@@ -6919,4 +6919,3 @@ def nvmlDeviceGetRepairStatus(device):
     ret = fn(device, byref(c_status))
     _nvmlCheckReturn(ret)
     return [c_status.bChannelRepairPending, c_status.bTpcRepairPending]
-
