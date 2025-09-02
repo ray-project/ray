@@ -31,6 +31,7 @@ RETRY_MAX_BACKOFF_S_FOR_META_FETCH_TASK = 64
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI(stability="alpha")
 @dataclass
 class ParquetFileMetadata:
     num_bytes: int
