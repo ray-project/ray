@@ -16,7 +16,7 @@ build_arg_sets:
 depsets:
   - name: ray_img_depset_${PYTHON_SHORT}
     requirements:
-      - python/requirements.txt
+      - ray[all]==100.0.0-dev
     constraints:
       - python/requirements_compiled.txt
     output: python/lock_files/ray_img/py${PYTHON_SHORT}.lock

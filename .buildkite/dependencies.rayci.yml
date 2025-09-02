@@ -31,6 +31,34 @@ steps:
     key: raydepsets_compile_rayimg_dependencies
     tags: always
     instance_type: small
-    command: bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/rayimg.depsets.yaml
+    commands:
+      - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/rayimg.depsets.yaml
+      -
     job_env: oss-ci-base_test-py3.11
     depends_on: oss-ci-base_test-multipy
+
+  - label: ":tapioca: build & test placeholder wheel {{matrix}}"
+    key: raydepsets_compile_rayimg_dependencies
+    tags: always
+    instance_type: medium
+    commands:
+      # validate minimal installation
+      - python ./ci/env/check_minimal_install.py --expected-python-version {{matrix}}
+      - python -m pip install --upgrade pip
+      # build placeholder wheel
+      - export RAY_DEBUG_BUILD=deps-only
+      - mkdir -p .whl
+      - pip wheel python/ --no-deps -w .whl/ --use-pep517
+      - ls -a .whl
+      # compile rayimg dependencies
+      - echo "ray[all]==100.0.0-dev" > python/ray-requirement.txt
+      - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/rayimg.depsets.yaml
+      - rm python/ray-requirement.txt
+    depends_on:
+      - minbuild-core
+    job_env: minbuild-core-py{{matrix}}
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.11"
+      - "3.12"
