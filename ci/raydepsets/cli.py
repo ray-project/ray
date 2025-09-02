@@ -174,7 +174,7 @@ class DependencySetManager:
                 args.extend([requirement])
         if packages:
             # need to add a dash to process stdin
-            args = ["-"] + args
+            args.append("-")
             stdin = _get_bytes(packages)
         if output:
             args.extend(["-o", output])
