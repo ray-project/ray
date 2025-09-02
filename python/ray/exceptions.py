@@ -51,7 +51,7 @@ class RayError(Exception):
             except Exception:
                 # Before falling back, try deserializing using any serializers
                 # registered via ray.util.register_serializer(), if available.
-                
+
                 try:
                     import ray
 

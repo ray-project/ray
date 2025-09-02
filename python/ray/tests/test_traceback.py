@@ -335,9 +335,9 @@ def test_exception_with_registered_serializer(shutdown_only):
     class NoPickleError(OSError):
         def __init__(self, msg):
             self.msg = msg
-        
+
         def __str__(self):
-             return f"message: {self.msg}"
+            return f"message: {self.msg}"
 
     def _serializer(e: NoPickleError):
         return {"msg": e.msg + "serialized"}
@@ -358,17 +358,19 @@ def test_exception_with_registered_serializer(shutdown_only):
         )
         raise NoPickleError("message")
 
-
     with pytest.raises(NoPickleError) as exc_info:
         ray.get(raise_custom_exception.remote())
 
     # Ensure dual-typed exception and message propagation
     assert isinstance(exc_info.value, RayTaskError)
-    assert isinstance(exc_info.value, NoPickleError) # if custom serializer was not registered, this would be a UnserializableException
+    assert isinstance(
+        exc_info.value, NoPickleError
+    )  # if custom serializer was not registered, this would be a UnserializableException
     assert "message" in str(exc_info.value)
 
     # Cleanup to avoid affecting other tests
     ray.util.deregister_serializer(NoPickleError)
+
 
 def test_serialization_error_message(shutdown_only):
     expected_output_ray_put = """Could not serialize the put value <unlocked _thread.lock object at ADDRESS>:\nINSPECT_SERIALIZABILITY"""  # noqa
