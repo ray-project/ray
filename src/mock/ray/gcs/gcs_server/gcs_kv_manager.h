@@ -12,13 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "gmock/gmock.h"
+#pragma once
+
+#include <gmock/gmock.h>
+
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 
 namespace ray {
 namespace gcs {
 
-class MockInternalKVInterface : public ray::gcs::InternalKVInterface {
+class MockInternalKVInterface : public InternalKVInterface {
  public:
   MockInternalKVInterface() {}
 

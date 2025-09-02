@@ -24,6 +24,8 @@ adagio==0.2.4
     #   qpd
 adal==1.2.7
     # via msrestazure
+adlfs==2023.8.0
+    # via -r python/requirements/cloud-requirements.txt
 aim==3.23.0 ; python_version < "3.12"
     # via -r python/requirements/ml/tune-test-requirements.txt
 aim-ui==3.23.0
@@ -50,6 +52,7 @@ aiohttp==3.11.16
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
+    #   adlfs
     #   aiobotocore
     #   aiohttp-cors
     #   delta-sharing
@@ -160,15 +163,19 @@ azure-common==1.1.28
     #   smart-open
 azure-core==1.29.5
     # via
+    #   adlfs
     #   azure-identity
     #   azure-mgmt-core
     #   azure-storage-blob
     #   msrest
     #   smart-open
+azure-datalake-store==0.0.53
+    # via adlfs
 azure-identity==1.17.1
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
+    #   adlfs
 azure-mgmt-compute==31.0.0
     # via -r python/requirements/test-requirements.txt
 azure-mgmt-core==1.4.0
@@ -182,7 +189,9 @@ azure-mgmt-network==25.4.0
 azure-mgmt-resource==23.1.1
     # via -r python/requirements/test-requirements.txt
 azure-storage-blob==12.22.0
-    # via smart-open
+    # via
+    #   adlfs
+    #   smart-open
 babel==2.13.1
     # via
     #   jupyterlab-server
@@ -270,6 +279,7 @@ certifi==2025.1.31
 cffi==1.16.0
     # via
     #   argon2-cffi-bindings
+    #   azure-datalake-store
     #   cryptography
     #   pymunk
     #   pynacl
@@ -566,6 +576,7 @@ fs==2.4.16
 fsspec==2023.5.0
     # via
     #   -r python/requirements.txt
+    #   adlfs
     #   dask
     #   datasets
     #   delta-sharing
@@ -1096,6 +1107,7 @@ mpmath==1.3.0
 msal==1.28.1
     # via
     #   azure-cli-core
+    #   azure-datalake-store
     #   azure-identity
     #   msal-extensions
 msal-extensions==1.2.0b1
@@ -1350,7 +1362,7 @@ opt-einsum==3.3.0
     #   tensorflow
 optuna==4.1.0
     # via -r python/requirements/ml/tune-requirements.txt
-orjson==3.9.10
+orjson==3.9.15
     # via
     #   gradio
     #   tensordict
@@ -1861,6 +1873,7 @@ requests==2.32.3
     #   aim
     #   azure-cli-core
     #   azure-core
+    #   azure-datalake-store
     #   comet-ml
     #   databricks-sdk
     #   datasets
