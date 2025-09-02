@@ -97,20 +97,12 @@ class TestCli(unittest.TestCase):
         assert result.stderr.decode("utf-8") == ""
 
     def test_compile(self):
-        compiled_file = Path(
-            _runfiles.Rlocation(
-                f"{_REPO_NAME}/ci/raydepsets/tests/test_data/requirements_compiled_test.txt"
-            )
-        )
-        output_file = Path(
-            _runfiles.Rlocation(
-                f"{_REPO_NAME}/ci/raydepsets/tests/test_data/requirements_compiled.txt"
-            )
-        )
-        shutil.copy(compiled_file, output_file)
-
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
+            save_file_as(
+                Path(tmpdir) / "requirements_compiled_test.txt",
+                Path(tmpdir) / "requirements_compiled.txt",
+            )
             manager = _create_test_manager(tmpdir)
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
@@ -560,20 +552,12 @@ depsets:
                 _get_depset(manager.config.depsets, "build_args_test_depset_py311")
 
     def test_compile_with_packages(self):
-        compiled_file = Path(
-            _runfiles.Rlocation(
-                f"{_REPO_NAME}/ci/raydepsets/tests/test_data/requirements_compiled_test.txt"
-            )
-        )
-        output_file = Path(
-            _runfiles.Rlocation(
-                f"{_REPO_NAME}/ci/raydepsets/tests/test_data/requirements_compiled_test_packages.txt"
-            )
-        )
-        shutil.copy(compiled_file, output_file)
-
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
+            save_file_as(
+                Path(tmpdir) / "requirements_compiled_test.txt",
+                Path(tmpdir) / "requirements_compiled_test_packages.txt",
+            )
             manager = _create_test_manager(tmpdir)
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
@@ -589,20 +573,12 @@ depsets:
             assert output_text == output_text_valid
 
     def test_compile_with_packages_and_requirements(self):
-        compiled_file = Path(
-            _runfiles.Rlocation(
-                f"{_REPO_NAME}/ci/raydepsets/tests/test_data/requirements_compiled_test.txt"
-            )
-        )
-        output_file = Path(
-            _runfiles.Rlocation(
-                f"{_REPO_NAME}/ci/raydepsets/tests/test_data/requirements_compiled_test_packages.txt"
-            )
-        )
-        shutil.copy(compiled_file, output_file)
-
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
+            save_file_as(
+                Path(tmpdir) / "requirements_compiled_test.txt",
+                Path(tmpdir) / "requirements_compiled_test_packages.txt",
+            )
             manager = _create_test_manager(tmpdir)
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
