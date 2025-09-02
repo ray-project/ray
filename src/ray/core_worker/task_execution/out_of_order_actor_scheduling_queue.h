@@ -76,7 +76,7 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
   void ScheduleRequests() override;
 
   /// Cancel all pending (not yet accepted/executing) requests in the queue.
-  void CancelAllPending(const Status &status);
+  void CancelAllPending(const Status &status) override;
 
  private:
   void RunRequest(InboundRequest request);

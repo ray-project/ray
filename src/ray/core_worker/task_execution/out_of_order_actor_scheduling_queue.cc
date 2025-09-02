@@ -257,7 +257,8 @@ void OutOfOrderActorSchedulingQueue::CancelAllPendingUnsafe(const Status &status
   for (auto it = queued_actor_tasks_.begin(); it != queued_actor_tasks_.end();) {
     it->second.Cancel(status);
     pending_task_id_to_is_canceled.erase(it->first);
-    it = queued_actor_tasks_.erase(it);
+    auto to_erase = it++;
+    queued_actor_tasks_.erase(to_erase);
   }
 }
 
