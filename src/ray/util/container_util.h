@@ -160,7 +160,7 @@ const typename C::mapped_type &map_find_or_die(const C &c,
                                                const typename C::key_type &k) {
   auto iter = c.find(k);
   if (iter == c.end()) {
-    RAY_LOG(FATAL) << "Key " << k << " doesn't exist";
+    RAY_LOG(FATAL) << "Key " << debug_string(k) << " doesn't exist";
   }
 
   return iter->second;
