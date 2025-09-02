@@ -63,14 +63,9 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     const SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
                                        task_spec.GetDependencyIds(),
                                        task_spec.GetRuntimeEnvHash());
-    auto [scheduler_key_entry_iter, new_scheduling_key_entry] =
-        scheduling_key_entries_.try_emplace(scheduling_key, SchedulingKeyEntry{});
-    auto &scheduling_key_entry = scheduler_key_entry_iter->second;
-
-    // Only set lease_spec if this is a new scheduling key entry
-    if (new_scheduling_key_entry) {
-      scheduling_key_entry.lease_spec = LeaseSpecification(task_spec.GetMessage());
-    }
+    // TODO(#56107): Only create the lease spec if this is a new scheduling key entry
+    auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+    scheduling_key_entry.lease_spec = LeaseSpecification(task_spec.GetMessage());
     scheduling_key_entry.task_queue.push_back(std::move(task_spec));
 
     if (!scheduling_key_entry.AllWorkersBusy()) {
