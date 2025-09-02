@@ -569,9 +569,8 @@ void NormalTaskSubmitter::PushNormalTask(
 
           // Decrement the total number of tasks in flight to any worker with the current
           // scheduling_key.
-          auto scheduling_key_iter = scheduling_key_entries_.find(scheduling_key);
-          RAY_CHECK(scheduling_key_iter != scheduling_key_entries_.end());
-          auto &scheduling_key_entry = scheduling_key_iter->second;
+          auto &scheduling_key_entry =
+              map_find_or_die(scheduling_key_entries_, scheduling_key);
           RAY_CHECK_GE(scheduling_key_entry.active_workers.size(), 1u);
           RAY_CHECK_GE(scheduling_key_entry.num_busy_workers, 1u);
           scheduling_key_entry.num_busy_workers--;
