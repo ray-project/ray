@@ -154,7 +154,7 @@ scripts/nodes.txt
 .benchmarks
 python-driver-*
 
-# Ray train local mode logs
+# Ray Train unit test artifacts
 lightning_logs/
 hf-internal-testing/
 
