@@ -353,3 +353,11 @@ ray_cc_library(
         "@com_google_absl//absl/time",
     ],
 )
+
+ray_cc_library(
+    name = "gcs_callbacks",
+    hdrs = ["gcs_callbacks.h"],
+    deps = [
+        "//src/ray/common:status",
+    ],
+)
