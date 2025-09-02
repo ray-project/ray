@@ -483,17 +483,11 @@ TEST_F(CoreWorkerTest, HandleGetObjectStatusObjectOutOfScope) {
   EXPECT_EQ(reply2.status(), rpc::GetObjectStatusReply::OUT_OF_SCOPE);
 }
 
-TEST_F(CoreWorkerTest, ActorTaskCancelDuringDepResolution) {
-  /*
-  See https://github.com/ray-project/ray/pull/56123 for context.
-  1. Put an inline object in the memory store.
-  2. Create an actor.
-  3. Submit an actor task with the inline objects as dependencies.
-  4. Cancel the actor task.
-  5. Run the io context to completion to run the actual SubmitTask logic + dependency
-     resolution.
-  */
+namespace {
 
+ObjectID CreateInlineObjectInMemoryStoreAndRefCounter(CoreWorkerMemoryStore &memory_store,
+                                                      ReferenceCounter &reference_counter,
+                                                      rpc::Address &rpc_address) {
   auto inlined_dependency_id = ObjectID::FromRandom();
   std::string data = "hello";
   auto data_ptr = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(data.data()));
@@ -503,14 +497,32 @@ TEST_F(CoreWorkerTest, ActorTaskCancelDuringDepResolution) {
                                 /*metadata=*/nullptr,
                                 std::vector<rpc::ObjectReference>(),
                                 /*copy_data=*/true);
-  reference_counter_->AddOwnedObject(inlined_dependency_id,
-                                     /*contained_ids=*/{},
-                                     rpc_address_,
-                                     "call_site",
-                                     /*object_size=*/100,
-                                     /*is_reconstructable=*/false,
-                                     /*add_local_ref=*/true);
-  memory_store_->Put(memory_store_object, inlined_dependency_id);
+  reference_counter.AddOwnedObject(inlined_dependency_id,
+                                   /*contained_ids=*/{},
+                                   rpc_address,
+                                   "call_site",
+                                   /*object_size=*/100,
+                                   /*is_reconstructable=*/false,
+                                   /*add_local_ref=*/true);
+  memory_store.Put(memory_store_object, inlined_dependency_id);
+  return inlined_dependency_id;
+}
+
+}  // namespace
+
+TEST_F(CoreWorkerTest, ActorTaskCancelDuringDepResolution) {
+  /*
+  See https://github.com/ray-project/ray/pull/56123 for context.
+  1. Put an inline object in the memory store + ref counter.
+  2. Create an actor (just creating an actor queue in the submitter).
+  3. Submit an actor task with the inline objects as dependencies.
+  4. Cancel the actor task.
+  5. Run the io context to completion to run the actual submission + dependency
+     resolution logic.
+  */
+
+  auto inlined_dependency_id = CreateInlineObjectInMemoryStoreAndRefCounter(
+      *memory_store_, *reference_counter_, rpc_address_);
 
   auto actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   actor_task_submitter_->AddActorQueueIfNotExists(actor_id,
