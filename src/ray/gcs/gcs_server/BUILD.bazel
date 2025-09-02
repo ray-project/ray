@@ -78,6 +78,7 @@ ray_cc_library(
         "//src/ray/protobuf:autoscaler_cc_proto",
         "//src/ray/protobuf:gcs_service_cc_proto",
         "//src/ray/protobuf:ray_syncer_cc_proto",
+        "//src/ray/pubsub:gcs_publisher",
         "//src/ray/raylet_client:raylet_client_pool",
         "//src/ray/stats:stats_metric",
         "//src/ray/util:event",
