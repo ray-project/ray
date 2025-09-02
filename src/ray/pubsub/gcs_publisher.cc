@@ -14,6 +14,7 @@
 
 #include "ray/pubsub/gcs_publisher.h"
 
+#include <string>
 #include <utility>
 
 namespace ray {

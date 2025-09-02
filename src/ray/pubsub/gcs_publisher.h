@@ -14,7 +14,9 @@
 
 #pragma once
 
+#include <memory>
 #include <string>
+#include <utility>
 
 #include "ray/pubsub/publisher_interface.h"
 #include "src/ray/protobuf/gcs.pb.h"
