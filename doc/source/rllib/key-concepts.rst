@@ -179,10 +179,9 @@ RLlib's :ref:`EnvRunners <rllib-key-concepts-env-runners>` use them for computin
     many submodules, each itself an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` instance and
     identified by a ``ModuleID``, allowing you to implement arbitrarily complex multi-model and multi-agent algorithms.
 
-.. raw:: html
-
-    <div style="clear: both;"></div>
-
+.. container:: section-divider
+    
+   ----
 
 In a nutshell, an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` carries the neural
 network models and defines how to use them during the three phases of its RL lifecycle:
@@ -201,9 +200,9 @@ allowing you to implement any architecture and computation logic.
     **An RLModule inside an EnvRunner actor**: The :py:class:`~ray.rllib.env.env_runner.EnvRunner` operates on its own copy of an
     inference-only version of the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, using it only to compute actions.
 
-.. raw:: html
+.. container:: section-divider
 
-    <div style="clear: both;"></div>
+   ----
 
 Each :py:class:`~ray.rllib.env.env_runner.EnvRunner` actor, managed by the :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` of the Algorithm,
 has a copy of the user's :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
@@ -222,9 +221,9 @@ not required for bare action computation, for example a value function estimate,
     and the model's gradients, then updating the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`
     through the :py:class:`~ray.rllib.core.learner.learner.Learner`'s optimizers.
 
-.. raw:: html
+.. container:: section-divider
 
-    <div style="clear: both;"></div>
+   ----
 
 
 .. _rllib-key-concepts-episodes:

@@ -409,3 +409,9 @@ readthedocs-flyout {
 .anyscale-cta {
   margin-bottom: 16px;
 }
+
+/* Section divider for clearing floated figures */
+.section-divider {
+  clear: both;
+  margin: 1em 0;
+}
