@@ -4,7 +4,7 @@ ray_cc_library(
     name = "store_client_test_lib",
     hdrs = ["store_client_test_base.h"],
     deps = [
-        "//src/ray/common:test_util",
+        "//src/ray/common:test_utils",
         "//src/ray/gcs/store_client",
     ],
 )
@@ -114,7 +114,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:test_util",
+        "//src/ray/common:test_utils",
         "//src/ray/gcs/store_client:redis_store_client",
         "//src/ray/util:raii",
         "@com_google_googletest//:gtest_main",
