@@ -10,7 +10,7 @@ class MyActor:
    def random_tensor(self):
       return torch.randn(1000, 1000).cuda()
 
-    def sum(self, tensor: torch.Tensor):
+   def sum(self, tensor: torch.Tensor):
       return torch.sum(tensor)
 
 sender, receiver = MyActor.remote(), MyActor.remote()
