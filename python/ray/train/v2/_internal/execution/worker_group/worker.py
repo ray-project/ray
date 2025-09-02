@@ -200,6 +200,7 @@ class RayTrainWorker:
         synchronization_actor: SynchronizationActor,
         storage_context: StorageContext,
         worker_callbacks: List[Union[WorkerCallback, TrainContextCallback]],
+        controller_actor: ActorHandle,
         dataset_shard_provider: Optional["DatasetShardProvider"] = None,
         checkpoint: Optional[Checkpoint] = None,
     ):
@@ -219,6 +220,7 @@ class RayTrainWorker:
                 train_context_callbacks=context_callbacks_to_propagate,
             ),
             storage_context=storage_context,
+            controller_actor=controller_actor,
             checkpoint=checkpoint,
             dataset_shard_provider=dataset_shard_provider,
         )

@@ -24,11 +24,11 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/id.h"
+#include "ray/common/lease/lease.h"
 #include "ray/common/memory_monitor.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/scheduling/resource_set.h"
-#include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/experimental_mutable_object_provider.h"
 #include "ray/flatbuffers/node_manager_generated.h"
@@ -38,19 +38,18 @@
 #include "ray/object_manager/plasma/client.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet/agent_manager.h"
-#include "ray/raylet/dependency_manager.h"
+#include "ray/raylet/lease_dependency_manager.h"
+#include "ray/raylet/local_lease_manager.h"
 #include "ray/raylet/local_object_manager_interface.h"
-#include "ray/raylet/local_task_manager.h"
 #include "ray/raylet/placement_group_resource_manager.h"
 #include "ray/raylet/runtime_env_agent_client.h"
+#include "ray/raylet/scheduling/cluster_lease_manager_interface.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
-#include "ray/raylet/scheduling/cluster_task_manager_interface.h"
 #include "ray/raylet/wait_manager.h"
 #include "ray/raylet/worker_killing_policy.h"
 #include "ray/raylet/worker_pool.h"
-#include "ray/raylet_client/raylet_client.h"
+#include "ray/raylet_client/raylet_client_pool.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
-#include "ray/rpc/node_manager/raylet_client_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/throttler.h"
 
@@ -119,8 +118,6 @@ struct NodeManagerConfig {
   // If true, core worker enables resource isolation by adding itself into appropriate
   // cgroup.
   bool enable_resource_isolation = false;
-
-  void AddDefaultLabels(const std::string &self_node_id);
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler,
@@ -143,12 +140,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       rpc::RayletClientPool &raylet_client_pool,
       pubsub::SubscriberInterface &core_worker_subscriber,
       ClusterResourceScheduler &cluster_resource_scheduler,
-      ILocalTaskManager &local_task_manager,
-      ClusterTaskManagerInterface &cluster_task_manager,
+      LocalLeaseManagerInterface &local_lease_manager,
+      ClusterLeaseManagerInterface &cluster_lease_manager,
       IObjectDirectory &object_directory,
       ObjectManagerInterface &object_manager,
       LocalObjectManagerInterface &local_object_manager,
-      DependencyManager &dependency_manager,
+      LeaseDependencyManager &lease_dependency_manager,
       WorkerPoolInterface &worker_pool,
       absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
       plasma::PlasmaClientInterface &store_client,
@@ -359,18 +356,18 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       const NodeID &id,
       const syncer::ResourceViewSyncMessage &resource_view_sync_message);
 
-  /// Handle a worker finishing its assigned task.
+  /// Cleanup any lease resources and state for a worker that was granted a lease.
   ///
-  /// \param worker The worker that finished the task.
+  /// \param worker The worker that was granted the lease.
   /// \return Whether the worker should be returned to the idle pool. This is
   /// only false for actor creation calls, which should never be returned to idle.
-  bool FinishAssignedTask(const std::shared_ptr<WorkerInterface> &worker);
+  bool CleanupLease(const std::shared_ptr<WorkerInterface> &worker);
 
-  /// Handle a worker finishing an assigned actor creation task.
-  /// \param worker The worker that finished the task.
-  /// \param task The actor task or actor creation task.
-  void FinishAssignedActorCreationTask(const std::shared_ptr<WorkerInterface> &worker,
-                                       const RayTask &task);
+  /// Convert a worker to an actor since it's finished an actor creation task.
+  /// \param worker The worker that was granted the actor creation lease.
+  /// \param lease The lease of the actor creation task.
+  void ConvertWorkerToActor(const std::shared_ptr<WorkerInterface> &worker,
+                            const RayLease &lease);
 
   /// Start a get or wait request for the requested objects.
   ///
@@ -413,12 +410,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                      rpc::WorkerExitType disconnect_type,
                      const std::string &disconnect_detail,
                      bool force = false);
-
-  /// When a job finished, loop over all of the queued tasks for that job and
-  /// treat them as failed.
-  ///
-  /// \param job_id The job that exited.
-  void CleanUpTasksForFinishedJob(const JobID &job_id);
 
   /// Handles the event that a job is started.
   ///
@@ -525,10 +516,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                              rpc::GetResourceLoadReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `CancelTasksWithResourceShapes` request.
-  void HandleCancelTasksWithResourceShapes(
-      rpc::CancelTasksWithResourceShapesRequest request,
-      rpc::CancelTasksWithResourceShapesReply *reply,
+  /// Handle a `CancelLeasesWithResourceShapes` request.
+  void HandleCancelLeasesWithResourceShapes(
+      rpc::CancelLeasesWithResourceShapesRequest request,
+      rpc::CancelLeasesWithResourceShapesReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `PrepareBundleResources` request.
@@ -561,12 +552,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                         rpc::ReportWorkerBacklogReply *reply,
                                         rpc::SendReplyCallback send_reply_callback,
                                         WorkerPoolInterface &worker_pool,
-                                        ILocalTaskManager &local_task_manager);
+                                        LocalLeaseManagerInterface &local_lease_manager);
 
-  /// Handle a `ReturnWorker` request.
-  void HandleReturnWorker(rpc::ReturnWorkerRequest request,
-                          rpc::ReturnWorkerReply *reply,
-                          rpc::SendReplyCallback send_reply_callback) override;
+  /// Handle a `ReturnWorkerLease` request.
+  void HandleReturnWorkerLease(rpc::ReturnWorkerLeaseRequest request,
+                               rpc::ReturnWorkerLeaseReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ReleaseUnusedActorWorkers` request.
   // On GCS restart, there's a pruning effort. GCS sends raylet a list of actor workers it
@@ -621,10 +612,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                              rpc::GetSystemConfigReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `GetTaskFailureCause` request.
-  void HandleGetTaskFailureCause(rpc::GetTaskFailureCauseRequest request,
-                                 rpc::GetTaskFailureCauseReply *reply,
-                                 rpc::SendReplyCallback send_reply_callback) override;
+  /// Handle a `GetWorkerFailureCause` request.
+  void HandleGetWorkerFailureCause(rpc::GetWorkerFailureCauseRequest request,
+                                   rpc::GetWorkerFailureCauseReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
 
   void HandleRegisterMutableObject(rpc::RegisterMutableObjectRequest request,
                                    rpc::RegisterMutableObjectReply *reply,
@@ -714,12 +705,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Stores the failure reason for the task. The entry will be cleaned up by a periodic
   /// function post TTL.
-  void SetTaskFailureReason(const TaskID &task_id,
-                            const rpc::RayErrorInfo &failure_reason,
-                            bool should_retry);
+  void SetWorkerFailureReason(const LeaseID &lease_id,
+                              const rpc::RayErrorInfo &failure_reason,
+                              bool should_retry);
 
-  /// Checks the expiry time of the task failures and garbage collect them.
-  void GCTaskFailureReason();
+  /// Checks the expiry time of the worker failures and garbage collect them.
+  void GCWorkerFailureReason();
 
   /// Creates a AgentManager that creates and manages a dashboard agent.
   std::unique_ptr<AgentManager> CreateDashboardAgentManager(
@@ -776,7 +767,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// A manager to resolve objects needed by queued tasks and workers that
   /// called `ray.get` or `ray.wait`.
-  DependencyManager &dependency_manager_;
+  LeaseDependencyManager &lease_dependency_manager_;
 
   /// A manager for wait requests.
   WaitManager wait_manager_;
@@ -801,11 +792,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   absl::flat_hash_map<NodeID, std::pair<std::string, int32_t>>
       remote_node_manager_addresses_;
 
-  /// Map of workers leased out to clients.
+  /// Map of workers to their worker ids.
   absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_;
 
-  /// Optional extra information about why the task failed.
-  absl::flat_hash_map<TaskID, ray::TaskFailureEntry> task_failure_reasons_;
+  /// Optional extra information about why the worker failed.
+  absl::flat_hash_map<LeaseID, ray::TaskFailureEntry> worker_failure_reasons_;
 
   /// Whether to trigger global GC in the next resource usage report. This will broadcast
   /// a global GC message to all raylets except for this one.
@@ -835,11 +826,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// These classes make up the new scheduler. ClusterResourceScheduler is
   /// responsible for maintaining a view of the cluster state w.r.t resource
-  /// usage. ClusterTaskManager is responsible for queuing, spilling back, and
+  /// usage. ClusterLeaseManager is responsible for queuing, spilling back, and
   /// dispatching tasks.
   ClusterResourceScheduler &cluster_resource_scheduler_;
-  ILocalTaskManager &local_task_manager_;
-  ClusterTaskManagerInterface &cluster_task_manager_;
+  LocalLeaseManagerInterface &local_lease_manager_;
+  ClusterLeaseManagerInterface &cluster_lease_manager_;
 
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
 

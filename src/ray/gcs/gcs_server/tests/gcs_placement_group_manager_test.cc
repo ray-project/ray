@@ -23,8 +23,8 @@
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/test_utils.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
-#include "ray/gcs/tests/gcs_test_util.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/util/counter_map.h"
 
@@ -224,7 +224,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
 };
 
 TEST_F(GcsPlacementGroupManagerTest, TestPlacementGroupBundleCache) {
-  auto request = Mocker::GenCreatePlacementGroupRequest();
+  auto request = GenCreatePlacementGroupRequest();
   std::atomic<int> registered_placement_group_count(0);
   RegisterPlacementGroup(request,
                          [&registered_placement_group_count](const Status &status) {
@@ -244,7 +244,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestPlacementGroupBundleCache) {
 }
 
 TEST_F(GcsPlacementGroupManagerTest, TestBasic) {
-  auto request = Mocker::GenCreatePlacementGroupRequest();
+  auto request = GenCreatePlacementGroupRequest();
   std::atomic<int> registered_placement_group_count(0);
   RegisterPlacementGroup(request,
                          [&registered_placement_group_count](const Status &status) {
@@ -263,7 +263,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestBasic) {
 }
 
 TEST_F(GcsPlacementGroupManagerTest, TestSchedulingFailed) {
-  auto request = Mocker::GenCreatePlacementGroupRequest();
+  auto request = GenCreatePlacementGroupRequest();
   std::atomic<int> registered_placement_group_count(0);
   RegisterPlacementGroup(request,
                          [&registered_placement_group_count](const Status &status) {
@@ -296,7 +296,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestSchedulingFailed) {
 }
 
 TEST_F(GcsPlacementGroupManagerTest, TestGetPlacementGroupIDByName) {
-  auto request = Mocker::GenCreatePlacementGroupRequest("test_name");
+  auto request = GenCreatePlacementGroupRequest("test_name");
   std::atomic<int> registered_placement_group_count(0);
   RegisterPlacementGroup(request, [&registered_placement_group_count](Status status) {
     ++registered_placement_group_count;
@@ -315,7 +315,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestGetPlacementGroupIDByName) {
 }
 
 TEST_F(GcsPlacementGroupManagerTest, TestRemoveNamedPlacementGroup) {
-  auto request = Mocker::GenCreatePlacementGroupRequest("test_name");
+  auto request = GenCreatePlacementGroupRequest("test_name");
   std::atomic<int> registered_placement_group_count(0);
   RegisterPlacementGroup(request,
                          [&registered_placement_group_count](const Status &status) {
@@ -339,7 +339,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestRemoveNamedPlacementGroup) {
 }
 
 TEST_F(GcsPlacementGroupManagerTest, TestRemovedPlacementGroupNotReportedAsLoad) {
-  auto request = Mocker::GenCreatePlacementGroupRequest();
+  auto request = GenCreatePlacementGroupRequest();
   std::atomic<int> registered_placement_group_count(0);
   RegisterPlacementGroup(request, [&registered_placement_group_count](Status status) {
     ++registered_placement_group_count;
@@ -367,7 +367,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestRemovedPlacementGroupNotReportedAsLoad)
 }
 
 TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeAdd) {
-  auto request = Mocker::GenCreatePlacementGroupRequest();
+  auto request = GenCreatePlacementGroupRequest();
   std::atomic<int> registered_placement_group_count(0);
   RegisterPlacementGroup(request, [&registered_placement_group_count](Status status) {
     ++registered_placement_group_count;
@@ -389,7 +389,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeAdd) {
 }
 
 TEST_F(GcsPlacementGroupManagerTest, TestRemovingPendingPlacementGroup) {
-  auto request = Mocker::GenCreatePlacementGroupRequest();
+  auto request = GenCreatePlacementGroupRequest();
   std::atomic<int> registered_placement_group_count(0);
   RegisterPlacementGroup(request, [&registered_placement_group_count](Status status) {
     ++registered_placement_group_count;
@@ -428,7 +428,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestRemovingPendingPlacementGroup) {
 }
 
 TEST_F(GcsPlacementGroupManagerTest, TestRemovingLeasingPlacementGroup) {
-  auto request = Mocker::GenCreatePlacementGroupRequest();
+  auto request = GenCreatePlacementGroupRequest();
   std::atomic<int> registered_placement_group_count(0);
   RegisterPlacementGroup(request, [&registered_placement_group_count](Status status) {
     ++registered_placement_group_count;
@@ -464,7 +464,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestRemovingLeasingPlacementGroup) {
 }
 
 TEST_F(GcsPlacementGroupManagerTest, TestRemovingCreatedPlacementGroup) {
-  auto request = Mocker::GenCreatePlacementGroupRequest();
+  auto request = GenCreatePlacementGroupRequest();
   std::atomic<int> registered_placement_group_count(0);
   RegisterPlacementGroup(request, [&registered_placement_group_count](Status status) {
     ++registered_placement_group_count;
@@ -508,7 +508,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestReschedulingRetry) {
   /// pg scheduled -> pg created -> node dead ->
   /// pg rescheduled -> rescheduling failed -> retry.
   ///
-  auto request1 = Mocker::GenCreatePlacementGroupRequest();
+  auto request1 = GenCreatePlacementGroupRequest();
   std::atomic<int> registered_placement_group_count(0);
   RegisterPlacementGroup(request1, [&registered_placement_group_count](Status status) {
     ++registered_placement_group_count;
@@ -551,7 +551,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeDead) {
   /// Test the basic case.
   /// pg scheduled -> pg created -> node dead -> pg rescheduled.
   ///
-  auto request1 = Mocker::GenCreatePlacementGroupRequest();
+  auto request1 = GenCreatePlacementGroupRequest();
   std::atomic<int> registered_placement_group_count(0);
   RegisterPlacementGroup(request1, [&registered_placement_group_count](Status status) {
     ++registered_placement_group_count;
@@ -587,7 +587,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestNodeDeadBeforePlacementGroupCreated) {
   /// Test the case where a node dies before the placement group is created.
   /// pg scheduled -> node dead -> pg created -> pg rescheduled.
   ///
-  auto request1 = Mocker::GenCreatePlacementGroupRequest();
+  auto request1 = GenCreatePlacementGroupRequest();
   std::atomic<int> registered_placement_group_count(0);
   RegisterPlacementGroup(request1, [&registered_placement_group_count](Status status) {
     ++registered_placement_group_count;
@@ -630,7 +630,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestTwoNodesWithBundlesFromSamePlacementGro
   /// -> bundles on node1 created -> pg rescheduled (for bundles on node2) -> pg created
   ///
 
-  auto request1 = Mocker::GenCreatePlacementGroupRequest();
+  auto request1 = GenCreatePlacementGroupRequest();
   std::atomic<int> registered_placement_group_count(0);
   RegisterPlacementGroup(request1, [&registered_placement_group_count](Status status) {
     ++registered_placement_group_count;
@@ -693,7 +693,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestTwoNodesWithBundlesFromSamePlacementGro
   /// -> pg prepared -> bundles on node1 created -> pg rescheduled (for bundles on node2)
   /// -> pg created
   ///
-  auto request1 = Mocker::GenCreatePlacementGroupRequest();
+  auto request1 = GenCreatePlacementGroupRequest();
   std::atomic<int> registered_placement_group_count(0);
   RegisterPlacementGroup(request1, [&registered_placement_group_count](Status status) {
     ++registered_placement_group_count;
@@ -755,7 +755,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestTwoNodesWithBundlesFromSamePlacementGro
   /// pg scheduled -> pg created -> node1 dead -> pg rescheduled -> node2 dead
   /// -> pg still in rescheduled state -> pg prepared -> pg created
   ///
-  auto request1 = Mocker::GenCreatePlacementGroupRequest();
+  auto request1 = GenCreatePlacementGroupRequest();
   std::atomic<int> registered_placement_group_count(0);
   RegisterPlacementGroup(request1, [&registered_placement_group_count](Status status) {
     ++registered_placement_group_count;
@@ -809,16 +809,15 @@ TEST_F(GcsPlacementGroupManagerTest, TestTwoNodesWithBundlesFromSamePlacementGro
 TEST_F(GcsPlacementGroupManagerTest, TestSchedulerReinitializeAfterGcsRestart) {
   // Create a placement group and make sure it has been created successfully.
   auto job_id = JobID::FromInt(1);
-  auto request = Mocker::GenCreatePlacementGroupRequest(
+  auto request = GenCreatePlacementGroupRequest(
       /* name */ "",
       rpc::PlacementStrategy::SPREAD,
       /* bundles_count */ 2,
       /* cpu_num */ 1.0,
       /* job_id */ job_id);
-  auto job_table_data = Mocker::GenJobTableData(job_id);
-  RAY_CHECK_OK(gcs_table_storage_->JobTable().Put(
-      job_id, *job_table_data, {[](auto) {}, io_service_}));
-  std::atomic<int> registered_placement_group_count(0);
+  auto job_table_data = GenJobTableData(job_id);
+  gcs_table_storage_->JobTable().Put(job_id, *job_table_data, {[](auto) {}, io_service_});
+  std::atomic<int> registered_placement_group_count{0};
   RegisterPlacementGroup(request, [&registered_placement_group_count](Status status) {
     ++registered_placement_group_count;
   });
@@ -851,7 +850,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestAutomaticCleanupWhenActorDeadAndJobDead
   // Test the scenario where actor dead -> job dead.
   const auto job_id = JobID::FromInt(1);
   const auto actor_id = ActorID::Of(job_id, TaskID::Nil(), 0);
-  auto request = Mocker::GenCreatePlacementGroupRequest(
+  auto request = GenCreatePlacementGroupRequest(
       /* name */ "",
       rpc::PlacementStrategy::SPREAD,
       /* bundles_count */ 2,
@@ -887,7 +886,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestAutomaticCleanupWhenActorAndJobDead) {
   // Test the scenario where job dead -> actor dead.
   const auto job_id = JobID::FromInt(1);
   const auto actor_id = ActorID::Of(job_id, TaskID::Nil(), 0);
-  auto request = Mocker::GenCreatePlacementGroupRequest(
+  auto request = GenCreatePlacementGroupRequest(
       /* name */ "",
       rpc::PlacementStrategy::SPREAD,
       /* bundles_count */ 2,
@@ -925,7 +924,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestAutomaticCleanupWhenActorAndJobDead) {
 TEST_F(GcsPlacementGroupManagerTest, TestAutomaticCleanupWhenOnlyJobDead) {
   // Test placement group is cleaned when both actor & job are dead.
   const auto job_id = JobID::FromInt(1);
-  auto request = Mocker::GenCreatePlacementGroupRequest(
+  auto request = GenCreatePlacementGroupRequest(
       /* name */ "",
       rpc::PlacementStrategy::SPREAD,
       /* bundles_count */ 2,
@@ -959,7 +958,7 @@ TEST_F(GcsPlacementGroupManagerTest,
   // Test placement group is cleaned when both actor & job are dead.
   const auto job_id = JobID::FromInt(1);
   const auto different_job_id = JobID::FromInt(3);
-  auto request = Mocker::GenCreatePlacementGroupRequest(
+  auto request = GenCreatePlacementGroupRequest(
       /* name */ "",
       rpc::PlacementStrategy::SPREAD,
       /* bundles_count */ 2,
@@ -990,7 +989,7 @@ TEST_F(GcsPlacementGroupManagerTest,
 }
 
 TEST_F(GcsPlacementGroupManagerTest, TestSchedulingCanceledWhenPgIsInfeasible) {
-  auto request = Mocker::GenCreatePlacementGroupRequest();
+  auto request = GenCreatePlacementGroupRequest();
   std::atomic<int> registered_placement_group_count(0);
   RegisterPlacementGroup(request,
                          [&registered_placement_group_count](const Status &status) {
@@ -1029,11 +1028,11 @@ TEST_F(GcsPlacementGroupManagerTest, TestSchedulingCanceledWhenPgIsInfeasible) {
 }
 
 TEST_F(GcsPlacementGroupManagerTest, TestRayNamespace) {
-  auto request1 = Mocker::GenCreatePlacementGroupRequest("test_name");
+  auto request1 = GenCreatePlacementGroupRequest("test_name");
   job_namespace_table_[JobID::FromInt(11)] = "another_namespace";
-  auto request2 = Mocker::GenCreatePlacementGroupRequest(
+  auto request2 = GenCreatePlacementGroupRequest(
       "test_name", rpc::PlacementStrategy::SPREAD, 2, 1.0, JobID::FromInt(11));
-  auto request3 = Mocker::GenCreatePlacementGroupRequest("test_name");
+  auto request3 = GenCreatePlacementGroupRequest("test_name");
   {  // Create a placement group in the empty namespace.
     std::atomic<int> registered_placement_group_count(0);
     RegisterPlacementGroup(request1, [&registered_placement_group_count](Status status) {
@@ -1092,7 +1091,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestRayNamespace) {
 }
 
 TEST_F(GcsPlacementGroupManagerTest, TestStats) {
-  auto request = Mocker::GenCreatePlacementGroupRequest();
+  auto request = GenCreatePlacementGroupRequest();
   std::atomic<int> registered_placement_group_count(0);
   RegisterPlacementGroup(request,
                          [&registered_placement_group_count](const Status &status) {
@@ -1152,7 +1151,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestStats) {
 }
 
 TEST_F(GcsPlacementGroupManagerTest, TestStatsCreationTime) {
-  auto request = Mocker::GenCreatePlacementGroupRequest();
+  auto request = GenCreatePlacementGroupRequest();
   std::atomic<int> registered_placement_group_count(0);
   auto request_received_ns = absl::GetCurrentTimeNanos();
   RegisterPlacementGroup(request,
@@ -1197,7 +1196,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestGetAllPlacementGroupInfoLimit) {
   auto num_pgs = 3;
   std::atomic<int> registered_placement_group_count(0);
   for (int i = 0; i < num_pgs; i++) {
-    auto request = Mocker::GenCreatePlacementGroupRequest();
+    auto request = GenCreatePlacementGroupRequest();
     RegisterPlacementGroup(request,
                            [&registered_placement_group_count](const Status &status) {
                              ++registered_placement_group_count;
@@ -1236,18 +1235,16 @@ TEST_F(GcsPlacementGroupManagerTest, TestGetAllPlacementGroupInfoLimit) {
 
 TEST_F(GcsPlacementGroupManagerTest, TestCheckCreatorJobIsDeadWhenGcsRestart) {
   auto job_id = JobID::FromInt(1);
-  auto request = Mocker::GenCreatePlacementGroupRequest(
+  auto request = GenCreatePlacementGroupRequest(
       /* name */ "",
       rpc::PlacementStrategy::SPREAD,
       /* bundles_count */ 2,
       /* cpu_num */ 1.0,
       /* job_id */ job_id);
-  auto job_table_data = Mocker::GenJobTableData(job_id);
+  auto job_table_data = GenJobTableData(job_id);
   job_table_data->set_is_dead(true);
-  RAY_CHECK_OK(gcs_table_storage_->JobTable().Put(
-      job_id, *job_table_data, {[](auto) {}, io_service_}));
-
-  std::atomic<int> registered_placement_group_count(0);
+  gcs_table_storage_->JobTable().Put(job_id, *job_table_data, {[](auto) {}, io_service_});
+  std::atomic<int> registered_placement_group_count{0};
   RegisterPlacementGroup(request, [&registered_placement_group_count](Status status) {
     ++registered_placement_group_count;
   });

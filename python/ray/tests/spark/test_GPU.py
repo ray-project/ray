@@ -1,21 +1,22 @@
-import sys
-import pytest
-import os
-import time
 import functools
+import os
+import sys
+import time
 from abc import ABC
+
+import pytest
 from pyspark.sql import SparkSession
+
+import ray
+from ray._common.test_utils import wait_for_condition
 from ray.tests.spark.test_basic import (
+    _RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES,
+    _RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES,
     RayOnSparkCPUClusterTestBase,
     _setup_ray_cluster,
     _setup_ray_on_spark_envs,
-    _RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES,
-    _RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES,
 )
 from ray.util.spark.utils import _calc_mem_per_ray_worker_node
-from ray._common.test_utils import wait_for_condition
-
-import ray
 
 pytestmark = [
     pytest.mark.skipif(

@@ -277,6 +277,30 @@ def test_report_checkpoint_upload_error(monkeypatch, tmp_path):
         assert isinstance(exc_info.value.worker_failures[0], ValueError)
 
 
+def test_report_get_all_reported_checkpoints():
+    """Check that get_all_reported_checkpoints returns checkpoints depending on # report calls."""
+
+    def train_fn():
+        if ray.train.get_context().get_world_rank() == 0:
+            ray.train.report(metrics={}, checkpoint=None)
+            with create_dict_checkpoint({}) as checkpoint:
+                ray.train.report(metrics={}, checkpoint=checkpoint)
+            assert len(ray.train.get_all_reported_checkpoints()) == 1
+            with create_dict_checkpoint({}) as checkpoint:
+                ray.train.report(metrics={}, checkpoint=checkpoint)
+        else:
+            ray.train.report(metrics={}, checkpoint=None)
+            ray.train.report(metrics={}, checkpoint=None)
+            ray.train.report(metrics={}, checkpoint=None)
+            assert len(ray.train.get_all_reported_checkpoints()) == 2
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=2),
+    )
+    trainer.fit()
+
+
 def test_error(tmp_path):
     def _error_func_rank_0():
         """An example train_fun that raises an error on rank 0."""
