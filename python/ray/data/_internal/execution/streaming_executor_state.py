@@ -36,7 +36,6 @@ from ray.data._internal.execution.operators.input_data_buffer import InputDataBu
 from ray.data._internal.execution.resource_manager import (
     ResourceManager,
 )
-from ray.data._internal.metadata_exporter import _add_ellipsis_for_string
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.util import (
     unify_schemas_with_validation,
