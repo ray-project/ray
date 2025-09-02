@@ -16,6 +16,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "ray/common/gcs_callbacks.h"
 #include "ray/pubsub/subscriber_interface.h"

@@ -18,6 +18,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "ray/rpc/gcs/gcs_rpc_client.h"
