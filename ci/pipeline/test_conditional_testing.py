@@ -166,6 +166,7 @@ def test_conditional_testing_pull_request():
 def test_tag_rule():
     rule = TagRule(
         tags=["hit"],
+        lineno=1,
         dirs=["fancy"],
         files=["file.txt"],
         patterns=["python/*.py"],
@@ -182,7 +183,7 @@ def test_tag_rule():
     assert rule.match_tags("fancy") == ({"hit"}, True)
     assert rule.match_tags("not_match") == (set(), False)
 
-    skip_rule = TagRule(tags=[], files=["skip.txt"])
+    skip_rule = TagRule(tags=[], lineno=1, files=["skip.txt"])
     assert skip_rule.match("skip.txt")
     assert skip_rule.match_tags("skip.txt") == (set(), True)
     assert skip_rule.match_tags("not_match") == (set(), False)
@@ -193,14 +194,31 @@ def test_tag_rule_set():
     assert rule_set.match_tags("fancy/file.txt") == ({"fancy"}, True)
 
     rule_set = TagRuleSet(
-        "\n".join(["fancy/ #dir", "@fancy", ";", "\t\t  ", "foobar.txt", "@foobar"])
+        "\n".join(
+            [
+                "!fancy foobar",
+                "fancy/ #dir",
+                "@fancy",
+                ";",
+                "\t\t  ",
+                "foobar.txt",
+                "@foobar",
+            ]
+        )
     )
+    rule_set.check_rules()
     assert rule_set.match_tags("fancy/file.txt") == ({"fancy"}, True)
     assert rule_set.match_tags("foobar.txt") == ({"foobar"}, True)
     assert rule_set.match_tags("not_a_match") == (set(), False)
 
     rule_set = TagRuleSet("")
     assert rule_set.match_tags("anything") == (set(), False)
+
+
+def test_tag_rule_set_check_rules():
+    rule_set = TagRuleSet("\n".join(["!foobar", "fancy/ #dir", "@fancy"]))
+    with pytest.raises(ValueError):
+        rule_set.check_rules()
 
 
 if __name__ == "__main__":
