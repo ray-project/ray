@@ -668,7 +668,7 @@ cdef extern from "ray/pubsub/python_gcs_subscriber.h" nogil:
 
         CRayStatus Close()
 
-cdef extern from "ray/pubsub/python_gcs_subscriber.h" namespace "ray::gcs" nogil:
+cdef extern from "ray/pubsub/python_gcs_subscriber.h" namespace "ray::pubsub" nogil:
     c_vector[c_string] PythonGetLogBatchLines(CLogBatch log_batch)
 
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
