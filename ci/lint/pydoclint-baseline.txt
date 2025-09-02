@@ -1484,10 +1484,6 @@ python/ray/llm/_internal/batch/processor/base.py
     DOC101: Method `ProcessorBuilder.build`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `ProcessorBuilder.build`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: ].
 --------------------
-python/ray/llm/_internal/batch/processor/vllm_engine_proc.py
-    DOC101: Function `build_vllm_engine_processor`: Docstring contains fewer arguments than in function signature.
-    DOC103: Function `build_vllm_engine_processor`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [telemetry_agent: Optional[TelemetryAgent]].
---------------------
 python/ray/llm/_internal/batch/stages/base.py
     DOC405: Method `StatefulStageUDF.__call__` has both "return" and "yield" statements. Please use Generator[YieldType, SendType, ReturnType] as the return type annotation, and put your yield type in YieldType and return type in ReturnType. More details in https://jsh9.github.io/pydoclint/notes_generator_vs_iterator.html
 --------------------
