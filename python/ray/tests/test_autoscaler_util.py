@@ -1,6 +1,6 @@
 import sys
-import pytest
 
+import pytest
 
 from ray.autoscaler._private.util import with_envs, with_head_node_ip
 
