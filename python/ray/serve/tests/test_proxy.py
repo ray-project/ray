@@ -237,6 +237,7 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
     # Ensures Healthz method on the worker node is draining.
     ping_grpc_healthz(worker_node_channel, test_draining=True)
 
+
 def test_drain_and_undrain_http_proxy_actors(
     monkeypatch, shutdown_ray, call_ray_stop_only  # noqa: F811
 ):
@@ -316,7 +317,7 @@ def test_drain_and_undrain_http_proxy_actors(
     # Clean up serve.
     serve.shutdown()
 
-    
+
 def _kill_http_proxies():
     http_proxies = ray.get(
         serve.context._global_client._controller.get_proxies.remote()
