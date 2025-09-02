@@ -23,7 +23,6 @@
 
 #include "absl/strings/match.h"
 #include "ray/common/protobuf_utils.h"
-#include "ray/pubsub/gcs_publisher.h"
 #include "ray/stats/metric.h"
 #include "ray/util/time.h"
 

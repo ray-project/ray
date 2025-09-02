@@ -49,12 +49,10 @@ inline std::string JobDataKey(const std::string &submission_id) {
 using JobFinishListenerCallback =
     rpc::JobInfoGcsServiceHandler::JobFinishListenerCallback;
 
-class GcsPublisher;
-
 class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
  public:
   explicit GcsJobManager(GcsTableStorage &gcs_table_storage,
-                         GcsPublisher &gcs_publisher,
+                         pubsub::GcsPublisher &gcs_publisher,
                          RuntimeEnvManager &runtime_env_manager,
                          GCSFunctionManager &function_manager,
                          InternalKVInterface &internal_kv,
@@ -134,7 +132,7 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
   int64_t finished_jobs_count_ = 0;
 
   GcsTableStorage &gcs_table_storage_;
-  GcsPublisher &gcs_publisher_;
+  pubsub::GcsPublisher &gcs_publisher_;
 
   /// Listeners which monitors the finish of jobs.
   std::vector<JobFinishListenerCallback> job_finished_listeners_;
