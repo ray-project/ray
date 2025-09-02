@@ -13,13 +13,14 @@
 // limitations under the License.
 
 // TODO(hjiang): Move all functions from `pb_utils.h` to this implementation file.
+#include "ray/common/protobuf_utils.h"
+
 #include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
 
 #include "absl/strings/str_format.h"
-#include "ray/common/protobuf_utils.h"
 
 namespace ray::gcs {
 

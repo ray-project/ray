@@ -25,8 +25,8 @@
 #include "gtest/gtest.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/id.h"
-#include "ray/common/status.h"
 #include "ray/common/protobuf_utils.h"
+#include "ray/common/status.h"
 #include "ray/gcs/tests/gcs_test_util.h"
 
 namespace ray {
