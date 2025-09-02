@@ -4,8 +4,12 @@ tags:
 steps:
   - label: "test init"
     key: test-init
-    instance_type: release-medium
+    instance_type: release
     commands:
       - /bin/bash .buildkite/release/test-init.sh
     mount_buildkite_agent: true
-    depends_on: forge
+    depends_on:
+      - forge
+      - anyscalebuild
+      - anyscalellmbuild
+      - anyscalemlbuild

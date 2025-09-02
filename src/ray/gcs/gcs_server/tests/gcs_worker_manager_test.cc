@@ -19,17 +19,15 @@
 #include <memory>
 #include <vector>
 
-#include "ray/util/process.h"
-
-// clang-format off
-#include "ray/common/asio/instrumented_io_context.h"
-#include "ray/gcs/gcs_server/tests/gcs_server_test_util.h"
-#include "ray/gcs/tests/gcs_test_util.h"
 #include "mock/ray/pubsub/publisher.h"
-#include "src/ray/protobuf/gcs.pb.h"
-#include "src/ray/protobuf/common.pb.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
-// clang-format on
+#include "ray/gcs/store_client/in_memory_store_client.h"
+#include "ray/gcs/tests/gcs_test_util.h"
+#include "ray/util/process.h"
+#include "src/ray/protobuf/common.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
+
 using namespace ::testing;  // NOLINT
 using namespace ray::gcs;   // NOLINT
 using namespace ray;        // NOLINT
@@ -39,7 +37,8 @@ class GcsWorkerManagerTest : public Test {
   GcsWorkerManagerTest() {
     gcs_publisher_ =
         std::make_shared<GcsPublisher>(std::make_unique<ray::pubsub::MockPublisher>());
-    gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>();
+    gcs_table_storage_ =
+        std::make_unique<gcs::GcsTableStorage>(std::make_unique<InMemoryStoreClient>());
   }
 
   void SetUp() override {

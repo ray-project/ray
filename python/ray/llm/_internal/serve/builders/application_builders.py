@@ -21,13 +21,17 @@ def build_llm_deployment(
     *,
     name_prefix: Optional[str] = None,
     deployment_kwargs: Optional[dict] = None,
+    override_serve_options: Optional[dict] = None,
 ) -> Application:
-    name_prefix = name_prefix or "LLMDeployment:"
+    name_prefix = name_prefix or "LLMServer:"
     deployment_kwargs = deployment_kwargs or {}
 
     deployment_options = llm_config.get_serve_options(
         name_prefix=name_prefix,
     )
+
+    if override_serve_options:
+        deployment_options.update(override_serve_options)
 
     return LLMDeployment.options(**deployment_options).bind(
         llm_config=llm_config, **deployment_kwargs

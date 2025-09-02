@@ -15,43 +15,65 @@
 #include "ray/ipc/raylet_ipc_client.h"
 
 #include <memory>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "ray/common/common_protocol.h"
+#include "ray/common/flatbuf_utils.h"
 #include "ray/common/ray_config.h"
 #include "ray/flatbuffers/node_manager_generated.h"
 #include "ray/ipc/client_connection.h"
 #include "ray/util/logging.h"
+#include "ray/util/process.h"
+
+namespace ray::ipc {
 
 namespace {
 
-flatbuffers::Offset<ray::protocol::Address> to_flatbuf(
-    flatbuffers::FlatBufferBuilder &fbb, const ray::rpc::Address &address) {
-  return ray::protocol::CreateAddress(fbb,
-                                      fbb.CreateString(address.node_id()),
-                                      fbb.CreateString(address.ip_address()),
-                                      address.port(),
-                                      fbb.CreateString(address.worker_id()));
+flatbuffers::Offset<protocol::Address> AddressToFlatbuffer(
+    flatbuffers::FlatBufferBuilder &fbb, const rpc::Address &address) {
+  return protocol::CreateAddress(fbb,
+                                 fbb.CreateString(address.node_id()),
+                                 fbb.CreateString(address.ip_address()),
+                                 address.port(),
+                                 fbb.CreateString(address.worker_id()));
 }
 
-flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<ray::protocol::Address>>>
+flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<protocol::Address>>>
 AddressesToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb,
-                      const std::vector<ray::rpc::Address> &addresses) {
-  std::vector<flatbuffers::Offset<ray::protocol::Address>> address_vec;
+                      const std::vector<rpc::Address> &addresses) {
+  std::vector<flatbuffers::Offset<protocol::Address>> address_vec;
   address_vec.reserve(addresses.size());
   for (const auto &addr : addresses) {
-    address_vec.push_back(to_flatbuf(fbb, addr));
+    address_vec.push_back(AddressToFlatbuffer(fbb, addr));
   }
   return fbb.CreateVector(address_vec);
 }
 
-}  // namespace
+void ShutdownIfLocalRayletDisconnected(const Status &status) {
+  // Check if the Raylet process is still alive.
+  // If we know the Raylet PID, check using that.
+  // Else, assume the Raylet is our parent process.
+  bool raylet_alive = true;
+  auto raylet_pid = RayConfig::instance().RAYLET_PID();
+  if (!raylet_pid.empty()) {
+    if (!IsProcessAlive(static_cast<pid_t>(std::stoi(raylet_pid)))) {
+      raylet_alive = false;
+    }
+  } else if (!IsParentProcessAlive()) {
+    raylet_alive = false;
+  }
 
-namespace ray::ipc {
+  if (!status.ok() && !raylet_alive) {
+    RAY_LOG(WARNING) << "Exiting because the Raylet IPC connection failed and the local "
+                        "Raylet is dead. Status: "
+                     << status;
+    QuickExit();
+  }
+}
+
+}  // namespace
 
 RayletIpcClient::RayletIpcClient(instrumented_io_context &io_service,
                                  const std::string &address,
@@ -80,10 +102,10 @@ ray::Status RayletIpcClient::RegisterClient(const WorkerID &worker_id,
   auto message =
       protocol::CreateRegisterClientRequest(fbb,
                                             static_cast<int>(worker_type),
-                                            to_flatbuf(fbb, worker_id),
+                                            flatbuf::to_flatbuf(fbb, worker_id),
                                             getpid(),
                                             startup_token,
-                                            to_flatbuf(fbb, job_id),
+                                            flatbuf::to_flatbuf(fbb, job_id),
                                             runtime_env_hash,
                                             language,
                                             fbb.CreateString(ip_address),
@@ -98,7 +120,7 @@ ray::Status RayletIpcClient::RegisterClient(const WorkerID &worker_id,
   auto reply_message = flatbuffers::GetRoot<protocol::RegisterClientReply>(reply.data());
   bool success = reply_message->success();
   if (!success) {
-    return Status::Invalid(string_from_flatbuf(*reply_message->failure_reason()));
+    return Status::Invalid(reply_message->failure_reason()->str());
   }
 
   *node_id = NodeID::FromBinary(reply_message->node_id()->str());
@@ -164,7 +186,7 @@ Status RayletIpcClient::AnnounceWorkerPortForDriver(int port,
   if (reply_message->success()) {
     return Status::OK();
   }
-  return Status::Invalid(string_from_flatbuf(*reply_message->failure_reason()));
+  return Status::Invalid(reply_message->failure_reason()->str());
 }
 
 Status RayletIpcClient::ActorCreationTaskDone() {
@@ -176,7 +198,7 @@ Status RayletIpcClient::AsyncGetObjects(
     const std::vector<rpc::Address> &owner_addresses) {
   RAY_CHECK(object_ids.size() == owner_addresses.size());
   flatbuffers::FlatBufferBuilder fbb;
-  auto object_ids_message = to_flatbuf(fbb, object_ids);
+  auto object_ids_message = flatbuf::to_flatbuf(fbb, object_ids);
   auto message = protocol::CreateAsyncGetObjectsRequest(
       fbb, object_ids_message, AddressesToFlatbuffer(fbb, owner_addresses));
   fbb.Finish(message);
@@ -212,7 +234,7 @@ StatusOr<absl::flat_hash_set<ObjectID>> RayletIpcClient::Wait(
   // Write request.
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateWaitRequest(fbb,
-                                             to_flatbuf(fbb, object_ids),
+                                             flatbuf::to_flatbuf(fbb, object_ids),
                                              AddressesToFlatbuffer(fbb, owner_addresses),
                                              num_returns,
                                              timeout_milliseconds);
@@ -241,7 +263,10 @@ Status RayletIpcClient::WaitForActorCallArgs(
     owner_addresses.push_back(ref.owner_address());
   }
   auto message = protocol::CreateWaitForActorCallArgsRequest(
-      fbb, to_flatbuf(fbb, object_ids), AddressesToFlatbuffer(fbb, owner_addresses), tag);
+      fbb,
+      flatbuf::to_flatbuf(fbb, object_ids),
+      AddressesToFlatbuffer(fbb, owner_addresses),
+      tag);
   fbb.Finish(message);
   return WriteMessage(MessageType::WaitForActorCallArgsRequest, &fbb);
 }
@@ -252,7 +277,7 @@ Status RayletIpcClient::PushError(const JobID &job_id,
                                   double timestamp) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreatePushErrorRequest(fbb,
-                                                  to_flatbuf(fbb, job_id),
+                                                  flatbuf::to_flatbuf(fbb, job_id),
                                                   fbb.CreateString(type),
                                                   fbb.CreateString(error_message),
                                                   timestamp);
@@ -263,8 +288,8 @@ Status RayletIpcClient::PushError(const JobID &job_id,
 Status RayletIpcClient::FreeObjects(const std::vector<ObjectID> &object_ids,
                                     bool local_only) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message =
-      protocol::CreateFreeObjectsRequest(fbb, local_only, to_flatbuf(fbb, object_ids));
+  auto message = protocol::CreateFreeObjectsRequest(
+      fbb, local_only, flatbuf::to_flatbuf(fbb, object_ids));
   fbb.Finish(message);
   return WriteMessage(MessageType::FreeObjectsInObjectStoreRequest, &fbb);
 }
@@ -273,26 +298,17 @@ void RayletIpcClient::SubscribePlasmaReady(const ObjectID &object_id,
                                            const rpc::Address &owner_address) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateSubscribePlasmaReady(
-      fbb, to_flatbuf(fbb, object_id), to_flatbuf(fbb, owner_address));
+      fbb, flatbuf::to_flatbuf(fbb, object_id), AddressToFlatbuffer(fbb, owner_address));
   fbb.Finish(message);
 
   RAY_CHECK_OK(WriteMessage(MessageType::SubscribePlasmaReady, &fbb));
 }
 
-void ShutdownIfLocalRayletDisconnected(const Status &status) {
-  if (!status.ok() && IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
-    RAY_LOG(WARNING) << "Exiting because the Raylet IPC connection failed and the local "
-                        "Raylet is dead. Status: "
-                     << status;
-    QuickExit();
-  }
-}
-
 Status RayletIpcClient::WriteMessage(MessageType type,
                                      flatbuffers::FlatBufferBuilder *fbb) {
   std::unique_lock<std::mutex> guard(write_mutex_);
-  int64_t length = fbb ? fbb->GetSize() : 0;
-  uint8_t *bytes = fbb ? fbb->GetBufferPointer() : nullptr;
+  int64_t length = fbb != nullptr ? fbb->GetSize() : 0;
+  uint8_t *bytes = fbb != nullptr ? fbb->GetBufferPointer() : nullptr;
   auto status = conn_->WriteMessage(static_cast<int64_t>(type), length, bytes);
   ShutdownIfLocalRayletDisconnected(status);
   return status;

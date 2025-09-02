@@ -565,7 +565,7 @@ class AlgorithmConfig(_Config):
         self.min_time_s_per_iteration = None
         self.min_train_timesteps_per_iteration = 0
         self.min_sample_timesteps_per_iteration = 0
-        self.log_gradients = True
+        self.log_gradients = False
 
         # `self.checkpointing()`
         self.export_native_model_files = False
@@ -2989,7 +2989,7 @@ class AlgorithmConfig(_Config):
         if offline_evaluation_type is not NotProvided:
             self.offline_evaluation_type = offline_evaluation_type
         if offline_eval_runner_class is not NotProvided:
-            self.offline_eval_runner_cls = offline_eval_runner_class
+            self.offline_eval_runner_class = offline_eval_runner_class
         if offline_loss_for_module_fn is not NotProvided:
             self.offline_loss_for_module_fn = offline_loss_for_module_fn
         if offline_eval_batch_size_per_runner is not NotProvided:
@@ -3653,7 +3653,7 @@ class AlgorithmConfig(_Config):
                 executed. Set to 0 or None for no minimum timesteps.
             log_gradients: Log gradients to results. If this is `True` the global norm
                 of the gradients dictionariy for each optimizer is logged to results.
-                The default is `True`.
+                The default is `False`.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -3794,9 +3794,11 @@ class AlgorithmConfig(_Config):
                 True).
             restart_failed_sub_environments: If True and any sub-environment (within
                 a vectorized env) throws any error during env stepping, the
-                Sampler tries to restart the faulty sub-environment. This is done
+                EnvRunner tries to restart the faulty sub-environment. This is done
                 without disturbing the other (still intact) sub-environment and without
-                the EnvRunner crashing.
+                the EnvRunner crashing. You can raise
+                `ray.rllib.env.env_runner.StepFailedRecreateEnvError` from your
+                environment's `step` method to not log the error.
             num_consecutive_env_runner_failures_tolerance: The number of consecutive
                 times an EnvRunner failure (also for evaluation) is tolerated before
                 finally crashing the Algorithm. Only useful if either
@@ -5328,8 +5330,8 @@ class AlgorithmConfig(_Config):
 
         from ray.rllib.offline.offline_evaluation_runner import OfflineEvaluationRunner
 
-        if self.prelearner_class and not issubclass(
-            self.prelearner_class, OfflineEvaluationRunner
+        if self.offline_eval_runner_class and not issubclass(
+            self.offline_eval_runner_class, OfflineEvaluationRunner
         ):
             self._value_error(
                 "Unknown `offline_eval_runner_class`. OfflineEvaluationRunner class needs to inherit "
