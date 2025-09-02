@@ -22,7 +22,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "ray/common/test_util.h"
+#include "ray/common/test_utils.h"
 #include "ray/gcs/store_client/tests/store_client_test_base.h"
 #include "ray/util/network_util.h"
 #include "ray/util/path_utils.h"
