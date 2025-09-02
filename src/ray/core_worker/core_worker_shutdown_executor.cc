@@ -123,8 +123,6 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
         [this, exit_type, detail, creation_task_exception_pb_bytes]() {
           rpc::DrainServerCallExecutor();
           KillChildProcessesImmediately();
-          // Disconnect should be put close to Shutdown
-          // https://github.com/ray-project/ray/pull/34883
           DisconnectServices(exit_type, detail, creation_task_exception_pb_bytes);
           ExecuteGracefulShutdown(
               exit_type, "Post-exit graceful shutdown", std::chrono::milliseconds{30000});
