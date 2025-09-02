@@ -1,4 +1,4 @@
-// Copyright 2017 The Ray Authors.
+// Copyright 2025 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,47 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#pragma once
+#include "ray/common/protobuf_utils.h"
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 
-#include "absl/time/time.h"
-#include "ray/common/constants.h"
-#include "ray/common/id.h"
 #include "ray/common/ray_config.h"
-#include "ray/common/task/task_spec.h"
 #include "ray/util/time.h"
-#include "src/ray/protobuf/autoscaler.pb.h"
-#include "src/ray/protobuf/export_task_event.pb.h"
-#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
-
 namespace gcs {
 
-using ContextCase = rpc::ActorDeathCause::ContextCase;
-// Forward declaration.
-std::string GenErrorMessageFromDeathCause(const rpc::ActorDeathCause &death_cause);
-
-/// Helper function to produce job table data (for newly created job or updated job).
-///
-/// \param job_id The ID of job that needs to be registered or updated.
-/// \param is_dead Whether the driver of this job is dead.
-/// \param timestamp The UNIX timestamp corresponding to this event.
-/// \param driver_address Address of the driver that started this job.
-/// \param driver_pid Process ID of the driver running this job.
-/// \param entrypoint The entrypoint name of the job.
-/// \param job_config The config of this job.
-/// \return The job table data created by this method.
-inline std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
+std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
     const ray::JobID &job_id,
     bool is_dead,
     const ray::rpc::Address &driver_address,
     int64_t driver_pid,
     const std::string &entrypoint,
-    const ray::rpc::JobConfig &job_config = {}) {
+    const ray::rpc::JobConfig &job_config) {
   auto job_info_ptr = std::make_shared<ray::rpc::JobTableData>();
   job_info_ptr->set_job_id(job_id.Binary());
   job_info_ptr->set_is_dead(is_dead);
@@ -64,14 +43,29 @@ inline std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
   return job_info_ptr;
 }
 
-/// Helper function to produce error table data.
 rpc::ErrorTableData CreateErrorTableData(const std::string &error_type,
                                          const std::string &error_msg,
                                          absl::Time timestamp,
-                                         const JobID &job_id = JobID::Nil());
+                                         const JobID &job_id) {
+  uint32_t max_error_msg_size_bytes = RayConfig::instance().max_error_msg_size_bytes();
+  rpc::ErrorTableData error_info;
+  error_info.set_type(error_type);
+  if (error_msg.length() > max_error_msg_size_bytes) {
+    std::string formatted_error_message = absl::StrFormat(
+        "The message size exceeds %d bytes. Find the full log from the log files. Here "
+        "is abstract: %s",
+        max_error_msg_size_bytes,
+        std::string_view{error_msg}.substr(0, max_error_msg_size_bytes));
+    error_info.set_error_message(std::move(formatted_error_message));
+  } else {
+    error_info.set_error_message(error_msg);
+  }
+  error_info.set_timestamp(absl::ToUnixMillis(timestamp));
+  error_info.set_job_id(job_id.Binary());
+  return error_info;
+}
 
-/// Helper function to produce worker failure data.
-inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
+std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
     const WorkerID &worker_id,
     const NodeID &node_id,
     const std::string &ip_address,
@@ -79,7 +73,7 @@ inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
     rpc::WorkerExitType disconnect_type,
     const std::string &disconnect_detail,
     int pid,
-    const rpc::RayException *creation_task_exception = nullptr) {
+    const rpc::RayException *creation_task_exception) {
   auto worker_failure_info_ptr = std::make_shared<ray::rpc::WorkerTableData>();
   // Only report the worker id + delta (new data upon worker failures).
   // GCS will merge the data with original worker data.
@@ -98,9 +92,7 @@ inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
   return worker_failure_info_ptr;
 }
 
-/// Get actor creation task exception from ActorDeathCause.
-/// Returns nullptr if actor isn't dead due to creation task failure.
-inline const rpc::RayException *GetCreationTaskExceptionFromDeathCause(
+const rpc::RayException *GetCreationTaskExceptionFromDeathCause(
     const rpc::ActorDeathCause *death_cause) {
   if (death_cause == nullptr ||
       death_cause->context_case() != ContextCase::kCreationTaskFailureContext) {
@@ -109,8 +101,7 @@ inline const rpc::RayException *GetCreationTaskExceptionFromDeathCause(
   return &(death_cause->creation_task_failure_context());
 }
 
-inline const std::string &GetActorDeathCauseString(
-    const rpc::ActorDeathCause &death_cause) {
+const std::string &GetActorDeathCauseString(const rpc::ActorDeathCause &death_cause) {
   static absl::flat_hash_map<ContextCase, std::string> death_cause_string{
       {ContextCase::CONTEXT_NOT_SET, "CONTEXT_NOT_SET"},
       {ContextCase::kRuntimeEnvFailedContext, "RuntimeEnvFailedContext"},
@@ -124,11 +115,7 @@ inline const std::string &GetActorDeathCauseString(
   return it->second;
 }
 
-/// Get the error information from the actor death cause.
-///
-/// \param[in] death_cause The rpc message that contains the actos death information.
-/// \return RayErrorInfo that has propagated death cause.
-inline rpc::RayErrorInfo GetErrorInfoFromActorDeathCause(
+rpc::RayErrorInfo GetErrorInfoFromActorDeathCause(
     const rpc::ActorDeathCause &death_cause) {
   rpc::RayErrorInfo error_info;
   switch (death_cause.context_case()) {
@@ -157,9 +144,7 @@ inline rpc::RayErrorInfo GetErrorInfoFromActorDeathCause(
   return error_info;
 }
 
-/// Generate object error type from ActorDeathCause.
-inline std::string GenErrorMessageFromDeathCause(
-    const rpc::ActorDeathCause &death_cause) {
+std::string GenErrorMessageFromDeathCause(const rpc::ActorDeathCause &death_cause) {
   if (death_cause.context_case() == ContextCase::kCreationTaskFailureContext) {
     return death_cause.creation_task_failure_context().formatted_exception_string();
   } else if (death_cause.context_case() == ContextCase::kRuntimeEnvFailedContext) {
@@ -176,7 +161,7 @@ inline std::string GenErrorMessageFromDeathCause(
   }
 }
 
-inline bool IsActorRestartable(const rpc::ActorTableData &actor) {
+bool IsActorRestartable(const rpc::ActorTableData &actor) {
   RAY_CHECK_EQ(actor.state(), rpc::ActorTableData::DEAD);
   return actor.death_cause().context_case() == ContextCase::kActorDiedErrorContext &&
          actor.death_cause().actor_died_error_context().reason() ==
@@ -189,27 +174,21 @@ inline bool IsActorRestartable(const rpc::ActorTableData &actor) {
            actor.max_restarts()));
 }
 
-inline std::string RayErrorInfoToString(const ray::rpc::RayErrorInfo &error_info) {
+std::string RayErrorInfoToString(const ray::rpc::RayErrorInfo &error_info) {
   std::stringstream ss;
   ss << "Error type " << error_info.error_type() << " exception string "
      << error_info.error_message();
   return ss.str();
 }
 
-/// Get the parent task id from the task event.
-///
-/// \param task_event Task event.
-/// \return TaskID::Nil() if parent task id info not available, else the parent task id
-/// for the task.
-inline TaskID GetParentTaskId(const rpc::TaskEvents &task_event) {
+TaskID GetParentTaskId(const rpc::TaskEvents &task_event) {
   if (task_event.has_task_info()) {
     return TaskID::FromBinary(task_event.task_info().parent_task_id());
   }
   return TaskID::Nil();
 }
 
-inline void FillTaskInfo(rpc::TaskInfoEntry *task_info,
-                         const TaskSpecification &task_spec) {
+void FillTaskInfo(rpc::TaskInfoEntry *task_info, const TaskSpecification &task_spec) {
   rpc::TaskType type;
   if (task_spec.IsNormalTask()) {
     type = rpc::TaskType::NORMAL_TASK;
@@ -256,9 +235,8 @@ inline void FillTaskInfo(rpc::TaskInfoEntry *task_info,
   }
 }
 
-// Fill task_info for the export API with task specification from task_spec
-inline void FillExportTaskInfo(rpc::ExportTaskEventData::TaskInfoEntry *task_info,
-                               const TaskSpecification &task_spec) {
+void FillExportTaskInfo(rpc::ExportTaskEventData::TaskInfoEntry *task_info,
+                        const TaskSpecification &task_spec) {
   rpc::TaskType type;
   if (task_spec.IsNormalTask()) {
     type = rpc::TaskType::NORMAL_TASK;
@@ -316,31 +294,22 @@ inline void FillExportTaskInfo(rpc::ExportTaskEventData::TaskInfoEntry *task_inf
   }
 }
 
-/// Generate a RayErrorInfo from ErrorType
-inline rpc::RayErrorInfo GetRayErrorInfo(const rpc::ErrorType &error_type,
-                                         const std::string &error_msg = "") {
+rpc::RayErrorInfo GetRayErrorInfo(const rpc::ErrorType &error_type,
+                                  const std::string &error_msg) {
   rpc::RayErrorInfo error_info;
   error_info.set_error_type(error_type);
   error_info.set_error_message(error_msg);
   return error_info;
 }
 
-/// Get the worker id from the task event.
-///
-/// \param task_event Task event.
-/// \return WorkerID::Nil() if worker id info not available, else the worker id.
-inline WorkerID GetWorkerID(const rpc::TaskEvents &task_event) {
+WorkerID GetWorkerID(const rpc::TaskEvents &task_event) {
   if (task_event.has_state_updates() && task_event.state_updates().has_worker_id()) {
     return WorkerID::FromBinary(task_event.state_updates().worker_id());
   }
   return WorkerID::Nil();
 }
 
-/// Return if the task has already terminated (finished or failed)
-///
-/// \param task_event Task event.
-/// \return True if the task has already terminated, false otherwise.
-inline bool IsTaskTerminated(const rpc::TaskEvents &task_event) {
+bool IsTaskTerminated(const rpc::TaskEvents &task_event) {
   if (!task_event.has_state_updates()) {
     return false;
   }
@@ -350,19 +319,19 @@ inline bool IsTaskTerminated(const rpc::TaskEvents &task_event) {
          state_updates.state_ts_ns().contains(rpc::TaskStatus::FAILED);
 }
 
-inline size_t NumProfileEvents(const rpc::TaskEvents &task_event) {
+size_t NumProfileEvents(const rpc::TaskEvents &task_event) {
   if (!task_event.has_profile_events()) {
     return 0;
   }
   return static_cast<size_t>(task_event.profile_events().events_size());
 }
 
-inline TaskAttempt GetTaskAttempt(const rpc::TaskEvents &task_event) {
+TaskAttempt GetTaskAttempt(const rpc::TaskEvents &task_event) {
   return std::make_pair(TaskID::FromBinary(task_event.task_id()),
                         task_event.attempt_number());
 }
 
-inline bool IsActorTask(const rpc::TaskEvents &task_event) {
+bool IsActorTask(const rpc::TaskEvents &task_event) {
   if (!task_event.has_task_info()) {
     return false;
   }
@@ -372,7 +341,7 @@ inline bool IsActorTask(const rpc::TaskEvents &task_event) {
          task_info.type() == rpc::TaskType::ACTOR_CREATION_TASK;
 }
 
-inline bool IsTaskFinished(const rpc::TaskEvents &task_event) {
+bool IsTaskFinished(const rpc::TaskEvents &task_event) {
   if (!task_event.has_state_updates()) {
     return false;
   }
@@ -381,14 +350,9 @@ inline bool IsTaskFinished(const rpc::TaskEvents &task_event) {
   return state_updates.state_ts_ns().contains(rpc::TaskStatus::FINISHED);
 }
 
-/// Fill the rpc::TaskStateUpdate with the timestamps according to the status change.
-///
-/// \param task_status The task status.
-/// \param timestamp The timestamp.
-/// \param[out] state_updates The state updates with timestamp to be updated.
-inline void FillTaskStatusUpdateTime(const ray::rpc::TaskStatus &task_status,
-                                     int64_t timestamp,
-                                     ray::rpc::TaskStateUpdate *state_updates) {
+void FillTaskStatusUpdateTime(const ray::rpc::TaskStatus &task_status,
+                              int64_t timestamp,
+                              ray::rpc::TaskStateUpdate *state_updates) {
   if (task_status == rpc::TaskStatus::NIL) {
     // Not status change.
     return;
@@ -396,13 +360,7 @@ inline void FillTaskStatusUpdateTime(const ray::rpc::TaskStatus &task_status,
   (*state_updates->mutable_state_ts_ns())[task_status] = timestamp;
 }
 
-/// Fill the rpc::ExportTaskEventData::TaskStateUpdate with the timestamps
-/// according to the status change.
-///
-/// \param task_status The task status.
-/// \param timestamp The timestamp.
-/// \param[out] state_updates The state updates with timestamp to be updated.
-inline void FillExportTaskStatusUpdateTime(
+void FillExportTaskStatusUpdateTime(
     const ray::rpc::TaskStatus &task_status,
     int64_t timestamp,
     rpc::ExportTaskEventData::TaskStateUpdate *state_updates) {
@@ -413,9 +371,8 @@ inline void FillExportTaskStatusUpdateTime(
   (*state_updates->mutable_state_ts_ns())[task_status] = timestamp;
 }
 
-/// Convert rpc::TaskLogInfo to rpc::ExportTaskEventData::TaskLogInfo
-inline void TaskLogInfoToExport(const rpc::TaskLogInfo &src,
-                                rpc::ExportTaskEventData::TaskLogInfo *dest) {
+void TaskLogInfoToExport(const rpc::TaskLogInfo &src,
+                         rpc::ExportTaskEventData::TaskLogInfo *dest) {
   dest->set_stdout_file(src.stdout_file());
   dest->set_stderr_file(src.stderr_file());
   dest->set_stdout_start(src.stdout_start());
@@ -424,30 +381,7 @@ inline void TaskLogInfoToExport(const rpc::TaskLogInfo &src,
   dest->set_stderr_end(src.stderr_end());
 }
 
-inline std::string FormatPlacementGroupLabelName(const std::string &pg_id) {
-  return kPlacementGroupConstraintKeyPrefix + pg_id;
-}
-
-/// \brief Format placement group details.
-///     Format:
-///        <pg_id>:<strategy>:<state>
-///
-/// \param pg_data
-/// \return
-inline std::string FormatPlacementGroupDetails(
-    const rpc::PlacementGroupTableData &pg_data) {
-  return PlacementGroupID::FromBinary(pg_data.placement_group_id()).Hex() + ":" +
-         rpc::PlacementStrategy_Name(pg_data.strategy()) + "|" +
-         rpc::PlacementGroupTableData::PlacementGroupState_Name(pg_data.state());
-}
-
-/// Generate a placement constraint for placement group.
-///
-/// \param pg_id The ID of placement group.
-/// \param strategy The placement strategy of placement group.
-/// \return The placement constraint for placement group if it's not a strict
-///   strategy, else absl::nullopt.
-inline std::optional<rpc::autoscaler::PlacementConstraint>
+std::optional<rpc::autoscaler::PlacementConstraint>
 GenPlacementConstraintForPlacementGroup(const std::string &pg_id,
                                         rpc::PlacementStrategy strategy) {
   rpc::autoscaler::PlacementConstraint pg_constraint;
@@ -480,5 +414,4 @@ GenPlacementConstraintForPlacementGroup(const std::string &pg_id,
 }
 
 }  // namespace gcs
-
 }  // namespace ray
