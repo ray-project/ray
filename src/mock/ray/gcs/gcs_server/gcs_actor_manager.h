@@ -14,18 +14,9 @@
 
 #pragma once
 
-#include "gmock/gmock.h"
+#include <gmock/gmock.h>
+
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
-
-namespace ray {
-namespace gcs {
-
-class MockGcsActor : public GcsActor {
- public:
-};
-
-}  // namespace gcs
-}  // namespace ray
 
 namespace ray {
 namespace gcs {
