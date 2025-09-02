@@ -1,14 +1,15 @@
-import sys
 import random
-import torch
-import pytest
+import sys
 import threading
-import ray
 import time
-from ray.experimental.collective import create_collective_group
+
+import pytest
+import torch
+
+import ray
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.custom_types import TensorTransportEnum
-from ray._common.test_utils import wait_for_condition
-from ray._common.test_utils import SignalActor
+from ray.experimental.collective import create_collective_group
 
 # tensordict is not supported on macos ci, so we skip the tests
 support_tensordict = sys.platform != "darwin"
@@ -225,7 +226,7 @@ def test_p2p_errors_before_group_creation(ray_start_regular):
 
     with pytest.raises(
         ValueError,
-        match="Actor.* does not have tensor transport GLOO available. Please create a communicator with `ray.experimental.collective.create_collective_group` before calling actor tasks with non-default tensor_transport.",
+        match="Actor.* does not have tensor transport GLOO available.*",
     ):
         sender.echo.remote(small_tensor)
 

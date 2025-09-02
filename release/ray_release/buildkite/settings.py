@@ -193,7 +193,9 @@ def update_settings_from_buildkite(settings: Dict):
     if test_name_filter:
         settings["test_filters"] = get_test_filters("name:" + test_name_filter)
 
-    test_filters = get_buildkite_prompt_value("release-test-filters")
+    test_filters = get_buildkite_prompt_value(
+        "release-test-filters"
+    ) or get_buildkite_prompt_value("release-test-attr-regex-filters")
     if test_filters:
         settings["test_filters"] = get_test_filters(test_filters)
 
