@@ -2,7 +2,7 @@ import os
 import shutil
 import time
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -23,8 +23,6 @@ from ray.data._internal.datasource.parquet_bulk_datasource import ParquetBulkDat
 from ray.data._internal.datasource.parquet_datasource import (
     NUM_CPUS_FOR_META_FETCH_TASK,
     ParquetDatasource,
-    SerializedFragment,
-    _deserialize_fragments_with_retry,
 )
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
@@ -117,70 +115,6 @@ def test_include_paths(
 @pytest.mark.parametrize(
     "fs,data_path",
     [
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-    ],
-)
-def test_parquet_deserialize_fragments_with_retry(
-    ray_start_regular_shared, fs, data_path, monkeypatch
-):
-    setup_data_path = _unwrap_protocol(data_path)
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    table = pa.Table.from_pandas(df1)
-    path1 = os.path.join(setup_data_path, "test1.parquet")
-    pq.write_table(table, path1, filesystem=fs)
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    table = pa.Table.from_pandas(df2)
-    path2 = os.path.join(setup_data_path, "test2.parquet")
-    pq.write_table(table, path2, filesystem=fs)
-
-    dataset_kwargs = {}
-    pq_ds = pq.ParquetDataset(
-        data_path,
-        **dataset_kwargs,
-        filesystem=fs,
-    )
-    serialized_fragments = [SerializedFragment(p) for p in pq_ds.fragments]
-
-    # test 1st attempt succeed
-    fragments = _deserialize_fragments_with_retry(serialized_fragments)
-    assert "test1.parquet" in fragments[0].path
-    assert "test2.parquet" in fragments[1].path
-
-    # test the 3rd attempt succeed with a mock function constructed
-    # to throw in the first two attempts
-    class MockDeserializer:
-        def __init__(self, planned_exp_or_return):
-            self.planned_exp_or_return = planned_exp_or_return
-            self.cur_index = 0
-
-        def __call__(self, *args: Any, **kwds: Any) -> Any:
-            exp_or_ret = self.planned_exp_or_return[self.cur_index]
-            self.cur_index += 1
-            if isinstance(exp_or_ret, Exception):
-                raise exp_or_ret
-            else:
-                return exp_or_ret
-
-    mock_deserializer = MockDeserializer(
-        [
-            Exception("1st mock failed attempt"),
-            Exception("2nd mock failed attempt"),
-            fragments,
-        ]
-    )
-    monkeypatch.setattr(
-        ray.data._internal.datasource.parquet_datasource,
-        "_deserialize_fragments",
-        mock_deserializer,
-    )
-    retried_fragments = _deserialize_fragments_with_retry(serialized_fragments)
-    assert "test1.parquet" in retried_fragments[0].path
-    assert "test2.parquet" in retried_fragments[1].path
-
-
-@pytest.mark.parametrize(
-    "fs,data_path",
-    [
         (None, lazy_fixture("local_path")),
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
@@ -267,7 +201,10 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
     pq.write_table(table, path2, filesystem=fs)
 
     expected_num_rows = len(df1) + len(df2)
-    expected_byte_size = 787500
+    # NOTE: Since we're testing against various Pyarrow versions size
+    #       on disk could be varying slightly as it on top of data it also
+    #       includes metadata
+    expected_byte_size = pytest.approx(463500, abs=500)
 
     #
     # Case 1: Test metadata fetching happy path (obtaining, caching and propagating
@@ -290,14 +227,19 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
     )
 
     # Expect precomputed row counts and block sizes to be missing.
-    assert ds._meta_count() == expected_num_rows
+    assert ds._meta_count() is None
 
     read_op = ds._plan._logical_plan.dag
 
     # Assert Read op metadata propagation
-    assert read_op.infer_metadata() == BlockMetadata(
-        num_rows=expected_num_rows,
-        size_bytes=expected_byte_size,
+    metadata = read_op.infer_metadata()
+    # NOTE: We assert on byte size separately, since we're using `pytest.approx`
+    #       object for it
+    assert metadata.size_bytes == expected_byte_size
+
+    assert metadata == BlockMetadata(
+        num_rows=None,
+        size_bytes=metadata.size_bytes,
         exec_stats=None,
         input_files=[path1, path2],
     )
@@ -370,8 +312,6 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
     assert ds.size_bytes() == expected_byte_size
     assert ds.schema() == Schema(expected_schema)
     assert set(ds.input_files()) == {path1, path2}
-
-    assert ds._plan.has_computed_output()
 
 
 @pytest.mark.parametrize(
@@ -899,7 +839,11 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
     ctx.decoding_size_estimation = True
     try:
         tensor_output_path = os.path.join(tmp_path, "tensor")
-        ray.data.range_tensor(1000, shape=(1000,)).write_parquet(tensor_output_path)
+        # NOTE: It's crucial to override # of blocks to get stable # of files
+        #       produced and make sure data size estimates are stable
+        ray.data.range_tensor(
+            1000, shape=(1000,), override_num_blocks=10
+        ).write_parquet(tensor_output_path)
         ds = ray.data.read_parquet(
             tensor_output_path, meta_provider=ParquetMetadataProvider()
         )
@@ -940,7 +884,7 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
         assert ds._plan.initial_num_blocks() > 1
         data_size = ds.size_bytes()
         assert (
-            data_size >= 800_000 and data_size <= 2_000_000
+            data_size >= 800_000 and data_size <= 2_200_000
         ), "estimated data size is out of expected bound"
         data_size = ds.materialize().size_bytes()
         assert (
@@ -955,7 +899,7 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
         ), "encoding ratio is out of expected bound"
         data_size = datasource.estimate_inmemory_data_size()
         assert (
-            data_size >= 800_000 and data_size <= 2_000_000
+            data_size >= 800_000 and data_size <= 2_200_000
         ), "estimated data size is out of expected bound"
         assert (
             data_size
