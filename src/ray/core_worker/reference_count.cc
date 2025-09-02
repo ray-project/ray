@@ -578,7 +578,7 @@ void ReferenceCounter::RemoveSubmittedTaskReferences(
                        << argument_id;
       return;
     }
-    RAY_CHECK_GT(it->second.submitted_task_ref_count, 0ul);
+    RAY_CHECK(it->second.submitted_task_ref_count >= 0);
     it->second.submitted_task_ref_count--;
     if (release_lineage) {
       if (it->second.lineage_ref_count > 0) {

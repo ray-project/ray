@@ -356,6 +356,9 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
     }
   };
 
+  void CancelDependencyResolution(const TaskID &task_id)
+      ABSL_LOCKS_EXCLUDED(resolver_mu_);
+
   /// Fail the task with the timeout error, or the preempted error.
   void FailTaskWithError(const PendingTaskWaitingForDeathInfo &task);
 
@@ -414,6 +417,11 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   // Generators that are currently running and need to be resubmitted.
   absl::flat_hash_set<TaskID> generators_to_resubmit_ ABSL_GUARDED_BY(mu_);
 
+  // Kicking off dependency resolution is still queued on the io_context.
+  absl::Mutex resolver_mu_;
+  absl::flat_hash_set<TaskID> pending_dependency_resolution_
+      ABSL_GUARDED_BY(resolver_mu_);
+
   /// Resolve object dependencies.
   LocalDependencyResolver resolver_;
 
@@ -431,17 +439,6 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   instrumented_io_context &io_service_;
 
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;
-
-  /// Used to resolve the issue where FailOrRetryPendingTask is
-  /// called before ResolveDependencies due to ray.cancel or disconnect.
-  /// details: https://github.com/ray-project/ray/issues/55131
-  absl::Mutex mu_pending_resolve_;
-
-  /// The IDs of tasks that are pending dependency resolution.
-  absl::flat_hash_set<TaskID> pending_dependency_resolution_tasks_
-      ABSL_GUARDED_BY(mu_pending_resolve_);
-
-  friend class CoreWorkerTest;
 };
 
 }  // namespace core

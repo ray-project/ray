@@ -2286,7 +2286,6 @@ Status CoreWorker::SubmitActorTask(
     std::string err_msg = absl::StrFormat(
         "Can't find actor %s. It might be dead or it's from a different cluster",
         actor_id.Hex());
-    // TODO(dayshah): make status take by value
     return Status::NotFound(err_msg);
   }
   /// Check whether backpressure may happen at the very beginning of submitting a task.
