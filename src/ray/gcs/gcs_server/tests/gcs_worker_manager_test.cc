@@ -28,15 +28,16 @@
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
-using namespace ::testing;  // NOLINT
-using namespace ray::gcs;   // NOLINT
-using namespace ray;        // NOLINT
+using namespace ::testing;    // NOLINT
+using namespace ray::gcs;     // NOLINT
+using namespace ray::pubsub;  // NOLINT
+using namespace ray;          // NOLINT
 
 class GcsWorkerManagerTest : public Test {
  public:
   GcsWorkerManagerTest() {
-    gcs_publisher_ =
-        std::make_shared<GcsPublisher>(std::make_unique<ray::pubsub::MockPublisher>());
+    gcs_publisher_ = std::make_shared<pubsub::GcsPublisher>(
+        std::make_unique<ray::pubsub::MockPublisher>());
     gcs_table_storage_ =
         std::make_unique<gcs::GcsTableStorage>(std::make_unique<InMemoryStoreClient>());
   }

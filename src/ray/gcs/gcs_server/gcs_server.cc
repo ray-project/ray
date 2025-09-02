@@ -112,8 +112,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                   });
             });
       }),
-      pubsub_periodical_runner_(
-          PeriodicalRunner::Create(io_context_provider_.GetIOContext<GcsPublisher>())),
+      pubsub_periodical_runner_(PeriodicalRunner::Create(
+          io_context_provider_.GetIOContext<pubsub::GcsPublisher>())),
       periodical_runner_(
           PeriodicalRunner::Create(io_context_provider_.GetDefaultIOContext())),
       is_started_(false),
@@ -170,7 +170,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
       /*publisher_id=*/NodeID::FromRandom());
 
-  gcs_publisher_ = std::make_unique<GcsPublisher>(std::move(inner_publisher));
+  gcs_publisher_ = std::make_unique<pubsub::GcsPublisher>(std::move(inner_publisher));
   metrics_agent_client_ = std::make_unique<rpc::MetricsAgentClientImpl>(
       "127.0.0.1",
       config_.metrics_agent_port,
@@ -625,7 +625,7 @@ void GcsServer::InitKVService() {
 }
 
 void GcsServer::InitPubSubHandler() {
-  auto &io_context = io_context_provider_.GetIOContext<GcsPublisher>();
+  auto &io_context = io_context_provider_.GetIOContext<pubsub::GcsPublisher>();
   pubsub_handler_ = std::make_unique<InternalPubSubHandler>(io_context, *gcs_publisher_);
 
   // This service is used to handle long poll requests, so we don't limit active RPCs.
