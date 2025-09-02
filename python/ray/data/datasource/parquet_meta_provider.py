@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
@@ -25,6 +26,9 @@ RETRY_EXCEPTIONS_FOR_META_FETCH_TASK = ["AWS Error ACCESS_DENIED", "Timeout"]
 RETRY_MAX_ATTEMPTS_FOR_META_FETCH_TASK = 32
 # Maximum retry back-off interval in seconds for failed metadata prefetching task.
 RETRY_MAX_BACKOFF_S_FOR_META_FETCH_TASK = 64
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -221,7 +225,7 @@ def _fetch_metadata(
             # Convert directly to _ParquetFileFragmentMetaData
             fragment_metadatas.append(ParquetFileMetadata.from_(f.metadata))
         except AttributeError as ae:
-            print(f"Failed to extract metadata from parquet file: {ae}")
+            logger.warning(f"Failed to extract metadata from parquet file: {ae}")
             break
     # Deduplicate schemas to reduce memory usage
     return fragment_metadatas
