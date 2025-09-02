@@ -29,7 +29,7 @@ class GcsWorkerManager : public rpc::WorkerInfoGcsServiceHandler {
  public:
   GcsWorkerManager(gcs::GcsTableStorage &gcs_table_storage,
                    instrumented_io_context &io_context,
-                   GcsPublisher &gcs_publisher)
+                   pubsub::GcsPublisher &gcs_publisher)
       : gcs_table_storage_(gcs_table_storage),
         io_context_(io_context),
         gcs_publisher_(gcs_publisher) {}
@@ -73,7 +73,7 @@ class GcsWorkerManager : public rpc::WorkerInfoGcsServiceHandler {
 
   gcs::GcsTableStorage &gcs_table_storage_;
   instrumented_io_context &io_context_;
-  GcsPublisher &gcs_publisher_;
+  pubsub::GcsPublisher &gcs_publisher_;
   UsageStatsClient *usage_stats_client_;
 
   /// Only listens for unexpected worker deaths not expected like node death.
