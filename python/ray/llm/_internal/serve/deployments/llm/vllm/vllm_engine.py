@@ -360,7 +360,7 @@ class VLLMEngine(LLMEngine):
         )
 
         if isinstance(lora_request, VLLMErrorResponse):
-            raise ValueError(f"Failed to load lora model: {lora_request.message}")
+            raise ValueError(f"Failed to load lora model: {lora_request.error.message}")
 
     def _create_raw_request(
         self,
@@ -402,7 +402,7 @@ class VLLMEngine(LLMEngine):
                 yield response
         else:
             if isinstance(chat_response, VLLMErrorResponse):
-                yield ErrorResponse(**chat_response.model_dump())
+                yield ErrorResponse(error=chat_response.model_dump())
             else:
                 yield ChatCompletionResponse(**chat_response.model_dump())
 
@@ -431,7 +431,7 @@ class VLLMEngine(LLMEngine):
                 yield response
         else:
             if isinstance(completion_response, VLLMErrorResponse):
-                yield ErrorResponse(**completion_response.model_dump())
+                yield ErrorResponse(error=completion_response.model_dump())
             else:
                 yield CompletionResponse(**completion_response.model_dump())
 
@@ -450,7 +450,7 @@ class VLLMEngine(LLMEngine):
         )
 
         if isinstance(embedding_response, VLLMErrorResponse):
-            yield ErrorResponse(**embedding_response.model_dump())
+            yield ErrorResponse(error=embedding_response.model_dump())
         else:
             yield EmbeddingResponse(**embedding_response.model_dump())
 

@@ -44,11 +44,13 @@ class ChatCompletionStreamResponse(vLLMChatCompletionStreamResponse):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
-class ErrorResponse(vLLMErrorResponse):
+class ErrorInfo(vLLMErrorInfo):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
-ErrorInfo = vLLMErrorInfo
+class ErrorResponse(vLLMErrorResponse):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
 
 # TODO (Kourosh): Upstream
 class CompletionRequest(vLLMCompletionRequest):
