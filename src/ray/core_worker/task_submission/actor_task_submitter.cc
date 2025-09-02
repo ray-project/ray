@@ -917,14 +917,14 @@ void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive)
   // The task won't be sent to an actor in this case.
   // We cannot hold a lock when calling `FailOrRetryPendingTask`.
   if (task_queued) {
+    // Could be in dependency resolution or ResolveDependencies call may be queued up
+    CancelDependencyResolution(task_id);
     rpc::RayErrorInfo error_info;
     std::ostringstream stream;
     stream << "The task " << task_id << " is canceled from an actor " << actor_id
            << " before it executes.";
     error_info.set_error_message(stream.str());
     error_info.set_error_type(rpc::ErrorType::TASK_CANCELLED);
-    // Could be in dependency resolution or ResolveDependencies call may be queued up
-    CancelDependencyResolution(task_id);
     GetTaskManagerWithoutMu().FailOrRetryPendingTask(
         task_id, rpc::ErrorType::TASK_CANCELLED, /*status*/ nullptr, &error_info);
     return;
