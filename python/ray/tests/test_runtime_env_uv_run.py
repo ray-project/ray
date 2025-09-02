@@ -1,9 +1,9 @@
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 import pytest
 from uv import find_uv_bin
@@ -13,7 +13,6 @@ from ray._private.test_utils import (
     format_web_url,
     wait_until_server_available,
 )
-
 
 PYPROJECT_TOML = """
 [project]
