@@ -114,9 +114,12 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
   absl::flat_hash_map<TaskID, bool> pending_task_id_to_is_canceled ABSL_GUARDED_BY(mu_);
   /// Cancel all queued (waiting or deferred) requests in a thread-safe manner.
   void CancelAllPendingUnsafe(const Status &status) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  
+
   /// Map of queued tasks for which a previous attempt is pending.
-  absl::flat_hash_map<TaskID, InboundRequest> &QueuedTasksUnsafe() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) { return queued_actor_tasks_; }
+  absl::flat_hash_map<TaskID, InboundRequest> &QueuedTasksUnsafe()
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    return queued_actor_tasks_;
+  }
 
   FRIEND_TEST(OutOfOrderActorSchedulingQueueTest, TestSameTaskMultipleAttempts);
   FRIEND_TEST(OutOfOrderActorSchedulingQueueTest,

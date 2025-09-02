@@ -208,8 +208,9 @@ TEST(ActorSchedulingQueueTest, ShutdownCancelsQueuedAndWaitsForRunning) {
   // One running task that blocks until we signal.
   std::promise<void> running_started;
   std::promise<void> allow_finish;
-  auto fn_ok_blocking = [&running_started, &allow_finish](const TaskSpecification &task_spec,
-                                                         rpc::SendReplyCallback callback) {
+  auto fn_ok_blocking = [&running_started, &allow_finish](
+                            const TaskSpecification &task_spec,
+                            rpc::SendReplyCallback callback) {
     running_started.set_value();
     allow_finish.get_future().wait();
   };
@@ -221,16 +222,26 @@ TEST(ActorSchedulingQueueTest, ShutdownCancelsQueuedAndWaitsForRunning) {
   // Enqueue a running task and a queued task.
   queue.Add(0, -1, fn_ok_blocking, fn_rej, nullptr, ts);
   std::atomic<int> n_rejected{0};
-  auto fn_rej_count = [&n_rejected](const TaskSpecification &, const Status &status, rpc::SendReplyCallback) {
+  auto fn_rej_count = [&n_rejected](const TaskSpecification &,
+                                    const Status &status,
+                                    rpc::SendReplyCallback) {
     if (status.IsSchedulingCancelled()) {
       n_rejected.fetch_add(1);
     }
   };
-  // Make the queued task have a dependency so it stays queued and will be cancelled by Stop().
+  // Make the queued task have a dependency so it stays queued and will be cancelled by
+  // Stop().
   TaskSpecification ts_dep;
   ts_dep.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
-  ts_dep.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(ObjectID::FromRandom().Binary());
-  queue.Add(1, -1, [](const TaskSpecification &, rpc::SendReplyCallback) {}, fn_rej_count, nullptr, ts_dep);
+  ts_dep.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      ObjectID::FromRandom().Binary());
+  queue.Add(
+      1,
+      -1,
+      [](const TaskSpecification &, rpc::SendReplyCallback) {},
+      fn_rej_count,
+      nullptr,
+      ts_dep);
   io_service.poll();
   running_started.get_future().wait();
 
