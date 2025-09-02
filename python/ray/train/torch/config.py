@@ -141,6 +141,7 @@ def _setup_torch_process_group(
         register_custom_torch_dist_backend(backend)
     elif backend == "xla":
         import torch_xla.distributed.xla_backend
+        import torch_xla.runtime as xr
         assert xr.using_spmd(), "XLA_USE_SPMD must be 1 before PG init"
         # General backend setup for other backends (gloo, nccl, etc.)
         if dist.is_initialized():
