@@ -15,21 +15,19 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <thread>
 #include <vector>
 
-#include "ray/gcs/gcs_server/tests/gcs_server_test_util.h"
-#include "ray/gcs/tests/gcs_test_util.h"
+#include "fakes/ray/rpc/raylet/raylet_client.h"
+#include "mock/ray/pubsub/publisher.h"
+#include "ray/common/test_utils.h"
+#include "ray/gcs/gcs_server/gcs_node_manager.h"
+#include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/util/event.h"
 #include "ray/util/string_utils.h"
-
-// clang-format off
-#include "ray/rpc/node_manager/node_manager_client.h"
-#include "ray/rpc/node_manager/raylet_client_pool.h"
-#include "mock/ray/pubsub/publisher.h"
-// clang-format on
 
 using json = nlohmann::json;
 
@@ -45,12 +43,15 @@ std::string GenerateLogDir() {
 class GcsNodeManagerExportAPITest : public ::testing::Test {
  public:
   GcsNodeManagerExportAPITest() {
-    raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
+    auto raylet_client = std::make_shared<FakeRayletClient>();
     client_pool_ = std::make_unique<rpc::RayletClientPool>(
-        [this](const rpc::Address &) { return raylet_client_; });
+        [raylet_client = std::move(raylet_client)](const rpc::Address &) {
+          return raylet_client;
+        });
     gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
-    gcs_table_storage_ = std::make_unique<gcs::InMemoryGcsTableStorage>();
+    gcs_table_storage_ = std::make_unique<gcs::GcsTableStorage>(
+        std::make_unique<gcs::InMemoryStoreClient>());
 
     RayConfig::instance().initialize(
         R"(
@@ -76,7 +77,6 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
 
  protected:
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  std::shared_ptr<GcsServerMocker::MockRayletClient> raylet_client_;
   std::unique_ptr<rpc::RayletClientPool> client_pool_;
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
   instrumented_io_context io_service_;
@@ -90,7 +90,7 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventRegisterNode) {
                                    io_service_,
                                    client_pool_.get(),
                                    ClusterID::Nil());
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
 
   rpc::RegisterNodeRequest register_request;
   register_request.mutable_node_info()->CopyFrom(*node);
@@ -102,7 +102,7 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventRegisterNode) {
   io_service_.poll();
 
   std::vector<std::string> vc;
-  Mocker::ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_NODE.log");
+  ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_NODE.log");
   ASSERT_EQ((int)vc.size(), 1);
   json event_data = json::parse(vc[0])["event_data"].get<json>();
   ASSERT_EQ(event_data["state"], "ALIVE");
@@ -115,7 +115,7 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventUnregisterNode) {
                                    io_service_,
                                    client_pool_.get(),
                                    ClusterID::Nil());
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
   node_manager.AddNode(node);
 
@@ -133,7 +133,7 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventUnregisterNode) {
   io_service_.poll();
 
   std::vector<std::string> vc;
-  Mocker::ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_NODE.log");
+  ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_NODE.log");
   ASSERT_EQ((int)vc.size(), 1);
   json event_data = json::parse(vc[0])["event_data"].get<json>();
   ASSERT_EQ(event_data["state"], "DEAD");

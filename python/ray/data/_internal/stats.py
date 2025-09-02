@@ -163,7 +163,6 @@ class _StatsActor:
         self.last_time = {}
         self.start_time = {}
         self.max_stats = max_stats
-        self.fifo_queue = []
 
         # Assign dataset uuids with a global counter.
         self.next_dataset_id = 0
@@ -176,6 +175,10 @@ class _StatsActor:
         # Initialize the metadata exporter
         self._metadata_exporter = get_dataset_metadata_exporter()
         self.dataset_metadatas: Dict[str, DatasetMetadata] = {}
+
+        # A FIFO queue of dataset_tags for finished datasets. This is used to
+        # efficiently evict the oldest finished datasets when max_stats is reached.
+        self.finished_datasets_queue = collections.deque()
 
         # Ray Data dashboard metrics
         # Everything is a gauge because we need to reset all of
@@ -278,6 +281,12 @@ class _StatsActor:
         self.iter_total_blocked_s = Gauge(
             "data_iter_total_blocked_seconds",
             description="Seconds user thread is blocked by iter_batches()",
+            tag_keys=iter_tag_keys,
+        )
+        self.time_to_first_batch_s = Gauge(
+            "data_iter_time_to_first_batch_seconds",
+            description="Total time spent waiting for the first batch after starting iteration. "
+            "This includes the dataset pipeline warmup time. This metric is accumulated across different epochs.",
             tag_keys=iter_tag_keys,
         )
         self.iter_user_s = Gauge(
@@ -469,6 +478,7 @@ class _StatsActor:
     ):
         tags = self._create_tags(dataset_tag)
         self.iter_total_blocked_s.set(stats.iter_total_blocked_s.get(), tags)
+        self.time_to_first_batch_s.set(stats.iter_time_to_first_batch_s.get(), tags)
         self.iter_user_s.set(stats.iter_user_s.get(), tags)
         self.iter_initialize_s.set(stats.iter_initialize_s.get(), tags)
 
@@ -562,6 +572,14 @@ class _StatsActor:
             operator_states[operator] = state_string
 
         self.update_dataset_metadata_operator_states(dataset_tag, operator_states)
+
+        # Evict the oldest finished datasets to ensure the `max_stats` limit is enforced.
+        if state["state"] in {DatasetState.FINISHED.name, DatasetState.FAILED.name}:
+            self.finished_datasets_queue.append(dataset_tag)
+            while len(self.datasets) > self.max_stats and self.finished_datasets_queue:
+                tag_to_evict = self.finished_datasets_queue.popleft()
+                self.datasets.pop(tag_to_evict, None)
+                self.dataset_metadatas.pop(tag_to_evict, None)
 
     def get_datasets(self, job_id: Optional[str] = None):
         if not job_id:
@@ -948,6 +966,7 @@ class DatasetStats:
         self.iter_format_batch_s: Timer = Timer()
         self.iter_collate_batch_s: Timer = Timer()
         self.iter_finalize_batch_s: Timer = Timer()
+        self.iter_time_to_first_batch_s: Timer = Timer()
         self.iter_total_blocked_s: Timer = Timer()
         self.iter_user_s: Timer = Timer()
         self.iter_initialize_s: Timer = Timer()
@@ -1003,6 +1022,7 @@ class DatasetStats:
             self.iter_format_batch_s,
             self.iter_collate_batch_s,
             self.iter_finalize_batch_s,
+            self.iter_time_to_first_batch_s,
             self.iter_total_blocked_s,
             self.iter_user_s,
             self.iter_initialize_s,
@@ -1642,6 +1662,8 @@ class IterStatsSummary:
     collate_time: Timer
     # Time spent in finalize_fn, in seconds
     finalize_batch_time: Timer
+    # Time user thread is blocked waiting for first batch
+    time_to_first_batch: Timer
     # Total time user thread is blocked by iter_batches
     block_time: Timer
     # Time spent in user code, in seconds
@@ -1665,6 +1687,7 @@ class IterStatsSummary:
         out = ""
         if (
             self.block_time.get()
+            or self.time_to_first_batch.get()
             or self.total_time.get()
             or self.get_time.get()
             or self.next_time.get()
@@ -1684,6 +1707,11 @@ class IterStatsSummary:
                 out += (
                     "    * Total time user thread is blocked by Ray Data iter_batches: "
                     "{}\n".format(fmt(self.block_time.get()))
+                )
+            if self.time_to_first_batch.get():
+                out += (
+                    "    * Total time spent waiting for the first batch after starting iteration: "
+                    "{}\n".format(fmt(self.time_to_first_batch.get()))
                 )
             if self.user_time.get():
                 out += "    * Total execution time for user thread: {}\n".format(

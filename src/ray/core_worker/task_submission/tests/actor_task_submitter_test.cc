@@ -22,7 +22,7 @@
 #include "mock/ray/core_worker/actor_creator.h"
 #include "mock/ray/core_worker/reference_count.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
-#include "ray/common/test_util.h"
+#include "ray/common/test_utils.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray::core {
@@ -816,8 +816,8 @@ TEST_P(ActorTaskSubmitterTest, TestPendingTasks) {
   ASSERT_TRUE(submitter_.PendingTasksFull(actor_id));
 
   // All the replies comes, the queue shouble be empty.
-  for (auto &task : tasks) {
-    ASSERT_TRUE(worker_client_->ReplyPushTask(task.GetTaskAttempt(), Status::OK()));
+  for (auto &task_spec : tasks) {
+    ASSERT_TRUE(worker_client_->ReplyPushTask(task_spec.GetTaskAttempt(), Status::OK()));
   }
   ASSERT_FALSE(submitter_.PendingTasksFull(actor_id));
 }

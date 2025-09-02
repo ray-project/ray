@@ -1,19 +1,19 @@
 import asyncio
-import pytest
-import numpy as np
-import sys
-import time
-import threading
 import gc
+import sys
+import threading
+import time
+from unittest.mock import Mock, patch
 
-from unittest.mock import patch, Mock
+import numpy as np
+import pytest
 
 import ray
 from ray._common.test_utils import wait_for_condition
-from ray.experimental.state.api import list_objects
 from ray._raylet import ObjectRefGenerator, ObjectRefStreamEndOfStreamError
 from ray.cloudpickle import dumps
 from ray.exceptions import WorkerCrashedError
+from ray.experimental.state.api import list_objects
 
 
 class MockedWorker:
@@ -574,48 +574,6 @@ def test_streaming_generator_exception(shutdown_only):
 
     with pytest.raises(StopIteration):
         ray.get(next(g))
-
-
-def test_baseexception_streaming_generator(shutdown_only):
-    ray.init()
-
-    class MyBaseException(BaseException):
-        pass
-
-    @ray.remote
-    def raise_at_beginning():
-        raise MyBaseException("rip")
-        yield 1
-
-    raise_at_beginning_ref = raise_at_beginning.remote()
-    with pytest.raises(MyBaseException):
-        ray.get(next(raise_at_beginning_ref))
-
-    @ray.remote
-    def raise_at_middle():
-        for i in range(1, 10):
-            if i == 5:
-                raise MyBaseException("rip")
-            yield i
-
-    raise_at_middle_ref = raise_at_middle.remote()
-    for i in range(1, 5):
-        assert i == ray.get(next(raise_at_middle_ref))
-    with pytest.raises(MyBaseException):
-        ray.get(next(raise_at_middle_ref))
-
-    @ray.remote(_generator_backpressure_num_objects=1)
-    def raise_after_backpressure():
-        for i in range(1, 10):
-            if i == 5:
-                raise MyBaseException("rip")
-            yield i
-
-    raise_after_backpressure_ref = raise_after_backpressure.remote()
-    for i in range(1, 5):
-        assert i == ray.get(next(raise_after_backpressure_ref))
-    with pytest.raises(MyBaseException):
-        ray.get(next(raise_after_backpressure_ref))
 
 
 if __name__ == "__main__":

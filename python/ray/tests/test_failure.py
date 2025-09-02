@@ -1,9 +1,9 @@
+import logging
 import os
 import signal
 import sys
-import time
-import logging
 import threading
+import time
 
 import numpy as np
 import pytest
@@ -18,7 +18,7 @@ from ray._private.test_utils import (
     get_error_message,
     init_error_pubsub,
 )
-from ray.exceptions import GetTimeoutError, RayActorError, RayTaskError, ActorDiedError
+from ray.exceptions import ActorDiedError, GetTimeoutError, RayActorError, RayTaskError
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
@@ -378,56 +378,6 @@ def test_exception_chain(ray_start_regular):
         ray.get(r)
     except ZeroDivisionError as ex:
         assert isinstance(ex, RayTaskError)
-
-
-def test_baseexception_task(ray_start_regular):
-    class MyBaseException(BaseException):
-        pass
-
-    @ray.remote
-    def task():
-        raise MyBaseException("abc")
-
-    with pytest.raises(MyBaseException):
-        ray.get(task.remote())
-
-
-def test_baseexception_actor_task(ray_start_regular):
-    class MyBaseException(BaseException):
-        pass
-
-    @ray.remote
-    class Actor:
-        def f(self):
-            raise MyBaseException("abc")
-
-        async def async_f(self):
-            raise MyBaseException("abc")
-
-    a = Actor.remote()
-    with pytest.raises(MyBaseException):
-        ray.get(a.f.remote())
-
-    a = Actor.remote()
-    with pytest.raises(MyBaseException):
-        ray.get(a.async_f.remote())
-
-
-def test_baseexception_actor_creation(ray_start_regular):
-    class MyBaseException(BaseException):
-        pass
-
-    @ray.remote
-    class Actor:
-        def __init__(self):
-            raise MyBaseException("abc")
-
-    a = Actor.remote()
-    try:
-        ray.get(a.__ray_ready__.remote())
-        raise Exception("abc")
-    except ActorDiedError as e:
-        assert "MyBaseException" in str(e)
 
 
 @pytest.mark.skip("This test does not work yet.")

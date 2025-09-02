@@ -24,16 +24,16 @@
 #include "absl/synchronization/mutex.h"
 #include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/task/task.h"
+#include "ray/common/lease/lease.h"
 #include "ray/common/task/task_util.h"
-#include "ray/common/test_util.h"
-#include "ray/gcs/gcs_client/accessor.h"
+#include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/gcs/store_client/in_memory_store_client.h"
 
 namespace ray {
 
@@ -77,11 +77,11 @@ struct GcsServerMocker {
 
   class MockRayletClient : public FakeRayletClient {
    public:
-    ray::Status ReturnWorker(int worker_port,
-                             const WorkerID &worker_id,
-                             bool disconnect_worker,
-                             const std::string &disconnect_worker_error_detail,
-                             bool worker_exiting) override {
+    ray::Status ReturnWorkerLease(int worker_port,
+                                  const WorkerID &worker_id,
+                                  bool disconnect_worker,
+                                  const std::string &disconnect_worker_error_detail,
+                                  bool worker_exiting) override {
       if (disconnect_worker) {
         num_workers_disconnected++;
       } else {
@@ -90,17 +90,17 @@ struct GcsServerMocker {
       return Status::OK();
     }
 
-    void GetTaskFailureCause(
-        const TaskID &task_id,
-        const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
+    void GetWorkerFailureCause(
+        const LeaseID &lease_id,
+        const ray::rpc::ClientCallback<ray::rpc::GetWorkerFailureCauseReply> &callback)
         override {
-      ray::rpc::GetTaskFailureCauseReply reply;
+      ray::rpc::GetWorkerFailureCauseReply reply;
       callback(Status::OK(), std::move(reply));
       num_get_task_failure_causes += 1;
     }
 
     void RequestWorkerLease(
-        const rpc::TaskSpec &spec,
+        const rpc::LeaseSpec &spec,
         bool grant_or_reject,
         const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
         const int64_t backlog_size,
@@ -124,14 +124,14 @@ struct GcsServerMocker {
     }
 
     void CancelWorkerLease(
-        const TaskID &task_id,
+        const LeaseID &lease_id,
         const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override {
       num_leases_canceled += 1;
       cancel_callbacks.push_back(callback);
     }
 
     bool GrantWorkerLease() {
-      return GrantWorkerLease("", 0, WorkerID::FromRandom(), node_id, NodeID::Nil());
+      return GrantWorkerLease("", 0, WorkerID::FromRandom(), node_id_, NodeID::Nil());
     }
 
     bool GrantWorkerLease(const std::string &address,
@@ -298,7 +298,7 @@ struct GcsServerMocker {
     int num_leases_canceled = 0;
     int num_release_unused_workers = 0;
     int num_get_task_failure_causes = 0;
-    NodeID node_id = NodeID::FromRandom();
+    NodeID node_id_ = NodeID::FromRandom();
     std::list<rpc::ClientCallback<rpc::DrainRayletReply>> drain_raylet_callbacks = {};
     std::list<rpc::ClientCallback<rpc::RequestWorkerLeaseReply>> callbacks = {};
     std::list<rpc::ClientCallback<rpc::CancelWorkerLeaseReply>> cancel_callbacks = {};
@@ -380,55 +380,6 @@ struct GcsServerMocker {
    private:
     std::shared_ptr<gcs::StoreClient> store_client_ =
         std::make_shared<gcs::InMemoryStoreClient>();
-  };
-
-  class MockedNodeInfoAccessor : public gcs::NodeInfoAccessor {
-   public:
-    Status RegisterSelf(const rpc::GcsNodeInfo &local_node_info,
-                        const gcs::StatusCallback &callback) override {
-      return Status::NotImplemented("");
-    }
-
-    const NodeID &GetSelfId() const override {
-      static NodeID node_id;
-      return node_id;
-    }
-
-    const rpc::GcsNodeInfo &GetSelfInfo() const override {
-      static rpc::GcsNodeInfo node_info;
-      return node_info;
-    }
-
-    void AsyncRegister(const rpc::GcsNodeInfo &node_info,
-                       const gcs::StatusCallback &callback) override {}
-
-    void AsyncGetAll(const gcs::MultiItemCallback<rpc::GcsNodeInfo> &callback,
-                     int64_t timeout_ms,
-                     const std::vector<NodeID> &node_ids = {}) override {
-      if (callback) {
-        callback(Status::OK(), {});
-      }
-    }
-
-    void AsyncSubscribeToNodeChange(
-        std::function<void(NodeID, const rpc::GcsNodeInfo &)> subscribe,
-        gcs::StatusCallback done) override {
-      RAY_LOG(FATAL) << "Not implemented";
-    }
-
-    const rpc::GcsNodeInfo *Get(const NodeID &node_id,
-                                bool filter_dead_nodes = true) const override {
-      return nullptr;
-    }
-
-    const absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> &GetAll() const override {
-      static absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_info_list;
-      return node_info_list;
-    }
-
-    bool IsNodeDead(const NodeID &node_id) const override { return false; }
-
-    void AsyncResubscribe() override {}
   };
 };
 
