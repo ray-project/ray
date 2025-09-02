@@ -343,12 +343,10 @@ ray_cc_library(
     name = "protobuf_utils",
     srcs = ["protobuf_utils.cc"],
     hdrs = ["protobuf_utils.h"],
-    implementation_deps = [
-        ":ray_config",
-        "//src/ray/util:time",
-    ],
     deps = [
         ":constants",
+        ":ray_config",
+        "//src/ray/util:time",
         ":id",
         ":task_common",
         "//src/ray/protobuf:autoscaler_cc_proto",
