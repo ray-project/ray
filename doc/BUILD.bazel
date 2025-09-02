@@ -213,6 +213,30 @@ py_test(
      ], 
  ) 
 
+ py_test( 
+     name = "doc_code_direct_transport_nccl", 
+     size = "small", 
+     srcs = ["source/ray-core/doc_code/direct_transport_nccl.py"], 
+     main = "source/ray-core/doc_code/direct_transport_nccl.py", 
+     tags = [ 
+         "exclusive", 
+         "multi_gpu",
+         "team:core", 
+     ], 
+ ) 
+
+ py_test( 
+     name = "doc_code_direct_transport_nixl", 
+     size = "small", 
+     srcs = ["source/ray-core/doc_code/direct_transport_nixl.py"], 
+     main = "source/ray-core/doc_code/direct_transport_nixl.py", 
+     tags = [ 
+         "exclusive", 
+         "multi_gpu",
+         "team:core", 
+     ], 
+ ) 
+
 py_test_run_all_subdirectory(
     size = "medium",
     include = ["source/ray-core/doc_code/*.py"],
@@ -225,6 +249,8 @@ py_test_run_all_subdirectory(
         "source/ray-core/doc_code/cgraph_overlap.py",
         # not testing this as it purposefully segfaults
         "source/ray-core/doc_code/cgraph_troubleshooting.py",
+        "source/ray-core/doc_code/direct_transport_nccl.py",
+        "source/ray-core/doc_code/direct_transport_nixl.py",
     ],
     extra_srcs = [],
     tags = [
