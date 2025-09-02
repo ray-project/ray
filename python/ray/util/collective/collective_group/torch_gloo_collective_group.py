@@ -41,29 +41,51 @@ class TorchGLOOGroup(BaseGroup):
         rank: int,
         group_name: str,
     ):
-        metadata_key = get_master_address_metadata_key(group_name)
-        try:
-            metadata = internal_kv._internal_kv_get(metadata_key)
-        except ValueError:
-            raise RuntimeError(
-                f"TorchGLOOGroup expected metadata in internal_kv with name `{metadata_key}`. "
-                "TorchGLOOGroup should not be instantiated directly. "
-                "Use ray.experimental.collective.create_collective_group to create the group."
+        # Initialize the default process group only once per process.
+        if not dist.is_initialized():
+            metadata_key = get_master_address_metadata_key(group_name)
+            try:
+                metadata = internal_kv._internal_kv_get(metadata_key)
+            except ValueError:
+                raise RuntimeError(
+                    f"TorchGLOOGroup expected metadata in internal_kv with name `{metadata_key}`. "
+                    "TorchGLOOGroup should not be instantiated directly. "
+                    "Use ray.experimental.collective.create_collective_group to create the group."
+                )
+            if metadata is None:
+                raise RuntimeError(
+                    f"Missing rendezvous metadata for group `{group_name}` under key `{metadata_key}`."
+                )
+            metadata = metadata.decode()
+            master_addr, master_port = metadata.split(":")
+            os.environ["MASTER_ADDR"] = master_addr
+            os.environ["MASTER_PORT"] = master_port
+
+            dist.init_process_group(
+                backend="gloo", init_method="env://", world_size=world_size, rank=rank
             )
 
-        metadata = metadata.decode()
-        master_addr, master_port = metadata.split(":")
-        os.environ["MASTER_ADDR"] = master_addr
-        os.environ["MASTER_PORT"] = master_port
-
-        dist.init_process_group(
-            backend="gloo", init_method="env://", world_size=world_size, rank=rank
-        )
         super().__init__(world_size, rank, group_name)
+
+        # Create a subgroup for this logical group. For the default group, use WORLD.
+        self._is_default_group = group_name == "default"
+        if self._is_default_group:
+            self._pg = dist.group.WORLD
+        else:
+            # All ranks participate in this subgroup with global ranks [0..world_size-1].
+            ranks = list(range(world_size))
+            self._pg = dist.new_group(ranks=ranks, backend="gloo")
 
     def destroy_group(self):
         """GC the communicators."""
-        dist.destroy_process_group()
+        # Destroy only the subgroup for non-default groups. Allow default to be torn down explicitly.
+        if self._is_default_group:
+            # Destroy default process group to allow re-init in tests that recreate the same group.
+            dist.destroy_process_group()
+        else:
+            # Destroy just this subgroup.
+            if self._pg is not None:
+                dist.destroy_process_group(self._pg)
 
     @classmethod
     def backend(cls):
@@ -106,10 +128,10 @@ class TorchGLOOGroup(BaseGroup):
             allreduce_options = AllReduceOptions()
         tensor = self._check_tensor_input(tensor)
         torch_reduce_op = TORCH_REDUCE_OP_MAP[allreduce_options.reduceOp]
-        dist.all_reduce(tensor, op=torch_reduce_op)
+        dist.all_reduce(tensor, op=torch_reduce_op, group=self._pg)
 
     def barrier(self, barrier_options=BarrierOptions()) -> None:
-        dist.barrier()
+        dist.barrier(group=self._pg)
 
     def reduce(
         self,
@@ -118,9 +140,14 @@ class TorchGLOOGroup(BaseGroup):
     ) -> None:
         if reduce_options is None:
             reduce_options = ReduceOptions()
-        tensor = self._check_tensor_input(tensor)
+        t = self._check_tensor_input(tensor)
         torch_reduce_op = TORCH_REDUCE_OP_MAP[reduce_options.reduceOp]
-        dist.reduce(tensor, dst=reduce_options.root_rank, op=torch_reduce_op)
+        # Avoid mutating non-root ranks' user tensors to match util.collective semantics.
+        if self._rank == reduce_options.root_rank:
+            dist.reduce(t, dst=reduce_options.root_rank, op=torch_reduce_op, group=self._pg)
+        else:
+            tmp = t.detach().clone()
+            dist.reduce(tmp, dst=reduce_options.root_rank, op=torch_reduce_op, group=self._pg)
 
     def allgather(
         self,
@@ -132,13 +159,13 @@ class TorchGLOOGroup(BaseGroup):
             allgather_options = AllGatherOptions()
         tensor_list = self._check_tensor_list_input(tensor_list)
         tensor = self._check_tensor_input(tensor)
-        dist.all_gather(tensor_list, tensor)
+        dist.all_gather(tensor_list, tensor, group=self._pg)
 
     def broadcast(
         self, tensor: List["torch.Tensor"], broadcast_options=BroadcastOptions()
     ) -> None:
         tensor = self._check_tensor_input(tensor)
-        dist.broadcast(tensor, src=broadcast_options.root_rank)
+        dist.broadcast(tensor, src=broadcast_options.root_rank, group=self._pg)
 
     def reducescatter(
         self,
@@ -159,7 +186,7 @@ class TorchGLOOGroup(BaseGroup):
         # torch.distributed gloo doesn't support reducescatter. Implement a
         # simple version using allreduce.
         for tensor in tensor_list:
-            dist.all_reduce(tensor, op=torch_reduce_op)
+            dist.all_reduce(tensor, op=torch_reduce_op, group=self._pg)
 
         if output_tensor.data_ptr() != tensor_list[self._rank].data_ptr():
             output_tensor.copy_(tensor_list[self._rank])

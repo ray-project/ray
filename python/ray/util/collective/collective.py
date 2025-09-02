@@ -2,12 +2,20 @@
 
 import logging
 import os
+import time
 from typing import List
+from typing import List as _ListAlias  # avoid confusion in edits
+from typing import Tuple as _TupleAlias  # placeholder to maintain minimal edits
 
 import numpy as np
 
 import ray
-from ray.util.collective import types
+from . import types
+import ray.experimental.internal_kv as _internal_kv
+from ray.experimental.collective.util import get_address_and_port as _get_address_and_port
+from ray.util.collective.collective_group.torch_gloo_collective_group import (
+    get_master_address_metadata_key as _get_master_addr_key,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -76,8 +84,25 @@ class GroupManager(object):
         backend = types.Backend(backend)
         if backend == types.Backend.MPI:
             raise RuntimeError("Ray does not support MPI.")
-        elif backend == types.Backend.GLOO:
-            # Now we have deprecated pygloo, and use torch_gloo in all cases.
+        elif backend == types.Backend.GLOO or backend == types.Backend.TORCH_GLOO:
+            # Rendezvous: ensure a MASTER_ADDR:MASTER_PORT is published in internal_kv.
+            metadata_key = _get_master_addr_key(group_name)
+            if rank == 0:
+                addr, port = _get_address_and_port()
+                _internal_kv._internal_kv_put(metadata_key, f"{addr}:{port}")
+            else:
+                # Wait until rank 0 publishes the metadata or timeout.
+                deadline_s = time.time() + (gloo_timeout / 1000.0 if gloo_timeout else 30.0)
+                while True:
+                    meta = _internal_kv._internal_kv_get(metadata_key)
+                    if meta is not None:
+                        break
+                    if time.time() > deadline_s:
+                        raise TimeoutError(
+                            f"Timed out waiting for GLOO rendezvous metadata for group '{group_name}'."
+                        )
+                    time.sleep(0.05)
+
             logger.debug(
                 "Creating torch.distributed GLOO group: '{}'...".format(group_name)
             )
@@ -169,6 +194,22 @@ def init_collective_group(
     _group_mgr.create_collective_group(
         backend, world_size, rank, group_name, gloo_timeout
     )
+
+
+# NumPy <-> Torch bridging helpers for torch_gloo backend.
+def _to_torch_if_needed_for_gloo(obj):
+    try:
+        import torch as _torch
+    except ImportError:
+        raise RuntimeError("torch is required for GLOO backend.")
+
+    if isinstance(obj, np.ndarray):
+        return _torch.from_numpy(obj)
+    return obj
+
+
+def _to_torch_list_if_needed_for_gloo(tensor_list):
+    return [_to_torch_if_needed_for_gloo(t) for t in tensor_list]
 
 
 def create_collective_group(
@@ -294,6 +335,8 @@ def allreduce(tensor, group_name: str = "default", op=types.ReduceOp.SUM):
     g = get_group_handle(group_name)
     opts = types.AllReduceOptions
     opts.reduceOp = op
+    if g.backend() == types.Backend.TORCH_GLOO:
+        tensor = _to_torch_if_needed_for_gloo(tensor)
     g.allreduce([tensor], opts)
 
 
@@ -355,6 +398,8 @@ def reduce(
     opts.reduceOp = op
     opts.root_rank = dst_rank
     opts.root_tensor = 0
+    if g.backend() == types.Backend.TORCH_GLOO:
+        tensor = _to_torch_if_needed_for_gloo(tensor)
     g.reduce([tensor], opts)
 
 
@@ -413,6 +458,8 @@ def broadcast(tensor, src_rank: int = 0, group_name: str = "default"):
     opts = types.BroadcastOptions()
     opts.root_rank = src_rank
     opts.root_tensor = 0
+    if g.backend() == types.Backend.TORCH_GLOO:
+        tensor = _to_torch_if_needed_for_gloo(tensor)
     g.broadcast([tensor], opts)
 
 
@@ -458,6 +505,9 @@ def allgather(tensor_list: list, tensor, group_name: str = "default"):
     _check_single_tensor_input(tensor)
     _check_tensor_list_input(tensor_list)
     g = get_group_handle(group_name)
+    if g.backend() == types.Backend.TORCH_GLOO:
+        tensor = _to_torch_if_needed_for_gloo(tensor)
+        tensor_list = _to_torch_list_if_needed_for_gloo(tensor_list)
     if len(tensor_list) != g.world_size:
         # Typically CLL lib requires len(tensor_list) >= world_size;
         # Here we make it more strict: len(tensor_list) == world_size.
@@ -513,13 +563,16 @@ def reducescatter(
     _check_single_tensor_input(tensor)
     _check_tensor_list_input(tensor_list)
     g = get_group_handle(group_name)
+    opts = types.ReduceScatterOptions()
+    opts.reduceOp = op
+    if g.backend() == types.Backend.TORCH_GLOO:
+        tensor = _to_torch_if_needed_for_gloo(tensor)
+        tensor_list = _to_torch_list_if_needed_for_gloo(tensor_list)
     if len(tensor_list) != g.world_size:
         raise RuntimeError(
             "The length of the tensor list operands to reducescatter "
             "must not be equal to world_size."
         )
-    opts = types.ReduceScatterOptions()
-    opts.reduceOp = op
     g.reducescatter([tensor], [tensor_list], opts)
 
 
@@ -570,6 +623,8 @@ def send(tensor, dst_rank: int, group_name: str = "default"):
         raise RuntimeError("The destination rank '{}' is self.".format(dst_rank))
     opts = types.SendOptions()
     opts.dst_rank = dst_rank
+    if g.backend() == types.Backend.TORCH_GLOO:
+        tensor = _to_torch_if_needed_for_gloo(tensor)
     g.send([tensor], opts)
 
 
@@ -612,6 +667,8 @@ def send_multigpu(
     opts.dst_rank = dst_rank
     opts.dst_gpu_index = dst_gpu_index
     opts.n_elements = n_elements
+    if g.backend() == types.Backend.TORCH_GLOO:
+        tensor = _to_torch_if_needed_for_gloo(tensor)
     g.send([tensor], opts)
 
 
@@ -633,6 +690,8 @@ def recv(tensor, src_rank: int, group_name: str = "default"):
         raise RuntimeError("The destination rank '{}' is self.".format(src_rank))
     opts = types.RecvOptions()
     opts.src_rank = src_rank
+    if g.backend() == types.Backend.TORCH_GLOO:
+        tensor = _to_torch_if_needed_for_gloo(tensor)
     g.recv([tensor], opts)
 
 
