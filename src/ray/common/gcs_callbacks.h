@@ -17,7 +17,6 @@
 #include <optional>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "ray/common/status.h"
 
 namespace ray {
@@ -31,7 +30,6 @@ using StatusCallback = std::function<void(Status status)>;
 /// \param status Status indicates whether the read was successful.
 /// \param result The item returned by GCS. If the item to read doesn't exist,
 /// this optional object is empty.
-/// TODO(ryw): make an Either union type to avoid the optional.
 template <typename Data>
 using OptionalItemCallback =
     std::function<void(Status status, std::optional<Data> result)>;
