@@ -101,7 +101,7 @@ ray_cc_test(
     deps = [
         "//:ray_mock",
         "//src/ray/common:lease",
-        "//src/ray/common:test_util",
+        "//src/ray/common:test_utils",
         "//src/ray/raylet:lease_dependency_manager",
         "@com_google_googletest//:gtest_main",
     ],
@@ -118,7 +118,7 @@ ray_cc_test(
         "//src/ray/common:id",
         "//src/ray/common:lease",
         "//src/ray/common:task_common",
-        "//src/ray/common:test_util",
+        "//src/ray/common:test_utils",
         "//src/ray/raylet:local_lease_manager",
         "//src/ray/raylet/scheduling:cluster_resource_scheduler",
         "@com_google_googletest//:gtest_main",

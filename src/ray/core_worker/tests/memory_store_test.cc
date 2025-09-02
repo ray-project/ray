@@ -26,7 +26,7 @@
 #include "mock/ray/core_worker/memory_store.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
-#include "ray/common/test_util.h"
+#include "ray/common/test_utils.h"
 
 namespace ray {
 namespace core {

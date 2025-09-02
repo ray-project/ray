@@ -25,12 +25,12 @@
 #include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
-#include "ray/gcs/tests/gcs_test_util.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/util/counter_map.h"
 

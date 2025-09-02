@@ -21,7 +21,7 @@
 #include "gtest/gtest.h"
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/gcs/tests/gcs_test_util.h"
+#include "ray/common/test_utils.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 
 namespace ray {

@@ -26,8 +26,8 @@
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/common/test_utils.h"
 #include "ray/gcs/pb_util.h"
-#include "ray/gcs/tests/gcs_test_util.h"
 
 namespace ray {
 namespace gcs {

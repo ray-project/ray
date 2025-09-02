@@ -21,10 +21,10 @@
 #include "mock/ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "mock/ray/pubsub/publisher.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
+#include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
-#include "ray/gcs/tests/gcs_test_util.h"
 
 using json = nlohmann::json;
 

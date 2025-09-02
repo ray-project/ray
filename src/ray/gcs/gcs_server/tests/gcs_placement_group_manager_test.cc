@@ -23,8 +23,8 @@
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/test_utils.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
-#include "ray/gcs/tests/gcs_test_util.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/util/counter_map.h"
 
@@ -816,8 +816,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestSchedulerReinitializeAfterGcsRestart) {
       /* cpu_num */ 1.0,
       /* job_id */ job_id);
   auto job_table_data = Mocker::GenJobTableData(job_id);
-  gcs_table_storage_->JobTable().Put(
-      job_id, *job_table_data, {[](auto) {}, io_service_});
+  gcs_table_storage_->JobTable().Put(job_id, *job_table_data, {[](auto) {}, io_service_});
   std::atomic<int> registered_placement_group_count{0};
   RegisterPlacementGroup(request, [&registered_placement_group_count](Status status) {
     ++registered_placement_group_count;
@@ -1244,8 +1243,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestCheckCreatorJobIsDeadWhenGcsRestart) {
       /* job_id */ job_id);
   auto job_table_data = Mocker::GenJobTableData(job_id);
   job_table_data->set_is_dead(true);
-  gcs_table_storage_->JobTable().Put(
-      job_id, *job_table_data, {[](auto) {}, io_service_});
+  gcs_table_storage_->JobTable().Put(job_id, *job_table_data, {[](auto) {}, io_service_});
   std::atomic<int> registered_placement_group_count{0};
   RegisterPlacementGroup(request, [&registered_placement_group_count](Status status) {
     ++registered_placement_group_count;

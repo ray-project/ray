@@ -22,7 +22,7 @@
 
 #include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "mock/ray/pubsub/publisher.h"
-#include "ray/gcs/tests/gcs_test_util.h"
+#include "ray/common/test_utils.h"
 
 namespace ray {
 class GcsNodeManagerTest : public ::testing::Test {
