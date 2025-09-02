@@ -88,9 +88,10 @@ ray_cc_library(
     deps = [
         ":dependency_resolver",
         "//src/ray/common:id",
+        "//src/ray/common:lease",
         "//src/ray/core_worker:lease_policy",
         "//src/ray/core_worker:memory_store",
-        "//src/ray/core_worker:task_manager",
+        "//src/ray/core_worker:task_manager_interface",
         "//src/ray/gcs:gcs_pb_util",
         "//src/ray/raylet_client:raylet_client_lib",
         "//src/ray/rpc:core_worker_client",

@@ -456,6 +456,31 @@ message StreamingGeneratorReturnIdInfo {
   bool is_plasma_object = 2;
 }
 
+message LeaseSpec {
+  bytes lease_id = 1;
+  bytes job_id = 2;
+  Address caller_address = 3;
+  TaskType type = 4;
+  bytes actor_id = 5;
+  bool is_detached_actor = 6;
+  bytes root_detached_actor_id = 7;
+  int64 max_actor_restarts = 8;
+  map<string, double> required_resources = 9;
+  map<string, double> required_placement_resources = 10;
+  SchedulingStrategy scheduling_strategy = 11;
+  map<string, string> label_selector = 12;
+  int64 depth = 13;
+  RuntimeEnvInfo runtime_env_info = 14;
+  repeated ObjectReference dependencies = 15;
+  bytes parent_task_id = 16;
+  Language language = 17;
+  FunctionDescriptor function_descriptor = 18;
+  repeated string dynamic_worker_options = 19;
+  int32 max_retries = 20;
+  uint64 attempt_number = 21;
+  string task_name = 22;
+}
+
 /// The task specification encapsulates all immutable information about the
 /// task.
 message TaskSpec {
@@ -671,6 +696,9 @@ message ObjectReference {
   // Used to print debugging information if there is an error retrieving the
   // object.
   string call_site = 3;
+  // The tensor transport to use for this object. If not specified, then use the
+  // default object store.
+  optional TensorTransport tensor_transport = 4;
 }
 
 message ObjectReferenceCount {

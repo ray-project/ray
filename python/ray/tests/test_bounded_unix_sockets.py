@@ -1,10 +1,11 @@
+import logging
 import sys
 
-import ray
-import logging
-import psutil
-
 import pytest
+
+import ray
+
+import psutil
 
 logger = logging.getLogger(__name__)
 

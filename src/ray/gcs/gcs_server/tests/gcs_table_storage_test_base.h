@@ -19,9 +19,8 @@
 
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
-#include "ray/common/test_util.h"
+#include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
-#include "ray/gcs/tests/gcs_test_util.h"
 
 namespace ray {
 
@@ -38,11 +37,11 @@ class GcsTableStorageTestBase : public ::testing::Test {
 
  protected:
   void TestGcsTableApi() {
-    auto table = gcs_table_storage_->JobTable();
+    auto &table = gcs_table_storage_->JobTable();
     JobID job1_id = JobID::FromInt(1);
     JobID job2_id = JobID::FromInt(2);
-    auto job1_table_data = Mocker::GenJobTableData(job1_id);
-    auto job2_table_data = Mocker::GenJobTableData(job2_id);
+    auto job1_table_data = GenJobTableData(job1_id);
+    auto job2_table_data = GenJobTableData(job2_id);
 
     // Put.
     Put(table, job1_id, *job1_table_data);
@@ -65,9 +64,9 @@ class GcsTableStorageTestBase : public ::testing::Test {
     JobID job_id1 = JobID::FromInt(1);
     JobID job_id2 = JobID::FromInt(2);
     JobID job_id3 = JobID::FromInt(3);
-    auto actor_table_data1 = Mocker::GenActorTableData(job_id1);
-    auto actor_table_data2 = Mocker::GenActorTableData(job_id2);
-    auto actor_table_data3 = Mocker::GenActorTableData(job_id3);
+    auto actor_table_data1 = GenActorTableData(job_id1);
+    auto actor_table_data2 = GenActorTableData(job_id2);
+    auto actor_table_data3 = GenActorTableData(job_id3);
     ActorID actor_id1 = ActorID::FromBinary(actor_table_data1->actor_id());
     ActorID actor_id2 = ActorID::FromBinary(actor_table_data2->actor_id());
     ActorID actor_id3 = ActorID::FromBinary(actor_table_data3->actor_id());
@@ -105,7 +104,7 @@ class GcsTableStorageTestBase : public ::testing::Test {
   void Put(TABLE &table, const KEY &key, const VALUE &value) {
     auto on_done = [this](const Status &status) { --pending_count_; };
     ++pending_count_;
-    RAY_CHECK_OK(table.Put(key, value, {on_done, *(io_service_pool_->Get())}));
+    table.Put(key, value, {on_done, *(io_service_pool_->Get())});
     WaitPendingDone();
   }
 
@@ -124,7 +123,7 @@ class GcsTableStorageTestBase : public ::testing::Test {
       --pending_count_;
     };
     ++pending_count_;
-    RAY_CHECK_OK(table.Get(key, {on_done, *(io_service_pool_->Get())}));
+    table.Get(key, {on_done, *(io_service_pool_->Get())});
     WaitPendingDone();
     return values.size();
   }
@@ -147,7 +146,7 @@ class GcsTableStorageTestBase : public ::testing::Test {
       --pending_count_;
     };
     ++pending_count_;
-    RAY_CHECK_OK(table.GetByJobId(job_id, {on_done, *(io_service_pool_->Get())}));
+    table.GetByJobId(job_id, {on_done, *(io_service_pool_->Get())});
     WaitPendingDone();
     return values.size();
   }
@@ -159,7 +158,7 @@ class GcsTableStorageTestBase : public ::testing::Test {
       --pending_count_;
     };
     ++pending_count_;
-    RAY_CHECK_OK(table.Delete(key, {on_done, *(io_service_pool_->Get())}));
+    table.Delete(key, {on_done, *(io_service_pool_->Get())});
     WaitPendingDone();
   }
 
@@ -170,7 +169,7 @@ class GcsTableStorageTestBase : public ::testing::Test {
       --pending_count_;
     };
     ++pending_count_;
-    RAY_CHECK_OK(table.BatchDelete(keys, {on_done, *(io_service_pool_->Get())}));
+    table.BatchDelete(keys, {on_done, *(io_service_pool_->Get())});
     WaitPendingDone();
   }
 

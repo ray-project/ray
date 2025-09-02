@@ -25,11 +25,9 @@
 
 #include "absl/base/thread_annotations.h"
 #include "ray/common/id.h"
-#include "ray/core_worker/actor_manager.h"
-#include "ray/core_worker/context.h"
 #include "ray/core_worker/lease_policy.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/core_worker/task_manager.h"
+#include "ray/core_worker/task_manager_interface.h"
 #include "ray/core_worker/task_submission/dependency_resolver.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/raylet_client_pool.h"
@@ -123,16 +121,16 @@ class NormalTaskSubmitter {
   ///
   /// \param[in] task_spec The task to kill.
   /// \param[in] force_kill Whether to kill the worker executing the task.
-  Status CancelTask(TaskSpecification task_spec, bool force_kill, bool recursive);
+  void CancelTask(TaskSpecification task_spec, bool force_kill, bool recursive);
 
   /// Request the owner of the object ID to cancel a request.
   /// It is used when a object ID is not owned by the current process.
   /// We cannot cancel the task in this case because we don't have enough
   /// information to cancel a task.
-  Status CancelRemoteTask(const ObjectID &object_id,
-                          const rpc::Address &worker_addr,
-                          bool force_kill,
-                          bool recursive);
+  void CancelRemoteTask(const ObjectID &object_id,
+                        const rpc::Address &worker_addr,
+                        bool force_kill,
+                        bool recursive);
 
   /// Queue the streaming generator up for resubmission.
   /// \return true if the task is still executing and the submitter agrees to resubmit
@@ -201,7 +199,7 @@ class NormalTaskSubmitter {
       std::shared_ptr<RayletClientInterface> raylet_client,
       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources,
       const SchedulingKey &scheduling_key,
-      const TaskID &task_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      const LeaseID &lease_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// This function takes care of returning a worker to the Raylet.
   /// \param[in] addr The address of the worker.
@@ -209,11 +207,11 @@ class NormalTaskSubmitter {
   /// \param[in] error_detail The reason why it was errored.
   /// it is unused if was_error is false.
   /// \param[in] worker_exiting Whether the worker is exiting.
-  void ReturnWorker(const rpc::Address &addr,
-                    bool was_error,
-                    const std::string &error_detail,
-                    bool worker_exiting,
-                    const SchedulingKey &scheduling_key)
+  void ReturnWorkerLease(const rpc::Address &addr,
+                         bool was_error,
+                         const std::string &error_detail,
+                         bool worker_exiting,
+                         const SchedulingKey &scheduling_key)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Check that the scheduling_key_entries_ hashmap is empty.
@@ -229,14 +227,14 @@ class NormalTaskSubmitter {
                       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>
                           &assigned_resources);
 
-  /// Handles result from GetTaskFailureCause.
-  /// \return true if the task should be retried, false otherwise.
-  bool HandleGetTaskFailureCause(
+  /// Handles result from GetWorkerFailureCause.
+  /// \return true if the task executing on the worker should be retried, false otherwise.
+  bool HandleGetWorkerFailureCause(
       const Status &task_execution_status,
       const TaskID &task_id,
       const rpc::Address &addr,
-      const Status &get_task_failure_cause_reply_status,
-      const rpc::GetTaskFailureCauseReply &get_task_failure_cause_reply);
+      const Status &get_worker_failure_cause_reply_status,
+      const rpc::GetWorkerFailureCauseReply &get_worker_failure_cause_reply);
 
   /// Address of our RPC server.
   rpc::Address rpc_address_;
@@ -291,7 +289,7 @@ class NormalTaskSubmitter {
     int64_t lease_expiration_time;
     google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources;
     SchedulingKey scheduling_key;
-    TaskID task_id;
+    LeaseID lease_id;
     bool is_busy = false;
   };
 
@@ -301,8 +299,9 @@ class NormalTaskSubmitter {
 
   struct SchedulingKeyEntry {
     // Keep track of pending worker lease requests to the raylet.
-    absl::flat_hash_map<TaskID, rpc::Address> pending_lease_requests;
-    TaskSpecification resource_spec;
+    absl::flat_hash_map<LeaseID, rpc::Address> pending_lease_requests;
+
+    LeaseSpecification lease_spec;
     // Tasks that are queued for execution. We keep an individual queue per
     // scheduling class to ensure fairness.
     std::deque<TaskSpecification> task_queue;

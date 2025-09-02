@@ -1,10 +1,10 @@
 import logging
 import threading
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
 
 from ray.data import DataIterator
-from ray.train import Checkpoint
 from ray.train.v2._internal.execution import collective_impl
 from ray.train.v2._internal.execution.context import (
     get_train_context as get_internal_train_context,
@@ -16,6 +16,10 @@ from ray.train.v2.api.context import (
 )
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from ray.train import Checkpoint
+    from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
 
 class TrainFnUtils(ABC):
@@ -32,7 +36,7 @@ class TrainFnUtils(ABC):
     def report(
         self,
         metrics: Dict[str, Any],
-        checkpoint: Optional[Checkpoint] = None,
+        checkpoint: Optional["Checkpoint"] = None,
         checkpoint_dir_name: Optional[str] = None,
     ) -> None:
         """Upload checkpoint to remote storage and put a training result on the result queue.
@@ -53,6 +57,16 @@ class TrainFnUtils(ABC):
 
         Returns:
             The latest checkpoint if available, None otherwise.
+        """
+        pass
+
+    @abstractmethod
+    def get_all_reported_checkpoints(self) -> List["ReportedCheckpoint"]:
+        """Get all the checkpoints reported by the workers.
+
+        Returns:
+            A list of ReportedCheckpoint objects that represent the checkpoints and
+            corresponding metrics reported by the workers.
         """
         pass
 
@@ -140,6 +154,9 @@ class DistributedTrainFnUtils(TrainFnUtils):
 
     def broadcast_from_rank_zero(self, data: Any) -> Any:
         return collective_impl.broadcast_from_rank_zero(data)
+    
+    def get_all_reported_checkpoints(self) -> List["ReportedCheckpoint"]:
+        return get_internal_train_context().get_all_reported_checkpoints()
 
 
 class LocalTrainFnUtils(TrainFnUtils):
@@ -191,7 +208,9 @@ class LocalTrainFnUtils(TrainFnUtils):
         This function should only be called by LocalController
         """
         return self._last_metrics
-
+    
+    def get_all_reported_checkpoints(self) -> List["ReportedCheckpoint"]:
+        return []
 
 _train_fn_utils: Optional[TrainFnUtils] = None
 _train_fn_utils_lock = threading.Lock()
