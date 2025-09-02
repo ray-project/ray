@@ -147,9 +147,9 @@ def _setup_torch_process_group(
         dist.init_process_group(
             backend='xla',
             init_method='xla://',
-            # rank=world_rank,
-            # world_size=world_size,
-            # timeout=timedelta(seconds=timeout_s),
+            rank=world_rank,
+            world_size=world_size,
+            timeout=timedelta(seconds=timeout_s),
         )
         return
 
