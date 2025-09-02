@@ -48,9 +48,8 @@
 #include "ray/raylet/wait_manager.h"
 #include "ray/raylet/worker_killing_policy.h"
 #include "ray/raylet/worker_pool.h"
-#include "ray/raylet_client/raylet_client.h"
+#include "ray/raylet_client/raylet_client_pool.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
-#include "ray/rpc/node_manager/raylet_client_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/throttler.h"
 
@@ -119,8 +118,6 @@ struct NodeManagerConfig {
   // If true, core worker enables resource isolation by adding itself into appropriate
   // cgroup.
   bool enable_resource_isolation = false;
-
-  void AddDefaultLabels(const std::string &self_node_id);
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler,

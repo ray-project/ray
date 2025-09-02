@@ -28,9 +28,9 @@
 #include "mock/ray/core_worker/task_manager_interface.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
-#include "ray/common/test_util.h"
+#include "ray/common/test_utils.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/raylet_client/raylet_client.h"
+#include "ray/raylet_client/raylet_client_interface.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
@@ -689,7 +689,7 @@ TEST_F(NormalTaskSubmitterTest, TestCancellationWhileHandlingTaskFailure) {
   // GetWorkerFailureCause is called.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("oops")));
   // Cancel the task while GetWorkerFailureCause has not been completed.
-  ASSERT_TRUE(submitter.CancelTask(task, true, false).ok());
+  submitter.CancelTask(task, true, false);
   // Completing the GetWorkerFailureCause call. Check that the reply runs without error
   // and FailPendingTask is not called.
   ASSERT_TRUE(raylet_client->ReplyGetWorkerFailureCause());
@@ -1737,7 +1737,7 @@ TEST_F(NormalTaskSubmitterTest, TestKillExecutingTask) {
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
 
   // Try force kill, exiting the worker
-  ASSERT_TRUE(submitter.CancelTask(task, true, false).ok());
+  submitter.CancelTask(task, true, false);
   ASSERT_EQ(worker_client->kill_requests.front().intended_task_id(), task.TaskIdBinary());
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("workerdying"), true));
   ASSERT_TRUE(raylet_client->ReplyGetWorkerFailureCause());
@@ -1754,7 +1754,7 @@ TEST_F(NormalTaskSubmitterTest, TestKillExecutingTask) {
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
 
   // Try non-force kill, worker returns normally
-  ASSERT_TRUE(submitter.CancelTask(task, false, false).ok());
+  submitter.CancelTask(task, false, false);
   ASSERT_TRUE(worker_client->ReplyPushTask());
   ASSERT_EQ(worker_client->kill_requests.front().intended_task_id(), task.TaskIdBinary());
   ASSERT_EQ(worker_client->callbacks.size(), 0);
@@ -1775,7 +1775,7 @@ TEST_F(NormalTaskSubmitterTest, TestKillPendingTask) {
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
-  ASSERT_TRUE(submitter.CancelTask(task, true, false).ok());
+  submitter.CancelTask(task, true, false);
   ASSERT_EQ(worker_client->kill_requests.size(), 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
@@ -1802,7 +1802,7 @@ TEST_F(NormalTaskSubmitterTest, TestKillResolvingTask) {
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
   ASSERT_EQ(task_manager->num_inlined_dependencies, 0);
-  ASSERT_TRUE(submitter.CancelTask(task, true, false).ok());
+  submitter.CancelTask(task, true, false);
   auto data = GenerateRandomObject();
   store->Put(*data, obj1);
   WaitForObjectIdInMemoryStore(*store, obj1);
@@ -1840,7 +1840,7 @@ TEST_F(NormalTaskSubmitterTest, TestCancelBeforeAfterQueueGeneratorForResubmit) 
   TaskSpecification task = BuildEmptyTaskSpec();
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
-  ASSERT_TRUE(submitter.CancelTask(task, /*force_kill=*/false, /*recursive=*/true).ok());
+  submitter.CancelTask(task, /*force_kill=*/false, /*recursive=*/true);
   ASSERT_FALSE(submitter.QueueGeneratorForResubmit(task));
   worker_client->ReplyCancelTask();
   ASSERT_TRUE(submitter.QueueGeneratorForResubmit(task));
@@ -1858,7 +1858,7 @@ TEST_F(NormalTaskSubmitterTest, TestCancelBeforeAfterQueueGeneratorForResubmit) 
   ASSERT_TRUE(submitter.SubmitTask(task2).ok());
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
   ASSERT_TRUE(submitter.QueueGeneratorForResubmit(task2));
-  ASSERT_TRUE(submitter.CancelTask(task2, /*force_kill=*/false, /*recursive=*/true).ok());
+  submitter.CancelTask(task2, /*force_kill=*/false, /*recursive=*/true);
   ASSERT_TRUE(worker_client->ReplyPushTask());
   worker_client->ReplyCancelTask(Status::OK(),
                                  /*attempt_succeeded=*/true,

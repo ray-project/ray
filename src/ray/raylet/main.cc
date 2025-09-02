@@ -25,6 +25,7 @@
 #include "nlohmann/json.hpp"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/cgroup/cgroup_manager.h"
+#include "ray/common/constants.h"
 #include "ray/common/id.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/ray_config.h"
@@ -34,6 +35,7 @@
 #include "ray/raylet/local_object_manager.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/raylet.h"
+#include "ray/raylet_client/raylet_client.h"
 #include "ray/stats/stats.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
@@ -498,7 +500,12 @@ int main(int argc, char *argv[]) {
                    << ", object_chunk_size = " << object_manager_config.object_chunk_size;
     RAY_LOG(INFO).WithField(raylet_node_id) << "Setting node ID";
 
-    node_manager_config.AddDefaultLabels(raylet_node_id.Hex());
+    std::vector<std::string> default_keys = {kLabelKeyNodeID};
+    for (const auto &key : default_keys) {
+      RAY_CHECK(!node_manager_config.labels.contains(key))
+          << "The label key name " << key << " should never be set by the user.";
+    }
+    node_manager_config.labels[kLabelKeyNodeID] = raylet_node_id.Hex();
 
     worker_pool = std::make_unique<ray::raylet::WorkerPool>(
         main_service,
@@ -579,10 +586,10 @@ int main(int argc, char *argv[]) {
         *gcs_client,
         core_worker_subscriber.get(),
         worker_rpc_pool.get(),
-        [&](const ObjectID &obj_id, const ray::rpc::ErrorType &error_type) {
+        [&](const ray::ObjectID &obj_id, const ray::rpc::ErrorType &error_type) {
           ray::rpc::ObjectReference ref;
           ref.set_object_id(obj_id.Binary());
-          node_manager->MarkObjectsAsFailed(error_type, {ref}, JobID::Nil());
+          node_manager->MarkObjectsAsFailed(error_type, {ref}, ray::JobID::Nil());
         });
 
     object_manager = std::make_unique<ray::ObjectManager>(
@@ -592,7 +599,7 @@ int main(int argc, char *argv[]) {
         *gcs_client,
         object_directory.get(),
         /*restore_spilled_object=*/
-        [&](const ObjectID &object_id,
+        [&](const ray::ObjectID &object_id,
             int64_t object_size,
             const std::string &object_url,
             std::function<void(const ray::Status &)> callback) {
@@ -600,7 +607,7 @@ int main(int argc, char *argv[]) {
               object_id, object_size, object_url, std::move(callback));
         },
         /*get_spilled_object_url=*/
-        [&](const ObjectID &object_id) {
+        [&](const ray::ObjectID &object_id) {
           return local_object_manager->GetLocalSpilledObjectURL(object_id);
         },
         /*spill_objects_callback=*/
@@ -625,10 +632,12 @@ int main(int argc, char *argv[]) {
           node_manager->HandleObjectLocal(object_info);
         },
         /*delete_object_callback=*/
-        [&](const ObjectID &object_id) { node_manager->HandleObjectMissing(object_id); },
+        [&](const ray::ObjectID &object_id) {
+          node_manager->HandleObjectMissing(object_id);
+        },
         /*pin_object=*/
-        [&](const ObjectID &object_id) {
-          std::vector<ObjectID> object_ids = {object_id};
+        [&](const ray::ObjectID &object_id) {
+          std::vector<ray::ObjectID> object_ids = {object_id};
           std::vector<std::unique_ptr<ray::RayObject>> results;
           std::unique_ptr<ray::RayObject> result;
           if (node_manager->GetObjectsFromPlasma(object_ids, &results) &&
@@ -638,10 +647,10 @@ int main(int argc, char *argv[]) {
           return result;
         },
         /*fail_pull_request=*/
-        [&](const ObjectID &object_id, ray::rpc::ErrorType error_type) {
+        [&](const ray::ObjectID &object_id, ray::rpc::ErrorType error_type) {
           ray::rpc::ObjectReference ref;
           ref.set_object_id(object_id.Binary());
-          node_manager->MarkObjectsAsFailed(error_type, {ref}, JobID::Nil());
+          node_manager->MarkObjectsAsFailed(error_type, {ref}, ray::JobID::Nil());
         });
 
     local_object_manager = std::make_unique<ray::raylet::LocalObjectManager>(
@@ -658,12 +667,12 @@ int main(int argc, char *argv[]) {
         RayConfig::instance().is_external_storage_type_fs(),
         /*max_fused_object_count*/ RayConfig::instance().max_fused_object_count(),
         /*on_objects_freed*/
-        [&](const std::vector<ObjectID> &object_ids) {
+        [&](const std::vector<ray::ObjectID> &object_ids) {
           object_manager->FreeObjects(object_ids,
                                       /*local_only=*/false);
         },
         /*is_plasma_object_spillable*/
-        [&](const ObjectID &object_id) {
+        [&](const ray::ObjectID &object_id) {
           return object_manager->IsPlasmaObjectSpillable(object_id);
         },
         /*core_worker_subscriber_=*/core_worker_subscriber.get(),
@@ -678,7 +687,7 @@ int main(int argc, char *argv[]) {
         node_manager_config.resource_config.GetResourceMap(),
         /*is_node_available_fn*/
         [&](ray::scheduling::NodeID id) {
-          return gcs_client->Nodes().Get(NodeID::FromBinary(id.Binary())) != nullptr;
+          return gcs_client->Nodes().Get(ray::NodeID::FromBinary(id.Binary())) != nullptr;
         },
         /*get_used_object_store_memory*/
         [&]() {
@@ -701,7 +710,7 @@ int main(int argc, char *argv[]) {
         /*labels*/
         node_manager_config.labels);
 
-    auto get_node_info_func = [&](const NodeID &id) {
+    auto get_node_info_func = [&](const ray::NodeID &id) {
       return gcs_client->Nodes().Get(id);
     };
     auto announce_infeasible_lease = [](const ray::RayLease &lease) {
@@ -758,7 +767,7 @@ int main(int argc, char *argv[]) {
         get_node_info_func,
         *worker_pool,
         leased_workers,
-        [&](const std::vector<ObjectID> &object_ids,
+        [&](const std::vector<ray::ObjectID> &object_ids,
             std::vector<std::unique_ptr<ray::RayObject>> *results) {
           return node_manager->GetObjectsFromPlasma(object_ids, results);
         },
@@ -771,7 +780,7 @@ int main(int argc, char *argv[]) {
                                                            announce_infeasible_lease,
                                                            *local_lease_manager);
 
-    auto raylet_client_factory = [&](const NodeID &id) {
+    auto raylet_client_factory = [&](const ray::NodeID &id) {
       const ray::rpc::GcsNodeInfo *node_info = gcs_client->Nodes().Get(id);
       RAY_CHECK(node_info) << "No GCS info for node " << id;
       auto addr = ray::rpc::RayletClientPool::GenerateRayletAddress(
@@ -828,7 +837,7 @@ int main(int argc, char *argv[]) {
         {ray::stats::VersionKey, kRayVersion},
         {ray::stats::NodeAddressKey, node_ip_address},
         {ray::stats::SessionNameKey, session_name}};
-    ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
+    ray::stats::Init(global_tags, metrics_agent_port, ray::WorkerID::Nil());
     metrics_agent_client = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
         "127.0.0.1", metrics_agent_port, main_service, *client_call_manager);
     metrics_agent_client->WaitForServerReady(
