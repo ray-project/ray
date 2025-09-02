@@ -334,3 +334,11 @@ ray_cc_library(
     srcs = ["source_location.cc"],
     hdrs = ["source_location.h"],
 )
+
+ray_cc_library(
+    name = "gcs_callbacks",
+    hdrs = ["gcs_callbacks.h"],
+    deps = [
+        "//src/ray/common:status",
+    ],
+)
