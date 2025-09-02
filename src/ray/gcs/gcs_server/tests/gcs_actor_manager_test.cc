@@ -179,8 +179,8 @@ class GcsActorManagerTest : public ::testing::Test {
     while (io_service_.poll_one()) {
       continue;
     }
-    auto request = GenRegisterActorRequest(
-        job_id, max_restarts, detached, name, ray_namespace);
+    auto request =
+        GenRegisterActorRequest(job_id, max_restarts, detached, name, ray_namespace);
     auto status = gcs_actor_manager_->RegisterActor(request, [](const Status &) {});
     io_service_.run_one();
     io_service_.run_one();
@@ -596,9 +596,9 @@ TEST_F(GcsActorManagerTest, TestActorWithEmptyName) {
   // Gen `CreateActorRequest` with an empty name.
   // (name,actor_id) => ("", actor_id_1)
   auto request1 = GenRegisterActorRequest(job_id,
-                                                  /*max_restarts=*/0,
-                                                  /*detached=*/true,
-                                                  /*name=*/"");
+                                          /*max_restarts=*/0,
+                                          /*detached=*/true,
+                                          /*name=*/"");
 
   Status status = gcs_actor_manager_->RegisterActor(request1, [](const Status &) {});
   io_service_.run_one();
@@ -611,9 +611,9 @@ TEST_F(GcsActorManagerTest, TestActorWithEmptyName) {
   // Gen another `CreateActorRequest` with an empty name.
   // (name,actor_id) => ("", actor_id_2)
   auto request2 = GenRegisterActorRequest(job_id,
-                                                  /*max_restarts=*/0,
-                                                  /*detached=*/true,
-                                                  /*name=*/"");
+                                          /*max_restarts=*/0,
+                                          /*detached=*/true,
+                                          /*name=*/"");
   status = gcs_actor_manager_->RegisterActor(request2, [](const Status &) {});
   io_service_.run_one();
   // Ensure successful registration.
@@ -625,10 +625,10 @@ TEST_F(GcsActorManagerTest, TestNamedActors) {
   auto job_id_2 = JobID::FromInt(2);
 
   auto request1 = GenRegisterActorRequest(job_id_1,
-                                                  /*max_restarts=*/0,
-                                                  /*detached=*/true,
-                                                  /*name=*/"actor1",
-                                                  /*ray_namespace=*/"test_named_actor");
+                                          /*max_restarts=*/0,
+                                          /*detached=*/true,
+                                          /*name=*/"actor1",
+                                          /*ray_namespace=*/"test_named_actor");
   Status status = gcs_actor_manager_->RegisterActor(request1, [](const Status &) {});
   io_service_.run_one();
   ASSERT_TRUE(status.ok());
@@ -636,10 +636,10 @@ TEST_F(GcsActorManagerTest, TestNamedActors) {
             request1.task_spec().actor_creation_task_spec().actor_id());
 
   auto request2 = GenRegisterActorRequest(job_id_1,
-                                                  /*max_restarts=*/0,
-                                                  /*detached=*/true,
-                                                  /*name=*/"actor2",
-                                                  /*ray_namesapce=*/"test_named_actor");
+                                          /*max_restarts=*/0,
+                                          /*detached=*/true,
+                                          /*name=*/"actor2",
+                                          /*ray_namesapce=*/"test_named_actor");
   status = gcs_actor_manager_->RegisterActor(request2, [](const Status &) {});
   io_service_.run_one();
   ASSERT_TRUE(status.ok());
@@ -652,10 +652,10 @@ TEST_F(GcsActorManagerTest, TestNamedActors) {
 
   // Check that naming collisions return Status::AlreadyExists.
   auto request3 = GenRegisterActorRequest(job_id_1,
-                                                  /*max_restarts=*/0,
-                                                  /*detached=*/true,
-                                                  /*name=*/"actor2",
-                                                  /*ray_namesapce=*/"test_named_actor");
+                                          /*max_restarts=*/0,
+                                          /*detached=*/true,
+                                          /*name=*/"actor2",
+                                          /*ray_namesapce=*/"test_named_actor");
   status = gcs_actor_manager_->RegisterActor(request3, [](const Status &) {});
   io_service_.run_one();
   ASSERT_TRUE(status.IsAlreadyExists());
@@ -664,10 +664,10 @@ TEST_F(GcsActorManagerTest, TestNamedActors) {
 
   // Check that naming collisions are enforced across JobIDs.
   auto request4 = GenRegisterActorRequest(job_id_2,
-                                                  /*max_restarts=*/0,
-                                                  /*detached=*/true,
-                                                  /*name=*/"actor2",
-                                                  /*ray_namesapce=*/"test_named_actor");
+                                          /*max_restarts=*/0,
+                                          /*detached=*/true,
+                                          /*name=*/"actor2",
+                                          /*ray_namesapce=*/"test_named_actor");
   status = gcs_actor_manager_->RegisterActor(request4, [](const Status &) {});
   io_service_.run_one();
   ASSERT_TRUE(status.IsAlreadyExists());
@@ -846,9 +846,9 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionNotHappendWhenReconstructed) {
   // cleaned.
   const auto job_id_2 = JobID::FromInt(2);
   auto request2 = GenRegisterActorRequest(job_id_2,
-                                                  /*max_restarts=*/0,
-                                                  /*detached=*/true,
-                                                  /*name=*/"actor");
+                                          /*max_restarts=*/0,
+                                          /*detached=*/true,
+                                          /*name=*/"actor");
   status = gcs_actor_manager_->RegisterActor(request2, [](const Status &) {});
   io_service_.run_one();
   ASSERT_TRUE(status.IsAlreadyExists());
@@ -1109,9 +1109,9 @@ TEST_F(GcsActorManagerTest, TestRayNamespace) {
   job_namespace_table_[job_id_2] = second_namespace;
 
   auto request1 = GenRegisterActorRequest(job_id_1,
-                                                  /*max_restarts=*/0,
-                                                  /*detached=*/true,
-                                                  /*name=*/"actor");
+                                          /*max_restarts=*/0,
+                                          /*detached=*/true,
+                                          /*name=*/"actor");
   Status status = gcs_actor_manager_->RegisterActor(request1, [](const Status &) {});
   ASSERT_TRUE(status.ok());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor", "test").Binary(),
@@ -1119,10 +1119,10 @@ TEST_F(GcsActorManagerTest, TestRayNamespace) {
   io_service_.run_one();
 
   auto request2 = GenRegisterActorRequest(job_id_2,
-                                                  /*max_restarts=*/0,
-                                                  /*detached=*/true,
-                                                  /*name=*/"actor",
-                                                  second_namespace);
+                                          /*max_restarts=*/0,
+                                          /*detached=*/true,
+                                          /*name=*/"actor",
+                                          second_namespace);
   // Create a second actor of the same name. Its job id belongs to a different
   // namespace though.
   status = gcs_actor_manager_->RegisterActor(request2, [](const Status &) {});
@@ -1135,10 +1135,10 @@ TEST_F(GcsActorManagerTest, TestRayNamespace) {
   io_service_.run_one();
 
   auto request3 = GenRegisterActorRequest(job_id_3,
-                                                  /*max_restarts=*/0,
-                                                  /*detached=*/true,
-                                                  /*name=*/"actor",
-                                                  /*ray_namespace=*/"test");
+                                          /*max_restarts=*/0,
+                                          /*detached=*/true,
+                                          /*name=*/"actor",
+                                          /*ray_namespace=*/"test");
   status = gcs_actor_manager_->RegisterActor(request3, [](const Status &) {});
   ASSERT_TRUE(status.IsAlreadyExists());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor", "test").Binary(),
@@ -1151,8 +1151,7 @@ TEST_F(GcsActorManagerTest, TestReuseActorNameInNamespace) {
   std::string ray_namespace = "actor_namespace";
 
   auto job_id_1 = JobID::FromInt(1);
-  auto request_1 =
-      GenRegisterActorRequest(job_id_1, 0, true, actor_name, ray_namespace);
+  auto request_1 = GenRegisterActorRequest(job_id_1, 0, true, actor_name, ray_namespace);
   auto actor_id_1 =
       ActorID::FromBinary(request_1.task_spec().actor_creation_task_spec().actor_id());
   Status status = gcs_actor_manager_->RegisterActor(request_1, [](const Status &) {});
@@ -1170,8 +1169,7 @@ TEST_F(GcsActorManagerTest, TestReuseActorNameInNamespace) {
   io_service_.run_one();
 
   auto job_id_2 = JobID::FromInt(2);
-  auto request_2 =
-      GenRegisterActorRequest(job_id_2, 0, true, actor_name, ray_namespace);
+  auto request_2 = GenRegisterActorRequest(job_id_2, 0, true, actor_name, ray_namespace);
   auto actor_id_2 =
       ActorID::FromBinary(request_2.task_spec().actor_creation_task_spec().actor_id());
   status = gcs_actor_manager_->RegisterActor(request_2, [](const Status &) {});
@@ -1212,8 +1210,8 @@ TEST_F(GcsActorManagerTest, TestGetAllActorInfoFilters) {
   auto num_other_actors = 3;
   for (int i = 0; i < num_other_actors; i++) {
     auto request1 = GenRegisterActorRequest(job_id_other,
-                                                    /*max_restarts=*/0,
-                                                    /*detached=*/false);
+                                            /*max_restarts=*/0,
+                                            /*detached=*/false);
     Status register_status =
         gcs_actor_manager_->RegisterActor(request1, [](const Status &) {});
     ASSERT_TRUE(register_status.ok());
@@ -1289,8 +1287,8 @@ TEST_F(GcsActorManagerTest, TestGetAllActorInfoLimit) {
   auto num_actors = 3;
   for (int i = 0; i < num_actors; i++) {
     auto request1 = GenRegisterActorRequest(job_id_1,
-                                                    /*max_restarts=*/0,
-                                                    /*detached=*/false);
+                                            /*max_restarts=*/0,
+                                            /*detached=*/false);
     Status status = gcs_actor_manager_->RegisterActor(request1, [](const Status &) {});
     ASSERT_TRUE(status.ok());
     io_service_.run_one();

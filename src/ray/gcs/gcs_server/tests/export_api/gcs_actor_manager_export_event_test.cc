@@ -227,8 +227,8 @@ class GcsActorManagerTest : public ::testing::Test {
       const std::string &name = "",
       const std::string &ray_namespace = "test") {
     std::promise<std::shared_ptr<gcs::GcsActor>> promise;
-    auto request = GenRegisterActorRequest(
-        job_id, max_restarts, detached, name, ray_namespace);
+    auto request =
+        GenRegisterActorRequest(job_id, max_restarts, detached, name, ray_namespace);
     // `DestroyActor` triggers some asynchronous operations.
     // If we register an actor after destroying an actor, it may result in multithreading
     // reading and writing the same variable. In order to avoid the problem of

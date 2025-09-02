@@ -448,8 +448,8 @@ TEST_F(GcsTaskManagerTest, TestHandleAddTaskEventBasic) {
   int32_t num_profile_events_dropped = 10;
   auto task_ids = GenTaskIDs(num_task_events);
   auto events = GenTaskEvents(task_ids, 0);
-  auto events_data = GenTaskEventsData(
-      events, num_profile_events_dropped, num_status_events_dropped);
+  auto events_data =
+      GenTaskEventsData(events, num_profile_events_dropped, num_status_events_dropped);
 
   auto reply = SyncAddTaskEventData(events_data);
 
@@ -1479,8 +1479,7 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents) {
                                 /* attempt_number */ 0,
                                 /* job_id */ 0,
                                 GenProfileEvents("event", 1, 1));
-    auto events_data =
-        GenTaskEventsData(events, num_profile_events_dropped_on_worker);
+    auto events_data = GenTaskEventsData(events, num_profile_events_dropped_on_worker);
     SyncAddTaskEventData(events_data);
   }
   {
@@ -1491,8 +1490,8 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents) {
                                 /* profile_events */ absl::nullopt,
                                 GenStateUpdate());
     auto events_data = GenTaskEventsData(events,
-                                                 /*num_profile_task_events_dropped*/ 0,
-                                                 num_status_events_dropped_on_worker);
+                                         /*num_profile_task_events_dropped*/ 0,
+                                         num_status_events_dropped_on_worker);
     SyncAddTaskEventData(events_data);
   }
 

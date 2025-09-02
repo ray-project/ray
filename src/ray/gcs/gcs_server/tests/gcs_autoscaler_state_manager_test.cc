@@ -202,12 +202,12 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
       int64_t draining_deadline_timestamp_ms = -1) {
     rpc::ResourcesData resources_data;
     FillResourcesData(resources_data,
-                              node_id,
-                              available_resources,
-                              total_resources,
-                              idle_ms,
-                              is_draining,
-                              draining_deadline_timestamp_ms);
+                      node_id,
+                      available_resources,
+                      total_resources,
+                      idle_ms,
+                      is_draining,
+                      draining_deadline_timestamp_ms);
     gcs_autoscaler_state_manager_->UpdateResourceLoadAndUsage(resources_data);
   }
 
@@ -502,15 +502,15 @@ TEST_F(GcsAutoscalerStateManagerTest, TestBasicResourceRequests) {
   {
     UpdateResourceLoads(node->node_id(),
                         {GenResourceDemand({{"CPU", 1}},
-                                                   /* nun_ready_queued */ 1,
-                                                   /* nun_infeasible */ 1,
-                                                   /* num_backlog */ 0,
-                                                   /* label_selectors */ {}),
+                                           /* nun_ready_queued */ 1,
+                                           /* nun_infeasible */ 1,
+                                           /* num_backlog */ 0,
+                                           /* label_selectors */ {}),
                          GenResourceDemand({{"CPU", 4}, {"GPU", 2}},
-                                                   /* num_ready_queued */ 0,
-                                                   /* num_infeasible */ 1,
-                                                   /* num_backlog */ 1,
-                                                   /* label_selectors */ {})});
+                                           /* num_ready_queued */ 0,
+                                           /* num_infeasible */ 1,
+                                           /* num_backlog */ 1,
+                                           /* label_selectors */ {})});
 
     const auto &state = GetClusterResourceStateSync();
     // Expect each pending resources shape to be num_infeasible + num_backlog.
@@ -543,14 +543,13 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsBasic) {
   {
     auto pg = PlacementGroupID::Of(job_id);
     EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
-        .WillOnce(
-            Return(GenPlacementGroupLoad({GenPlacementGroupTableData(
-                pg,
-                job_id,
-                {{{"CPU", 1}}, {{"GPU", 1}}},
-                {"", ""},
-                rpc::PlacementStrategy::STRICT_SPREAD,
-                rpc::PlacementGroupTableData::PENDING)})));
+        .WillOnce(Return(GenPlacementGroupLoad(
+            {GenPlacementGroupTableData(pg,
+                                        job_id,
+                                        {{{"CPU", 1}}, {{"GPU", 1}}},
+                                        {"", ""},
+                                        rpc::PlacementStrategy::STRICT_SPREAD,
+                                        rpc::PlacementGroupTableData::PENDING)})));
 
     auto state = GetClusterResourceStateSync();
     CheckGangResourceRequests(state,
@@ -564,14 +563,13 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsBasic) {
   {
     auto pg = PlacementGroupID::Of(job_id);
     EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
-        .WillOnce(
-            Return(GenPlacementGroupLoad({GenPlacementGroupTableData(
-                pg,
-                job_id,
-                {{{"CPU", 1}}, {{"GPU", 1}}},
-                {"", ""},
-                rpc::PlacementStrategy::STRICT_PACK,
-                rpc::PlacementGroupTableData::PENDING)})));
+        .WillOnce(Return(GenPlacementGroupLoad(
+            {GenPlacementGroupTableData(pg,
+                                        job_id,
+                                        {{{"CPU", 1}}, {{"GPU", 1}}},
+                                        {"", ""},
+                                        rpc::PlacementStrategy::STRICT_PACK,
+                                        rpc::PlacementGroupTableData::PENDING)})));
 
     auto state = GetClusterResourceStateSync();
     CheckGangResourceRequests(state,
@@ -599,18 +597,17 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsNonStrict) {
     EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
         .WillOnce(Return(GenPlacementGroupLoad(
             {GenPlacementGroupTableData(pg1,
-                                                job_id1,
-                                                {{{"CPU", 1}, {"GPU", 2}}},
-                                                {""},
-                                                rpc::PlacementStrategy::PACK,
-                                                rpc::PlacementGroupTableData::PENDING),
-             GenPlacementGroupTableData(
-                 pg2,
-                 job_id2,
-                 {{{"TPU", 1}}},
-                 {""},
-                 rpc::PlacementStrategy::SPREAD,
-                 rpc::PlacementGroupTableData::PENDING)})));
+                                        job_id1,
+                                        {{{"CPU", 1}, {"GPU", 2}}},
+                                        {""},
+                                        rpc::PlacementStrategy::PACK,
+                                        rpc::PlacementGroupTableData::PENDING),
+             GenPlacementGroupTableData(pg2,
+                                        job_id2,
+                                        {{{"TPU", 1}}},
+                                        {""},
+                                        rpc::PlacementStrategy::SPREAD,
+                                        rpc::PlacementGroupTableData::PENDING)})));
 
     const auto &state = GetClusterResourceStateSync();
     CheckGangResourceRequests(state,
@@ -632,14 +629,13 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsPartialReschedulin
     auto pg1 = PlacementGroupID::Of(job_id1);
 
     EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
-        .WillOnce(
-            Return(GenPlacementGroupLoad({GenPlacementGroupTableData(
-                pg1,
-                job_id1,
-                {{{"CPU_failed_1", 1}}, {{"CPU_success_2", 2}}},
-                {"", node->node_id()},
-                rpc::PlacementStrategy::STRICT_SPREAD,
-                rpc::PlacementGroupTableData::RESCHEDULING)})));
+        .WillOnce(Return(GenPlacementGroupLoad(
+            {GenPlacementGroupTableData(pg1,
+                                        job_id1,
+                                        {{{"CPU_failed_1", 1}}, {{"CPU_success_2", 2}}},
+                                        {"", node->node_id()},
+                                        rpc::PlacementStrategy::STRICT_SPREAD,
+                                        rpc::PlacementGroupTableData::RESCHEDULING)})));
 
     const auto &state = GetClusterResourceStateSync();
 
@@ -673,8 +669,8 @@ TEST_F(GcsAutoscalerStateManagerTest, TestClusterResourcesConstraint) {
 
   // Override it
   {
-    RequestClusterResourceConstraint(GenClusterResourcesConstraint(
-        {{{"CPU", 4}, {"GPU", 5}, {"TPU", 1}}}, {1}));
+    RequestClusterResourceConstraint(
+        GenClusterResourcesConstraint({{{"CPU", 4}, {"GPU", 5}, {"TPU", 1}}}, {1}));
     const auto &state = GetClusterResourceStateSync();
     ASSERT_EQ(state.cluster_resource_constraints_size(), 1);
     ASSERT_EQ(state.cluster_resource_constraints(0).resource_requests_size(), 1);
@@ -896,26 +892,26 @@ TEST_F(GcsAutoscalerStateManagerTest,
   {
     UpdateResourceLoads(node_1->node_id(),
                         {GenResourceDemand({{"GPU", 1}},
-                                                   /* nun_ready_queued */ 1,
-                                                   /* nun_infeasible */ 1,
-                                                   /* num_backlog */ 0,
-                                                   /* label_selectors */ {}),
+                                           /* nun_ready_queued */ 1,
+                                           /* nun_infeasible */ 1,
+                                           /* num_backlog */ 0,
+                                           /* label_selectors */ {}),
                          GenResourceDemand({{"CPU", 1}},
-                                                   /* nun_ready_queued */ 1,
-                                                   /* nun_infeasible */ 0,
-                                                   /* num_backlog */ 1,
-                                                   /* label_selectors */ {}),
+                                           /* nun_ready_queued */ 1,
+                                           /* nun_infeasible */ 0,
+                                           /* num_backlog */ 1,
+                                           /* label_selectors */ {}),
                          GenResourceDemand({{"CPU", 3}},
-                                                   /* num_ready_queued */ 0,
-                                                   /* num_infeasible */ 1,
-                                                   /* num_backlog */ 1,
-                                                   /* label_selectors */ {})});
+                                           /* num_ready_queued */ 0,
+                                           /* num_infeasible */ 1,
+                                           /* num_backlog */ 1,
+                                           /* label_selectors */ {})});
     UpdateResourceLoads(node_2->node_id(),
                         {GenResourceDemand({{"CPU", 2}},
-                                                   /* nun_ready_queued */ 1,
-                                                   /* nun_infeasible */ 0,
-                                                   /* num_backlog */ 1,
-                                                   /* label_selectors */ {})});
+                                           /* nun_ready_queued */ 1,
+                                           /* nun_infeasible */ 0,
+                                           /* num_backlog */ 1,
+                                           /* label_selectors */ {})});
   }
 
   // Update autoscaling state
@@ -959,26 +955,26 @@ TEST_F(GcsAutoscalerStateManagerTest,
   {
     UpdateResourceLoads(node_1->node_id(),
                         {GenResourceDemand({{"GPU", 1}},
-                                                   /* nun_ready_queued */ 1,
-                                                   /* nun_infeasible */ 1,
-                                                   /* num_backlog */ 0),
+                                           /* nun_ready_queued */ 1,
+                                           /* nun_infeasible */ 1,
+                                           /* num_backlog */ 0),
                          /* label_selectors */ {},
                          GenResourceDemand({{"CPU", 1}},
-                                                   /* nun_ready_queued */ 1,
-                                                   /* nun_infeasible */ 0,
-                                                   /* num_backlog */ 1),
+                                           /* nun_ready_queued */ 1,
+                                           /* nun_infeasible */ 0,
+                                           /* num_backlog */ 1),
                          /* label_selectors */ {},
                          GenResourceDemand({{"CPU", 3}},
-                                                   /* num_ready_queued */ 0,
-                                                   /* num_infeasible */ 1,
-                                                   /* num_backlog */ 1,
-                                                   /* label_selectors */ {})});
+                                           /* num_ready_queued */ 0,
+                                           /* num_infeasible */ 1,
+                                           /* num_backlog */ 1,
+                                           /* label_selectors */ {})});
     UpdateResourceLoads(node_2->node_id(),
                         {GenResourceDemand({{"CPU", 2}},
-                                                   /* nun_ready_queued */ 1,
-                                                   /* nun_infeasible */ 0,
-                                                   /* num_backlog */ 1,
-                                                   /* label_selectors */ {})});
+                                           /* nun_ready_queued */ 1,
+                                           /* nun_infeasible */ 0,
+                                           /* num_backlog */ 1,
+                                           /* label_selectors */ {})});
   }
 
   // Update autoscaling state
@@ -1062,10 +1058,10 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGetPendingResourceRequestsWithLabelSel
     // Simulate an infeasible request with a label selector
     UpdateResourceLoads(node->node_id(),
                         {GenResourceDemand({{"CPU", 2}},
-                                                   /*ready=*/0,
-                                                   /*infeasible=*/1,
-                                                   /*backlog=*/0,
-                                                   {selector})});
+                                           /*ready=*/0,
+                                           /*infeasible=*/1,
+                                           /*backlog=*/0,
+                                           {selector})});
   }
 
   // Validate the cluster state includes the generated pending request

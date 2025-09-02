@@ -32,7 +32,7 @@ namespace {
 BundleSpecification GenBundleCreation(
     const PlacementGroupID &placement_group_id,
     const int bundle_index,
-    absl::flat_hash_map<std::string, double> &unit_resource) {
+    const absl::flat_hash_map<std::string, double> &unit_resource) {
   rpc::Bundle bundle;
   auto mutable_bundle_id = bundle.mutable_bundle_id();
   mutable_bundle_id->set_bundle_index(bundle_index);
@@ -46,7 +46,7 @@ BundleSpecification GenBundleCreation(
 
 std::vector<std::shared_ptr<const BundleSpecification>> GenBundleSpecifications(
     const PlacementGroupID &placement_group_id,
-    absl::flat_hash_map<std::string, double> &unit_resource,
+    const absl::flat_hash_map<std::string, double> &unit_resource,
     int bundles_size = 1) {
   std::vector<std::shared_ptr<const BundleSpecification>> bundle_specs;
   for (int i = 0; i < bundles_size; i++) {

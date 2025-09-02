@@ -171,8 +171,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
   // Add 100 jobs.
   for (int i = 0; i < 100; ++i) {
     auto job_id = JobID::FromInt(i);
-    auto add_job_request =
-        GenAddJobRequest(job_id, "namespace_" + std::to_string(i));
+    auto add_job_request = GenAddJobRequest(job_id, "namespace_" + std::to_string(i));
     rpc::AddJobReply empty_reply;
     std::promise<bool> promise;
     gcs_job_manager_->HandleAddJob(
@@ -203,8 +202,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
   // API.")
   auto job_api_job_id = JobID::FromInt(100);
   std::string submission_id = "submission_id_100";
-  auto add_job_request =
-      GenAddJobRequest(job_api_job_id, "namespace_100", submission_id);
+  auto add_job_request = GenAddJobRequest(job_api_job_id, "namespace_100", submission_id);
   rpc::AddJobReply empty_reply;
   std::promise<bool> promise;
   gcs_job_manager_->HandleAddJob(
@@ -307,8 +305,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
   // Add another job with the *same* submission ID. This can happen if the entrypoint
   // script calls ray.init() multiple times.
   auto job_id2 = JobID::FromInt(2);
-  auto add_job_request2 =
-      GenAddJobRequest(job_id2, "namespace_100", submission_id);
+  auto add_job_request2 = GenAddJobRequest(job_id2, "namespace_100", submission_id);
   std::promise<bool> promise4;
   gcs_job_manager_->HandleAddJob(
       *add_job_request2,
@@ -344,8 +341,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithFilter) {
   std::promise<bool> promise1;
   std::promise<bool> promise2;
 
-  auto add_job_request1 =
-      GenAddJobRequest(job_id1, "namespace_1", "submission_1");
+  auto add_job_request1 = GenAddJobRequest(job_id1, "namespace_1", "submission_1");
   gcs_job_manager_->HandleAddJob(
       *add_job_request1,
       &empty_reply,
@@ -354,8 +350,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithFilter) {
       });
   promise1.get_future().get();
 
-  auto add_job_request2 =
-      GenAddJobRequest(job_id2, "namespace_2", "submission_2");
+  auto add_job_request2 = GenAddJobRequest(job_id2, "namespace_2", "submission_2");
   gcs_job_manager_->HandleAddJob(
       *add_job_request2,
       &empty_reply,

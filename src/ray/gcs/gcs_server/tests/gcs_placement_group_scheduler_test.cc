@@ -378,8 +378,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestSpreadStrategyResourceCheck) {
     absl::MutexLock lock(&placement_group_requests_mutex_);
     success_placement_groups_.emplace_back(std::move(placement_group));
   };
-  auto request =
-      GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 3, 2);
+  auto request = GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 3, 2);
   auto placement_group = std::make_shared<GcsPlacementGroup>(request, "", counter_);
   scheduler_->ScheduleUnplacedBundles(
       SchedulePgRequest{placement_group, failure_handler, success_handler});
@@ -485,8 +484,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictPackStrategyResourceCheck) {
     absl::MutexLock lock(&placement_group_requests_mutex_);
     success_placement_groups_.emplace_back(std::move(placement_group));
   };
-  auto request =
-      GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::STRICT_PACK);
+  auto request = GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::STRICT_PACK);
   auto placement_group = std::make_shared<GcsPlacementGroup>(request, "", counter_);
   scheduler_->ScheduleUnplacedBundles(
       SchedulePgRequest{placement_group, failure_handler, success_handler});
@@ -689,8 +687,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPackStrategyLargeBundlesScheduling) {
 
   // Schedule placement group which has large bundles.
   // One node does not have enough resources, so we will divide bundles to two nodes.
-  auto request =
-      GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::PACK, 15);
+  auto request = GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::PACK, 15);
   auto placement_group = std::make_shared<GcsPlacementGroup>(request, "", counter_);
   scheduler_->ScheduleUnplacedBundles(
       SchedulePgRequest{placement_group, failure_handler, success_handler});
@@ -717,8 +714,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictSpreadRescheduleWhenNodeDead) {
   }
   ASSERT_EQ(3, gcs_node_manager_->GetAllAliveNodes().size());
 
-  auto create_placement_group_request = GenCreatePlacementGroupRequest(
-      "pg1", rpc::PlacementStrategy::STRICT_SPREAD);
+  auto create_placement_group_request =
+      GenCreatePlacementGroupRequest("pg1", rpc::PlacementStrategy::STRICT_SPREAD);
   auto placement_group =
       std::make_shared<GcsPlacementGroup>(create_placement_group_request, "", counter_);
 
@@ -801,8 +798,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictSpreadStrategyResourceCheck) {
     absl::MutexLock lock(&placement_group_requests_mutex_);
     success_placement_groups_.emplace_back(std::move(placement_group));
   };
-  auto request = GenCreatePlacementGroupRequest(
-      "", rpc::PlacementStrategy::STRICT_SPREAD, 2, 2);
+  auto request =
+      GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::STRICT_SPREAD, 2, 2);
   auto placement_group = std::make_shared<GcsPlacementGroup>(request, "", counter_);
   scheduler_->ScheduleUnplacedBundles(
       SchedulePgRequest{placement_group, failure_handler, success_handler});
@@ -836,8 +833,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestBundleLocationIndex) {
   /// Generate data.
   const auto node1 = NodeID::FromRandom();
   const auto node2 = NodeID::FromRandom();
-  rpc::CreatePlacementGroupRequest request_pg1 =
-      GenCreatePlacementGroupRequest("pg1");
+  rpc::CreatePlacementGroupRequest request_pg1 = GenCreatePlacementGroupRequest("pg1");
   const auto pg1_id = PlacementGroupID::FromBinary(
       request_pg1.placement_group_spec().placement_group_id());
   const std::shared_ptr<BundleSpecification> bundle_node1_pg1 =
@@ -853,8 +849,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestBundleLocationIndex) {
   (*bundle_locations_pg1)
       .emplace(bundle_node2_pg1->BundleId(), std::make_pair(node2, bundle_node2_pg1));
 
-  rpc::CreatePlacementGroupRequest request_pg2 =
-      GenCreatePlacementGroupRequest("pg2");
+  rpc::CreatePlacementGroupRequest request_pg2 = GenCreatePlacementGroupRequest("pg2");
   const auto pg2_id = PlacementGroupID::FromBinary(
       request_pg2.placement_group_spec().placement_group_id());
   const std::shared_ptr<BundleSpecification> bundle_node1_pg2 =
@@ -1284,8 +1279,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPrepareFromDeadNodes) {
   ASSERT_TRUE(EnsureClusterResourcesAreNotInUse());
 
   // Create a placement group.
-  auto placement_group = std::make_shared<GcsPlacementGroup>(
-      GenCreatePlacementGroupRequest(), "", counter_);
+  auto placement_group =
+      std::make_shared<GcsPlacementGroup>(GenCreatePlacementGroupRequest(), "", counter_);
 
   // Schedule the unplaced bundles of the placement_group.
   ScheduleUnplacedBundles(placement_group);
@@ -1312,8 +1307,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPrepareFromNodeWithInsufficientResour
   ASSERT_TRUE(EnsureClusterResourcesAreNotInUse());
 
   // Create a placement group.
-  auto placement_group = std::make_shared<GcsPlacementGroup>(
-      GenCreatePlacementGroupRequest(), "", counter_);
+  auto placement_group =
+      std::make_shared<GcsPlacementGroup>(GenCreatePlacementGroupRequest(), "", counter_);
 
   // Schedule the unplaced bundles of the placement_group.
   ScheduleUnplacedBundles(placement_group);
@@ -1340,8 +1335,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestCommitToDeadNodes) {
   ASSERT_TRUE(EnsureClusterResourcesAreNotInUse());
 
   // Create a placement group.
-  auto placement_group = std::make_shared<GcsPlacementGroup>(
-      GenCreatePlacementGroupRequest(), "", counter_);
+  auto placement_group =
+      std::make_shared<GcsPlacementGroup>(GenCreatePlacementGroupRequest(), "", counter_);
 
   // Schedule the unplaced bundles of the placement_group.
   ScheduleUnplacedBundles(placement_group);

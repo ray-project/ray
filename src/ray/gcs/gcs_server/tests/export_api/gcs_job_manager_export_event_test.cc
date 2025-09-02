@@ -111,8 +111,7 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
 
   auto job_api_job_id = JobID::FromInt(100);
   std::string submission_id = "submission_id_100";
-  auto add_job_request =
-      GenAddJobRequest(job_api_job_id, "namespace_100", submission_id);
+  auto add_job_request = GenAddJobRequest(job_api_job_id, "namespace_100", submission_id);
   rpc::AddJobReply empty_reply;
   std::promise<bool> promise;
   gcs_job_manager.HandleAddJob(
@@ -124,8 +123,7 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
   promise.get_future().get();
 
   std::vector<std::string> vc;
-  ReadContentFromFile(vc,
-                              log_dir_ + "/export_events/event_EXPORT_DRIVER_JOB.log");
+  ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_DRIVER_JOB.log");
   ASSERT_EQ((int)vc.size(), 1);
   json event_data = json::parse(vc[0])["event_data"].get<json>();
   ASSERT_EQ(event_data["is_dead"], false);
@@ -144,8 +142,7 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
   job_finished_promise.get_future().get();
 
   vc.clear();
-  ReadContentFromFile(vc,
-                              log_dir_ + "/export_events/event_EXPORT_DRIVER_JOB.log");
+  ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_DRIVER_JOB.log");
   ASSERT_EQ((int)vc.size(), 2);
   event_data = json::parse(vc[1])["event_data"].get<json>();
   ASSERT_EQ(event_data["is_dead"], true);
