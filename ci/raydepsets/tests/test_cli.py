@@ -559,6 +559,65 @@ depsets:
             with self.assertRaises(KeyError):
                 _get_depset(manager.config.depsets, "build_args_test_depset_py311")
 
+    def test_compile_with_packages(self):
+        compiled_file = Path(
+            _runfiles.Rlocation(
+                f"{_REPO_NAME}/ci/raydepsets/tests/test_data/requirements_compiled_test.txt"
+            )
+        )
+        output_file = Path(
+            _runfiles.Rlocation(
+                f"{_REPO_NAME}/ci/raydepsets/tests/test_data/requirements_compiled_test_packages.txt"
+            )
+        )
+        shutil.copy(compiled_file, output_file)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                packages=["emoji==2.9.0", "pyperclip==1.6.0"],
+                append_flags=["--no-annotate", "--no-header"],
+                name="packages_test_depset",
+                output="requirements_compiled_test_packages.txt",
+            )
+            output_file = Path(tmpdir) / "requirements_compiled_test_packages.txt"
+            output_text = output_file.read_text()
+            output_file_valid = Path(tmpdir) / "requirements_compiled_test.txt"
+            output_text_valid = output_file_valid.read_text()
+            assert output_text == output_text_valid
+
+    def test_compile_with_packages_and_requirements(self):
+        compiled_file = Path(
+            _runfiles.Rlocation(
+                f"{_REPO_NAME}/ci/raydepsets/tests/test_data/requirements_compiled_test.txt"
+            )
+        )
+        output_file = Path(
+            _runfiles.Rlocation(
+                f"{_REPO_NAME}/ci/raydepsets/tests/test_data/requirements_compiled_test_packages.txt"
+            )
+        )
+        shutil.copy(compiled_file, output_file)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                packages=["emoji==2.9.0", "pyperclip==1.6.0"],
+                requirements=["requirements_test.txt"],
+                append_flags=["--no-annotate", "--no-header"],
+                name="packages_test_depset",
+                output="requirements_compiled_test_packages.txt",
+            )
+            output_file = Path(tmpdir) / "requirements_compiled_test_packages.txt"
+            output_text = output_file.read_text()
+            output_file_valid = Path(tmpdir) / "requirements_compiled_test.txt"
+            output_text_valid = output_file_valid.read_text()
+            assert output_text == output_text_valid
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
