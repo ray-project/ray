@@ -14,6 +14,7 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <filesystem>
 #include <list>
 #include <memory>
 #include <string>
