@@ -301,8 +301,7 @@ def test_actor_repr_in_traceback(ray_start_regular):
 
 
 def test_unpickleable_stacktrace(shutdown_only):
-    expected_output = """Failed to deserialize exception. This typically occurs when the original exception class is not available, there are version incompatibilities, or the serialized data is corrupted.
-
+    expected_output = """Failed to deserialize exception. Refer to https://docs.python.org/3/library/pickle.html#what-can-be-pickled-and-unpickled to learn more.
 Original exception:
 ray.exceptions.RayTaskError: ray::f() (pid=XXX, ip=YYY)
   File "FILE", line ZZ, in f
