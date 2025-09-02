@@ -236,14 +236,20 @@ class _TorchBackend(Backend):
                     context = ray.train.get_context()
                     # Core PJRT settings
                     os.environ["PJRT_DEVICE"] = "CUDA"
-                    os.environ["PJRT_DIST_SERVICE_ADDR"] = coord
+                    # os.environ["PJRT_DIST_SERVICE_ADDR"] = coord
+
+
+                    # PJRT multiprocess rendezvous (new-style names)
+                    os.environ["PJRT_COORDINATOR_ADDRESS"] = coord
+                    os.environ["PJRT_NUM_PROCESSES"] = str(context.get_world_size())
+                    os.environ["PJRT_PROCESS_INDEX"] = str(context.get_world_rank())
                     
                     # CRITICAL: Use Ray's world size and rank for consistency
-                    os.environ["PJRT_WORLD_SIZE"] = str(context.get_world_size())
-                    os.environ["PJRT_LOCAL_PROCESS_RANK"] = str(context.get_world_rank())
+                    # os.environ["PJRT_WORLD_SIZE"] = str(context.get_world_size())
+                    # os.environ["PJRT_LOCAL_PROCESS_RANK"] = str(context.get_world_rank())
                     
                     # For multi-node setups
-                    os.environ["PJRT_LOCAL_PROCESS_COUNT"] = str(context.get_local_world_size())
+                    # os.environ["PJRT_LOCAL_PROCESS_COUNT"] = str(context.get_local_world_size())
                     os.environ["PJRT_NODE_ID"] = str(context.get_node_rank())
                     
                     # Additional XLA settings for GPU
