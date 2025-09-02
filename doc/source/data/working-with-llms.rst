@@ -74,17 +74,15 @@ Use the :class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfi
 
 .. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
     :language: python
-    :start-after: # Basic vLLM configuration
-    :end-before: # Create sample dataset
-    :dedent: 0
+    :start-after: __simple_config_example_start__
+    :end-before: __simple_config_example_end__
 
 For handling larger models, specify model parallelism.
 
 .. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
     :language: python
-    :start-after: # Model parallelism configuration
-    :end-before: # RunAI streamer configuration
-    :dedent: 0
+    :start-after: __parallel_config_example_start__
+    :end-before: __parallel_config_example_end__
 
 The underlying :class:`Processor <ray.data.llm.Processor>` object instantiates replicas of the vLLM engine and automatically
 configure parallel workers to handle model parallelism (for tensor parallelism and pipeline parallelism,
@@ -97,25 +95,22 @@ To optimize model loading, you can configure the `load_format` to `runai_streame
 
 .. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
     :language: python
-    :start-after: # RunAI streamer configuration
-    :end-before: # S3 hosted model configuration
-    :dedent: 0
+    :start-after: __runai_config_example_start__
+    :end-before: __runai_config_example_end__
 
 If your model is hosted on AWS S3, you can specify the S3 path in the `model_source` argument, and specify `load_format="runai_streamer"` in the `engine_kwargs` argument.
 
 .. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
     :language: python
-    :start-after: # S3 hosted model configuration
-    :end-before: # Multi-LoRA configuration
-    :dedent: 0
+    :start-after: __s3_config_example_start__
+    :end-before: __s3_config_example_end__
 
 To do multi-LoRA batch inference, you need to set LoRA related parameters in `engine_kwargs`. See :doc:`the vLLM with LoRA example</llm/examples/batch/vllm-with-lora>` for details.
 
 .. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
     :language: python
-    :start-after: # Multi-LoRA configuration
-    :end-before: # __basic_llm_example_end__
-    :dedent: 0
+    :start-after: __lora_config_example_start__
+    :end-before: __lora_config_example_end__
 
 .. _vision_language_model:
 

@@ -57,7 +57,6 @@ processor = build_llm_processor(
 
 ds = ray.data.from_items(["Start of the haiku is: Complete this for me..."])
 
-# Only run inference in documentation context, not when executed directly
 if __name__ != "__main__":
     ds = processor(ds)
     ds.show(limit=1)
@@ -88,7 +87,22 @@ config_with_token = vLLMEngineProcessorConfig(
 
 # Create sample dataset
 
+# __parallel_config_example_start__
 # Model parallelism configuration
+config = vLLMEngineProcessorConfig(
+    model_source="unsloth/Llama-3.1-8B-Instruct",
+    engine_kwargs={
+        "max_model_len": 16384,
+        "tensor_parallel_size": 2,
+        "pipeline_parallel_size": 2,
+        "enable_chunked_prefill": True,
+        "max_num_batched_tokens": 2048,
+    },
+    concurrency=1,
+    batch_size=32,
+)
+# __parallel_config_example_end__
+
 parallel_config = vLLMEngineProcessorConfig(
     model_source="unsloth/Llama-3.1-8B-Instruct",
     engine_kwargs={
@@ -102,7 +116,19 @@ parallel_config = vLLMEngineProcessorConfig(
     batch_size=32,
 )
 
+# __runai_config_example_start__
 # RunAI streamer configuration
+config = vLLMEngineProcessorConfig(
+    model_source="unsloth/Llama-3.1-8B-Instruct",
+    engine_kwargs={
+        "load_format": "runai_streamer",
+        "max_model_len": 16384,
+    },
+    concurrency=1,
+    batch_size=64,
+)
+# __runai_config_example_end__
+
 runai_config = vLLMEngineProcessorConfig(
     model_source="unsloth/Llama-3.1-8B-Instruct",
     engine_kwargs={
@@ -126,7 +152,21 @@ s3_config = vLLMEngineProcessorConfig(
 )
 # __s3_config_example_end__
 
+# __lora_config_example_start__
 # Multi-LoRA configuration
+config = vLLMEngineProcessorConfig(
+    model_source="unsloth/Llama-3.1-8B-Instruct",
+    engine_kwargs={
+        "enable_lora": True,
+        "max_lora_rank": 32,
+        "max_loras": 1,
+        "max_model_len": 16384,
+    },
+    concurrency=1,
+    batch_size=32,
+)
+# __lora_config_example_end__
+
 lora_config = vLLMEngineProcessorConfig(
     model_source="unsloth/Llama-3.1-8B-Instruct",
     engine_kwargs={
