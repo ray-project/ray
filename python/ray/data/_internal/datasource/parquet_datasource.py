@@ -213,14 +213,16 @@ class ParquetDatasource(Datasource):
             retryable_errors=DataContext.get_current().retried_io_errors,
         )
 
-        paths, file_sizes = zip(
-            *_list_files(
-                paths,
-                filesystem,
-                partition_filter=partition_filter,
-                file_extensions=file_extensions,
-            )
+        files_list = _list_files(
+            paths,
+            filesystem,
+            partition_filter=partition_filter,
+            file_extensions=file_extensions,
         )
+
+        paths, file_sizes = zip(
+            *files_list
+        ) if files_list else [], []
 
         if dataset_kwargs is not None:
             logger.warning(
