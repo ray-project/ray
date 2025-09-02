@@ -24,7 +24,7 @@ from ray.dashboard.modules.job.common import (
     JobInfoStorageClient,
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
-from ray.job_submission import JobStatus
+from ray.job_submission import JobStatus, JobErrorType
 from ray._common.network_utils import build_address
 
 import psutil
@@ -450,6 +450,7 @@ class JobSupervisor:
                         JobStatus.FAILED,
                         message=message,
                         driver_exit_code=return_code,
+                        error_type=JobErrorType.JOB_ENTRYPOINT_COMMAND_ERROR,
                     )
         except Exception:
             self._logger.error(
@@ -461,6 +462,7 @@ class JobSupervisor:
                     self._job_id,
                     JobStatus.FAILED,
                     message=traceback.format_exc(),
+                    error_type=JobErrorType.JOB_ENTRYPOINT_COMMAND_START_ERROR,
                 )
             except Exception:
                 self._logger.error(

@@ -6,6 +6,7 @@ import string
 import sys
 import tempfile
 import uuid
+import zipfile
 from filecmp import dircmp
 from pathlib import Path
 from shutil import copytree, make_archive, rmtree
@@ -13,8 +14,10 @@ from unittest.mock import MagicMock, patch
 import zipfile
 import ray
 
+
 import pytest
 
+import ray
 from ray._private.ray_constants import (
     KV_NAMESPACE_PACKAGE,
     RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
@@ -25,12 +28,13 @@ from ray._private.runtime_env.packaging import (
     Protocol,
     _dir_travel,
     _get_excludes,
+    _get_gitignore,
     _store_package_in_gcs,
     download_and_unpack_package,
     get_local_dir_from_uri,
     get_top_level_dir_from_compressed_package,
-    get_uri_for_file,
     get_uri_for_directory,
+    get_uri_for_file,
     get_uri_for_package,
     is_whl_uri,
     is_zip_uri,
@@ -38,7 +42,6 @@ from ray._private.runtime_env.packaging import (
     remove_dir_from_filepaths,
     unzip_package,
     upload_package_if_needed,
-    _get_gitignore,
     upload_package_to_gcs,
 )
 from ray.experimental.internal_kv import (
@@ -714,8 +717,8 @@ class TestDownloadAndUnpackPackage:
                 # Add a file to the zip file so we can verify the file was extracted.
                 zip.writestr("file.txt", "Hello, world!")
 
-            from urllib.request import pathname2url
             from urllib.parse import urljoin
+            from urllib.request import pathname2url
 
             # in windows, file_path = ///C:/Users/...
             # in linux, file_path = /tmp/...
