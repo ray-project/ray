@@ -345,13 +345,13 @@ ray_cc_library(
     hdrs = ["protobuf_utils.h"],
     deps = [
         ":constants",
-        ":ray_config",
-        "//src/ray/util:time",
         ":id",
+        ":ray_config",
         ":task_common",
         "//src/ray/protobuf:autoscaler_cc_proto",
         "//src/ray/protobuf:export_task_event_cc_proto",
         "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/util:time",
         "@com_google_absl//absl/time",
     ],
 )
