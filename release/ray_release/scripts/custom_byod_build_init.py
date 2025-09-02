@@ -16,10 +16,6 @@ from ray_release.exception import ReleaseTestConfigError, ReleaseTestCLIError
 from ray_release.logger import logger
 from ray_release.custom_byod_build_init_helper import create_custom_build_yaml
 
-DEFAULT_INSTALL_COMMANDS = [
-    "aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin 029272617770.dkr.ecr.us-west-2.amazonaws.com",
-]
-
 
 @click.command(
     help="Create a rayci yaml file for building custom BYOD images based on tests."
@@ -54,15 +50,23 @@ DEFAULT_INSTALL_COMMANDS = [
 )
 @click.option(
     "--frequency",
-    default="manual",
+    default=None,
     type=click.Choice(["manual", "nightly", "nightly-3x", "weekly"]),
     help="Run frequency of the test",
+)
+@click.option(
+    "--test-filters",
+    default=None,
+    type=str,
+    help="Test filters by prefix/regex.",
 )
 def main(
     test_collection_file: Tuple[str],
     run_jailed_tests: bool = False,
     run_unstable_tests: bool = False,
     global_config: str = "oss_config.yaml",
+    frequency: str = None,
+    test_filters: str = None,
 ):
     global_config_file = os.path.join(
         os.path.dirname(__file__), "..", "configs", global_config
@@ -70,9 +74,9 @@ def main(
     init_global_config(global_config_file)
     settings = get_pipeline_settings()
 
-    frequency = settings["frequency"]
+    frequency = frequency or settings["frequency"]
     prefer_smoke_tests = settings["prefer_smoke_tests"]
-    test_attr_regex_filters = settings["test_attr_regex_filters"]
+    test_filters = test_filters or settings["test_filters"]
 
     try:
         test_collection = read_and_validate_release_test_collection(
@@ -89,7 +93,7 @@ def main(
     filtered_tests = filter_tests(
         test_collection,
         frequency=frequency,
-        test_attr_regex_filters=test_attr_regex_filters,
+        test_filters=test_filters,
         prefer_smoke_tests=prefer_smoke_tests,
         run_jailed_tests=run_jailed_tests,
         run_unstable_tests=run_unstable_tests,
@@ -101,20 +105,7 @@ def main(
             "not return any tests to run. Adjust your filters."
         )
     tests = [test for test, _ in filtered_tests]
-    custom_byod_images = set()
-    for test in tests:
-        if not test.require_custom_byod_image():
-            continue
-        custom_byod_image_build = (
-            test.get_anyscale_byod_image(),
-            test.get_anyscale_base_byod_image(),
-            test.get_byod_post_build_script(),
-        )
-        logger.info(f"To be built: {custom_byod_image_build[0]}")
-        custom_byod_images.add(custom_byod_image_build)
-    create_custom_build_yaml(
-        ".buildkite/release/custom_byod_build.rayci.yml", list(custom_byod_images)
-    )
+    create_custom_build_yaml(".buildkite/release/custom_byod_build.rayci.yml", tests)
 
 
 if __name__ == "__main__":

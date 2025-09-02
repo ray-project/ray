@@ -1,21 +1,44 @@
 from typing import List, Tuple
 import yaml
 from ray_release.configs.global_config import get_global_config
+from ray_release.logger import logger
+from ray_release.test import Test
 
 
 def _generate_custom_build_step_key(image: str) -> str:
     # Buildkite step key cannot contain special characters, so they need to be replaced.
     # Buildkite also limits step key length to 80 characters.
-    return "custom_build_" + image.replace("/", "_").replace(":", "_").replace(".", "_").replace("-", "_")[-40:]
+    return (
+        "custom_build_"
+        + image.replace("/", "_")
+        .replace(":", "_")
+        .replace(".", "_")
+        .replace("-", "_")[-40:]
+    )
 
-def create_custom_build_yaml(
-    destination_file: str, custom_byod_images: List[Tuple[str, str, str]]
-) -> None:
+
+def get_images_from_tests(tests: List[Test]) -> List[Tuple[str, str, str]]:
+    """Get a list of custom BYOD images to build from a list of tests."""
+    custom_byod_images = set()
+    for test in tests:
+        if not test.require_custom_byod_image():
+            continue
+        custom_byod_image_build = (
+            test.get_anyscale_byod_image(),
+            test.get_anyscale_base_byod_image(),
+            test.get_byod_post_build_script(),
+        )
+        logger.info(f"To be built: {custom_byod_image_build[0]}")
+        custom_byod_images.add(custom_byod_image_build)
+    return list(custom_byod_images)
+
+
+def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
     config = get_global_config()
-    """Create a yaml file for building custom BYOD images."""
+    """Create a yaml file for building custom BYOD images"""
+    custom_byod_images = get_images_from_tests(tests)
     if not custom_byod_images:
         return
-
     build_config = {"group": "Custom images build", "steps": []}
 
     for image, base_image, post_build_script in custom_byod_images:
