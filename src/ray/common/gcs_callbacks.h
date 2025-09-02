@@ -17,15 +17,10 @@
 #include <optional>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "ray/common/status.h"
 
 namespace ray {
-
 namespace gcs {
-
-/// This callback is used to notify when a operation completes.
-using EmptyCallback = std::function<void()>;
 
 /// This callback is used to notify when a write/subscribe to GCS completes.
 /// \param status Status indicates whether the write/subscribe was successful.
@@ -35,7 +30,6 @@ using StatusCallback = std::function<void(Status status)>;
 /// \param status Status indicates whether the read was successful.
 /// \param result The item returned by GCS. If the item to read doesn't exist,
 /// this optional object is empty.
-/// TODO(ryw): make an Either union type to avoid the optional.
 template <typename Data>
 using OptionalItemCallback =
     std::function<void(Status status, std::optional<Data> result)>;
@@ -57,11 +51,5 @@ using SubscribeCallback = std::function<void(const ID &id, Data &&result)>;
 template <typename Data>
 using ItemCallback = std::function<void(Data &&result)>;
 
-/// This callback is used to receive multiple key-value items from GCS.
-/// \param result The key-value items returned by GCS.
-template <typename Key, typename Value>
-using MapCallback = std::function<void(absl::flat_hash_map<Key, Value> &&result)>;
-
 }  // namespace gcs
-
 }  // namespace ray
