@@ -1,12 +1,15 @@
 import os
 import sys
-import pytest
 from unittest.mock import patch
 
+import pytest
+
 import ray
-from ray._private.accelerators import IntelGPUAcceleratorManager as Accelerator
-from ray._private.accelerators import get_accelerator_manager_for_resource
-from ray.util.accelerators import INTEL_MAX_1550, INTEL_MAX_1100
+from ray._private.accelerators import (
+    IntelGPUAcceleratorManager as Accelerator,
+    get_accelerator_manager_for_resource,
+)
+from ray.util.accelerators import INTEL_MAX_1100, INTEL_MAX_1550
 
 
 def test_visible_intel_gpu_ids(shutdown_only):
