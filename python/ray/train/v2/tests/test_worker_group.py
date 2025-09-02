@@ -532,11 +532,6 @@ def test_worker_group_abort(monkeypatch):
     shutdown_mock.assert_called_once()
     assert hooks.abort_hook_called
 
-    # Bypass _assert_active method, allowing for shutdown
-    monkeypatch.setattr(wg, "_assert_active", lambda: None)
-
-    wg.shutdown()
-
 
 def test_shutdown_hook_with_dead_actors():
     """Check that the shutdown hook raises correctly if run
