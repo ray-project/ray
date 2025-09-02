@@ -1,4 +1,6 @@
 import logging
+import random
+import textwrap
 import time
 from typing import TYPE_CHECKING, Dict, List
 
@@ -53,6 +55,54 @@ class IssueDetectorManager:
                 issues.extend(detector.detect())
 
                 self._last_detection_times[detector] = time.perf_counter()
+
+        # generate HANGING issues
+        if random.random() > 0.8:
+            operator = random.choice(list(self.executor._topology.keys()))
+            issues.append(
+                Issue(
+                    dataset_name=self.executor._dataset_id,
+                    operator_id=operator.id,
+                    issue_type=IssueType.HANGING,
+                    message=(
+                        f"A task of operator {operator.name} with task index "
+                        f"xxx has been running for xxxs, which is longer"
+                        f" than the average task duration of this operator (xxxs)."
+                        f" If this message persists, please check the stack trace of the "
+                        "task for potential hanging issues."
+                    ),
+                )
+            )
+
+        # generate HIGH MEMORY issues
+        if random.random() > 0.8:
+            operator = random.choice(list(self.executor._topology.keys()))
+            message = f"""
+Operator '{operator.name}' uses xxx of memory per task on average, but Ray
+only requests xxx per task at the start of the pipeline.
+To avoid out-of-memory errors, consider setting `memory=xxx` in the
+appropriate function or method call. (This might be unnecessary if the number of
+concurrent tasks is low.)
+To change the frequency of this warning, set
+`DataContext.get_current().issue_detectors_config.high_memory_detector_config.detection_time_interval_s`,
+or disable the warning by setting value to -1. (current value: xxx)
+            """
+            formatted_paragraphs = []
+            for paragraph in message.split("\n\n"):
+                formatted_paragraph = textwrap.fill(
+                    paragraph, break_long_words=False
+                ).strip()
+                formatted_paragraphs.append(formatted_paragraph)
+            formatted_message = "\n\n".join(formatted_paragraphs)
+            message = "\n\n" + formatted_message + "\n"
+            issues.append(
+                Issue(
+                    dataset_name=self.executor._dataset_id,
+                    operator_id=operator.id,
+                    issue_type=IssueType.HIGH_MEMORY,
+                    message=message,
+                )
+            )
 
         self._report_issues(issues)
 
