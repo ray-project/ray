@@ -117,7 +117,6 @@ PIP_PKGS=(
     cryptography
     google-api-python-client
     google-oauth
-    adlfs
 )
 
 # Install uv

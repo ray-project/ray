@@ -124,7 +124,6 @@ PIP_PKGS=(
     anyscale
     packaging
     azure-identity
-    adlfs
     boto3
     google-cloud-storage
     jupyterlab
