@@ -51,7 +51,7 @@ class RayError(Exception):
             except Exception:
                 # Before falling back, try deserializing using any serializers
                 # registered via ray.util.register_serializer(), if available.
-
+                # TODO: use public API instead of _deserialize_pickle5_data
                 try:
                     import ray
 

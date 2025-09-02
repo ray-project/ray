@@ -365,7 +365,7 @@ def test_exception_with_registered_serializer(shutdown_only):
     assert isinstance(exc_info.value, RayTaskError)
     assert isinstance(
         exc_info.value, NoPickleError
-    )  # if custom serializer was not registered, this would be a UnserializableException
+    )  # if custom serializer was not registered, this would be instance of UnserializableException()
     assert "message" in str(exc_info.value)
 
     # Cleanup to avoid affecting other tests
