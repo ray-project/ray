@@ -153,7 +153,7 @@ GPU objects require just a few lines of code change to switch tensor transports.
 The main code differences are:
 
 1. The :func:`@ray.method <ray.method>` uses ``tensor_transport="nccl"`` instead of ``tensor_transport="gloo"``.
-2. The :func:`ray.experimental.collective.create_collective_group <ray.experimental.collective.create_collective_group>` function is used to create a collective group.
+2. The :func:`ray.experimental.collective.create_collective_group <ray.experimental.collective.create_collective_group>` function is used to create a collective group with ``tensor_transport="nccl"``.
 3. The tensor is created on the GPU using the ``.cuda()`` method.
 
 Usage with NIXL (CPUs or NVIDIA GPUs)
