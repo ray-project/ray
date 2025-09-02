@@ -141,6 +141,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
+        "//src/ray/common:protobuf_utils",
         "//src/ray/common:test_utils",
         "//src/ray/gcs/gcs_server:gcs_task_manager",
         "@com_google_googletest//:gtest_main",
@@ -335,8 +336,8 @@ ray_cc_test(
         "//:ray_mock",
         "//src/fakes/ray/rpc/raylet:fake_raylet_client",
         "//src/ray/common:asio",
+        "//src/ray/common:protobuf_utils",
         "//src/ray/common:test_utils",
-        "//src/ray/gcs:gcs_pb_util",
         "//src/ray/gcs/gcs_server:gcs_autoscaler_state_manager",
         "//src/ray/gcs/gcs_server:gcs_init_data",
         "//src/ray/gcs/gcs_server:gcs_resource_manager",
