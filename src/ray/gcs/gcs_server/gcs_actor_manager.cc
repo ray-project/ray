@@ -80,7 +80,7 @@ const ray::rpc::ActorDeathCause GenWorkerDiedCause(
 
 const ray::rpc::ActorDeathCause GenOwnerDiedCause(
     const ray::gcs::GcsActor *actor,
-    const WorkerID &owner_id,
+    const ray::WorkerID &owner_id,
     const ray::rpc::WorkerExitType disconnect_type,
     const std::string &disconnect_detail,
     const std::string &owner_ip_address) {
@@ -153,7 +153,7 @@ bool OnInitializeActorShouldLoad(const ray::gcs::GcsInitData &gcs_init_data,
   }
 
   const auto &actor_task_spec = ray::map_find_or_die(actor_task_specs, actor_id);
-  ActorID root_detached_actor_id =
+  ray::ActorID root_detached_actor_id =
       ray::TaskSpecification(actor_task_spec).RootDetachedActorId();
   if (root_detached_actor_id.IsNil()) {
     // owner is job, NOT detached actor, should die with job
