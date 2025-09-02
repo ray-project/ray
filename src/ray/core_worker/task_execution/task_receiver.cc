@@ -294,7 +294,11 @@ void TaskReceiver::SetupActor(bool is_asyncio,
 
 void TaskReceiver::Stop() {
   for (const auto &[_, scheduling_queue] : actor_scheduling_queues_) {
+    // Stop executors first.
     scheduling_queue->Stop();
+    // Then cancel all pending-but-not-executed tasks to avoid hanging shutdowns.
+    scheduling_queue->CancelAllPending(Status::SchedulingCancelled(
+        "Actor is shutting down; canceling queued tasks"));
   }
 }
 

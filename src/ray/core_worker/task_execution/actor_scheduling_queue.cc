@@ -250,6 +250,28 @@ void ActorSchedulingQueue::ScheduleRequests() {
   }
 }
 
+void ActorSchedulingQueue::CancelAllPendingUnsafe(const Status &status) {
+  // Cancel in-order pending tasks
+  while (!pending_actor_tasks_.empty()) {
+    auto head = pending_actor_tasks_.begin();
+    head->second.Cancel(status);
+    pending_task_id_to_is_canceled.erase(head->second.TaskID());
+    pending_actor_tasks_.erase(head);
+  }
+  // Cancel retry tasks
+  while (!pending_retry_actor_tasks_.empty()) {
+    auto &req = pending_retry_actor_tasks_.front();
+    req.Cancel(status);
+    pending_task_id_to_is_canceled.erase(req.TaskID());
+    pending_retry_actor_tasks_.pop_front();
+  }
+}
+
+void ActorSchedulingQueue::CancelAllPending(const Status &status) {
+  absl::MutexLock lock(&mu_);
+  CancelAllPendingUnsafe(status);
+}
+
 void ActorSchedulingQueue::ExecuteRequest(InboundRequest &&request) {
   auto task_id = request.TaskID();
   auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
