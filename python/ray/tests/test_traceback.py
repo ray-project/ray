@@ -5,7 +5,7 @@ import threading
 import pytest
 
 import ray
-from ray.exceptions import RayTaskError, RayActorError
+from ray.exceptions import RayActorError, RayTaskError
 
 """This module tests stacktrace of Ray.
 

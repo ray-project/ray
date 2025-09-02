@@ -1,8 +1,8 @@
 import signal
 import sys
 
-import pytest
 import numpy as np
+import pytest
 
 import ray
 
