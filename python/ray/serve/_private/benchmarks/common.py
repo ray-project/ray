@@ -105,12 +105,13 @@ async def do_single_http_batch(
         async def do_query():
             start = time.perf_counter()
             try:
-                if stream:
-                    async with session.get(url) as r:
+                async with session.get(url) as r:
+                    if stream:
                         async for chunk, _ in r.content.iter_chunks():
                             pass
-                else:
-                    await session.get(url)
+                    else:
+                        # Read the response to ensure it's consumed
+                        await r.read()
             except aiohttp.client_exceptions.ClientConnectionError:
                 pass
 
