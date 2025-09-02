@@ -36,12 +36,13 @@ from ray.data.llm import HttpRequestProcessorConfig, build_llm_processor
 OPENAI_KEY = os.environ.get("OPENAI_API_KEY", "your-api-key-here")
 ds = ray.data.from_items(["Hand me a haiku."])
 
-
+# __openai_config_example_start__
 config = HttpRequestProcessorConfig(
     url="https://api.openai.com/v1/chat/completions",
     headers={"Authorization": f"Bearer {OPENAI_KEY}"},
     qps=1,
 )
+# __openai_config_example_end__
 
 processor = build_llm_processor(
     config,

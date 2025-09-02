@@ -59,6 +59,7 @@ vision_dataset = ray.data.from_huggingface(vision_dataset_llms_lite["lite"])
 
 HF_TOKEN = "your-hf-token-here"  # Replace with actual token if needed
 
+# __vlm_config_example_start__
 vision_processor_config = vLLMEngineProcessorConfig(
     model_source="Qwen/Qwen2.5-VL-3B-Instruct",
     engine_kwargs=dict(
@@ -80,6 +81,7 @@ vision_processor_config = vLLMEngineProcessorConfig(
     concurrency=1,
     has_image=True,
 )
+# __vlm_config_example_end__
 
 
 def vision_preprocess(row: dict) -> dict:

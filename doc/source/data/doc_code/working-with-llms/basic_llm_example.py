@@ -25,6 +25,7 @@ except:
 import ray
 from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
 
+# __basic_config_example_start__
 config = vLLMEngineProcessorConfig(
     model_source="unsloth/Llama-3.1-8B-Instruct",
     engine_kwargs={
@@ -35,6 +36,7 @@ config = vLLMEngineProcessorConfig(
     concurrency=1,
     batch_size=64,
 )
+# __basic_config_example_end__
 processor = build_llm_processor(
     config,
     preprocess=lambda row: dict(
@@ -60,6 +62,7 @@ if __name__ != "__main__":
     ds = processor(ds)
     ds.show(limit=1)
 
+# __simple_config_example_start__
 # Basic vLLM configuration
 config = vLLMEngineProcessorConfig(
     model_source="unsloth/Llama-3.1-8B-Instruct",
@@ -71,6 +74,17 @@ config = vLLMEngineProcessorConfig(
     concurrency=1,
     batch_size=64,
 )
+# __simple_config_example_end__
+
+# __hf_token_config_example_start__
+# Configuration with Hugging Face token
+config_with_token = vLLMEngineProcessorConfig(
+    model_source="unsloth/Llama-3.1-8B-Instruct",
+    runtime_env={"env_vars": {"HF_TOKEN": "your_huggingface_token"}},
+    concurrency=1,
+    batch_size=64,
+)
+# __hf_token_config_example_end__
 
 # Create sample dataset
 
@@ -99,6 +113,7 @@ runai_config = vLLMEngineProcessorConfig(
     batch_size=64,
 )
 
+# __s3_config_example_start__
 # S3 hosted model configuration
 s3_config = vLLMEngineProcessorConfig(
     model_source="s3://your-bucket/your-model-path/",
@@ -109,6 +124,7 @@ s3_config = vLLMEngineProcessorConfig(
     concurrency=1,
     batch_size=64,
 )
+# __s3_config_example_end__
 
 # Multi-LoRA configuration
 lora_config = vLLMEngineProcessorConfig(

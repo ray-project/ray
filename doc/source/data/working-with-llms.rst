@@ -42,7 +42,8 @@ Here's a simple configuration example:
 
 .. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
     :language: python
-    :lines: 28-37
+    :start-after: __basic_config_example_start__
+    :end-before: __basic_config_example_end__
 
 Each processor requires specific input columns. You can find more info by using the following API:
 
@@ -50,7 +51,8 @@ The processor requires specific input columns. Here's how to check what columns 
 
 .. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
     :language: python
-    :lines: 65-67
+    :start-after: __simple_config_example_start__
+    :end-before: __simple_config_example_end__
 
 The output shows:
 
@@ -60,7 +62,8 @@ Some models may require a Hugging Face token to be specified. You can specify th
 
 .. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
     :language: python
-    :lines: 267-276
+    :start-after: __hf_token_config_example_start__
+    :end-before: __hf_token_config_example_end__
 
 .. _vllm_llm:
 
@@ -146,7 +149,8 @@ Here's a simple VLM configuration:
 
 .. literalinclude:: doc_code/working-with-llms/vlm_example.py
     :language: python
-    :lines: 62-81
+    :start-after: __vlm_config_example_start__
+    :end-before: __vlm_config_example_end__
 
 For a comprehensive VLM configuration example:
 
@@ -175,7 +179,8 @@ Here's a simple OpenAI API configuration:
 
 .. literalinclude:: doc_code/working-with-llms/openai_api_example.py
     :language: python
-    :lines: 40-44
+    :start-after: __openai_config_example_start__
+    :end-before: __openai_config_example_end__
 
 For a comprehensive configuration and usage demo:
 
@@ -254,7 +259,8 @@ And later you can use remote object store URI as `model_source` in the config.
 
 .. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
     :language: python
-    :lines: 103-111
+    :start-after: __s3_config_example_start__
+    :end-before: __s3_config_example_end__
 
 For a more comprehensive S3 configuration example with environment variables:
 
