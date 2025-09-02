@@ -6,8 +6,8 @@ ray_cc_library(
         "gcs_test_util.h",
     ],
     deps = [
-        "//src/ray/common:test_util",
         "//src/ray/common:protobuf_utils",
+        "//src/ray/common:test_util",
         "//src/ray/protobuf:autoscaler_cc_grpc",
         "//src/ray/protobuf:gcs_service_cc_grpc",
     ],
