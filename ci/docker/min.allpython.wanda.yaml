@@ -2,6 +2,6 @@ name: "min-allpython"
 froms: ["cr.ray.io/rayproject/oss-ci-base_build"]
 dockerfile: ci/docker/min.allpython.Dockerfile
 build_args:
-  - PYTHON_VERSION
+  - DEFAULT_PYTHON_VERSION
 tags:
   - cr.ray.io/rayproject/min-allpython

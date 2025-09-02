@@ -7,8 +7,6 @@ ARG DEFAULT_PYTHON_VERSION=3.9
 
 SHELL ["/bin/bash", "-ice"]
 
-COPY . .
-
 RUN <<EOF
 #!/bin/bash
 
