@@ -6,9 +6,8 @@ import numpy as np
 import pytest
 
 import ray
+from ray._common.test_utils import Semaphore, wait_for_condition
 from ray._private.internal_api import memory_summary
-from ray._common.test_utils import wait_for_condition
-from ray._common.test_utils import Semaphore
 from ray.cluster_utils import Cluster, cluster_not_supported
 
 # RayConfig to enable recording call sites during ObjectRej creations.

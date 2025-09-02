@@ -4,19 +4,21 @@ import time
 from functools import reduce
 from itertools import chain
 
-from click.testing import CliRunner
 import pytest
+from click.testing import CliRunner
 
 import ray
-from ray._common.test_utils import wait_for_condition
-from ray._private.test_utils import placement_group_assert_no_leak
-from ray.tests.test_placement_group import are_pairwise_unique
-from ray.util.state import list_actors, list_placement_groups
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from ray._private.test_utils import fetch_prometheus_metrics
-from ray._common.network_utils import build_address
 import ray.scripts.scripts as scripts
+from ray._common.network_utils import build_address
+from ray._common.test_utils import wait_for_condition
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.test_utils import (
+    fetch_prometheus_metrics,
+    placement_group_assert_no_leak,
+)
+from ray.tests.test_placement_group import are_pairwise_unique
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray.util.state import list_actors, list_placement_groups
 
 
 def test_placement_group_no_resource(ray_start_cluster):

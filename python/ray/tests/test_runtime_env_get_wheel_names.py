@@ -3,13 +3,12 @@ import sys
 import pytest
 import requests
 
+import ray._private.ray_constants as ray_constants
 from ray._private.utils import (
     get_master_wheel_url,
     get_release_wheel_url,
     get_wheel_filename,
 )
-
-import ray._private.ray_constants as ray_constants
 
 
 def test_get_wheel_filename():

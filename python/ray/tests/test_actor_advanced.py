@@ -1,16 +1,16 @@
 import os
 import sys
 import time
-from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
 
 import pytest
 
 import ray
 import ray._private.gcs_utils as gcs_utils
-from ray.util.state import list_actors
 import ray.cluster_utils
 from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._private.ray_constants import gcs_actor_scheduling_enabled
 from ray._private.test_utils import (
     convert_actor_state,
     kill_actor_and_wait_for_failure,
@@ -18,8 +18,8 @@ from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_pid_to_exit,
 )
-from ray._private.ray_constants import gcs_actor_scheduling_enabled
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
+from ray.util.state import list_actors
 
 
 def test_actors_on_nodes_with_no_cpus(ray_start_no_cpu):

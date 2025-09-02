@@ -1,5 +1,6 @@
-import pytest
 import sys
+
+import pytest
 
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 

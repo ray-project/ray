@@ -1,33 +1,32 @@
-from typing import Dict, List
-import ray
 import copy
 import json
-
+from typing import Dict, List
+from unittest import mock
 from uuid import uuid4
-from ray.tests.aws.utils import helpers
-from ray.tests.aws.utils.constants import (
-    DEFAULT_INSTANCE_PROFILE,
-    DEFAULT_KEY_PAIR,
-    DEFAULT_SUBNET,
-    A_THOUSAND_SUBNETS_IN_DIFFERENT_VPCS,
-    DEFAULT_LT,
-    TWENTY_SUBNETS_IN_DIFFERENT_AZS,
-    DEFAULT_CLUSTER_NAME,
-)
-from ray.autoscaler._private.aws.config import key_pair
-from ray.tests.aws.utils.helpers import (
-    get_cloudwatch_dashboard_config_file_path,
-    get_cloudwatch_alarm_config_file_path,
-)
+
+from botocore.stub import ANY
+
+import ray
 from ray.autoscaler._private.aws.cloudwatch.cloudwatch_helper import (
     CLOUDWATCH_AGENT_INSTALLED_TAG,
     CLOUDWATCH_CONFIG_HASH_TAG_BASE,
 )
+from ray.autoscaler._private.aws.config import key_pair
 from ray.autoscaler.tags import NODE_KIND_HEAD, TAG_RAY_NODE_KIND
-
-from unittest import mock
-
-from botocore.stub import ANY
+from ray.tests.aws.utils import helpers
+from ray.tests.aws.utils.constants import (
+    A_THOUSAND_SUBNETS_IN_DIFFERENT_VPCS,
+    DEFAULT_CLUSTER_NAME,
+    DEFAULT_INSTANCE_PROFILE,
+    DEFAULT_KEY_PAIR,
+    DEFAULT_LT,
+    DEFAULT_SUBNET,
+    TWENTY_SUBNETS_IN_DIFFERENT_AZS,
+)
+from ray.tests.aws.utils.helpers import (
+    get_cloudwatch_alarm_config_file_path,
+    get_cloudwatch_dashboard_config_file_path,
+)
 
 
 def configure_iam_role_default(iam_client_stub):

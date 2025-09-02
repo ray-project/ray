@@ -5,10 +5,10 @@ put the test in `test_reference_counting_standalone.py`.
 """
 # coding: utf-8
 import copy
+import gc
 import logging
 import os
 import sys
-import gc
 import time
 
 import numpy as np

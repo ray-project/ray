@@ -1,22 +1,22 @@
-from contextlib import contextmanager
 import json
 import os
 import sys
 import tempfile
+from contextlib import contextmanager
 from typing import ContextManager, Dict, Optional, Union
 
 import pytest
 
 from ray._private.label_utils import (
+    parse_node_labels_from_yaml_file,
     parse_node_labels_json,
     parse_node_labels_string,
-    parse_node_labels_from_yaml_file,
-    validate_node_labels,
     validate_label_key,
-    validate_label_value,
     validate_label_selector,
     validate_label_selector_value,
+    validate_label_value,
     validate_node_label_syntax,
+    validate_node_labels,
 )
 
 

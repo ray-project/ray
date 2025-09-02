@@ -1,8 +1,10 @@
-import pytest
-import ray
-import sys
 import os
+import sys
+
 import numpy
+import pytest
+
+import ray
 from ray.runtime_env import mpi_init
 
 
@@ -91,8 +93,9 @@ def test_mpi_actor_pi(change_test_dir, ray_start_regular):
 
 
 def check_gpu_setup():
-    from mpi4py import MPI
     import os
+
+    from mpi4py import MPI
 
     mpi_init()
     comm = MPI.COMM_WORLD

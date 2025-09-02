@@ -1,28 +1,27 @@
+import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
 import time
-import re
-import json
-
-from subprocess import Popen, PIPE, STDOUT, list2cmdline
+from subprocess import PIPE, STDOUT, Popen, list2cmdline
 from typing import List
+
 import pytest
 
-from ray._common.test_utils import wait_for_condition
-import ray.cloudpickle as pickle
-
 import ray
+import ray.cloudpickle as pickle
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
+    format_web_url,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
-    format_web_url,
     wait_for_pid_to_exit,
 )
+from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.job_config import JobConfig, LoggingConfig
 from ray.job_submission import JobStatus, JobSubmissionClient
-from ray.dashboard.modules.job.pydantic_models import JobDetails
 
 
 def execute_driver(commands: List[str], input: bytes = None):

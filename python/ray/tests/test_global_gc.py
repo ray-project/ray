@@ -9,8 +9,8 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray._private.internal_api import global_gc
 from ray._common.test_utils import wait_for_condition
+from ray._private.internal_api import global_gc
 
 logger = logging.getLogger(__name__)
 

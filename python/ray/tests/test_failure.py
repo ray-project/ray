@@ -1,9 +1,9 @@
+import logging
 import os
 import signal
 import sys
-import time
-import logging
 import threading
+import time
 
 import numpy as np
 import pytest
@@ -18,7 +18,7 @@ from ray._private.test_utils import (
     get_error_message,
     init_error_pubsub,
 )
-from ray.exceptions import GetTimeoutError, RayActorError, RayTaskError, ActorDiedError
+from ray.exceptions import ActorDiedError, GetTimeoutError, RayActorError, RayTaskError
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 

@@ -3,33 +3,33 @@ import os
 import signal
 import subprocess
 import sys
-import time
 import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
-from filelock import FileLock
 import pytest
+from filelock import FileLock
 
 import ray
-from ray._common.test_utils import wait_for_condition
-from ray.autoscaler.v2.sdk import get_cluster_status
-from ray.util.placement_group import placement_group
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 import ray._private.gcs_utils as gcs_utils
-from ray._private import ray_constants
 from ray._common.network_utils import parse_address
+from ray._common.test_utils import wait_for_condition
+from ray._private import ray_constants
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.test_utils import (
     convert_actor_state,
     external_redis_test_enabled,
     generate_system_config_map,
-    wait_for_pid_to_exit,
-    run_string_as_driver,
     redis_sentinel_replicas,
+    run_string_as_driver,
+    wait_for_pid_to_exit,
 )
-from ray.job_submission import JobSubmissionClient, JobStatus
 from ray._raylet import GcsClient
-from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray.autoscaler.v2.sdk import get_cluster_status
+from ray.job_submission import JobStatus, JobSubmissionClient
+from ray.util.placement_group import placement_group
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.state import list_placement_groups
 
 import psutil
@@ -1008,6 +1008,7 @@ def test_redis_logs(external_redis):
         # assert "redis_context.cc" not in result.output
     finally:
         from click.testing import CliRunner
+
         import ray.scripts.scripts as scripts
 
         runner = CliRunner(env={"RAY_USAGE_STATS_PROMPT_ENABLED": "0"})
