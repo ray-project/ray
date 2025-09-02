@@ -250,6 +250,7 @@ pyx_library(
         "//src/ray/gcs/gcs_client:global_state_accessor_lib",
         "//src/ray/gcs/gcs_server:gcs_server_lib",
         "//src/ray/gcs/store_client:redis_store_client",
+        "//src/ray/pubsub:python_gcs_subscriber",
         "//src/ray/protobuf:serialization_cc_proto",
         "//src/ray/thirdparty/setproctitle",
         "//src/ray/util:memory",

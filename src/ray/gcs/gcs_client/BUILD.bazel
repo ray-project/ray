@@ -14,7 +14,7 @@ ray_cc_library(
         "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/common:protobuf_utils",
-        "//src/ray/gcs/pubsub:gcs_pub_sub_lib",
+        "//src/ray/pubsub:gcs_subscriber",
         "//src/ray/gcs/store_client:redis_store_client",
         "//src/ray/protobuf:usage_cc_proto",
         "//src/ray/pubsub:subscriber",

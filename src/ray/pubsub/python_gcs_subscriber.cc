@@ -1,4 +1,4 @@
-// Copyright 2017 The Ray Authors.
+// Copyright 2025 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,60 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
+#include "ray/pubsub/python_gcs_subscriber.h"
+
+#include <grpcpp/grpcpp.h>
 
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "ray/rpc/gcs/gcs_rpc_client.h"
 
 namespace ray {
-namespace gcs {
-
-void GcsPublisher::PublishActor(const ActorID &id, rpc::ActorTableData message) {
-  rpc::PubMessage msg;
-  msg.set_channel_type(rpc::ChannelType::GCS_ACTOR_CHANNEL);
-  msg.set_key_id(id.Binary());
-  *msg.mutable_actor_message() = std::move(message);
-  publisher_->Publish(std::move(msg));
-}
-
-void GcsPublisher::PublishJob(const JobID &id, rpc::JobTableData message) {
-  rpc::PubMessage msg;
-  msg.set_channel_type(rpc::ChannelType::GCS_JOB_CHANNEL);
-  msg.set_key_id(id.Binary());
-  *msg.mutable_job_message() = std::move(message);
-  publisher_->Publish(std::move(msg));
-}
-
-void GcsPublisher::PublishNodeInfo(const NodeID &id, rpc::GcsNodeInfo message) {
-  rpc::PubMessage msg;
-  msg.set_channel_type(rpc::ChannelType::GCS_NODE_INFO_CHANNEL);
-  msg.set_key_id(id.Binary());
-  *msg.mutable_node_info_message() = std::move(message);
-  publisher_->Publish(std::move(msg));
-}
-
-void GcsPublisher::PublishWorkerFailure(const WorkerID &id,
-                                        rpc::WorkerDeltaData message) {
-  rpc::PubMessage msg;
-  msg.set_channel_type(rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL);
-  msg.set_key_id(id.Binary());
-  *msg.mutable_worker_delta_message() = std::move(message);
-  publisher_->Publish(std::move(msg));
-}
-
-void GcsPublisher::PublishError(std::string id, rpc::ErrorTableData message) {
-  rpc::PubMessage msg;
-  msg.set_channel_type(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
-  msg.set_key_id(std::move(id));
-  *msg.mutable_error_info_message() = std::move(message);
-  publisher_->Publish(std::move(msg));
-}
-
-std::string GcsPublisher::DebugString() const { return publisher_->DebugString(); }
+namespace pubsub {
 
 std::vector<std::string> PythonGetLogBatchLines(rpc::LogBatch log_batch) {
   return std::vector<std::string>(
@@ -236,5 +194,5 @@ int64_t PythonGcsSubscriber::last_batch_size() {
   return last_batch_size_;
 }
 
-}  // namespace gcs
+}  // namespace pubsub
 }  // namespace ray

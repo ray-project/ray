@@ -74,7 +74,7 @@ class GcsWorkerManagerTest : public Test {
   std::unique_ptr<std::thread> thread_io_service_;
   instrumented_io_context io_service_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
+  std::shared_ptr<pubsub::GcsPublisher> gcs_publisher_;
   std::shared_ptr<gcs::GcsWorkerManager> worker_manager_;
 };
 

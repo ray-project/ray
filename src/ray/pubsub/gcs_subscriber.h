@@ -14,20 +14,15 @@
 
 #pragma once
 
-#include <deque>
 #include <memory>
 #include <string>
-#include <utility>
-#include <vector>
 
-#include "absl/synchronization/mutex.h"
 #include "ray/common/gcs_callbacks.h"
 #include "ray/pubsub/subscriber_interface.h"
 #include "src/ray/protobuf/gcs.pb.h"
-#include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
-namespace gcs {
+namespace pubsub {
 
 /// \class GcsSubscriber
 ///
@@ -70,5 +65,5 @@ class GcsSubscriber {
   const std::unique_ptr<pubsub::SubscriberInterface> subscriber_;
 };
 
-}  // namespace gcs
+}  // namespace pubsub
 }  // namespace ray

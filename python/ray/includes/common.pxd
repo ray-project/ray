@@ -649,8 +649,8 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
     unordered_map[c_string, double] PythonGetResourcesTotal(
         const CGcsNodeInfo& node_info)
 
-cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
-    cdef cppclass CPythonGcsSubscriber "ray::gcs::PythonGcsSubscriber":
+cdef extern from "ray/pubsub/python_gcs_subscriber.h" nogil:
+    cdef cppclass CPythonGcsSubscriber "ray::pubsub::PythonGcsSubscriber":
 
         CPythonGcsSubscriber(
             const c_string& gcs_address, int gcs_port, CChannelType channel_type,

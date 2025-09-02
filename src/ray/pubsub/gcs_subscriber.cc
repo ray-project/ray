@@ -16,13 +16,9 @@
 
 #include <memory>
 #include <string>
-#include <utility>
-#include <vector>
-
-#include "ray/rpc/gcs/gcs_rpc_client.h"
 
 namespace ray {
-namespace gcs {
+namespace pubsub {
 
 Status GcsSubscriber::SubscribeAllJobs(
     const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
@@ -144,5 +140,5 @@ Status GcsSubscriber::SubscribeAllWorkerFailures(
   return Status::OK();
 }
 
-}  // namespace gcs
+}  // namespace pubsub
 }  // namespace ray

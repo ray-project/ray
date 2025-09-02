@@ -220,7 +220,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
   ClusterResourceManager cluster_resource_manager_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
   std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
-  std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
+  std::shared_ptr<pubsub::GcsPublisher> gcs_publisher_;
 };
 
 TEST_F(GcsPlacementGroupManagerTest, TestPlacementGroupBundleCache) {
