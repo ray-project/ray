@@ -95,6 +95,7 @@ class GPUObjectManager:
         obj_ref: ObjectRef,
         src_actor: "ray.actor.ActorHandle",
         tensor_transport: TensorTransportEnum,
+        pre_computed_tensor_transport_meta: Optional["TensorTransportMetadata"] = None,
     ):
         """Add a GPU object reference to the GPU object manager. This should be
         called whenever the current process calls a task that is annotated with
@@ -104,6 +105,7 @@ class GPUObjectManager:
             obj_ref: The ObjectRef of the task output.
             src_actor: The actor that executes the task and that creates the GPU object.
             tensor_transport: The tensor transport protocol to use for the GPU object.
+            pre_computed_tensor_transport_meta: The tensor transport metadata that is pre-computed.
         """
         from ray.experimental.gpu_object_manager.gpu_object_store import (
             _tensor_transport_to_collective_backend,
@@ -117,9 +119,12 @@ class GPUObjectManager:
         tensor_transport_manager = get_tensor_transport_manager(
             tensor_transport_backend
         )
-        tensor_meta = tensor_transport_manager.get_tensor_transport_metadata(
-            src_actor, obj_id, tensor_transport
-        )
+        if not pre_computed_tensor_transport_meta:
+            tensor_meta = tensor_transport_manager.get_tensor_transport_metadata(
+                src_actor, obj_id
+            )
+        else:
+            tensor_meta = pre_computed_tensor_transport_meta
         self.managed_gpu_object_metadata[obj_id] = GPUObjectMeta(
             src_actor=src_actor,
             tensor_transport_backend=tensor_transport_backend,

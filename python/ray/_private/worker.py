@@ -797,6 +797,7 @@ class Worker:
         value: Any,
         owner_address: Optional[str] = None,
         _is_experimental_channel: bool = False,
+        tensor_transport: str = "object_store",
     ):
         """Put value in the local object store.
 
@@ -813,6 +814,7 @@ class Worker:
                 objects. If True, then the returned object will not have a
                 valid value. The object must be written to using the
                 ray.experimental.channel API before readers can read.
+            tensor_transport: The tensor transport backend to use.
 
         Returns:
             ObjectRef: The object ref the object was put under.
@@ -829,9 +831,18 @@ class Worker:
                 "If you really want to do this, you can wrap the "
                 "ray.ObjectRef in a list and call 'put' on it."
             )
-
+        tensors = None
+        tensor_transport = TensorTransportEnum.from_str(tensor_transport)
         try:
-            serialized_value = self.get_serialization_context().serialize(value)
+            if tensor_transport != TensorTransportEnum.OBJECT_STORE:
+
+                (
+                    serialized_value,
+                    tensors,
+                ) = self.get_serialization_context().serialize_gpu_objects(value)
+
+            else:
+                serialized_value = self.get_serialization_context().serialize(value)
         except TypeError as e:
             sio = io.StringIO()
             ray.util.inspect_serializability(value, print_file=sio)
@@ -852,13 +863,24 @@ class Worker:
         # reference will be created. If another reference is created and
         # removed before this one, it will corrupt the state in the
         # reference counter.
-        return self.core_worker.put_object(
+        ret = self.core_worker.put_object(
             serialized_value,
             pin_object=pin_object,
             owner_address=owner_address,
             inline_small_object=True,
             _is_experimental_channel=_is_experimental_channel,
+            tensor_transport_val=tensor_transport.value,
         )
+        if tensors:
+            self.get_serialization_context().store_gpu_objects(ret.hex(), tensors)
+            actor_handle = ray.get_runtime_context().current_actor
+            gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
+            gpu_object_manager.add_gpu_object_ref(
+                ret,
+                actor_handle,
+                tensor_transport,
+            )
+        return ret
 
     def raise_errors(self, serialized_objects, object_refs):
         out = self.deserialize_objects(serialized_objects, object_refs)
@@ -873,8 +895,11 @@ class Worker:
             # If using a non-object store transport, then tensors will be sent
             # out-of-band. Get them before deserializing the object store data.
             if (
-                tensor_transport is None
-                or tensor_transport == TensorTransportEnum.OBJECT_STORE
+                obj_ref.tensor_transport() == TensorTransportEnum.OBJECT_STORE.value
+                and (
+                    tensor_transport is None
+                    or tensor_transport == TensorTransportEnum.OBJECT_STORE
+                )
             ):
                 continue
 
@@ -2927,6 +2952,7 @@ def put(
     value: Any,
     *,
     _owner: Optional["ray.actor.ActorHandle"] = None,
+    tensor_transport: str = "object_store",
 ) -> "ray.ObjectRef":
     """Store an object in the object store.
 
@@ -2946,6 +2972,7 @@ def put(
             object prior to the object creator exiting, otherwise the reference
             will still be lost. *Note that this argument is an experimental API
             and should be avoided if possible.*
+        tensor_transport: The tensor transport to use for the GPU object.
 
     Returns:
         The object ref assigned to this value.
@@ -2972,7 +2999,11 @@ def put(
 
     with profiling.profile("ray.put"):
         try:
-            object_ref = worker.put_object(value, owner_address=serialize_owner_address)
+            object_ref = worker.put_object(
+                value,
+                owner_address=serialize_owner_address,
+                tensor_transport=tensor_transport,
+            )
         except ObjectStoreFullError:
             logger.info(
                 "Put failed since the value was either too large or the "
