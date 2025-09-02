@@ -25,6 +25,8 @@
 #include "ray/common/id.h"
 #include "ray/common/scheduling/resource_set.h"
 
+namespace ray {
+
 namespace {
 
 BundleSpecification GenBundleCreation(
@@ -63,8 +65,6 @@ std::vector<std::shared_ptr<const BundleSpecification>> GenBundleSpecifications(
 }
 
 }  // namespace
-
-namespace ray {
 
 class NewPlacementGroupResourceManagerTest : public ::testing::Test {
  public:
