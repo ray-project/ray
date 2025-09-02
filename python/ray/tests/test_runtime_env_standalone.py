@@ -22,8 +22,8 @@ from ray._private.test_utils import (
     get_log_sources,
 )
 from ray.exceptions import RuntimeEnvSetupError
-from ray.runtime_env import RuntimeEnv
 from ray.job_submission import JobStatus, JobSubmissionClient
+from ray.runtime_env import RuntimeEnv
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")

@@ -1,6 +1,8 @@
 import sys
-import torch
+
 import pytest
+import torch
+
 import ray
 from ray.experimental.collective import create_collective_group
 

@@ -5,11 +5,12 @@ import subprocess
 import sys
 import time
 
-import psutil
 import pytest
 
 import ray
 from ray._private import ray_constants
+
+import psutil
 
 logger = logging.getLogger(__name__)
 

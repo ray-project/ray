@@ -4,14 +4,14 @@ For consistency, all K8s interactions use kubectl through subprocess calls.
 import atexit
 import contextlib
 import logging
+import os
 import pathlib
 import subprocess
 import tempfile
 import time
 from typing import Any, Dict, Generator, List, Optional
-import yaml
-import os
 
+import yaml
 
 logger = logging.getLogger(__name__)
 

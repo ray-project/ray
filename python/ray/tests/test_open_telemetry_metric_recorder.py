@@ -2,12 +2,12 @@ import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-from opentelemetry.metrics import NoOpCounter, NoOpUpDownCounter, NoOpHistogram
+from opentelemetry.metrics import NoOpCounter, NoOpHistogram, NoOpUpDownCounter
 
+from ray._private.metrics_agent import Gauge, Record
 from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
 )
-from ray._private.metrics_agent import Record, Gauge
 
 
 @patch("opentelemetry.metrics.set_meter_provider")

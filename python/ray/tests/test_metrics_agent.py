@@ -1,11 +1,10 @@
-import time
-import signal
 import json
 import os
 import pathlib
-import sys
 import re
-import requests
+import signal
+import sys
+import time
 import warnings
 from collections import defaultdict
 from pprint import pformat
@@ -13,12 +12,25 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
-
+import requests
 from google.protobuf.timestamp_pb2 import Timestamp
+
 import ray
-from ray.dashboard.modules.aggregator.tests.test_aggregator_agent import (
-    get_event_aggregator_grpc_stub,
+from ray._common.network_utils import build_address
+from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._private.metrics_agent import (
+    Gauge as MetricsAgentGauge,
+    PrometheusServiceDiscoveryWriter,
 )
+from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
+from ray._private.test_utils import (
+    fetch_prometheus,
+    fetch_prometheus_metrics,
+    find_free_port,
+    get_log_batch,
+    raw_metrics,
+)
+from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.core.generated.common_pb2 import TaskAttempt
 from ray.core.generated.events_base_event_pb2 import RayEvent
 from ray.core.generated.events_event_aggregator_service_pb2 import (
@@ -26,22 +38,12 @@ from ray.core.generated.events_event_aggregator_service_pb2 import (
     RayEventsData,
     TaskEventsMetadata,
 )
-from ray.util.state import list_nodes
-from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
-from ray._private.metrics_agent import Gauge as MetricsAgentGauge
-from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
-from ray._common.test_utils import SignalActor, wait_for_condition
-from ray._private.test_utils import (
-    fetch_prometheus,
-    fetch_prometheus_metrics,
-    get_log_batch,
-    raw_metrics,
-    find_free_port,
-)
-from ray._common.network_utils import build_address
-from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
+from ray.dashboard.modules.aggregator.tests.test_aggregator_agent import (
+    get_event_aggregator_grpc_stub,
+)
 from ray.util.metrics import Counter, Gauge, Histogram, Metric
+from ray.util.state import list_nodes
 
 os.environ["RAY_event_stats"] = "1"
 
