@@ -21,9 +21,8 @@ namespace ray {
 namespace pubsub {
 
 Status GcsSubscriber::SubscribeAllJobs(
-    const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
-    const StatusCallback &done) {
-  // GCS subscriber.
+    const gcs::SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
+    const gcs::StatusCallback &done) {
   auto subscribe_item_callback = [subscribe](rpc::PubMessage &&msg) {
     RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_JOB_CHANNEL);
     const JobID id = JobID::FromBinary(msg.key_id());
@@ -49,9 +48,8 @@ Status GcsSubscriber::SubscribeAllJobs(
 
 Status GcsSubscriber::SubscribeActor(
     const ActorID &id,
-    const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-    const StatusCallback &done) {
-  // GCS subscriber.
+    const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+    const gcs::StatusCallback &done) {
   auto subscription_callback = [id, subscribe](rpc::PubMessage &&msg) {
     RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_ACTOR_CHANNEL);
     RAY_CHECK(msg.key_id() == id.Binary());
@@ -89,9 +87,9 @@ bool GcsSubscriber::IsActorUnsubscribed(const ActorID &id) {
       rpc::ChannelType::GCS_ACTOR_CHANNEL, gcs_address_, id.Binary());
 }
 
-void GcsSubscriber::SubscribeAllNodeInfo(const ItemCallback<rpc::GcsNodeInfo> &subscribe,
-                                         const StatusCallback &done) {
-  // GCS subscriber.
+void GcsSubscriber::SubscribeAllNodeInfo(
+    const gcs::ItemCallback<rpc::GcsNodeInfo> &subscribe,
+    const gcs::StatusCallback &done) {
   auto subscribe_item_callback = [subscribe](rpc::PubMessage &&msg) {
     RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_NODE_INFO_CHANNEL);
     subscribe(std::move(*msg.mutable_node_info_message()));
@@ -114,7 +112,8 @@ void GcsSubscriber::SubscribeAllNodeInfo(const ItemCallback<rpc::GcsNodeInfo> &s
 }
 
 Status GcsSubscriber::SubscribeAllWorkerFailures(
-    const ItemCallback<rpc::WorkerDeltaData> &subscribe, const StatusCallback &done) {
+    const gcs::ItemCallback<rpc::WorkerDeltaData> &subscribe,
+    const gcs::StatusCallback &done) {
   auto subscribe_item_callback = [subscribe](rpc::PubMessage &&msg) {
     RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL);
     subscribe(std::move(*msg.mutable_worker_delta_message()));

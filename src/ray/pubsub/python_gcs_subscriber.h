@@ -20,11 +20,10 @@
 #include <vector>
 
 #include "absl/synchronization/mutex.h"
-
 #include "ray/common/status.h"
 #include "ray/util/visibility.h"
-#include "src/ray/protobuf/pubsub.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
+#include "src/ray/protobuf/pubsub.pb.h"
 
 // Use forward declarations to avoid exposing heavyweight gRPC headers.
 namespace grpc {
@@ -32,7 +31,7 @@ namespace grpc {
 class Channel;
 class ClientContext;
 
-} // namespace grpc
+}  // namespace grpc
 
 namespace ray {
 namespace pubsub {
