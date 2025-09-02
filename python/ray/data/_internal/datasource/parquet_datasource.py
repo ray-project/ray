@@ -221,9 +221,7 @@ class ParquetDatasource(Datasource):
         )
 
         if listed_files:
-            paths, file_sizes = zip(
-                *listed_files
-            )
+            paths, file_sizes = zip(*listed_files)
         else:
             paths, file_sizes = [], []
 
@@ -285,9 +283,6 @@ class ParquetDatasource(Datasource):
                 prefetch_remote_args[
                     "scheduling_strategy"
                 ] = DataContext.get_current().scheduling_strategy
-
-            # TODO remove
-            assert len(paths) == len(file_sizes)
 
             self._metadata = [
                 ParquetFileMetadata(

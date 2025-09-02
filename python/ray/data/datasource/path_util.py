@@ -67,8 +67,6 @@ def _resolve_paths_and_filesystem(
     if isinstance(paths, pathlib.Path):
         paths = [str(paths)]
     elif not isinstance(paths, list) or any(not isinstance(p, str) for p in paths):
-        print(f">>> [DBG] Paths: {type(paths[0])}")
-
         raise ValueError(
             "Expected `paths` to be a `str`, `pathlib.Path`, or `list[str]`, but got "
             f"`{paths}`"
