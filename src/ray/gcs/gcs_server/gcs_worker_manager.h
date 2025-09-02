@@ -20,7 +20,7 @@
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/grpc_service_interfaces.h"
 #include "ray/gcs/gcs_server/usage_stats_client.h"
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
+#include "ray/pubsub/gcs_publisher.h"
 
 namespace ray {
 namespace gcs {

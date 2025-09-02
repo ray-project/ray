@@ -71,8 +71,8 @@ ray_cc_library(
     hdrs = ["gcs_subscriber.h"],
     deps = [
         ":subscriber_interface",
-        "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/common:gcs_callbacks",
+        "//src/ray/protobuf:gcs_cc_proto",
     ],
 )
 
@@ -86,9 +86,9 @@ ray_cc_library(
     ],
     deps = [
         "//src/ray/common:status",
-        "//src/ray/util:visibility",
         "//src/ray/protobuf:gcs_service_cc_proto",
         "//src/ray/protobuf:pubsub_cc_proto",
+        "//src/ray/util:visibility",
         "@com_google_absl//absl/synchronization",
     ],
 )

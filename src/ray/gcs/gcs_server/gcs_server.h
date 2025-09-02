@@ -33,7 +33,7 @@
 #include "ray/gcs/gcs_server/pubsub_handler.h"
 #include "ray/gcs/gcs_server/runtime_env_handler.h"
 #include "ray/gcs/gcs_server/usage_stats_client.h"
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
+#include "ray/pubsub/gcs_publisher.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/observable_store_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"

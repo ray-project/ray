@@ -34,7 +34,7 @@
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/grpc_service_interfaces.h"
 #include "ray/gcs/gcs_server/usage_stats_client.h"
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
+#include "ray/pubsub/gcs_publisher.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/counter_map.h"

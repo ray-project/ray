@@ -30,7 +30,7 @@
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/gcs/gcs_server/grpc_service_interfaces.h"
 #include "ray/gcs/gcs_server/state_util.h"
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
+#include "ray/pubsub/gcs_publisher.h"
 #include "ray/rpc/node_manager/raylet_client_pool.h"
 #include "ray/util/thread_checker.h"
 #include "src/ray/protobuf/gcs.pb.h"

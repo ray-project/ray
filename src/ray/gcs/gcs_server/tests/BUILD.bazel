@@ -336,7 +336,7 @@ ray_cc_test(
         "//src/fakes/ray/rpc/raylet:fake_raylet_client",
         "//src/ray/common:asio",
         "//src/ray/common:test_utils",
-        "//src/ray/gcs:gcs_pb_util",
+        "//src/ray/common:protobuf_util",
         "//src/ray/gcs/gcs_server:gcs_autoscaler_state_manager",
         "//src/ray/gcs/gcs_server:gcs_init_data",
         "//src/ray/gcs/gcs_server:gcs_resource_manager",
