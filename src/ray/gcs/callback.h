@@ -21,7 +21,6 @@
 #include "ray/common/status.h"
 
 namespace ray {
-
 namespace gcs {
 
 /// This callback is used to notify when a write/subscribe to GCS completes.
@@ -54,11 +53,5 @@ using SubscribeCallback = std::function<void(const ID &id, Data &&result)>;
 template <typename Data>
 using ItemCallback = std::function<void(Data &&result)>;
 
-/// This callback is used to receive multiple key-value items from GCS.
-/// \param result The key-value items returned by GCS.
-template <typename Key, typename Value>
-using MapCallback = std::function<void(absl::flat_hash_map<Key, Value> &&result)>;
-
 }  // namespace gcs
-
 }  // namespace ray
