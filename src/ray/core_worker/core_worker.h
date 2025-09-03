@@ -39,7 +39,6 @@
 #include "ray/core_worker/experimental_mutable_object_provider.h"
 #include "ray/core_worker/future_resolver.h"
 #include "ray/core_worker/generator_waiter.h"
-#include "ray/core_worker/grpc_service.h"
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/profile_event.h"
 #include "ray/core_worker/reference_count.h"

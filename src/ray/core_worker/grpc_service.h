@@ -12,17 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/* XXX */
-
-/// The set of gRPC handlers and their associated level of concurrency. If you want to
-/// add a new call to the worker gRPC server, do the following:
-/// 1) Add the rpc to the CoreWorkerService in core_worker.proto, e.g., "ExampleCall"
-/// 2) Add a new macro to RAY_CORE_WORKER_DECLARE_RPC_HANDLERS
-///    in core_worker_server.h,
-//     e.g. "DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(ExampleCall)"
-/// 3) Add a new macro to RAY_CORE_WORKER_RPC_HANDLERS in core_worker_server.h, e.g.
-///    "RPC_SERVICE_HANDLER(CoreWorkerService, ExampleCall, 1)"
-/// 4) Add a method to the CoreWorker class below: "CoreWorker::HandleExampleCall"
+/*
+ * This file defines the gRPC service handlers for the core worker server.
+ *
+ * core_worker_process should be the only user of this target. If other classes need the
+ * CoreWorkerInterface in the future, split it into its own target that does not include
+ * the heavyweight gRPC headers..
+ *
+ * To add a new RPC handler:
+ *   - Update core_worker.proto.
+ *   - Add a virtual method to CoreWorkerService.
+ *   - Initialize the handler for the method in InitServerCallFactories.
+ *   - Implement the method in core_worker.
+ */
 
 #pragma once
 
@@ -36,42 +38,7 @@
 #include "src/ray/protobuf/core_worker.pb.h"
 
 namespace ray {
-
-class CoreWorker;
-
 namespace rpc {
-/// TODO(vitsai): Remove this when auth is implemented for node manager
-#define RAY_CORE_WORKER_RPC_SERVICE_HANDLER(METHOD)        \
-  RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED( \
-      CoreWorkerService, METHOD, -1, AuthType::NO_AUTH)
-
-/// Disable gRPC server metrics since it incurs too high cardinality.
-#define RAY_CORE_WORKER_RPC_HANDLERS                               \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(PushTask)                    \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(ActorCallArgWaitComplete)    \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(RayletNotifyGCSRestart)      \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(GetObjectStatus)             \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(WaitForActorRefDeleted)      \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(PubsubLongPolling)           \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(PubsubCommandBatch)          \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(UpdateObjectLocationBatch)   \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(GetObjectLocationsOwner)     \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(ReportGeneratorItemReturns)  \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(KillActor)                   \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(CancelTask)                  \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(RemoteCancelTask)            \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(RegisterMutableObjectReader) \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(GetCoreWorkerStats)          \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(LocalGC)                     \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(DeleteObjects)               \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(SpillObjects)                \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(RestoreSpilledObjects)       \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(DeleteSpilledObjects)        \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(PlasmaObjectReady)           \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(Exit)                        \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(AssignObjectOwner)           \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(NumPendingTasks)             \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(FreeActorObject)
 
 class CoreWorkerServiceHandler : public DelayedServiceHandler {
  public:
