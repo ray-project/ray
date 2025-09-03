@@ -140,7 +140,7 @@ def _setup_torch_process_group(
     elif backend == "hccl":
         register_custom_torch_dist_backend(backend)
     elif backend == "xla":
-        import torch_xla.distributed.xla_backend
+        # import torch_xla.distributed.xla_backend
         # import torch_xla.runtime as xr
         # assert xr.using_spmd(), "XLA_USE_SPMD must be 1 before PG init"
         # General backend setup for other backends (gloo, nccl, etc.)
@@ -246,21 +246,27 @@ class _TorchBackend(Backend):
 
             if backend_config.backend == "xla":
                 # set pjrt envs
-                coordinator = f"{master_addr}:{master_port}"
+                pjrt_port = master_port + 123
+                coordinator = f"{master_addr}:{pjrt_port}"
                 def _set_pjrt_envs(coord):
                     context = ray.train.get_context()
                     # Core PJRT settings
+                    os.environ.pop("NVIDIA_VISIBLE_DEVICES", None)
+                    os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")
                     os.environ["PJRT_DEVICE"] = "CUDA"
-                    # os.environ["PJRT_DIST_SERVICE_ADDR"] = coord
+                    
 
 
                     # PJRT multiprocess rendezvous (new-style names)
                     os.environ["PJRT_COORDINATOR_ADDRESS"] = coord
+                    os.environ["PJRT_DIST_SERVICE_ADDR"] = coord
                     os.environ["PJRT_NUM_PROCESSES"] = str(context.get_world_size())
                     os.environ["PJRT_PROCESS_INDEX"] = str(context.get_world_rank())
 
                     # once again, turn on spmd
                     os.environ["XLA_USE_SPMD"] = "1"
+
+                    
 
                     # CRITICAL: Use Ray's world size and rank for consistency
                     # os.environ["PJRT_WORLD_SIZE"] = str(context.get_world_size())
