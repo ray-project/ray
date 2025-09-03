@@ -4,6 +4,14 @@ FROM cr.ray.io/rayproject/forge
 
 ARG DEFAULT_PYTHON_VERSION=3.9
 
+ENV UV_UNMANAGED_INSTALL=/home/forge/.local/bin
+
+RUN mkdir -p "$UV_UNMANAGED_INSTALL" \
+ && curl -LsSf https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="$UV_UNMANAGED_INSTALL" sh
+
+ENV PATH="/home/forge/.local/bin:${PATH}"
+
+
 SHELL ["/bin/bash", "-ice"]
 
 RUN <<EOF
