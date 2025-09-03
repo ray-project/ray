@@ -196,14 +196,7 @@ def _setup_cluster_for_test(request, ray_start_cluster):
             "event_stats_print_interval_ms": 500,
             "event_stats": True,
             "enable_metrics_collection": enable_metrics_collection,
-            "experimental_enable_open_telemetry_on_agent": os.getenv(
-                "RAY_experimental_enable_open_telemetry_on_agent"
-            )
-            == "1",
-            "experimental_enable_open_telemetry_on_core": os.getenv(
-                "RAY_experimental_enable_open_telemetry_on_core"
-            )
-            == "1",
+            "enable_open_telemetry": os.getenv("RAY_enable_open_telemetry") == "1",
         }
     )
     # Add worker nodes.
@@ -277,8 +270,7 @@ def _setup_cluster_for_test(request, ray_start_cluster):
 
 @pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
 @pytest.mark.skipif(
-    os.environ.get("RAY_experimental_enable_open_telemetry_on_core") == "1"
-    and sys.platform == "darwin",
+    os.environ.get("RAY_enable_open_telemetry") == "1" and sys.platform == "darwin",
     reason="OpenTelemetry is not working on macOS yet.",
 )
 @pytest.mark.parametrize("_setup_cluster_for_test", [True], indirect=True)
@@ -319,7 +311,7 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
                 "test_driver_counter_total",
                 "test_gauge",
             ]
-            if os.environ.get("RAY_experimental_enable_open_telemetry_on_core") != "1"
+            if os.environ.get("RAY_enable_open_telemetry") != "1"
             else [
                 "test_counter_total",
                 "test_driver_counter_total",
@@ -497,7 +489,7 @@ def test_metrics_export_event_aggregator_agent(
 ):
     cluster = ray_start_cluster_head_with_env_vars
     stub = get_event_aggregator_grpc_stub(
-        cluster.webui_url, cluster.gcs_address, cluster.head_node.node_id
+        cluster.gcs_address, cluster.head_node.node_id
     )
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
 
@@ -770,7 +762,7 @@ def test_histogram(_setup_cluster_for_test):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not working in Windows.")
 @pytest.mark.skipif(
-    os.environ.get("RAY_experimental_enable_open_telemetry_on_core") == "1",
+    os.environ.get("RAY_enable_open_telemetry") == "1",
     reason="OpenTelemetry backend does not support Counter exported as gauge.",
 )
 def test_counter_exported_as_gauge(shutdown_only):
@@ -979,9 +971,10 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
         )
         return node_export_addrs + [autoscaler_export_addr, dashboard_export_addr]
 
-    loaded_json_data = json.loads(writer.get_file_discovery_content())[0]
+    loaded_json_data = json.loads(writer.get_file_discovery_content())
+    assert loaded_json_data == writer.get_latest_service_discovery_content()
     assert set(get_metrics_export_address_from_node(nodes)) == set(
-        loaded_json_data["targets"]
+        loaded_json_data[0]["targets"]
     )
 
     # Let's update nodes.
@@ -989,9 +982,10 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
         nodes.append(cluster.add_node())
 
     # Make sure service discovery file content is correctly updated.
-    loaded_json_data = json.loads(writer.get_file_discovery_content())[0]
+    loaded_json_data = json.loads(writer.get_file_discovery_content())
+    assert loaded_json_data == writer.get_latest_service_discovery_content()
     assert set(get_metrics_export_address_from_node(nodes)) == set(
-        loaded_json_data["targets"]
+        loaded_json_data[0]["targets"]
     )
 
 
