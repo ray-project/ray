@@ -1625,6 +1625,21 @@ void NodeManager::HandleReportWorkerBacklog(
 void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest request,
                                            rpc::RequestWorkerLeaseReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
+  auto lease_id = LeaseID::FromBinary(request.lease_spec().lease_id());
+  // If the lease is already granted, this is a retry and forward the address of the
+  // worker to use.
+  if (leased_workers_.contains(lease_id)) {
+    const auto &worker = leased_workers_[lease_id];
+    RAY_LOG(DEBUG) << "Lease " << lease_id
+                   << " is already granted with worker: " << worker->WorkerId();
+    reply->set_worker_pid(worker->GetProcess().GetId());
+    reply->mutable_worker_address()->set_ip_address(worker->IpAddress());
+    reply->mutable_worker_address()->set_port(worker->Port());
+    reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
+    reply->mutable_worker_address()->set_node_id(self_node_id_.Binary());
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
   RayLease lease{std::move(*request.mutable_lease_spec())};
   const auto caller_worker =
       WorkerID::FromBinary(lease.GetLeaseSpecification().CallerAddress().worker_id());

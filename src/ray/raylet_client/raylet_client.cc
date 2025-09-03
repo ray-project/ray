@@ -41,19 +41,12 @@ void RayletClient::RequestWorkerLease(
     const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
     const int64_t backlog_size,
     const bool is_selected_based_on_locality) {
-  google::protobuf::Arena arena;
-  auto request =
-      google::protobuf::Arena::CreateMessage<rpc::RequestWorkerLeaseRequest>(&arena);
-  // The unsafe allocating here is actually safe because the life-cycle of
-  // lease_spec is longer than request.
-  // Request will be sent before the end of this call, and after that, it won't be
-  // used any more.
-  request->unsafe_arena_set_allocated_lease_spec(
-      const_cast<rpc::LeaseSpec *>(&lease_spec));
-  request->set_grant_or_reject(grant_or_reject);
-  request->set_backlog_size(backlog_size);
-  request->set_is_selected_based_on_locality(is_selected_based_on_locality);
-  grpc_client_->RequestWorkerLease(*request, callback);
+  rpc::RequestWorkerLeaseRequest request;
+  request.mutable_lease_spec()->CopyFrom(lease_spec);
+  request.set_grant_or_reject(grant_or_reject);
+  request.set_backlog_size(backlog_size);
+  request.set_is_selected_based_on_locality(is_selected_based_on_locality);
+  grpc_client_->RequestWorkerLease(std::move(request), callback);
 }
 
 void RayletClient::PrestartWorkers(
