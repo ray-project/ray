@@ -1,7 +1,7 @@
 Deploying Ray for ML platforms
 ==============================
 
-Here, we describe how you might use or deploy Ray in your infrastructure. There are two main deployment patterns -- pick and choose, and within existing platforms.
+This page describes how you might use or deploy Ray in your infrastructure. There are two main deployment patterns -- pick and choose, and within existing platforms.
 
 The core idea is that Ray can be **complementary** to your existing infrastructure and integration tools.
 
