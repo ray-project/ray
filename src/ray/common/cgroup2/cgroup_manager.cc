@@ -55,6 +55,8 @@ StatusOr<std::unique_ptr<CgroupManager>> CgroupManager::Create(
     const int64_t system_reserved_cpu_weight,
     const int64_t system_reserved_memory_bytes,
     std::unique_ptr<CgroupDriverInterface> cgroup_driver) {
+  // TODO(#54703): Add bounds checking for system_reserved_cpu_weight
+  // and system_reserved_memory_bytes.
   RAY_RETURN_NOT_OK(cgroup_driver->CheckCgroupv2Enabled());
   RAY_RETURN_NOT_OK(cgroup_driver->CheckCgroup(base_cgroup_path));
   StatusOr<std::unordered_set<std::string>> available_controllers =
@@ -88,13 +90,13 @@ StatusOr<std::unique_ptr<CgroupManager>> CgroupManager::Create(
     }
   }
 
-  CgroupManager *cgroup_manager =
-      new CgroupManager(std::move(base_cgroup_path), node_id, std::move(cgroup_driver));
+  std::unique_ptr<CgroupManager> cgroup_manager = std::unique_ptr<CgroupManager>(
+      new CgroupManager(std::move(base_cgroup_path), node_id, std::move(cgroup_driver)));
 
   RAY_RETURN_NOT_OK(cgroup_manager->Initialize(system_reserved_cpu_weight,
                                                system_reserved_memory_bytes));
 
-  return std::unique_ptr<CgroupManager>(cgroup_manager);
+  return cgroup_manager;
 }
 
 // TODO(#54703): This is a placeholder for cleanup. This will call

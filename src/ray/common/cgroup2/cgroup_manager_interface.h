@@ -59,8 +59,13 @@ class CgroupManagerInterface {
  public:
   // TODO(#54703): These will be implemented in a later PR to move processes
   // into a cgroup.
-  // virtual Status AddApplicationProcess(int) = 0;
-  // virtual Status AddSystemProcess(int) = 0;
+  // virtual Status AddProcessToApplicationCgroup(int) = 0;
+  // virtual Status AddProcessToSystemCgroup(int) = 0;
+
+  /**
+    Cleans up the cgroup hierarchy, disables all controllers and removes all
+    constraints.
+  */
   virtual ~CgroupManagerInterface() = default;
 
  protected:

@@ -19,8 +19,8 @@ ray_cc_library(
     hdrs = [
         "cgroup_manager_interface.h",
     ],
-    tags = [
-        "no_windows",
+    target_compatible_with = [
+        "@platforms//os:linux",
     ],
     deps = [
         "//src/ray/common:status",
@@ -35,8 +35,8 @@ ray_cc_library(
         "cgroup_manager.h",
         "scoped_cgroup_operation.h",
     ],
-    tags = [
-        "no_windows",
+    target_compatible_with = [
+        "@platforms//os:linux",
     ],
     deps = [
         ":cgroup_driver_interface",
@@ -70,6 +70,9 @@ ray_cc_library(
     name = "fake_cgroup_driver",
     hdrs = [
         "fake_cgroup_driver.h",
+    ],
+    target_compatible_with = [
+        "@platforms//os:linux",
     ],
     deps = [
         ":cgroup_driver_interface",
