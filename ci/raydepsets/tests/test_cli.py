@@ -577,6 +577,7 @@ depsets:
             manager = _create_test_manager(tmpdir)
             with self.assertRaises(RuntimeError):
                 manager.execute_pre_hooks(["pre-hook-error-test.sh"])
+
     def test_execute_pre_hooks_failure_in_middle(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
@@ -585,6 +586,7 @@ depsets:
                 manager.execute_pre_hooks(
                     ["pre-hook-test.sh", "pre-hook-error-test.sh", "pre-hook-test.sh"]
                 )
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
