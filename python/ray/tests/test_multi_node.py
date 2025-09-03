@@ -2,7 +2,6 @@ import os
 import sys
 import time
 
-import psutil
 import pytest
 
 import ray
@@ -15,6 +14,8 @@ from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
 )
+
+import psutil
 
 
 @pytest.mark.parametrize(

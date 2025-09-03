@@ -22,7 +22,8 @@
 #include <vector>
 
 #include "ray/common/lease/lease_spec.h"
-#include "ray/gcs/pb_util.h"
+#include "ray/common/protobuf_utils.h"
+#include "ray/util/time.h"
 
 namespace ray {
 namespace core {
@@ -135,15 +136,8 @@ void NormalTaskSubmitter::ReturnWorkerLease(const rpc::Address &addr,
     scheduling_key_entries_.erase(scheduling_key);
   }
 
-  auto status =
-      lease_entry.raylet_client->ReturnWorkerLease(addr.port(),
-                                                   WorkerID::FromBinary(addr.worker_id()),
-                                                   was_error,
-                                                   error_detail,
-                                                   worker_exiting);
-  if (!status.ok()) {
-    RAY_LOG(ERROR) << "Error returning worker to raylet: " << status.ToString();
-  }
+  lease_entry.raylet_client->ReturnWorkerLease(
+      addr.port(), lease_entry.lease_id, was_error, error_detail, worker_exiting);
   worker_to_lease_entry_.erase(addr);
 }
 

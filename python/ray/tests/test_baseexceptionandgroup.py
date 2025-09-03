@@ -1,11 +1,12 @@
-import pytest
 import sys
 from textwrap import dedent
 
+import pytest
+
 import ray
 from ray.exceptions import (
-    RayTaskError,
     ActorDiedError,
+    RayTaskError,
     TaskCancelledError,
     WorkerCrashedError,
 )
