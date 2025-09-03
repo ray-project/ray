@@ -7,7 +7,7 @@ aiosqlite==0.19.0
 amqp==5.3.1
 annotated-types==0.6.0
 anyio==3.7.1
-anyscale==0.26.50
+anyscale==0.26.52
 archspec @ file:///home/conda/feedstock_root/build_artifacts/archspec_1737352602016/work
 argon2-cffi==23.1.0
 argon2-cffi-bindings==21.2.0
@@ -196,7 +196,7 @@ python-json-logger==2.0.7
 pytz==2022.7.1
 PyYAML==6.0.1
 pyzmq==26.0.3
-ray @ file:///home/ray/ray-2.49.0-cp39-cp39-manylinux2014_x86_64.whl#sha256=d26894e9dd2126eead7bbef2e5773c84caa66039e0493761bd8feb35930046ed
+ray @ file:///home/ray/ray-2.49.1-cp39-cp39-manylinux2014_x86_64.whl#sha256=f21d25ff2685b3443480d39d1583b840cfe9a8098edb6166399fde47953b8394
 referencing==0.36.2
 requests @ file:///home/conda/feedstock_root/build_artifacts/requests_1733217035951/work
 rfc3339-validator==0.1.4
@@ -204,7 +204,7 @@ rfc3986-validator==0.1.1
 rich==13.3.2
 rpds-py==0.22.3
 rsa==4.7.2
-ruamel.yaml @ file:///home/conda/feedstock_root/build_artifacts/ruamel.yaml_1749479929034/work
+ruamel.yaml @ file:///home/conda/feedstock_root/build_artifacts/ruamel.yaml_1755625023823/work
 ruamel.yaml.clib @ file:///home/conda/feedstock_root/build_artifacts/ruamel.yaml.clib_1728724456970/work
 s3transfer==0.6.2
 scipy==1.11.4
