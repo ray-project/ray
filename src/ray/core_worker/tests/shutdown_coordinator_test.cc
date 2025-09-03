@@ -24,6 +24,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/synchronization/mutex.h"
 #include "ray/common/buffer.h"
 #include "src/ray/protobuf/common.pb.h"
 
@@ -41,26 +42,46 @@ class FakeShutdownExecutor : public ShutdownExecutorInterface {
 
   std::string last_exit_type;
   std::string last_detail;
+  mutable absl::Mutex mu_;
+
+  std::string GetLastExitType() const {
+    absl::MutexLock lk(&mu_);
+    return last_exit_type;
+  }
+
+  std::string GetLastDetail() const {
+    absl::MutexLock lk(&mu_);
+    return last_detail;
+  }
 
   void ExecuteGracefulShutdown(std::string_view exit_type,
                                std::string_view detail,
                                std::chrono::milliseconds timeout_ms) override {
     graceful_calls++;
-    last_exit_type = std::string(exit_type);
-    last_detail = std::string(detail);
+    {
+      absl::MutexLock lk(&mu_);
+      last_exit_type = std::string(exit_type);
+      last_detail = std::string(detail);
+    }
   }
   void ExecuteForceShutdown(std::string_view exit_type,
                             std::string_view detail) override {
     force_calls++;
-    last_exit_type = std::string(exit_type);
-    last_detail = std::string(detail);
+    {
+      absl::MutexLock lk(&mu_);
+      last_exit_type = std::string(exit_type);
+      last_detail = std::string(detail);
+    }
   }
   void ExecuteWorkerExit(std::string_view exit_type,
                          std::string_view detail,
                          std::chrono::milliseconds timeout_ms) override {
     worker_exit_calls++;
-    last_exit_type = std::string(exit_type);
-    last_detail = std::string(detail);
+    {
+      absl::MutexLock lk(&mu_);
+      last_exit_type = std::string(exit_type);
+      last_detail = std::string(detail);
+    }
   }
   void ExecuteExit(std::string_view exit_type,
                    std::string_view detail,
@@ -68,15 +89,21 @@ class FakeShutdownExecutor : public ShutdownExecutorInterface {
                    const std::shared_ptr<::ray::LocalMemoryBuffer>
                        &creation_task_exception_pb_bytes) override {
     worker_exit_calls++;
-    last_exit_type = std::string(exit_type);
-    last_detail = std::string(detail);
+    {
+      absl::MutexLock lk(&mu_);
+      last_exit_type = std::string(exit_type);
+      last_detail = std::string(detail);
+    }
   }
   void ExecuteHandleExit(std::string_view exit_type,
                          std::string_view detail,
                          std::chrono::milliseconds timeout_ms) override {
     handle_exit_calls++;
-    last_exit_type = std::string(exit_type);
-    last_detail = std::string(detail);
+    {
+      absl::MutexLock lk(&mu_);
+      last_exit_type = std::string(exit_type);
+      last_detail = std::string(detail);
+    }
   }
   void KillChildProcessesImmediately() override {}
   bool ShouldWorkerIdleExit() const override { return idle_exit_allowed.load(); }
@@ -148,18 +175,17 @@ TEST_F(ShutdownCoordinatorTest, RequestShutdown_IdempotentBehavior) {
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kForcedExit);  // Reason is updated
 }
 
-TEST_F(ShutdownCoordinatorTest,
-       TryInitiateShutdown_DelegatesToGraceful_OnlyFirstSucceeds) {
+TEST_F(ShutdownCoordinatorTest, RequestShutdown_DelegatesToGraceful_OnlyFirstSucceeds) {
   auto coordinator = CreateCoordinator();
 
-  EXPECT_TRUE(coordinator->TryInitiateShutdown(ShutdownReason::kUserError));
+  EXPECT_TRUE(coordinator->RequestShutdown(false, ShutdownReason::kUserError));
   const auto state = coordinator->GetState();
   EXPECT_TRUE(state == ShutdownState::kShuttingDown ||
               state == ShutdownState::kDisconnecting);
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kUserError);
 
   // Second call should fail
-  EXPECT_FALSE(coordinator->TryInitiateShutdown(ShutdownReason::kForcedExit));
+  EXPECT_FALSE(coordinator->RequestShutdown(false, ShutdownReason::kForcedExit));
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kUserError);  // unchanged
 }
 
@@ -177,24 +203,12 @@ TEST_F(ShutdownCoordinatorTest,
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kGracefulExit);
 
   // Disconnecting -> Shutdown
-  EXPECT_TRUE(coordinator->TryTransitionToShutdown());
+  EXPECT_TRUE(coordinator->RequestShutdown(true, ShutdownReason::kForcedExit));
   EXPECT_EQ(coordinator->GetState(), ShutdownState::kShutdown);
 
   // Further transitions are no-ops.
-  EXPECT_FALSE(coordinator->TryTransitionToDisconnecting());
-  EXPECT_FALSE(coordinator->TryTransitionToShutdown());
-}
-
-TEST_F(ShutdownCoordinatorTest, InvalidTransitions_FromRunning_Fail) {
-  auto coordinator = CreateCoordinator();
-
-  // Cannot transition to disconnecting from running
-  EXPECT_FALSE(coordinator->TryTransitionToDisconnecting());
-  EXPECT_EQ(coordinator->GetState(), ShutdownState::kRunning);
-
-  // Cannot transition to shutdown from running
-  EXPECT_FALSE(coordinator->TryTransitionToShutdown());
-  EXPECT_EQ(coordinator->GetState(), ShutdownState::kRunning);
+  EXPECT_FALSE(coordinator->RequestShutdown(false, ShutdownReason::kGracefulExit));
+  EXPECT_FALSE(coordinator->RequestShutdown(true, ShutdownReason::kForcedExit));
 }
 
 TEST_F(ShutdownCoordinatorTest, ForceShutdown_TransitionsDirectlyToShutdown) {
@@ -205,7 +219,7 @@ TEST_F(ShutdownCoordinatorTest, ForceShutdown_TransitionsDirectlyToShutdown) {
                                            ShutdownReason::kForcedExit));
 
   // Already in shutdown state, manual transition should fail
-  EXPECT_FALSE(coordinator->TryTransitionToShutdown());
+  EXPECT_FALSE(coordinator->RequestShutdown(true, ShutdownReason::kForcedExit));
   EXPECT_EQ(coordinator->GetState(), ShutdownState::kShutdown);
 }
 
@@ -291,7 +305,7 @@ TEST_F(ShutdownCoordinatorTest, StringRepresentations_StateAndReason_AreReadable
   EXPECT_EQ(coordinator->GetStateString(), "Disconnecting");
   EXPECT_EQ(coordinator->GetReasonString(), "GracefulExit");
 
-  coordinator->TryTransitionToShutdown();
+  coordinator->RequestShutdown(true, ShutdownReason::kForcedExit);
   EXPECT_EQ(coordinator->GetStateString(), "Shutdown");
 }
 
@@ -379,7 +393,8 @@ TEST_F(ShutdownCoordinatorTest, Concurrent_DoubleForce_ForceExecutesOnce) {
   // Verify that only one forced shutdown was called
   EXPECT_EQ(fake_ptr->force_calls.load(), 1);
   EXPECT_EQ(fake_ptr->graceful_calls.load(), 0);
-  EXPECT_TRUE(fake_ptr->last_detail == "force1" || fake_ptr->last_detail == "force2");
+  EXPECT_TRUE(fake_ptr->GetLastDetail() == "force1" ||
+              fake_ptr->GetLastDetail() == "force2");
 }
 
 }  // namespace core
