@@ -1012,7 +1012,8 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
     ObjectID *object_id,
     std::shared_ptr<Buffer> *data,
     const std::unique_ptr<rpc::Address> &owner_address,
-    bool inline_small_object) {
+    bool inline_small_object,
+    rpc::TensorTransport tensor_transport) {
   auto status = WaitForActorRegistered(contained_object_ids);
   if (!status.ok()) {
     return status;
@@ -1031,7 +1032,15 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
                                        data_size + metadata->Size(),
                                        /*is_reconstructable=*/false,
                                        /*add_local_ref=*/true,
-                                       NodeID::FromBinary(rpc_address_.node_id()));
+                                       NodeID::FromBinary(rpc_address_.node_id()),
+                                       /*tensor_transport=*/tensor_transport);
+
+    // Register the callback to free the GPU object when it is out of scope.
+    if (tensor_transport !=
+        rpc::TensorTransport::OBJECT_STORE) {
+      reference_counter_->AddObjectOutOfScopeOrFreedCallback(
+      *object_id, options_.free_actor_object_callback);
+    }
   } else {
     // Because in the remote worker's `HandleAssignObjectOwner`,
     // a `WaitForRefRemoved` RPC request will be sent back to

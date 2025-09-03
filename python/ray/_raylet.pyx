@@ -2844,7 +2844,7 @@ cdef class GcsClient:
 
 
 cdef class _GcsSubscriber:
-    """Cython wrapper class of C++ `ray::pubsub::PythonGcsSubscriber`."""
+    """Cython wrapper class of C++ `ray::gcs::PythonGcsSubscriber`."""
     cdef:
         shared_ptr[CPythonGcsSubscriber] inner
 
@@ -3404,7 +3404,7 @@ cdef class CoreWorker:
         """Create an object reference with the current worker as the owner.
         """
         created_object = self.put_serialized_object_and_increment_local_ref(
-            serialized_object, pin_object, owner_address, inline_small_object, _is_experimental_channel)
+            serialized_object, pin_object, owner_address, inline_small_object, _is_experimental_channel, tensor_transport_val)
         if owner_address is None:
             owner_address = CCoreWorkerProcess.GetCoreWorker().GetRpcAddress().SerializeAsString()
 
@@ -3424,6 +3424,7 @@ cdef class CoreWorker:
             owner_address=None,
             c_bool inline_small_object=True,
             c_bool _is_experimental_channel=False,
+            int tensor_transport_val=0
             ):
         cdef:
             CObjectID c_object_id
@@ -3437,6 +3438,7 @@ cdef class CoreWorker:
                 serialized_object.contained_object_refs)
             size_t total_bytes = serialized_object.total_bytes
 
+        c_tensor_transport_val = <CTensorTransport>tensor_transport_val
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()
                 .CreateOwnedAndIncrementLocalRef(
@@ -3447,7 +3449,8 @@ cdef class CoreWorker:
                     &c_object_id,
                     &data,
                     c_owner_address,
-                    inline_small_object))
+                    inline_small_object,
+                    c_tensor_transport_val))
 
         if (data.get() == NULL):
             # Object already exists
