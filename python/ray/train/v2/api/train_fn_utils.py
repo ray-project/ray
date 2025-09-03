@@ -191,8 +191,7 @@ def get_all_reported_checkpoints() -> List["ReportedCheckpoint"]:
             )
 
     Returns:
-        List of ReportedCheckpoint objects that represent the checkpoints and
-            corresponding metrics reported by the workers.
+        List of ReportedCheckpoint objects that represent the checkpoints and corresponding metrics reported by the workers.
     """
     return get_train_fn_utils().get_all_reported_checkpoints()
 
