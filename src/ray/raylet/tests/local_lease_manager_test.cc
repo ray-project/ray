@@ -30,7 +30,7 @@
 #include "ray/common/id.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/task/task_util.h"
-#include "ray/common/test_util.h"
+#include "ray/common/test_utils.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/tests/util.h"
 
@@ -364,7 +364,7 @@ class LocalLeaseManagerTest : public ::testing::Test {
   NodeID id_;
   std::shared_ptr<ClusterResourceScheduler> scheduler_;
   MockWorkerPool pool_;
-  absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
+  absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::unordered_set<ObjectID> missing_objects_;
 
   int default_arg_size_ = 10;

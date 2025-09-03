@@ -22,7 +22,6 @@
 #include "ray/common/asio/postable.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-#include "ray/gcs/callback.h"
 
 namespace ray {
 namespace gcs {
