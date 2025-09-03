@@ -4,19 +4,21 @@ import time
 from functools import reduce
 from itertools import chain
 
-from click.testing import CliRunner
 import pytest
+from click.testing import CliRunner
 
 import ray
-from ray._common.test_utils import wait_for_condition
-from ray._private.test_utils import placement_group_assert_no_leak
-from ray.tests.test_placement_group import are_pairwise_unique
-from ray.util.state import list_actors, list_placement_groups
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from ray._private.test_utils import fetch_prometheus_metrics
-from ray._common.network_utils import build_address
 import ray.scripts.scripts as scripts
+from ray._common.network_utils import build_address
+from ray._common.test_utils import wait_for_condition
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.test_utils import (
+    fetch_prometheus_metrics,
+    placement_group_assert_no_leak,
+)
+from ray.tests.test_placement_group import are_pairwise_unique
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray.util.state import list_actors, list_placement_groups
 
 
 def test_placement_group_no_resource(ray_start_cluster):
@@ -510,7 +512,7 @@ def test_remove_placement_group_with_pending_worker_lease_waiting_for_pg_resourc
     Specific test steps:
       1. Create a placement group with only 1 bundle.
       2. Create two actors using the aforementioned pg. At this point,
-         the latter actor lease request will definitely be pending in local task manager dispatch queue due to
+         the latter actor lease request will definitely be pending in local lease manager leases_to_grant queue due to
          unavailable pg bundle resources.
       3. Remove the pg while the latter actor lease request is pending.
       4. Verify that the pending actor lease request is cancelled and the pg
@@ -549,7 +551,7 @@ def test_remove_placement_group_with_pending_worker_lease_waiting_for_pg_resourc
             return False
         for sample in samples:
             if sample.labels["State"] == "Dispatched" and sample.value == 1:
-                # actor2 is in the local task manager dispatch queue
+                # actor2 is in the local lease manager leases_to_grant queue
                 return True
         return False
 

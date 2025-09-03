@@ -19,17 +19,15 @@
 #include <memory>
 #include <vector>
 
-#include "ray/util/process.h"
-
-// clang-format off
-#include "ray/common/asio/instrumented_io_context.h"
-#include "ray/gcs/gcs_server/tests/gcs_server_test_util.h"
-#include "ray/gcs/tests/gcs_test_util.h"
 #include "mock/ray/pubsub/publisher.h"
-#include "src/ray/protobuf/gcs.pb.h"
-#include "src/ray/protobuf/common.pb.h"
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
-// clang-format on
+#include "ray/gcs/store_client/in_memory_store_client.h"
+#include "ray/util/process.h"
+#include "src/ray/protobuf/common.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
+
 using namespace ::testing;  // NOLINT
 using namespace ray::gcs;   // NOLINT
 using namespace ray;        // NOLINT
