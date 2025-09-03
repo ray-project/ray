@@ -18,7 +18,7 @@ llm_config = LLMConfig(
         tensor_parallel_size=8,
         max_model_len=32768,
         reasoning_parser="qwen3",
-        ### Uncomment if your model is gated and need your Huggingface Token to access it
+        ### Uncomment if your model is gated and needs your Hugging Face token to access it
         # hf_token=os.environ["HF_TOKEN"],
     ),
 )

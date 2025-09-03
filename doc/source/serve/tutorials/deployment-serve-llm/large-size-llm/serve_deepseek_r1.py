@@ -13,7 +13,7 @@ llm_config = LLMConfig(
             max_replicas=1,
         )
     ),
-    ### Uncomment if your model is gated and need your Huggingface Token to access it
+    ### Uncomment if your model is gated and needs your Hugging Face token to access it.
     # runtime_env=dict(
     #    env_vars={
     #        "HF_TOKEN": os.environ.get("HF_TOKEN")
