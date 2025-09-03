@@ -23,7 +23,7 @@ In Ray's context, observability refers to the ability for users to observe and i
 ![what is ray's observability](./images/what-is-ray-observability.png)
 
 
-## Importance of Observability
+## Importance of observability
 Debugging a distributed system can be challenging due to the large scale and complexity. Good observability is important for Ray users to be able to easily monitor and debug their Ray applications and clusters.
 
 ![Importance of observability](./images/importance-of-observability.png)
