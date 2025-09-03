@@ -149,7 +149,7 @@ def _setup_torch_process_group(
             return
         print(">>> os.environ[\"XLA_USE_SPMD\"] = ", os.environ["XLA_USE_SPMD"])
         dist.init_process_group(
-            backend='gloo',
+            backend='xla',
             init_method='env://',
             rank=world_rank,
             world_size=world_size,
