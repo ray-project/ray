@@ -32,14 +32,23 @@
 namespace ray {
 namespace gcs {
 
-GcsTaskManager::GcsTaskManager(instrumented_io_context &io_service)
+using std::literals::operator""sv;
+
+GcsTaskManager::GcsTaskManager(
+    instrumented_io_context &io_service,
+    ray::observability::MetricInterface &task_events_reported_counter,
+    ray::observability::MetricInterface &task_events_dropped_counter,
+    ray::observability::MetricInterface &task_events_stored_counter)
     : io_service_(io_service),
       task_event_storage_(std::make_unique<GcsTaskManagerStorage>(
           RayConfig::instance().task_events_max_num_task_in_gcs(),
           stats_counter_,
           std::make_unique<FinishedTaskActorTaskGcPolicy>())),
       ray_event_converter_(std::make_unique<GcsRayEventConverter>()),
-      periodical_runner_(PeriodicalRunner::Create(io_service_)) {
+      periodical_runner_(PeriodicalRunner::Create(io_service_)),
+      task_events_reported_counter_(task_events_reported_counter),
+      task_events_dropped_counter_(task_events_dropped_counter),
+      task_events_stored_counter_(task_events_stored_counter) {
   periodical_runner_->RunFnPeriodically([this] { task_event_storage_->GcJobSummary(); },
                                         5 * 1000,
                                         "GcsTaskManager.GcJobSummary");
@@ -691,16 +700,15 @@ std::string GcsTaskManager::DebugString() {
 
 void GcsTaskManager::RecordMetrics() {
   auto counters = stats_counter_.GetAll();
-  ray::stats::STATS_gcs_task_manager_task_events_reported.Record(
-      counters[kTotalNumTaskEventsReported]);
+  task_events_reported_counter_.Record(counters[kTotalNumTaskEventsReported]);
 
-  ray::stats::STATS_gcs_task_manager_task_events_dropped.Record(
-      counters[kTotalNumTaskAttemptsDropped], ray::stats::kGcsTaskStatusEventDropped);
-  ray::stats::STATS_gcs_task_manager_task_events_dropped.Record(
-      counters[kTotalNumProfileTaskEventsDropped], ray::stats::kGcsProfileEventDropped);
+  task_events_dropped_counter_.Record(
+      counters[kTotalNumTaskAttemptsDropped],
+      {{"Type"sv, ray::stats::kGcsTaskStatusEventDropped}});
+  task_events_dropped_counter_.Record(counters[kTotalNumProfileTaskEventsDropped],
+                                      {{"Type"sv, ray::stats::kGcsProfileEventDropped}});
 
-  ray::stats::STATS_gcs_task_manager_task_events_stored.Record(
-      counters[kNumTaskEventsStored]);
+  task_events_stored_counter_.Record(counters[kNumTaskEventsStored]);
 
   {
     absl::MutexLock lock(&mutex_);

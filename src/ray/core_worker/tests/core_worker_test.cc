@@ -254,7 +254,8 @@ class CoreWorkerTest : public ::testing::Test {
                                                 task_execution_service_,
                                                 std::move(task_event_buffer),
                                                 getpid(),
-                                                fake_task_by_state_counter_);
+                                                fake_task_by_state_counter_,
+                                                fake_actor_by_state_counter_);
   }
 
  protected:
@@ -273,6 +274,7 @@ class CoreWorkerTest : public ::testing::Test {
   std::shared_ptr<TaskManager> task_manager_;
   std::shared_ptr<CoreWorker> core_worker_;
   ray::observability::FakeMetric fake_task_by_state_counter_;
+  ray::observability::FakeMetric fake_actor_by_state_counter_;
 };
 
 std::shared_ptr<RayObject> MakeRayObject(const std::string &data_str,

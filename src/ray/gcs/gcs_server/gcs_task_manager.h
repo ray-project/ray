@@ -98,7 +98,11 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
                        public rpc::events::RayEventExportGcsServiceHandler {
  public:
   /// Create a GcsTaskManager.
-  explicit GcsTaskManager(instrumented_io_context &io_service);
+  explicit GcsTaskManager(
+      instrumented_io_context &io_service,
+      ray::observability::MetricInterface &task_events_reported_counter,
+      ray::observability::MetricInterface &task_events_dropped_counter,
+      ray::observability::MetricInterface &task_events_stored_counter);
 
   /// Handles a AddTaskEventData request.
   ///
@@ -531,6 +535,11 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
 
   /// The runner to run function periodically.
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
+
+  /// Metric interfaces for task manager metrics
+  ray::observability::MetricInterface &task_events_reported_counter_;
+  ray::observability::MetricInterface &task_events_dropped_counter_;
+  ray::observability::MetricInterface &task_events_stored_counter_;
 
   FRIEND_TEST(GcsTaskManagerTest, TestHandleAddEventBasic);
   FRIEND_TEST(GcsTaskManagerTest, TestHandleAddTaskEventBasic);
