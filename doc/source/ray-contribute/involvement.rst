@@ -5,7 +5,7 @@ researchers, and folks that love machine learning. Here's a list of tips for get
 - Star and follow us on `on GitHub`_.
 - To post questions or feature requests, check out the `Discussion Board`_!
 - Follow us and spread the word on `Twitter`_!
-- Join our `Meetup Group`_ to connect with others in the community!
+- Join our `Meetup Group`_ to connect with others in the community.
 - Use the `[ray]` tag on `StackOverflow`_ to ask and answer questions about Ray usage.
 
 
