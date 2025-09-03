@@ -49,23 +49,6 @@ class RayError(Exception):
             try:
                 return pickle.loads(ray_exception.serialized_exception)
             except Exception:
-                # Before falling back, try deserializing using any serializers
-                # registered via ray.util.register_serializer(), if available.
-                # TODO: use public API instead of _deserialize_pickle5_data
-                try:
-                    import ray
-
-                    worker = ray._private.worker.global_worker
-                    if worker is not None and getattr(worker, "connected", False):
-                        context = worker.get_serialization_context()
-                        try:
-                            return context._deserialize_pickle5_data(
-                                ray_exception.serialized_exception, None
-                            )
-                        except Exception:
-                            pass
-                except Exception:
-                    pass
                 # formatted_exception_string is set in to_bytes() above by calling
                 # traceback.format_exception() on the original exception. It contains
                 # the string representation and stack trace of the original error.
@@ -946,6 +929,7 @@ class UnserializableException(RayError):
     def __str__(self):
         return (
             "Failed to deserialize exception. Refer to https://docs.ray.io/en/latest/ray-core/objects/serialization.html#troubleshooting to troubleshoot.\n"
+            "You can register a custom serializer for the exception class to avoid this error doc reference: https://docs.ray.io/en/latest/ray-core/objects/serialization.html#customized-serialization.\n"
             "Original exception:\n"
             f"{self._original_stack_trace}"
         )

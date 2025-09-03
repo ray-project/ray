@@ -302,6 +302,7 @@ def test_actor_repr_in_traceback(ray_start_regular):
 
 def test_unpickleable_stacktrace(shutdown_only):
     expected_output = """Failed to deserialize exception. Refer to https://docs.ray.io/en/latest/ray-core/objects/serialization.html#troubleshooting to troubleshoot.
+You can register a custom serializer for the exception class to avoid this error doc reference: https://docs.ray.io/en/latest/ray-core/objects/serialization.html#customized-serialization.
 Original exception:
 ray.exceptions.RayTaskError: ray::f() (pid=XXX, ip=YYY)
   File "FILE", line ZZ, in f
@@ -362,9 +363,8 @@ def test_exception_with_registered_serializer(shutdown_only):
 
     # Ensure dual-typed exception and message propagation
     assert isinstance(exc_info.value, RayTaskError)
-    assert isinstance(
-        exc_info.value, NoPickleError
-    )  # if custom serializer was not registered, this would be instance of UnserializableException()
+    # if custom serializer was not registered, this would be instance of UnserializableException()
+    assert isinstance(exc_info.value, NoPickleError)
     assert "message" in str(exc_info.value)
 
     # Cleanup to avoid affecting other tests
