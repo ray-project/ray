@@ -16,7 +16,7 @@ usermod -aG sudo ray
 echo 'ray ALL=NOPASSWD: ALL' >> /etc/sudoers
 
 # Install uv
-curl -LsSf https://astral.sh/uv/0.8.14/install.sh | sh
+curl -sSL -o- https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
 
 # Install Python versions
 uv python install 3.9 3.10 3.11 3.12 3.13
