@@ -1350,11 +1350,9 @@ Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
   // requests will be retried at the plasma store.
   for (auto it = result_map.begin(); it != result_map.end();) {
     auto current = it++;
-    if (current->second->IsInPlasmaError()) {
-      RAY_LOG(DEBUG) << current->first << " in plasma, doing fetch-and-get";
-      plasma_object_ids.insert(current->first);
-      result_map.erase(current);
-    }
+    RAY_LOG(DEBUG) << current->first << " in plasma, doing fetch-and-get";
+    plasma_object_ids.insert(current->first);
+    result_map.erase(current);
   }
 
   if (!got_exception && !plasma_object_ids.empty()) {

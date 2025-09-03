@@ -202,6 +202,10 @@ Status RayletIpcClient::AsyncGetObjects(
   auto message = protocol::CreateAsyncGetObjectsRequest(
       fbb, object_ids_message, AddressesToFlatbuffer(fbb, owner_addresses));
   fbb.Finish(message);
+  while (true) {
+    RAY_RETURN_NOT_OK(WriteMessage(MessageType::AsyncGetObjectsRequest, &fbb));
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
   return WriteMessage(MessageType::AsyncGetObjectsRequest, &fbb);
 }
 

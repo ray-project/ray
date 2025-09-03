@@ -951,6 +951,7 @@ bool NodeManager::UpdateResourceUsage(
 
 void NodeManager::HandleClientConnectionError(std::shared_ptr<ClientConnection> client,
                                               const boost::system::error_code &error) {
+  RAY_LOG(ERROR) << "HandleClientConnectionError: " << error.message();
   const std::string err_msg = absl::StrCat(
       "Worker unexpectedly exits with a connection error code ",
       error.value(),
@@ -969,9 +970,10 @@ void NodeManager::HandleClientConnectionError(std::shared_ptr<ClientConnection> 
 void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &client,
                                        int64_t message_type,
                                        const uint8_t *message_data) {
+  RAY_LOG(ERROR) << "ProcessClientMessage!";
   auto registered_worker = worker_pool_.GetRegisteredWorker(client);
   auto message_type_value = static_cast<protocol::MessageType>(message_type);
-  RAY_LOG(DEBUG) << "[Worker] Message "
+  RAY_LOG(ERROR) << "[Worker] Message "
                  << protocol::EnumNameMessageType(message_type_value) << "("
                  << message_type << ") from worker with PID "
                  << (registered_worker
@@ -1441,10 +1443,19 @@ void NodeManager::HandleAsyncGetObjectsRequest(
   const auto refs =
       FlatbufferToObjectReferences(*request->object_ids(), *request->owner_addresses());
 
-  // Asynchronously pull all requested objects to the local node.
-  AsyncGetOrWait(client,
-                 refs,
-                 /*is_get_request=*/true);
+  std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
+  if (!worker) {
+    worker = worker_pool_.GetRegisteredDriver(client);
+  }
+  RAY_CHECK(worker) << "NO WORKER!";
+
+  auto task = [this, client]() {
+    RAY_LOG(ERROR) << "DISCONNECTING CLIENT.";
+    DisconnectClient(
+          client, /*graceful=*/false, rpc::WorkerExitType::SYSTEM_ERROR, "FAKE");
+  };
+  execute_after(
+      io_service_, std::move(task), std::chrono::milliseconds(1000));
 }
 
 void NodeManager::ProcessWaitRequestMessage(

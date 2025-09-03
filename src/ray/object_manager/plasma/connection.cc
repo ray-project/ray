@@ -78,7 +78,7 @@ Client::Client(PrivateTag,
                             std::move(connection_error_handler),
                             std::move(socket),
                             "worker",
-                            object_store_message_enum) {}
+                            object_store_message_enum, false) {}
 
 std::shared_ptr<Client> Client::Create(
     PlasmaStoreMessageHandler message_handler,

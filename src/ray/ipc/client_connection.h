@@ -197,7 +197,7 @@ class ClientConnection : public ServerConnection {
                    ConnectionErrorHandler connection_error_handler,
                    local_stream_socket &&socket,
                    std::string debug_label,
-                   std::vector<std::string> message_type_enum_names);
+                   std::vector<std::string> message_type_enum_names, bool log);
 
   ClientConnection(const ClientConnection &) = delete;
   ClientConnection &operator=(const ClientConnection &) = delete;
@@ -217,7 +217,8 @@ class ClientConnection : public ServerConnection {
       ConnectionErrorHandler connection_error_handler,
       local_stream_socket &&socket,
       std::string debug_label,
-      std::vector<std::string> message_type_enum_names);
+      std::vector<std::string> message_type_enum_names,
+      bool log = false);
 
   std::shared_ptr<ClientConnection> shared_ClientConnection_from_this() {
     return std::static_pointer_cast<ClientConnection>(shared_from_this());
@@ -239,13 +240,13 @@ class ClientConnection : public ServerConnection {
                    ConnectionErrorHandler connection_error_handler,
                    local_stream_socket &&socket,
                    std::string debug_label,
-                   std::vector<std::string> message_type_enum_names)
+                   std::vector<std::string> message_type_enum_names, bool log)
       : ClientConnection(PrivateTag{},
                          std::move(message_handler),
                          std::move(connection_error_handler),
                          std::move(socket),
                          std::move(debug_label),
-                         std::move(message_type_enum_names)) {}
+                         std::move(message_type_enum_names), log) {}
   /// Process an error from the last operation, then process the  message
   /// header from the client.
   void ProcessMessageHeader(const boost::system::error_code &error);
@@ -280,6 +281,7 @@ class ClientConnection : public ServerConnection {
   int64_t read_type_;
   uint64_t read_length_;
   std::vector<uint8_t> read_message_;
+  bool log_;
 };
 
 // Returns `true` for any connections that have disconnected unexpectedly.

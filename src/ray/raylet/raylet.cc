@@ -165,6 +165,7 @@ void Raylet::HandleAccept(const boost::system::error_code &error) {
     MessageHandler message_handler = [this](std::shared_ptr<ClientConnection> client,
                                             int64_t message_type,
                                             const std::vector<uint8_t> &message) {
+      RAY_LOG(ERROR) << "In MessageHandler!";
       node_manager_.ProcessClientMessage(client, message_type, message.data());
     };
 
@@ -173,7 +174,7 @@ void Raylet::HandleAccept(const boost::system::error_code &error) {
                                          error_handler,
                                          std::move(socket_),
                                          "worker",
-                                         node_manager_message_enum);
+                                         node_manager_message_enum, true);
 
     // Begin processing messages. The message handler above is expected to call this to
     // continue processing messages.
