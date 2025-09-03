@@ -7,6 +7,6 @@ ray_cc_library(
         "//src/ray/common:buffer",
         "//src/ray/common:id",
         "//src/ray/common:status",
-        "//src/ray/object_manager/plasma:plasma_client",
+        "//src/ray/object_manager/plasma:plasma_client_interface",
     ],
 )

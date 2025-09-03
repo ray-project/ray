@@ -204,10 +204,6 @@ class CoreWorkerPlasmaStoreProvider {
 
   std::shared_ptr<plasma::PlasmaClientInterface> &store_client() { return store_client_; }
 
-  // Test-only hook to override the plasma client used for IO in tests.
-  void SetPlasmaClientForTest(
-      const std::shared_ptr<plasma::PlasmaClientInterface> &client);
-
  private:
   /// Ask the raylet to pull a set of objects and then attempt to get them
   /// from the local plasma store. Successfully fetched objects will be removed
