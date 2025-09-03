@@ -31,22 +31,19 @@
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/buffer.h"
-#include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
+#include "ray/common/flatbuf_utils.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/memory_monitor.h"
+#include "ray/common/protobuf_utils.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/status.h"
 #include "ray/flatbuffers/node_manager_generated.h"
-#include "ray/gcs/pb_util.h"
 #include "ray/ipc/client_connection.h"
-#include "ray/object_manager/ownership_object_directory.h"
 #include "ray/raylet/local_object_manager_interface.h"
-#include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/worker_killing_policy.h"
 #include "ray/raylet/worker_pool.h"
-#include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
@@ -54,20 +51,13 @@
 #include "ray/util/string_utils.h"
 #include "ray/util/time.h"
 
+namespace ray::raylet {
+
 namespace {
 
-#define RAY_CHECK_ENUM(x, y) \
-  static_assert(static_cast<int>(x) == static_cast<int>(y), "protocol mismatch")
-
-struct ActorStats {
-  int live_actors = 0;
-  int dead_actors = 0;
-  int restarting_actors = 0;
-};
-
-inline ray::rpc::ObjectReference FlatbufferToSingleObjectReference(
-    const flatbuffers::String &object_id, const ray::protocol::Address &address) {
-  ray::rpc::ObjectReference ref;
+rpc::ObjectReference FlatbufferToSingleObjectReference(
+    const flatbuffers::String &object_id, const protocol::Address &address) {
+  rpc::ObjectReference ref;
   ref.set_object_id(object_id.str());
   ref.mutable_owner_address()->set_node_id(address.node_id()->str());
   ref.mutable_owner_address()->set_ip_address(address.ip_address()->str());
@@ -76,38 +66,30 @@ inline ray::rpc::ObjectReference FlatbufferToSingleObjectReference(
   return ref;
 }
 
-std::vector<ray::rpc::ObjectReference> FlatbufferToObjectReference(
+std::vector<rpc::ObjectReference> FlatbufferToObjectReferences(
     const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &object_ids,
-    const flatbuffers::Vector<flatbuffers::Offset<ray::protocol::Address>>
-        &owner_addresses) {
+    const flatbuffers::Vector<flatbuffers::Offset<protocol::Address>> &owner_addresses) {
   RAY_CHECK(object_ids.size() == owner_addresses.size());
-  std::vector<ray::rpc::ObjectReference> refs;
+  std::vector<rpc::ObjectReference> refs;
+  refs.reserve(object_ids.size());
   for (int64_t i = 0; i < object_ids.size(); i++) {
-    ray::rpc::ObjectReference ref;
-    ref.set_object_id(object_ids.Get(i)->str());
-    const auto &addr = owner_addresses.Get(i);
-    ref.mutable_owner_address()->set_node_id(addr->node_id()->str());
-    ref.mutable_owner_address()->set_ip_address(addr->ip_address()->str());
-    ref.mutable_owner_address()->set_port(addr->port());
-    ref.mutable_owner_address()->set_worker_id(addr->worker_id()->str());
-    refs.emplace_back(std::move(ref));
+    refs.push_back(
+        FlatbufferToSingleObjectReference(*object_ids.Get(i), *owner_addresses.Get(i)));
   }
   return refs;
 }
 
-}  // namespace
-
-namespace ray::raylet {
-
-void NodeManagerConfig::AddDefaultLabels(const std::string &self_node_id) {
-  std::vector<std::string> default_keys = {kLabelKeyNodeID};
-
-  for (const auto &key : default_keys) {
-    RAY_CHECK(!labels.contains(key))
-        << "The label key name " << key << " should never be set by the user.";
+std::vector<ObjectID> FlatbufferToObjectIds(
+    const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &vector) {
+  std::vector<ObjectID> ids;
+  ids.reserve(vector.size());
+  for (int64_t i = 0; i < vector.size(); i++) {
+    ids.push_back(ObjectID::FromBinary(vector.Get(i)->str()));
   }
-  labels[kLabelKeyNodeID] = self_node_id;
+  return ids;
 }
+
+}  // namespace
 
 NodeManager::NodeManager(
     instrumented_io_context &io_service,
@@ -127,7 +109,7 @@ NodeManager::NodeManager(
     LocalObjectManagerInterface &local_object_manager,
     LeaseDependencyManager &lease_dependency_manager,
     WorkerPoolInterface &worker_pool,
-    absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
+    absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers,
     plasma::PlasmaClientInterface &store_client,
     std::unique_ptr<core::experimental::MutableObjectProviderInterface>
         mutable_object_provider,
@@ -136,7 +118,7 @@ NodeManager::NodeManager(
       self_node_name_(std::move(self_node_name)),
       io_service_(io_service),
       gcs_client_(gcs_client),
-      shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
+      shutdown_raylet_gracefully_(std::move(shutdown_raylet_gracefully)),
       worker_pool_(worker_pool),
       client_call_manager_(client_call_manager),
       worker_rpc_pool_(worker_rpc_pool),
@@ -156,8 +138,9 @@ NodeManager::NodeManager(
                     },
                     /*delay_executor*/
                     [this](std::function<void()> fn, int64_t delay_ms) {
-                      RAY_UNUSED(execute_after(
-                          io_service_, fn, std::chrono::milliseconds(delay_ms)));
+                      RAY_UNUSED(execute_after(io_service_,
+                                               std::move(fn),
+                                               std::chrono::milliseconds(delay_ms)));
                     }),
       node_manager_server_("NodeManager",
                            config.node_manager_port,
@@ -647,7 +630,7 @@ void NodeManager::QueryAllWorkerStates(
     const std::function<void()> &on_all_replied) {
   auto all_workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true,
                                                           /*filter_io_workers*/ true);
-  for (auto driver :
+  for (auto &driver :
        worker_pool_.GetAllRegisteredDrivers(/* filter_dead_driver */ true)) {
     all_workers.push_back(driver);
   }
@@ -1047,7 +1030,7 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
   } break;
   case protocol::MessageType::FreeObjectsInObjectStoreRequest: {
     auto message = flatbuffers::GetRoot<protocol::FreeObjectsRequest>(message_data);
-    std::vector<ObjectID> object_ids = from_flatbuf<ObjectID>(*message->object_ids());
+    auto object_ids = FlatbufferToObjectIds(*message->object_ids());
     // Clean up objects from the object store.
     object_manager_.FreeObjects(object_ids, message->local_only());
   } break;
@@ -1074,12 +1057,12 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
   client->Register();
 
   Language language = static_cast<Language>(message->language());
-  const JobID job_id = from_flatbuf<JobID>(*message->job_id());
+  const JobID job_id = JobID::FromBinary(message->job_id()->str());
   const int runtime_env_hash = static_cast<int>(message->runtime_env_hash());
-  WorkerID worker_id = from_flatbuf<WorkerID>(*message->worker_id());
+  WorkerID worker_id = WorkerID::FromBinary(message->worker_id()->str());
   pid_t pid = message->worker_pid();
   StartupToken worker_startup_token = message->startup_token();
-  std::string worker_ip_address = string_from_flatbuf(*message->ip_address());
+  std::string worker_ip_address = message->ip_address()->str();
   // TODO(suquark): Use `WorkerType` in `common.proto` without type converting.
   rpc::WorkerType worker_type = static_cast<rpc::WorkerType>(message->worker_type());
   if (worker_type == rpc::WorkerType::DRIVER) {
@@ -1107,7 +1090,7 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
         ray::protocol::CreateRegisterClientReply(fbb,
                                                  status.ok(),
                                                  fbb.CreateString(status.ToString()),
-                                                 to_flatbuf(fbb, self_node_id_),
+                                                 flatbuf::to_flatbuf(fbb, self_node_id_),
                                                  assigned_port);
     fbb.Finish(reply);
     client->WriteMessageAsync(
@@ -1159,13 +1142,6 @@ Status NodeManager::RegisterForNewDriver(
     const ray::protocol::RegisterClientRequest *message,
     std::function<void(Status, int)> send_reply_callback) {
   worker->SetProcess(Process::FromPid(pid));
-  // Compute a dummy driver lease id from a given driver.
-  // The lease id set in the worker here should be consistent with the lease
-  // id set in the core worker.
-  // TODO(#56010): We shouldn't need to have a special lease id for the driver, just check
-  // the worker type instead
-  const LeaseID driver_lease_id = LeaseID::DriverLeaseId(worker->WorkerId());
-  worker->GrantLeaseId(driver_lease_id);
   rpc::JobConfig job_config;
   job_config.ParseFromString(message->serialized_job_config()->str());
 
@@ -1208,13 +1184,12 @@ void NodeManager::ProcessAnnounceWorkerPortMessageImpl(
     driver_address.set_ip_address(worker->IpAddress());
     driver_address.set_port(port);
     driver_address.set_worker_id(worker->WorkerId().Binary());
-    auto job_data_ptr =
-        gcs::CreateJobTableData(job_id,
-                                /*is_dead=*/false,
-                                driver_address,
-                                worker->GetProcess().GetId(),
-                                string_from_flatbuf(*message->entrypoint()),
-                                *job_config);
+    auto job_data_ptr = gcs::CreateJobTableData(job_id,
+                                                /*is_dead=*/false,
+                                                driver_address,
+                                                worker->GetProcess().GetId(),
+                                                message->entrypoint()->str(),
+                                                *job_config);
 
     gcs_client_.Jobs().AsyncAdd(job_data_ptr, [this, client](Status status) {
       SendPortAnnouncementResponse(client, std::move(status));
@@ -1250,6 +1225,7 @@ void NodeManager::SendPortAnnouncementResponse(
 
 void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &worker) {
   RAY_CHECK(worker);
+  RAY_CHECK_NE(worker->GetWorkerType(), rpc::WorkerType::DRIVER);
 
   if (worker->GetWorkerType() == rpc::WorkerType::SPILL_WORKER) {
     // Return the worker to the idle pool.
@@ -1331,7 +1307,9 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   lease_dependency_manager_.CancelWaitRequest(worker->WorkerId());
 
   // Erase any lease metadata.
-  ReleaseWorker(worker->WorkerId());
+  if (leased_workers_.contains(worker->GetGrantedLeaseId())) {
+    ReleaseWorker(worker->GetGrantedLeaseId());
+  }
 
   if (creation_task_exception != nullptr) {
     RAY_LOG(INFO).WithField(worker->WorkerId())
@@ -1461,7 +1439,7 @@ void NodeManager::HandleAsyncGetObjectsRequest(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   auto request = flatbuffers::GetRoot<protocol::AsyncGetObjectsRequest>(message_data);
   const auto refs =
-      FlatbufferToObjectReference(*request->object_ids(), *request->owner_addresses());
+      FlatbufferToObjectReferences(*request->object_ids(), *request->owner_addresses());
 
   // Asynchronously pull all requested objects to the local node.
   AsyncGetOrWait(client,
@@ -1473,9 +1451,9 @@ void NodeManager::ProcessWaitRequestMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   // Read the data.
   auto message = flatbuffers::GetRoot<protocol::WaitRequest>(message_data);
-  std::vector<ObjectID> object_ids = from_flatbuf<ObjectID>(*message->object_ids());
+  auto object_ids = FlatbufferToObjectIds(*message->object_ids());
   const auto refs =
-      FlatbufferToObjectReference(*message->object_ids(), *message->owner_addresses());
+      FlatbufferToObjectReferences(*message->object_ids(), *message->owner_addresses());
 
   bool all_objects_local = true;
   for (auto const &object_id : object_ids) {
@@ -1496,9 +1474,10 @@ void NodeManager::ProcessWaitRequestMessage(
     // If we don't need to wait for any, return immediately after making the pull
     // requests through AsyncGetOrWait above.
     flatbuffers::FlatBufferBuilder fbb;
-    auto wait_reply = protocol::CreateWaitReply(fbb,
-                                                to_flatbuf(fbb, std::vector<ObjectID>{}),
-                                                to_flatbuf(fbb, std::vector<ObjectID>{}));
+    auto wait_reply =
+        protocol::CreateWaitReply(fbb,
+                                  flatbuf::to_flatbuf(fbb, std::vector<ObjectID>{}),
+                                  flatbuf::to_flatbuf(fbb, std::vector<ObjectID>{}));
     fbb.Finish(wait_reply);
     const auto status =
         client->WriteMessage(static_cast<int64_t>(protocol::MessageType::WaitReply),
@@ -1513,17 +1492,17 @@ void NodeManager::ProcessWaitRequestMessage(
     }
     return;
   }
-  uint64_t num_required_objects = static_cast<uint64_t>(message->num_required_objects());
+
   wait_manager_.Wait(
       object_ids,
       message->timeout(),
-      num_required_objects,
-      [this, client, all_objects_local](std::vector<ObjectID> ready,
-                                        std::vector<ObjectID> remaining) {
+      message->num_required_objects(),
+      [this, client, all_objects_local](const std::vector<ObjectID> &ready,
+                                        const std::vector<ObjectID> &remaining) {
         // Write the data.
         flatbuffers::FlatBufferBuilder fbb;
         flatbuffers::Offset<protocol::WaitReply> wait_reply = protocol::CreateWaitReply(
-            fbb, to_flatbuf(fbb, ready), to_flatbuf(fbb, remaining));
+            fbb, flatbuf::to_flatbuf(fbb, ready), flatbuf::to_flatbuf(fbb, remaining));
         fbb.Finish(wait_reply);
 
         auto status =
@@ -1550,39 +1529,39 @@ void NodeManager::ProcessWaitForActorCallArgsRequestMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   auto message =
       flatbuffers::GetRoot<protocol::WaitForActorCallArgsRequest>(message_data);
-  std::vector<ObjectID> object_ids = from_flatbuf<ObjectID>(*message->object_ids());
+  auto object_ids = FlatbufferToObjectIds(*message->object_ids());
   int64_t tag = message->tag();
   // Pull any missing objects to the local node.
   const auto refs =
-      FlatbufferToObjectReference(*message->object_ids(), *message->owner_addresses());
+      FlatbufferToObjectReferences(*message->object_ids(), *message->owner_addresses());
   AsyncGetOrWait(client, refs, /*is_get_request=*/false);
   // De-duplicate the object IDs.
   absl::flat_hash_set<ObjectID> object_id_set(object_ids.begin(), object_ids.end());
   object_ids.assign(object_id_set.begin(), object_id_set.end());
-  wait_manager_.Wait(
-      object_ids,
-      -1,
-      object_ids.size(),
-      [this, client, tag](std::vector<ObjectID> ready, std::vector<ObjectID> remaining) {
-        RAY_CHECK(remaining.empty());
-        std::shared_ptr<WorkerInterface> worker =
-            worker_pool_.GetRegisteredWorker(client);
-        if (!worker) {
-          RAY_LOG(ERROR) << "Lost worker for wait request " << client;
-        } else {
-          worker->ActorCallArgWaitComplete(tag);
-        }
-      });
+  wait_manager_.Wait(object_ids,
+                     -1,
+                     object_ids.size(),
+                     [this, client, tag](const std::vector<ObjectID> &ready,
+                                         const std::vector<ObjectID> &remaining) {
+                       RAY_CHECK(remaining.empty());
+                       std::shared_ptr<WorkerInterface> worker =
+                           worker_pool_.GetRegisteredWorker(client);
+                       if (!worker) {
+                         RAY_LOG(ERROR) << "Lost worker for wait request " << client;
+                       } else {
+                         worker->ActorCallArgWaitComplete(tag);
+                       }
+                     });
 }
 
 void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
   auto message = flatbuffers::GetRoot<protocol::PushErrorRequest>(message_data);
 
-  auto const &type = string_from_flatbuf(*message->type());
-  auto const &error_message = string_from_flatbuf(*message->error_message());
+  auto const &type = message->type()->str();
+  auto const &error_message = message->error_message()->str();
   // TODO(hjiang): Figure out what's the unit for `PushErrorRequest`.
   double timestamp = message->timestamp();
-  JobID job_id = from_flatbuf<JobID>(*message->job_id());
+  JobID job_id = JobID::FromBinary(message->job_id()->str());
   auto error_data = gcs::CreateErrorTableData(
       type, error_message, absl::FromUnixMillis(timestamp), job_id);
   gcs_client_.Errors().AsyncReportJobError(std::move(error_data));
@@ -1605,8 +1584,7 @@ void NodeManager::HandleCancelLeasesWithResourceShapes(
   const auto &resource_shapes = request.resource_shapes();
   std::vector<ResourceSet> target_resource_shapes;
   for (const auto &resource_shape : resource_shapes) {
-    target_resource_shapes.emplace_back(
-        ResourceSet(MapFromProtobuf(resource_shape.resource_shape())));
+    target_resource_shapes.emplace_back(MapFromProtobuf(resource_shape.resource_shape()));
   }
 
   cluster_lease_manager_.CancelLeasesWithResourceShapes(target_resource_shapes);
@@ -1935,38 +1913,41 @@ void NodeManager::HandleReturnWorkerLease(rpc::ReturnWorkerLeaseRequest request,
                                           rpc::ReturnWorkerLeaseReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   // Read the resource spec submitted by the client.
-  auto worker_id = WorkerID::FromBinary(request.worker_id());
-  std::shared_ptr<WorkerInterface> worker = leased_workers_[worker_id];
+  auto lease_id = LeaseID::FromBinary(request.lease_id());
 
-  Status status;
-  ReleaseWorker(worker_id);
-  if (worker) {
-    if (request.disconnect_worker()) {
-      // The worker should be destroyed.
-      DisconnectClient(
-          worker->Connection(),
-          /*graceful=*/false,
-          rpc::WorkerExitType::SYSTEM_ERROR,
-          absl::StrCat("The leased worker has unrecoverable failure. Worker is requested "
-                       "to be destroyed when it is returned. ",
-                       request.disconnect_worker_error_detail()));
-    } else {
-      if (worker->IsBlocked()) {
-        // Handle the edge case where the worker was returned before we got the
-        // unblock RPC by unblocking it immediately (unblock is idempotent).
-        HandleDirectCallTaskUnblocked(worker);
-      }
-      local_lease_manager_.ReleaseWorkerResources(worker);
-      // If the worker is exiting, don't add it to our pool. The worker will cleanup
-      // and terminate itself.
-      if (!request.worker_exiting()) {
-        HandleWorkerAvailable(worker);
-      }
-    }
-  } else {
-    status = Status::Invalid("Returned worker does not exist any more");
+  // Check if this message is a retry
+  if (!leased_workers_.contains(lease_id)) {
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
   }
-  send_reply_callback(status, nullptr, nullptr);
+
+  std::shared_ptr<WorkerInterface> worker = leased_workers_[lease_id];
+  ReleaseWorker(lease_id);
+
+  if (request.disconnect_worker()) {
+    // The worker should be destroyed.
+    DisconnectClient(
+        worker->Connection(),
+        /*graceful=*/false,
+        rpc::WorkerExitType::SYSTEM_ERROR,
+        absl::StrCat("The leased worker has unrecoverable failure. Worker is requested "
+                     "to be destroyed when it is returned. ",
+                     request.disconnect_worker_error_detail()));
+  } else {
+    if (worker->IsBlocked()) {
+      // Handle the edge case where the worker was returned before we got the
+      // unblock RPC by unblocking it immediately (unblock is idempotent).
+      HandleDirectCallTaskUnblocked(worker);
+    }
+    local_lease_manager_.ReleaseWorkerResources(worker);
+    // If the worker is exiting, don't add it to our pool. The worker will cleanup
+    // and terminate itself.
+    if (!request.worker_exiting()) {
+      HandleWorkerAvailable(worker);
+    }
+  }
+
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::HandleIsLocalWorkerDead(rpc::IsLocalWorkerDeadRequest request,
@@ -2040,17 +2021,17 @@ void NodeManager::HandleReleaseUnusedActorWorkers(
     rpc::ReleaseUnusedActorWorkersRequest request,
     rpc::ReleaseUnusedActorWorkersReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  std::unordered_set<WorkerID> in_use_worker_ids;
-  for (int index = 0; index < request.worker_ids_in_use_size(); ++index) {
-    auto worker_id = WorkerID::FromBinary(request.worker_ids_in_use(index));
-    in_use_worker_ids.emplace(worker_id);
+  absl::flat_hash_set<WorkerID> in_use_worker_ids;
+  in_use_worker_ids.reserve(request.worker_ids_in_use_size());
+  for (const auto &worker_id_in_use_binary : request.worker_ids_in_use()) {
+    in_use_worker_ids.emplace(WorkerID::FromBinary(worker_id_in_use_binary));
   }
 
   std::vector<std::shared_ptr<WorkerInterface>> unused_actor_workers;
   for (auto &iter : leased_workers_) {
     // We only kill *actor* workers.
     if (!iter.second->GetActorId().IsNil() &&
-        !in_use_worker_ids.count(iter.second->WorkerId())) {
+        !in_use_worker_ids.contains(iter.second->WorkerId())) {
       unused_actor_workers.push_back(iter.second);
     }
   }
@@ -2259,7 +2240,7 @@ void NodeManager::HandleObjectLocal(const ObjectInfo &object_info) {
   rpc::PlasmaObjectReadyRequest request;
   request.set_object_id(object_id.Binary());
 
-  for (auto worker : waiting_workers) {
+  for (const auto &worker : waiting_workers) {
     worker->rpc_client()->PlasmaObjectReady(
         request, [](Status status, const rpc::PlasmaObjectReadyReply &reply) {
           if (!status.ok()) {
@@ -2301,7 +2282,7 @@ void NodeManager::ProcessSubscribePlasmaReady(
       << "No worker exists for CoreWorker with client: " << client->DebugString();
 
   auto message = flatbuffers::GetRoot<protocol::SubscribePlasmaReady>(message_data);
-  auto id = from_flatbuf<ObjectID>(*message->object_id());
+  auto id = ObjectID::FromBinary(message->object_id()->str());
 
   if (lease_dependency_manager_.CheckObjectLocal(id)) {
     // Object is already local, so we directly fire the callback to tell the core worker

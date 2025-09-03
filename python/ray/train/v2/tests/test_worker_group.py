@@ -33,6 +33,8 @@ from ray.train.v2._internal.execution.worker_group import (
 from ray.train.v2.api.config import RunConfig
 from ray.train.v2.tests.util import DummyObjectRefWrapper, create_dummy_run_context
 
+pytestmark = pytest.mark.usefixtures("mock_runtime_context")
+
 
 @pytest.fixture(autouse=True, scope="module")
 def ray_start_4_cpus():

@@ -14,16 +14,10 @@
 
 #include "ray/common/id.h"
 
-#include <limits.h>
-
 #include <algorithm>
-#include <chrono>
-#include <mutex>
-#include <random>
 
 #include "absl/time/clock.h"
 #include "ray/common/constants.h"
-#include "ray/common/status.h"
 #include "ray/util/macros.h"
 
 extern "C" {
@@ -322,16 +316,9 @@ LeaseID LeaseID::FromRandom() {
 }
 
 LeaseID LeaseID::FromWorker(const WorkerID &worker_id, uint32_t counter) {
-  RAY_CHECK_GT(counter, 0u);
   std::string data(kUniqueBytesLength, 0);
   std::memcpy(data.data(), &counter, sizeof(counter));
   std::copy_n(worker_id.Data(), kUniqueIDSize, std::back_inserter(data));
-  return LeaseID::FromBinary(data);
-}
-
-LeaseID LeaseID::DriverLeaseId(const WorkerID &driver_id) {
-  std::string data(kUniqueBytesLength, 0);
-  std::copy_n(driver_id.Data(), kUniqueIDSize, std::back_inserter(data));
   return LeaseID::FromBinary(data);
 }
 

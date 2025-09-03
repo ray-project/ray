@@ -923,11 +923,7 @@ class Dataset:
 
                 # The index of the column must be set
                 # to align with the index of the batch.
-                if (
-                    isinstance(column, pd.Series)
-                    or isinstance(column, pd.DataFrame)
-                    or isinstance(column, pd.Index)
-                ):
+                if isinstance(column, (pd.DataFrame, pd.Index, pd.Series)):
                     column.index = batch.index
                 batch.loc[:, col] = column
                 return batch
@@ -948,8 +944,7 @@ class Dataset:
                 column_idx = batch.schema.get_field_index(col)
                 if column_idx == -1:
                     return batch.append_column(col, column)
-                else:
-                    return batch.set_column(column_idx, col, column)
+                return batch.set_column(column_idx, col, column)
 
             else:
                 # batch format is assumed to be numpy since we checked at the
@@ -3396,7 +3391,10 @@ class Dataset:
             return meta_count
 
         plan = self._plan.copy()
-        count_op = Count([self._logical_plan.dag])
+
+        # NOTE: Project the dataset to avoid the need to carrying actual
+        #       data when we're only interested in the total count
+        count_op = Count(Project(self._logical_plan.dag, cols=[]))
         logical_plan = LogicalPlan(count_op, self.context)
         count_ds = Dataset(plan, logical_plan)
 

@@ -39,7 +39,7 @@ def _has_file_extension(path: str, extensions: Optional[List[str]]) -> bool:
 
 def _resolve_paths_and_filesystem(
     paths: Union[str, List[str]],
-    filesystem: "pyarrow.fs.FileSystem" = None,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
 ) -> Tuple[List[str], "pyarrow.fs.FileSystem"]:
     """
     Resolves and normalizes all provided paths, infers a filesystem from the
@@ -69,7 +69,7 @@ def _resolve_paths_and_filesystem(
     elif not isinstance(paths, list) or any(not isinstance(p, str) for p in paths):
         raise ValueError(
             "Expected `paths` to be a `str`, `pathlib.Path`, or `list[str]`, but got "
-            f"`{paths}`."
+            f"`{paths}`"
         )
     elif len(paths) == 0:
         raise ValueError("Must provide at least one path.")
