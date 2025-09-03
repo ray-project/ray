@@ -3,12 +3,22 @@
 # Comment content, after '#', will be ignored.
 # Empty lines will be ignored too.
 #
+#   ! tag1 tag2 tag3  # Declares a tag. A tag must be declared first to be used.
+#   # Tags must be declared at the beginning.
+#
 #   dir/  # Directory to match
 #   file  # File to match
 #   dir/*.py  # Pattern to match, using fnmatch, matches dir/a.py dir/dir/b.py or dir/.py
-#   @ tag1 tag2 tag3 # Tags to emit for a rule. A rule without tags is a skipping rule.
+#   @ tag1 tag2 tag3  # Tags to emit for a rule. A rule without tags is a skipping rule.
 #
 #   ;  # Semicolon to separate rules
+
+! always lint
+! python cpp core_cpp java workflow compiled_graphs dashboard
+! ray_client runtime_env_container
+! data dask serve ml tune train llm rllib rllib_gpu rllib_directly
+! linux_wheels macos_wheels docker doc python_dependencies tools
+! release_tests spark_on_ray
 
 python/ray/air/
 @ ml train tune data linux_wheels

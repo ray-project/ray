@@ -8,16 +8,6 @@ import sys
 from pprint import pformat
 from typing import List, Optional, Set, Tuple
 
-_ALL_TAGS = set(
-    """
-    always
-    lint python cpp core_cpp java workflow cgraphs_gpu_objects dashboard ray_client
-    data dask serve ml tune train llm rllib rllib_gpu rllib_directly
-    linux_wheels macos_wheels docker doc python_dependencies tools
-    release_tests compiled_python spark_on_ray runtime_env_container
-    """.split()
-)
-
 
 def _list_changed_files(commit_range):
     """Returns a list of names of files changed in the given commit range.
@@ -63,11 +53,13 @@ class TagRule:
     def __init__(
         self,
         tags: List[str],
+        lineno: int,
         dirs: Optional[List[str]] = None,
         files: Optional[List[str]] = None,
         patterns: Optional[List[str]] = None,
     ):
         self.tags = set(tags)
+        self.lineno = lineno
         self.dirs = dirs or []
         self.patterns = patterns or []
         self.files = files or []
@@ -90,7 +82,7 @@ class TagRule:
         return set(), False
 
 
-def _parse_rules(rule_content: str) -> List[TagRule]:
+def _parse_rules(rule_content: str) -> Tuple[Set[str], List[TagRule]]:
     """
     Parse the rule config content into a list ot TagRule's.
 
@@ -112,6 +104,9 @@ def _parse_rules(rule_content: str) -> List[TagRule]:
     """
     rules: List[TagRule] = []
 
+    tag_defs: Set[str] = set()
+    tag_defs_ended: bool = False
+
     tags: Set[str] = set()
     dirs: List[str] = []
     files: List[str] = []
@@ -129,13 +124,22 @@ def _parse_rules(rule_content: str) -> List[TagRule]:
         if comment_index != -1:
             line = line[:comment_index].strip()  # Remove comments.
 
+        if line.startswith("!"):
+            if tag_defs_ended:
+                raise ValueError("Tag must be declared at file start.")
+            tag_defs.update(line[1:].split())
+            continue
+
+        if not tag_defs_ended:
+            tag_defs_ended = True
+
         if line.startswith("@"):  # tags.
             # Strip the leading '@' and split into tags.
             tags.update(line[1:].split())
         elif line.startswith(";"):  # End of a rule.
             if line != ";":
                 raise ValueError(f"Unexpected tokens after semicolon on line {lineno}.")
-            rules.append(TagRule(tags, dirs, files, patterns))
+            rules.append(TagRule(tags, lineno, dirs, files, patterns))
             tags, dirs, files, patterns = set(), [], [], []
         else:
             if line.find("*") != -1:  # Patterns.
@@ -147,20 +151,33 @@ def _parse_rules(rule_content: str) -> List[TagRule]:
 
     # Append the last rule if not empty.
     if tags or dirs or files or patterns:
-        rules.append(TagRule(tags, dirs, files, patterns))
+        rules.append(TagRule(tags, lineno, dirs, files, patterns))
 
-    return rules
+    return tag_defs, rules
 
 
 class TagRuleSet:
     def __init__(self, content: Optional[str] = None):
+        self.tag_defs = set()
+        self.rules = []
+
         if content is not None:
-            self.rules = _parse_rules(content)
-        else:
-            self.rules = []
+            self.add_rules(content)
 
     def add_rules(self, content: str):
-        self.rules.extend(_parse_rules(content))
+        tag_defs, rules = _parse_rules(content)
+        self.tag_defs.update(tag_defs)
+        self.rules.extend(rules)
+
+    def check_rules(self):
+        for rule in self.rules:
+            if not rule.tags:
+                continue
+            for tag in rule.tags:
+                if tag not in self.tag_defs:
+                    raise ValueError(
+                        f"Tag {tag} not declared, used in rule at line {rule.lineno}."
+                    )
 
     def match_tags(self, changed_file: str) -> Tuple[Set[str], bool]:
         for rule in self.rules:
@@ -186,6 +203,8 @@ if __name__ == "__main__":
     for config in args.configs:
         with open(config) as f:
             rules.add_rules(f.read())
+
+    rules.check_rules()
 
     tags: Set[str] = set()
 
@@ -220,7 +239,7 @@ if __name__ == "__main__":
         # Log the modified environment variables visible in console.
         output_string = " ".join(list(tags))
         for tag in tags:
-            assert tag in _ALL_TAGS, f"Unknown tag {tag}"
+            assert tag in rules.tag_defs, f"Unknown tag {tag}"
 
         print(output_string, file=sys.stderr)  # Debug purpose
         print(output_string)
