@@ -6,7 +6,7 @@ Ray exports a number of system metrics, which provide introspection into the sta
 
 .. note::
 
-   Certain labels are common across all metrics, such as `SessionName` (uniquely identifies a Ray cluster instance), `instance` (per-node label applied by Prometheus), and `JobId` (Ray job id, as applicable).
+   Certain labels are common across all metrics, such as `SessionName` (uniquely identifies a Ray cluster instance), `instance` (per-node label applied by Prometheus), and `JobId` (Ray job ID, as applicable).
 
 .. list-table:: Ray System Metrics
    :header-rows: 1
