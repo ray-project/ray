@@ -833,10 +833,6 @@ std::vector<TaskID> CoreWorker::GetPendingChildrenTasks(const TaskID &task_id) c
 
 const rpc::Address &CoreWorker::GetRpcAddress() const { return rpc_address_; }
 
-bool CoreWorker::HasOwner(const ObjectID &object_id) const {
-  return reference_counter_->HasOwner(object_id);
-}
-
 rpc::Address CoreWorker::GetOwnerAddressOrDie(const ObjectID &object_id) const {
   rpc::Address owner_address;
   auto status = GetOwnerAddress(object_id, &owner_address);
@@ -1320,7 +1316,7 @@ Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
   std::ostringstream ids_stream;
 
   for (size_t i = 0; i < ids.size(); i++) {
-    if (!HasOwner(ids[i])) {
+    if (!reference_counter_->HasOwner(ids[i])) {
       ids_stream << ids[i] << " ";
       got_exception = true;
     }
@@ -1467,7 +1463,7 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
   std::ostringstream ids_stream;
 
   for (size_t i = 0; i < ids.size(); i++) {
-    if (!HasOwner(ids[i])) {
+    if (!reference_counter_->HasOwner(ids[i])) {
       ids_stream << ids[i] << " ";
       ++objs_without_owners;
     } else {
@@ -1498,7 +1494,7 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
   absl::flat_hash_set<ObjectID> ready, plasma_object_ids;
   ready.reserve(num_objects);
   RAY_RETURN_NOT_OK(memory_store_->Wait(
-      memory_object_ids,
+      ids,
       std::min(static_cast<int>(memory_object_ids.size()), num_objects),
       timeout_ms,
       *worker_context_,
@@ -1514,6 +1510,7 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
     // plasma stores. We make the request to the plasma store even if we have num_objects
     // ready since we want to at least make the request to start pulling these objects.
     if (!plasma_object_ids.empty()) {
+      RAY_LOG(ERROR) << "hitting plasma wait" << plasma_object_ids.size();
       RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
           plasma_object_ids,
           std::min(static_cast<int>(plasma_object_ids.size()),
