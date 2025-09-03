@@ -911,7 +911,8 @@ def test_aggregator_agent_http_svc_publish_disabled(
     with pytest.raises(
         RuntimeError, match="The condition wasn't met before the timeout expired."
     ):
-        wait_for_condition(lambda: len(httpserver.log) > 0, 1)
+        # Wait for up to 3 seconds to ensure that the event is never published to the external HTTP service
+        wait_for_condition(lambda: len(httpserver.log) > 0, 3)
 
     assert len(httpserver.log) == 0
 

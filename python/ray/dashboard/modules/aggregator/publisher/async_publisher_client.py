@@ -95,7 +95,7 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
             logger.error("Failed to send events to external service. Error: %s", e)
             return PublishStats(False, 0, 0)
 
-    async def _send_http_request(self, json_data, num_filtered_out):
+    async def _send_http_request(self, json_data, num_filtered_out) -> PublishStats:
         async with self._session.post(
             self._endpoint,
             json=json_data,
@@ -115,7 +115,7 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
             self._session = None
 
     def set_session(self, session) -> None:
-        """Inject an HTTP client session. Intended for testing.
+        """Inject an HTTP client session.
 
         If a session is set explicitly, it will be used and managed by close().
         """
