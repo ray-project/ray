@@ -863,7 +863,7 @@ def test_send_back_and_dst_warning(ray_start_regular):
     t3 = dst_actor.echo.remote(t)
     ray.get(t3)
 
-    
+
 def test_duplicate_objectref_transfer(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
