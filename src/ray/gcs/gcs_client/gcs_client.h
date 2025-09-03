@@ -29,7 +29,7 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/gcs_client/accessor.h"
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
+#include "ray/pubsub/gcs_subscriber.h"
 #include "ray/rpc/gcs/gcs_rpc_client.h"
 #include "ray/util/logging.h"
 #include "ray/util/network_util.h"
@@ -223,7 +223,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// This function is thread safe.
   virtual InternalKVAccessor &InternalKV() { return *internal_kv_accessor_; }
 
-  virtual GcsSubscriber &GetGcsSubscriber() { return *gcs_subscriber_; }
+  virtual pubsub::GcsSubscriber &GetGcsSubscriber() { return *gcs_subscriber_; }
 
   virtual rpc::GcsRpcClient &GetGcsRpcClient() { return *gcs_rpc_client_; }
 
@@ -250,7 +250,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   const UniqueID gcs_client_id_ = UniqueID::FromRandom();
 
-  std::unique_ptr<GcsSubscriber> gcs_subscriber_;
+  std::unique_ptr<pubsub::GcsSubscriber> gcs_subscriber_;
 
   // Gcs rpc client
   std::shared_ptr<rpc::GcsRpcClient> gcs_rpc_client_;

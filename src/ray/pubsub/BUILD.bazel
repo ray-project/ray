@@ -54,3 +54,41 @@ ray_cc_library(
         "@com_google_absl//absl/synchronization",
     ],
 )
+
+ray_cc_library(
+    name = "gcs_publisher",
+    srcs = ["gcs_publisher.cc"],
+    hdrs = ["gcs_publisher.h"],
+    deps = [
+        ":publisher_interface",
+        "//src/ray/protobuf:gcs_cc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_subscriber",
+    srcs = ["gcs_subscriber.cc"],
+    hdrs = ["gcs_subscriber.h"],
+    deps = [
+        ":subscriber_interface",
+        "//src/ray/common:gcs_callbacks",
+        "//src/ray/protobuf:gcs_cc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "python_gcs_subscriber",
+    srcs = ["python_gcs_subscriber.cc"],
+    hdrs = ["python_gcs_subscriber.h"],
+    implementation_deps = [
+        "//src/ray/rpc:gcs_client",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+    deps = [
+        "//src/ray/common:status",
+        "//src/ray/protobuf:gcs_service_cc_proto",
+        "//src/ray/protobuf:pubsub_cc_proto",
+        "//src/ray/util:visibility",
+        "@com_google_absl//absl/synchronization",
+    ],
+)

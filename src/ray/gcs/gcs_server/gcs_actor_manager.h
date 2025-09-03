@@ -34,7 +34,7 @@
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/grpc_service_interfaces.h"
 #include "ray/gcs/gcs_server/usage_stats_client.h"
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
+#include "ray/pubsub/gcs_publisher.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/counter_map.h"
@@ -100,7 +100,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
       std::unique_ptr<GcsActorSchedulerInterface> scheduler,
       GcsTableStorage *gcs_table_storage,
       instrumented_io_context &io_context,
-      GcsPublisher *gcs_publisher,
+      pubsub::GcsPublisher *gcs_publisher,
       RuntimeEnvManager &runtime_env_manager,
       GCSFunctionManager &function_manager,
       std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
@@ -474,7 +474,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
   GcsTableStorage *gcs_table_storage_;
   instrumented_io_context &io_context_;
   /// A publisher for publishing gcs messages.
-  GcsPublisher *gcs_publisher_;
+  pubsub::GcsPublisher *gcs_publisher_;
   /// This is used to communicate with actors and their owners.
   rpc::CoreWorkerClientPool &worker_client_pool_;
   /// A callback that is used to destroy placemenet group owned by the actor.

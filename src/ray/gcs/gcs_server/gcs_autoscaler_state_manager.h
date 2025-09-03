@@ -30,7 +30,7 @@
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/gcs/gcs_server/grpc_service_interfaces.h"
 #include "ray/gcs/gcs_server/state_util.h"
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
+#include "ray/pubsub/gcs_publisher.h"
 #include "ray/raylet_client/raylet_client_pool.h"
 #include "ray/util/thread_checker.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -47,7 +47,7 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateService
                             rpc::RayletClientPool &raylet_client_pool,
                             InternalKVInterface &kv,
                             instrumented_io_context &io_context,
-                            GcsPublisher *gcs_publisher);
+                            pubsub::GcsPublisher *gcs_publisher);
 
   void HandleGetClusterResourceState(
       rpc::autoscaler::GetClusterResourceStateRequest request,
@@ -194,7 +194,7 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateService
   instrumented_io_context &io_context_;
 
   // A publisher for publishing gcs messages.
-  GcsPublisher *gcs_publisher_;
+  pubsub::GcsPublisher *gcs_publisher_;
 
   // The default value of the last seen version for the request is 0, which indicates
   // no version has been reported. So the first reported version should be 1.

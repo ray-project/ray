@@ -30,8 +30,7 @@
 namespace ray {
 namespace gcs {
 
-//////////////////////////////////////////////////////////////////////////////////////////
-GcsNodeManager::GcsNodeManager(GcsPublisher *gcs_publisher,
+GcsNodeManager::GcsNodeManager(pubsub::GcsPublisher *gcs_publisher,
                                gcs::GcsTableStorage *gcs_table_storage,
                                instrumented_io_context &io_context,
                                rpc::RayletClientPool *raylet_client_pool,
