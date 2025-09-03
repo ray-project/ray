@@ -1005,7 +1005,7 @@ class ReporterAgent(
 
     def _get_gcs(self):
         if self._gcs_pid:
-            if not self._gcs_proc:
+            if not self._gcs_proc or self._gcs_pid != self._gcs_proc.pid:
                 self._gcs_proc = psutil.Process(self._gcs_pid)
             if self._gcs_proc:
                 dictionary = self._gcs_proc.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
