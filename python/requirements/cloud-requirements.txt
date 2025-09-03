@@ -13,7 +13,7 @@ adlfs[abfs]
 
 # Anyscale CLI requirements
 boto3==1.28.0
-botocore>=1.19.52
+botocore>=1.31.0
 aiohttp>=3.7.4.post0
 certifi>=2024.8.30
 Click>=7.0
