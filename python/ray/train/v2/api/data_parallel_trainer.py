@@ -30,7 +30,6 @@ from ray.train.v2._internal.callbacks import (
     TPUReservationCallback,
     WorkingDirectorySetupCallback,
 )
-from ray.train.v2._internal.callbacks.datasets import GenDataset
 from ray.train.v2._internal.callbacks.env_callback import _initialize_env_callbacks
 from ray.train.v2._internal.callbacks.metrics import (
     ControllerMetricsCallback,
@@ -42,6 +41,7 @@ from ray.train.v2._internal.constants import (
     METRICS_ENABLED_ENV_VAR,
     get_env_vars_to_propagate,
 )
+from ray.train.v2._internal.data_integration.interfaces import GenDataset
 from ray.train.v2._internal.execution.callback import RayTrainCallback
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.controller import TrainController
