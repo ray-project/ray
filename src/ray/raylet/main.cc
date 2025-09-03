@@ -241,8 +241,10 @@ int main(int argc, char *argv[]) {
 
   SetThreadName("raylet");
   // IO Service for node manager.
-  instrumented_io_context main_service{/*enable_lag_probe=*/false,
-                                       /*running_on_single_thread=*/true};
+  instrumented_io_context main_service{
+      /*emit_metrics=*/RayConfig::instance().emit_main_service_metrics(),
+      /*running_on_single_thread=*/true,
+      "raylet_main_io_context"};
 
   // Ensure that the IO service keeps running. Without this, the service will exit as soon
   // as there is no more work to be processed.
@@ -290,7 +292,7 @@ int main(int argc, char *argv[]) {
   /// The client to export metrics to the metrics agent.
   std::unique_ptr<ray::rpc::MetricsAgentClientImpl> metrics_agent_client;
   /// Map of workers leased out to clients.
-  absl::flat_hash_map<ray::WorkerID, std::shared_ptr<ray::raylet::WorkerInterface>>
+  absl::flat_hash_map<ray::LeaseID, std::shared_ptr<ray::raylet::WorkerInterface>>
       leased_workers;
 
   // Enable subreaper. This is called in `AsyncGetInternalConfig` below, but MSVC does
