@@ -34,7 +34,7 @@ Use individual libraries for ML workloads. Each library specializes in a specifi
 
 [Ray Data](data_quickstart) provides distributed data processing optimized for machine learning and AI workloads. It efficiently streams data through data pipelines.
 
-Here's an example on how to scale offline inference and training ingest with Ray Data.
+Here's an example of how to scale offline inference and training ingest with Ray Data.
 
 ````{note}
 To run this example, install Ray Data:
