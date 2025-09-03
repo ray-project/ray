@@ -18,13 +18,13 @@
 
 #include <chrono>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
 
+#include "absl/synchronization/mutex.h"
 #include "ray/common/buffer.h"
 #include "src/ray/protobuf/common.pb.h"
 
@@ -42,15 +42,15 @@ class FakeShutdownExecutor : public ShutdownExecutorInterface {
 
   std::string last_exit_type;
   std::string last_detail;
-  mutable std::mutex mu_;
+  mutable absl::Mutex mu_;
 
   std::string GetLastExitType() const {
-    std::lock_guard<std::mutex> lk(mu_);
+    absl::MutexLock lk(&mu_);
     return last_exit_type;
   }
 
   std::string GetLastDetail() const {
-    std::lock_guard<std::mutex> lk(mu_);
+    absl::MutexLock lk(&mu_);
     return last_detail;
   }
 
@@ -59,7 +59,7 @@ class FakeShutdownExecutor : public ShutdownExecutorInterface {
                                std::chrono::milliseconds timeout_ms) override {
     graceful_calls++;
     {
-      std::lock_guard<std::mutex> lk(mu_);
+      absl::MutexLock lk(&mu_);
       last_exit_type = std::string(exit_type);
       last_detail = std::string(detail);
     }
@@ -68,7 +68,7 @@ class FakeShutdownExecutor : public ShutdownExecutorInterface {
                             std::string_view detail) override {
     force_calls++;
     {
-      std::lock_guard<std::mutex> lk(mu_);
+      absl::MutexLock lk(&mu_);
       last_exit_type = std::string(exit_type);
       last_detail = std::string(detail);
     }
@@ -78,7 +78,7 @@ class FakeShutdownExecutor : public ShutdownExecutorInterface {
                          std::chrono::milliseconds timeout_ms) override {
     worker_exit_calls++;
     {
-      std::lock_guard<std::mutex> lk(mu_);
+      absl::MutexLock lk(&mu_);
       last_exit_type = std::string(exit_type);
       last_detail = std::string(detail);
     }
@@ -90,7 +90,7 @@ class FakeShutdownExecutor : public ShutdownExecutorInterface {
                        &creation_task_exception_pb_bytes) override {
     worker_exit_calls++;
     {
-      std::lock_guard<std::mutex> lk(mu_);
+      absl::MutexLock lk(&mu_);
       last_exit_type = std::string(exit_type);
       last_detail = std::string(detail);
     }
@@ -100,7 +100,7 @@ class FakeShutdownExecutor : public ShutdownExecutorInterface {
                          std::chrono::milliseconds timeout_ms) override {
     handle_exit_calls++;
     {
-      std::lock_guard<std::mutex> lk(mu_);
+      absl::MutexLock lk(&mu_);
       last_exit_type = std::string(exit_type);
       last_detail = std::string(detail);
     }
