@@ -22,6 +22,7 @@ import threading
 import time
 import traceback
 import _thread
+import warnings
 import typing
 from typing import (
     Any,
@@ -4397,6 +4398,17 @@ cdef class CoreWorker:
             num_returns = returns[0].size()
 
         if num_returns == 0:
+            if len(outputs) > 0:
+                # Warn if num_returns=0 but the task returns a non-None value (likely unintended).
+                task_name = self.get_current_task_name()
+                obj_value = repr(outputs)
+                warnings.warn(
+                    f"Task '{task_name}' has num_returns=0 but returned a non-None value '{obj_value}'. "
+                    "The return value will be ignored.",
+                    UserWarning,
+                    stacklevel=2
+                )
+
             return num_outputs_stored
 
         task_output_inlined_bytes = 0
