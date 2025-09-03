@@ -2259,7 +2259,7 @@ toolz==0.12.1
     #   dask
     #   distributed
     #   partd
-torch==2.3.0
+torch==2.7.1+cpu
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   accelerate
