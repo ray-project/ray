@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
 from ray.train.v2.api.context import TrainContext
@@ -17,6 +17,7 @@ def report(
     checkpoint: Optional["Checkpoint"] = None,
     checkpoint_dir_name: Optional[str] = None,
     checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
+    checkpoint_upload_function: Optional[Callable[["Checkpoint", str], None]] = None,
 ):
     """Report metrics and optionally save a checkpoint.
 
@@ -91,6 +92,8 @@ def report(
             index in the name.
         checkpoint_upload_mode: The manner in which we want to upload the checkpoint.
             If not provided, the checkpoint will be uploaded synchronously.
+        checkpoint_upload_function: A user defined function that will be called with the
+            checkpoint to upload it. If not provided, default to a pyarrow filesystem copy.
     """
 
     get_train_fn_utils().report(
@@ -98,6 +101,7 @@ def report(
         checkpoint=checkpoint,
         checkpoint_dir_name=checkpoint_dir_name,
         checkpoint_upload_mode=checkpoint_upload_mode,
+        checkpoint_upload_function=checkpoint_upload_function,
     )
 
 

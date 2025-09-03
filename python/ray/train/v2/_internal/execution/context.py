@@ -5,7 +5,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from queue import Queue
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 import ray
 from ray.actor import ActorHandle
@@ -217,6 +217,9 @@ class TrainContext:
         checkpoint_dir_name: str,
         metrics: Dict[str, Any],
         checkpoint: Optional["Checkpoint"] = None,
+        checkpoint_upload_function: Optional[
+            Callable[["Checkpoint", str], None]
+        ] = None,
     ) -> _TrainingResult:
         """Save the checkpoint to remote storage.
 
@@ -224,6 +227,8 @@ class TrainContext:
             checkpoint_dir_name: The checkpoint dir to persist to.
             metrics: The metrics to report.
             checkpoint: The checkpoint to report.
+            checkpoint_upload_function: A user defined function that will be called with the
+                checkpoint to upload it. If not provided, default to a pyarrow filesystem copy.
 
         Returns:
             The training result object containing the persisted checkpoint.
@@ -232,11 +237,18 @@ class TrainContext:
         if not checkpoint:
             return _TrainingResult(checkpoint=None, metrics=metrics)
 
-        # Persist the checkpoint to the remote storage path.
-        persisted_checkpoint = self.storage_context.persist_current_checkpoint(
-            checkpoint, checkpoint_dir_name
-        )
-        # Update latest checkpoint as the persisted checkpoint.
+        # Persist the checkpoint to the remote storage path and update latest checkpoint to it.
+        if checkpoint_upload_function:
+            persisted_checkpoint = checkpoint_upload_function(
+                checkpoint,
+                self.storage_context.build_checkpoint_path_from_name(
+                    checkpoint_dir_name
+                ),
+            )
+        else:
+            persisted_checkpoint = self.storage_context.persist_current_checkpoint(
+                checkpoint, checkpoint_dir_name
+            )
         self.checkpoint = persisted_checkpoint
 
         return _TrainingResult(checkpoint=persisted_checkpoint, metrics=metrics)
@@ -266,6 +278,9 @@ class TrainContext:
         checkpoint: Optional["Checkpoint"] = None,
         checkpoint_dir_name: Optional[str] = None,
         checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
+        checkpoint_upload_function: Optional[
+            Callable[["Checkpoint", str], None]
+        ] = None,
     ) -> None:
         """
         Upload checkpoint to remote storage and put a training
@@ -280,6 +295,8 @@ class TrainContext:
                 this value is unique for each iteration.
             checkpoint_upload_mode: The manner in which we want to upload the checkpoint.
                 If not provided, the checkpoint will be uploaded synchronously.
+            checkpoint_upload_function: A user defined function that will be called with the
+                checkpoint to upload it. If not provided, default to a pyarrow filesystem copy.
 
         TODO: the report function should be implemented in the worker instead
         of in the train context. The train context should only keep the train
@@ -315,7 +332,7 @@ class TrainContext:
             # Upload checkpoint, wait for turn, and report.
             if checkpoint_upload_mode == CheckpointUploadMode.SYNC:
                 training_result = self._save_checkpoint(
-                    checkpoint_dir_name, metrics, checkpoint
+                    checkpoint_dir_name, metrics, checkpoint, checkpoint_upload_function
                 )
                 self._wait_then_report(training_result, current_report_attempt_number)
 
@@ -335,7 +352,10 @@ class TrainContext:
                 ) -> None:
                     try:
                         training_result = self._save_checkpoint(
-                            checkpoint_dir_name, metrics, checkpoint
+                            checkpoint_dir_name,
+                            metrics,
+                            checkpoint,
+                            checkpoint_upload_function,
                         )
                         self._wait_then_report(
                             training_result, current_report_attempt_number
