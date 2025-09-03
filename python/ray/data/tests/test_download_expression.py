@@ -1,47 +1,66 @@
 import io
+import os
+import tempfile
 
 import pyarrow as pa
 import pytest
 from PIL import Image
 
 import ray
-from ray.data.expressions import DownloadExpr, col, download
+from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
+from ray.data.expressions import MultiStageUDFExpr, UrlExpr, col
 
 
-class TestDownloadExpressionStructure:
-    """Test DownloadExpr structural equality and basic properties."""
+class TestUrlDownloadExpressionStructure:
+    """Test URL download expression structure and properties."""
 
-    def test_download_expression_creation(self):
-        """Test that download() creates a DownloadExpr with correct properties."""
-        expr = download("uri_column")
+    def test_url_expr_creation(self):
+        """Test that .url property creates UrlExpr correctly."""
+        col_expr = col("uri")
+        url_expr = col_expr.url
 
-        assert isinstance(expr, DownloadExpr)
-        assert expr.uri_column_name == "uri_column"
+        assert isinstance(url_expr, UrlExpr)
+        assert url_expr.base == col_expr
 
-    def test_download_expression_structural_equality(self):
-        """Test structural equality comparison for download expressions."""
-        # Same expressions should be equal
-        expr1 = download("uri")
-        expr2 = download("uri")
+    def test_url_download_creates_multi_stage_expr(self):
+        """Test that .url.download() creates a MultiStageUDFExpr."""
+        expr = col("uri").url.download()
+
+        assert isinstance(expr, MultiStageUDFExpr)
+        assert len(expr.stages) == 2
+
+    def test_url_download_stages_have_correct_compute_strategies(self):
+        """Test that download expression stages use correct compute strategies."""
+        expr = col("uri").url.download()
+
+        # Stage 1: Partitioning should use ActorPoolStrategy
+        assert isinstance(expr.stages[0].compute_strategy, ActorPoolStrategy)
+        assert expr.stages[0].compute_strategy.min_size == 1
+        assert expr.stages[0].compute_strategy.max_size == 1
+
+        # Stage 2: Downloading should use TaskPoolStrategy
+        assert isinstance(expr.stages[1].compute_strategy, TaskPoolStrategy)
+
+    def test_url_download_structural_equality(self):
+        """Test structural equality for URL download expressions."""
+        expr1 = col("uri").url.download()
+        expr2 = col("uri").url.download()
+        expr3 = col("different_uri").url.download()
+
+        # Same column should be equal
         assert expr1.structurally_equals(expr2)
         assert expr2.structurally_equals(expr1)
 
-        # Different URI column names should not be equal
-        expr3 = download("different_uri")
+        # Different columns should not be equal
         assert not expr1.structurally_equals(expr3)
         assert not expr3.structurally_equals(expr1)
 
-        # Compare with non-DownloadExpr
-        non_download_expr = col("uri")
-        assert not expr1.structurally_equals(non_download_expr)
-        assert not non_download_expr.structurally_equals(expr1)
 
+class TestUrlDownloadExpressionFunctionality:
+    """Test URL download expression functionality with real files."""
 
-class TestDownloadExpressionFunctionality:
-    """Test actual download functionality with real and mocked data."""
-
-    def test_download_expression_with_local_files(self, tmp_path):
-        """Test basic download expression functionality with local files."""
+    def test_url_download_with_local_files(self, tmp_path):
+        """Test basic URL download expression functionality with local files."""
         # Create sample files with different content types
         sample_data = [
             b"This is test file 1 content",
@@ -58,7 +77,7 @@ class TestDownloadExpressionFunctionality:
         # Create dataset with file URIs and metadata
         table = pa.Table.from_arrays(
             [
-                pa.array([f"local://{path}" for path in file_paths]),
+                pa.array([f"file://{path}" for path in file_paths]),
                 pa.array([f"id_{i}" for i in range(len(file_paths))]),
                 pa.array([f"metadata_{i}" for i in range(len(file_paths))]),
                 pa.array(range(len(file_paths))),
@@ -68,8 +87,8 @@ class TestDownloadExpressionFunctionality:
 
         ds = ray.data.from_arrow(table)
 
-        # Add download column using expression
-        ds_with_downloads = ds.with_column("file_bytes", download("file_uri"))
+        # Add download column using new URL expression API
+        ds_with_downloads = ds.with_column("file_bytes", col("file_uri").url.download())
 
         # Verify results
         results = ds_with_downloads.take_all()
@@ -84,10 +103,10 @@ class TestDownloadExpressionFunctionality:
             assert result["file_id"] == f"id_{i}"
             assert result["metadata"] == f"metadata_{i}"
             assert result["index"] == i
-            assert result["file_uri"] == f"local://{file_paths[i]}"
+            assert result["file_uri"] == f"file://{file_paths[i]}"
 
-    def test_download_expression_empty_dataset(self):
-        """Test download expression with empty dataset."""
+    def test_url_download_empty_dataset(self):
+        """Test URL download expression with empty dataset."""
         # Create empty dataset with correct schema
         table = pa.Table.from_arrays(
             [
@@ -97,13 +116,13 @@ class TestDownloadExpressionFunctionality:
         )
 
         ds = ray.data.from_arrow(table)
-        ds_with_downloads = ds.with_column("bytes", download("uri"))
+        ds_with_downloads = ds.with_column("bytes", col("uri").url.download())
 
         results = ds_with_downloads.take_all()
         assert len(results) == 0
 
-    def test_download_expression_with_different_file_types(self, tmp_path):
-        """Test download expression with various file types including actual images."""
+    def test_url_download_with_different_file_types(self, tmp_path):
+        """Test URL download expression with various file types including actual images."""
         # Create a small 8x8 RGB image
         small_image = Image.new("RGB", (8, 8), color=(255, 0, 0))  # Red 8x8 image
         image_buffer = io.BytesIO()
@@ -130,7 +149,7 @@ class TestDownloadExpressionFunctionality:
         # Create dataset
         table = pa.Table.from_arrays(
             [
-                pa.array([f"local://{path}" for path in file_paths]),
+                pa.array([f"file://{path}" for path in file_paths]),
                 pa.array(
                     [f.split(".")[0] for f, _ in test_files]
                 ),  # filename without extension
@@ -139,7 +158,7 @@ class TestDownloadExpressionFunctionality:
         )
 
         ds = ray.data.from_arrow(table)
-        ds_with_downloads = ds.with_column("content", download("file_uri"))
+        ds_with_downloads = ds.with_column("content", col("file_uri").url.download())
 
         results = ds_with_downloads.take_all()
         assert len(results) == len(test_files)
@@ -154,37 +173,77 @@ class TestDownloadExpressionFunctionality:
                 assert downloaded_image.size == (8, 8)
                 assert downloaded_image.mode == "RGB"
 
+    def test_url_download_with_different_file_types_comprehensive(self):
+        """Test URL download with various file formats using the new API."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create various file types
+            test_files = [
+                ("text.txt", b"Plain text content"),
+                ("binary.dat", b"\x00\x01\x02\x03\x04\x05"),
+                ("json.json", b'{"test": true, "value": 42}'),
+            ]
 
-class TestDownloadExpressionErrors:
-    """Test error conditions and edge cases for download expressions."""
+            file_uris = []
+            expected_contents = []
 
-    def test_download_expression_invalid_uri_column(self):
-        """Test download expression with non-existent URI column."""
+            for filename, content in test_files:
+                file_path = os.path.join(tmpdir, filename)
+                with open(file_path, "wb") as f:
+                    f.write(content)
+                file_uris.append(f"file://{file_path}")
+                expected_contents.append(content)
+
+            # Create dataset
+            ds = ray.data.from_items(
+                [
+                    {"uri": uri, "filename": filename}
+                    for uri, (filename, _) in zip(file_uris, test_files)
+                ]
+            )
+
+            # Download using URL expression
+            result_ds = ds.with_column("content", col("uri").url.download())
+            results = result_ds.take()
+
+            assert len(results) == len(test_files)
+
+            for i, result in enumerate(results):
+                assert result["content"] == expected_contents[i]
+                assert result["filename"] == test_files[i][0]
+
+
+class TestUrlDownloadExpressionErrors:
+    """Test error conditions and edge cases for URL download expressions."""
+
+    def test_url_download_invalid_uri_column(self):
+        """Test URL download expression with non-existent URI column."""
         table = pa.Table.from_arrays(
             [
-                pa.array(["local://test.txt"]),
+                pa.array(["file://test.txt"]),
             ],
             names=["existing_column"],
         )
 
         ds = ray.data.from_arrow(table)
-        ds_with_downloads = ds.with_column("bytes", download("non_existent_column"))
+        ds_with_downloads = ds.with_column(
+            "bytes", col("non_existent_column").url.download()
+        )
 
         # Should raise error when trying to execute
         with pytest.raises(Exception):  # Could be KeyError or similar
             ds_with_downloads.take_all()
 
-    def test_download_expression_with_null_uris(self):
-        """Test download expression handling of null/empty URIs."""
+    def test_url_download_with_null_uris(self):
+        """Test URL download expression handling of null/empty URIs."""
         table = pa.Table.from_arrays(
             [
-                pa.array(["local://test.txt", None, ""]),
+                pa.array(["file://test.txt", None, ""]),
             ],
             names=["uri"],
         )
 
         ds = ray.data.from_arrow(table)
-        ds_with_downloads = ds.with_column("bytes", download("uri"))
+        ds_with_downloads = ds.with_column("bytes", col("uri").url.download())
 
         # Should handle nulls gracefully (exact behavior may vary)
         # This test mainly ensures no crash occurs
@@ -198,12 +257,28 @@ class TestDownloadExpressionErrors:
             # If it fails, should be a reasonable error (not a crash)
             assert isinstance(e, (ValueError, KeyError, RuntimeError))
 
+    def test_url_download_with_missing_files(self):
+        """Test URL download with non-existent files."""
+        # Create dataset with non-existent file paths
+        ds = ray.data.from_items(
+            [
+                {"uri": "file:///non/existent/file1.txt"},
+                {"uri": "file:///another/missing/file2.txt"},
+            ]
+        )
 
-class TestDownloadExpressionIntegration:
-    """Integration tests combining download expressions with other Ray Data operations."""
+        result_ds = ds.with_column("content", col("uri").url.download())
 
-    def test_download_expression_with_map_batches(self, tmpdir):
-        """Test download expression followed by map_batches processing."""
+        # This should raise an error when executed
+        with pytest.raises(Exception):
+            result_ds.take()
+
+
+class TestUrlDownloadExpressionIntegration:
+    """Integration tests combining URL download expressions with other Ray Data operations."""
+
+    def test_url_download_with_map_batches(self, tmpdir):
+        """Test URL download expression followed by map_batches processing."""
         # Create a test file
         test_file = tmpdir.join("test.txt")
         test_content = b"Hello, World!"
@@ -212,15 +287,15 @@ class TestDownloadExpressionIntegration:
         # Create dataset
         table = pa.Table.from_arrays(
             [
-                pa.array([f"local://{test_file}"]),
+                pa.array([f"file://{test_file}"]),
             ],
             names=["uri"],
         )
 
         ds = ray.data.from_arrow(table)
 
-        # Download then process
-        ds_with_content = ds.with_column("raw_bytes", download("uri"))
+        # Download then process using new API
+        ds_with_content = ds.with_column("raw_bytes", col("uri").url.download())
 
         def decode_bytes(batch):
             # Access the specific column containing the bytes data
@@ -235,6 +310,105 @@ class TestDownloadExpressionIntegration:
         assert len(results) == 1
         assert results[0]["decoded_text"] == "Hello, World!"
         assert results[0]["raw_bytes"] == test_content
+
+    def test_url_download_integration_with_additional_processing(self):
+        """Test URL download followed by additional processing."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a test file
+            file_path = os.path.join(tmpdir, "test.txt")
+            test_content = b"Hello, World!"
+            with open(file_path, "wb") as f:
+                f.write(test_content)
+
+            # Create dataset
+            ds = ray.data.from_items([{"uri": f"file://{file_path}"}])
+
+            # Download and then process
+            ds_with_content = ds.with_column("raw_bytes", col("uri").url.download())
+
+            def process_bytes(batch):
+                # Decode bytes to text
+                batch["text"] = [data.decode("utf-8") for data in batch["raw_bytes"]]
+                batch["length"] = [len(data) for data in batch["raw_bytes"]]
+                return batch
+
+            ds_processed = ds_with_content.map_batches(process_bytes)
+            results = ds_processed.take()
+
+            assert len(results) == 1
+            assert results[0]["text"] == "Hello, World!"
+            assert results[0]["length"] == len(test_content)
+            assert results[0]["raw_bytes"] == test_content
+
+    def test_url_download_multi_stage_pipeline_verification(self):
+        """Test that URL download creates the expected multi-stage pipeline."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create test files with content
+            test_files = []
+            file_contents = [b"Hello, World!", b"This is file 2", b"File number three"]
+
+            for i, content in enumerate(file_contents):
+                file_path = os.path.join(tmpdir, f"test_file_{i}.txt")
+                with open(file_path, "wb") as f:
+                    f.write(content)
+                test_files.append(f"file://{file_path}")
+
+            # Create dataset with file URIs
+            ds = ray.data.from_items(
+                [
+                    {"uri": test_files[0], "id": 1},
+                    {"uri": test_files[1], "id": 2},
+                    {"uri": test_files[2], "id": 3},
+                ]
+            )
+
+            # Test the download expression
+            result_ds = ds.with_column("downloaded_bytes", col("uri").url.download())
+
+            # Verify the results
+            results = result_ds.take()
+
+            # Check that we got the right number of results
+            assert len(results) == 3
+
+            # Check that each result has the expected structure
+            for i, row in enumerate(results):
+                assert "uri" in row
+                assert "id" in row
+                assert "downloaded_bytes" in row
+                assert row["id"] == i + 1
+                assert row["downloaded_bytes"] == file_contents[i]
+                assert row["uri"] == test_files[i]
+
+    @pytest.mark.parametrize("ray_init_local", [True, False])
+    def test_url_download_with_different_ray_contexts(self, ray_init_local):
+        """Test URL download works with different Ray initialization modes."""
+        # Skip if Ray is already initialized (from other tests)
+        if ray.is_initialized():
+            ray.shutdown()
+
+        if ray_init_local:
+            ray.init(local_mode=True)
+        else:
+            ray.init()
+
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                # Create a test file
+                file_path = os.path.join(tmpdir, "test.txt")
+                test_content = b"Test content"
+                with open(file_path, "wb") as f:
+                    f.write(test_content)
+
+                # Create dataset and test download
+                ds = ray.data.from_items([{"uri": f"file://{file_path}"}])
+                result_ds = ds.with_column("content", col("uri").url.download())
+                results = result_ds.take()
+
+                assert len(results) == 1
+                assert results[0]["content"] == test_content
+        finally:
+            ray.shutdown()
 
 
 if __name__ == "__main__":
