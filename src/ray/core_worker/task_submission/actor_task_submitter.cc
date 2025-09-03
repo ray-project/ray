@@ -20,7 +20,8 @@
 #include <utility>
 #include <vector>
 
-#include "ray/gcs/pb_util.h"
+#include "ray/common/protobuf_utils.h"
+#include "ray/util/time.h"
 
 namespace ray {
 namespace core {
@@ -844,12 +845,12 @@ void ActorTaskSubmitter::RetryCancelTask(TaskSpecification task_spec,
   execute_after(
       io_service_,
       [this, task_spec = std::move(task_spec), recursive] {
-        RAY_UNUSED(CancelTask(task_spec, recursive));
+        CancelTask(task_spec, recursive);
       },
       std::chrono::milliseconds(milliseconds));
 }
 
-Status ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive) {
+void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive) {
   // We don't support force_kill = true for actor tasks.
   bool force_kill = false;
   RAY_LOG(INFO).WithField(task_spec.TaskId()).WithField(task_spec.ActorId())
@@ -871,7 +872,7 @@ Status ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursiv
   GetTaskManagerWithoutMu().MarkTaskCanceled(task_id);
   if (!GetTaskManagerWithoutMu().IsTaskPending(task_id)) {
     RAY_LOG(DEBUG).WithField(task_id) << "Task is already finished or canceled";
-    return Status::OK();
+    return;
   }
 
   auto task_queued = false;
@@ -886,7 +887,7 @@ Status ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursiv
       // No need to decrement cur_pending_calls because it doesn't matter.
       RAY_LOG(DEBUG).WithField(task_id)
           << "Task's actor is already dead. Ignoring the cancel request.";
-      return Status::OK();
+      return;
     }
 
     task_queued = queue->second.actor_submit_queue_->Contains(send_pos);
@@ -916,7 +917,7 @@ Status ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursiv
     error_info.set_error_type(rpc::ErrorType::TASK_CANCELLED);
     GetTaskManagerWithoutMu().FailOrRetryPendingTask(
         task_id, rpc::ErrorType::TASK_CANCELLED, /*status*/ nullptr, &error_info);
-    return Status::OK();
+    return;
   }
 
   // At this point, the task is in "sent" state and not finished yet.
@@ -934,7 +935,7 @@ Status ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursiv
     RAY_CHECK(queue != client_queues_.end());
     if (!queue->second.rpc_client_) {
       RetryCancelTask(task_spec, recursive, 1000);
-      return Status::OK();
+      return;
     }
 
     const auto &client = queue->second.rpc_client_;
@@ -964,11 +965,6 @@ Status ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursiv
                          }
                        });
   }
-
-  // NOTE: Currently, ray.cancel is asynchronous.
-  // If we want to have a better guarantee in the cancelation result
-  // we should make it synchronos, but that can regress the performance.
-  return Status::OK();
 }
 
 bool ActorTaskSubmitter::QueueGeneratorForResubmit(const TaskSpecification &spec) {

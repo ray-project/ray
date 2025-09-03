@@ -39,8 +39,6 @@ def func(*args):
 
 ### Fractional CPUs and fractional GPUs
 
-Suppose you have two models and each doesn't fully saturate a GPU.  You might want to have them share a GPU by allocating 0.5 GPUs each.
-
 To do this, the resources specified in `ray_actor_options` can be *fractional*.
 For example, if you have two models and each doesn't fully saturate a GPU, you might want to have them share a GPU by allocating 0.5 GPUs each.
 

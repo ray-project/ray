@@ -151,6 +151,27 @@ http_archive(
     ],
 )
 
+http_archive(
+    name = "redis_linux_x86_64",
+    build_file_content = """exports_files(["redis-server", "redis-cli"])""",
+    sha256 = "4ae33c10059ed52202a12929d269deea46fac81b8e02e722d30cb22ceb3ed678",
+    urls = ["https://github.com/ray-project/redis/releases/download/7.2.3/redis-linux-x86_64.tar.gz"],
+)
+
+http_archive(
+    name = "redis_linux_arm64",
+    build_file_content = """exports_files(["redis-server", "redis-cli"])""",
+    sha256 = "2d1085a4f69477e1f44cbddd531e593f0712532b1ade9beab0b221a0cb01f298",
+    urls = ["https://github.com/ray-project/redis/releases/download/7.2.3/redis-linux-arm64.tar.gz"],
+)
+
+http_archive(
+    name = "redis_osx_arm64",
+    build_file_content = """exports_files(["redis-server", "redis-cli"])""",
+    sha256 = "74b76099c3600b538252cdd1731278e087e8e85eecc6c64318c860f3e9462506",
+    urls = ["https://github.com/ray-project/redis/releases/download/7.2.3/redis-osx-arm64.tar.gz"],
+)
+
 load("@com_github_storypku_bazel_iwyu//bazel:dependencies.bzl", "bazel_iwyu_dependencies")
 
 bazel_iwyu_dependencies()
