@@ -318,7 +318,7 @@ def training_function(config, data):
     start_epoch = 0
     if checkpoint:
         with checkpoint.as_directory() as checkpoint_dir:
-            with open(os.path.join(checkpoint_dir, "model.pkl"), "w") as f:
+            with open(os.path.join(checkpoint_dir, "model.pkl"), "rb") as f:
                 checkpoint_dict = pickle.load(f)
         start_epoch = checkpoint_dict["epoch"] + 1
         model = checkpoint_dict["state"]
@@ -335,7 +335,7 @@ def training_function(config, data):
 
         # Create the checkpoint.
         with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
-            with open(os.path.join(temp_checkpoint_dir, "model.pkl"), "w") as f:
+            with open(os.path.join(temp_checkpoint_dir, "model.pkl"), "wb") as f:
                 pickle.dump(checkpoint_dict, f)
             tune.report(
                 {"metric": metric},

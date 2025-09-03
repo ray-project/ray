@@ -59,7 +59,7 @@ If ``grid_search`` is provided as an argument, the *same* grid will be repeated 
     tuner.fit()
 
     # 3 different configs.
-    tuner = tune.Tuner(trainable, tune_config=tune.TuneConfig(num_samples=1), param_space={"x": grid_search([1, 2, 3])})
+    tuner = tune.Tuner(trainable, tune_config=tune.TuneConfig(num_samples=1), param_space={"x": tune.grid_search([1, 2, 3])})
     tuner.fit()
 
     # 6 different configs.
