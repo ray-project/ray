@@ -137,10 +137,7 @@ class MockWorker : public WorkerInterface {
     return lease_.GetLeaseSpecification().IsDetachedActor();
   }
 
-  const std::shared_ptr<ClientConnection> Connection() const override {
-    RAY_CHECK(false) << "Method unused";
-    return nullptr;
-  }
+  const std::shared_ptr<ClientConnection> Connection() const override { return nullptr; }
   const rpc::Address &GetOwnerAddress() const override { return address_; }
 
   void ActorCallArgWaitComplete(int64_t tag) override {
