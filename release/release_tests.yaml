@@ -4122,6 +4122,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10
@@ -4142,6 +4144,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override nightly
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override nightly
@@ -4162,6 +4166,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override latest
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override latest
@@ -4182,6 +4188,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override commit
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override commit
@@ -4203,6 +4211,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py aws/example-minimal.yaml
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/example-minimal.yaml
@@ -4223,6 +4233,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py aws/example-full.yaml --num-expected-nodes 2 --retries 20 --docker-override latest
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/example-full.yaml --num-expected-nodes 2 --retries 20 --docker-override latest
@@ -4246,6 +4258,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py gcp/example-minimal-pinned.yaml
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-minimal-pinned.yaml
@@ -4269,6 +4283,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 30 --docker-override latest
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 30 --docker-override latest
@@ -4292,6 +4308,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override latest
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override latest
@@ -4315,6 +4333,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override nightly
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override nightly
@@ -4338,6 +4358,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override commit
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override commit
@@ -4361,6 +4383,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py gcp/example-gpu-docker.yaml
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-gpu-docker.yaml
