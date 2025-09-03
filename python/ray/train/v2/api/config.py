@@ -12,6 +12,7 @@ from ray.air.config import (
 )
 from ray.runtime_env import RuntimeEnv
 from ray.train.v2._internal.constants import _DEPRECATED
+from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.migration_utils import (
     FAIL_FAST_DEPRECATION_MESSAGE,
     TRAINER_RESOURCES_DEPRECATION_MESSAGE,
@@ -252,3 +253,11 @@ class RunConfig:
                 "See this issue for more context: "
                 "https://github.com/ray-project/ray/issues/49454"
             )
+
+    @property
+    def storage_context(self) -> StorageContext:
+        return StorageContext(
+            storage_path=self.storage_path,
+            experiment_dir_name=self.name,
+            storage_filesystem=self.storage_filesystem,
+        )
