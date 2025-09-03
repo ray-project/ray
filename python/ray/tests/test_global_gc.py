@@ -247,7 +247,6 @@ def test_local_gc_called_once_per_interval(shutdown_only):
         def has_garbage(self):
             return self.garbage() is not None
 
-
     def all_garbage_collected(local_ref):
         return local_ref() is None and not any(
             ray.get([a.has_garbage.remote() for a in actors])
@@ -256,7 +255,7 @@ def test_local_gc_called_once_per_interval(shutdown_only):
     try:
         gc.disable()
 
-        # -------- Round 1: first batch of garbage should be collected --------
+        # Round 1: first batch of garbage should be collected
         # Local driver.
         local_ref = weakref.ref(ObjectWithCyclicRef())
         # Remote workers.
@@ -270,18 +269,18 @@ def test_local_gc_called_once_per_interval(shutdown_only):
             lambda: all_garbage_collected(local_ref),
         )
 
-        # -------- Round 2: second batch should NOT be collected within 2s --------
+        # Round 2: second batch should NOT be collected within min_interval
         local_ref = weakref.ref(ObjectWithCyclicRef())
         ray.get([a.make_garbage.remote() for a in actors])
 
         with pytest.raises(RuntimeError):
             wait_for_condition(
                 lambda: all_garbage_collected(local_ref),
-                timeout=2.0,   # shorter than min_interval
+                timeout=2.0,  # shorter than min_interval
                 retry_interval_ms=50,
             )
 
-        # -------- Round 3: after min_interval passes, garbage should be collected --------
+        # Round 3: after min_interval passes, garbage should be collected
         wait_for_condition(
             lambda: all_garbage_collected(local_ref),
             timeout=10.0,
