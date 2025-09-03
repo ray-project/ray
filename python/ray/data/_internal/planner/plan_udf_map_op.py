@@ -128,19 +128,14 @@ def plan_project_op(
             # 1. evaluate / add expressions
             if exprs:
                 block_accessor = BlockAccessor.for_block(block)
-                new_columns = {}
-                for col_name in block_accessor.column_names():
-                    # For Arrow blocks, block[col_name] gives us a ChunkedArray
-                    # For Pandas blocks, block[col_name] gives us a Series
-                    new_columns[col_name] = block[col_name]
-
                 # Add/update with expression results
+                result_block = block
                 for name, expr in exprs.items():
-                    result = eval_expr(expr, block)
-                    new_columns[name] = result
+                    result = eval_expr(expr, result_block)
+                    result_block_accessor = BlockAccessor.for_block(result_block)
+                    result_block = result_block_accessor.upsert_column(name, result)
 
-                # Create a new block from the combined columns and add it
-                block = BlockAccessor.batch_to_block(new_columns)
+                block = result_block
 
             # 2. (optional) column projection
             if columns:
