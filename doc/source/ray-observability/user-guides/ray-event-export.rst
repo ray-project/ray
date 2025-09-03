@@ -27,15 +27,20 @@ Event format
 Events are JSON objects in the POST request body.
 
 All events contains the same base fields and different event specific fields. 
-See ``src/ray/protobuf/events_base_event.proto`` for the base fields.
+See `src/ray/protobuf/events_base_event.proto <https://github.com/ray-project/ray/blob/master/src/ray/protobuf/events_base_event.proto>`_ for the base fields.
 
 Task events
 ^^^^^^^^^^^
 
 For each task, Ray exports two types of events: Task Definition Event and Task Execution Event.
 
-* Task Definition Event generated once per task attempt. It contains the metadata of the task. See ``src/ray/protobuf/events_task_definition_event.proto`` and ``src/ray/protobuf/actor_task_definition_event.proto`` for the event format for normal tasks and actor tasks respectively.
-* Task Execution Event contains the task state transition information and metadata that generated during the task execution. See ``src/ray/protobuf/events_task_execution_event.proto`` for the event format.
+* Task Definition Event generated once per task attempt. It contains the metadata of the task. 
+  See `src/ray/protobuf/public/events_task_definition_event.proto <https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_task_definition_event.proto>`_ 
+  and `src/ray/protobuf/public/events_actor_task_definition_event.proto <https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_actor_task_definition_event.proto>`_ for the event format for normal tasks 
+  and actor tasks respectively.
+* Task Execution Event contains the task state transition information and metadata that 
+  generated during the task execution. 
+  See `src/ray/protobuf/public/events_task_execution_event.proto <https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_task_execution_event.proto>`_ for the event format.
 
 An example of the task events is as follows:
 
@@ -109,3 +114,14 @@ An example of the task events is as follows:
         },
         "message":""
     }
+
+High-level Architecture
+-----------------------
+
+The following diagram shows the high-level architecture of Ray event export.
+
+.. image:: ../images/ray-event-export.png
+
+Ray introduces a new aggregator agent on the head node and each worker nodes. All the 
+Ray components send events to the aggregator agent through gRPC. The aggregator agent 
+collects the events and sends them to the configured HTTP endpoint. 
