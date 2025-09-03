@@ -147,10 +147,10 @@ def _setup_torch_process_group(
         if dist.is_initialized():
             logger.warning("Process group already initialized. Skipping.")
             return
-        print(">>> os.environ[\"XLA_USE_SPMD\"]", os.environ["XLA_USE_SPMD"])
+        print(">>> os.environ[\"XLA_USE_SPMD\"] = ", os.environ["XLA_USE_SPMD"])
         dist.init_process_group(
-            backend='xla',
-            init_method='xla://',
+            backend='gloo',
+            init_method='env://',
             rank=world_rank,
             world_size=world_size,
             timeout=timedelta(seconds=timeout_s),
@@ -261,18 +261,18 @@ class _TorchBackend(Backend):
 
                     # once again, turn on spmd
                     os.environ["XLA_USE_SPMD"] = "1"
-                    
+
                     # CRITICAL: Use Ray's world size and rank for consistency
                     # os.environ["PJRT_WORLD_SIZE"] = str(context.get_world_size())
                     # os.environ["PJRT_LOCAL_PROCESS_RANK"] = str(context.get_world_rank())
-                    
+
                     # For multi-node setups
                     # os.environ["PJRT_LOCAL_PROCESS_COUNT"] = str(context.get_local_world_size())
                     os.environ["PJRT_NODE_ID"] = str(context.get_node_rank())
-                    
+
                     # Additional XLA settings for GPU
                     os.environ["GPU_NUM_DEVICES"] = "1"  # One GPU per Ray worker
-                    
+
                     logger.info(f"PJRT env vars set for worker {context.get_world_rank()}: "
                                 f"WORLD_SIZE={context.get_world_size()}, "
                                 f"RANK={context.get_world_rank()}, "
@@ -288,7 +288,7 @@ class _TorchBackend(Backend):
             # it might be related since we will need these env var before pjrt init and xla process group init
             worker_group.execute(_set_torch_distributed_env_vars)
             logger.info(f"set torch distributed envs for c10d")
-            
+
             setup_futures = []
             for i in range(len(worker_group)):
                 setup_futures.append(
@@ -316,7 +316,7 @@ class _TorchBackend(Backend):
         self, worker_group: WorkerGroup, backend_config: BackendConfig
     ):
         if backend_config.backend == 'xla':
-            return 
+            return
         worker_group.execute(_set_torch_distributed_env_vars)
 
 
