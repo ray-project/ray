@@ -226,7 +226,7 @@ If you're doing local development on the fake multi node docker module, you can 
 this will mount the ``ray/python/ray/autoscaler`` directory to the started nodes. Please note that
 this is will probably not work in your docker-in-docker setup.
 
-If you want to specify which top-level Ray directories to mount, you can use e.g.
+If you want to specify which top-level Ray directories to mount, you can use:
 
 * ``FAKE_CLUSTER_DEV_MODULES="autoscaler,tune"``
 
