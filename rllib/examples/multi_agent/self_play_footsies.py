@@ -108,4 +108,5 @@ if __name__ == "__main__":
         base_config=config,
         args=args,
         stop=stop,
+        success_metric={"mix_size": args.target_mix_size}  # pass the success metric for RLlib's testing framework
     )
