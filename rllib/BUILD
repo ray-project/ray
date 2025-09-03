@@ -1563,17 +1563,17 @@ py_test(
     srcs = ["tuned_examples/ppo/multi_agent_footsies_ppo.py"],
     args = [
         "--as-test",
-        "--num-env-runners=6",
-        "--evaluation-num-env-runners=2",
+        "--num-env-runners=20",
+        "--evaluation-num-env-runners=3",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
     ],
     main = "tuned_examples/ppo/multi_agent_footsies_ppo.py",
     tags = [
         "exclusive",
-        "gpu",
         "learning_tests",
         "learning_tests_discrete",
+        "multi_gpu",
         "team:rllib",
     ],
 )
@@ -1603,8 +1603,8 @@ py_test(
     srcs = ["tuned_examples/ppo/multi_agent_footsies_ppo.py"],
     args = [
         "--as-test",
-        "--num-env-runners=6",
-        "--evaluation-num-env-runners=2",
+        "--num-env-runners=20",
+        "--evaluation-num-env-runners=3",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
     ],
