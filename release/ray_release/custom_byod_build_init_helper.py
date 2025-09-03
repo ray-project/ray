@@ -35,6 +35,8 @@ def get_images_from_tests(tests: List[Test]) -> List[Tuple[str, str, str]]:
 
 def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
     config = get_global_config()
+    if not config or not config.get("byod_ecr_region") or not config.get("byod_ecr"):
+        raise ValueError("byod_ecr_region and byod_ecr must be set in the config")
     """Create a yaml file for building custom BYOD images"""
     custom_byod_images = get_images_from_tests(tests)
     if not custom_byod_images:
