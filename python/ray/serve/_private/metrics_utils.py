@@ -337,6 +337,9 @@ def _merge_two_timeseries(
     The output contains one point per window that had at least one value, timestamped
     at the window center.
     """
+    if window_s <= 0:
+        raise ValueError(f"window_s must be positive, got {window_s}")
+
     if not t1 and not t2:
         return []
 
@@ -368,9 +371,6 @@ def merge_timeseries_dicts(
     are merged with a windowed sum, where each series keeps only its latest
     value per window before summing.
     """
-    if len(timeseries_dicts) == 1:
-        return timeseries_dicts[0]
-
     merged: DefaultDict[Hashable, List[TimeStampedValue]] = defaultdict(list)
     for timeseries_dict in timeseries_dicts:
         for key, ts in timeseries_dict.items():
