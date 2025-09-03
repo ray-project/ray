@@ -15,7 +15,7 @@ class PythonGCThread(threading.Thread):
     `min_interval` seconds."""
 
     def __init__(
-        self, min_interval: int = 5, gc_collect_func: Optional[Callable] = None
+        self, *, min_interval_s: int = 5, gc_collect_func: Optional[Callable] = None
     ):
         logger.debug("Starting Python GC thread")
         super().__init__(name="PythonGCThread", daemon=True)
