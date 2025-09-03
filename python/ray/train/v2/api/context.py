@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from typing import Any, Dict
 
 from ray.train.v2._internal.execution.context import (
@@ -7,7 +8,9 @@ from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 
 @PublicAPI(stability="stable")
-class TrainContext:
+class TrainContext(ABC):
+    """Abstract interface for training context."""
+
     @Deprecated
     def get_metadata(self) -> Dict[str, Any]:
         """[Deprecated] User metadata dict passed to the Trainer constructor."""
@@ -55,10 +58,12 @@ class TrainContext:
             _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE.format("get_trial_dir")
         )
 
+    @abstractmethod
     def get_experiment_name(self) -> str:
         """Experiment name for the corresponding trial."""
-        return get_internal_train_context().get_experiment_name()
+        pass
 
+    @abstractmethod
     def get_world_size(self) -> int:
         """Get the current world size (i.e. total number of workers) for this run.
 
@@ -85,8 +90,9 @@ class TrainContext:
 
             ...
         """
-        return get_internal_train_context().get_world_size()
+        pass
 
+    @abstractmethod
     def get_world_rank(self) -> int:
         """Get the world rank of this worker.
 
@@ -112,8 +118,9 @@ class TrainContext:
 
             ...
         """
-        return get_internal_train_context().get_world_rank()
+        pass
 
+    @abstractmethod
     def get_local_rank(self) -> int:
         """Get the local rank of this worker (rank of the worker on its node).
 
@@ -142,8 +149,9 @@ class TrainContext:
 
             ...
         """
-        return get_internal_train_context().get_local_rank()
+        pass
 
+    @abstractmethod
     def get_local_world_size(self) -> int:
         """Get the local world size of this node (i.e. number of workers on this node).
 
@@ -170,8 +178,9 @@ class TrainContext:
 
                 ...
         """
-        return get_internal_train_context().get_local_world_size()
+        pass
 
+    @abstractmethod
     def get_node_rank(self) -> int:
         """Get the rank of this node.
 
@@ -198,9 +207,10 @@ class TrainContext:
 
                 ...
         """
-        return get_internal_train_context().get_node_rank()
+        pass
 
     @DeveloperAPI
+    @abstractmethod
     def get_storage(self):
         """Returns the :class:`~ray.train._internal.storage.StorageContext` storage
         context which gives advanced access to the filesystem and paths
@@ -209,4 +219,61 @@ class TrainContext:
         NOTE: This is a developer API, and the `StorageContext` interface may change
         without notice between minor versions.
         """
+        pass
+
+
+class DistributedTrainContext(TrainContext):
+    """Implementation of TrainContext for distributed mode."""
+
+    def get_experiment_name(self) -> str:
+        return get_internal_train_context().get_experiment_name()
+
+    def get_world_size(self) -> int:
+        return get_internal_train_context().get_world_size()
+
+    def get_world_rank(self) -> int:
+        return get_internal_train_context().get_world_rank()
+
+    def get_local_rank(self) -> int:
+        return get_internal_train_context().get_local_rank()
+
+    def get_local_world_size(self) -> int:
+        return get_internal_train_context().get_local_world_size()
+
+    def get_node_rank(self) -> int:
+        return get_internal_train_context().get_node_rank()
+
+    def get_storage(self):
         return get_internal_train_context().get_storage()
+
+
+class LocalTrainContext(TrainContext):
+    """Implementation of TrainContext for local mode."""
+
+    def __init__(
+        self,
+        experiment_name: str,
+    ):
+        self.experiment_name = experiment_name
+
+    def get_experiment_name(self) -> str:
+        return self.experiment_name
+
+    def get_world_size(self) -> int:
+        return 1
+
+    def get_world_rank(self) -> int:
+        return 0
+
+    def get_local_rank(self) -> int:
+        return 0
+
+    def get_local_world_size(self) -> int:
+        return 1
+
+    def get_node_rank(self) -> int:
+        """For local mode, we only use one node."""
+        return 0
+
+    def get_storage(self):
+        raise NotImplementedError("Local storage context not yet implemented. ")
