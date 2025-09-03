@@ -12,7 +12,7 @@ RUN <<EOF
 set -euo pipefail
 
 # Install uv
-wget -qO- https://astral.sh/uv/install.sh | sudo env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+curl -LsSf https://astral.sh/uv/0.8.14/install.sh | sh
 
 # Install Python versions
 uv python install 3.9 3.10 3.11 3.12 3.13

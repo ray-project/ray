@@ -6,10 +6,10 @@ steps:
   - name: min-allpython
     label: "wanda: min-allpython"
     wanda: ci/docker/min.allpython.wanda.yaml
-    depends_on: oss-ci-base_build
+    depends_on: forge
     env:
       DEFAULT_PYTHON_VERSION: "3.9"
-    tags: cibase
+    tags: always
 
   # dependencies
   - label: ":tapioca: build: pip-compile dependencies"
