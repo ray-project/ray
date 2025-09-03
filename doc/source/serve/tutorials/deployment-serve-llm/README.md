@@ -1,3 +1,9 @@
+<!--
+Do not modify this README. This file is a copy of the notebook and is not used to display the content.
+Modify notebook.ipynb instead, then regenerate this file with:
+jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
+-->
+
 # Quickstarts for LLM serving
 
 These guides provide a fast path to serving LLMs using Ray Serve on Anyscale, with focused tutorials for different deployment scales, from single-GPU setups to multi-node clusters.

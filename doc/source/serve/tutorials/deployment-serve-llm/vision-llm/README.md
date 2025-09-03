@@ -2,6 +2,12 @@
 orphan: true
 ---
 
+<!--
+Do not modify this README. This file is a copy of the notebook and is not used to display the content.
+Modify notebook.ipynb instead, then regenerate this file with:
+jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
+-->
+
 # Deploying a Vision LLM
 
 A Vision LLM can interpret images as well as text, enabling tasks like answering questions about charts, analyzing photos, or combining visuals with instructions. It extends LLMs beyond language to support multimodal reasoning and richer applications.  

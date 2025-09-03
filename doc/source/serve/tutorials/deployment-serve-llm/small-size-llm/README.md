@@ -2,6 +2,12 @@
 orphan: true
 ---
 
+<!--
+Do not modify this README. This file is a copy of the notebook and is not used to display the content.
+Modify notebook.ipynb instead, then regenerate this file with:
+jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
+-->
+
 # Deploy a small size LLM
 
 A small LLM runs on a single node with 1–2 GPUs, making it fast, inexpensive, and simple to use. It’s ideal for prototyping, lightweight applications, latency-critical use cases, cost-sensitive deployments, and environments with limited resources where efficiency matters more than peak accuracy.

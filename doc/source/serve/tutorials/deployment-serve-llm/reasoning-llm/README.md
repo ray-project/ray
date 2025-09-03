@@ -2,6 +2,12 @@
 orphan: true
 ---
 
+<!--
+Do not modify this README. This file is a copy of the notebook and is not used to display the content.
+Modify notebook.ipynb instead, then regenerate this file with:
+jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
+-->
+
 # Deploy a reasoning LLM
 
 A reasoning LLM handles tasks that require deeper analysis or step-by-step thought. It generates intermediate reasoning before arriving at a final answer, making it better suited for situations where careful logic or structured problem-solving is more important than speed or efficiency.
@@ -14,12 +20,12 @@ This tutorial deploys a reasoning LLM using Ray Serve LLM.
 
 Reasoning models simulate step-by-step, structured thought processes to solve complex tasks like math, multi-hop QA, or code generation. In contrast, non-reasoning models provide fast, direct responses and focus on fluency or instruction following without explicit intermediate reasoning. The key distinction lies in whether the model attempts to "think through" the problem before answering.
 
-| **Model Type**          | **Core Behavior**                    | **Use Case Examples**                                    | **Limitation**                                        |
+| **Model type**          | **Core behavior**                    | **Use case examples**                                    | **Limitation**                                        |
 | ----------------------- | ------------------------------------ | -------------------------------------------------------- | ----------------------------------------------------- |
-| **Reasoning Model**     | Explicit multi-step thinking process | Math, coding, logic puzzles, multi-hop QA, CoT prompting | Slower response time, more tokens used.                |
-| **Non-Reasoning Model** | Direct answer generation             | Casual queries, short instructions, single-step answers  | May struggle with complex reasoning or interpretability. |
+| **Reasoning model**     | Explicit multi-step thinking process | Math, coding, logic puzzles, multi-hop QA, CoT prompting | Slower response time, more tokens used.                |
+| **Non-reasoning model** | Direct answer generation             | Casual queries, short instructions, single-step answers  | May struggle with complex reasoning or interpretability. |
 
-Many reasoning-capable models structure their outputs with special markers such as `<think>` tags, or expose reasoning traces inside dedicated fields like `reasoning_content` in the OpenAI API response. Always check the model's documentation to see how thinking is structured and controlled.
+Many reasoning-capable models structure their outputs with special markers such as `<think>` tags, or expose reasoning traces inside dedicated fields like `reasoning_content` in the OpenAI API response. Always check the model's documentation for how to structure and control thinking.
 
 **Note:** Reasoning LLMs often benefit from long context windows (32K up to +1M tokens), high token throughput, low-temperature decoding (greedy sampling), and strong instruction tuning or scratchpad-style reasoning.
 
@@ -57,7 +63,7 @@ applications:
 
 See [Configure Ray Serve LLM](#configure-ray-serve-llm) for a complete example.
 
-**Example Response**  
+**Example response**  
 When using a reasoning parser, the response is typically structured like this:
 
 ```python
@@ -67,7 +73,7 @@ ChatCompletionMessage(
     reasoning_content="Okay, the user is asking for the temperature today and tomorrow..."
 )
 ```
-And you can extract the content and reasoning like this
+And you can extract the content and reasoning as follows:
 ```python
 response = client.chat.completions.create(
   ...
@@ -104,7 +110,7 @@ llm_config = LLMConfig(
             min_replicas=1, max_replicas=2,
         )
     ),
-    ### Uncomment if your model is gated and need your Huggingface Token to access it
+    ### Uncomment if your model is gated and needs your Hugging Face token to access it
     #runtime_env=dict(
     #    env_vars={
     #        "HF_TOKEN": os.environ.get("HF_TOKEN")
@@ -120,7 +126,7 @@ llm_config = LLMConfig(
 app = build_openai_app({"llm_configs": [llm_config]})
 ```
 
-**Note:** Before moving to a production setup, migrate to using a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html) to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. See [Serving LLMs: Production Guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.
+**Note:** Before moving to a production setup, migrate to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html) to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. See [Serving LLMs: production guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.
 
 ---
 
@@ -160,7 +166,7 @@ Deployment typically takes a few minutes as the cluster is provisioned, the vLLM
 
 Your endpoint is available locally at `http://localhost:8000` and you can use a placeholder authentication token for the OpenAI client, for example `"FAKE_KEY"`.
 
-Example Curl
+Example curl:
 
 
 ```bash
@@ -174,7 +180,7 @@ curl -X POST http://localhost:8000/v1/chat/completions \
       }'
 ```
 
-Example Python
+Example python:
 
 
 ```python
@@ -215,9 +221,9 @@ serve shutdown -y
 
 ---
 
-## Deploy to production with Anyscale Services
+## Deploy to production with Anyscale services
 
-For production, use Anyscale Services to deploy your Ray Serve app on a dedicated cluster without code changes. Anyscale provides scalability, fault tolerance, and load balancing, ensuring resilience against node failures, high traffic, and rolling updates. See [Deploying a medium size LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html#deploy-to-production-with-anyscale-services) for an example with a medium size model like the *QwQ-32&nbsp;B* used here.
+For production, use Anyscale services to deploy your Ray Serve app on a dedicated cluster without code changes. Anyscale provides scalability, fault tolerance, and load balancing, ensuring resilience against node failures, high traffic, and rolling updates. See [Deploying a medium size LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html#deploy-to-production-with-anyscale-services) for an example with a medium-sized model like the *QwQ-32&nbsp;B* used here.
 
 ---
 
@@ -264,4 +270,4 @@ for chunk in response:
 
 ## Summary
 
-In this tutorial, you deployed a reasoning LLM with Ray Serve LLM, from development to production. You learned how to configure Ray Serve LLM with the right reasoning parser, deploy your service on your Ray cluster, and how to send requests, and how to parse reasoning outputs in the response.
+In this tutorial, you deployed a reasoning LLM with Ray Serve LLM, from development to production. You learned how to configure Ray Serve LLM with the right reasoning parser, deploy your service on your Ray cluster, send requests, and parse reasoning outputs in the response.
