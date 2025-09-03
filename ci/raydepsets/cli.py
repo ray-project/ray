@@ -240,7 +240,7 @@ class DependencySetManager:
 
 
 def _get_bytes(packages: List[str]) -> bytes:
-    return "\n".join(packages).encode("utf-8")
+    return ("\n".join(packages) + "\n").encode("utf-8")
 
 
 def _get_depset(depsets: List[Depset], name: str) -> Depset:
