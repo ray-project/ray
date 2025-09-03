@@ -2,6 +2,7 @@ import threading
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ray.data import DataIterator
+from ray.train.v2._internal.data_integration.interfaces import DatasetShardMetadata
 from ray.train.v2._internal.execution import collective_impl
 from ray.train.v2._internal.execution.context import (
     get_train_context as get_internal_train_context,
@@ -58,25 +59,16 @@ class TrainFnUtils:
         """
         return get_internal_train_context().get_all_reported_checkpoints()
 
-    def get_dataset_shard(self, dataset_name: str) -> DataIterator:
+    def get_dataset_shard(self, dataset_info: DatasetShardMetadata) -> DataIterator:
         """Get the dataset shard for this worker.
 
-        This method is used by the public API function :func:`ray.train.get_dataset_shard`.
-        Users should typically call ``ray.train.get_dataset_shard()`` instead of calling this method directly.
-
         Args:
-            dataset_name: The name of the dataset to get the shard for.
+            dataset_info: The metadata of the dataset to get the shard for.
 
         Returns:
             The DataIterator shard for this worker.
         """
-        from ray.train.v2._internal.data_integration.interfaces import (
-            DatasetShardMetadata,
-        )
-
-        return get_internal_train_context().get_dataset_shard(
-            DatasetShardMetadata(dataset_name=dataset_name)
-        )
+        return get_internal_train_context().get_dataset_shard(dataset_info)
 
     def get_context(self) -> ExternalTrainContext:
         return ExternalTrainContext()
