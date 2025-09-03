@@ -1,8 +1,9 @@
 load("//bazel:ray.bzl", "ray_cc_test")
 
+# This test is run through sysfs_cgroup_driver_integration_test_entrypoint.sh
 ray_cc_test(
-    name = "sysfs_cgroup_driver_test",
-    srcs = ["sysfs_cgroup_driver_test.cc"],
+    name = "sysfs_cgroup_driver_integration_test",
+    srcs = ["sysfs_cgroup_driver_integration_test.cc"],
     tags = [
         "cgroup",
         "team:core",
@@ -15,7 +16,6 @@ ray_cc_test(
         "//src/ray/common:status_or",
         "//src/ray/common/cgroup2:cgroup_test_utils",
         "//src/ray/common/cgroup2:sysfs_cgroup_driver",
-        "//src/ray/common/tests:testing",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
     ],
