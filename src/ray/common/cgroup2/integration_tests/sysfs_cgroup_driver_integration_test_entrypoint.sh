@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# To run this test locally, you will need to run it as the root user i.e.
+# sudo ./sysfs_cgroup_driver_integration_test_entrypoint.sh
 if [[ "$(uname -s)" != "Linux" ]]; then
   echo "ERROR: Cgroup integration tests can only be run on Linux."
   echo "  The current OS is $(uname)"
