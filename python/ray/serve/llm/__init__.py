@@ -1,5 +1,8 @@
 from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
+# Using Deprecated copied from ray.rllib.utils.deprecation since they are returning better messages.
+# TODO: Ray core should inherit that.
+from ray.llm._internal.common.utils.deprecation import Deprecated
 from ray.llm._internal.serve.configs.server_models import (
     CloudMirrorConfig as _CloudMirrorConfig,
     LLMConfig as _LLMConfig,
@@ -15,10 +18,6 @@ from ray.llm._internal.serve.deployments.llm.llm_server import (
 from ray.llm._internal.serve.deployments.routers.router import (
     LLMRouter as _LLMRouter,
 )
-
-# Using Deprecated from rllib since they are retuning better messages.
-# TODO: Ray core should inherit that.
-from ray.rllib.utils.deprecation import Deprecated
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
