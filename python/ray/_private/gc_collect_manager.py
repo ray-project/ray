@@ -37,7 +37,7 @@ class PythonGCThread(threading.Thread):
             if self._should_exit:
                 break
 
-            time_since_last_gc = time.perf_counter() - self._last_gc_time
+            time_since_last_gc = time.monotonic() - self._last_gc_time
             if time_since_last_gc < self._min_gc_interval:
                 logger.debug(
                     f"Skipping GC, only {time_since_last_gc:.2f}s since last GC"
@@ -45,9 +45,9 @@ class PythonGCThread(threading.Thread):
                 continue
 
             try:
-                start = time.perf_counter()
+                start = time.monotonic()
                 num_freed = self._gc_collect_func()
-                self._last_gc_time = time.perf_counter()
+                self._last_gc_time = time.monotonic()
                 if num_freed > 0:
                     logger.debug(
                         "gc.collect() freed {} refs in {} seconds".format(
@@ -56,7 +56,7 @@ class PythonGCThread(threading.Thread):
                     )
             except Exception as e:
                 logger.error(f"Error during GC: {e}")
-                self._last_gc_time = time.perf_counter()
+                self._last_gc_time = time.monotonic()
 
     def stop(self):
         logger.debug("Stopping Python GC thread")
