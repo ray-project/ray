@@ -97,7 +97,7 @@ Aim Integration
 
 Tune also provides a logger for the `Aim <https://aimstack.io/>`_ experiment tracker.
 You can install Aim via ``pip install aim``.
-See the :doc:`tutorial here </tune/examples/tune-aim>`
+See the :doc:`tutorial here </tune/examples/tune-aim>`.
 
 .. autosummary::
     :nosignatures:

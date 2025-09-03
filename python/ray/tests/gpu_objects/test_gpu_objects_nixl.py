@@ -1,6 +1,8 @@
 import sys
-import torch
+
 import pytest
+import torch
+
 import ray
 
 
@@ -17,8 +19,8 @@ class GPUTestActor:
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
 def test_p2p(ray_start_regular):
-    world_size = 2
-    actors = [GPUTestActor.remote() for _ in range(world_size)]
+    num_actors = 2
+    actors = [GPUTestActor.remote() for _ in range(num_actors)]
 
     src_actor, dst_actor = actors[0], actors[1]
 
