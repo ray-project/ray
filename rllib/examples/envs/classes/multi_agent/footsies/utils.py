@@ -37,7 +37,7 @@ class Matchmaker:
         self, agent_id: str, episode: EpisodeType, **kwargs
     ) -> str:
         """Mapping function that retrieves policy_id from the sampled matchup"""
-        id_ = episode.env_id if hasattr(episode, "env_id") else episode.id_
+        id_ = episode.id_
         if self.current_matchups.get(id_) is None:
             # step 1: sample a matchup according to the specified probabilities
             sampled_matchup = np.random.choice(a=self.matchups, p=self.probs)
