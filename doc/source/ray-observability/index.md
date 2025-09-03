@@ -15,7 +15,7 @@ Reference <reference/index>
 This section covers how to **monitor and debug Ray applications and clusters** with Ray's Observability features.
 
 
-## What is Observability
+## What is observability
 In general, observability is a measure of how well the internal states of a system can be inferred from knowledge of its external outputs.
 
 In Ray's context, observability refers to the ability for users to observe and infer Ray applications' and Ray clusters' internal states with various external outputs, such as logs, metrics, events, etc.
