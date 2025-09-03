@@ -7,25 +7,11 @@ About:
     - This example is created to test the self-play training progression with footsies.
     - Simplified version runs with single learner (cpu), single env runner, and single eval env runner.
 """
-import functools
 from pathlib import Path
 
-from ray.rllib.core.rl_module import RLModuleSpec, MultiRLModuleSpec
-from ray.rllib.examples.envs.classes.multi_agent.footsies.fixed_rlmodules import (
-    NoopFixedRLModule,
-    BackFixedRLModule,
-)
-from ray.rllib.examples.envs.classes.multi_agent.footsies.utils import (
-    MetricsLoggerCallback,
-    MixManagerCallback,
-)
-from ray.rllib.examples.rl_modules.classes.lstm_containing_rlm import (
-    LSTMContainingRLModule,
-)
-from ray.rllib.tuned_examples.ppo.multi_agent_footsies_ppo import env_creator
 from ray.rllib.tuned_examples.ppo.multi_agent_footsies_ppo import (
-    main_policy,
     config,
+    env_creator,
     stop,
 )
 from ray.rllib.utils.test_utils import (
@@ -112,45 +98,6 @@ config.environment(
 ).training(
     train_batch_size_per_learner=args.rollout_fragment_length
     * (args.num_env_runners or 1),
-).multi_agent(
-    policies={
-        main_policy,
-        "noop",
-        "back",
-    },
-).rl_module(
-    rl_module_spec=MultiRLModuleSpec(
-        rl_module_specs={
-            main_policy: RLModuleSpec(
-                module_class=LSTMContainingRLModule,
-                model_config={
-                    "lstm_cell_size": 128,
-                    "dense_layers": [128, 128],
-                    "max_seq_len": 64,
-                },
-            ),
-            "noop": RLModuleSpec(module_class=NoopFixedRLModule),
-            "back": RLModuleSpec(module_class=BackFixedRLModule),
-        },
-    )
-).callbacks(
-    [
-        functools.partial(
-            MetricsLoggerCallback,
-            main_policy=main_policy,
-        ),
-        functools.partial(
-            MixManagerCallback,
-            win_rate_threshold=args.win_rate_threshold,
-            main_policy=main_policy,
-            target_mix_size=args.target_mix_size,
-            starting_modules=[main_policy, "noop"],
-            fixed_modules_progression_sequence=(
-                "noop",
-                "back",
-            ),
-        ),
-    ]
 )
 
 
