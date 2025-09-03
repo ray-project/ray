@@ -1,7 +1,6 @@
 import collections
 import os
 import time
-from unittest import mock
 
 import pytest
 
@@ -524,13 +523,27 @@ def test_worker_group_abort(monkeypatch):
 
     wg._start()
 
-    # Mock the worker group state shutdown method to track calls
-    shutdown_mock = mock.MagicMock()
-    monkeypatch.setattr(WorkerGroupState, "shutdown", shutdown_mock)
+    # Track shutdown calls without preventing actual cleanup
+    shutdown_call_count = 0
+    original_shutdown = WorkerGroupState.shutdown
+
+    def track_shutdown_calls(self):
+        nonlocal shutdown_call_count
+        shutdown_call_count += 1
+        return original_shutdown(self)
+
+    monkeypatch.setattr(WorkerGroupState, "shutdown", track_shutdown_calls)
 
     wg.abort()
-    shutdown_mock.assert_called_once()
+    assert (
+        shutdown_call_count == 1
+    ), f"Expected shutdown to be called once, but was called {shutdown_call_count} times"
     assert hooks.abort_hook_called
+
+    # Bypass _assert_active method, allowing for shutdown
+    monkeypatch.setattr(wg, "_assert_active", lambda: None)
+
+    wg.shutdown()
 
 
 def test_shutdown_hook_with_dead_actors():
