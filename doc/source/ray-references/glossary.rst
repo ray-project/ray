@@ -375,7 +375,7 @@ documentation, sorted alphabetically.
     On-Policy
         A type of RL Algorithm. In an on-policy algorithm, the policy used to compute
         the actions inside an RL environment (to generate the training data) must be the
-        exact same (matching NN weights at all times) as the one that is being
+        exact same (matching NN weights at all times) as the one that's being
         optimized. Examples for on-policy Algorithms are PPO, APPO, and IMPALA.
 
     OOM (Out of Memory)
