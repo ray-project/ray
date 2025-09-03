@@ -177,9 +177,7 @@ class ColumnExpr(Expr):
     """
 
     name: str
-    data_type: DataType = field(
-        default_factory=lambda: DataType.from_python(object), init=False
-    )
+    data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
 
     def structurally_equals(self, other: Any) -> bool:
         return isinstance(other, ColumnExpr) and self.name == other.name
@@ -248,9 +246,7 @@ class BinaryExpr(Expr):
     left: Expr
     right: Expr
 
-    data_type: DataType = field(
-        default_factory=lambda: DataType.from_python(object), init=False
-    )
+    data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
 
     def structurally_equals(self, other: Any) -> bool:
         return (

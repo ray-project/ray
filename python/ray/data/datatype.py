@@ -7,7 +7,7 @@ import pyarrow as pa
 from ray.air.util.tensor_extensions.arrow import (
     _infer_pyarrow_type,
 )
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import PublicAPI
 
 PYARROW_TYPE_DEFINITIONS: Dict[str, Tuple[callable, str]] = {
     "int8": (pa.int8, "an 8-bit signed integer"),
@@ -26,7 +26,7 @@ PYARROW_TYPE_DEFINITIONS: Dict[str, Tuple[callable, str]] = {
 }
 
 
-@DeveloperAPI
+@PublicAPI(stability="alpha")
 def factory_methods(cls: type):
     """Metaprogramming: Class decorator to generate factory methods for PyArrow types using from_arrow.
 
@@ -200,25 +200,6 @@ class DataType:
         return cls(_internal_type=numpy_dtype)
 
     @classmethod
-    def from_python(cls, python_type: type) -> "DataType":
-        """Create a DataType from a Python type.
-
-        Args:
-            python_type: A Python type object
-
-        Returns:
-            DataType: A DataType wrapping the given Python type
-
-        Examples:
-            >>> from ray.data.datatype import DataType
-            >>> DataType.from_python(int)
-            DataType(python:int)
-            >>> DataType.from_python(str)
-            DataType(python:str)
-        """
-        return cls(_internal_type=python_type)
-
-    @classmethod
     def infer_dtype(cls, value: Any) -> "DataType":
         """Infer DataType from a Python value, handling numpy, Arrow, and Python types.
 
@@ -247,8 +228,7 @@ class DataType:
             if inferred_arrow_type is not None:
                 return cls.from_arrow(inferred_arrow_type)
         except Exception:
-            # Fall back to Python type if Arrow type inference fails
-            return cls.from_python(type(value))
+            return cls(type(value))
 
     def __repr__(self) -> str:
         if self.is_arrow_type():
