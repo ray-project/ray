@@ -295,8 +295,7 @@ steps:
     tags: core_cpp
     instance_type: medium
     commands:
-      - bazel test //ci/ray_ci:test_in_docker -- //:all //src/ray/common/cgroup2/tests/...
-        core --cache-test-results
+      - bazel test //ci/ray_ci:test_in_docker -- //:all //src/ray/common/cgroup2/tests/... core --build-type clang --cache-test-results
       - docker run --privileged -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
         "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash
         "./src/ray/common/cgroup2/integration_tests/sysfs_cgroup_driver_integration_test_entrypoint.sh"
