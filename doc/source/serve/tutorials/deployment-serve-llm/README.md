@@ -33,15 +33,3 @@ Deploy models with reasoning capabilities designed for long-context tasks, codin
 
 **[Hybrid thinking LLM deployment](https://docs.ray.io/en/latest/ray-overview/examples/deployment-serve-llm/hybrid-reasoning-llm/README.html)**  
 Deploy models that can switch between reasoning and non-reasoning modes for flexible usage, such as Qwen-3.
-
-```{toctree}
-:hidden:
-
-small-size-llm/notebook
-medium-size-llm/notebook
-large-size-llm/notebook
-vision-llm/notebook
-reasoning-llm/notebook
-hybrid-reasoning-llm/notebook
-```
-

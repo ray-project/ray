@@ -22,7 +22,6 @@ advanced-guides/index
 architecture
 examples
 api/index
-tutorials/deployment-serve-llm/README
 ```
 
 ```{image} logo.svg
