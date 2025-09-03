@@ -19,7 +19,7 @@ class PythonGCThread(threading.Thread):
     ):
         logger.debug("Starting Python GC thread")
         super().__init__(name="PythonGCThread", daemon=True)
-        self._running = True
+        self._should_exit = False
         self._last_gc_time = float("-inf")
         self._min_gc_interval = min_interval
         self._gc_event = threading.Event()
