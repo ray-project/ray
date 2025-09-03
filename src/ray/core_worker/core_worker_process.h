@@ -18,6 +18,7 @@
 #include <memory>
 #include <string>
 
+#include "ray/common/metrics.h"
 #include "ray/core_worker/core_worker_options.h"
 #include "ray/core_worker/grpc_service.h"
 #include "ray/core_worker/metrics.h"
@@ -184,7 +185,8 @@ class CoreWorkerProcessImpl {
   /// The client to export metrics to the metrics agent.
   std::unique_ptr<ray::rpc::MetricsAgentClient> metrics_agent_client_;
 
-  ray::stats::Gauge task_by_state_counter_{GetTaskMetric()};
+  ray::stats::Gauge task_by_state_gauge_{GetTaskMetric()};
+  ray::stats::Gauge actor_by_state_gauge_{GetActorMetric()};
 };
 }  // namespace core
 }  // namespace ray

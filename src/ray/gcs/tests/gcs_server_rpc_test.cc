@@ -29,7 +29,24 @@ namespace ray {
 class GcsServerTest : public ::testing::Test {
  public:
   GcsServerTest()
-      : fake_dropped_events_counter_(std::make_unique<observability::FakeCounter>()) {
+      : actor_by_state_gauge_(std::make_unique<observability::FakeMetric>()),
+        gcs_actor_by_state_gauge_(std::make_unique<observability::FakeMetric>()),
+        running_job_gauge_(std::make_unique<observability::FakeMetric>()),
+        finished_job_counter_(std::make_unique<observability::FakeMetric>()),
+        job_duration_in_seconds_gauge_(std::make_unique<observability::FakeMetric>()),
+        placement_group_gauge_(std::make_unique<observability::FakeMetric>()),
+        placement_group_creation_latency_in_ms_histogram_(
+            std::make_unique<observability::FakeMetric>()),
+        placement_group_scheduling_latency_in_ms_histogram_(
+            std::make_unique<observability::FakeMetric>()),
+        task_events_reported_gauge_(std::make_unique<observability::FakeMetric>()),
+        task_events_dropped_gauge_(std::make_unique<observability::FakeMetric>()),
+        task_events_stored_gauge_(std::make_unique<observability::FakeMetric>()),
+        storage_operation_latency_in_ms_histogram_(
+            std::make_unique<observability::FakeMetric>()),
+        storage_operation_count_counter_(std::make_unique<observability::FakeMetric>()),
+        event_recorder_dropped_events_counter_(
+            std::make_unique<observability::FakeCounter>()) {
     TestSetupUtil::StartUpRedisServers(std::vector<int>());
   }
 
@@ -45,7 +62,22 @@ class GcsServerTest : public ::testing::Test {
     config.enable_sharding_conn = false;
     config.redis_port = TEST_REDIS_SERVER_PORTS.front();
     gcs_server_ = std::make_unique<gcs::GcsServer>(
-        config, io_service_, *fake_dropped_events_counter_);
+        config,
+        io_service_,
+        *actor_by_state_gauge_,
+        *gcs_actor_by_state_gauge_,
+        *running_job_gauge_,
+        *finished_job_counter_,
+        *job_duration_in_seconds_gauge_,
+        *placement_group_gauge_,
+        *placement_group_creation_latency_in_ms_histogram_,
+        *placement_group_scheduling_latency_in_ms_histogram_,
+        *task_events_reported_gauge_,
+        *task_events_dropped_gauge_,
+        *task_events_stored_gauge_,
+        *storage_operation_latency_in_ms_histogram_,
+        *storage_operation_count_counter_,
+        *event_recorder_dropped_events_counter_);
     gcs_server_->Start();
 
     thread_io_service_ = std::make_unique<std::thread>([this] {
@@ -234,6 +266,23 @@ class GcsServerTest : public ::testing::Test {
 
   // Timeout waiting for gcs server reply, default is 5s
   const std::chrono::milliseconds timeout_ms_{5000};
+
+  // Fake metrics for testing
+  std::unique_ptr<observability::FakeMetric> actor_by_state_gauge_;
+  std::unique_ptr<observability::FakeMetric> gcs_actor_by_state_gauge_;
+  std::unique_ptr<observability::FakeMetric> running_job_gauge_;
+  std::unique_ptr<observability::FakeMetric> finished_job_counter_;
+  std::unique_ptr<observability::FakeMetric> job_duration_in_seconds_gauge_;
+  std::unique_ptr<observability::FakeMetric> placement_group_gauge_;
+  std::unique_ptr<observability::FakeMetric>
+      placement_group_creation_latency_in_ms_histogram_;
+  std::unique_ptr<observability::FakeMetric>
+      placement_group_scheduling_latency_in_ms_histogram_;
+  std::unique_ptr<observability::FakeMetric> task_events_reported_gauge_;
+  std::unique_ptr<observability::FakeMetric> task_events_dropped_gauge_;
+  std::unique_ptr<observability::FakeMetric> task_events_stored_gauge_;
+  std::unique_ptr<observability::FakeMetric> storage_operation_latency_in_ms_histogram_;
+  std::unique_ptr<observability::FakeMetric> storage_operation_count_counter_;
 };
 
 TEST_F(GcsServerTest, TestActorInfo) {

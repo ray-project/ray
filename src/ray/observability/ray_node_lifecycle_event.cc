@@ -68,8 +68,8 @@ std::string RayNodeLifecycleEvent::GetEntityId() const { return data_.node_id();
 
 void RayNodeLifecycleEvent::MergeData(RayEvent<rpc::events::NodeLifecycleEvent> &&other) {
   auto &&other_event = static_cast<RayNodeLifecycleEvent &&>(other);
-  for (auto &state_transition : *other_event.data_.mutable_state_transitions()) {
-    data_.mutable_state_transitions()->Add(std::move(state_transition));
+  for (const auto &state_transition : other_event.data_.state_transitions()) {
+    *data_.mutable_state_transitions()->Add() = state_transition;
   }
 }
 
