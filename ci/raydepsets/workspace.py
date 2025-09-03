@@ -20,6 +20,7 @@ class Depset:
     output: str
     override_flags: List[str]
     append_flags: List[str]
+    packages: Optional[List[str]] = None
     source_depset: Optional[str] = None
     depsets: Optional[List[str]] = None
 
@@ -49,6 +50,7 @@ def _dict_to_depset(depset: dict) -> Depset:
         depsets=depset.get("depsets", []),
         override_flags=depset.get("override_flags", []),
         append_flags=depset.get("append_flags", []),
+        packages=depset.get("packages", []),
     )
 
 
