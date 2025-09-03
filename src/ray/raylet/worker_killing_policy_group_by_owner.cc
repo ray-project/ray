@@ -50,9 +50,9 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
   TaskID non_retriable_owner_id = TaskID::Nil();
   std::unordered_map<TaskID, Group> group_map;
   for (auto worker : workers) {
-    bool retriable = worker->GetAssignedTask().GetTaskSpecification().IsRetriable();
+    bool retriable = worker->GetGrantedLease().GetLeaseSpecification().IsRetriable();
     TaskID owner_id =
-        retriable ? worker->GetAssignedTask().GetTaskSpecification().ParentTaskId()
+        retriable ? worker->GetGrantedLease().GetLeaseSpecification().ParentTaskId()
                   : non_retriable_owner_id;
 
     auto it = group_map.find(owner_id);
@@ -81,7 +81,7 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
 
         if (left_retriable == right_retriable) {
           if (left.GetAllWorkers().size() == right.GetAllWorkers().size()) {
-            return left.GetAssignedTaskTime() > right.GetAssignedTaskTime();
+            return left.GetGrantedLeaseTime() > right.GetGrantedLeaseTime();
           }
           return left.GetAllWorkers().size() > right.GetAllWorkers().size();
         }
@@ -93,9 +93,9 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
       selected_group.GetAllWorkers().size() > 1 && selected_group.IsRetriable();
   auto worker_to_kill = selected_group.SelectWorkerToKill();
 
-  RAY_LOG(INFO) << "Sorted list of tasks based on the policy:\n"
+  RAY_LOG(INFO) << "Sorted list of leases based on the policy:\n"
                 << PolicyDebugString(sorted, system_memory)
-                << "\nTask should be retried? " << should_retry;
+                << "\nLease should be retried? " << should_retry;
 
   return std::make_pair(worker_to_kill, should_retry);
 }
@@ -105,9 +105,9 @@ std::string GroupByOwnerIdWorkerKillingPolicy::PolicyDebugString(
   std::stringstream result;
   int32_t group_index = 0;
   for (auto &group : groups) {
-    result << "Tasks (retriable: " << group.IsRetriable()
-           << ") (parent task id: " << group.OwnerId() << ") (Earliest assigned time: "
-           << absl::FormatTime(group.GetAssignedTaskTime(), absl::UTCTimeZone())
+    result << "Leases (retriable: " << group.IsRetriable()
+           << ") (parent task id: " << group.OwnerId() << ") (Earliest granted time: "
+           << absl::FormatTime(group.GetGrantedLeaseTime(), absl::UTCTimeZone())
            << "):\n";
 
     int64_t worker_index = 0;
@@ -121,11 +121,11 @@ std::string GroupByOwnerIdWorkerKillingPolicy::PolicyDebugString(
         RAY_LOG_EVERY_MS(INFO, 60000)
             << "Can't find memory usage for PID, reporting zero. PID: " << pid;
       }
-      result << "Task assigned time "
-             << absl::FormatTime(worker->GetAssignedTaskTime(), absl::UTCTimeZone())
+      result << "Lease granted time "
+             << absl::FormatTime(worker->GetGrantedLeaseTime(), absl::UTCTimeZone())
              << " worker id " << worker->WorkerId() << " memory used " << used_memory
-             << " task spec "
-             << worker->GetAssignedTask().GetTaskSpecification().DebugString() << "\n";
+             << " lease spec "
+             << worker->GetGrantedLease().GetLeaseSpecification().DebugString() << "\n";
 
       worker_index += 1;
       if (worker_index > 10) {
@@ -146,13 +146,15 @@ const TaskID &Group::OwnerId() const { return owner_id_; }
 
 const bool Group::IsRetriable() const { return retriable_; }
 
-const absl::Time Group::GetAssignedTaskTime() const { return earliest_task_time_; }
+const absl::Time Group::GetGrantedLeaseTime() const {
+  return earliest_granted_lease_time_;
+}
 
 void Group::AddToGroup(std::shared_ptr<WorkerInterface> worker) {
-  if (worker->GetAssignedTaskTime() < earliest_task_time_) {
-    earliest_task_time_ = worker->GetAssignedTaskTime();
+  if (worker->GetGrantedLeaseTime() < earliest_granted_lease_time_) {
+    earliest_granted_lease_time_ = worker->GetGrantedLeaseTime();
   }
-  bool retriable = worker->GetAssignedTask().GetTaskSpecification().IsRetriable();
+  bool retriable = worker->GetGrantedLease().GetLeaseSpecification().IsRetriable();
   RAY_CHECK_EQ(retriable_, retriable);
   workers_.push_back(worker);
 }
@@ -165,7 +167,7 @@ const std::shared_ptr<WorkerInterface> Group::SelectWorkerToKill() const {
             sorted.end(),
             [](std::shared_ptr<WorkerInterface> const &left,
                std::shared_ptr<WorkerInterface> const &right) -> bool {
-              return left->GetAssignedTaskTime() > right->GetAssignedTaskTime();
+              return left->GetGrantedLeaseTime() > right->GetGrantedLeaseTime();
             });
 
   return sorted.front();

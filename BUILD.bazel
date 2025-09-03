@@ -130,7 +130,7 @@ ray_cc_library(
     ),
     deps = [
         "//src/ray/common:asio",
-        "//src/ray/raylet_client:raylet_client_lib",
+        "//src/ray/raylet_client:raylet_client_interface",
     ],
 )
 
@@ -251,6 +251,7 @@ pyx_library(
         "//src/ray/gcs/gcs_server:gcs_server_lib",
         "//src/ray/gcs/store_client:redis_store_client",
         "//src/ray/protobuf:serialization_cc_proto",
+        "//src/ray/pubsub:python_gcs_subscriber",
         "//src/ray/thirdparty/setproctitle",
         "//src/ray/util:memory",
         "//src/ray/util:raii",
@@ -282,6 +283,7 @@ alias(
         "@platforms//os:windows": "@com_github_tporadowski_redis_bin//:redis-server.exe",
         "//bazel:linux_x86_64_config": "@redis_linux_x86_64//:redis-server",
         "//bazel:linux_arm64_config": "@redis_linux_arm64//:redis-server",
+        "//bazel:osx_arm64_config": "@redis_osx_arm64//:redis-server",
         "//conditions:default": "@com_github_antirez_redis//:redis-server",
     }),
 )
@@ -292,6 +294,7 @@ alias(
         "@platforms//os:windows": "@com_github_tporadowski_redis_bin//:redis-cli.exe",
         "//bazel:linux_x86_64_config": "@redis_linux_x86_64//:redis-cli",
         "//bazel:linux_arm64_config": "@redis_linux_arm64//:redis-cli",
+        "//bazel:osx_arm64_config": "@redis_osx_arm64//:redis-cli",
         "//conditions:default": "@com_github_antirez_redis//:redis-cli",
     }),
 )
