@@ -1,5 +1,5 @@
 import threading
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from ray.data import DataIterator
 from ray.train.v2._internal.execution import collective_impl
@@ -7,6 +7,7 @@ from ray.train.v2._internal.execution.context import (
     get_train_context as get_internal_train_context,
 )
 from ray.train.v2.api.context import TrainContext as ExternalTrainContext
+from ray.train.v2.api.report_config import CheckpointUploadMode
 
 if TYPE_CHECKING:
     from ray.train import Checkpoint
@@ -26,6 +27,10 @@ class TrainFnUtils:
         metrics: Dict[str, Any],
         checkpoint: Optional["Checkpoint"] = None,
         checkpoint_dir_name: Optional[str] = None,
+        checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
+        checkpoint_upload_function: Optional[
+            Callable[["Checkpoint", str], None]
+        ] = None,
     ) -> None:
         """Upload checkpoint to remote storage and put a training result on the result queue.
 
@@ -36,9 +41,17 @@ class TrainFnUtils:
                 in this iteration. Note: If not set, the checkpoint will
                 be stored in the default storage path. If set, make sure
                 this value is unique for each iteration.
+            checkpoint_upload_mode: The manner in which we want to upload the checkpoint.
+                If not provided, the checkpoint will be uploaded synchronously.
+            checkpoint_upload_function: A user defined function that will be called with the
+                checkpoint to upload it. If not provided, default to a pyarrow filesystem copy.
         """
         return get_internal_train_context().report(
-            metrics, checkpoint, checkpoint_dir_name
+            metrics,
+            checkpoint,
+            checkpoint_dir_name,
+            checkpoint_upload_mode,
+            checkpoint_upload_function,
         )
 
     def get_checkpoint(self):
