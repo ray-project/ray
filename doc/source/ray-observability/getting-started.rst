@@ -311,7 +311,7 @@ Additionally, users can see a snapshot of hardware utilization from the :ref:`Cl
 View the resource utilization
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray requires users to specify the number of :ref:`resources <logical-resources>` their Tasks and Actors need to use through arguments such as ``num_cpus``, ``num_gpus``, ``memory``, and ``resource``.
+Ray requires users to specify the number of :ref:`resources <logical-resources>` their Tasks and Actors use through arguments such as ``num_cpus``, ``num_gpus``, ``memory``, and ``resource``.
 These values are used for scheduling, but may not always match the actual resource utilization (physical resource utilization).
 
 - See the logical and physical resource utilization over time from the :ref:`Metrics view <dash-metrics-view>`.
