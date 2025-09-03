@@ -209,16 +209,3 @@ ray_cc_library(
         "@com_google_absl//absl/synchronization",
     ],
 )
-
-ray_cc_library(
-    name = "core_worker_server",
-    hdrs = [
-        "worker/core_worker_server.h",
-    ],
-    deps = [
-        ":grpc_server",
-        ":server_call",
-        "//src/ray/common:asio",
-        "//src/ray/protobuf:core_worker_cc_grpc",
-    ],
-)
