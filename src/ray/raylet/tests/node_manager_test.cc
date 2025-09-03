@@ -947,6 +947,67 @@ TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesClamps) {
   // With 6 used, total should remain 6
   EXPECT_EQ(reply.total_resources().at("CPU"), 6.0);
 }
+TEST_F(NodeManagerTest, TestHandleCancelWorkerLeaseHasLeaseIdempotent) {
+  auto lease_spec = BuildLeaseSpec({});
+  rpc::RequestWorkerLeaseRequest request_worker_lease_request;
+  rpc::RequestWorkerLeaseReply request_worker_lease_reply;
+  LeaseID lease_id = LeaseID::FromRandom();
+  lease_spec.GetMutableMessage().set_lease_id(lease_id.Binary());
+  request_worker_lease_request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
+  request_worker_lease_request.set_backlog_size(1);
+  request_worker_lease_request.set_grant_or_reject(true);
+  request_worker_lease_request.set_is_selected_based_on_locality(true);
+  node_manager_->HandleRequestWorkerLease(
+      request_worker_lease_request,
+      &request_worker_lease_reply,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  rpc::CancelWorkerLeaseRequest cancel_worker_lease_request;
+  cancel_worker_lease_request.set_lease_id(lease_id.Binary());
+  rpc::CancelWorkerLeaseReply cancel_worker_lease_reply1;
+  rpc::CancelWorkerLeaseReply cancel_worker_lease_reply2;
+  node_manager_->HandleCancelWorkerLease(
+      cancel_worker_lease_request,
+      &cancel_worker_lease_reply1,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(leased_workers_.size(), 0);
+  node_manager_->HandleCancelWorkerLease(
+      cancel_worker_lease_request,
+      &cancel_worker_lease_reply2,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(cancel_worker_lease_reply1.success(), true);
+  ASSERT_EQ(cancel_worker_lease_reply2.success(), false);
+}
+
+TEST_F(NodeManagerTest, TestHandleCancelWorkerLeaseNoLeaseIdempotent) {
+  LeaseID lease_id = LeaseID::FromRandom();
+  rpc::CancelWorkerLeaseRequest request;
+  request.set_lease_id(lease_id.Binary());
+  rpc::CancelWorkerLeaseReply reply1;
+  rpc::CancelWorkerLeaseReply reply2;
+  node_manager_->HandleCancelWorkerLease(
+      request,
+      &reply1,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(leased_workers_.size(), 0);
+  node_manager_->HandleCancelWorkerLease(
+      request,
+      &reply2,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(reply1.success(), false);
+  ASSERT_EQ(reply2.success(), false);
+}
 
 class NodeManagerReturnWorkerLeaseIdempotentTest
     : public NodeManagerTest,
