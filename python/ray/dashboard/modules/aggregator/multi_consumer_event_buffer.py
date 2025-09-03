@@ -1,4 +1,4 @@
-from collections import deque
+from collections import defaultdict, deque
 import asyncio
 import time
 from typing import Dict, List
@@ -16,7 +16,7 @@ class _ConsumerState:
     # Index of the next event to be consumed by this consumer
     cursor_index: int
     # Map of event type to the number of events evicted for this consumer since last metric update
-    evicted_events_count: Dict[str, int]
+    evicted_events_count: defaultdict[str, int] = defaultdict(int)
     # Condition variable to signal that there are new events to consume
     has_new_events_to_consume: asyncio.Event
 
@@ -26,6 +26,10 @@ class MultiConsumerEventBuffer:
     Supports multiple consumers, each with their own cursor index. Tracks the number of events evicted for each consumer.
 
     Buffer is not thread-safe but is asyncio-friendly. All operations must be called from within the same event loop.
+
+    Arguments:
+        max_size: Maximum number of events to store in the buffer.
+        max_batch_size: Maximum number of events to return in a batch when calling wait_for_batch.
     """
 
     def __init__(self, max_size: int, max_batch_size: int):
@@ -36,7 +40,7 @@ class MultiConsumerEventBuffer:
 
         self._max_batch_size = max_batch_size
 
-    async def add_event(self, event: events_base_event_pb2.RayEvent):
+    async def add_event(self, event: events_base_event_pb2.RayEvent) -> None:
         """Add an event to the buffer.
 
         If the buffer is full, the oldest event is dropped.
@@ -48,20 +52,20 @@ class MultiConsumerEventBuffer:
             self._buffer.append(event)
 
             for _, consumer_state in self._consumers.items():
+                if dropped_event is None:
+                    continue
+
                 # Update consumer cursor index and evicted events count if the event was dropped
-                if dropped_event is not None:
-                    if consumer_state.cursor_index == 0:
-                        # The dropped event was the next event this consumer would have consumed, update the evicted events count
-                        event_type_name = RayEvent.EventType.Name(
-                            dropped_event.event_type
-                        )
-                        if event_type_name not in consumer_state.evicted_events_count:
-                            consumer_state.evicted_events_count[event_type_name] = 0
-                        consumer_state.evicted_events_count[event_type_name] += 1
-                    else:
-                        # The dropped event was already consumed by the consumer, so we need to adjust the cursor
-                        consumer_state.cursor_index -= 1
-                # Signal all consumers that there are new events to consume
+                if consumer_state.cursor_index == 0:
+                    # The dropped event was the next event this consumer would have consumed, update the evicted events count
+                    event_type_name = RayEvent.EventType.Name(dropped_event.event_type)
+                    if event_type_name not in consumer_state.evicted_events_count:
+                        consumer_state.evicted_events_count[event_type_name] = 0
+                    consumer_state.evicted_events_count[event_type_name] += 1
+                else:
+                    # The dropped event was already consumed by the consumer, so we need to adjust the cursor
+                    consumer_state.cursor_index -= 1
+                # Signal the consumer that there are new events to consume
                 consumer_state.has_new_events_to_consume.set()
 
     async def wait_for_batch(
@@ -70,7 +74,7 @@ class MultiConsumerEventBuffer:
         """Wait for batch respecting self.max_batch_size and timeout_seconds.
 
         Returns a batch of up to self.max_batch_size items. Waits for up to
-        timeout_seconds after receiving the first request that will be in
+        timeout_seconds after receiving the first event that will be in
         the next batch. After the timeout, returns as many items as are ready.
 
         Always returns a batch with at least one item - will block

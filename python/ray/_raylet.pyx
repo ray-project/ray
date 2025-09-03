@@ -184,6 +184,22 @@ from ray.includes.optional cimport (
     optional, nullopt
 )
 
+cimport cpython
+
+include "includes/network_util.pxi"
+include "includes/object_ref.pxi"
+include "includes/unique_ids.pxi"
+include "includes/ray_config.pxi"
+include "includes/function_descriptor.pxi"
+include "includes/buffer.pxi"
+include "includes/common.pxi"
+include "includes/gcs_client.pxi"
+include "includes/serialization.pxi"
+include "includes/libcoreworker.pxi"
+include "includes/global_state_accessor.pxi"
+include "includes/metric.pxi"
+include "includes/setproctitle.pxi"
+
 import ray
 from ray.exceptions import (
     RayActorError,
@@ -230,24 +246,8 @@ import ray._private.profiling as profiling
 from ray._common.utils import decode
 from ray._private.utils import DeferSigint
 from ray._private.object_ref_generator import DynamicObjectRefGenerator
-from ray._common.network_utils import build_address, parse_address
 from ray.util.annotations import PublicAPI
 from ray._private.custom_types import TensorTransportEnum
-
-cimport cpython
-
-include "includes/object_ref.pxi"
-include "includes/unique_ids.pxi"
-include "includes/ray_config.pxi"
-include "includes/function_descriptor.pxi"
-include "includes/buffer.pxi"
-include "includes/common.pxi"
-include "includes/gcs_client.pxi"
-include "includes/serialization.pxi"
-include "includes/libcoreworker.pxi"
-include "includes/global_state_accessor.pxi"
-include "includes/metric.pxi"
-include "includes/setproctitle.pxi"
 
 # Expose GCC & Clang macro to report
 # whether C++ optimizations were enabled during compilation.
@@ -2844,7 +2844,7 @@ cdef class GcsClient:
 
 
 cdef class _GcsSubscriber:
-    """Cython wrapper class of C++ `ray::gcs::PythonGcsSubscriber`."""
+    """Cython wrapper class of C++ `ray::pubsub::PythonGcsSubscriber`."""
     cdef:
         shared_ptr[CPythonGcsSubscriber] inner
 

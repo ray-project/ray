@@ -14,7 +14,8 @@
 
 #pragma once
 
-#include "ray/raylet_client/raylet_client.h"
+#include "ray/common/scheduling/scheduling_ids.h"
+#include "ray/raylet_client/raylet_client_interface.h"
 
 namespace ray {
 
@@ -27,7 +28,7 @@ class FakeRayletClient : public RayletClientInterface {
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override {}
 
   void RequestWorkerLease(
-      const rpc::TaskSpec &task_spec,
+      const rpc::LeaseSpec &lease_spec,
       bool grant_or_reject,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
       const int64_t backlog_size = -1,
@@ -36,17 +37,16 @@ class FakeRayletClient : public RayletClientInterface {
     callbacks.push_back(callback);
   }
 
-  ray::Status ReturnWorker(int worker_port,
-                           const WorkerID &worker_id,
-                           bool disconnect_worker,
-                           const std::string &disconnect_worker_error_detail,
-                           bool worker_exiting) override {
+  void ReturnWorkerLease(int worker_port,
+                         const LeaseID &lease_id,
+                         bool disconnect_worker,
+                         const std::string &disconnect_worker_error_detail,
+                         bool worker_exiting) override {
     if (disconnect_worker) {
       num_workers_disconnected++;
     } else {
       num_workers_returned++;
     }
-    return Status::OK();
   }
 
   void PrestartWorkers(
@@ -61,7 +61,7 @@ class FakeRayletClient : public RayletClientInterface {
   }
 
   void CancelWorkerLease(
-      const TaskID &task_id,
+      const LeaseID &lease_id,
       const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override {
     num_leases_canceled += 1;
     cancel_callbacks.push_back(callback);
@@ -238,10 +238,10 @@ class FakeRayletClient : public RayletClientInterface {
       void *metadata,
       const rpc::ClientCallback<rpc::PushMutableObjectReply> &callback) override {}
 
-  void GetTaskFailureCause(
-      const TaskID &task_id,
-      const rpc::ClientCallback<rpc::GetTaskFailureCauseReply> &callback) override {
-    ray::rpc::GetTaskFailureCauseReply reply;
+  void GetWorkerFailureCause(
+      const LeaseID &lease_id,
+      const rpc::ClientCallback<rpc::GetWorkerFailureCauseReply> &callback) override {
+    ray::rpc::GetWorkerFailureCauseReply reply;
     callback(Status::OK(), std::move(reply));
     num_get_task_failure_causes += 1;
   }
@@ -266,9 +266,9 @@ class FakeRayletClient : public RayletClientInterface {
     drain_raylet_callbacks.push_back(callback);
   }
 
-  void CancelTasksWithResourceShapes(
+  void CancelLeasesWithResourceShapes(
       const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,
-      const rpc::ClientCallback<rpc::CancelTasksWithResourceShapesReply> &callback)
+      const rpc::ClientCallback<rpc::CancelLeasesWithResourceShapesReply> &callback)
       override {}
 
   void IsLocalWorkerDead(
