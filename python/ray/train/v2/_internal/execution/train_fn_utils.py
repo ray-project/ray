@@ -85,7 +85,7 @@ class TrainFnUtils(ABC):
     @abstractmethod
     def get_context(self) -> ExternalTrainContext:
         """Get the TrainContext for this training process.
-        Different implmentation of TrainFnUtils will return different TrainContext.
+        The specific type of TrainContext returned depends on the implementation of TrainFnUtils.
 
         Returns:
             The train context for this training process.
@@ -140,7 +140,7 @@ class DistributedTrainFnUtils(TrainFnUtils):
             DatasetShardMetadata(dataset_name=dataset_name)
         )
 
-    def get_context(self) -> ExternalTrainContext:
+    def get_context(self) -> DistributedTrainContext:
         return DistributedTrainContext()
 
     def is_distributed(self) -> bool:
@@ -188,7 +188,7 @@ class LocalTrainFnUtils(TrainFnUtils):
         ), f"Dataset shard {dataset_name} not found."
         return self._dataset_shards[dataset_name]
 
-    def get_context(self) -> ExternalTrainContext:
+    def get_context(self) -> LocalTrainContext:
         return self._context
 
     def is_distributed(self) -> bool:
