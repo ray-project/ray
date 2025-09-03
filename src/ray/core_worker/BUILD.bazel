@@ -75,11 +75,11 @@ ray_cc_library(
     ],
     visibility = [":__subpackages__"],
     deps = [
-      "//src/ray/common:asio",
-      "//src/ray/rpc:grpc_server",
-      "//src/ray/rpc:server_call",
-      "//src/ray/protobuf:core_worker_cc_grpc",
-      "//src/ray/protobuf:core_worker_cc_proto",
+        "//src/ray/common:asio",
+        "//src/ray/protobuf:core_worker_cc_grpc",
+        "//src/ray/protobuf:core_worker_cc_proto",
+        "//src/ray/rpc:grpc_server",
+        "//src/ray/rpc:server_call",
     ],
 )
 
