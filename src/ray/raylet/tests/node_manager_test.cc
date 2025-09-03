@@ -525,7 +525,7 @@ class NodeManagerTest : public ::testing::Test {
 
   std::unique_ptr<NodeManager> node_manager_;
   MockWorkerPool mock_worker_pool_;
-  absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
+  absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::shared_ptr<absl::flat_hash_set<ObjectID>> objects_pending_deletion_;
 };
 
@@ -947,6 +947,57 @@ TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesClamps) {
   // With 6 used, total should remain 6
   EXPECT_EQ(reply.total_resources().at("CPU"), 6.0);
 }
+
+class NodeManagerReturnWorkerLeaseIdempotentTest
+    : public NodeManagerTest,
+      public testing::WithParamInterface<std::tuple<bool, bool>> {};
+
+TEST_P(NodeManagerReturnWorkerLeaseIdempotentTest, TestDifferentRequestArgs) {
+  const auto &params = GetParam();
+  bool disconnect_worker = std::get<0>(params);
+  bool worker_exiting = std::get<1>(params);
+
+  LeaseID lease_id = LeaseID::FromRandom();
+  leased_workers_[lease_id] = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
+  rpc::ReturnWorkerLeaseRequest request;
+  rpc::ReturnWorkerLeaseReply reply1;
+  rpc::ReturnWorkerLeaseReply reply2;
+  request.set_lease_id(lease_id.Binary());
+  request.set_disconnect_worker(disconnect_worker);
+  request.set_disconnect_worker_error_detail("test");
+  request.set_worker_exiting(worker_exiting);
+
+  if (disconnect_worker) {
+    EXPECT_CALL(
+        mock_worker_pool_,
+        GetRegisteredWorker(testing::A<const std::shared_ptr<ClientConnection> &>()))
+        .Times(1)
+        .WillOnce(Return(nullptr));
+    EXPECT_CALL(
+        mock_worker_pool_,
+        GetRegisteredDriver(testing::A<const std::shared_ptr<ClientConnection> &>()))
+        .Times(1)
+        .WillOnce(Return(nullptr));
+  }
+  node_manager_->HandleReturnWorkerLease(
+      request,
+      &reply1,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(leased_workers_.size(), 0);
+  node_manager_->HandleReturnWorkerLease(
+      request,
+      &reply2,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(leased_workers_.size(), 0);
+}
+
+INSTANTIATE_TEST_SUITE_P(NodeManagerReturnWorkerLeaseIdempotentVariations,
+                         NodeManagerReturnWorkerLeaseIdempotentTest,
+                         testing::Combine(testing::Bool(), testing::Bool()));
 
 }  // namespace ray::raylet
 

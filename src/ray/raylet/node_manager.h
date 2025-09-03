@@ -147,7 +147,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       LocalObjectManagerInterface &local_object_manager,
       LeaseDependencyManager &lease_dependency_manager,
       WorkerPoolInterface &worker_pool,
-      absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
+      absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers,
       plasma::PlasmaClientInterface &store_client,
       std::unique_ptr<core::experimental::MutableObjectProviderInterface>
           mutable_object_provider,
@@ -282,6 +282,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       rpc::ResizeLocalResourceInstancesReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleReturnWorkerLease(rpc::ReturnWorkerLeaseRequest request,
+                               rpc::ReturnWorkerLeaseReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
+
  private:
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
 
@@ -289,8 +293,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   // Warning: this does NOT release the worker's resources, or put the leased worker
   // back to the worker pool, or destroy the worker. The caller must handle the worker's
   // resources well.
-  void ReleaseWorker(const WorkerID &worker_id) {
-    leased_workers_.erase(worker_id);
+  void ReleaseWorker(const LeaseID &lease_id) {
+    RAY_CHECK(leased_workers_.contains(lease_id));
+    leased_workers_.erase(lease_id);
     SetIdleIfLeaseEmpty();
   }
 
@@ -554,11 +559,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                         WorkerPoolInterface &worker_pool,
                                         LocalLeaseManagerInterface &local_lease_manager);
 
-  /// Handle a `ReturnWorkerLease` request.
-  void HandleReturnWorkerLease(rpc::ReturnWorkerLeaseRequest request,
-                               rpc::ReturnWorkerLeaseReply *reply,
-                               rpc::SendReplyCallback send_reply_callback) override;
-
   /// Handle a `ReleaseUnusedActorWorkers` request.
   // On GCS restart, there's a pruning effort. GCS sends raylet a list of actor workers it
   // still wants (that it keeps tracks of); and the raylet destroys all other actor
@@ -792,8 +792,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   absl::flat_hash_map<NodeID, std::pair<std::string, int32_t>>
       remote_node_manager_addresses_;
 
-  /// Map of workers to their worker ids.
-  absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_;
+  /// Map of leased workers to their lease ids.
+  absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers_;
 
   /// Optional extra information about why the worker failed.
   absl::flat_hash_map<LeaseID, ray::TaskFailureEntry> worker_failure_reasons_;
