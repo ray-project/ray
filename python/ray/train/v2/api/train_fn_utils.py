@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from ray.train.v2._internal.data_integration.interfaces import DatasetShardMetadata
 from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
@@ -19,6 +19,7 @@ def report(
     checkpoint_dir_name: Optional[str] = None,
     checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
     delete_local_checkpoint_after_upload: Optional[bool] = None,
+    checkpoint_upload_function: Optional[Callable[["Checkpoint", str], None]] = None,
 ):
     """Report metrics and optionally save a checkpoint.
 
@@ -95,6 +96,8 @@ def report(
             Defaults to uploading the checkpoint synchronously.
             This works when no checkpoint is provided but is not useful in that case.
         delete_local_checkpoint_after_upload: Whether to delete the checkpoint after it is uploaded.
+        checkpoint_upload_function: A user defined function that will be called with the
+            checkpoint to upload it. If not provided, default to a pyarrow filesystem copy.
     """
     if delete_local_checkpoint_after_upload is None:
         delete_local_checkpoint_after_upload = (
@@ -107,6 +110,7 @@ def report(
         checkpoint_dir_name=checkpoint_dir_name,
         checkpoint_upload_mode=checkpoint_upload_mode,
         delete_local_checkpoint_after_upload=delete_local_checkpoint_after_upload,
+        checkpoint_upload_function=checkpoint_upload_function,
     )
 
 

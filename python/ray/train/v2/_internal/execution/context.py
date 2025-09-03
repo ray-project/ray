@@ -5,7 +5,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from queue import Queue
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 import ray
 from ray.actor import ActorHandle
@@ -221,6 +221,9 @@ class TrainContext:
         metrics: Dict[str, Any],
         checkpoint: Optional["Checkpoint"] = None,
         delete_local_checkpoint_after_upload: bool = False,
+        checkpoint_upload_function: Optional[
+            Callable[["Checkpoint", str], None]
+        ] = None,
     ) -> _TrainingResult:
         """Save the checkpoint to remote storage.
 
@@ -229,6 +232,8 @@ class TrainContext:
             metrics: The metrics to report.
             checkpoint: The checkpoint to report.
             delete_local_checkpoint_after_upload: Whether to delete the checkpoint after it is uploaded.
+            checkpoint_upload_function: A user defined function that will be called with the
+                checkpoint to upload it. If not provided, default to a pyarrow filesystem copy.
 
         Returns:
             The training result object containing the persisted checkpoint.
@@ -239,9 +244,17 @@ class TrainContext:
 
         # Persist the checkpoint to the remote storage path.
         try:
-            persisted_checkpoint = self.storage_context.persist_current_checkpoint(
-                checkpoint, checkpoint_dir_name
-            )
+            if checkpoint_upload_function:
+                persisted_checkpoint = checkpoint_upload_function(
+                    checkpoint,
+                    self.storage_context.build_checkpoint_path_from_name(
+                        checkpoint_dir_name
+                    )
+                )
+            else:
+                persisted_checkpoint = self.storage_context.persist_current_checkpoint(
+                    checkpoint, checkpoint_dir_name
+                )
         except FileNotFoundError:
             logger.exception(
                 f"Failed to find local checkpoint {checkpoint} when attempting to upload it. "
@@ -295,6 +308,9 @@ class TrainContext:
         checkpoint_dir_name: Optional[str] = None,
         checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
         delete_local_checkpoint_after_upload: Optional[bool] = None,
+        checkpoint_upload_function: Optional[
+            Callable[["Checkpoint", str], None]
+        ] = None,
     ) -> None:
         """
         Upload checkpoint to remote storage and put a training
@@ -338,6 +354,7 @@ class TrainContext:
                     metrics,
                     checkpoint,
                     delete_local_checkpoint_after_upload,
+                    checkpoint_upload_function
                 )
                 self._wait_then_report(training_result, report_call_index)
 
@@ -361,6 +378,7 @@ class TrainContext:
                             metrics,
                             checkpoint,
                             delete_local_checkpoint_after_upload,
+                            checkpoint_upload_function
                         )
                         self._wait_then_report(training_result, report_call_index)
                     except Exception as e:

@@ -1,5 +1,6 @@
 import multiprocessing
 import os
+import shutil
 import signal
 import tempfile
 from pathlib import Path
@@ -12,7 +13,7 @@ from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.train import BackendConfig, Checkpoint, RunConfig, ScalingConfig, UserCallback
 from ray.train.backend import Backend
 from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR, _get_ray_train_session_dir
-from ray.train.tests.util import create_dict_checkpoint
+from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.train.v2._internal.constants import is_v2_enabled
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.v2.api.exceptions import WorkerGroupError
@@ -163,6 +164,36 @@ def test_report_get_all_reported_checkpoints():
         scaling_config=ScalingConfig(num_workers=2),
     )
     trainer.fit()
+
+
+def test_report_checkpoint_upload_function(tmp_path):
+    def checkpoint_upload_function(checkpoint, full_checkpoint_dir):
+        shutil.copytree(checkpoint.path, full_checkpoint_dir)
+        return Checkpoint.from_directory(full_checkpoint_dir)
+
+    def train_fn():
+        if ray.train.get_context().get_world_rank() == 0:
+            with create_dict_checkpoint(
+                {"checkpoint_key": "checkpoint_value"}
+            ) as checkpoint:
+                ray.train.report(
+                    metrics={},
+                    checkpoint=checkpoint,
+                    checkpoint_dir_name="my_checkpoint_dir_name",
+                    checkpoint_upload_function=checkpoint_upload_function,
+                )
+        else:
+            ray.train.report(metrics={}, checkpoint=None)
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=2),
+        run_config=RunConfig(storage_path=str(tmp_path)),
+    )
+    result = trainer.fit()
+    assert load_dict_checkpoint(result.checkpoint) == {
+        "checkpoint_key": "checkpoint_value"
+    }
 
 
 def test_error(tmp_path):
