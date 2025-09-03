@@ -94,21 +94,21 @@ class ProcessorConfig(BaseModelExtended):
         return concurrency
 
     def get_concurrency(self, autoscaling_enabled: bool = True) -> Tuple[int, int]:
-        """Normalize `concurrency` into a `(min, max)` scaling pair.
+        """Return a normalized `(min, max)` worker range from `self.concurrency`.
 
         Behavior:
-          - If `concurrency` is an int `n`:
-            - When `autoscaling_enabled` is `False`, return `(n, n)` (fixed-size pool).
-            - When `autoscaling_enabled` is `True`, return `(1, n)` (autoscaling from 1 to `n`).
-          - If `concurrency` is a 2-tuple `(m, n)`, return it unchanged.
-            The `autoscaling_enabled` flag is ignored.
+        - If `concurrency` is an int `n`:
+          - `autoscaling_enabled` is True  -> return `(1, n)` (autoscaling).
+          - `autoscaling_enabled` is False -> return `(n, n)` (fixed-size pool).
+        - If `concurrency` is a 2-tuple `(m, n)`, return it unchanged
+          (the `autoscaling_enabled` flag is ignored).
 
         Args:
-            autoscaling_enabled: When `False`, treat an integer `concurrency` as fixed `(n, n)`;
+            autoscaling_enabled: When False, treat an integer `concurrency` as fixed `(n, n)`;
                 otherwise treat it as a range `(1, n)`. Defaults to True.
 
         Returns:
-            A tuple `(min, max)` representing the allowed worker range.
+            tuple[int, int]: The allowed worker range `(min, max)`.
 
         Examples:
             >>> self.concurrency = (2, 4)
@@ -117,7 +117,6 @@ class ProcessorConfig(BaseModelExtended):
             >>> self.concurrency = 4
             >>> self.get_concurrency()
             (1, 4)
-            >>> self.concurrency = 4
             >>> self.get_concurrency(autoscaling_enabled=False)
             (4, 4)
         """
