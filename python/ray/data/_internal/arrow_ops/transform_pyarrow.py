@@ -372,8 +372,21 @@ def unify_schemas(
         raise ValueError("No schemas provided for unify_schemas")
 
     # Early no-op path: all schemas identical.
-    if all(schema.equals(schemas[0]) for schema in schemas[1:]):
-        return schemas[0]
+    # The schema metadata might be unhashable.
+    # We need schemas to be hashable for unification
+    try:
+        reference_schema = schemas[0]
+        reference_schema.remove_metadata()
+        all_equal = True
+        for schema in schemas[1:]:
+            if not schema.equals(reference_schema):
+                all_equal = False
+            schema.remove_metadata()
+        if all_equal:
+            return reference_schema
+    except Exception as e:
+        # Unsure if there are cases where schemas are NOT hashable
+        logger.debug(f"Failed to hash the schemas (for deduplication): {e}")
 
     # Find diverging fields first to decide if we can safely delegate to Arrow.
     schemas_to_unify, divergent_fields = _find_diverging_fields(schemas)
