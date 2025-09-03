@@ -43,9 +43,9 @@ python/_raylet.pyx:
     - lint ml tune train data
     - python dashboard linux_wheels macos_wheels java
 python/ray/dag/dag.py:
-    - lint python cgraphs_rdt
+    - lint python cgraphs_direct_transport
 python/ray/experimental/gpu_object_manager/gpu_object_manager.py:
-    - lint python cgraphs_rdt
+    - lint python cgraphs_direct_transport
 
 .buildkite/core.rayci.yml: lint python core_cpp
 java/ray.java: lint java
