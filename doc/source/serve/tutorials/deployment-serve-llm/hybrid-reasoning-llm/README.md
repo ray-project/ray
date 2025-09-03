@@ -181,7 +181,7 @@ Deployment typically takes a few minutes as the cluster is provisioned, the vLLM
 
 Your endpoint is available locally at `http://localhost:8000` and you can use a placeholder authentication token for the OpenAI client, for example `"FAKE_KEY"`
 
-Use the `model_id` defined in your config (here, `my-qwen-3-32b`) to query your model. Here are some examples on how to send request to a Qwen-3 deployment with thinking enabled or disabled. 
+Use the `model_id` defined in your config (here, `my-qwen-3-32b`) to query your model. Below are some examples on how to send a request to a Qwen-3 deployment with thinking enabled or disabled. 
 
 ---
 
@@ -189,7 +189,7 @@ Use the `model_id` defined in your config (here, `my-qwen-3-32b`) to query your 
 
 You can disable thinking in Qwen-3 by either adding a `/no_think` tag in the prompt or by forwarding `enable_thinking: False` to the vLLM inference engine.  
 
-Example Curl with `/no_think`
+Example curl with `/no_think`
 
 
 ```bash
@@ -203,7 +203,7 @@ curl -X POST http://localhost:8000/v1/chat/completions \
       }'
 ```
 
-Example Python with `enable_thinking: False`
+Example Python with `enable_thinking: False`:
 
 
 ```python
@@ -230,7 +230,7 @@ print(f"Answer: \n {response.choices[0].message.content}")
 ```
 
 Notice the `reasoning_content` is empty here. 
-**Note:** Depending on your model's documentation, empty could mean `None`, an empty string or even empty tags `"<think></think>"`
+**Note:** Depending on your model's documentation, empty could mean `None`, an empty string or even empty tags `"<think></think>"`.
 
 ---
 
@@ -238,7 +238,7 @@ Notice the `reasoning_content` is empty here.
  
 You can enable thinking in Qwen-3 by either adding a `/think` tag in the prompt or by forwarding `enable_thinking: True` to the vLLM inference engine.  
 
-Example Curl with `/think`
+Example curl with `/think`
 
 
 ```bash
