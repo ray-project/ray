@@ -31,7 +31,7 @@
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/task/task_util.h"
-#include "ray/common/test_util.h"
+#include "ray/common/test_utils.h"
 #include "ray/raylet/local_lease_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/tests/util.h"
@@ -505,7 +505,7 @@ class ClusterLeaseManagerTest : public ::testing::Test {
   NodeID id_;
   std::shared_ptr<ClusterResourceScheduler> scheduler_;
   MockWorkerPool pool_;
-  absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
+  absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::unordered_set<ObjectID> missing_objects_;
 
   int default_arg_size_ = 10;
@@ -762,8 +762,8 @@ TEST_F(ClusterLeaseManagerTest, BlockedWorkerDiesTest) {
   RayLease finished_lease1;
   RayLease finished_lease2;
   // If a resource was double-freed, we will crash in this call.
-  local_lease_manager_->CleanupLease(leased_workers_[worker_id1], &finished_lease1);
-  local_lease_manager_->CleanupLease(leased_workers_[worker_id2], &finished_lease2);
+  local_lease_manager_->CleanupLease(leased_workers_[lease_id1], &finished_lease1);
+  local_lease_manager_->CleanupLease(leased_workers_[lease_id2], &finished_lease2);
   ASSERT_EQ(finished_lease1.GetLeaseSpecification().LeaseId(),
             lease1.GetLeaseSpecification().LeaseId());
   ASSERT_EQ(finished_lease2.GetLeaseSpecification().LeaseId(),
