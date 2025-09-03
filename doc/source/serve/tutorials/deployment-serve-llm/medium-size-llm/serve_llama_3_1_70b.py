@@ -5,7 +5,7 @@ import os
 llm_config = LLMConfig(
     model_loading_config=dict(
         model_id="my-llama-3.1-70b",
-        # Or Qwen/Qwen2.5-72B-Instruct for an ungated model
+        # Or unsloth/Meta-Llama-3.1-70B-Instruct for an ungated model
         model_source="meta-llama/Llama-3.1-70B-Instruct",
     ),
     accelerator_type="A100-40G",

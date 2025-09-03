@@ -14,11 +14,7 @@ llm_config = LLMConfig(
         )
     ),
     ### Uncomment if your model is gated and needs your Hugging Face token to access it.
-    # runtime_env=dict(
-    #    env_vars={
-    #        "HF_TOKEN": os.environ.get("HF_TOKEN")
-    #    }
-    # ),
+    # runtime_env=dict(env_vars={"HF_TOKEN": os.environ.get("HF_TOKEN")}),
     engine_kwargs=dict(
         max_model_len=16384,
         # Split weights among 8 GPUs in the node

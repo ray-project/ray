@@ -10,16 +10,14 @@ llm_config = LLMConfig(
     accelerator_type="A100-40G",
     deployment_config=dict(
         autoscaling_config=dict(
-            min_replicas=2,
+            min_replicas=1,
             max_replicas=2,
         )
     ),
+    ### Uncomment if your model is gated and needs your Hugging Face token to access it.
+    # runtime_env=dict(env_vars={"HF_TOKEN": os.environ.get("HF_TOKEN")}),
     engine_kwargs=dict(
-        tensor_parallel_size=8,
-        max_model_len=32768,
-        reasoning_parser="qwen3",
-        ### Uncomment if your model is gated and needs your Hugging Face token to access it
-        # hf_token=os.environ["HF_TOKEN"],
+        tensor_parallel_size=8, max_model_len=32768, reasoning_parser="qwen3"
     ),
 )
 app = build_openai_app({"llm_configs": [llm_config]})

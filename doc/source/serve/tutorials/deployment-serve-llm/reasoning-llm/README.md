@@ -95,7 +95,7 @@ Set `tensor_parallel_size=8` to distribute the model's weights among 8 GPUs in t
 
 
 ```python
-#serve_qwq_32b.py
+# serve_qwq_32b.py
 from ray.serve.llm import LLMConfig, build_openai_app
 import os
 
@@ -107,23 +107,19 @@ llm_config = LLMConfig(
     accelerator_type="A100-40G",
     deployment_config=dict(
         autoscaling_config=dict(
-            min_replicas=1, max_replicas=2,
+            min_replicas=1,
+            max_replicas=2,
         )
     ),
     ### Uncomment if your model is gated and needs your Hugging Face token to access it
-    #runtime_env=dict(
-    #    env_vars={
-    #        "HF_TOKEN": os.environ.get("HF_TOKEN")
-    #    }
-    #),
+    # runtime_env=dict(env_vars={"HF_TOKEN": os.environ.get("HF_TOKEN")}),
     engine_kwargs=dict(
-        tensor_parallel_size=8,
-        max_model_len=32768,
-        reasoning_parser='deepseek_r1'
-    )
+        tensor_parallel_size=8, max_model_len=32768, reasoning_parser="deepseek_r1"
+    ),
 )
 
 app = build_openai_app({"llm_configs": [llm_config]})
+
 ```
 
 **Note:** Before moving to a production setup, migrate to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html) to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. See [Serving LLMs: production guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.

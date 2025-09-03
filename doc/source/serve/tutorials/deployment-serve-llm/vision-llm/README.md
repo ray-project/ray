@@ -24,7 +24,7 @@ Ray Serve LLM provides multiple [Python APIs](https://docs.ray.io/en/latest/serv
 
 
 ```python
-#serve_qwen_VL.py
+# serve_qwen_VL.py
 from ray.serve.llm import LLMConfig, build_openai_app
 import os
 
@@ -36,21 +36,17 @@ llm_config = LLMConfig(
     accelerator_type="L40S",
     deployment_config=dict(
         autoscaling_config=dict(
-            min_replicas=1, max_replicas=2,
+            min_replicas=1,
+            max_replicas=2,
         )
     ),
     ### Uncomment if your model is gated and needs your Hugging Face token to access it.
-    #runtime_env=dict(
-    #    env_vars={
-    #        "HF_TOKEN": os.environ.get("HF_TOKEN")
-    #    }
-    #),
-    engine_kwargs=dict(
-        max_model_len=8192
-    )
+    # runtime_env=dict(env_vars={"HF_TOKEN": os.environ.get("HF_TOKEN")}),
+    engine_kwargs=dict(max_model_len=8192),
 )
 
 app = build_openai_app({"llm_configs": [llm_config]})
+
 ```
 
 **Note:** Before moving to a production setup, migrate to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html) to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. See [Serving LLMs: production guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.

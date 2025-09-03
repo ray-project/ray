@@ -25,7 +25,7 @@ Set your Hugging Face token in the config file to access gated models like `Llam
 
 
 ```python
-#serve_llama_3_1_8b.py
+# serve_llama_3_1_8b.py
 from ray.serve.llm import LLMConfig, build_openai_app
 import os
 
@@ -45,16 +45,11 @@ llm_config = LLMConfig(
     ### If your model isn't gated, you can skip `hf_token`
     # Share your Hugging Face token with the vllm engine so it can access the gated Llama 3
     # Type `export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>` in a terminal
-    runtime_env=dict(
-        env_vars={
-            "HF_TOKEN": os.environ.get("HF_TOKEN")
-        }
-    ),
-    engine_kwargs=dict(
-        max_model_len=8192
-    )
+    runtime_env=dict(env_vars={"HF_TOKEN": os.environ.get("HF_TOKEN")}),
+    engine_kwargs=dict(max_model_len=8192),
 )
 app = build_openai_app({"llm_configs": [llm_config]})
+
 ```
 
 **Note:** Before moving to a production setup, migrate to using a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html) to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. See [Serving LLMs: Production Guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.
