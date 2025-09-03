@@ -417,8 +417,9 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   // Generators that are currently running and need to be resubmitted.
   absl::flat_hash_set<TaskID> generators_to_resubmit_ ABSL_GUARDED_BY(mu_);
 
-  // Kicking off dependency resolution is still queued on the io_context.
-  absl::Mutex resolver_mu_;
+  absl::Mutex resolver_mu_ ABSL_ACQUIRED_BEFORE(mu_);
+
+  // For when kicking off dependency resolution is still queued on the io_context.
   absl::flat_hash_set<TaskID> pending_dependency_resolution_
       ABSL_GUARDED_BY(resolver_mu_);
 

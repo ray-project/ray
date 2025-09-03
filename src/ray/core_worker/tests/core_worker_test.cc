@@ -538,6 +538,8 @@ TEST_F(CoreWorkerTest, ActorTaskCancelDuringDepResolution) {
   task_message.mutable_actor_task_spec()->set_actor_id(actor_id.Binary());
   task_message.add_args()->mutable_object_ref()->set_object_id(
       inlined_dependency_id.Binary());
+  reference_counter_->UpdateSubmittedTaskReferences(
+      /*return_ids=*/{}, /*argument_ids_to_add=*/{inlined_dependency_id});
   ASSERT_TRUE(actor_task_submitter_->SubmitTask(task).ok());
 
   actor_task_submitter_->CancelTask(task, /*recursive=*/false);
