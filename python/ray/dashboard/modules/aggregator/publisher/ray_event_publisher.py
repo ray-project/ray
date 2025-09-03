@@ -23,7 +23,7 @@ from ray.dashboard.modules.aggregator.publisher.async_publisher_client import (
 logger = logging.getLogger(__name__)
 
 
-class RayEventsPublisherInterface(ABC):
+class RayEventPublisherInterface(ABC):
     """Abstract interface for publishing Ray event batches to external destinations."""
 
     @abstractmethod
@@ -42,7 +42,7 @@ class RayEventsPublisherInterface(ABC):
         pass
 
 
-class RayEventsPublisher(RayEventsPublisherInterface):
+class RayEventsPublisher(RayEventPublisherInterface):
     """RayEvents publisher that publishes batches of events to a destination by running a worker loop.
 
     The worker loop continuously pulls batches from the event buffer and publishes them to the destination.
@@ -264,7 +264,7 @@ class RayEventsPublisher(RayEventsPublisherInterface):
         await asyncio.sleep(delay)
 
 
-class NoopPublisher(RayEventsPublisherInterface):
+class NoopPublisher(RayEventPublisherInterface):
     """A no-op publisher that adheres to the minimal interface used by AggregatorAgent.
 
     Used when a destination is disabled. It runs forever but does nothing.
@@ -273,8 +273,7 @@ class NoopPublisher(RayEventsPublisherInterface):
     async def run_forever(self) -> None:
         """Run forever doing nothing until cancellation."""
         try:
-            while True:
-                await asyncio.sleep(3600)  # Sleep for an hour at a time
+            await asyncio.Event().wait()
         except asyncio.CancelledError:
             logger.info("NoopPublisher cancelled")
             raise

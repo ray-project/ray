@@ -1,6 +1,7 @@
 import asyncio
 import sys
 import pytest
+import random
 from google.protobuf.timestamp_pb2 import Timestamp
 
 from ray.core.generated.events_base_event_pb2 import RayEvent
@@ -196,6 +197,43 @@ class TestMultiConsumerEventBuffer:
         batch = await wait_task
         assert len(batch) == 1
         assert batch[0] == event
+
+    @pytest.mark.asyncio
+    async def test_concurrent_producer_consumer_random_sleeps_with_overall_timeout(
+        self,
+    ):
+        """Producer with random sleeps and consumer reading until all events are received.
+
+        Uses an overall asyncio timeout to ensure the test fails if it hangs
+        before consuming all events.
+        """
+        total_events = 40
+        max_batch_size = 2
+        buffer = MultiConsumerEventBuffer(max_size=100, max_batch_size=max_batch_size)
+        consumer_id = await buffer.register_consumer()
+
+        produced_events = []
+        consumed_events = []
+
+        random.seed(0)
+
+        async def producer():
+            for i in range(total_events):
+                event = _create_test_event(f"e{i}".encode())
+                produced_events.append(event)
+                await buffer.add_event(event)
+                await asyncio.sleep(random.uniform(0.0, 0.02))
+
+        async def consumer():
+            while len(consumed_events) < total_events:
+                batch = await buffer.wait_for_batch(consumer_id, timeout_seconds=0.1)
+                consumed_events.extend(batch)
+
+        # The test should fail if this times out before all events are consumed
+        await asyncio.wait_for(asyncio.gather(producer(), consumer()), timeout=5.0)
+
+        assert len(consumed_events) == total_events
+        assert consumed_events == produced_events
 
 
 if __name__ == "__main__":

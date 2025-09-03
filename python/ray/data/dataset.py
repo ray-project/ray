@@ -783,31 +783,50 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=EXPRESSION_API_GROUP, stability="alpha")
-    def with_column(self, column_name: str, expr: Expr, **ray_remote_args) -> "Dataset":
+    def with_column(
+        self,
+        column_name: str,
+        expr: Expr,
+        **ray_remote_args,
+    ) -> "Dataset":
         """
         Add a new column to the dataset via an expression.
 
-        Examples:
+        This method allows you to add a new column to a dataset by applying an
+        expression. The expression can be composed of existing columns, literals,
+        and user-defined functions (UDFs).
 
+        Examples:
             >>> import ray
             >>> from ray.data.expressions import col
             >>> ds = ray.data.range(100)
-            >>> ds.with_column("id_2", (col("id") * 2)).schema()
-            Column  Type
-            ------  ----
-            id      int64
-            id_2    int64
+            >>> # Add a new column 'id_2' by multiplying 'id' by 2.
+            >>> ds.with_column("id_2", col("id") * 2).show(2)
+            {'id': 0, 'id_2': 0}
+            {'id': 1, 'id_2': 2}
+
+            >>> # Using a UDF with with_column
+            >>> from ray.data.expressions import udf
+            >>> import pyarrow.compute as pc
+            >>>
+            >>> @udf()
+            ... def add_one(column):
+            ...     return pc.add(column, 1)
+            >>>
+            >>> ds.with_column("id_plus_one", add_one(col("id"))).show(2)
+            {'id': 0, 'id_plus_one': 1}
+            {'id': 1, 'id_plus_one': 2}
 
         Args:
             column_name: The name of the new column.
             expr: An expression that defines the new column values.
             **ray_remote_args: Additional resource requirements to request from
-                Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
-                :func:`ray.remote` for details.
+                Ray for the map tasks (e.g., `num_gpus=1`).
 
         Returns:
             A new dataset with the added column evaluated via the expression.
         """
+        # TODO: update schema based on the expression AST.
         from ray.data._internal.logical.operators.map_operator import Download, Project
 
         # TODO: Once the expression API supports UDFs, we can clean up the code here.
@@ -904,11 +923,7 @@ class Dataset:
 
                 # The index of the column must be set
                 # to align with the index of the batch.
-                if (
-                    isinstance(column, pd.Series)
-                    or isinstance(column, pd.DataFrame)
-                    or isinstance(column, pd.Index)
-                ):
+                if isinstance(column, (pd.DataFrame, pd.Index, pd.Series)):
                     column.index = batch.index
                 batch.loc[:, col] = column
                 return batch
@@ -929,8 +944,7 @@ class Dataset:
                 column_idx = batch.schema.get_field_index(col)
                 if column_idx == -1:
                     return batch.append_column(col, column)
-                else:
-                    return batch.set_column(column_idx, col, column)
+                return batch.set_column(column_idx, col, column)
 
             else:
                 # batch format is assumed to be numpy since we checked at the
@@ -3377,7 +3391,10 @@ class Dataset:
             return meta_count
 
         plan = self._plan.copy()
-        count_op = Count([self._logical_plan.dag])
+
+        # NOTE: Project the dataset to avoid the need to carrying actual
+        #       data when we're only interested in the total count
+        count_op = Count(Project(self._logical_plan.dag, cols=[]))
         logical_plan = LogicalPlan(count_op, self.context)
         count_ds = Dataset(plan, logical_plan)
 
