@@ -1002,10 +1002,12 @@ class ScalingDecision(BaseModel):
     reason: str = Field(
         ..., description="Short, human-readable reason for the decision."
     )
-    from_replicas: int = Field(
+    prev_num_replicas: int = Field(
         ..., ge=0, description="Replica count before the decision."
     )
-    to_replicas: int = Field(..., ge=0, description="Replica count after the decision.")
+    curr_num_replicas: int = Field(
+        ..., ge=0, description="Replica count after the decision."
+    )
     policy: Optional[str] = Field(
         None, description="Policy name or identifier (if applicable)."
     )
