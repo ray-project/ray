@@ -474,6 +474,7 @@ class ReporterAgent(
             thread_name_prefix="reporter_agent_executor",
         )
         self._gcs_pid = None
+        self._gcs_proc = None
 
         self._gpu_profiling_manager = GpuProfilingManager(
             profile_dir_path=self._log_dir, ip_address=self._ip
@@ -1004,10 +1005,10 @@ class ReporterAgent(
 
     def _get_gcs(self):
         if self._gcs_pid:
-            gcs_proc = psutil.Process(self._gcs_pid)
-            if gcs_proc:
-                dictionary = gcs_proc.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
-                dictionary["cpu_percent"] = gcs_proc.cpu_percent(interval=1)
+            if not self._gcs_proc:
+                self._gcs_proc = psutil.Process(self._gcs_pid)
+            if self._gcs_proc:
+                dictionary = self._gcs_proc.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
                 return dictionary
         return {}
 
