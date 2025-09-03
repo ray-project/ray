@@ -93,38 +93,39 @@ class ProcessorConfig(BaseModelExtended):
             )
         return concurrency
 
-    def concurrency_tuple(self, static: bool = False):
+    def get_concurrency(self, autoscaling_enabled: bool = True) -> Tuple[int, int]:
         """Normalize `concurrency` into a `(min, max)` scaling pair.
 
         Behavior:
           - If `concurrency` is an int `n`:
-            - When `static` is True, return `(n, n)` (fixed-size pool).
-            - When `static` is False, return `(1, n)` (autoscaling from 1 to `n`).
-          - If `concurrency` is a 2-tuple `(m, n)`, return it unchanged. The `static` flag is ignored.
+            - When `autoscaling_enabled` is `False`, return `(n, n)` (fixed-size pool).
+            - When `autoscaling_enabled` is `True`, return `(1, n)` (autoscaling from 1 to `n`).
+          - If `concurrency` is a 2-tuple `(m, n)`, return it unchanged.
+            The `autoscaling_enabled` flag is ignored.
 
         Args:
-            static: When True, treat an integer `concurrency` as fixed `(n, n)`;
-                otherwise treat it as a range `(1, n)`. Defaults to False.
+            autoscaling_enabled: When `False`, treat an integer `concurrency` as fixed `(n, n)`;
+                otherwise treat it as a range `(1, n)`. Defaults to True.
 
         Returns:
             A tuple `(min, max)` representing the allowed worker range.
 
         Examples:
             >>> self.concurrency = (2, 4)
-            >>> self.concurrency_tuple()
+            >>> self.get_concurrency()
             (2, 4)
             >>> self.concurrency = 4
-            >>> self.concurrency_tuple()
+            >>> self.get_concurrency()
             (1, 4)
             >>> self.concurrency = 4
-            >>> self.concurrency_tuple(static=True)
+            >>> self.get_concurrency(autoscaling_enabled=False)
             (4, 4)
         """
         if isinstance(self.concurrency, int):
-            if static:
-                return self.concurrency, self.concurrency
-            else:
+            if autoscaling_enabled:
                 return 1, self.concurrency
+            else:
+                return self.concurrency, self.concurrency
         return self.concurrency
 
     class Config:

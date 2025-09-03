@@ -94,7 +94,7 @@ def build_vllm_engine_processor(
             PrepareImageStage(
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
-                    concurrency=config.concurrency_tuple(),
+                    concurrency=config.get_concurrency(),
                     batch_size=config.batch_size,
                 ),
             )
@@ -108,7 +108,7 @@ def build_vllm_engine_processor(
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
-                    concurrency=config.concurrency_tuple(),
+                    concurrency=config.get_concurrency(),
                     batch_size=config.batch_size,
                     runtime_env=config.runtime_env,
                 ),
@@ -123,7 +123,7 @@ def build_vllm_engine_processor(
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
-                    concurrency=config.concurrency_tuple(),
+                    concurrency=config.get_concurrency(),
                     batch_size=config.batch_size,
                     runtime_env=config.runtime_env,
                 ),
@@ -150,8 +150,8 @@ def build_vllm_engine_processor(
                 # which initiates enough many overlapping UDF calls per actor, to
                 # saturate `max_concurrency`.
                 compute=ray.data.ActorPoolStrategy(
-                    min_size=config.concurrency_tuple(static=True)[0],
-                    max_size=config.concurrency_tuple(static=True)[1],
+                    min_size=config.get_concurrency(autoscaling_enabled=False)[0],
+                    max_size=config.get_concurrency(autoscaling_enabled=False)[1],
                     max_tasks_in_flight_per_actor=config.experimental.get(
                         "max_tasks_in_flight_per_actor", DEFAULT_MAX_TASKS_IN_FLIGHT
                     ),
@@ -175,7 +175,7 @@ def build_vllm_engine_processor(
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
-                    concurrency=config.concurrency_tuple(),
+                    concurrency=config.get_concurrency(),
                     batch_size=config.batch_size,
                     runtime_env=config.runtime_env,
                 ),

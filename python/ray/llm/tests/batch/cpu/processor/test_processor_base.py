@@ -259,17 +259,17 @@ class TestProcessorConfig:
     )
     def test_with_int_concurrency_scaling(self, n, expected):
         conf = ProcessorConfig(concurrency=n)
-        assert conf.concurrency_tuple() == expected
+        assert conf.get_concurrency() == expected
 
     @pytest.mark.parametrize("n,expected", [(1, (1, 1)), (4, (4, 4)), (10, (10, 10))])
     def test_with_int_concurrency_fixed(self, n, expected):
         conf = ProcessorConfig(concurrency=n)
-        assert conf.concurrency_tuple(static=True) == expected
+        assert conf.get_concurrency(autoscaling_enabled=False) == expected
 
     @pytest.mark.parametrize("pair", [(1, 1), (1, 3), (2, 8)])
     def test_with_tuple_concurrency(self, pair):
         conf = ProcessorConfig(concurrency=pair)
-        assert conf.concurrency_tuple() == pair
+        assert conf.get_concurrency() == pair
 
 
 if __name__ == "__main__":
