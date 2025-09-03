@@ -33,6 +33,7 @@ ray_cc_library(
         ":shutdown_coordinator",
         ":task_event_buffer",
         "//src/ray/common:protobuf_utils",
+        "//src/ray/common:metrics",
         "//src/ray/core_worker/task_execution:task_receiver",
         "//src/ray/core_worker/task_submission:normal_task_submitter",
         "//src/ray/core_worker_rpc_client:core_worker_client",

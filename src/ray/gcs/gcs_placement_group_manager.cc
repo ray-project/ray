@@ -28,6 +28,8 @@
 namespace ray {
 namespace gcs {
 
+using std::literals::operator""sv;
+
 namespace {
 
 ExponentialBackoff CreateDefaultBackoff() {
@@ -54,29 +56,49 @@ ExponentialBackoff CreateDefaultBackoff() {
 }  // namespace
 
 GcsPlacementGroupManager::GcsPlacementGroupManager(
-    instrumented_io_context &io_context, GcsResourceManager &gcs_resource_manager)
-    : io_context_(io_context), gcs_resource_manager_(gcs_resource_manager) {}
+    instrumented_io_context &io_context,
+    GcsResourceManager &gcs_resource_manager,
+    ray::observability::MetricInterface &placement_group_gauge,
+    ray::observability::MetricInterface &placement_group_creation_latency_in_ms_histogram,
+    ray::observability::MetricInterface
+        &placement_group_scheduling_latency_in_ms_histogram)
+    : io_context_(io_context),
+      gcs_resource_manager_(gcs_resource_manager),
+      placement_group_gauge_(placement_group_gauge),
+      placement_group_creation_latency_in_ms_histogram_(
+          placement_group_creation_latency_in_ms_histogram),
+      placement_group_scheduling_latency_in_ms_histogram_(
+          placement_group_scheduling_latency_in_ms_histogram) {}
 
 GcsPlacementGroupManager::GcsPlacementGroupManager(
     instrumented_io_context &io_context,
     GcsPlacementGroupSchedulerInterface *scheduler,
     gcs::GcsTableStorage *gcs_table_storage,
     GcsResourceManager &gcs_resource_manager,
-    std::function<std::string(const JobID &)> get_ray_namespace)
+    std::function<std::string(const JobID &)> get_ray_namespace,
+    ray::observability::MetricInterface &placement_group_gauge,
+    ray::observability::MetricInterface &placement_group_creation_latency_in_ms_histogram,
+    ray::observability::MetricInterface
+        &placement_group_scheduling_latency_in_ms_histogram)
     : io_context_(io_context),
       gcs_placement_group_scheduler_(scheduler),
       gcs_table_storage_(gcs_table_storage),
       gcs_resource_manager_(gcs_resource_manager),
-      get_ray_namespace_(std::move(get_ray_namespace)) {
+      get_ray_namespace_(std::move(get_ray_namespace)),
+      placement_group_gauge_(placement_group_gauge),
+      placement_group_creation_latency_in_ms_histogram_(
+          placement_group_creation_latency_in_ms_histogram),
+      placement_group_scheduling_latency_in_ms_histogram_(
+          placement_group_scheduling_latency_in_ms_histogram) {
   placement_group_state_counter_.reset(
       new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());
   placement_group_state_counter_->SetOnChangeCallback(
       [this](const rpc::PlacementGroupTableData::PlacementGroupState key) mutable {
         int64_t num_pg = placement_group_state_counter_->Get(key);
-        ray::stats::STATS_placement_groups.Record(
+        placement_group_gauge_.Record(
             num_pg,
-            {{"State", rpc::PlacementGroupTableData::PlacementGroupState_Name(key)},
-             {"Source", "gcs"}});
+            {{"State"sv, rpc::PlacementGroupTableData::PlacementGroupState_Name(key)},
+             {"Source"sv, "gcs"}});
       });
   Tick();
 }
@@ -235,10 +257,8 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
       absl::Microseconds(1);
   stats->set_scheduling_latency_us(scheduling_latency_us);
   stats->set_end_to_end_creation_latency_us(creation_latency_us);
-  ray::stats::STATS_gcs_placement_group_scheduling_latency_ms.Record(
-      scheduling_latency_us / 1e3);
-  ray::stats::STATS_gcs_placement_group_creation_latency_ms.Record(creation_latency_us /
-                                                                   1e3);
+  placement_group_scheduling_latency_in_ms_histogram_.Record(scheduling_latency_us / 1e3);
+  placement_group_creation_latency_in_ms_histogram_.Record(creation_latency_us / 1e3);
   stats->set_scheduling_state(rpc::PlacementGroupStats::FINISHED);
 
   // Update states and persists the information.
@@ -972,12 +992,12 @@ std::string GcsPlacementGroupManager::DebugString() const {
 }
 
 void GcsPlacementGroupManager::RecordMetrics() const {
-  ray::stats::STATS_gcs_placement_group_count.Record(pending_placement_groups_.size(),
-                                                     "Pending");
-  ray::stats::STATS_gcs_placement_group_count.Record(registered_placement_groups_.size(),
-                                                     "Registered");
-  ray::stats::STATS_gcs_placement_group_count.Record(infeasible_placement_groups_.size(),
-                                                     "Infeasible");
+  placement_group_gauge_.Record(pending_placement_groups_.size(),
+                                {{"State"sv, "Pending"}});
+  placement_group_gauge_.Record(registered_placement_groups_.size(),
+                                {{"State"sv, "Registered"}});
+  placement_group_gauge_.Record(infeasible_placement_groups_.size(),
+                                {{"State"sv, "Infeasible"}});
   if (usage_stats_client_) {
     usage_stats_client_->RecordExtraUsageCounter(usage::TagKey::PG_NUM_CREATED,
                                                  lifetime_num_placement_groups_created_);
