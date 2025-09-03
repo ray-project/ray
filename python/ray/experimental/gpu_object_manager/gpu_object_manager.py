@@ -58,6 +58,10 @@ class GPUObjectManager:
         # This dictionary is hosted on the "driver" process of the actors that
         # store and send/receive GPU objects.
         self.managed_gpu_object_metadata: Dict[str, GPUObjectMeta] = {}
+
+        # Store the pending receive GPU object metadata.
+        self.pending_gpu_object_metadata: Dict[str, GPUObjectMeta] = {}
+
         # Per-actor local storage for GPU objects. We create the GPU object
         # store lazily, if a user specifies a non-default tensor_transport, to
         # avoid circular import and because it imports third-party dependencies
@@ -89,6 +93,89 @@ class GPUObjectManager:
             of this GPU object.
         """
         return obj_id in self.managed_gpu_object_metadata
+
+    def add_pending_gpu_object(
+        self, obj_ref: ObjectRef, gpu_object_meta: GPUObjectMeta
+    ):
+        """
+        Add the pending receive GPU object to the GPU object manager.
+
+        Args:
+            obj_ref: The ObjectRef of the GPU object.
+            gpu_object_meta: The GPU object metadata.
+        """
+        obj_id = obj_ref.hex()
+        self.pending_gpu_object_metadata[obj_id] = gpu_object_meta
+
+    def is_pending_gpu_object(self, obj_ref: ObjectRef) -> bool:
+        """
+        Check if the GPU object is pending.
+
+        Args:
+            obj_ref: The ObjectRef of the GPU object.
+
+        Returns:
+            True if the GPU object is pending, False otherwise.
+        """
+        obj_id = obj_ref.hex()
+        return obj_id in self.pending_gpu_object_metadata
+
+    def receive_pending_gpu_object(self, obj_ref: ObjectRef):
+        """
+        Receive the pending GPU objects.
+
+        Args:
+            obj_ref: The ObjectRef of the GPU object.
+
+        """
+        from ray.experimental.collective import get_tensor_transport_manager
+        import torch
+
+        obj_id = obj_ref.hex()
+        gpu_object_meta = self.pending_gpu_object_metadata.pop(obj_id)
+        tensor_transport_backend = gpu_object_meta.tensor_transport_backend
+
+        tensor_transport_manager = get_tensor_transport_manager(
+            tensor_transport_backend
+        )
+
+        tensor_transport_meta = gpu_object_meta.tensor_transport_meta
+        tensors = []
+
+        for meta in tensor_transport_meta.tensor_meta:
+            shape, dtype = meta
+            tensor = torch.zeros(
+                shape,
+                dtype=dtype,
+                device=tensor_transport_meta.tensor_device,
+            )
+            tensors.append(tensor)
+        communicator_meta = tensor_transport_manager.get_communicator_metadata(
+            None, None, tensor_transport_backend
+        )
+        tensor_transport_manager.recv_multiple_tensors(
+            tensors, tensor_transport_meta, communicator_meta
+        )
+        tensor_transport = TensorTransportEnum.from_str(
+            gpu_object_meta.tensor_transport_backend
+        )
+        self.add_gpu_object_ref(
+            obj_ref,
+            None,
+            tensor_transport,
+            pre_computed_tensor_transport_meta=tensor_transport_meta,
+        )
+        self.gpu_object_store.add_object(obj_id, tensors, is_primary=False)
+
+    def remove_pending_gpu_object(self, obj_ref: ObjectRef):
+        """
+        Remove the pending GPU object from the GPU object manager.
+
+        Args:
+            obj_ref: The ObjectRef of the GPU object.
+        """
+        obj_id = obj_ref.hex()
+        self.pending_gpu_object_metadata.pop(obj_id)
 
     def add_gpu_object_ref(
         self,

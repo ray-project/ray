@@ -123,45 +123,12 @@ def _gpu_object_ref_deserializer(
     tensor_transport_val,
     gpu_object_meta,
 ):
-    import torch
-
-    from ray._private.custom_types import TensorTransportEnum
-    from ray.experimental.collective import get_tensor_transport_manager
-
     obj_ref = _object_ref_deserializer(
         binary, call_site, owner_address, object_status, tensor_transport_val
     )
     gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
+    gpu_object_manager.add_pending_gpu_object(obj_ref, gpu_object_meta)
 
-    tensor_transport_backend = gpu_object_meta.tensor_transport_backend
-
-    tensor_transport_manager = get_tensor_transport_manager(tensor_transport_backend)
-
-    tensor_transport_meta = gpu_object_meta.tensor_transport_meta
-    tensors = []
-
-    for meta in tensor_transport_meta.tensor_meta:
-        shape, dtype = meta
-        tensor = torch.zeros(
-            shape,
-            dtype=dtype,
-            device=tensor_transport_meta.tensor_device,
-        )
-        tensors.append(tensor)
-    communicator_meta = tensor_transport_manager.get_communicator_metadata(
-        None, None, tensor_transport_backend
-    )
-    tensor_transport_manager.recv_multiple_tensors(
-        tensors, tensor_transport_meta, communicator_meta
-    )
-    actor_handle = ray.get_runtime_context().current_actor
-    tensor_transport = TensorTransportEnum.from_str(
-        gpu_object_meta.tensor_transport_backend
-    )
-    gpu_object_manager.add_gpu_object_ref(obj_ref, actor_handle, tensor_transport)
-    gpu_object_manager.gpu_object_store.add_object(
-        obj_ref.hex(), tensors, is_primary=False
-    )
     return obj_ref
 
 
@@ -232,28 +199,18 @@ class SerializationContext:
                 self.is_in_band_serialization()
                 and worker.gpu_object_manager.is_managed_object(obj.hex())
             ):
-                from ray.experimental.gpu_object_manager.gpu_object_manager import (
-                    GPUObjectMeta,
-                )
 
                 gpu_object_manager = (
                     ray._private.worker.global_worker.gpu_object_manager
                 )
                 gpu_object_meta = gpu_object_manager._get_gpu_object_metadata(obj)
-                gpu_object_meta_copy = GPUObjectMeta(
-                    src_actor=gpu_object_meta.src_actor,
-                    tensor_transport_backend=gpu_object_meta.tensor_transport_backend,
-                    tensor_transport_meta=ray.get(
-                        gpu_object_meta.tensor_transport_meta
-                    ),
-                )
                 return _gpu_object_ref_deserializer, (
                     obj.binary(),
                     obj.call_site(),
                     owner_address,
                     object_status,
                     obj.tensor_transport(),
-                    gpu_object_meta_copy,
+                    gpu_object_meta,
                 )
 
             return _object_ref_deserializer, (

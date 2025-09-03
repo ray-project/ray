@@ -833,14 +833,28 @@ class Worker:
             )
         tensors = None
         tensor_transport = TensorTransportEnum.from_str(tensor_transport)
+        tensor_transport_meta = None
         try:
             if tensor_transport != TensorTransportEnum.OBJECT_STORE:
+                from ray.experimental.collective import get_tensor_transport_manager
+                from ray.experimental.gpu_object_manager.gpu_object_store import (
+                    _tensor_transport_to_collective_backend,
+                )
 
                 (
                     serialized_value,
                     tensors,
                 ) = self.get_serialization_context().serialize_gpu_objects(value)
-
+                tensor_transport_backend = _tensor_transport_to_collective_backend(
+                    tensor_transport
+                )
+                if tensors:
+                    transport_manager = get_tensor_transport_manager(
+                        tensor_transport_backend
+                    )
+                    tensor_transport_meta = (
+                        transport_manager.extract_tensor_transport_metadata(tensors)
+                    )
             else:
                 serialized_value = self.get_serialization_context().serialize(value)
         except TypeError as e:
@@ -873,12 +887,12 @@ class Worker:
         )
         if tensors:
             self.get_serialization_context().store_gpu_objects(ret.hex(), tensors)
-            actor_handle = ray.get_runtime_context().current_actor
             gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
             gpu_object_manager.add_gpu_object_ref(
                 ret,
-                actor_handle,
+                None,
                 tensor_transport,
+                pre_computed_tensor_transport_meta=tensor_transport_meta,
             )
         return ret
 
@@ -902,7 +916,8 @@ class Worker:
                 )
             ):
                 continue
-
+            if self.gpu_object_manager.is_pending_gpu_object(obj_ref):
+                self.gpu_object_manager.receive_pending_gpu_object(obj_ref)
             object_id = obj_ref.hex()
             if object_id not in gpu_objects:
                 gpu_objects[object_id] = self.gpu_object_manager.get_gpu_object(
