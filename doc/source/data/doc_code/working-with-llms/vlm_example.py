@@ -157,7 +157,6 @@ vision_processor = build_llm_processor(
     postprocess=vision_postprocess,
 )
 
-# Only run inference in documentation context, not when executed directly
 if __name__ != "__main__":
     vision_processed_ds = vision_processor(vision_dataset).materialize()
     vision_processed_ds.show(3)

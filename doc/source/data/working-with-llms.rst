@@ -33,10 +33,10 @@ The :class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>` 
 It contains the model name, the number of GPUs to use, and the number of shards to use, along with other vLLM engine configurations.
 Upon execution, the Processor object instantiates replicas of the vLLM engine (using :meth:`map_batches <ray.data.Dataset.map_batches>` under the hood).
 
-.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
-    :language: python
-    :start-after: __basic_llm_example_start__
-    :end-before: __basic_llm_example_end__
+.. .. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+..     :language: python
+..     :start-after: __basic_llm_example_start__
+..     :end-before: __basic_llm_example_end__
 
 Here's a simple configuration example:
 
@@ -45,18 +45,19 @@ Here's a simple configuration example:
     :start-after: __basic_config_example_start__
     :end-before: __basic_config_example_end__
 
-Each processor requires specific input columns. You can find more info by using the following API:
+Each processor requires specific input columns based on the model and configuration. The vLLM processor expects input in OpenAI chat format with a 'messages' column.
 
-The processor requires specific input columns. Here's how to check what columns are needed:
+Here's the basic configuration pattern you can use throughout this guide:
 
 .. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
     :language: python
     :start-after: __simple_config_example_start__
     :end-before: __simple_config_example_end__
 
-The output shows:
+This configuration creates a processor that expects:
 
-- **ChatTemplateStage**: Required input columns: messages (OpenAI chat format)
+- **Input**: Dataset with 'messages' column (OpenAI chat format)
+- **Output**: Dataset with 'generated_text' column containing model responses
 
 Some models may require a Hugging Face token to be specified. You can specify the token in the `runtime_env` argument.
 
@@ -72,12 +73,7 @@ Configure vLLM for LLM inference
 
 Use the :class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>` to configure the vLLM engine.
 
-.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
-    :language: python
-    :start-after: __simple_config_example_start__
-    :end-before: __simple_config_example_end__
-
-For handling larger models, specify model parallelism.
+For handling larger models, specify model parallelism:
 
 .. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
     :language: python
@@ -133,26 +129,35 @@ First, install the required dependencies:
     # Install required dependencies for vision-language models
     pip install datasets>=4.0.0
 
-Complete VLM example:
+First, load a vision dataset:
 
 .. literalinclude:: doc_code/working-with-llms/vlm_example.py
     :language: python
-    :start-after: __vlm_example_start__
-    :end-before: __vlm_example_end__
+    :start-after: def load_vision_dataset():
+    :end-before: def create_vlm_config():
+    :dedent: 0
 
-Here's a simple VLM configuration:
+Next, configure the VLM processor with the essential settings:
 
 .. literalinclude:: doc_code/working-with-llms/vlm_example.py
     :language: python
     :start-after: __vlm_config_example_start__
     :end-before: __vlm_config_example_end__
 
-For a comprehensive VLM configuration example:
+For a more comprehensive VLM configuration with advanced options:
 
 .. literalinclude:: doc_code/working-with-llms/vlm_example.py
     :language: python
     :start-after: def create_vlm_config():
     :end-before: def run_vlm_example():
+    :dedent: 0
+
+Finally, run the VLM inference:
+
+.. literalinclude:: doc_code/working-with-llms/vlm_example.py
+    :language: python
+    :start-after: def run_vlm_example():
+    :end-before: # __vlm_example_end__
     :dedent: 0
 
 
@@ -163,21 +168,14 @@ Batch inference with an OpenAI-compatible endpoint
 
 You can also make calls to deployed models that have an OpenAI compatible API endpoint.
 
-Complete OpenAI API example:
-
-.. literalinclude:: doc_code/working-with-llms/openai_api_example.py
-    :language: python
-    :start-after: __openai_example_start__
-    :end-before: __openai_example_end__
-
-Here's a simple OpenAI API configuration:
+First, configure the OpenAI API processor:
 
 .. literalinclude:: doc_code/working-with-llms/openai_api_example.py
     :language: python
     :start-after: __openai_config_example_start__
     :end-before: __openai_config_example_end__
 
-For a comprehensive configuration and usage demo:
+Then run the inference demo:
 
 .. literalinclude:: doc_code/working-with-llms/openai_api_example.py
     :language: python

@@ -65,7 +65,6 @@ processor = build_llm_processor(
     ),
 )
 
-# Only run inference in documentation context, not when executed directly
 if __name__ != "__main__":
     ds = processor(ds)
     print(ds.take_all())
