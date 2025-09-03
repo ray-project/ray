@@ -916,7 +916,7 @@ class UnserializableException(RayError):
     the original exception along with its stack trace that was captured at the
     time of serialization.
 
-    refer for more details: https://docs.ray.io/en/latest/ray-core/objects/serialization.html
+    reference for more details: https://docs.ray.io/en/latest/ray-core/objects/serialization.html
 
     Args:
         original_stack_trace: The string representation and stack trace of the
