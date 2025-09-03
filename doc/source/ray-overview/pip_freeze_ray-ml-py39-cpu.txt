@@ -344,7 +344,7 @@ pyu2f==0.1.5
 PyYAML==6.0.1
 pyzmq==26.0.3
 qpd==0.4.4
-ray @ file:///home/ray/ray-2.49.0-cp39-cp39-manylinux2014_x86_64.whl#sha256=6901fb1266c190c7224186d55364dc788a1f58b3cd2e865e39e840f41e6bf58e
+ray @ file:///home/ray/ray-2.49.1-cp39-cp39-manylinux2014_x86_64.whl#sha256=2520f57bc76929e48b2125405b11ea00add7468734119f4087449d33032561fc
 referencing==0.36.2
 regex==2024.5.15
 requests @ file:///home/conda/feedstock_root/build_artifacts/requests_1733217035951/work
