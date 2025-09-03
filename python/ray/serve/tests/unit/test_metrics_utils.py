@@ -251,18 +251,18 @@ class TestInMemoryMetricsStore:
 
         assert_timeseries_equal(
             merged["m1"],
-            [TimeStampedValue(0, 100), TimeStampedValue(2, 1), TimeStampedValue(4, 2)],
+            [TimeStampedValue(0, 100), TimeStampedValue(2, 3)],
         )
         assert_timeseries_equal(
             merged["m2"],
-            [TimeStampedValue(0, 100), TimeStampedValue(2, 2), TimeStampedValue(4, 12)],
+            [TimeStampedValue(0, 100), TimeStampedValue(2, 14)],
         )
         assert_timeseries_equal(
             merged["m3"], [TimeStampedValue(0, 100), TimeStampedValue(2, 3)]
         )
         assert_timeseries_equal(
             merged[QUEUED_REQUESTS_KEY],
-            [TimeStampedValue(0, 10), TimeStampedValue(2, 1), TimeStampedValue(4, 11)],
+            [TimeStampedValue(0, 10), TimeStampedValue(2, 12)],
         )
 
         s1_s2 = merge_timeseries_dicts(s1.data, s2.data, window_s=1)

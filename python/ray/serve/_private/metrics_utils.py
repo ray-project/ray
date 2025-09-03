@@ -341,8 +341,9 @@ def _merge_two_timeseries(
         return []
 
     # Align windows so each output timestamp sits at the center of its window.
+    # start is snapped to window_s boundary for binning stability
     earliest = min(x[0].timestamp for x in (t1, t2) if x)
-    start = earliest - (window_s / 2.0)
+    start = earliest // window_s * window_s - (window_s / 2.0)
 
     b1 = _bucket_latest_by_window(t1, start, window_s)
     b2 = _bucket_latest_by_window(t2, start, window_s)
