@@ -24,10 +24,6 @@
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
 
-static constexpr size_t kCgroupNameLength = 6;
-
-std::string GenerateRandomFilename(size_t len);
-
 class TempCgroupDirectory {
  public:
   static ray::StatusOr<std::unique_ptr<TempCgroupDirectory>> Create(

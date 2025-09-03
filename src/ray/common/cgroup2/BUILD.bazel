@@ -40,6 +40,7 @@ ray_cc_library(
         "@platforms//os:linux",
     ],
     deps = [
+        "//src/ray/common:id",
         "//src/ray/common:status",
         "//src/ray/common:status_or",
         "@com_google_absl//absl/strings:str_format",

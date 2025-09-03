@@ -32,39 +32,20 @@
 #include <fstream>
 #include <initializer_list>
 #include <memory>
-#include <random>
 #include <stdexcept>
 #include <string>
 #include <system_error>
 #include <utility>
 
 #include "absl/strings/str_format.h"
+#include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
 #include "ray/util/logging.h"
 
-std::string GenerateRandomFilename(size_t len) {
-  std::string output;
-  std::random_device rd;
-  std::mt19937 mt(rd());
-  std::uniform_int_distribution<int> dist(0, 61);
-  output.reserve(len);
-  for (size_t i = 0; i < len; ++i) {
-    int randomChar = dist(mt);
-    if (randomChar < 26) {
-      output.push_back('a' + randomChar);
-    } else if (randomChar < 26 + 26) {
-      output.push_back('A' + randomChar - 26);
-    } else {
-      output.push_back('0' + randomChar - 52);
-    }
-  }
-  return output;
-}
-
 ray::StatusOr<std::unique_ptr<TempCgroupDirectory>> TempCgroupDirectory::Create(
     const std::string &base_path, mode_t mode) {
-  std::string name = GenerateRandomFilename(kCgroupNameLength);
+  std::string name = ray::UniqueID::FromRandom().Hex();
   std::string path = base_path + std::filesystem::path::preferred_separator + name;
   if (mkdir(path.c_str(), mode) == -1) {
     return ray::Status::IOError(
