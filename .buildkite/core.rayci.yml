@@ -466,7 +466,7 @@ steps:
   - label: ":ray: core: multi gpu tests"
     key: core-multi-gpu-tests
     tags:
-      - cgraphs_gpu_objects
+      - cgraphs_rdt
       - gpu
     instance_type: gpu-large
     # we're running some cgraph doc tests here as well since they need gpus
