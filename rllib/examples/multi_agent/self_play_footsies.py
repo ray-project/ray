@@ -133,8 +133,6 @@ config.environment(
             "back": RLModuleSpec(module_class=BackFixedRLModule),
         },
     )
-).evaluation(
-    evaluation_num_env_runners=args.evaluation_num_env_runners or 1,
 ).callbacks(
     [
         functools.partial(
