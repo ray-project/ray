@@ -883,6 +883,7 @@ py_test_module_list(
         "test_multi_node.py",
         "test_placement_group_3.py",
         "test_placement_group_5.py",
+        "test_raylet_fault_tolerance.py",
         "test_reconstruction.py",
         "test_reconstruction_2.py",
         "test_runtime_env_working_dir_uri.py",

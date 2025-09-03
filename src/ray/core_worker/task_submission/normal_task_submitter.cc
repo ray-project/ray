@@ -136,15 +136,8 @@ void NormalTaskSubmitter::ReturnWorkerLease(const rpc::Address &addr,
     scheduling_key_entries_.erase(scheduling_key);
   }
 
-  auto status =
-      lease_entry.raylet_client->ReturnWorkerLease(addr.port(),
-                                                   WorkerID::FromBinary(addr.worker_id()),
-                                                   was_error,
-                                                   error_detail,
-                                                   worker_exiting);
-  if (!status.ok()) {
-    RAY_LOG(ERROR) << "Error returning worker to raylet: " << status.ToString();
-  }
+  lease_entry.raylet_client->ReturnWorkerLease(
+      addr.port(), lease_entry.lease_id, was_error, error_detail, worker_exiting);
   worker_to_lease_entry_.erase(addr);
 }
 
@@ -441,58 +434,6 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
                              << " for " << function_or_actor_name;
 
               RequestNewWorkerIfNeeded(scheduling_key, &reply.retry_at_raylet_address());
-            }
-          } else if (NodeID::FromBinary(raylet_address.node_id()) != local_node_id_) {
-            // A lease request to a remote raylet failed. Retry locally if the lease is
-            // still needed.
-            // TODO(swang): Fail after some number of retries?
-            RAY_LOG_EVERY_MS(INFO, 30 * 1000)
-                << "Retrying attempt to schedule lease (id: " << lease_id
-                << " name: " << function_or_actor_name
-                << ") at remote node (id: " << raylet_address.node_id()
-                << " ip: " << raylet_address.ip_address()
-                << "). Try again "
-                   "on a local node. Error: "
-                << status.ToString();
-
-            RequestNewWorkerIfNeeded(scheduling_key);
-
-          } else {
-            if (status.IsRpcError() &&
-                status.rpc_code() == grpc::StatusCode::UNAVAILABLE) {
-              RAY_LOG(WARNING)
-                  << "The worker failed to receive a response from the local "
-                  << "raylet because the raylet is unavailable (crashed). "
-                  << "Error: " << status;
-              if (worker_type_ == WorkerType::WORKER) {
-                // Exit the worker so that caller can retry somewhere else.
-                RAY_LOG(WARNING) << "Terminating the worker due to local raylet death";
-                QuickExit();
-              }
-              RAY_CHECK(worker_type_ == WorkerType::DRIVER);
-              error_type = rpc::ErrorType::LOCAL_RAYLET_DIED;
-              error_status = status;
-              // Grpc errors are not helpful at all. So we are overwriting it.
-              std::stringstream ss;
-              ss << "The worker failed to receive a response from the local raylet"
-                 << "(id: " << NodeID::FromBinary(raylet_address.node_id()).Hex()
-                 << " ,ip: " << raylet_address.ip_address() << ") "
-                 << "because the raylet is "
-                    "unavailable (crashed).";
-              error_info.set_error_message(ss.str());
-              tasks_to_fail = std::move(sched_entry.task_queue);
-              sched_entry.task_queue.clear();
-              if (sched_entry.CanDelete()) {
-                scheduling_key_entries_.erase(scheduling_key);
-              }
-            } else {
-              RAY_LOG(WARNING)
-                  << "The worker failed to receive a response from the local raylet, but "
-                     "raylet is still alive. Try again on a local node. Error: "
-                  << status;
-              // TODO(sang): Maybe we should raise FATAL error if it happens too many
-              // times.
-              RequestNewWorkerIfNeeded(scheduling_key);
             }
           }
         }
