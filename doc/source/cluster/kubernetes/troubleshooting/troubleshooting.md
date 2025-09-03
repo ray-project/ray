@@ -1,4 +1,4 @@
-(kuberay-troubleshootin-guides)=
+(kuberay-troubleshooting-guides)=
 
 # Troubleshooting guide
 
@@ -29,7 +29,7 @@ When a Ray job is created, the Ray dashboard agent process on the head node gets
 
 (docker-image-for-apple-macbooks)=
 ## Use ARM-based docker images for Apple M1 or M2 MacBooks
-Ray builds different images for different platforms. Until Ray moves to building multi-architecture images, [tracked by this Github issue](https://github.com/ray-project/ray/issues/39364), use platform-specific docker images in the head and worker group specs of the [RayCluster config](https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/config.html#image).
+Ray builds different images for different platforms. Until Ray moves to building multi-architecture images, [tracked by this GitHub issue](https://github.com/ray-project/ray/issues/39364), use platform-specific docker images in the head and worker group specs of the [RayCluster config](https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/config.html#image).
 
 Use an image with the tag `aarch64`, for example, `image: rayproject/ray:2.41.0-aarch64`), if you are running KubeRay on a MacBook M1 or M2.
 
