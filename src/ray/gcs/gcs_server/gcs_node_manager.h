@@ -14,11 +14,6 @@
 
 #pragma once
 
-#include <gtest/gtest_prod.h>
-
-#include <boost/bimap.hpp>
-#include <boost/bimap/unordered_multiset_of.hpp>
-#include <boost/bimap/unordered_set_of.hpp>
 #include <deque>
 #include <memory>
 #include <string>
@@ -26,35 +21,36 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
-#include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
-#include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/gcs_server/grpc_service_interfaces.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/rpc/client_call.h"
-#include "ray/rpc/gcs/gcs_rpc_server.h"
-#include "ray/rpc/node_manager/node_manager_client.h"
-#include "ray/rpc/node_manager/raylet_client_pool.h"
+#include "ray/raylet_client/raylet_client_pool.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/util/event.h"
+#include "src/ray/protobuf/autoscaler.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/ray_syncer.pb.h"
 
-namespace ray::gcs {
+namespace ray {
+namespace gcs {
 
 class GcsAutoscalerStateManagerTest;
 class GcsStateTest;
+
 /// GcsNodeManager is responsible for managing and monitoring nodes as well as handing
 /// node and resource related rpc requests.
 /// This class is not thread-safe.
-class GcsNodeManager : public rpc::NodeInfoHandler {
+class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
  public:
   /// Create a GcsNodeManager.
   ///
   /// \param gcs_publisher GCS message publisher.
   /// \param gcs_table_storage GCS table external storage accessor.
   GcsNodeManager(GcsPublisher *gcs_publisher,
-                 gcs::GcsTableStorage *gcs_table_storage,
+                 GcsTableStorage *gcs_table_storage,
                  instrumented_io_context &io_context,
                  rpc::RayletClientPool *raylet_client_pool,
                  const ClusterID &cluster_id);
@@ -176,8 +172,9 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   ///
   /// \param node_id The ID of the node to update.
   /// \param resource_view_sync_message The sync message containing the new state.
-  void UpdateAliveNode(const NodeID &node_id,
-                       const syncer::ResourceViewSyncMessage &resource_view_sync_message);
+  void UpdateAliveNode(
+      const NodeID &node_id,
+      const rpc::syncer::ResourceViewSyncMessage &resource_view_sync_message);
 
  private:
   /// Add the dead node to the cache. If the cache is full, the earliest dead node is
@@ -267,7 +264,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// A publisher for publishing gcs messages.
   GcsPublisher *gcs_publisher_;
   /// Storage for GCS tables.
-  gcs::GcsTableStorage *gcs_table_storage_;
+  GcsTableStorage *gcs_table_storage_;
   instrumented_io_context &io_context_;
   /// Raylet client pool.
   rpc::RayletClientPool *raylet_client_pool_;
@@ -296,4 +293,5 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   friend GcsStateTest;
 };
 
-}  // namespace ray::gcs
+}  // namespace gcs
+}  // namespace ray

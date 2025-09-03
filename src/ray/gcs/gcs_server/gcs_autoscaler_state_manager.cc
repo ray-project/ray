@@ -19,11 +19,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/gcs/gcs_server/gcs_actor_manager.h"
-#include "ray/gcs/gcs_server/gcs_node_manager.h"
-#include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
-#include "ray/gcs/gcs_server/state_util.h"
-#include "ray/gcs/pb_util.h"
+#include "ray/common/protobuf_utils.h"
 #include "ray/util/string_utils.h"
 #include "ray/util/time.h"
 
@@ -413,6 +409,10 @@ void GcsAutoscalerStateManager::GetNodeStates(
     node_state_proto->mutable_total_resources()->insert(total.begin(), total.end());
 
     // Add dynamic PG labels.
+    // DEPRECATED: Dynamic labels feature is deprecated. Do not introduce new usages.
+    // This assignment is kept only for backward compatibility in the autoscaler, where
+    // the placement group ID is needed to enforce antiaffinity constraints for
+    // strict-spread placement group scheduling.
     const auto &pgs_on_node = gcs_placement_group_manager_.GetBundlesOnNode(node_id);
     for (const auto &[pg_id, _bundle_indices] : pgs_on_node) {
       node_state_proto->mutable_dynamic_labels()->insert(
@@ -617,10 +617,10 @@ void GcsAutoscalerStateManager::CancelInfeasibleRequests() const {
       RAY_LOG(WARNING) << "Canceling infeasible requests on node " << node_id
                        << " with infeasible_shapes=" << resource_shapes_str;
 
-      raylet_client->CancelTasksWithResourceShapes(
+      raylet_client->CancelLeasesWithResourceShapes(
           infeasible_shapes,
           [node_id](const Status &status,
-                    const rpc::CancelTasksWithResourceShapesReply &) {
+                    const rpc::CancelLeasesWithResourceShapesReply &) {
             if (status.ok()) {
               RAY_LOG(INFO) << "Infeasible tasks cancelled on node " << node_id;
             } else {

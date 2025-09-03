@@ -158,7 +158,7 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
 
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
-    cdef cppclass CLanguage "Language":
+    cdef cppclass CLanguage "ray::Language":
         pass
     cdef cppclass CWorkerType "ray::core::WorkerType":
         pass
@@ -204,6 +204,7 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         CAddress owner_address() const
         const c_string &object_id() const
         const c_string &call_site() const
+        CTensorTransport tensor_transport() const
     cdef cppclass CNodeLabelSchedulingStrategy "ray::rpc::NodeLabelSchedulingStrategy":  # noqa: E501
         CNodeLabelSchedulingStrategy()
         CLabelMatchExpressions* mutable_hard()
@@ -242,9 +243,9 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
 # This is a workaround for C++ enum class since Cython has no corresponding
 # representation.
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
-    cdef CLanguage LANGUAGE_PYTHON "Language::PYTHON"
-    cdef CLanguage LANGUAGE_CPP "Language::CPP"
-    cdef CLanguage LANGUAGE_JAVA "Language::JAVA"
+    cdef CLanguage LANGUAGE_PYTHON "ray::Language::PYTHON"
+    cdef CLanguage LANGUAGE_CPP "ray::Language::CPP"
+    cdef CLanguage LANGUAGE_JAVA "ray::Language::JAVA"
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CWorkerType WORKER_TYPE_WORKER "ray::core::WorkerType::WORKER"
@@ -263,6 +264,9 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CTensorTransport TENSOR_TRANSPORT_OBJECT_STORE "ray::rpc::TensorTransport::OBJECT_STORE"
+    cdef CTensorTransport TENSOR_TRANSPORT_NCCL "ray::rpc::TensorTransport::NCCL"
+    cdef CTensorTransport TENSOR_TRANSPORT_GLOO "ray::rpc::TensorTransport::GLOO"
+    cdef CTensorTransport TENSOR_TRANSPORT_NIXL "ray::rpc::TensorTransport::NIXL"
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CPlacementStrategy PLACEMENT_STRATEGY_PACK \
@@ -318,7 +322,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
     cdef cppclass CTaskArgByReference "ray::TaskArgByReference":
         CTaskArgByReference(const CObjectID &object_id,
                             const CAddress &owner_address,
-                            const c_string &call_site)
+                            const c_string &call_site,
+                            const CTensorTransport &tensor_transport)
 
     cdef cppclass CTaskArgByValue "ray::TaskArgByValue":
         CTaskArgByValue(const shared_ptr[CRayObject] &data)
@@ -372,7 +377,6 @@ cdef extern from "ray/core_worker/common.h" nogil:
             CPlacementStrategy strategy,
             const c_vector[unordered_map[c_string, double]] &bundles,
             c_bool is_detached,
-            double max_cpu_fraction_per_node,
             CNodeID soft_target_node_id,
             const c_vector[unordered_map[c_string, c_string]] &bundle_label_selector,
         )

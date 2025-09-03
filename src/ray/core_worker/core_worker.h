@@ -52,7 +52,7 @@
 #include "ray/ipc/raylet_ipc_client_interface.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
-#include "ray/raylet_client/raylet_client.h"
+#include "ray/raylet_client/raylet_client_interface.h"
 #include "ray/rpc/worker/core_worker_server.h"
 #include "ray/util/process.h"
 #include "ray/util/shared_lru.h"
@@ -350,8 +350,6 @@ class CoreWorker {
   }
 
   void SetWebuiDisplay(const std::string &key, const std::string &message);
-
-  void SetActorTitle(const std::string &title);
 
   /// Sets the actor's repr name.
   ///
@@ -1848,9 +1846,6 @@ class CoreWorker {
 
   /// Key value pairs to be displayed on Web UI.
   std::unordered_map<std::string, std::string> webui_display_ ABSL_GUARDED_BY(mutex_);
-
-  /// Actor title that consists of class name, args, kwargs for actor construction.
-  std::string actor_title_ ABSL_GUARDED_BY(mutex_);
 
   /// Actor repr name if overrides by the user, empty string if not.
   std::string actor_repr_name_ ABSL_GUARDED_BY(mutex_);
