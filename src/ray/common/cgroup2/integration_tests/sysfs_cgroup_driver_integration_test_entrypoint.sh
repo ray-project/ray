@@ -1,15 +1,35 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# To run this test locally, you will need to run it as the root user i.e.
-# sudo ./sysfs_cgroup_driver_integration_test_entrypoint.sh
+# To run this test locally, you will need to run it as the root user to be able
+# to create cgroups, add users etc. It is recommended to first create a cgroup for testing
+# so the tests do not interfere with your root cgroup.
+#
+# 1) Create a cgroup
+# sudo mkdir -p /sys/fs/cgroup/testing
+#
+# 2) Enable rwx permissions for files in the cgroup
+# sudo chmod u+rwx /sys/fs/cgroup/testing
+#
+# 2) Move the current process into the cgroup
+# echo $$ | sudo tee /sys/fs/cgroup/testing/cgroup.procs
+#
+# 3) Execute the tests with sudo passing your ROOT_CGROUP
+# NOTE: the "env PATH=${PATH}" is for the root user to find the bazel executable
+# since it may not already be in its path.
+# sudo env PATH="${PATH}" ./sysfs_cgroup_driver_integration_test_entrypoint.sh /sys/fs/cgroup/testing
+#
+# If cleanup fails during local testing, you can run to remove all created cgroups.
+# sudo find /sys/fs/cgroup/testing -type d -depth 10 -exec rmdir {} +
 if [[ "$(uname -s)" != "Linux" ]]; then
   echo "ERROR: Cgroup integration tests can only be run on Linux."
   echo "  The current OS is $(uname)"
   exit 0
 fi
 
-ROOT_CGROUP=/sys/fs/cgroup
+BAZEL=$(which bazel)
+# Defaults to /sys/fs/cgroup if not passed in as an argument.
+ROOT_CGROUP="${1:-/sys/fs/cgroup}"
 CURR_USER=$(whoami)
 
 echo "Starting Cgroupv2 Integration Tests as user ${CURR_USER}"
@@ -32,13 +52,13 @@ if [[ ! -w ${ROOT_CGROUP} ]]; then
   echo "Run 'sudo chown -R ${CURR_USER} ${ROOT_CGROUP}' to fix this."
   exit 1
 fi
-if ! grep -qE '\scpu\s' ${ROOT_CGROUP}/cgroup.controllers; then
+if ! grep -qE '\scpu\s' "${ROOT_CGROUP}"/cgroup.controllers; then
   echo "Failed because the cpu controller is not available in the ${ROOT_CGROUP}/cgroup.controllers."
   echo "To enable the cpu controller, you need to add it to the parent cgroup of ${ROOT_CGROUP}."
   echo "See: https://docs.kernel.org/admin-guide/cgroup-v2.html#enabling-and-disabling."
   exit 1
 fi
-if ! grep -qE '\smemory\s' ${ROOT_CGROUP}/cgroup.controllers; then
+if ! grep -qE '\smemory\s' "${ROOT_CGROUP}"/cgroup.controllers; then
   echo "Failed because the memory controller is not available in the ${ROOT_CGROUP}/cgroup.controllers."
   echo "To enable the memory controller, you need to add it to the parent cgroup of ${ROOT_CGROUP}."
   echo "See: https://docs.kernel.org/admin-guide/cgroup-v2.html#enabling-and-disabling."
@@ -90,7 +110,7 @@ echo "LEAF_CGROUP for the test suite is ${LEAF_CGROUP}."
 
 "${TEST_FIXTURE_SCRIPT}" setup "${ROOT_CGROUP}" "${BASE_CGROUP}" "${UNPRIV_USER}"
 
-su -s /bin/bash ${UNPRIV_USER} -c \
- "CGROUP_PATH=${TEST_CGROUP} bazel run //src/ray/common/cgroup2/integration_tests:sysfs_cgroup_driver_integration_test"
+sudo -u "${UNPRIV_USER}" CGROUP_PATH="${TEST_CGROUP}" \
+  "${BAZEL}" run //src/ray/common/cgroup2/integration_tests:sysfs_cgroup_driver_integration_test
 
 "${TEST_FIXTURE_SCRIPT}" teardown "${ROOT_CGROUP}" "${BASE_CGROUP}" "${UNPRIV_USER}"

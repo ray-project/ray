@@ -20,13 +20,13 @@
 #include <poll.h>
 #include <signal.h>
 #include <stdint.h>
-#include <string.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -45,7 +45,8 @@
 
 ray::StatusOr<std::unique_ptr<TempCgroupDirectory>> TempCgroupDirectory::Create(
     const std::string &base_path, mode_t mode) {
-  std::string name = ray::UniqueID::FromRandom().Hex();
+  std::string random_name = ray::UniqueID::FromRandom().Hex();
+  std::string name = random_name.substr(0, std::min<size_t>(6, random_name.size()));
   std::string path = base_path + std::filesystem::path::preferred_separator + name;
   if (mkdir(path.c_str(), mode) == -1) {
     return ray::Status::IOError(
@@ -123,7 +124,9 @@ ray::StatusOr<std::pair<pid_t, int>> StartChildProcessInCgroup(
   if ((child_pid = syscall(__NR_clone3, &cl_args, sizeof(struct clone_args))) == -1) {
     close(cgroup_fd);
     return ray::Status::Invalid(
-        absl::StrFormat("Failed to clone process with error %s.", strerror(errno)));
+        absl::StrFormat("Failed to clone process into cgroup %s with error %s.",
+                        cgroup_path,
+                        strerror(errno)));
   }
 
   if (child_pid == 0) {
@@ -141,7 +144,6 @@ ray::StatusOr<std::pair<pid_t, int>> StartChildProcessInCgroup(
 ray::StatusOr<std::pair<pid_t, int>> StartChildProcessInCgroup(
     const std::string &cgroup_path) {
   int new_pid = fork();
-
   if (new_pid == -1) {
     return ray::Status::Invalid(
         absl::StrFormat("Failed to fork process with error %s.", strerror(errno)));
