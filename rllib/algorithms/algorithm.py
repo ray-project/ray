@@ -769,14 +769,28 @@ class Algorithm(Checkpointable, Trainable):
             elif self.eval_env_runner_group:
                 spaces.update(self.eval_env_runner_group.get_spaces())
             else:
-                spaces.update(
-                    {
-                        DEFAULT_MODULE_ID: (
-                            self.config.observation_space,
-                            self.config.action_space,
-                        ),
-                    }
-                )
+                if self.config.is_online:
+                    spaces.update(
+                        {
+                            DEFAULT_MODULE_ID: (
+                                self.config.observation_space,
+                                self.config.action_space,
+                            ),
+                        }
+                    )
+                elif self.config.is_offline:
+                    learner_connector = self.config.build_learner_connector(
+                        input_observation_space=spaces[INPUT_ENV_SPACES][0],
+                        input_action_space=spaces[INPUT_ENV_SPACES][1],
+                    )
+                    spaces.update(
+                        {
+                            DEFAULT_MODULE_ID: (
+                                learner_connector.observation_space,
+                                learner_connector.action_space,
+                            ),
+                        }
+                    )
 
             module_spec: MultiRLModuleSpec = self.config.get_multi_rl_module_spec(
                 spaces=spaces,
