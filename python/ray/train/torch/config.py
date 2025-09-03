@@ -71,13 +71,9 @@ class TorchConfig(BackendConfig):
     backend: Optional[str] = None
     init_method: str = "env"
     timeout_s: int = 1800
-    use_tpu: bool = False
-    # xla_spmd_config: Optional[Dict[str, Any]] = None
 
     @property
     def backend_cls(self):
-        # if self.backend == "xla_tpu":
-        #     return _TorchTPUBackend
         return _TorchBackend
 
     @property
@@ -140,32 +136,33 @@ def _setup_torch_process_group(
     elif backend == "hccl":
         register_custom_torch_dist_backend(backend)
     elif backend == "xla":
-        # import torch_xla.distributed.xla_backend
-        # import torch_xla.runtime as xr
-        # assert xr.using_spmd(), "XLA_USE_SPMD must be 1 before PG init"
-        # General backend setup for other backends (gloo, nccl, etc.)
-        if dist.is_initialized():
-            logger.warning("Process group already initialized. Skipping.")
-            return
-        print(">>> os.environ[\"XLA_USE_SPMD\"] = ", os.environ["XLA_USE_SPMD"])
+        import torch_xla.distributed.xla_backend
+        import torch_xla.runtime as xr
+        
+        logger.info(f">>> XLA runtime info before PG init: is_spmd={xr.is_spmd()}, "
+                   f"proc_index={xr.process_index()}, proc_count={xr.process_count()}, "
+                   f"world_size={xr.world_size()}")
+        
+        # For XLA backend, use the XLA init method
         dist.init_process_group(
             backend='xla',
-            init_method='env://',
-            rank=world_rank,
-            world_size=world_size,
+            init_method='env://',  # Use XLA's native init method
             timeout=timedelta(seconds=timeout_s),
         )
+        
         # Sanity logs
         try:
-            import torch_xla.runtime as xr
             logger.info(
                 f">>> [XLA PG] dist rank/size=({dist.get_rank()}/{dist.get_world_size()}), "
                 f"xr world_size={xr.world_size()}, "
                 f"global_device_count={xr.global_device_count()}, "
-                f"local_device_count={xr.local_device_count()}"
+                f"local_device_count={xr.local_device_count()}, "
+                f"process_index={xr.process_index()}, "
+                f"global_ordinal={xr.global_ordinal()}"
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to log XLA runtime info: {e}")
+        
         return
 
 
@@ -250,13 +247,22 @@ class _TorchBackend(Backend):
                 coordinator = f"{master_addr}:{pjrt_port}"
                 def _set_pjrt_envs(coord):
                     context = ray.train.get_context()
+                    # debugging logs:
+                    os.environ["TF_CPP_MIN_LOG_LEVEL"] = "0"          # verbose TF/XLA logs
+                    os.environ["GRPC_VERBOSITY"] = "INFO"
+                    # Fine-grained C++ module logging:
+                    os.environ["TF_CPP_VMODULE"] = (
+                        "pjrt_client=1,stream_executor_pjrt_client=1,"
+                        "pjrt_distributed_client=1,pjrt_distributed=1,"
+                        "coordination_service_agent=1"
+                    )
+                    # Optional extra:
+                    os.environ["PJRT_CLIENT_VERBOSE_LOGS"] = "1"
                     # Core PJRT settings
                     os.environ.pop("NVIDIA_VISIBLE_DEVICES", None)
                     os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")
                     os.environ["PJRT_DEVICE"] = "CUDA"
                     
-
-
                     # PJRT multiprocess rendezvous (new-style names)
                     os.environ["PJRT_COORDINATOR_ADDRESS"] = coord
                     os.environ["PJRT_DIST_SERVICE_ADDR"] = coord
@@ -264,9 +270,7 @@ class _TorchBackend(Backend):
                     os.environ["PJRT_PROCESS_INDEX"] = str(context.get_world_rank())
 
                     # once again, turn on spmd
-                    os.environ["XLA_USE_SPMD"] = "1"
-
-                    
+                    # os.environ["XLA_USE_SPMD"] = "1"
 
                     # CRITICAL: Use Ray's world size and rank for consistency
                     # os.environ["PJRT_WORLD_SIZE"] = str(context.get_world_size())
@@ -324,106 +328,3 @@ class _TorchBackend(Backend):
         if backend_config.backend == 'xla':
             return
         worker_group.execute(_set_torch_distributed_env_vars)
-
-
-def _setup_xla_torch_process_group(world_rank: int, world_size: int):
-    """
-    Initialize PyTorch distributed process group with XLA backend for TPU/GPU training.
-
-    This function calls dist.init_process_group("xla", init_method='xla://') to set up
-    distributed training on TPU/GPU devices using the torch_xla backend.
-
-    Args:
-        world_rank: The rank of this worker in the distributed training setup
-        world_size: The total number of workers in the distributed training setup
-    """
-    import torch.distributed as dist
-
-    # Use the provided rank and world_size parameters
-    rank = world_rank
-    world_size = world_size
-
-    # Log the rank and world size for debugging
-    logger.info(
-        f"Setting up XLA process group - rank: {rank}, world_size: {world_size}"
-    )
-
-    # Initialize the XLA distributed process group
-    dist.init_process_group(
-        backend="xla", init_method="env://", world_size=world_size, rank=rank
-    )
-
-    logger.info(
-        f"Initialized XLA distributed process group: rank={rank}, world_size={world_size}"
-    )
-
-
-def _setup_xla_spmd_environment(spmd_config):
-    """Set up XLA SPMD environment for distributed TPU training.
-
-    This function configures the environment for XLA's Single Program Multiple Data
-    execution, which is essential for efficient TPU training with data parallelism.
-    """
-    try:
-        import torch_xla.core.xla_model as xm
-        import torch_xla.runtime as xr
-
-        # Set XLA SPMD environment variables
-        os.environ["XLA_USE_SPMD"] = "1"
-        os.environ["XLA_SPMD_PARTITIONING_MODE"] = "auto"
-
-        # Configure mesh partitioning if specified
-        if "mesh_shape" in spmd_config:
-            mesh_shape = spmd_config["mesh_shape"]
-            os.environ["XLA_MESH_SHAPE"] = ",".join(map(str, mesh_shape))
-            logger.info(f"Set XLA mesh shape to {mesh_shape}")
-
-        # Configure data parallelism
-        if "data_parallel_size" in spmd_config:
-            data_parallel_size = spmd_config["data_parallel_size"]
-            os.environ["XLA_DATA_PARALLEL_SIZE"] = str(data_parallel_size)
-            logger.info(f">>> Set XLA data parallel size to {data_parallel_size}")
-
-        # Configure model parallelism
-        if "model_parallel_size" in spmd_config:
-            model_parallel_size = spmd_config["model_parallel_size"]
-            os.environ["XLA_MODEL_PARALLEL_SIZE"] = str(model_parallel_size)
-            logger.info(f"Set XLA model parallel size to {model_parallel_size}")
-
-        # Set TPU-specific SPMD optimizations
-        os.environ["XLA_TPU_SPMD_REDUCE_OPTIMIZATION"] = "1"
-        os.environ["XLA_TPU_SPMD_OPTIMIZATION"] = "1"
-
-        # Enable XLA graph optimization for SPMD
-        os.environ["XLA_OPTIMIZATION_LEVEL"] = "2"
-
-        logger.info("XLA SPMD environment configured for TPU training")
-
-    except ImportError:
-        logger.warning("torch_xla not available, skipping XLA SPMD configuration")
-    except Exception as e:
-        logger.warning(f"Failed to configure XLA SPMD environment: {e}")
-
-
-def _shutdown_tpu_torch(destroy_process_group=False):
-    """Clean up TPU/GPU resources."""
-    if destroy_process_group:
-        try:
-            import torch.distributed as dist
-
-            if dist.is_initialized():
-                dist.destroy_process_group()
-                logger.info("Successfully destroyed XLA process group")
-        except Exception as e:
-            logger.warning(f"Failed to destroy XLA process group: {e}")
-
-    # Additional XLA-specific cleanup can be added here if needed
-    try:
-        import torch_xla.core.xla_model as xm
-
-        # Force synchronization to ensure all pending operations complete
-        xm.mark_step()
-    except ImportError:
-        pass  # torch_xla not available
-    except Exception as e:
-        logger.warning(f"Failed to synchronize XLA operations during shutdown: {e}")
