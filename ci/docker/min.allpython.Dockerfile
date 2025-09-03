@@ -11,6 +11,10 @@ RUN <<EOF
 
 set -euo pipefail
 
+useradd -ms /bin/bash -d /home/ray ray --uid 1000 --gid 100
+usermod -aG sudo ray
+echo 'ray ALL=NOPASSWD: ALL' >> /etc/sudoers
+
 # Install uv
 curl -LsSf https://astral.sh/uv/0.8.14/install.sh | sh
 
