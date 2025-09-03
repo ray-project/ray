@@ -19,8 +19,8 @@
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
+#include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
-#include "ray/gcs/tests/gcs_test_util.h"
 #include "ray/rpc/gcs/gcs_rpc_client.h"
 
 namespace ray {
@@ -69,9 +69,9 @@ class GcsServerTest : public ::testing::Test {
     rpc::ResetServerCallExecutor();
   }
 
-  bool AddJob(const rpc::AddJobRequest &request) {
+  bool AddJob(rpc::AddJobRequest request) {
     std::promise<bool> promise;
-    client_->AddJob(request,
+    client_->AddJob(std::move(request),
                     [&promise](const Status &status, const rpc::AddJobReply &reply) {
                       RAY_CHECK_OK(status);
                       promise.set_value(true);
@@ -79,10 +79,10 @@ class GcsServerTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool MarkJobFinished(const rpc::MarkJobFinishedRequest &request) {
+  bool MarkJobFinished(rpc::MarkJobFinishedRequest request) {
     std::promise<bool> promise;
     client_->MarkJobFinished(
-        request,
+        std::move(request),
         [&promise](const Status &status, const rpc::MarkJobFinishedReply &reply) {
           RAY_CHECK_OK(status);
           promise.set_value(true);
@@ -95,7 +95,7 @@ class GcsServerTest : public ::testing::Test {
     request.set_actor_id(actor_id);
     std::optional<rpc::ActorTableData> actor_table_data_opt;
     std::promise<bool> promise;
-    client_->GetActorInfo(request,
+    client_->GetActorInfo(std::move(request),
                           [&actor_table_data_opt, &promise](
                               const Status &status, const rpc::GetActorInfoReply &reply) {
                             RAY_CHECK_OK(status);
@@ -110,10 +110,11 @@ class GcsServerTest : public ::testing::Test {
     return actor_table_data_opt;
   }
 
-  bool RegisterNode(const rpc::RegisterNodeRequest &request) {
+  bool RegisterNode(rpc::RegisterNodeRequest request) {
     std::promise<bool> promise;
     client_->RegisterNode(
-        request, [&promise](const Status &status, const rpc::RegisterNodeReply &reply) {
+        std::move(request),
+        [&promise](const Status &status, const rpc::RegisterNodeReply &reply) {
           RAY_CHECK_OK(status);
           promise.set_value(true);
         });
@@ -121,10 +122,11 @@ class GcsServerTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool UnregisterNode(const rpc::UnregisterNodeRequest &request) {
+  bool UnregisterNode(rpc::UnregisterNodeRequest request) {
     std::promise<bool> promise;
     client_->UnregisterNode(
-        request, [&promise](const Status &status, const rpc::UnregisterNodeReply &reply) {
+        std::move(request),
+        [&promise](const Status &status, const rpc::UnregisterNodeReply &reply) {
           RAY_CHECK_OK(status);
           promise.set_value(true);
         });
@@ -137,7 +139,7 @@ class GcsServerTest : public ::testing::Test {
     rpc::GetAllNodeInfoRequest request;
     std::promise<bool> promise;
     client_->GetAllNodeInfo(
-        request,
+        std::move(request),
         [&node_info_list, &promise](const Status &status,
                                     const rpc::GetAllNodeInfoReply &reply) {
           RAY_CHECK_OK(status);
@@ -150,10 +152,10 @@ class GcsServerTest : public ::testing::Test {
     return node_info_list;
   }
 
-  bool ReportWorkerFailure(const rpc::ReportWorkerFailureRequest &request) {
+  bool ReportWorkerFailure(rpc::ReportWorkerFailureRequest request) {
     std::promise<bool> promise;
     client_->ReportWorkerFailure(
-        request,
+        std::move(request),
         [&promise](const Status &status, const rpc::ReportWorkerFailureReply &reply) {
           RAY_CHECK_OK(status);
           promise.set_value(status.ok());
@@ -167,7 +169,7 @@ class GcsServerTest : public ::testing::Test {
     std::optional<rpc::WorkerTableData> worker_table_data_opt;
     std::promise<bool> promise;
     client_->GetWorkerInfo(
-        request,
+        std::move(request),
         [&worker_table_data_opt, &promise](const Status &status,
                                            const rpc::GetWorkerInfoReply &reply) {
           RAY_CHECK_OK(status);
@@ -187,7 +189,7 @@ class GcsServerTest : public ::testing::Test {
     rpc::GetAllWorkerInfoRequest request;
     std::promise<bool> promise;
     client_->GetAllWorkerInfo(
-        request,
+        std::move(request),
         [&worker_table_data, &promise](const Status &status,
                                        const rpc::GetAllWorkerInfoReply &reply) {
           RAY_CHECK_OK(status);
@@ -200,10 +202,11 @@ class GcsServerTest : public ::testing::Test {
     return worker_table_data;
   }
 
-  bool AddWorkerInfo(const rpc::AddWorkerInfoRequest &request) {
+  bool AddWorkerInfo(rpc::AddWorkerInfoRequest request) {
     std::promise<bool> promise;
     client_->AddWorkerInfo(
-        request, [&promise](const Status &status, const rpc::AddWorkerInfoReply &reply) {
+        std::move(request),
+        [&promise](const Status &status, const rpc::AddWorkerInfoReply &reply) {
           RAY_CHECK_OK(status);
           promise.set_value(true);
         });
@@ -227,14 +230,14 @@ class GcsServerTest : public ::testing::Test {
 TEST_F(GcsServerTest, TestActorInfo) {
   // Create actor_table_data
   JobID job_id = JobID::FromInt(1);
-  auto actor_table_data = Mocker::GenActorTableData(job_id);
+  auto actor_table_data = GenActorTableData(job_id);
   // TODO(sand): Add tests that don't require checkponit.
 }
 
 TEST_F(GcsServerTest, TestJobInfo) {
   // Create job_table_data
   JobID job_id = JobID::FromInt(1);
-  auto job_table_data = Mocker::GenJobTableData(job_id);
+  auto job_table_data = GenJobTableData(job_id);
 
   // Add job
   rpc::AddJobRequest add_job_request;
@@ -250,17 +253,17 @@ TEST_F(GcsServerTest, TestJobInfo) {
 TEST_F(GcsServerTest, TestJobGarbageCollection) {
   // Create job_table_data
   JobID job_id = JobID::FromInt(1);
-  auto job_table_data = Mocker::GenJobTableData(job_id);
+  auto job_table_data = GenJobTableData(job_id);
 
   // Add job
   rpc::AddJobRequest add_job_request;
   add_job_request.mutable_data()->CopyFrom(*job_table_data);
   ASSERT_TRUE(AddJob(add_job_request));
 
-  auto actor_table_data = Mocker::GenActorTableData(job_id);
+  auto actor_table_data = GenActorTableData(job_id);
 
   // Register detached actor for job
-  auto detached_actor_table_data = Mocker::GenActorTableData(job_id);
+  auto detached_actor_table_data = GenActorTableData(job_id);
   detached_actor_table_data->set_is_detached(true);
 
   // Mark job finished
@@ -276,7 +279,7 @@ TEST_F(GcsServerTest, TestJobGarbageCollection) {
 
 TEST_F(GcsServerTest, TestNodeInfo) {
   // Create gcs node info
-  auto gcs_node_info = Mocker::GenNodeInfo();
+  auto gcs_node_info = GenNodeInfo();
 
   // Register node info
   rpc::RegisterNodeRequest register_node_info_request;
@@ -305,9 +308,9 @@ TEST_F(GcsServerTest, TestNodeInfo) {
 
 TEST_F(GcsServerTest, TestNodeInfoFilters) {
   // Create gcs node info
-  auto node1 = Mocker::GenNodeInfo(1, "127.0.0.1", "node1");
-  auto node2 = Mocker::GenNodeInfo(2, "127.0.0.2", "node2");
-  auto node3 = Mocker::GenNodeInfo(3, "127.0.0.3", "node3");
+  auto node1 = GenNodeInfo(1, "127.0.0.1", "node1");
+  auto node2 = GenNodeInfo(2, "127.0.0.2", "node2");
+  auto node3 = GenNodeInfo(3, "127.0.0.3", "node3");
 
   // Register node infos
   for (auto &node : {node1, node2, node3}) {
@@ -330,7 +333,7 @@ TEST_F(GcsServerTest, TestNodeInfoFilters) {
     // Get all
     rpc::GetAllNodeInfoRequest request;
     rpc::GetAllNodeInfoReply reply;
-    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(std::move(request), &reply));
 
     ASSERT_EQ(reply.node_info_list_size(), 3);
     ASSERT_EQ(reply.num_filtered(), 0);
@@ -342,7 +345,7 @@ TEST_F(GcsServerTest, TestNodeInfoFilters) {
     request.add_node_selectors()->set_node_id(node1->node_id());
     request.add_node_selectors()->set_node_id(node2->node_id());
     rpc::GetAllNodeInfoReply reply;
-    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(std::move(request), &reply));
 
     ASSERT_EQ(reply.node_info_list_size(), 2);
     ASSERT_EQ(reply.num_filtered(), 1);
@@ -353,7 +356,7 @@ TEST_F(GcsServerTest, TestNodeInfoFilters) {
     rpc::GetAllNodeInfoRequest request;
     request.set_state_filter(rpc::GcsNodeInfo::ALIVE);
     rpc::GetAllNodeInfoReply reply;
-    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(std::move(request), &reply));
 
     ASSERT_EQ(reply.node_info_list_size(), 2);
     ASSERT_EQ(reply.num_filtered(), 1);
@@ -365,7 +368,7 @@ TEST_F(GcsServerTest, TestNodeInfoFilters) {
     rpc::GetAllNodeInfoRequest request;
     request.set_state_filter(rpc::GcsNodeInfo::DEAD);
     rpc::GetAllNodeInfoReply reply;
-    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(std::move(request), &reply));
 
     ASSERT_EQ(reply.node_info_list_size(), 1);
     ASSERT_EQ(reply.num_filtered(), 2);
@@ -378,7 +381,7 @@ TEST_F(GcsServerTest, TestNodeInfoFilters) {
     request.add_node_selectors()->set_node_name("node1");
     request.add_node_selectors()->set_node_name("node2");
     rpc::GetAllNodeInfoReply reply;
-    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(std::move(request), &reply));
 
     ASSERT_EQ(reply.node_info_list_size(), 2);
     ASSERT_EQ(reply.num_filtered(), 1);
@@ -391,7 +394,7 @@ TEST_F(GcsServerTest, TestNodeInfoFilters) {
     request.add_node_selectors()->set_node_ip_address("127.0.0.1");
     request.add_node_selectors()->set_node_ip_address("127.0.0.2");
     rpc::GetAllNodeInfoReply reply;
-    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(std::move(request), &reply));
 
     ASSERT_EQ(reply.node_info_list_size(), 2);
     ASSERT_EQ(reply.num_filtered(), 1);
@@ -404,7 +407,7 @@ TEST_F(GcsServerTest, TestNodeInfoFilters) {
     request.add_node_selectors()->set_node_id(node1->node_id());
     request.add_node_selectors()->set_node_name("node2");
     rpc::GetAllNodeInfoReply reply;
-    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(std::move(request), &reply));
     ASSERT_EQ(reply.node_info_list_size(), 2);
     ASSERT_EQ(reply.num_filtered(), 1);
     ASSERT_EQ(reply.total(), 3);
@@ -417,7 +420,7 @@ TEST_F(GcsServerTest, TestNodeInfoFilters) {
     request.add_node_selectors()->set_node_id(node3->node_id());
     request.set_state_filter(rpc::GcsNodeInfo::ALIVE);
     rpc::GetAllNodeInfoReply reply;
-    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(std::move(request), &reply));
     ASSERT_EQ(reply.node_info_list_size(), 1);
     ASSERT_EQ(reply.num_filtered(), 2);
     ASSERT_EQ(reply.total(), 3);
@@ -430,7 +433,7 @@ TEST_F(GcsServerTest, TestNodeInfoFilters) {
     request.add_node_selectors()->set_node_name("node3");
     request.set_state_filter(rpc::GcsNodeInfo::DEAD);
     rpc::GetAllNodeInfoReply reply;
-    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(std::move(request), &reply));
     ASSERT_EQ(reply.node_info_list_size(), 1);
     ASSERT_EQ(reply.num_filtered(), 2);
     ASSERT_EQ(reply.total(), 3);
@@ -439,7 +442,7 @@ TEST_F(GcsServerTest, TestNodeInfoFilters) {
 
 TEST_F(GcsServerTest, TestWorkerInfo) {
   // Report worker failure
-  auto worker_failure_data = Mocker::GenWorkerTableData();
+  auto worker_failure_data = GenWorkerTableData();
   worker_failure_data->mutable_worker_address()->set_ip_address("127.0.0.1");
   worker_failure_data->mutable_worker_address()->set_port(5566);
   rpc::ReportWorkerFailureRequest report_worker_failure_request;
@@ -449,7 +452,7 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
   ASSERT_EQ(worker_table_data.size(), 1);
 
   // Add worker info
-  auto worker_data = Mocker::GenWorkerTableData();
+  auto worker_data = GenWorkerTableData();
   worker_data->mutable_worker_address()->set_worker_id(WorkerID::FromRandom().Binary());
   rpc::AddWorkerInfoRequest add_worker_request;
   add_worker_request.mutable_worker_data()->CopyFrom(*worker_data);

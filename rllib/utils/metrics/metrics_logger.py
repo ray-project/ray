@@ -1167,6 +1167,8 @@ class MetricsLogger:
             state: The state to set `self` to.
         """
         with self._threading_lock:
+            # Reset all existing stats to ensure a clean state transition
+            self.stats = {}
             for flat_key, stats_state in state["stats"].items():
                 self._set_key(flat_key.split("--"), Stats.from_state(stats_state))
 

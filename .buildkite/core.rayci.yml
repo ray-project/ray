@@ -60,19 +60,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/_common/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
         --install-mask all-ray-libraries
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,runtime_env_container,manual,multi_gpu,spark_on_ray,ray_client,compiled_graphs,dask
-        --install-mask all-ray-libraries
-
-  - label: ":ray: core: cgraph python tests"
-    tags:
-      - compiled_graphs
-    instance_type: large
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/dag/... core
-        --install-mask all-ray-libraries
-        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --only-tags compiled_graphs
-        --except-tags multi_gpu
+        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,runtime_env_container,manual,multi_gpu,spark_on_ray,ray_client,dask
         --install-mask all-ray-libraries
 
   - label: ":ray: core: python {{matrix.python}} tests ({{matrix.worker_id}})"
@@ -303,20 +291,15 @@ steps:
       - "3.11"
       - "3.12"
       - "3.13"
-  - label: ":ray: core: cgroup unit tests"
+  - label: ":ray: core: cgroup tests"
     tags: core_cpp
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --only-tags=cgroup --build-type cgroup
-        --privileged --cache-test-results
-  - label: ":ray: core: cgroup integration tests"
-    tags: core_cpp
-    instance_type: medium
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //... core --build-only
+      - bazel test //ci/ray_ci:test_in_docker -- //:all //src/ray/common/cgroup2/tests/...
+        core --cache-test-results
       - docker run --privileged -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
         "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash
-        "./src/ray/common/cgroup2/tests/sysfs_cgroup_driver_integration_test_entrypoint.sh"
+        "./src/ray/common/cgroup2/integration_tests/sysfs_cgroup_driver_integration_test_entrypoint.sh"
   - label: ":ray: core: cpp tests"
     tags: core_cpp
     instance_type: medium
@@ -474,7 +457,7 @@ steps:
     depends_on:
       - corebuild
 
-  # block on premerge and microcheck
+  # block gpu tests on premerge and microcheck
   - block: "run multi gpu tests"
     if: build.env("BUILDKITE_PIPELINE_ID") == "0189942e-0876-4b8f-80a4-617f988ec59b" || build.env("BUILDKITE_PIPELINE_ID") == "018f4f1e-1b73-4906-9802-92422e3badaa"
     key: block-core-gpu-tests
@@ -483,7 +466,7 @@ steps:
   - label: ":ray: core: multi gpu tests"
     key: core-multi-gpu-tests
     tags:
-      - compiled_graphs
+      - cgraphs_direct_transport
       - gpu
     instance_type: gpu-large
     # we're running some cgraph doc tests here as well since they need gpus

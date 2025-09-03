@@ -2,11 +2,12 @@
 import logging
 import os
 import sys
+
 import pytest
-from ray.experimental.util.types import Device
-from ray.experimental.channel.serialization_context import _SerializationContext
 import torch
 
+from ray.experimental.channel.serialization_context import _SerializationContext
+from ray.experimental.util.types import Device
 
 logger = logging.getLogger(__name__)
 
