@@ -14,3 +14,11 @@ ray_cc_library(
         "//src/ray/util:time",
     ],
 )
+
+ray_cc_library(
+    name = "metrics",
+    hdrs = ["metrics.h"],
+    deps = [
+        "//src/ray/stats:stats_lib",
+    ],
+)

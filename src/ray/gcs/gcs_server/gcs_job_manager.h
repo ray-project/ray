@@ -53,13 +53,17 @@ class GcsPublisher;
 
 class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
  public:
-  explicit GcsJobManager(GcsTableStorage &gcs_table_storage,
-                         GcsPublisher &gcs_publisher,
-                         RuntimeEnvManager &runtime_env_manager,
-                         GCSFunctionManager &function_manager,
-                         InternalKVInterface &internal_kv,
-                         instrumented_io_context &io_context,
-                         rpc::CoreWorkerClientPool &worker_client_pool)
+  explicit GcsJobManager(
+      GcsTableStorage &gcs_table_storage,
+      GcsPublisher &gcs_publisher,
+      RuntimeEnvManager &runtime_env_manager,
+      GCSFunctionManager &function_manager,
+      InternalKVInterface &internal_kv,
+      instrumented_io_context &io_context,
+      rpc::CoreWorkerClientPool &worker_client_pool,
+      ray::observability::MetricInterface &running_job_counter,
+      ray::observability::MetricInterface &finished_job_counter,
+      ray::observability::MetricInterface &job_duration_in_seconds_counter)
       : gcs_table_storage_(gcs_table_storage),
         gcs_publisher_(gcs_publisher),
         runtime_env_manager_(runtime_env_manager),
@@ -67,7 +71,10 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
         internal_kv_(internal_kv),
         io_context_(io_context),
         worker_client_pool_(worker_client_pool),
-        export_event_write_enabled_(IsExportAPIEnabledDriverJob()) {}
+        export_event_write_enabled_(IsExportAPIEnabledDriverJob()),
+        running_job_counter_(running_job_counter),
+        finished_job_counter_(finished_job_counter),
+        job_duration_in_seconds_counter_(job_duration_in_seconds_counter) {}
 
   void Initialize(const GcsInitData &gcs_init_data);
 
@@ -150,6 +157,10 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
 
   /// If true, driver job events are exported for Export API
   bool export_event_write_enabled_ = false;
+
+  ray::observability::MetricInterface &running_job_counter_;
+  ray::observability::MetricInterface &finished_job_counter_;
+  ray::observability::MetricInterface &job_duration_in_seconds_counter_;
 };
 
 }  // namespace gcs

@@ -42,9 +42,6 @@ namespace stats {
 /// ray_[component]_[metrics_name]_total (e.g., ray_pull_manager_total)
 ///
 
-/// Actor stats, broken down by state.
-DECLARE_stats(actors);
-
 /// Job stats.
 DECLARE_stats(running_jobs);
 DECLARE_stats(finished_jobs);

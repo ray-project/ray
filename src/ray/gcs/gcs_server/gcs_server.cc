@@ -445,7 +445,10 @@ void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
                                       *function_manager_,
                                       kv_manager_->GetInstance(),
                                       io_context_provider_.GetDefaultIOContext(),
-                                      worker_client_pool_);
+                                      worker_client_pool_,
+                                      running_job_counter_,
+                                      finished_job_counter_,
+                                      job_duration_in_seconds_counter_);
   gcs_job_manager_->Initialize(gcs_init_data);
 
   rpc_server_.RegisterService(std::make_unique<rpc::JobInfoGrpcService>(
@@ -497,7 +500,8 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
       [this](const ActorID &actor_id) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
       },
-      worker_client_pool_);
+      worker_client_pool_,
+      actor_by_state_counter_);
 
   gcs_actor_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::ActorInfoGrpcService>(

@@ -37,44 +37,6 @@ namespace ray::stats {
 /// =========== PUBLIC METRICS; keep in sync with ray-metrics.rst =================
 /// ===============================================================================
 
-/// Tracks actors by state, including pending, running, and idle actors.
-///
-/// To avoid metric collection conflicts between components reporting on the same task,
-/// we use the "Source" required label.
-DEFINE_stats(
-    actors,
-    "Current number of actors currently in a particular state.",
-    // State: the actor state, which is from rpc::ActorTableData::ActorState,
-    // For ALIVE actor the sub-state can be IDLE, RUNNING_TASK,
-    // RUNNING_IN_RAY_GET, and RUNNING_IN_RAY_WAIT.
-    // Name: the name of actor class (Keep in sync with the TASK_OR_ACTOR_NAME_TAG_KEY in
-    // python/ray/_private/telemetry/metric_cardinality.py) Source: component reporting,
-    // e.g., "gcs" or "executor".
-    ("State", "Name", "Source", "JobId"),
-    (),
-    ray::stats::GAUGE);
-
-/// Job related stats.
-DEFINE_stats(running_jobs,
-             "Number of jobs currently running.",
-             /*tags=*/(),
-             /*buckets=*/(),
-             ray::stats::GAUGE);
-
-DEFINE_stats(finished_jobs,
-             "Number of jobs finished.",
-             // TODO(hjiang): Consider adding task completion status, for example, failed,
-             // completed in tags.
-             /*tags=*/(),
-             /*buckets=*/(),
-             ray::stats::COUNT);
-
-DEFINE_stats(job_duration_s,
-             "Duration of jobs finished in seconds.",
-             ("JobId"),
-             (),
-             ray::stats::GAUGE);
-
 /// Logical resource usage reported by raylets.
 DEFINE_stats(resources,
              // TODO(sang): Support placement_group_reserved_available | used

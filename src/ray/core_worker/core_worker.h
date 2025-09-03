@@ -80,7 +80,8 @@ class TaskCounter {
   enum class TaskStatusType { kPending, kRunning, kFinished };
 
  public:
-  explicit TaskCounter(ray::observability::MetricInterface &task_by_state_counter);
+  explicit TaskCounter(ray::observability::MetricInterface &task_by_state_counter,
+                       ray::observability::MetricInterface &actor_by_state_counter);
 
   void BecomeActor(const std::string &actor_name) {
     absl::MutexLock l(&mu_);
@@ -139,6 +140,7 @@ class TaskCounter {
   std::string actor_name_ ABSL_GUARDED_BY(mu_);
   int64_t num_tasks_running_ ABSL_GUARDED_BY(mu_) = 0;
   ray::observability::MetricInterface &task_by_state_counter_;
+  ray::observability::MetricInterface &actor_by_state_counter_;
 };
 
 struct TaskToRetry {
@@ -203,7 +205,8 @@ class CoreWorker {
              instrumented_io_context &task_execution_service,
              std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
              uint32_t pid,
-             ray::observability::MetricInterface &task_by_state_counter);
+             ray::observability::MetricInterface &task_by_state_counter,
+             ray::observability::MetricInterface &actor_by_state_counter);
 
   CoreWorker(CoreWorker const &) = delete;
 

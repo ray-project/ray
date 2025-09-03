@@ -24,6 +24,7 @@
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
+#include "ray/observability/fake_metric.h"
 
 namespace ray {
 
@@ -55,13 +56,17 @@ class GcsJobManagerTest : public ::testing::Test {
           return std::make_shared<rpc::MockCoreWorkerClientConfigurableRunningTasks>(
               address.port());
         });
-    gcs_job_manager_ = std::make_unique<gcs::GcsJobManager>(*gcs_table_storage_,
-                                                            *gcs_publisher_,
-                                                            runtime_env_manager_,
-                                                            *function_manager_,
-                                                            *fake_kv_,
-                                                            io_service_,
-                                                            *worker_client_pool_);
+    gcs_job_manager_ =
+        std::make_unique<gcs::GcsJobManager>(*gcs_table_storage_,
+                                             *gcs_publisher_,
+                                             runtime_env_manager_,
+                                             *function_manager_,
+                                             *fake_kv_,
+                                             io_service_,
+                                             *worker_client_pool_,
+                                             fake_running_job_counter_,
+                                             fake_finished_job_counter_,
+                                             fake_job_duration_in_seconds_counter_);
   }
 
   ~GcsJobManagerTest() {
@@ -82,6 +87,11 @@ class GcsJobManagerTest : public ::testing::Test {
   RuntimeEnvManager runtime_env_manager_;
   const std::chrono::milliseconds timeout_ms_{5000};
   std::unique_ptr<gcs::GcsJobManager> gcs_job_manager_;
+
+  // Fake metrics for testing
+  ray::observability::FakeMetric fake_running_job_counter_;
+  ray::observability::FakeMetric fake_finished_job_counter_;
+  ray::observability::FakeMetric fake_job_duration_in_seconds_counter_;
 };
 
 TEST_F(GcsJobManagerTest, TestFakeInternalKV) {
@@ -607,7 +617,10 @@ TEST_F(GcsJobManagerTest, TestMarkJobFinishedIdempotency) {
                                      *function_manager_,
                                      *fake_kv_,
                                      io_service_,
-                                     *worker_client_pool_);
+                                     *worker_client_pool_,
+                                     fake_running_job_counter_,
+                                     fake_finished_job_counter_,
+                                     fake_job_duration_in_seconds_counter_);
 
   auto job_id = JobID::FromInt(1);
   gcs::GcsInitData gcs_init_data(*gcs_table_storage_);

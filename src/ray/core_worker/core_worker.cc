@@ -167,8 +167,10 @@ JobID GetProcessJobID(const CoreWorkerOptions &options) {
   return options.job_id;
 }
 
-TaskCounter::TaskCounter(ray::observability::MetricInterface &task_by_state_counter)
-    : task_by_state_counter_(task_by_state_counter) {
+TaskCounter::TaskCounter(ray::observability::MetricInterface &task_by_state_counter,
+                         ray::observability::MetricInterface &actor_by_state_counter)
+    : task_by_state_counter_(task_by_state_counter),
+      actor_by_state_counter_(actor_by_state_counter) {
   counter_.SetOnChangeCallback(
       [this](const std::tuple<std::string, TaskStatusType, bool>
                  &key) ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) mutable {
@@ -234,26 +236,26 @@ void TaskCounter::RecordMetrics() {
     } else {
       idle = 1.0;
     }
-    ray::stats::STATS_actors.Record(idle,
-                                    {{"State", "IDLE"},
-                                     {"Name", actor_name_},
-                                     {"Source", "executor"},
-                                     {"JobId", job_id_}});
-    ray::stats::STATS_actors.Record(running,
-                                    {{"State", "RUNNING_TASK"},
-                                     {"Name", actor_name_},
-                                     {"Source", "executor"},
-                                     {"JobId", job_id_}});
-    ray::stats::STATS_actors.Record(in_get,
-                                    {{"State", "RUNNING_IN_RAY_GET"},
-                                     {"Name", actor_name_},
-                                     {"Source", "executor"},
-                                     {"JobId", job_id_}});
-    ray::stats::STATS_actors.Record(in_wait,
-                                    {{"State", "RUNNING_IN_RAY_WAIT"},
-                                     {"Name", actor_name_},
-                                     {"Source", "executor"},
-                                     {"JobId", job_id_}});
+    actor_by_state_counter_.Record(idle,
+                                   {{"State"sv, "IDLE"},
+                                    {"Name"sv, actor_name_},
+                                    {"Source"sv, "executor"},
+                                    {"JobId"sv, job_id_}});
+    actor_by_state_counter_.Record(running,
+                                   {{"State"sv, "RUNNING_TASK"},
+                                    {"Name"sv, actor_name_},
+                                    {"Source"sv, "executor"},
+                                    {"JobId"sv, job_id_}});
+    actor_by_state_counter_.Record(in_get,
+                                   {{"State"sv, "RUNNING_IN_RAY_GET"},
+                                    {"Name"sv, actor_name_},
+                                    {"Source"sv, "executor"},
+                                    {"JobId"sv, job_id_}});
+    actor_by_state_counter_.Record(in_wait,
+                                   {{"State"sv, "RUNNING_IN_RAY_WAIT"},
+                                    {"Name"sv, actor_name_},
+                                    {"Source"sv, "executor"},
+                                    {"JobId"sv, job_id_}});
   }
 }
 
@@ -321,7 +323,8 @@ CoreWorker::CoreWorker(
     instrumented_io_context &task_execution_service,
     std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
     uint32_t pid,
-    ray::observability::MetricInterface &task_by_state_counter)
+    ray::observability::MetricInterface &task_by_state_counter,
+    ray::observability::MetricInterface &actor_by_state_counter)
     : options_(std::move(options)),
       get_call_site_(RayConfig::instance().record_ref_creation_sites()
                          ? options_.get_lang_stack
@@ -360,7 +363,7 @@ CoreWorker::CoreWorker(
       task_execution_service_(task_execution_service),
       exiting_detail_(std::nullopt),
       max_direct_call_object_size_(RayConfig::instance().max_direct_call_object_size()),
-      task_counter_(task_by_state_counter),
+      task_counter_(task_by_state_counter, actor_by_state_counter),
       task_event_buffer_(std::move(task_event_buffer)),
       pid_(pid),
       actor_shutdown_callback_(std::move(options_.actor_shutdown_callback)),

@@ -22,6 +22,7 @@
 #include "ray/common/asio/postable.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/runtime_env_manager.h"
+#include "ray/core_worker/metrics.h"
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_health_check_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
@@ -33,6 +34,7 @@
 #include "ray/gcs/gcs_server/pubsub_handler.h"
 #include "ray/gcs/gcs_server/runtime_env_handler.h"
 #include "ray/gcs/gcs_server/usage_stats_client.h"
+#include "ray/gcs/metrics.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/observable_store_client.h"
@@ -297,6 +299,10 @@ class GcsServer {
   std::unique_ptr<Throttler> global_gc_throttler_;
   /// Client to call a metrics agent gRPC server.
   std::unique_ptr<rpc::MetricsAgentClient> metrics_agent_client_;
+  ray::stats::Gauge actor_by_state_counter_{core::GetActorMetric()};
+  ray::stats::Gauge running_job_counter_{GetRunningJobMetric()};
+  ray::stats::Count finished_job_counter_{GetFinishedJobMetric()};
+  ray::stats::Gauge job_duration_in_seconds_counter_{GetJobDurationInSecondsMetric()};
 };
 
 }  // namespace gcs
