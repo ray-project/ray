@@ -793,49 +793,6 @@ TEST_F(NormalTaskSubmitterTest, TestHandleRuntimeEnvSetupFailed) {
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
-TEST_F(NormalTaskSubmitterTest, TestWorkerHandleLocalRayletDied) {
-  auto submitter =
-      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(2));
-
-  TaskSpecification task1 = BuildEmptyTaskSpec();
-  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
-  ASSERT_DEATH(raylet_client->FailWorkerLeaseDueToGrpcUnavailable(), "");
-}
-
-TEST_F(NormalTaskSubmitterTest, TestDriverHandleLocalRayletDied) {
-  auto submitter =
-      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(2));
-
-  TaskSpecification task1 = BuildEmptyTaskSpec();
-  TaskSpecification task2 = BuildEmptyTaskSpec();
-  TaskSpecification task3 = BuildEmptyTaskSpec();
-
-  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
-  ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 2);
-  ASSERT_EQ(raylet_client->num_workers_requested, 2);
-  ASSERT_EQ(raylet_client->num_workers_returned, 0);
-  ASSERT_EQ(raylet_client->reported_backlog_size, 0);
-  ASSERT_EQ(worker_client->callbacks.size(), 0);
-
-  // Fail task1 which will fail all the tasks
-  ASSERT_TRUE(raylet_client->FailWorkerLeaseDueToGrpcUnavailable());
-  ASSERT_EQ(worker_client->callbacks.size(), 0);
-  ASSERT_EQ(task_manager->num_fail_pending_task_calls, 3);
-  ASSERT_EQ(raylet_client->num_workers_requested, 2);
-
-  // Fail task2
-  ASSERT_TRUE(raylet_client->FailWorkerLeaseDueToGrpcUnavailable());
-  ASSERT_EQ(worker_client->callbacks.size(), 0);
-  ASSERT_EQ(task_manager->num_fail_pending_task_calls, 3);
-  ASSERT_EQ(raylet_client->num_workers_requested, 2);
-
-  // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
-  // would otherwise cause a memory leak.
-  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
-}
-
 TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeases) {
   int64_t concurrency = 10;
   auto rateLimiter = std::make_shared<StaticLeaseRequestRateLimiter>(concurrency);

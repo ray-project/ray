@@ -435,6 +435,28 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
 
               RequestNewWorkerIfNeeded(scheduling_key, &reply.retry_at_raylet_address());
             }
+          } else if (NodeID::FromBinary(raylet_address.node_id()) != local_node_id_) {
+            // A lease request to a remote raylet failed. Retry locally if the lease is
+            // still needed.
+            // TODO(swang): Fail after some number of retries?
+            RAY_LOG_EVERY_MS(INFO, 30 * 1000)
+                << "Retrying attempt to schedule lease (id: " << lease_id
+                << " name: " << function_or_actor_name
+                << ") at remote node (id: " << raylet_address.node_id()
+                << " ip: " << raylet_address.ip_address()
+                << "). Try again "
+                   "on a local node. Error: "
+                << status.ToString();
+
+            RequestNewWorkerIfNeeded(scheduling_key);
+          } else {
+            RAY_LOG(WARNING)
+                << "The worker failed to receive a response from the local raylet, but "
+                   "raylet is still alive. Try again on a local node. Error: "
+                << status;
+            // TODO(sang): Maybe we should raise FATAL error if it happens too many
+            // times.
+            RequestNewWorkerIfNeeded(scheduling_key);
           }
         }
         error_info.set_error_type(error_type);
