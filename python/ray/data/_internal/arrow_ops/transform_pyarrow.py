@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 from packaging.version import parse as parse_version
@@ -170,7 +170,9 @@ def take_table(
     return table
 
 
-def _find_diverging_fields(schemas: List["pyarrow.Schema"]) -> Dict[str, FieldInfo]:
+def _find_diverging_fields(
+    schemas: List["pyarrow.Schema"],
+) -> Tuple[List["pyarrow.Schema"], Dict[str, FieldInfo]]:
     """
     Identify fields whose presence or types differ across the provided schemas.
 
@@ -178,10 +180,15 @@ def _find_diverging_fields(schemas: List["pyarrow.Schema"]) -> Dict[str, FieldIn
         schemas: A list of pyarrow.Schema objects.
 
     Returns:
-        Mapping from field name to FieldInfo for fields that diverge.
+        List of schemas to unify, and a dictionary mapping field name to FieldInfo for fields that diverge.
     """
-    if not schemas or len(schemas) == 1:
-        return {}
+    schemas_to_unify = [schemas[0]]
+    for schema in schemas[1:]:
+        if not schema.equals(schemas[0]):
+            schemas_to_unify.append(schema)
+
+    if len(schemas_to_unify) == 1:
+        return schemas_to_unify, {}
 
     from ray.air.util.object_extensions.arrow import ArrowPythonObjectType
     from ray.air.util.tensor_extensions.arrow import get_arrow_extension_tensor_types
@@ -192,7 +199,7 @@ def _find_diverging_fields(schemas: List["pyarrow.Schema"]) -> Dict[str, FieldIn
     field_info_map: Dict[str, FieldInfo] = {}
 
     # Process each schema once
-    for schema_idx, schema in enumerate(schemas):
+    for schema_idx, schema in enumerate(schemas_to_unify):
         # For each field we've seen so far, update or create FieldInfo
         for field_name in schema.names:
             if field_name not in field_info_map:
@@ -200,7 +207,7 @@ def _find_diverging_fields(schemas: List["pyarrow.Schema"]) -> Dict[str, FieldIn
                 field_info_map[field_name] = FieldInfo(
                     name=field_name,
                     unique_types_across_schemas=set(),
-                    types_across_schemas=[None] * len(schemas),
+                    types_across_schemas=[None] * len(schemas_to_unify),
                 )
 
             field_info = field_info_map[field_name]
@@ -246,7 +253,7 @@ def _find_diverging_fields(schemas: List["pyarrow.Schema"]) -> Dict[str, FieldIn
 
         diverging_fields[field_name] = field_info
 
-    return diverging_fields
+    return schemas_to_unify, diverging_fields
 
 
 def _reconcile_field(
@@ -342,7 +349,7 @@ def _reconcile_field(
     return None
 
 
-def _pyarrow_unify_schemas(
+def _unify_schemas_pyarrow(
     schemas: List["pyarrow.Schema"], promote_types: bool = False
 ) -> "pyarrow.Schema":
     if get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION:
@@ -360,54 +367,27 @@ def unify_schemas(
 ) -> "pyarrow.Schema":
     """Version of `pyarrow.unify_schemas()` which also handles checks for
     variable-shaped tensors in the given schemas.
-
-    This function scans all input schemas to identify columns that contain
-    variable-shaped tensors or objects. For tensor columns, it ensures the
-    use of appropriate tensor types (including variable-shaped tensor types).
-    For object columns, it uses a specific object type to accommodate any
-    objects present. Additionally, it handles columns with null-typed lists
-    by determining their actual types from the given schemas.
-
-    Currently, it disallows the concatenation of tensor columns and
-    pickled object columns for performance reasons.
     """
     if len(schemas) == 0:
         raise ValueError("No schemas provided for unify_schemas")
 
-    # Check if all schemas are the same
-    schemas_to_unify = [schemas[0]]
-    for schema in schemas[1:]:
-        if not schema.equals(schemas[0]):
-            schemas_to_unify.append(schema)
-
-    if len(schemas_to_unify) == 1:
+    # Early no-op path: all schemas identical.
+    if all(schema.equals(schemas[0]) for schema in schemas[1:]):
         return schemas[0]
 
-    pyarrow_result = None
-    try:
-        pyarrow_result = _pyarrow_unify_schemas(schemas_to_unify, promote_types)
-    except Exception:
-        # PyArrow failed, we'll need to use our custom handling
-        pass
+    # Find diverging fields first to decide if we can safely delegate to Arrow.
+    schemas_to_unify, divergent_fields = _find_diverging_fields(schemas)
 
-    # Find diverging fields - we need this whether PyArrow succeeded or not
-    divergent_fields = _find_diverging_fields(schemas_to_unify)
+    # If there are no divergent fields, we can return the (sole) schema.
+    if not divergent_fields:
+        return schemas_to_unify[0]
 
-    # Check if we need custom handling
-    needs_custom_handling = False
-    for field_info in divergent_fields.values():
-        if (
-            field_info.has_struct
-            or field_info.has_tensor
-            or field_info.has_object
-            or field_info.has_null_list
-        ):
-            needs_custom_handling = True
-            break
-
-    # If PyArrow succeeded and no custom handling needed, return its result
-    if pyarrow_result is not None and not needs_custom_handling:
-        return pyarrow_result
+    # If divergences don’t involve tensors/objects/null-lists/structs, delegate to Arrow.
+    if not any(
+        fi.has_tensor or fi.has_object or fi.has_null_list or fi.has_struct
+        for fi in divergent_fields.values()
+    ):
+        return _unify_schemas_pyarrow(schemas_to_unify, promote_types)
 
     # Custom handling needed - reconcile divergent fields
     schema_field_overrides = {}
@@ -430,9 +410,9 @@ def unify_schemas(
     else:
         final_schemas = schemas_to_unify
 
-    # Call PyArrow's unify_schemas with the processed schemas
+    # Delegate to PyArrow on the (possibly) overridden schemas
     try:
-        return _pyarrow_unify_schemas(final_schemas, promote_types)
+        return _unify_schemas_pyarrow(final_schemas, promote_types)
     except Exception as e:
         schemas_str = "\n-----\n".join([str(s) for s in final_schemas])
         logger.error(f"Failed to unify schemas: {schemas_str}", exc_info=e)
