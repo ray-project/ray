@@ -697,9 +697,14 @@ def test_send_back_and_dst_warning(ray_start_regular):
 
     with pytest.warns(UserWarning, match=warning_message):
         t = src_actor.echo.remote(tensor)
-        t1 = src_actor.echo.remote(t)  # Sent back to the src actor
+        t1 = src_actor.echo.remote(t)  # Sent back to the source actor
         t2 = dst_actor.echo.remote(t)  # Also sent to another actor
         ray.get([t1, t2])
+
+    # Second transmission of ObjectRef `t` to `dst_actor` should not trigger a warning
+    # Verify no `pytest.warns` context is used here because no warning should be raised
+    t3 = dst_actor.echo.remote(t)
+    ray.get(t3)
 
 
 if __name__ == "__main__":

@@ -15,21 +15,21 @@ if TYPE_CHECKING:
     import torch
 
 # GPUObjectMeta is a named tuple containing the source actor, tensor transport
-# backend, tensor metadata, destination actors, and a send_back_warned flag.
+# backend, tensor metadata, and other information that needs to be recorded.
 # - The tensor transport backend is the backend used to transport the tensors.
 #   Currently, the supported backends are "nccl" and "torch_gloo".
 # - The tensor metadata is a list of tuples, each containing the shape and dtype
 #   of a tensor in the GPU object store.
-# - dest_actors tracks the set of actor IDs that this object has been sent to.
-# - send_back_warned indicates whether the object has already triggered a warning that is sent back to the source actor and other actors simultaneously.
 class GPUObjectMeta(NamedTuple):
     src_actor: "ray.actor.ActorHandle"
     # Must be a valid backend name as defined in
     # `ray.util.collective.types.Backend`.
     tensor_transport_backend: str
     tensor_transport_meta: "TensorTransportMetadata"
-    dest_actors: Set[str]
-    send_back_warned: bool
+    # sent_dest_actors tracks the set of actor IDs that this object has been sent to.
+    sent_dest_actors: Set[str]
+    # sent_to_src_actor_and_others_warned indicates whether the object has already triggered a warning that is sent back to the source actor and other actors simultaneously.
+    sent_to_src_actor_and_others_warned: bool
 
 
 # TODO(swang): Uncomment and add an API docs page and example usage.
@@ -129,8 +129,8 @@ class GPUObjectManager:
             src_actor=src_actor,
             tensor_transport_backend=tensor_transport_backend,
             tensor_transport_meta=tensor_meta,
-            dest_actors=set(),
-            send_back_warned=False,
+            sent_dest_actors=set(),
+            sent_to_src_actor_and_others_warned=False,
         )
 
     def _get_gpu_object_metadata(self, obj_ref: ObjectRef) -> GPUObjectMeta:
@@ -214,29 +214,28 @@ class GPUObjectManager:
             obj_id = obj_ref.hex()
 
             # Update the set of destination actors for this object
-            # Since NamedTuple is immutable, create a new instance with updated dest_actors
-            updated_dest_actors = gpu_object_meta.dest_actors.copy()
-            updated_dest_actors.add(dst_actor._actor_id)
-            self.managed_gpu_object_metadata[obj_id] = gpu_object_meta._replace(
-                dest_actors=updated_dest_actors
-            )
-            # Get the updated metadata
-            updated_meta = self.managed_gpu_object_metadata[obj_id]
-            # Check if a warning should be triggered for this object
+            # The set inside NamedTuple is mutable, so we can modify it directly
+            gpu_object_meta.sent_dest_actors.add(dst_actor._actor_id)
+            # Use the metadata directly since we modified it in-place
+            updated_meta = gpu_object_meta
+            # Check if a warning should be triggered for this object:
+            # 1. object has not triggered a warning yet.
+            # 2. object is sent back to its source actor.
+            # 3. object is also sent to at least one other actor
             if (
-                not updated_meta.send_back_warned
-                and src_actor._actor_id in updated_meta.dest_actors
-                and len(updated_meta.dest_actors) > 1
+                not updated_meta.sent_to_src_actor_and_others_warned
+                and src_actor._actor_id in updated_meta.sent_dest_actors
+                and len(updated_meta.sent_dest_actors) > 1
             ):
                 warnings.warn(
-                    f"GPU ObjectRef({obj_id}) is being passed back to the same actor {src_actor} and will be treated as a mutable tensor. "
-                    "If the tensor is modified, Ray's internal copy will also be updated, and subsequent passes to other actors "
+                    f"GPU ObjectRef({obj_id}) is being passed back to the actor that created it {src_actor}. "
+                    "Note that GPU objects are mutable. If the tensor is modified, Ray's internal copy will also be updated, and subsequent passes to other actors "
                     "will receive the updated version instead of the original.",
                     UserWarning,
                 )
                 # Mark the object as warned by creating a new NamedTuple instance
                 self.managed_gpu_object_metadata[obj_id] = updated_meta._replace(
-                    send_back_warned=True
+                    sent_to_src_actor_and_others_warned=True
                 )
 
             if src_actor._actor_id == dst_actor._actor_id:
