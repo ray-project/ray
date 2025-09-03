@@ -26,6 +26,7 @@ ray_cc_library(
         ":experimental_mutable_object_provider",
         ":future_resolver",
         ":generator_waiter",
+        ":grpc_service",
         ":memory_store",
         ":object_recovery_manager",
         ":plasma_store_provider",
@@ -46,7 +47,6 @@ ray_cc_library(
         "//src/ray/pubsub:subscriber",
         "//src/ray/raylet_client:raylet_client_lib",
         "//src/ray/rpc:core_worker_client",
-        "//src/ray/rpc:core_worker_server",
         "//src/ray/rpc:metrics_agent_client",
         "//src/ray/stats:stats_lib",
         "//src/ray/util:container_util",
@@ -62,6 +62,24 @@ ray_cc_library(
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_prod",
+    ],
+)
+
+ray_cc_library(
+    name = "grpc_service",
+    srcs = [
+        "grpc_service.cc",
+    ],
+    hdrs = [
+        "grpc_service.h",
+    ],
+    visibility = [":__subpackages__"],
+    deps = [
+        "//src/ray/common:asio",
+        "//src/ray/protobuf:core_worker_cc_grpc",
+        "//src/ray/protobuf:core_worker_cc_proto",
+        "//src/ray/rpc:grpc_server",
+        "//src/ray/rpc:server_call",
     ],
 )
 
