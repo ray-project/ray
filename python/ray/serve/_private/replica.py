@@ -5,9 +5,11 @@ import inspect
 import logging
 import os
 import pickle
+import random
 import threading
 import time
 import traceback
+import urllib
 import warnings
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
@@ -20,11 +22,13 @@ from typing import (
     Callable,
     Dict,
     Generator,
+    List,
     Optional,
     Tuple,
     Union,
 )
 
+import aiohttp
 import starlette.responses
 from anyio import to_thread
 from fastapi import Request
@@ -53,6 +57,9 @@ from ray.serve._private.constants import (
     HEALTH_CHECK_METHOD,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
+    RAY_SERVE_METRICS_FETCH_INTERVAL_MS,
+    RAY_SERVE_METRICS_FETCH_TIMEOUT_MS,
+    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
@@ -174,6 +181,16 @@ class ReplicaMetricsManager:
         self._cached_metrics_enabled = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS != 0
         self._cached_metrics_interval_s = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS / 1000
 
+        # Autoscaling metrics and fetching intervals
+        self._autoscaling_metrics: Dict[str, Any] = {}
+        self._last_record_autoscaling_metrics_time: float = 0.0
+        self._autoscaling_metrics_fetch_interval_s: float = (
+            RAY_SERVE_METRICS_FETCH_INTERVAL_MS / 1000
+        )
+        self._autoscaling_metrics_timeout_s: float = (
+            RAY_SERVE_METRICS_FETCH_TIMEOUT_MS / 1000
+        )
+
         # Request counter (only set on replica startup).
         self._restart_counter = metrics.Counter(
             "serve_deployment_replica_starts",
@@ -285,10 +302,11 @@ class ReplicaMetricsManager:
                 self._push_autoscaling_metrics,
                 self._autoscaling_config.metrics_interval_s,
             )
+
             # Collect autoscaling metrics locally periodically.
             self._metrics_pusher.register_or_update_task(
                 self.RECORD_METRICS_TASK_NAME,
-                self._add_autoscaling_metrics_point,
+                self._add_autoscaling_metrics_point_sync,
                 min(
                     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
                     self._autoscaling_config.metrics_interval_s,
@@ -328,19 +346,141 @@ class ReplicaMetricsManager:
 
     def _push_autoscaling_metrics(self) -> Dict[str, Any]:
         look_back_period = self._autoscaling_config.look_back_period_s
+        window_start = time.time() - look_back_period
+        self._metrics_store.prune_keys_and_compact_data(window_start)
+
         self._controller_handle.record_autoscaling_metrics.remote(
             replica_id=self._replica_id,
             window_avg=self._metrics_store.window_average(
-                self._replica_id, time.time() - look_back_period
+                self._replica_id, window_start
             ),
+            metrics=self._metrics_store.data,
             send_timestamp=time.time(),
         )
 
-    def _add_autoscaling_metrics_point(self) -> None:
-        self._metrics_store.add_metrics_point(
-            {self._replica_id: self._num_ongoing_requests},
-            time.time(),
+    def _should_record_autoscaling_metrics(self) -> bool:
+        """Determines if a new record autoscaling metrics should be kicked off. If it has been longer than autoscaling_metrics_period_s since the previous record autoscaling metrics was called."""
+        # Add randomn delay to avoid overloading metrics_source with spike of requests
+        time_since_last = time.time() - self._last_record_autoscaling_metrics_time
+        randomized_period = self._autoscaling_metrics_fetch_interval_s * random.uniform(
+            0.9, 1.1
         )
+        return time_since_last > randomized_period
+
+    async def get_autoscaling_metrics(
+        self,
+        prometheus_metrics: Optional[List[Tuple[str, Optional[str]]]],
+        user_defined_metrics: Optional[List[Tuple[str, Callable]]],
+    ) -> Dict[str, Any]:
+        if self._should_record_autoscaling_metrics():
+            self._last_record_autoscaling_metrics_time = time.time()
+
+            if prometheus_metrics:
+                # Query prometheus endpoint using aiohttp
+                prometheus_result = await self._query_prometheus_metrics(
+                    prometheus_metrics
+                )
+                # Merge the prometheus results with existing metrics
+                self._autoscaling_metrics.update(prometheus_result)
+            if user_defined_metrics:
+                # TODO: user-defined metrics
+                pass
+
+        return self._autoscaling_metrics
+
+    async def _query_prometheus_metrics(
+        self, prometheus_metrics: List[Tuple[str, Optional[str]]]
+    ) -> Dict[str, Any]:
+        """
+        Query the prometheus endpoint for metrics, given a list of (metric_name, optional[promql_expression]) tuples.
+        When promql_expression is not specified for the metric_name, defaults to fetch the last logged metric value.
+        """
+
+        metrics_result = {}
+        logger.info(
+            f"Querying prometheus metrics {prometheus_metrics}",
+            extra={"log_to_stderr": False},
+        )
+
+        async def fetch_metric(session, metric_name, promql_expression):
+            try:
+                if not promql_expression:
+                    promql_expression = metric_name
+
+                query_params = urllib.parse.urlencode({"query": promql_expression})
+                logger.debug(
+                    f"Sending query to prometheus {RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST}/api/v1/query?{query_params} metric_name {metric_name} promql_expression {promql_expression}"
+                )
+                url = f"{RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST}/api/v1/query?{query_params}"
+
+                timeout = aiohttp.ClientTimeout(
+                    total=self._autoscaling_metrics_timeout_s
+                )
+                async with session.get(url, timeout=timeout) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data.get("status") == "success" and data.get("data", {}).get(
+                            "result"
+                        ):
+                            result = data["data"]["result"][0]
+                            if "value" in result and len(result["value"]) >= 2:
+                                return metric_name, float(result["value"][1])
+                        return metric_name, 0.0
+                    else:
+                        # Other HTTP errors
+                        logger.error(
+                            f"Failed to query prometheus for metric {metric_name}: HTTP {response.status}"
+                        )
+                        return metric_name, 0.0
+            except Exception as e:
+                logger.error(f"Error querying prometheus for metric {metric_name}: {e}")
+                return metric_name, 0.0
+
+        async with aiohttp.ClientSession() as session:
+            # Create a list of tasks for all metrics
+            tasks = [
+                fetch_metric(session, metric_name, promql_expression)
+                for metric_name, promql_expression in prometheus_metrics
+            ]
+            # Run all tasks concurrently
+            results = await asyncio.gather(*tasks)
+
+            # Update metrics_result with all results
+            metrics_result.update(dict(results))
+
+        return metrics_result
+
+    async def _add_autoscaling_metrics_point(self) -> None:
+        """Add autoscaling metrics point using periodic fetching mechanism."""
+
+        prometheus_metrics = self._autoscaling_config.prometheus_custom_metrics
+        user_defined_metrics = self._autoscaling_config.user_defined_metrics
+
+        # Get the prometheus metrics from using the periodic fetching mechanism
+        if prometheus_metrics or user_defined_metrics:
+            metrics_results = await self.get_autoscaling_metrics(
+                prometheus_metrics, user_defined_metrics
+            )
+        else:
+            metrics_results = {}
+
+        # Merge the ongoing_requests metrics with autoscaling metrics
+        all_metrics = {
+            **{self._replica_id: self._num_ongoing_requests},
+            **metrics_results,
+        }
+
+        # Add the collected metrics to the metrics store
+        self._metrics_store.add_metrics_point(all_metrics, time.time())
+
+    def _add_autoscaling_metrics_point_sync(self):
+        """Synchronous wrapper for _add_autoscaling_metrics_point.
+
+        This method is used by the MetricsPusher which expects a synchronous callable.
+        It creates a task to run the async method in the event loop.
+        """
+        # Create a task to run the async method in the event loop
+        asyncio.create_task(self._add_autoscaling_metrics_point())
 
 
 StatusCodeCallback = Callable[[str], None]
@@ -1064,6 +1204,9 @@ class ReplicaActor:
 
     async def record_routing_stats(self) -> Dict[str, Any]:
         return await self._replica_impl.record_routing_stats()
+
+    async def record_autoscaling_metrics(self) -> Dict[str, Any]:
+        return await self._replica_impl.record_autoscaling_metrics()
 
     async def reconfigure(
         self, deployment_config, rank: int, route_prefix: Optional[str] = None
