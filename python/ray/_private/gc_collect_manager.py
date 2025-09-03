@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 
 class PythonGCThread(threading.Thread):
     """A background thread that triggers Python garbage collection.
+
     This thread waits for GC events from CoreWorker and triggers `gc.collect()` when
     requested, ensuring that collections are spaced out by at least
     `min_interval` seconds."""
