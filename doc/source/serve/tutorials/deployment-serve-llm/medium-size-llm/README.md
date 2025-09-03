@@ -10,15 +10,15 @@ jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
 
 # Deploying a medium size LLM
 
-A medium size LLM typically runs on a single node with 4-8 GPUs. It offers a balance between performance and efficiency. These models provide stronger accuracy and reasoning than small models while remaining more affordable and resource-friendly than very large ones. This makes them a solid choice for production workloads that need good quality at lower cost. They're also ideal for scaling applications where large models would be too slow or expensive.
+A medium LLM typically runs on a single node with 4-8 GPUs. It offers a balance between performance and efficiency. These models provide stronger accuracy and reasoning than small models while remaining more affordable and resource-friendly than very large ones. This makes them a solid choice for production workloads that need good quality at lower cost. They're also ideal for scaling applications where large models would be too slow or expensive.
 
-This tutorial deploys a medium size LLM using Ray Serve LLM. For smaller models, see [Deploying a small size LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/small-size-llm/README.html), and for larger models, see [Deploying a large size LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/large-size-llm/README.html).
+This tutorial deploys a medium-sized LLM using Ray Serve LLM. For smaller models, see [Deploying a small-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/small-size-llm/README.html), and for larger models, see [Deploying a large-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/large-size-llm/README.html).
 
 ---
 
 ## Configure Ray Serve LLM
 
-You can deploy a medium sized LLM on a single node with multiple GPUs. To leverage all available GPUs, set `tensor_parallel_size` to the number of GPUs on the node, which distributes the model’s weights evenly across them.
+You can deploy a medium-sized LLM on a single node with multiple GPUs. To leverage all available GPUs, set `tensor_parallel_size` to the number of GPUs on the node, which distributes the model’s weights evenly across them.
 
 Ray Serve LLM provides multiple [Python APIs](https://docs.ray.io/en/latest/serve/api/index.html#llm-api) for defining your application. Use [`build_openai_app`](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.llm.build_openai_app.html#ray.serve.llm.build_openai_app) to build a full application from your [`LLMConfig`](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.llm.LLMConfig.html#ray.serve.llm.LLMConfig) object.
 
@@ -43,7 +43,7 @@ llm_config = LLMConfig(
         )
     ),
     ### If your model is not gated, you can skip `hf_token`
-    # Share your Hugging Face Token to the vllm engine so it can access the gated Llama 3
+    # Share your Hugging Face token with the vllm engine so it can access the gated Llama 3.
     # Type `export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>` in a terminal
     runtime_env=dict(
         env_vars={
@@ -60,7 +60,7 @@ llm_config = LLMConfig(
 app = build_openai_app({"llm_configs": [llm_config]})
 ```
 
-**Note:** Before moving to a production setup, migrate to using a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html) to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. See [Serving LLMs: Production Guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.
+**Note:** Before moving to a production setup, migrate to using a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html) to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. See [Serving LLMs: production guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.
 
 ---
 
@@ -71,7 +71,7 @@ app = build_openai_app({"llm_configs": [llm_config]})
 * Access to GPU compute.
 * (Optional) A **Hugging Face token** if using gated models like Meta’s Llama. Store it in `export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>`.
 
-**Note: **Depending on the organization, you can usually request access on the model's Hugging Face page. For example, Meta’s Llama models approval can take anywhere from a few hours to several weeks.
+**Note: **Depending on the organization, you can usually request access on the model's Hugging Face page. For example, Meta’s Llama model approval can take anywhere from a few hours to several weeks.
 
 **Dependencies:**  
 ```bash
@@ -155,17 +155,17 @@ serve shutdown -y
 
 ---
 
-## Deploy to production with Anyscale Services
+## Deploy to production with Anyscale services
 
-For production deployment, use Anyscale Services to deploy the Ray Serve app to a dedicated cluster without modifying the code. Anyscale ensures scalability, fault tolerance, and load balancing, keeping the service resilient against node failures, high traffic, and rolling updates.
+For production deployment, use Anyscale services to deploy the Ray Serve app to a dedicated cluster without modifying the code. Anyscale ensures scalability, fault tolerance, and load balancing, keeping the service resilient against node failures, high traffic, and rolling updates.
 
 ---
 
 ### Launch the service
 
-Anyscale provides out-of-the-box images (`anyscale/ray-llm`) which come pre-loaded with Ray Serve LLM, vLLM, and all required GPU/runtime dependencies. This makes it easy to get started without building a custom image.
+Anyscale provides out-of-the-box images (`anyscale/ray-llm`), which come pre-loaded with Ray Serve LLM, vLLM, and all required GPU/runtime dependencies. This makes it easy to get started without building a custom image.
 
-Create your Anyscale Service configuration in a new `service.yaml` file:
+Create your Anyscale service configuration in a new `service.yaml` file:
 ```yaml
 #service.yaml
 name: deploy-llama-3-70b
@@ -179,7 +179,7 @@ applications:
 - import_path: serve_llama_3_1_70b:app
 ```
 
-Deploy your Service. Make sure you forward your HuggingFace Token to the command.
+Deploy your service. Make sure you forward your Hugging Face token to the command.
 
 
 ```bash
@@ -209,22 +209,22 @@ The `anyscale service deploy` command output shows both the endpoint and authent
 ```console
 (anyscale +3.9s) curl -H "Authorization: Bearer <YOUR-TOKEN>" <YOUR-ENDPOINT>
 ```
-You can also retrieve both from the service page in the Anyscale Console. Click the **Query** button at the top. See [Send requests](#send-requests) for example requests, but make sure to use the correct endpoint and authentication token.  
+You can also retrieve both from the service page in the Anyscale console. Click the **Query** button at the top. See [Send requests](#send-requests) for example requests, but make sure to use the correct endpoint and authentication token.  
 
 ---
 
 ### Access the Serve LLM dashboard
 
-See [Enable LLM monitoring](#enable-llm-monitoring) for instructions on enabling LLM-specific logging. To open the Ray Serve LLM Dashboard from an Anyscale Service:
+See [Enable LLM monitoring](#enable-llm-monitoring) for instructions on enabling LLM-specific logging. To open the Ray Serve LLM dashboard from an Anyscale service:
 1. In the Anyscale console, go to your **Service** or **Workspace**
 2. Navigate to the **Metrics** tab
-3. Expand **View in Grafana** and click **Serve LLM Dashboard**
+3. Click **View in Grafana** and click **Serve LLM Dashboard**
 
 ---
 
 ### Shutdown 
  
-Shutdown your Anyscale Service:
+Shutdown your Anyscale service:
 
 
 ```bash
@@ -269,7 +269,7 @@ Example log:
 INFO 08-19 20:57:37 [kv_cache_utils.py:837] Maximum concurrency for 32,768 tokens per request: 13.02x
 ```
 
-Here are a few ways to improve concurrency depending on your model and hardware:  
+The following are a few ways to improve concurrency depending on your model and hardware:  
 
 **Reduce `max_model_len`**  
 Lowering `max_model_len` reduces the memory needed for KV cache.
@@ -278,16 +278,16 @@ Lowering `max_model_len` reduces the memory needed for KV cache.
 * `max_model_len = 32,768` → concurrency ≈ 13
 * `max_model_len = 16,384` → concurrency ≈ 26
 
-**Use Quantized Models**  
+**Use Quantized models**  
 Quantizing your model (for example, to FP8) reduces the model's memory footprint, freeing up memory for more KV cache and enabling more concurrent requests.
 
-**Use Pipeline Parallelism**  
+**Use pipeline parallelism**  
 If a single node isn't enough to handle your workload, consider distributing the model's layers across multiple nodes with `pipeline_parallel_size > 1`.
 
 **Upgrade to GPUs with more memory**  
 Some GPUs provide significantly more room for KV cache and allow for higher concurrency out of the box.
 
-**Scale with more Replicas**  
+**Scale with more replicas**  
 In addition to tuning per-GPU concurrency, you can scale *horizontally* by increasing the number of replicas in your config.  
 Each replica runs on its own GPU, so raising the replica count increases the total number of concurrent requests your service can handle, especially under sustained or bursty traffic.
 ```yaml
@@ -303,7 +303,7 @@ deployment_config:
 
 ## Troubleshooting
 
-**HuggingFace Auth Errors**  
+**Hugging Face auth errors**  
 Some models, such as Llama-3.1, are gated and require prior authorization from the organization. See your model’s documentation for instructions on obtaining access.
 
 **Out-of-memory errors**  
@@ -314,4 +314,4 @@ See this [Troubleshooting Guide](https://docs.anyscale.com/overview) for common 
 
 ## Summary
 
-In this tutorial, you deployed a medium size LLM with Ray Serve LLM, from development to production. You learned how to configure Ray Serve LLM, deploy your service on your Ray cluster, and how to send requests. You also learned how to monitor your app and common troubleshooting issues.
+In this tutorial, you deployed a medium-sized LLM with Ray Serve LLM, from development to production. You learned how to configure Ray Serve LLM, deploy your service on your Ray cluster, and send requests. You also learned how to monitor your app and troubleshoot common issues.
