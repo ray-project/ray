@@ -219,94 +219,91 @@ def test_global_gc_actors(shutdown_only):
         gc.enable()
 
 
-@pytest.mark.timeout(30)
-@pytest.mark.parametrize("support_fork", [True, False])
-def test_long_local_gc(shutdown_only, support_fork):
+def test_local_gc_called_once_per_interval(shutdown_only):
     ray.init(
-        num_cpus=1,
+        num_cpus=2,
         _system_config={
-            "support_fork": support_fork,
             "local_gc_interval_s": 1,
             "local_gc_min_interval_s": 0,
             "global_gc_min_interval_s": 0,
         },
     )
 
-    def busy_wait(seconds: float) -> None:
-        start_time = time.perf_counter()
-        while time.perf_counter() - start_time < seconds:
-            _ = 7 * 13 + 29
+    class ObjectWithCyclicRef:
+        def __init__(self):
+            self.loop = self
 
     @ray.remote(num_cpus=1)
-    class GarbageMaker:
+    class GarbageHolder:
         def __init__(self):
             gc.disable()
+            self.garbage = None
 
-        def produce(self, batch_size: int, busy_wait_seconds: float) -> int:
-            class HeavyFinalizer:
-                def __del__(self):
-                    busy_wait(busy_wait_seconds)
+        def make_garbage(self):
+            x = ObjectWithCyclicRef()
+            self.garbage = weakref.ref(x)
+            return True
 
-            junk_objects = []
-            for _ in range(batch_size):
-                object_a, object_b = HeavyFinalizer(), HeavyFinalizer()
-                object_a.peer = object_b
-                object_b.peer = object_a
-                junk_objects.append((object_a, object_b))
+        def has_garbage(self):
+            return self.garbage() is not None
 
-            junk_objects = None
-            print(
-                f"[produce] produced {batch_size} objects with busy_wait={busy_wait_seconds}s"
+
+    def all_garbage_collected(local_ref):
+        return local_ref() is None and not any(
+            ray.get([a.has_garbage.remote() for a in actors])
+        )
+
+    try:
+        gc.disable()
+
+        # -------- Round 1: first batch of garbage should be collected --------
+        # Local driver.
+        local_ref = weakref.ref(ObjectWithCyclicRef())
+        # Remote workers.
+        actors = [GarbageHolder.remote() for _ in range(2)]
+        ray.get([a.make_garbage.remote() for a in actors])
+
+        assert local_ref() is not None
+        assert all(ray.get([a.has_garbage.remote() for a in actors]))
+
+        wait_for_condition(
+            lambda: all_garbage_collected(local_ref),
+        )
+
+        # -------- Round 2: second batch should NOT be collected within 2s --------
+        local_ref = weakref.ref(ObjectWithCyclicRef())
+        ray.get([a.make_garbage.remote() for a in actors])
+
+        with pytest.raises(RuntimeError):
+            wait_for_condition(
+                lambda: all_garbage_collected(local_ref),
+                timeout=2.0,   # shorter than min_interval
+                retry_interval_ms=50,
             )
-            return 1
 
-        def ping(self) -> int:
-            return 1
+        # -------- Round 3: after min_interval passes, garbage should be collected --------
+        wait_for_condition(
+            lambda: all_garbage_collected(local_ref),
+            timeout=10.0,
+            retry_interval_ms=50,
+        )
 
-    actor = GarbageMaker.remote()
-    busy_wait_seconds = 1.0
-    batch_size = 100
-    ray.get(actor.produce.remote(batch_size, busy_wait_seconds))
-
-    observation_seconds = 10
-    deadline = time.time() + observation_seconds
-    success_count = 0
-    timeout_count = 0
-
-    while time.time() < deadline:
-        try:
-            ray.get(actor.ping.remote(), timeout=1)
-            success_count += 1
-            print("[ping] success")
-        except ray.exceptions.GetTimeoutError:
-            timeout_count += 1
-            print("[ping] timeout")
-        time.sleep(1)
-
-    ray.shutdown()
-
-    print(f"[summary] success_count={success_count}, timeout_count={timeout_count}")
-    if not support_fork:
-        assert (
-            timeout_count == 0
-        ), "Some ping() calls timed out, indicating that local GC blocked the worker."
-    else:
-        assert (
-            timeout_count > 0
-        ), "All ping() calls succeeded, indicating that local GC did not block the worker as expected."
+    finally:
+        gc.enable()
 
 
 def test_gc_manager_thread_basic_functionality():
     mock_gc_collect = Mock(return_value=10)
 
-    gc_thread = PythonGCThread(min_interval=1, gc_collect_func=mock_gc_collect)
+    gc_thread = PythonGCThread(min_interval_s=1, gc_collect_func=mock_gc_collect)
 
     try:
         gc_thread.start()
         assert gc_thread.is_alive()
 
         gc_thread.trigger_gc()
-        time.sleep(0.1)
+
+        wait_for_condition(lambda: mock_gc_collect.call_count == 1, timeout=2)
 
         mock_gc_collect.assert_called_once()
 
@@ -318,18 +315,18 @@ def test_gc_manager_thread_basic_functionality():
 def test_gc_manager_thread_min_interval_throttling():
     mock_gc_collect = Mock(return_value=5)
 
-    gc_thread = PythonGCThread(min_interval=1, gc_collect_func=mock_gc_collect)
+    gc_thread = PythonGCThread(min_interval_s=2, gc_collect_func=mock_gc_collect)
 
     try:
         gc_thread.start()
 
         for _ in range(3):
             gc_thread.trigger_gc()
-            time.sleep(0.1)
+            time.sleep(1)
 
-        time.sleep(0.5)
+        wait_for_condition(lambda: mock_gc_collect.call_count == 2, timeout=2)
 
-        assert mock_gc_collect.call_count == 1
+        assert mock_gc_collect.call_count == 2
 
     finally:
         gc_thread.stop()
@@ -338,7 +335,7 @@ def test_gc_manager_thread_min_interval_throttling():
 def test_gc_manager_thread_exception_handling():
     mock_gc_collect = Mock(side_effect=RuntimeError("GC failed"))
 
-    gc_thread = PythonGCThread(min_interval=1, gc_collect_func=mock_gc_collect)
+    gc_thread = PythonGCThread(min_interval_s=5, gc_collect_func=mock_gc_collect)
 
     try:
         gc_thread.start()

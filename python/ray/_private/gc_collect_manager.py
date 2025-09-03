@@ -12,7 +12,7 @@ class PythonGCThread(threading.Thread):
 
     This thread waits for GC events from CoreWorker and triggers `gc.collect()` when
     requested, ensuring that collections are spaced out by at least
-    `min_interval` seconds."""
+    `min_interval_s` seconds."""
 
     def __init__(
         self, *, min_interval_s: int = 5, gc_collect_func: Optional[Callable] = None
@@ -21,7 +21,7 @@ class PythonGCThread(threading.Thread):
         super().__init__(name="PythonGCThread", daemon=True)
         self._should_exit = False
         self._last_gc_time = float("-inf")
-        self._min_gc_interval = min_interval
+        self._min_gc_interval = min_interval_s
         self._gc_event = threading.Event()
         # Set the gc_collect_func for UT, defaulting to gc.collect if None
         self._gc_collect_func = gc_collect_func or gc.collect
@@ -30,11 +30,11 @@ class PythonGCThread(threading.Thread):
         self._gc_event.set()
 
     def run(self):
-        while self._running:
+        while not self._should_exit:
             self._gc_event.wait()
             self._gc_event.clear()
 
-            if not self._running:
+            if self._should_exit:
                 break
 
             time_since_last_gc = time.perf_counter() - self._last_gc_time
@@ -60,6 +60,6 @@ class PythonGCThread(threading.Thread):
 
     def stop(self):
         logger.debug("Stopping Python GC thread")
-        self._running = False
+        self._should_exit = True
         self._gc_event.set()
         self.join()
