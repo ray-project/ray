@@ -55,8 +55,8 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     }
     gcs_table_storage_ =
         std::make_unique<GcsTableStorage>(std::make_unique<InMemoryStoreClient>());
-    gcs_publisher_ =
-        std::make_shared<GcsPublisher>(std::make_unique<ray::pubsub::MockPublisher>());
+    gcs_publisher_ = std::make_shared<pubsub::GcsPublisher>(
+        std::make_unique<ray::pubsub::MockPublisher>());
     auto local_node_id = NodeID::FromRandom();
     cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
         io_service_,
@@ -300,7 +300,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
       ABSL_GUARDED_BY(placement_group_requests_mutex_);
   std::vector<std::shared_ptr<GcsPlacementGroup>> failure_placement_groups_
       ABSL_GUARDED_BY(placement_group_requests_mutex_);
-  std::shared_ptr<GcsPublisher> gcs_publisher_;
+  std::shared_ptr<pubsub::GcsPublisher> gcs_publisher_;
   std::shared_ptr<GcsTableStorage> gcs_table_storage_;
   std::unique_ptr<rpc::RayletClientPool> raylet_client_pool_;
   std::shared_ptr<CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>> counter_;

@@ -48,7 +48,7 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
         [raylet_client = std::move(raylet_client)](const rpc::Address &) {
           return raylet_client;
         });
-    gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(
+    gcs_publisher_ = std::make_unique<pubsub::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
     gcs_table_storage_ = std::make_unique<gcs::GcsTableStorage>(
         std::make_unique<gcs::InMemoryStoreClient>());
@@ -78,7 +78,7 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
  protected:
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::unique_ptr<rpc::RayletClientPool> client_pool_;
-  std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
+  std::shared_ptr<pubsub::GcsPublisher> gcs_publisher_;
   instrumented_io_context io_service_;
   std::string log_dir_;
 };
