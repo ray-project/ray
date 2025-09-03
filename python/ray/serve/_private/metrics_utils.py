@@ -343,10 +343,10 @@ def _merge_two_timeseries(
     if not t1 and not t2:
         return []
 
-    # Align windows so each output timestamp sits at the center of its window.
+    # Align windows so each output timestamp sits at the start of its window.
     # start is snapped to window_s boundary for binning stability
     earliest = min(x[0].timestamp for x in (t1, t2) if x)
-    start = earliest // window_s * window_s - (window_s / 2.0)
+    start = earliest // window_s * window_s
 
     b1 = _bucket_latest_by_window(t1, start, window_s)
     b2 = _bucket_latest_by_window(t2, start, window_s)
@@ -356,8 +356,8 @@ def _merge_two_timeseries(
     merged: List[TimeStampedValue] = []
     for w in windows:
         v = b1.get(w, 0.0) + b2.get(w, 0.0)
-        ts_center = start + w * window_s + (window_s / 2.0)
-        merged.append(TimeStampedValue(timestamp=ts_center, value=v))
+        ts_start = start + w * window_s
+        merged.append(TimeStampedValue(timestamp=ts_start, value=v))
     return merged
 
 

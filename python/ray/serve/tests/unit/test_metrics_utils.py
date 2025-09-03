@@ -251,20 +251,27 @@ class TestInMemoryMetricsStore:
 
         merged = merge_timeseries_dicts(s1.data, s2.data, s3.data, s4.data, window_s=2)
 
+        # With window_s=2 and window start alignment:
+        # Window boundaries: [0,2), [2,4), etc.
+        # timestamp=0 (s4) and timestamp=1 (s1) -> window 0
+        # timestamp=2 (s2, s3) -> window 1
         assert_timeseries_equal(
             merged["m1"],
-            [TimeStampedValue(0, 100), TimeStampedValue(2, 3)],
+            [TimeStampedValue(0, 101), TimeStampedValue(2, 2)],  # 100+1=101, then 2
         )
         assert_timeseries_equal(
             merged["m2"],
-            [TimeStampedValue(0, 100), TimeStampedValue(2, 14)],
+            [
+                TimeStampedValue(0, 102),
+                TimeStampedValue(2, 12),
+            ],  # 100+2=102, then 2+10=12
         )
         assert_timeseries_equal(
-            merged["m3"], [TimeStampedValue(0, 100), TimeStampedValue(2, 3)]
+            merged["m3"], [TimeStampedValue(0, 103)]  # 100+3=103, no data in window 1
         )
         assert_timeseries_equal(
             merged[QUEUED_REQUESTS_KEY],
-            [TimeStampedValue(0, 10), TimeStampedValue(2, 12)],
+            [TimeStampedValue(0, 11), TimeStampedValue(2, 11)],  # 10+1=11, then 1+10=11
         )
 
         s1_s2 = merge_timeseries_dicts(s1.data, s2.data, window_s=1)
@@ -367,17 +374,14 @@ class TestInMemoryMetricsStore:
         result = _merge_two_timeseries(t1, t2, window_s=1.0)
 
         # With window_s=1.0 and earliest=1.0:
-        # start = 1.0 // 1.0 * 1.0 - 0.5 = 0.5
-        # Window boundaries are [0.5, 1.5), [1.5, 2.5), etc.
-        # t1: 1.0->window 0, 1.5->window 1
-        # t2: 1.3->window 0, 1.8->window 1
-        # So we get 2 windows, not 1
-        assert len(result) == 2
+        # start = 1.0 // 1.0 * 1.0 = 1.0
+        # Window boundaries are [1.0, 2.0), [2.0, 3.0), etc.
+        # All values (1.0, 1.3, 1.5, 1.8) fall in window [1.0, 2.0)
+        # So we get 1 window
+        assert len(result) == 1
 
-        # Window 0: latest from t1 is 10.0, latest from t2 is 13.0, sum: 23.0
-        # Window 1: latest from t1 is 15.0, latest from t2 is 18.0, sum: 33.0
-        assert result[0].value == 23.0  # Window 0
-        assert result[1].value == 33.0  # Window 1
+        # Window 0: latest from t1 is 15.0 (1.5 > 1.0), latest from t2 is 18.0 (1.8 > 1.3), sum: 33.0
+        assert result[0].value == 33.0
 
     def test_merge_two_timeseries_zero_window(self):
         """Test _merge_two_timeseries with zero window size."""
@@ -458,7 +462,10 @@ class TestInMemoryMetricsStore:
         data["key1"] = [TimeStampedValue(1.0, 10.0)]
 
         result = merge_timeseries_dicts(data, window_s=1.0)
-        assert result == data  # Should return the same object
+        # With windowing applied, the result should have the same values but potentially different timestamps
+        expected = defaultdict(list)
+        expected["key1"] = [TimeStampedValue(1.0, 10.0)]  # Window [1,2) starts at 1.0
+        assert_timeseries_equal(result["key1"], expected["key1"])
 
     def test_merge_timeseries_dicts_no_common_keys(self):
         """Test merge_timeseries_dicts with dictionaries having no common keys."""
@@ -546,12 +553,15 @@ class TestInMemoryMetricsStore:
 
         result = merge_timeseries_dicts(d1, window_s=2.0)
 
-        assert len(result["key1"]) == 4
+        # With window_s=2.0 and window start alignment:
+        # Window [0,2): timestamps 0.0, 1.0 -> latest value 15.0 at window start 0.0
+        # Window [2,4): timestamp 2.0 -> value 20.0 at window start 2.0
+        # Window [4,6): timestamps 4.0, 5.0 -> latest value 40.0 at window start 4.0
+        assert len(result["key1"]) == 3
         expected = [
-            TimeStampedValue(timestamp=0.0, value=10.0),
-            TimeStampedValue(timestamp=2.0, value=20.0),
-            TimeStampedValue(timestamp=4.0, value=30.0),
-            TimeStampedValue(timestamp=6.0, value=40.0),
+            TimeStampedValue(timestamp=0.0, value=15.0),  # Latest in window [0,2)
+            TimeStampedValue(timestamp=2.0, value=20.0),  # Value in window [2,4)
+            TimeStampedValue(timestamp=4.0, value=40.0),  # Latest in window [4,6)
         ]
         assert_timeseries_equal(result["key1"], expected)
 
