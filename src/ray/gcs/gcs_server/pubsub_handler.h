@@ -19,7 +19,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/gcs/gcs_server/grpc_service_interfaces.h"
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
+#include "ray/pubsub/gcs_publisher.h"
 
 namespace ray {
 namespace gcs {
@@ -30,7 +30,7 @@ namespace gcs {
 class InternalPubSubHandler : public rpc::InternalPubSubGcsServiceHandler {
  public:
   InternalPubSubHandler(instrumented_io_context &io_service,
-                        gcs::GcsPublisher &gcs_publisher);
+                        pubsub::GcsPublisher &gcs_publisher);
 
   void HandleGcsPublish(rpc::GcsPublishRequest request,
                         rpc::GcsPublishReply *reply,
@@ -44,10 +44,6 @@ class InternalPubSubHandler : public rpc::InternalPubSubGcsServiceHandler {
                                        rpc::GcsSubscriberCommandBatchReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) final;
 
-  void HandleGcsUnregisterSubscriber(rpc::GcsUnregisterSubscriberRequest request,
-                                     rpc::GcsUnregisterSubscriberReply *reply,
-                                     rpc::SendReplyCallback send_reply_callback) final;
-
   /// This function is only for external callers. Internally, can just erase from
   /// sender_to_subscribers_ and everything should be on the Publisher's io_service_.
   void AsyncRemoveSubscriberFrom(const std::string &sender_id);
@@ -55,7 +51,7 @@ class InternalPubSubHandler : public rpc::InternalPubSubGcsServiceHandler {
  private:
   /// Not owning the io service, to allow sharing it with pubsub::Publisher.
   instrumented_io_context &io_service_;
-  gcs::GcsPublisher &gcs_publisher_;
+  pubsub::GcsPublisher &gcs_publisher_;
   absl::flat_hash_map<std::string, absl::flat_hash_set<UniqueID>> sender_to_subscribers_;
 };
 

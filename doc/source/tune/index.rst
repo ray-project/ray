@@ -31,7 +31,7 @@ Tune further integrates with a wide range of additional hyperparameter optimizat
 
         In this quick-start example you `minimize` a simple function of the form ``f(x) = a**2 + b``, our `objective` function.
         The closer ``a`` is to zero and the smaller ``b`` is, the smaller the total value of ``f(x)``.
-        We will define a so-called `search space` for  ``a`` and ``b`` and let Ray Tune explore the space for good values.
+        We will define a so-called `search space` for ``a`` and ``b`` and let Ray Tune explore the space for good values.
 
         .. callout::
 
@@ -261,7 +261,7 @@ Feel free to submit a pull-request adding (or requesting a removal!) of a listed
 
 - `Softlearning <https://github.com/rail-berkeley/softlearning>`_: Softlearning is a reinforcement learning framework for training maximum entropy policies in continuous domains. Includes the official implementation of the Soft Actor-Critic algorithm.
 - `Flambe <https://github.com/asappresearch/flambe>`_: An ML framework to accelerate research and its path to production. See `flambe.ai <https://flambe.ai>`_.
-- `Population Based Augmentation <https://github.com/arcelien/pba>`_: Population Based Augmentation (PBA) is a algorithm that quickly and efficiently learns data augmentation functions for neural network training. PBA matches state-of-the-art results on CIFAR with one thousand times less compute.
+- `Population Based Augmentation <https://github.com/arcelien/pba>`_: Population Based Augmentation (PBA) is an algorithm that quickly and efficiently learns data augmentation functions for neural network training. PBA matches state-of-the-art results on CIFAR with one thousand times less compute.
 - `Fast AutoAugment by Kakao <https://github.com/kakaobrain/fast-autoaugment>`_: Fast AutoAugment (Accepted at NeurIPS 2019) learns augmentation policies using a more efficient search strategy based on density matching.
 - `Allentune <https://github.com/allenai/allentune>`_: Hyperparameter Search for AllenNLP from AllenAI.
 - `machinable <https://github.com/frthjf/machinable>`_: A modular configuration system for machine learning research. See `machinable.org <https://machinable.org>`_.

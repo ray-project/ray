@@ -1,10 +1,12 @@
+import unittest
+
+import yaml
+
 from ray.autoscaler._private.providers import (
+    _DEFAULT_CONFIGS,
     _NODE_PROVIDERS,
     _PROVIDER_PRETTY_NAMES,
-    _DEFAULT_CONFIGS,
 )
-import unittest
-import yaml
 
 
 class TestProviders(unittest.TestCase):
