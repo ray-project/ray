@@ -7,7 +7,7 @@ import pyarrow as pa
 from ray.air.util.tensor_extensions.arrow import (
     _infer_pyarrow_type,
 )
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 PYARROW_TYPE_DEFINITIONS: Dict[str, Tuple[callable, str]] = {
     "int8": (pa.int8, "an 8-bit signed integer"),
@@ -26,6 +26,7 @@ PYARROW_TYPE_DEFINITIONS: Dict[str, Tuple[callable, str]] = {
 }
 
 
+@DeveloperAPI
 def factory_methods(cls: type):
     """Metaprogramming: Class decorator to generate factory methods for PyArrow types using from_arrow.
 
