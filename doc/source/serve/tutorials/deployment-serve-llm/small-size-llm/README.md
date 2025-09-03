@@ -4,10 +4,10 @@ orphan: true
 
 # Deploy a small size LLM
 
-A small size LLM runs on a single node with 1–2 GPUs, making it fast, inexpensive, and simple to use. It’s ideal for prototyping, lightweight applications, latency-critical use cases, cost-sensitive deployments, and environments with limited resources where efficiency matters more than peak accuracy.
+A small LLM runs on a single node with 1–2 GPUs, making it fast, inexpensive, and simple to use. It’s ideal for prototyping, lightweight applications, latency-critical use cases, cost-sensitive deployments, and environments with limited resources where efficiency matters more than peak accuracy.
 
 
-For larger models, see [Deploying a medium size LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html) or [Deploying a large size LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/large-size-llm/README.html).
+For larger models, see [Deploying a medium-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html) or [Deploying a large-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/large-size-llm/README.html).
 
 ---
 
@@ -36,8 +36,8 @@ llm_config = LLMConfig(
             max_replicas=2,
         )
     ),
-    ### If your model is not gated, you can skip `hf_token`
-    # Share your Hugging Face Token to the vllm engine so it can access the gated Llama 3
+    ### If your model isn't gated, you can skip `hf_token`
+    # Share your Hugging Face token with the vllm engine so it can access the gated Llama 3
     # Type `export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>` in a terminal
     runtime_env=dict(
         env_vars={

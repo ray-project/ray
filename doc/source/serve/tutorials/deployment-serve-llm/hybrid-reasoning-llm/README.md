@@ -12,9 +12,9 @@ This tutorial deploys a hybrid reasoning LLM using Ray Serve LLM.
 
 ## Distinction with purely reasoning models
 
-*Hybrid reasoning models* are reasoning-capable models that allow you to toggle the thinking process on and off. You can enable structured, step-by-step reasoning when needed but skip it for simpler queries to reduce latency. Purely reasoning models always apply their reasoning behavior, while hybrid models give you fine-grained control over when that reasoning is used.
+*Hybrid reasoning models* are reasoning-capable models that allow you to toggle the thinking process on and off. You can enable structured, step-by-step reasoning when needed but skip it for simpler queries to reduce latency. Purely reasoning models always apply their reasoning behavior, while hybrid models give you fine-grained control over when to use reasoning.
 <!-- vale Google.Acronyms = NO -->
-| **Mode**         | **Core Behavior**                            | **Use Case Examples**                                               | **Limitation**                                    |
+| **Mode**         | **Core behavior**                            | **Use case examples**                                               | **Limitation**                                    |
 | ---------------- | -------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------- |
 | **Thinking ON**  | Explicit multi-step thinking process | Math, coding, logic puzzles, multi-hop QA, CoT prompting | Slower response time, more tokens used.      |
 | **Thinking OFF** | Direct answer generation                   | Casual queries, short instructions, single-step answers              | May struggle with complex reasoning or interpretability. |
@@ -49,7 +49,7 @@ Some hybrid reasoning models let you toggle their "thinking" mode on or off. Thi
 
 ### How to enable or disable thinking mode
 
-Toggle thinking mode varies by model and framework. Check the model's documentation to see how thinking is structured and controlled.
+Toggle thinking mode varies by model and framework. Consult the documentation for the model to see how it structures and controls thinking.
 
 For example, to [control reasoning in Qwen-3](https://huggingface.co/Qwen/Qwen3-32B#switching-between-thinking-and-non-thinking-mode), you can:
 * Add `"/think"` or `"/no_think"` in the prompt.
@@ -62,9 +62,9 @@ See [Send request with thinking enabled](#send-request-with-thinking-enabled) or
 
 ## Parse reasoning outputs
 
-In thinking mode, hybrid models often separate *reasoning* from the *final answer* using tags like `<think>...</think>`. Without a proper parser, this reasoning may end up in the `content` field instead of the dedicated `reasoning_content` field.  
+In thinking mode, hybrid models often separate _reasoning_ from the _final answer_ using tags like `<think>...</think>`. Without a proper parser, this reasoning may end up in the `content` field instead of the dedicated `reasoning_content` field.  
 
-To ensure the reasoning output is correctly parsed, configure a `reasoning_parser` in your Ray Serve LLM deployment. This tells vLLM how to isolate the model’s thought process from the rest of the output.
+To ensure that Ray Serve LLM correctly parses the reasoning output, configure a `reasoning_parser` in your Ray Serve LLM deployment. This tells vLLM how to isolate the model’s thought process from the rest of the output.
 **Note:** For example, *Qwen-3* uses the `qwen3` parser. See the [vLLM docs](https://docs.vllm.ai/en/stable/features/reasoning_outputs.html#supported-models) or your model's documentation to find a supported parser, or [build your own](https://docs.vllm.ai/en/stable/features/reasoning_outputs.html#how-to-support-a-new-reasoning-model) if needed.
 
 ```yaml
@@ -83,7 +83,7 @@ applications:
 
 See [Configure Ray Serve LLM](#configure-ray-serve-llm) for a complete example.
 
-**Example Response**  
+**Example response**  
 When using a reasoning parser, the response is typically structured like this:
 
 ```python
@@ -130,7 +130,7 @@ llm_config = LLMConfig(
             min_replicas=1, max_replicas=2,
         )
     ),
-    ### Uncomment if your model is gated and needs your Hugging Face token to access it
+    ### Uncomment if your model is gated and needs your Hugging Face token to access it.
     #runtime_env=dict(
     #    env_vars={
     #        "HF_TOKEN": os.environ.get("HF_TOKEN")
@@ -145,7 +145,7 @@ llm_config = LLMConfig(
 app = build_openai_app({"llm_configs": [llm_config]})
 ```
 
-**Note:** Before moving to a production setup, migrate to using a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html) to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. See [Serving LLMs: Production Guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.
+**Note:** Before moving to a production setup, migrate your settings to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html) to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. See [Serving LLMs: Production Guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.
 
 ---
 
@@ -252,7 +252,7 @@ curl -X POST http://localhost:8000/v1/chat/completions \
       }'
 ```
 
- Example Python with `enable_thinking: True`
+ Example Python with `enable_thinking: True`:
 
 
 ```python
@@ -295,15 +295,15 @@ serve shutdown -y
 
 ---
 
-## Deploy to production with Anyscale Services
+## Deploy to production with Anyscale services
 
-For production, it's recommended to use Anyscale Services to deploy your Ray Serve app on a dedicated cluster without code changes. Anyscale provides scalability, fault tolerance, and load balancing, ensuring resilience against node failures, high traffic, and rolling updates. See [Deploying a medium size LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html#production-deployment-with-anyscale-service) for an example with a medium size model like the *Qwen-32b* used here.
+For production, it's recommended to use Anyscale services to deploy your Ray Serve app on a dedicated cluster without any code changes. Anyscale provides scalability, fault tolerance, and load balancing, ensuring resilience against node failures, high traffic, and rolling updates. See [Deploying a medium-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html#production-deployment-with-anyscale-service) for an example with a medium-sized model like the *Qwen-32b* from this tutorial.
 
 ---
 
 ## Stream reasoning content
 
-In thinking mode, hybrid reasoning models may take longer to begin generating the main content. You can stream their intermediate reasoning output in the same way as the main content.  
+In thinking mode, hybrid reasoning models may take longer to begin generating the main content. You can stream intermediate reasoning output in the same way as the main content.  
 
 
 ```python
@@ -364,4 +364,4 @@ for chunk in response:
 
 ## Summary
 
-In this tutorial, you deployed a hybrid reasoning LLM with Ray Serve LLM, from development to production. You learned how to configure Ray Serve LLM with the right reasoning parser, deploy your service on your Ray cluster, and how to send requests, and how to parse reasoning outputs in the response.
+In this tutorial, you deployed a hybrid reasoning LLM with Ray Serve LLM, from development to production. You learned how to configure Ray Serve LLM with the right reasoning parser, deploy your service on your Ray cluster, send requests, and parse reasoning outputs in the response.
