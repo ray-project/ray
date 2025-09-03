@@ -1,7 +1,6 @@
 # syntax=docker/dockerfile:1.3-labs
 
-ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build
-FROM $DOCKER_IMAGE_BASE_BUILD
+FROM cr.ray.io/rayproject/forge
 
 ARG DEFAULT_PYTHON_VERSION=3.9
 
@@ -16,7 +15,7 @@ set -euo pipefail
 wget -qO- https://astral.sh/uv/install.sh | sudo env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
 
 # Install Python versions
-uv python install 3.9 3.10 3.11 3.12
+uv python install 3.9 3.10 3.11 3.12 3.13
 
 # Set default Python version
 uv python pin ${DEFAULT_PYTHON_VERSION}
