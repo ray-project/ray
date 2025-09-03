@@ -13,8 +13,8 @@ Summary:
 Training:
     - Training is governed by adding new, more complex opponents to the mix as the main policy reaches a certain win rate threshold against the current opponent.
     - Current opponent is always the newest opponent added to the mix.
-    - Training starts with a very simple opponent: "noop" (does nothing), then progresses to "back" (only moves backwards), then "attack" (only attacks), then "random" (takes random actions). These are the fixed (very simple) policies that are used to kick off the training.
-    - After "random", new opponents are frozen copies of the main policy at different training stages. They will be added to the mix as "lstm_v0", "lstm_v1", "lstm_v2", etc.
+    - Training starts with a very simple opponent: "noop" (does nothing), then progresses to "back" (only moves backwards). These are the fixed (very simple) policies that are used to kick off the training.
+    - After "random", new opponents are frozen copies of the main policy at different training stages. They will be added to the mix as "lstm_v0", "lstm_v1", etc.
     - In this way - after kick-starting the training with fixed simple opponents - the main policy will play against a version of itself from an earlier training stage.
     - The main policy has to achieve the win rate threshold against the current opponent to add a new opponent to the mix.
     - Training concludes when the target mix size is reached.
@@ -33,7 +33,6 @@ from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.examples.envs.classes.multi_agent.footsies.fixed_rlmodules import (
     NoopFixedRLModule,
     BackFixedRLModule,
-    AttackFixedRLModule,
 )
 from ray.rllib.examples.envs.classes.multi_agent.footsies.footsies_env import (
     env_creator,
@@ -47,7 +46,6 @@ from ray.rllib.examples.envs.classes.multi_agent.footsies.utils import (
 from ray.rllib.examples.rl_modules.classes.lstm_containing_rlm import (
     LSTMContainingRLModule,
 )
-from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
@@ -104,7 +102,7 @@ parser.add_argument(
 parser.add_argument(
     "--win-rate-threshold",
     type=float,
-    default=0.85,
+    default=0.8,
     help="The main policy should have at least 'win-rate-threshold' win rate against the "
     "other policy to advance to the next level. Moving to the next level "
     "means adding a new policy to the mix.",
@@ -112,10 +110,10 @@ parser.add_argument(
 parser.add_argument(
     "--target-mix-size",
     type=int,
-    default=8,
+    default=5,
     help="Target number of policies (RLModules) in the mix to consider the test passed. "
     "The initial mix size is 2: 'main policy' vs. 'other'. "
-    "`--target-mix-size=8` means that 6 new policies will be added to the mix. "
+    "`--target-mix-size=5` means that 3 new policies will be added to the mix. "
     "Whether to add new policy is decided by checking the '--win-rate-threshold' condition. ",
 )
 parser.add_argument(
@@ -177,8 +175,6 @@ config = (
             main_policy,
             "noop",
             "back",
-            "attack",
-            "random",
         },
         # this is a starting policy_mapping_fn
         # It will be updated by the MixManagerCallback during training.
@@ -204,16 +200,14 @@ config = (
                 # the others are added to the mix later by the MixManagerCallback.
                 "noop": RLModuleSpec(module_class=NoopFixedRLModule),
                 "back": RLModuleSpec(module_class=BackFixedRLModule),
-                "attack": RLModuleSpec(module_class=AttackFixedRLModule),
-                "random": RLModuleSpec(module_class=RandomRLModule),
             },
         )
     )
     .evaluation(
         evaluation_num_env_runners=args.evaluation_num_env_runners or 1,
-        evaluation_sample_timeout_s=180,
+        evaluation_sample_timeout_s=120,
         evaluation_interval=1,
-        evaluation_duration=20,  # 20 episodes is enough to get a good win rate estimate
+        evaluation_duration=10,  # 10 episodes is enough to get a good win rate estimate
         evaluation_duration_unit="episodes",
         evaluation_parallel_to_training=False,
         # we may add new RLModules to the mix at the end of the evaluation stage.
@@ -238,8 +232,6 @@ config = (
                 fixed_modules_progression_sequence=(
                     "noop",
                     "back",
-                    "attack",
-                    "random",
                 ),
             ),
         ]

@@ -33,7 +33,6 @@ from ray.rllib.utils.test_utils import (
 )
 from ray.tune.registry import register_env
 
-
 parser = add_rllib_example_script_args(
     default_iters=500,
     default_timesteps=5_000_000,
@@ -87,7 +86,7 @@ parser.add_argument(
     default=4,
     help="Target number of policies (RLModules) in the mix to consider the test passed. "
     "The initial mix size is 2: 'main policy' vs. 'other'. "
-    "`--target-mix-size=8` means that 6 new policies will be added to the mix. "
+    "`--target-mix-size=4` means that 2 new policies will be added to the mix. "
     "Whether to add new policy is decided by checking the '--win-rate-threshold' condition. ",
 )
 parser.add_argument(
@@ -136,7 +135,6 @@ config.environment(
     )
 ).evaluation(
     evaluation_num_env_runners=args.evaluation_num_env_runners or 1,
-    evaluation_duration=10,
 ).callbacks(
     [
         functools.partial(

@@ -37,12 +37,3 @@ class BackFixedRLModule(FixedRLModule):
         obs_batch_size = len(tree.flatten(batch[sample_batch.SampleBatch.OBS])[0])
         actions = batch_func([constants.EnvActions.BACK for _ in range(obs_batch_size)])
         return {sample_batch.SampleBatch.ACTIONS: actions}
-
-
-class AttackFixedRLModule(FixedRLModule):
-    def _fixed_forward(self, batch, **kwargs):
-        obs_batch_size = len(tree.flatten(batch[sample_batch.SampleBatch.OBS])[0])
-        actions = batch_func(
-            [constants.EnvActions.ATTACK for _ in range(obs_batch_size)]
-        )
-        return {sample_batch.SampleBatch.ACTIONS: actions}

@@ -207,7 +207,7 @@ class MixManagerCallback(RLlibCallback):
         starting_modules=list[str],  # default is ["lstm", "noop"]
         fixed_modules_progression_sequence=tuple[
             str
-        ],  # default is ("noop", "back", "attack", "random")
+        ],  # default is ("noop", "back")
     ) -> None:
         """Track win rates and manage mix of opponents"""
         super().__init__()
@@ -254,7 +254,7 @@ class MixManagerCallback(RLlibCallback):
                 f" Adding new RL Module to the mix..."
             )
 
-            # check if fixed RL module (back, attack, random) should be added to the mix,
+            # check if fixed RL module should be added to the mix,
             # and if so, create new_module_id and new_module_spec for it
             for module_id in self.fixed_modules_progression_sequence:
                 if module_id not in self.modules_in_mix:
