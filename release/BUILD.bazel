@@ -692,6 +692,20 @@ py_test(
     ],
 )
 
+py_test(
+    name = "test_template",
+    srcs = ["ray_release/tests/test_template.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_release",
+        bk_require("pytest"),
+    ],
+)
+
 py_binary(
     name = "build_pipeline",
     srcs = ["ray_release/scripts/build_pipeline.py"],
