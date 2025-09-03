@@ -23,6 +23,7 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_utils.h"
 #include "ray/rpc/worker/core_worker_client.h"
+#include "ray/util/time.h"
 
 namespace ray {
 namespace core {

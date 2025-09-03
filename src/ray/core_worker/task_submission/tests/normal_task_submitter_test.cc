@@ -30,7 +30,7 @@
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/raylet_client/raylet_client.h"
+#include "ray/raylet_client/raylet_client_interface.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
@@ -223,11 +223,11 @@ class MockTaskManager : public MockTaskManagerInterface {
 
 class MockRayletClient : public FakeRayletClient {
  public:
-  Status ReturnWorkerLease(int worker_port,
-                           const WorkerID &worker_id,
-                           bool disconnect_worker,
-                           const std::string &disconnect_worker_error_detail,
-                           bool worker_exiting) override {
+  void ReturnWorkerLease(int worker_port,
+                         const LeaseID &lease_id,
+                         bool disconnect_worker,
+                         const std::string &disconnect_worker_error_detail,
+                         bool worker_exiting) override {
     std::lock_guard<std::mutex> lock(mu_);
     if (disconnect_worker) {
       num_workers_disconnected++;
@@ -237,7 +237,6 @@ class MockRayletClient : public FakeRayletClient {
         num_workers_returned_exiting++;
       }
     }
-    return Status::OK();
   }
 
   void GetWorkerFailureCause(
