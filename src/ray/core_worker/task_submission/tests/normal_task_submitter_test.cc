@@ -492,7 +492,6 @@ class NormalTaskSubmitterTest : public testing::Test {
 
   NormalTaskSubmitter CreateNormalTaskSubmitter(
       std::shared_ptr<LeaseRequestRateLimiter> rate_limiter,
-      WorkerType worker_type = WorkerType::WORKER,
       std::function<std::shared_ptr<RayletClientInterface>(const rpc::Address &)>
           raylet_client_factory = nullptr,
       std::shared_ptr<CoreWorkerMemoryStore> custom_memory_store = nullptr,
@@ -524,7 +523,6 @@ class NormalTaskSubmitterTest : public testing::Test {
         store,
         *task_manager,
         local_node_id,
-        worker_type,
         lease_timeout_ms,
         actor_creator,
         JobID::Nil(),
@@ -805,8 +803,8 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerHandleLocalRayletDied) {
 }
 
 TEST_F(NormalTaskSubmitterTest, TestDriverHandleLocalRayletDied) {
-  auto submitter = CreateNormalTaskSubmitter(
-      std::make_shared<StaticLeaseRequestRateLimiter>(2), WorkerType::DRIVER);
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(2));
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -981,7 +979,6 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamicWithSpillback) 
   auto rateLimiter = std::make_shared<DynamicRateLimiter>(1);
   auto submitter = CreateNormalTaskSubmitter(
       rateLimiter,
-      WorkerType::WORKER,
       /*raylet_client_factory*/ [&](const rpc::Address &addr) { return raylet_client; });
 
   std::vector<TaskSpecification> tasks;
@@ -1332,10 +1329,8 @@ TEST_F(NormalTaskSubmitterTest, TestSpillback) {
     remote_raylet_clients[addr.port()] = client;
     return client;
   };
-  auto submitter =
-      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1),
-                                WorkerType::WORKER,
-                                raylet_client_factory);
+  auto submitter = CreateNormalTaskSubmitter(
+      std::make_shared<StaticLeaseRequestRateLimiter>(1), raylet_client_factory);
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -1389,7 +1384,6 @@ TEST_F(NormalTaskSubmitterTest, TestSpillbackRoundTrip) {
   auto memory_store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1),
-                                WorkerType::WORKER,
                                 raylet_client_factory,
                                 memory_store,
                                 kLongTimeout);
@@ -1471,7 +1465,6 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
       store,
       *task_manager,
       NodeID::Nil(),
-      WorkerType::WORKER,
       kLongTimeout,
       actor_creator,
       JobID::Nil(),
@@ -1618,7 +1611,6 @@ TEST_F(NormalTaskSubmitterTest, TestBacklogReport) {
       std::make_shared<CoreWorkerMemoryStore>(store_io_context.GetIoService());
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1),
-                                WorkerType::WORKER,
                                 /*raylet_client_factory=*/nullptr,
                                 memory_store);
 
@@ -1680,7 +1672,6 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerLeaseTimeout) {
   auto memory_store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1),
-                                WorkerType::WORKER,
                                 /*raylet_client_factory=*/nullptr,
                                 memory_store,
                                 /*lease_timeout_ms=*/5);

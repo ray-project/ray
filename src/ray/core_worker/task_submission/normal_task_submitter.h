@@ -90,7 +90,6 @@ class NormalTaskSubmitter {
       std::shared_ptr<CoreWorkerMemoryStore> store,
       TaskManagerInterface &task_manager,
       NodeID local_node_id,
-      WorkerType worker_type,
       int64_t lease_timeout_ms,
       std::shared_ptr<ActorCreatorInterface> actor_creator,
       const JobID &job_id,
@@ -106,7 +105,6 @@ class NormalTaskSubmitter {
         lease_timeout_ms_(lease_timeout_ms),
         local_node_id_(local_node_id),
         worker_id_(WorkerID::FromBinary(rpc_address_.worker_id())),
-        worker_type_(worker_type),
         core_worker_client_pool_(std::move(core_worker_client_pool)),
         job_id_(job_id),
         lease_request_rate_limiter_(std::move(lease_request_rate_limiter)),
@@ -265,9 +263,6 @@ class NormalTaskSubmitter {
 
   /// The local worker ID.
   const WorkerID worker_id_;
-
-  /// The type of this core worker process.
-  const WorkerType worker_type_;
 
   // Protects task submission state below.
   absl::Mutex mu_;
