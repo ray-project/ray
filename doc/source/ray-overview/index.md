@@ -16,10 +16,10 @@ For ML platform builders and ML engineers, Ray:
 * Reduces friction between development and production by enabling the same Python code to scale seamlessly from a laptop to a large cluster.
 
 For distributed systems engineers, Ray automatically handles key processes:
-* Orchestration—Managing the various components of a distributed system.
-* Scheduling—Coordinating when and where tasks are executed.
-* Fault tolerance—Ensuring tasks complete regardless of inevitable points of failure.
-* Auto-scaling—Adjusting the number of resources allocated to dynamic demand.
+* Orchestration: Managing the various components of a distributed system.
+* Scheduling: Coordinating when and where tasks are executed.
+* Fault tolerance: Ensuring tasks complete regardless of inevitable points of failure.
+* Auto-scaling: Adjusting the number of resources allocated to dynamic demand.
 
 ## What you can do with Ray
 
