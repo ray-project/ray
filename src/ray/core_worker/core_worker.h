@@ -53,20 +53,9 @@
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet_client/raylet_client_interface.h"
-#include "ray/rpc/worker/core_worker_server.h"
 #include "ray/util/process.h"
 #include "ray/util/shared_lru.h"
 #include "src/ray/protobuf/pubsub.pb.h"
-
-/// The set of gRPC handlers and their associated level of concurrency. If you want to
-/// add a new call to the worker gRPC server, do the following:
-/// 1) Add the rpc to the CoreWorkerService in core_worker.proto, e.g., "ExampleCall"
-/// 2) Add a new macro to RAY_CORE_WORKER_DECLARE_RPC_HANDLERS
-///    in core_worker_server.h,
-//     e.g. "DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(ExampleCall)"
-/// 3) Add a new macro to RAY_CORE_WORKER_RPC_HANDLERS in core_worker_server.h, e.g.
-///    "RPC_SERVICE_HANDLER(CoreWorkerService, ExampleCall, 1)"
-/// 4) Add a method to the CoreWorker class below: "CoreWorker::HandleExampleCall"
 
 namespace ray::core {
 

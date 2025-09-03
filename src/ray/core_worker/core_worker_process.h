@@ -19,6 +19,7 @@
 #include <string>
 
 #include "ray/core_worker/core_worker_options.h"
+#include "ray/core_worker/grpc_service.h"
 #include "ray/rpc/metrics_agent_client.h"
 #include "ray/util/mutex_protected.h"
 
