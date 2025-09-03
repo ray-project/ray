@@ -559,6 +559,25 @@ depsets:
             with self.assertRaises(KeyError):
                 _get_depset(manager.config.depsets, "build_args_test_depset_py311")
 
+    def test_execute_single_pre_hook(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.execute_pre_hooks(["pre-hook-test.sh"])
+
+    def test_execute_multiple_pre_hooks(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.execute_pre_hooks(["pre-hook-test.sh", "pre-hook-test.sh"])
+
+    def test_execute_single_invalid_pre_hook(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            with self.assertRaises(RuntimeError):
+                manager.execute_pre_hooks(["pre-hook-error-test.sh"])
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

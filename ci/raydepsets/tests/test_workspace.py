@@ -68,5 +68,13 @@ depsets:
             workspace.load_config(path=Path(tmpdir) / "test.depsets.yaml")
 
 
+def test_parse_pre_hooks():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        copy_data_to_tmpdir(tmpdir)
+        workspace = Workspace(dir=tmpdir)
+        config = workspace.load_config(path=Path(tmpdir) / "test.depsets.yaml")
+        assert config.depsets[6].pre_hooks == ["pre-hook-test.sh"]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

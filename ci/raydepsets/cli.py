@@ -99,6 +99,13 @@ class DependencySetManager:
                     self.build_graph.add_edge(depset_name, depset.name)
             else:
                 raise ValueError(f"Invalid operation: {depset.operation}")
+            if depset.pre_hooks:
+                for ind, hook in enumerate(depset.pre_hooks):
+                    hook_name = f"{depset.name}_pre_hook_{ind+1}"
+                    self.build_graph.add_node(
+                        hook_name, operation="pre_hook", depset=depset
+                    )
+                    self.build_graph.add_edge(hook_name, depset.name)
 
     def execute(self):
         for node in topological_sort(self.build_graph):
@@ -113,7 +120,17 @@ class DependencySetManager:
             raise RuntimeError(f"Failed to execute command: {cmd}")
         return status.stdout
 
+    def execute_pre_hooks(self, pre_hooks: List[str]):
+        for hook in pre_hooks:
+            status_code = subprocess.call(hook, cwd=self.workspace.dir)
+        if status_code != 0:
+            raise RuntimeError(f"Failed to execute pre-hook: {hook}")
+        click.echo(f"Executed pre-hook: {hook}")
+        return status_code
+
     def execute_single(self, depset: Depset):
+        if depset.pre_hooks:
+            self.execute_pre_hooks(depset.pre_hooks)
         if depset.operation == "compile":
             self.compile(
                 constraints=depset.constraints,
