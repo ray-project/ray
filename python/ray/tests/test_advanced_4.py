@@ -6,11 +6,11 @@ from unittest.mock import patch
 import pytest
 
 import ray
+from ray._common.test_utils import Semaphore, wait_for_condition
 from ray._private.test_utils import (
     client_test_enabled,
     get_gcs_memory_used,
 )
-from ray._common.test_utils import Semaphore, wait_for_condition
 from ray.experimental.internal_kv import _internal_kv_list
 
 
