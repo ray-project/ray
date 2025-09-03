@@ -143,7 +143,7 @@ class CoreWorkerTest : public ::testing::Test {
         std::make_unique<rpc::EventAggregatorClientImpl>(0, *client_call_manager),
         "test_session");
 
-    auto task_manager = std::make_shared<TaskManager>(
+    task_manager_ = std::make_shared<TaskManager>(
         *memory_store_,
         *reference_counter_,
         [](const RayObject &object, const ObjectID &object_id) { return Status::OK(); },
@@ -166,7 +166,7 @@ class CoreWorkerTest : public ::testing::Test {
         [](const ObjectID &object_id, const ObjectLookupCallback &callback) {
           return Status::OK();
         },
-        *task_manager,
+        *task_manager_,
         *reference_counter_,
         *memory_store_,
         [](const ObjectID &object_id, rpc::ErrorType reason, bool pin_object) {});
@@ -185,7 +185,7 @@ class CoreWorkerTest : public ::testing::Test {
         raylet_client_pool,
         std::move(lease_policy),
         memory_store_,
-        *task_manager,
+        *task_manager_,
         NodeID::Nil(),
         WorkerType::WORKER,
         10000,
@@ -198,7 +198,7 @@ class CoreWorkerTest : public ::testing::Test {
     auto actor_task_submitter = std::make_unique<ActorTaskSubmitter>(
         *core_worker_client_pool,
         *memory_store_,
-        *task_manager,
+        *task_manager_,
         *actor_creator,
         /*tensor_transport_getter=*/
         [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
@@ -232,7 +232,7 @@ class CoreWorkerTest : public ::testing::Test {
                                                 nullptr,  // plasma_store_provider_
                                                 nullptr,  // mutable_object_provider_
                                                 std::move(future_resolver),
-                                                std::move(task_manager),
+                                                task_manager_,
                                                 std::move(actor_creator),
                                                 std::move(actor_task_submitter),
                                                 std::move(fake_object_info_publisher),
@@ -247,10 +247,8 @@ class CoreWorkerTest : public ::testing::Test {
   }
 
  protected:
-  instrumented_io_context io_service_{/*enable_lag_probe=*/false,
-                                      /*running_on_single_thread=*/true};
-  instrumented_io_context task_execution_service_{/*enable_lag_probe=*/false,
-                                                  /*running_on_single_thread=*/true};
+  instrumented_io_context io_service_;
+  instrumented_io_context task_execution_service_;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
       task_execution_service_work_;
@@ -261,6 +259,7 @@ class CoreWorkerTest : public ::testing::Test {
   std::shared_ptr<ReferenceCounter> reference_counter_;
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
   ActorTaskSubmitter *actor_task_submitter_;
+  std::shared_ptr<TaskManager> task_manager_;
   std::shared_ptr<CoreWorker> core_worker_;
 };
 
@@ -538,8 +537,7 @@ TEST_F(CoreWorkerTest, ActorTaskCancelDuringDepResolution) {
   task_message.mutable_actor_task_spec()->set_actor_id(actor_id.Binary());
   task_message.add_args()->mutable_object_ref()->set_object_id(
       inlined_dependency_id.Binary());
-  reference_counter_->UpdateSubmittedTaskReferences(
-      /*return_ids=*/{}, /*argument_ids_to_add=*/{inlined_dependency_id});
+  task_manager_->AddPendingTask(rpc_address_, task, "call_site");
   ASSERT_TRUE(actor_task_submitter_->SubmitTask(task).ok());
 
   actor_task_submitter_->CancelTask(task, /*recursive=*/false);
