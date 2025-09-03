@@ -39,12 +39,14 @@ namespace ray {
     system     application
 */
 class CgroupManagerInterface {
-  // TODO(#54703): It makes more sense for bounds checking to be a function
-  // inside the CgroupManager interface.
-  // There are two separate concerns here:
-  //  1) Which controllers/constraints are supported inside Ray? This should be inside the
-  //  CgroupManager.
-  //  2) What are allowed values for constraints? This should be inside the CgroupDriver.
+  // TODO(#54703): The Constraint struct, supported_constraints_, and
+  // supported_controllers_ are duplicated across CgroupManagerInterface and
+  // CgroupDriverInterface. It makes sense for these to be separated into two concerns:
+  //  1) Checking which controllers and constraints are supported in Ray should be in
+  //  CgroupManagerInterface.
+  //  2) Checking what values are allowed for constraints should be inside
+  //  CgroupDriverInterface.
+  // This will be done in a later PR.
   struct Constraint {
     std::pair<int64_t, int64_t> range;
     std::string controller;
