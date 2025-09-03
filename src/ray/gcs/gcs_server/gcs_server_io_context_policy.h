@@ -20,7 +20,7 @@
 
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/gcs/gcs_server/gcs_task_manager.h"
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
+#include "ray/pubsub/gcs_publisher.h"
 #include "ray/util/array.h"
 #include "ray/util/type_traits.h"
 
@@ -37,7 +37,7 @@ struct GcsServerIOContextPolicy {
   static constexpr int GetDedicatedIOContextIndex() {
     if constexpr (std::is_same_v<T, GcsTaskManager>) {
       return IndexOf("task_io_context");
-    } else if constexpr (std::is_same_v<T, GcsPublisher>) {
+    } else if constexpr (std::is_same_v<T, pubsub::GcsPublisher>) {
       return IndexOf("pubsub_io_context");
     } else if constexpr (std::is_same_v<T, syncer::RaySyncer>) {
       return IndexOf("ray_syncer_io_context");
