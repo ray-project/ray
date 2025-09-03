@@ -824,8 +824,16 @@ def get_or_create_head_node(
 
         # Use RAY_UP_enable_autoscaler_v2 instead of RAY_enable_autoscaler_v2
         # to avoid accidentally enabling autoscaler v2 for ray up
-        # due to env inheritance.
-        if os.getenv("RAY_UP_enable_autoscaler_v2", "0") == "1":
+        # due to env inheritance. The default value is 1 since Ray 2.50.0.
+        if os.getenv("RAY_UP_enable_autoscaler_v2", "1") == "1":
+            if "RAY_UP_enable_autoscaler_v2" not in os.environ:
+                # TODO (rueian): Remove this notice after Ray 2.52.0.
+                cli_logger.print(
+                    "Autoscaler v2 is now enabled by default (since Ray 2.50.0). "
+                    "To switch back to v1, set {}=0. This message can be suppressed by setting {} explicitly.",
+                    cf.bold("RAY_UP_enable_autoscaler_v2"),
+                    cf.bold("RAY_UP_enable_autoscaler_v2"),
+                )
             ray_start_commands = with_envs(
                 ray_start_commands,
                 {
@@ -926,6 +934,18 @@ def get_or_create_head_node(
         )
         cli_logger.newline()
 
+    # Clean up temporary config file if it was created
+    # Clean up temporary config file if it was created on Windows
+    if (
+        sys.platform == "win32"
+        and not no_monitor_on_head
+        and "remote_config_file" in locals()
+    ):
+        try:
+            os.remove(remote_config_file.name)
+        except OSError:
+            pass  # Ignore cleanup errors
+
 
 def _should_create_new_head(
     head_node_id: Optional[str],
@@ -1025,9 +1045,14 @@ def _set_up_config_for_head_node(
     remote_config = provider.prepare_for_head_node(remote_config)
 
     # Now inject the rewritten config and SSH key into the head node
-    remote_config_file = tempfile.NamedTemporaryFile("w", prefix="ray-bootstrap-")
+    is_windows = sys.platform == "win32"
+    remote_config_file = tempfile.NamedTemporaryFile(
+        "w", prefix="ray-bootstrap-", delete=not is_windows
+    )
     remote_config_file.write(json.dumps(remote_config))
     remote_config_file.flush()
+    if is_windows:
+        remote_config_file.close()  # Close the file handle to ensure it's accessible
     config["file_mounts"].update(
         {"~/ray_bootstrap_config.yaml": remote_config_file.name}
     )

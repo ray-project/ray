@@ -1,10 +1,10 @@
 import copy
-import logging
-import sys
 import json
+import logging
 import os
 import re
 import shutil
+import sys
 import tempfile
 import time
 import unittest
@@ -20,20 +20,15 @@ import yaml
 from jsonschema.exceptions import ValidationError
 
 import ray
-from ray.tests.autoscaler_test_utils import (
-    MockNode,
-    MockProcessRunner,
-    MockProvider,
-)
 from ray.autoscaler._private import commands
 from ray.autoscaler._private.autoscaler import NonTerminatedNodes, StandardAutoscaler
 from ray.autoscaler._private.commands import get_or_create_head_node
 from ray.autoscaler._private.constants import (
+    AUTOSCALER_HEARTBEAT_TIMEOUT_S,
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     DISABLE_NODE_UPDATERS_KEY,
     FOREGROUND_NODE_LAUNCH_KEY,
     WORKER_LIVENESS_CHECK_KEY,
-    AUTOSCALER_HEARTBEAT_TIMEOUT_S,
 )
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.monitor import Monitor
@@ -62,13 +57,16 @@ from ray.autoscaler.tags import (
     TAG_RAY_NODE_STATUS,
     TAG_RAY_USER_NODE_TYPE,
 )
+from ray.core.generated import common_pb2, gcs_pb2
+from ray.exceptions import RpcError
+from ray.tests.autoscaler_test_utils import (
+    MockNode,
+    MockProcessRunner,
+    MockProvider,
+)
 from ray.tests.test_batch_node_provider_unit import (
     MockBatchingNodeProvider,
 )
-from ray.exceptions import RpcError
-
-from ray.core.generated import gcs_pb2, common_pb2
-
 
 WORKER_FILTER = {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}
 
@@ -3517,7 +3515,7 @@ class AutoscalingTest(unittest.TestCase):
                 _internal_kv_initialized=Mock(return_value=False),
             ):
                 monitor = Monitor(
-                    address=f"{ray.util.get_node_ip_address()}:12345",
+                    address="localhost:12345",
                     autoscaling_config="",
                     log_dir=self.tmpdir,
                 )

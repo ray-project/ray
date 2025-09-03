@@ -933,24 +933,11 @@ class UnserializableException(RayError):
     the original exception along with its stack trace that was captured at the
     time of serialization.
 
-    Common causes of pickle deserialization failure include:
-        - Missing modules or classes: The exception class is not available in the
-          current environment (e.g., custom exception from an unimported module)
-        - Version incompatibility: Exception was pickled with a different Python
-          or library version
-        - Changed class definitions: The exception class definition has changed
-          between serialization and deserialization
-        - Corrupted or invalid serialized data
-        - Memory limitations during deserialization
-        - Non-picklable objects: Exception contains references to lambda functions
-          or other objects that cannot be pickled/unpickled
-        - Special characters or encoding issues that interfere with deserialization
+    reference for more details: https://docs.ray.io/en/latest/ray-core/objects/serialization.html
 
     Args:
         original_stack_trace: The string representation and stack trace of the
             original exception that was captured during serialization.
-
-    Pickle limitations: https://docs.python.org/3/library/pickle.html#what-can-be-pickled-and-unpickled
     """
 
     def __init__(self, original_stack_trace: str):
@@ -958,9 +945,7 @@ class UnserializableException(RayError):
 
     def __str__(self):
         return (
-            "Failed to deserialize exception. This typically occurs when the original "
-            "exception class is not available, there are version incompatibilities, "
-            "or the serialized data is corrupted.\n\n"
+            "Failed to deserialize exception. Refer to https://docs.ray.io/en/latest/ray-core/objects/serialization.html#troubleshooting to troubleshoot.\n"
             "Original exception:\n"
             f"{self._original_stack_trace}"
         )

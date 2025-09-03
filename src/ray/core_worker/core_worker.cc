@@ -38,15 +38,16 @@
 #include "ray/common/cgroup/cgroup_context.h"
 #include "ray/common/cgroup/cgroup_manager.h"
 #include "ray/common/cgroup/constants.h"
+#include "ray/common/protobuf_utils.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/task/task_util.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
-#include "ray/gcs/pb_util.h"
 #include "ray/rpc/event_aggregator_client.h"
 #include "ray/util/container_util.h"
 #include "ray/util/event.h"
 #include "ray/util/subreaper.h"
+#include "ray/util/time.h"
 
 using json = nlohmann::json;
 using MessageType = ray::protocol::MessageType;
@@ -2213,17 +2214,16 @@ Status CoreWorker::CreatePlacementGroup(
   }
   const PlacementGroupID placement_group_id = PlacementGroupID::Of(GetCurrentJobId());
   PlacementGroupSpecBuilder builder;
-  builder.SetPlacementGroupSpec(
-      placement_group_id,
-      placement_group_creation_options.name_,
-      placement_group_creation_options.bundles_,
-      placement_group_creation_options.strategy_,
-      placement_group_creation_options.is_detached_,
-      placement_group_creation_options.soft_target_node_id_,
-      worker_context_->GetCurrentJobID(),
-      worker_context_->GetCurrentActorID(),
-      worker_context_->CurrentActorDetached(),
-      placement_group_creation_options.bundle_label_selector_);
+  builder.SetPlacementGroupSpec(placement_group_id,
+                                placement_group_creation_options.name_,
+                                placement_group_creation_options.bundles_,
+                                placement_group_creation_options.strategy_,
+                                placement_group_creation_options.is_detached_,
+                                placement_group_creation_options.soft_target_node_id_,
+                                worker_context_->GetCurrentJobID(),
+                                worker_context_->GetCurrentActorID(),
+                                worker_context_->CurrentActorDetached(),
+                                placement_group_creation_options.bundle_label_selector_);
   PlacementGroupSpecification placement_group_spec = builder.Build();
   *return_placement_group_id = placement_group_id;
   RAY_LOG(INFO).WithField(placement_group_id)
@@ -2393,8 +2393,8 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
     RAY_LOG(DEBUG).WithField(object_id)
         << "Request to cancel a task of object to an owner "
         << obj_addr.SerializeAsString();
-    return normal_task_submitter_->CancelRemoteTask(
-        object_id, obj_addr, force_kill, recursive);
+    normal_task_submitter_->CancelRemoteTask(object_id, obj_addr, force_kill, recursive);
+    return Status::OK();
   }
 
   auto task_spec = task_manager_->GetTaskSpec(object_id.TaskId());
@@ -2415,58 +2415,51 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
       return Status::InvalidArgument("force=True is not supported for actor tasks.");
     }
 
-    return actor_task_submitter_->CancelTask(task_spec.value(), recursive);
+    actor_task_submitter_->CancelTask(task_spec.value(), recursive);
   } else {
-    return normal_task_submitter_->CancelTask(task_spec.value(), force_kill, recursive);
+    normal_task_submitter_->CancelTask(task_spec.value(), force_kill, recursive);
   }
+  return Status::OK();
 }
 
 Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {
-  std::vector<std::pair<TaskID, Status>> recursive_cancellation_status;
-  bool recursive_success = true;
-  for (const auto &child_id : task_manager_->GetPendingChildrenTasks(task_id)) {
+  absl::flat_hash_set<TaskID> unknown_child_task_ids;
+  auto child_task_ids = task_manager_->GetPendingChildrenTasks(task_id);
+  for (const auto &child_id : child_task_ids) {
     auto child_spec = task_manager_->GetTaskSpec(child_id);
     if (!child_spec.has_value()) {
-      recursive_success = false;
-      recursive_cancellation_status.emplace_back(
-          child_id,
-          Status::UnknownError(
-              "Recursive task cancellation failed--check warning logs."));
+      unknown_child_task_ids.insert(child_id);
     } else if (child_spec->IsActorTask()) {
-      auto result = actor_task_submitter_->CancelTask(child_spec.value(), true);
-      recursive_cancellation_status.emplace_back(child_id, result);
+      actor_task_submitter_->CancelTask(std::move(*child_spec), true);
     } else {
-      auto result =
-          normal_task_submitter_->CancelTask(child_spec.value(), force_kill, true);
-      recursive_cancellation_status.emplace_back(child_id, result);
+      normal_task_submitter_->CancelTask(std::move(*child_spec), force_kill, true);
     }
   }
 
-  if (recursive_success) {
+  if (unknown_child_task_ids.empty()) {
     return Status::OK();
-  } else {
-    auto kMaxFailedTaskSampleSize = 10;
-    std::ostringstream ostr;
-    ostr << "Failed to cancel all the children tasks of " << task_id << " recursively.\n"
-         << "Here are up to " << kMaxFailedTaskSampleSize
-         << " samples tasks that failed to be canceled\n";
-    auto success = 0;
-    auto failures = 0;
-    for (const auto &[child_id, status] : recursive_cancellation_status) {
-      if (status.ok()) {
-        success += 1;
-      } else {
-        // Only record up to sample sizes.
-        if (failures < kMaxFailedTaskSampleSize) {
-          ostr << "\t" << child_id << ", " << status << "\n";
-        }
-        failures += 1;
-      }
-    }
-    ostr << "Total Recursive cancelation success: " << success
-         << ", failures: " << failures;
-    return Status::UnknownError(ostr.str());
   }
+
+  constexpr size_t kMaxFailedTaskSampleSize = 10;
+  std::ostringstream ostr;
+  ostr << "Failed to cancel all the children tasks of " << task_id << " recursively.\n"
+       << "Here are up to " << kMaxFailedTaskSampleSize
+       << " samples tasks that failed to be canceled\n";
+  const auto failure_status_str =
+      Status::UnknownError("Recursive task cancellation failed--check warning logs.")
+          .ToString();
+  size_t failures = 0;
+  for (const auto &child_id : unknown_child_task_ids) {
+    ostr << "\t" << child_id << ", " << failure_status_str << "\n";
+    failures += 1;
+    if (failures >= kMaxFailedTaskSampleSize) {
+      break;
+    }
+  }
+  ostr << "Total Recursive cancelation success: "
+       << (child_task_ids.size() - unknown_child_task_ids.size())
+       << ", failures: " << unknown_child_task_ids.size();
+  return Status::UnknownError(ostr.str());
 }
 
 Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill, bool no_restart) {
@@ -3097,7 +3090,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
   waiter->IncrementObjectGenerated();
 
   client->ReportGeneratorItemReturns(
-      request,
+      std::move(request),
       [waiter, generator_id, return_id, item_index](
           const Status &status, const rpc::ReportGeneratorItemReturnsReply &reply) {
         RAY_LOG(DEBUG) << "ReportGeneratorItemReturns replied. " << generator_id
