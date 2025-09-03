@@ -147,8 +147,8 @@ message ResizeLocalResourceInstancesReply {
 message ReturnWorkerLeaseRequest {
   // Port of the leased worker that we are now returning.
   int32 worker_port = 1;
-  // The worker id of the lease we are now returning.
-  bytes worker_id = 2;
+  // The lease id of the lease we are now returning.
+  bytes lease_id = 2;
   // If true, there was some unrecoverable error and the raylet should
   // disconnect the worker.
   bool disconnect_worker = 3;
@@ -428,8 +428,8 @@ service NodeManagerService {
   // Failure: Doesn't need to be retried since it will keep getting periodically called,
   // and is not critical.
   rpc ReportWorkerBacklog(ReportWorkerBacklogRequest) returns (ReportWorkerBacklogReply);
-  // Release a worker back to its raylet.
-  // Failure:  TODO: Failure behavior needs to be fixed.
+  // Return a worker lease back to its raylet.
+  // Failure: Retries, it's idempotent.
   rpc ReturnWorkerLease(ReturnWorkerLeaseRequest) returns (ReturnWorkerLeaseReply);
   // This method is only used by GCS, and the purpose is to release leased workers
   // that may be leaked. When GCS restarts, it doesn't know which workers it has leased
