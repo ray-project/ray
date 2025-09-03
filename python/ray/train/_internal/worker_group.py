@@ -269,6 +269,8 @@ class WorkerGroup:
                 worker. The order is the same as ``self.workers``.
 
         """
+        # TODO: Add a timeout in the case of a hang, particularly
+        # relevant when func is TorchConfig.on_shutdown
         return ray.get(self.execute_async(func, *args, **kwargs))
 
     def execute_single_async(
