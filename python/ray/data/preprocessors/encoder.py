@@ -1,6 +1,6 @@
-from collections import Counter, OrderedDict
+from collections import Counter
 from functools import partial
-from typing import Dict, List, Optional
+from typing import Any, Callable, Dict, Hashable, List, Optional, Set
 
 import numpy as np
 import pandas as pd
@@ -9,6 +9,7 @@ import pandas.api.types
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Dataset
 from ray.data.preprocessor import Preprocessor, PreprocessorNotFittedException
+from ray.data.preprocessors.utils import make_post_processor
 from ray.util.annotations import PublicAPI
 
 
@@ -106,6 +107,7 @@ class OrdinalEncoder(Preprocessor):
         encode_lists: bool = True,
         output_columns: Optional[List[str]] = None,
     ):
+        super().__init__()
         # TODO: allow user to specify order of values within each column.
         self.columns = columns
         self.encode_lists = encode_lists
@@ -114,12 +116,22 @@ class OrdinalEncoder(Preprocessor):
         )
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
-        self.stats_ = _get_unique_value_indices(
-            dataset, self.columns, encode_lists=self.encode_lists
+        self.stat_computation_plan.add_callable_stat(
+            stat_fn=lambda key_gen: compute_unique_value_indices(
+                dataset=dataset,
+                columns=self.columns,
+                encode_lists=self.encode_lists,
+                key_gen=key_gen,
+            ),
+            post_process_fn=unique_post_fn(),
+            stat_key_fn=lambda col: f"unique({col})",
+            post_key_fn=lambda col: f"unique_values({col})",
+            columns=self.columns,
         )
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
+
         _validate_df(df, *self.columns)
 
         def encode_list(element: list, *, name: str):
@@ -130,11 +142,9 @@ class OrdinalEncoder(Preprocessor):
                 if self.encode_lists:
                     return s.map(partial(encode_list, name=s.name))
 
-                # cannot simply use map here due to pandas thinking
-                # tuples are to be used for indices
                 def list_as_category(element):
-                    element = tuple(element)
-                    return self.stats_[f"unique_values({s.name})"].get(element)
+                    key = tuple(element)
+                    return self.stats_[f"unique_values({s.name})"].get(key)
 
                 return s.apply(list_as_category)
 
@@ -250,43 +260,46 @@ class OneHotEncoder(Preprocessor):
         max_categories: Optional[Dict[str, int]] = None,
         output_columns: Optional[List[str]] = None,
     ):
+        super().__init__()
         # TODO: add `drop` parameter.
         self.columns = columns
-        self.max_categories = max_categories
+        self.max_categories = max_categories or {}
         self.output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
-        self.stats_ = _get_unique_value_indices(
-            dataset,
-            self.columns,
-            max_categories=self.max_categories,
-            encode_lists=False,
+        self.stat_computation_plan.add_callable_stat(
+            stat_fn=lambda key_gen: compute_unique_value_indices(
+                dataset=dataset,
+                columns=self.columns,
+                encode_lists=False,
+                key_gen=key_gen,
+                max_categories=self.max_categories,
+            ),
+            post_process_fn=unique_post_fn(),
+            stat_key_fn=lambda col: f"unique({col})",
+            post_key_fn=lambda col: f"unique_values({col})",
+            columns=self.columns,
         )
         return self
 
+    def safe_get(self, v: Any, stats: Dict[str, int]):
+        if isinstance(v, (list, np.ndarray)):
+            v = tuple(v)
+        if isinstance(v, Hashable):
+            return stats.get(v, -1)
+        else:
+            return -1  # Unhashable type treated as a missing category
+
     def _transform_pandas(self, df: pd.DataFrame):
         _validate_df(df, *self.columns)
-        from typing import Any
-
-        def safe_get(v: Any, stats: Dict[str, int]):
-            from collections.abc import Hashable
-
-            if isinstance(v, Hashable):
-                return stats.get(v, -1)
-            else:
-                return -1  # Unhashable type treated as a missing category
-
         # Compute new one-hot encoded columns
         for column, output_column in zip(self.columns, self.output_columns):
-            if _is_series_composed_of_lists(df[column]):
-                df[column] = df[column].map(tuple)
-
             stats = self.stats_[f"unique_values({column})"]
             num_categories = len(stats)
             one_hot = np.zeros((len(df), num_categories), dtype=int)
-            codes = df[column].apply(lambda v: safe_get(v, stats)).to_numpy()
+            codes = df[column].apply(lambda v: self.safe_get(v, stats)).to_numpy()
             valid_rows = codes != -1
             one_hot[np.nonzero(valid_rows)[0], codes[valid_rows].astype(int)] = 1
             df[output_column] = one_hot.tolist()
@@ -390,19 +403,27 @@ class MultiHotEncoder(Preprocessor):
         max_categories: Optional[Dict[str, int]] = None,
         output_columns: Optional[List[str]] = None,
     ):
+        super().__init__()
         # TODO: add `drop` parameter.
         self.columns = columns
-        self.max_categories = max_categories
+        self.max_categories = max_categories or {}
         self.output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
-        self.stats_ = _get_unique_value_indices(
-            dataset,
-            self.columns,
-            max_categories=self.max_categories,
-            encode_lists=True,
+        self.stat_computation_plan.add_callable_stat(
+            stat_fn=lambda key_gen: compute_unique_value_indices(
+                dataset=dataset,
+                columns=self.columns,
+                encode_lists=True,
+                key_gen=key_gen,
+                max_categories=self.max_categories,
+            ),
+            post_process_fn=unique_post_fn(),
+            stat_key_fn=lambda col: f"unique({col})",
+            post_key_fn=lambda col: f"unique_values({col})",
+            columns=self.columns,
         )
         return self
 
@@ -498,11 +519,22 @@ class LabelEncoder(Preprocessor):
     """
 
     def __init__(self, label_column: str, *, output_column: Optional[str] = None):
+        super().__init__()
         self.label_column = label_column
         self.output_column = output_column or label_column
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
-        self.stats_ = _get_unique_value_indices(dataset, [self.label_column])
+        self.stat_computation_plan.add_callable_stat(
+            stat_fn=lambda key_gen: compute_unique_value_indices(
+                dataset=dataset,
+                columns=[self.label_column],
+                key_gen=key_gen,
+            ),
+            post_process_fn=unique_post_fn(),
+            stat_key_fn=lambda col: f"unique({col})",
+            post_key_fn=lambda col: f"unique_values({col})",
+            columns=[self.label_column],
+        )
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
@@ -628,6 +660,7 @@ class Categorizer(Preprocessor):
         dtypes: Optional[Dict[str, pd.CategoricalDtype]] = None,
         output_columns: Optional[List[str]] = None,
     ):
+        super().__init__()
         if not dtypes:
             dtypes = {}
 
@@ -639,20 +672,30 @@ class Categorizer(Preprocessor):
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         columns_to_get = [
-            column for column in self.columns if column not in set(self.dtypes)
+            column for column in self.columns if column not in self.dtypes
         ]
-        if columns_to_get:
-            unique_indices = _get_unique_value_indices(
-                dataset, columns_to_get, drop_na_values=True, key_format="{0}"
-            )
-            unique_indices = {
-                column: pd.CategoricalDtype(values_indices.keys())
-                for column, values_indices in unique_indices.items()
-            }
-        else:
-            unique_indices = {}
-        unique_indices = {**self.dtypes, **unique_indices}
-        self.stats_: Dict[str, pd.CategoricalDtype] = unique_indices
+        self.stats_ |= self.dtypes
+        if not columns_to_get:
+            return self
+
+        def callback(unique_indices: Dict[str, Dict]) -> pd.CategoricalDtype:
+            return pd.CategoricalDtype(unique_indices.keys())
+
+        self.stat_computation_plan.add_callable_stat(
+            stat_fn=lambda key_gen: compute_unique_value_indices(
+                dataset=dataset,
+                columns=columns_to_get,
+                key_gen=key_gen,
+            ),
+            post_process_fn=make_post_processor(
+                base_fn=unique_post_fn(drop_na_values=True),
+                callbacks=[callback],
+            ),
+            stat_key_fn=lambda col: f"unique({col})",
+            post_key_fn=lambda col: col,
+            columns=columns_to_get,
+        )
+
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
@@ -666,16 +709,14 @@ class Categorizer(Preprocessor):
         )
 
 
-def _get_unique_value_indices(
+def compute_unique_value_indices(
+    *,
     dataset: Dataset,
     columns: List[str],
-    drop_na_values: bool = False,
-    key_format: str = "unique_values({0})",
-    max_categories: Optional[Dict[str, int]] = None,
+    key_gen: Callable,
     encode_lists: bool = True,
-) -> Dict[str, Dict[str, int]]:
-    """If drop_na_values is True, will silently drop NA values."""
-
+    max_categories: Optional[Dict[str, int]] = None,
+):
     if max_categories is None:
         max_categories = {}
     columns_set = set(columns)
@@ -686,7 +727,7 @@ def _get_unique_value_indices(
                 f"{columns}."
             )
 
-    def get_pd_value_counts_per_column(col: pd.Series):
+    def get_pd_value_counts_per_column(col: pd.Series) -> Dict:
         # special handling for lists
         if _is_series_composed_of_lists(col):
             if encode_lists:
@@ -703,7 +744,8 @@ def _get_unique_value_indices(
                 col = col.map(lambda x: tuple(x))
         return Counter(col.value_counts(dropna=False).to_dict())
 
-    def get_pd_value_counts(df: pd.DataFrame) -> List[Dict[str, Counter]]:
+    def get_pd_value_counts(df: pd.DataFrame) -> Dict[str, List[Dict]]:
+
         df_columns = df.columns.tolist()
         result = {}
         for col in columns:
@@ -715,44 +757,47 @@ def _get_unique_value_indices(
                 )
         return result
 
-    value_counts = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
-    final_counters = {col: Counter() for col in columns}
-    for batch in value_counts.iter_batches(batch_size=None):
+    value_counts_ds = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
+    unique_values_by_col: Dict[str, Set] = {key_gen(col): set() for col in columns}
+    for batch in value_counts_ds.iter_batches(batch_size=None):
         for col, counters in batch.items():
             for counter in counters:
-                counter = {k: v for k, v in counter.items() if v is not None}
-                final_counters[col] += Counter(counter)
+                counter: Dict[Any, int] = {
+                    k: v for k, v in counter.items() if v is not None
+                }
+                if col in max_categories:
+                    counter: Dict[Any, int] = dict(
+                        Counter(counter).most_common(max_categories[col])
+                    )
+                # add only column values since frequencies are needed beyond this point
+                unique_values_by_col[key_gen(col)].update(counter.keys())
 
-    # Inspect if there is any NA values.
-    for col in columns:
+    return unique_values_by_col
+
+
+def unique_post_fn(drop_na_values: bool = False) -> Callable[[Set], Dict[str, int]]:
+    """
+    Returns a post-processing function that generates an encoding map by
+    sorting the unique values produced during aggregation or stats computation.
+
+    :param drop_na_values: If True, NA/null values will be silently dropped from the encoding map.
+                           If False, raises an error if any NA/null values are present.
+    :return: A callable that takes a set of unique values and returns a dictionary
+             mapping each value to a unique integer index.
+    """
+
+    def gen_value_index(values: Set) -> Dict[str, int]:
         if drop_na_values:
-            counter = final_counters[col]
-            counter_dict = dict(counter)
-            sanitized_dict = {k: v for k, v in counter_dict.items() if not pd.isnull(k)}
-            final_counters[col] = Counter(sanitized_dict)
+            values = {k for k in values if not pd.isnull(k)}
         else:
-            if any(pd.isnull(k) for k in final_counters[col]):
+            if any(pd.isnull(k) for k in values):
                 raise ValueError(
-                    f"Unable to fit column '{col}' because it contains null"
-                    f" values. Consider imputing missing values first."
+                    "Unable to fit column because it contains null"
+                    " values. Consider imputing missing values first."
                 )
+        return {k: j for j, k in enumerate(sorted(values))}
 
-    unique_values_with_indices = OrderedDict()
-    for column in columns:
-        if column in max_categories:
-            # Output sorted by freq.
-            unique_values_with_indices[key_format.format(column)] = {
-                k[0]: j
-                for j, k in enumerate(
-                    final_counters[column].most_common(max_categories[column])
-                )
-            }
-        else:
-            # Output sorted by column name.
-            unique_values_with_indices[key_format.format(column)] = {
-                k: j for j, k in enumerate(sorted(dict(final_counters[column]).keys()))
-            }
-    return unique_values_with_indices
+    return gen_value_index
 
 
 def _validate_df(df: pd.DataFrame, *columns: str) -> None:

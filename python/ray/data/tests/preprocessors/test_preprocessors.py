@@ -117,7 +117,7 @@ def test_fitted_preprocessor_without_stats():
 
     class FittablePreprocessor(Preprocessor):
         def _fit(self, ds):
-            return ds
+            return self
 
     preprocessor = FittablePreprocessor()
     ds = ray.data.from_items([1])
