@@ -105,10 +105,11 @@ class NodeManagerClient {
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
-  VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         ReturnWorkerLease,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1, )
+  VOID_RETRYABLE_RPC_CLIENT_METHOD(retryable_grpc_client_,
+                                   NodeManagerService,
+                                   ReturnWorkerLease,
+                                   grpc_client_,
+                                   /*method_timeout_ms*/ -1, )
 
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          ReleaseUnusedActorWorkers,
