@@ -11,6 +11,7 @@ configure-logging
 profiling
 add-app-metrics
 ray-tracing
+ray-event-export
 ```
 
 These guides help you monitor and debug your Ray applications and clusters.
@@ -21,3 +22,4 @@ The guides include:
 * {ref}`configure-logging`
 * {ref}`application-level-metrics`
 * {ref}`ray-tracing`
+* {ref}`ray-event-export`
