@@ -5,7 +5,7 @@ import threading
 import time
 import weakref
 from abc import ABC, abstractmethod
-from asyncio import AbstractEventLoop
+from asyncio import AbstractEventLoop, ensure_future, futures
 from collections import defaultdict
 from collections.abc import MutableMapping
 from contextlib import contextmanager
@@ -37,6 +37,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
+    RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     SERVE_LOGGER_NAME,
 )
@@ -56,7 +57,6 @@ from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     generate_request_id,
     resolve_deployment_response,
-    run_coroutine_or_future_threadsafe,
 )
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
@@ -81,6 +81,7 @@ class RouterMetricsManager:
         router_requests_counter: metrics.Counter,
         queued_requests_gauge: metrics.Gauge,
         running_requests_gauge: metrics.Gauge,
+        event_loop: asyncio.BaseEventLoop,
     ):
         self._handle_id = handle_id
         self._deployment_id = deployment_id
@@ -139,6 +140,21 @@ class RouterMetricsManager:
         self._deployment_config: Optional[DeploymentConfig] = None
         # Track whether the metrics manager has been shutdown
         self._shutdown: bool = False
+
+        # If the interval is set to 0, eagerly sets all metrics.
+        self._cached_metrics_enabled = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS != 0
+        self._cached_metrics_interval_s = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS / 1000
+
+        if self._cached_metrics_enabled:
+            self._cached_num_router_requests = defaultdict(int)
+
+            def create_metrics_task():
+                event_loop.create_task(self._report_cached_metrics_forever())
+
+            # the constructor is called in the user thread, but its trying to create a task on the event loop
+            # which is running in the router thread. This is not thread safe, so we need to use call_soon_threadsafe
+            # to create the task on the event loop thread safely.
+            event_loop.call_soon_threadsafe(create_metrics_task)
 
     @contextmanager
     def wrap_request_assignment(self, request_meta: RequestMetadata):
@@ -272,30 +288,65 @@ class RouterMetricsManager:
             if self.metrics_pusher:
                 self.metrics_pusher.stop_tasks()
 
+    def _report_cached_metrics(self):
+        for route, count in self._cached_num_router_requests.items():
+            self.num_router_requests.inc(count, tags={"route": route})
+        self._cached_num_router_requests.clear()
+
+        self.num_queued_requests_gauge.set(self.num_queued_requests)
+
+        self.num_running_requests_gauge.set(
+            sum(self.num_requests_sent_to_replicas.values())
+        )
+
+    async def _report_cached_metrics_forever(self):
+        assert self._cached_metrics_interval_s > 0
+
+        consecutive_errors = 0
+        while True:
+            try:
+                await asyncio.sleep(self._cached_metrics_interval_s)
+                self._report_cached_metrics()
+                consecutive_errors = 0
+            except Exception:
+                logger.exception("Unexpected error reporting metrics.")
+
+                # Exponential backoff starting at 1s and capping at 10s.
+                backoff_time_s = min(10, 2**consecutive_errors)
+                consecutive_errors += 1
+                await asyncio.sleep(backoff_time_s)
+
     def inc_num_total_requests(self, route: str):
-        self.num_router_requests.inc(tags={"route": route})
+        if self._cached_metrics_enabled:
+            self._cached_num_router_requests[route] += 1
+        else:
+            self.num_router_requests.inc(tags={"route": route})
 
     def inc_num_queued_requests(self):
         self.num_queued_requests += 1
-        self.num_queued_requests_gauge.set(self.num_queued_requests)
+        if not self._cached_metrics_enabled:
+            self.num_queued_requests_gauge.set(self.num_queued_requests)
 
     def dec_num_queued_requests(self):
         self.num_queued_requests -= 1
-        self.num_queued_requests_gauge.set(self.num_queued_requests)
+        if not self._cached_metrics_enabled:
+            self.num_queued_requests_gauge.set(self.num_queued_requests)
 
     def inc_num_running_requests_for_replica(self, replica_id: ReplicaID):
         with self._queries_lock:
             self.num_requests_sent_to_replicas[replica_id] += 1
-            self.num_running_requests_gauge.set(
-                sum(self.num_requests_sent_to_replicas.values())
-            )
+            if not self._cached_metrics_enabled:
+                self.num_running_requests_gauge.set(
+                    sum(self.num_requests_sent_to_replicas.values())
+                )
 
     def dec_num_running_requests_for_replica(self, replica_id: ReplicaID):
         with self._queries_lock:
             self.num_requests_sent_to_replicas[replica_id] -= 1
-            self.num_running_requests_gauge.set(
-                sum(self.num_requests_sent_to_replicas.values())
-            )
+            if not self._cached_metrics_enabled:
+                self.num_running_requests_gauge.set(
+                    sum(self.num_requests_sent_to_replicas.values())
+                )
 
     def should_send_scaled_to_zero_optimized_push(self, curr_num_replicas: int) -> bool:
         return (
@@ -480,6 +531,7 @@ class AsyncioRouter:
                 ),
                 tag_keys=("deployment", "application", "handle", "actor_id"),
             ),
+            event_loop,
         )
 
         # The Router needs to stay informed about changes to the target deployment's
@@ -905,17 +957,34 @@ class SingletonThreadRouter(Router):
                 )
                 result.cancel()
 
-        task = self._asyncio_loop.create_task(
-            self._asyncio_router.assign_request(
-                request_meta, *request_args, **request_kwargs
+        concurrent_future = concurrent.futures.Future()
+
+        def create_task_and_setup():
+            task = self._asyncio_loop.create_task(
+                self._asyncio_router.assign_request(
+                    request_meta, *request_args, **request_kwargs
+                )
             )
-        )
-        # Route the actual request assignment coroutine on the asyncio loop thread.
-        concurrent_future = run_coroutine_or_future_threadsafe(
-            task,
-            loop=self._asyncio_loop,
-        )
-        task.add_done_callback(lambda _: asyncio_future_callback(_, concurrent_future))
+
+            # Set up your cancellation callback
+            task.add_done_callback(
+                lambda _: asyncio_future_callback(_, concurrent_future)
+            )
+
+            try:
+                # chain the two futures to handle direction channel of cancellation
+                futures._chain_future(
+                    ensure_future(task, loop=self._asyncio_loop), concurrent_future
+                )
+            except (SystemExit, KeyboardInterrupt):
+                raise
+            except BaseException as exc:
+                if concurrent_future.set_running_or_notify_cancel():
+                    concurrent_future.set_exception(exc)
+                raise
+
+        # Schedule on the event loop thread
+        self._asyncio_loop.call_soon_threadsafe(create_task_and_setup)
         return concurrent_future
 
     def shutdown(self) -> concurrent.futures.Future:
