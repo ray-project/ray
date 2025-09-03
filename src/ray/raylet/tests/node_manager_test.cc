@@ -1041,7 +1041,12 @@ TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseIdempotent) {
 }
 
 TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseInfeasibleIdempotent) {
-  auto lease_spec = BuildLeaseSpec({{"CPU", 1.0}});
+  auto lease_spec = BuildLeaseSpec({{"CPU", 1}});
+  lease_spec.GetMutableMessage()
+      .mutable_scheduling_strategy()
+      ->mutable_node_affinity_scheduling_strategy()
+      ->set_soft(false);  // Hard constraint
+
   rpc::RequestWorkerLeaseRequest request;
   rpc::RequestWorkerLeaseReply reply1;
   rpc::RequestWorkerLeaseReply reply2;
@@ -1058,6 +1063,9 @@ TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseInfeasibleIdempotent) {
         ASSERT_TRUE(s.ok());
       });
   ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(reply1.canceled(), true);
+  ASSERT_EQ(reply1.failure_type(),
+            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE);
   request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
   node_manager_->HandleRequestWorkerLease(
       request,
@@ -1066,9 +1074,6 @@ TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseInfeasibleIdempotent) {
         ASSERT_TRUE(s.ok());
       });
   ASSERT_EQ(leased_workers_.size(), 0);
-  ASSERT_EQ(reply1.canceled(), true);
-  ASSERT_EQ(reply1.failure_type(),
-            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED);
   ASSERT_EQ(reply1.canceled(), reply2.canceled());
   ASSERT_EQ(reply1.failure_type(), reply2.failure_type());
   ASSERT_EQ(reply1.scheduling_failure_message(), reply2.scheduling_failure_message());

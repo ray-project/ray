@@ -1686,7 +1686,7 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
             RAY_LOG(DEBUG).WithField(actor_id)
                 << "Reject leasing as the raylet has no enough resources. "
                    "normal_task_resources = "
-                << normal_task_resources.DebugString() << ", local_resoruce_view = "
+                << normal_task_resources.DebugString() << ", local_resource_view = "
                 << cluster_resource_scheduler_.GetClusterResourceManager()
                        .GetNodeResourceViewString(
                            scheduling::NodeID(self_node_id_.Binary()));
