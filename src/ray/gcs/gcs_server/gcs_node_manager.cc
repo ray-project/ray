@@ -22,7 +22,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "ray/gcs/pb_util.h"
+#include "ray/common/protobuf_utils.h"
 #include "ray/util/logging.h"
 #include "ray/util/time.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -30,8 +30,7 @@
 namespace ray {
 namespace gcs {
 
-//////////////////////////////////////////////////////////////////////////////////////////
-GcsNodeManager::GcsNodeManager(GcsPublisher *gcs_publisher,
+GcsNodeManager::GcsNodeManager(pubsub::GcsPublisher *gcs_publisher,
                                gcs::GcsTableStorage *gcs_table_storage,
                                instrumented_io_context &io_context,
                                rpc::RayletClientPool *raylet_client_pool,
