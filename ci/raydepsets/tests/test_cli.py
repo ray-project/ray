@@ -166,7 +166,6 @@ class TestCli(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
             uv_cache_dir = Path(tmpdir) / "uv_cache"
-
             result = CliRunner().invoke(
                 build,
                 [
@@ -554,29 +553,23 @@ depsets:
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
-            manager.execute_pre_hooks(["pre-hook-test.sh"])
-
-    def test_execute_multiple_pre_hooks(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            copy_data_to_tmpdir(tmpdir)
-            manager = _create_test_manager(tmpdir)
-            manager.execute_pre_hooks(["pre-hook-test.sh", "pre-hook-test.sh"])
+            manager.execute_pre_hook("pre-hook-test.sh")
 
     def test_execute_single_invalid_pre_hook(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
             with self.assertRaises(RuntimeError):
-                manager.execute_pre_hooks(["pre-hook-error-test.sh"])
+                manager.execute_pre_hook("pre-hook-error-test.sh")
 
     def test_execute_pre_hooks_failure_in_middle(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
             with self.assertRaises(RuntimeError):
-                manager.execute_pre_hooks(
-                    ["pre-hook-test.sh", "pre-hook-error-test.sh", "pre-hook-test.sh"]
-                )
+                manager.execute_pre_hook("pre-hook-test.sh")
+                manager.execute_pre_hook("pre-hook-error-test.sh")
+                manager.execute_pre_hook("pre-hook-test.sh")
 
     def test_compile_with_packages(self):
         with tempfile.TemporaryDirectory() as tmpdir:

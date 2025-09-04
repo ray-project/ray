@@ -61,7 +61,7 @@ def build(
         uv_cache_dir=uv_cache_dir,
     )
     if name:
-        manager.execute_single(_get_depset(manager.config.depsets, name))
+        manager.execute_depset(_get_depset(manager.config.depsets, name))
     else:
         manager.execute()
 
@@ -115,10 +115,10 @@ class DependencySetManager:
             node_type = self.build_graph.nodes[node]["node_type"]
             if node_type == "depset":
                 depset = self.build_graph.nodes[node]["depset"]
-                self.execute_single(depset)
+                self.execute_depset(depset)
             elif node_type == "pre_hook":
                 pre_hook = self.build_graph.nodes[node]["pre_hook"]
-                self.execute_pre_hooks(pre_hook)
+                self.execute_pre_hook(pre_hook)
 
     def exec_uv_cmd(
         self, cmd: str, args: List[str], stdin: Optional[bytes] = None
@@ -130,17 +130,14 @@ class DependencySetManager:
             raise RuntimeError(f"Failed to execute command: {cmd}")
         return status.stdout
 
-    def execute_pre_hooks(self, pre_hooks: List[str]):
-        for hook in pre_hooks:
-            status_code = subprocess.call(hook, cwd=self.workspace.dir)
+    def execute_pre_hook(self, pre_hook: str):
+        status_code = subprocess.call(pre_hook, cwd=self.workspace.dir)
         if status_code != 0:
-            raise RuntimeError(f"Failed to execute pre-hook: {hook}")
-        click.echo(f"Executed pre-hook: {hook}")
+            raise RuntimeError(f"Failed to execute pre-hook: {pre_hook}")
+        click.echo(f"Executed pre-hook: {pre_hook}")
         return status_code
 
-    def execute_single(self, depset: Depset):
-        if depset.pre_hooks:
-            self.execute_pre_hooks(depset.pre_hooks)
+    def execute_depset(self, depset: Depset):
         if depset.operation == "compile":
             self.compile(
                 constraints=depset.constraints,
