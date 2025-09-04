@@ -74,6 +74,29 @@ cc_proto_library(
 )
 
 proto_library(
+    name = "events_actor_definition_event_proto",
+    srcs = ["events_actor_definition_event.proto"],
+)
+
+cc_proto_library(
+    name = "events_actor_definition_event_cc_proto",
+    deps = [":events_actor_definition_event_proto"],
+)
+
+proto_library(
+    name = "events_actor_execution_event_proto",
+    srcs = ["events_actor_execution_event.proto"],
+    deps = [
+       "//src/ray/protobuf:common_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "events_actor_execution_event_cc_proto",
+    deps = [":events_actor_execution_event_proto"],
+)
+
+proto_library(
     name = "runtime_environment_proto",
     srcs = ["runtime_environment.proto"],
 )
