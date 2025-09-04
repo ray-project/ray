@@ -29,7 +29,7 @@ namespace ray {
 struct FakeCgroup {
   std::string path_;
   std::vector<int> processes_;
-  std::vector<std::pair<std::string, std::string>> constraints_;
+  std::unordered_map<std::string, std::string> constraints_;
   std::unordered_set<std::string> available_controllers_;
   std::unordered_set<std::string> enabled_controllers_;
   bool operator==(const FakeCgroup &other) const {
@@ -136,7 +136,7 @@ class FakeCgroupDriver : public CgroupDriverInterface {
     if (!add_constraint_s_.ok()) {
       return add_constraint_s_;
     }
-    (*cgroups_)[cgroup].constraints_.emplace_back(constraint, value);
+    (*cgroups_)[cgroup].constraints_.emplace(constraint, value);
     return add_constraint_s_;
   }
 

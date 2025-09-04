@@ -115,48 +115,65 @@ StatusOr<std::unique_ptr<CgroupManager>> CgroupManager::Create(
   return cgroup_manager;
 }
 
-// TODO(#54703): This is a placeholder for cleanup. This will call
-// CgroupDriver::DeleteCgroup.
 void CgroupManager::RegisterDeleteCgroup(const std::string &cgroup_path) {
-  cleanup_operations_.emplace_back([cgroup = cgroup_path]() {
-    RAY_LOG(INFO) << absl::StrFormat("Deleting all cgroup %s.", cgroup);
+  cleanup_operations_.emplace_back([this, cgroup = cgroup_path]() {
+    Status s = this->cgroup_driver_->DeleteCgroup(cgroup);
+    if (!s.ok()) {
+      RAY_LOG(WARNING) << absl::StrFormat(
+          "Failed to delete cgroup %s with error %s.", cgroup, s.ToString());
+    }
   });
 }
 
-// TODO(#54703): This is a placeholder for cleanup. This will call
-// CgroupDriver::MoveAllProcesses.
 void CgroupManager::RegisterMoveAllProcesses(const std::string &from,
                                              const std::string &to) {
-  cleanup_operations_.emplace_back([from_cgroup = from, to_cgroup = to]() {
-    RAY_LOG(INFO) << absl::StrFormat(
-        "Moved All Processes from %s to %s.", from_cgroup, to_cgroup);
+  cleanup_operations_.emplace_back([this, from_cgroup = from, to_cgroup = to]() {
+    Status s = this->cgroup_driver_->MoveAllProcesses(from_cgroup, to_cgroup);
+    if (!s.ok()) {
+      RAY_LOG(WARNING) << absl::StrFormat(
+          "Failed to move all processes from %s to %s with error %s",
+          from_cgroup,
+          to_cgroup,
+          s.ToString());
+    }
   });
 }
 
-// TODO(#54703): This is a placeholder for cleanup. This will call
-// CgroupDriver::AddConstraint(cgroup, constraint, default_value).
 template <typename T>
 void CgroupManager::RegisterRemoveConstraint(const std::string &cgroup,
                                              const Constraint<T> &constraint) {
   cleanup_operations_.emplace_back(
-      [constrained_cgroup = cgroup, constraint_to_remove = constraint]() {
-        RAY_LOG(INFO) << absl::StrFormat(
-            "Setting constraint %s to default value %lld for cgroup %s",
-            constraint_to_remove.name_,
-            constraint_to_remove.default_value_,
-            constrained_cgroup);
+      [this, constrained_cgroup = cgroup, constraint_to_remove = constraint]() {
+        std::string default_value = std::to_string(constraint_to_remove.default_value_);
+        Status s = this->cgroup_driver_->AddConstraint(constrained_cgroup,
+                                                       constraint_to_remove.controller_,
+                                                       constraint_to_remove.name_,
+                                                       default_value);
+        if (!s.ok()) {
+          RAY_LOG(WARNING) << absl::StrFormat(
+              "Failed to set constraint %s=%s to default value for cgroup %s with error "
+              "%s.",
+              constraint_to_remove.name_,
+              default_value,
+              constrained_cgroup,
+              s.ToString());
+        }
       });
 }
 
-// TODO(#54703): This is a placeholder for cleanup. This will call
-// CgroupDriver::DisableController.
-void CgroupManager::RegisterDisableController(const std::string &cgroup,
+void CgroupManager::RegisterDisableController(const std::string &cgroup_path,
                                               const std::string &controller) {
-  cleanup_operations_.emplace_back([cgroup_to_clean = cgroup,
-                                    controller_to_disable = controller]() {
-    RAY_LOG(INFO) << absl::StrFormat(
-        "Disabling controller %s for cgroup %s.", controller_to_disable, cgroup_to_clean);
-  });
+  cleanup_operations_.emplace_back(
+      [this, cgroup = cgroup_path, controller_to_disable = controller]() {
+        Status s = this->cgroup_driver_->DisableController(cgroup, controller_to_disable);
+        if (!s.ok()) {
+          RAY_LOG(WARNING) << absl::StrFormat(
+              "Failed to disable controller %s for cgroup %s with error %s",
+              controller_to_disable,
+              cgroup,
+              s.ToString());
+        }
+      });
 }
 
 Status CgroupManager::Initialize(int64_t system_reserved_cpu_weight,
@@ -170,11 +187,11 @@ Status CgroupManager::Initialize(int64_t system_reserved_cpu_weight,
       cpu_weight_constraint_.Max() - system_reserved_cpu_weight;
 
   RAY_LOG(INFO) << absl::StrFormat(
-      "Initializing CgroupManager at base cgroup path at %s. Ray's cgroup "
-      "hierarchy will under the node cgroup %s. The %s controllers will be "
+      "Initializing CgroupManager at base cgroup at '%s'. Ray's cgroup "
+      "hierarchy will under the node cgroup at '%s'. The %s controllers will be "
       "enabled. "
-      "System cgroup %s will have constraints [%s=%lld, %s=%lld]. "
-      "Application cgroup %s will have constraints [%s=%lld].",
+      "The system cgroup at '%s' will have constraints [%s=%lld, %s=%lld]. "
+      "The application cgroup '%s' will have constraints [%s=%lld].",
       base_cgroup_path_,
       node_cgroup_path_,
       supported_controllers,
