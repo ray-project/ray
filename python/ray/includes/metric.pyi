@@ -1,6 +1,5 @@
-
+# source: metric.pxi
 from typing import Iterable
-
 
 class TagKey:
     """Cython wrapper class of C++ `opencensus::stats::TagKey`."""

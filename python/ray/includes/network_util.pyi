@@ -1,5 +1,5 @@
+# source: network_util.pyi
 from typing import Optional, Tuple, Union
-
 
 def parse_address(address: str) -> Optional[Tuple[str, str]]:
     """Parse a network address string into host and port.

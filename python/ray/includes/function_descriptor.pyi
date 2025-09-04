@@ -1,15 +1,17 @@
+# source: function_descriptor.pxi
 from typing import Any, Callable, Generic, Protocol, TypeVar
 from uuid import UUID
-from ray.includes.unique_ids import FunctionID
 
 from typing_extensions import ParamSpec
+
+from ray.includes.unique_ids import FunctionID
 
 _FDArgs = ParamSpec("_FDArgs")
 class _Initializable(Protocol,Generic[_FDArgs]):
     def __init__(self,*args:_FDArgs.args,**kwargs:_FDArgs.kwargs): ...
 
 _FDReturn = TypeVar("_FDReturn")
-class FunctionDescriptor(Generic[_FDArgs,_FDReturn]): #TODO: FUNCTION DESCRIPTOR FOR GENERATOR/STREAMING TYPES?
+class FunctionDescriptor(Generic[_FDArgs,_FDReturn]): # TODO: FUNCTION DESCRIPTOR FOR GENERATOR/STREAMING TYPES?
     def __cinit__(self, *args, **kwargs)->None: ...
 
     def __hash__(self)->int: ...
@@ -48,7 +50,7 @@ class JavaFunctionDescriptor(FunctionDescriptor[_FDArgs,_FDReturn]):
 
 class PythonFunctionDescriptor(FunctionDescriptor[_FDArgs,_FDReturn]):
 
-    def __init__(self, #originally __cinit__
+    def __init__(self, # originally __cinit__
                   module_name:str,
                   function_name:str,
                   class_name:str="",
@@ -181,7 +183,7 @@ class PythonFunctionDescriptor(FunctionDescriptor[_FDArgs,_FDReturn]):
 
 
 class CppFunctionDescriptor(FunctionDescriptor):
-    def __init__(self, #originally __cinit__
+    def __init__(self, # originally __cinit__
                   function_name:str, caller:str, class_name:str=""): ...
 
     def __reduce__(self)->tuple[type[CppFunctionDescriptor],tuple[str,str,str]]: ...

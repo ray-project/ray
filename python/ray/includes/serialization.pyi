@@ -1,14 +1,4 @@
-#TODO: stub!
-#make sure to capture:
-# class MessagePackSerializer: ...
-# class MessagePackSerializedObject: ...
-# class Pickle5SerializedObject: ...
-# class Pickle5Writer: ...
-# class SerializedObject: ...
-# class RawSerializedObject: ...
-# def split_buffer(): ...
-# def unpack_pickle5_buffers(): ...
-
+# source: serialization.pxi
 import contextlib
 from typing import Any, Callable, Generator, Sequence, TypeVar, Union
 
@@ -16,14 +6,14 @@ from ray._raylet import ObjectRef
 from ray.includes.buffer import Buffer
 
 try:
-    from collections.abc import Buffer as _Buffer #type: ignore[attr-defined]
+    from collections.abc import Buffer as _Buffer  # type: ignore[attr-defined]
 except ImportError:
     try:
-        from typing_extensions import Buffer as _Buffer #type: ignore[no-redef]
+        from typing_extensions import Buffer as _Buffer  # type: ignore[no-redef]
     except ImportError:
         import abc
-        #same fake Buffer class as in typing_extensions
-        class _Buffer(abc.ABC):  #type: ignore[no-redef] # noqa: B024
+        # same fake Buffer class as in typing_extensions
+        class _Buffer(abc.ABC):  # type: ignore[no-redef] # noqa: B024
             """Base class for classes that implement the buffer protocol.
 
             The buffer protocol allows Python objects to expose a low-level
@@ -63,13 +53,13 @@ class Pickle5Writer:
 
     def buffer_callback(self, pickle_buffer:object)->None: ...
 
-    def get_total_bytes(self, inband:bytes)->int: ... #TODO: bytes-like object (buffer protocol - 3.12 only!)
+    def get_total_bytes(self, inband:bytes)->int: ... # TODO: bytes-like object (buffer protocol - 3.12 only!)
 
     # doesn't exist in the python object
     # def write_to(self, inband:bytes, data:bytes,
     #                    memcopy_threads:int)->None:
 
-#TODO: Can this be made generic? See: CoreWorker.put_object
+# TODO: Can this be made generic? See: CoreWorker.put_object
 class SerializedObject(object):
 
     def __init__(self, metadata:bytes, contained_object_refs:Union[Sequence[ObjectRef],None]=None):
@@ -115,4 +105,4 @@ def _temporarily_disable_gc()->Generator[None,None,None]: ...
 
 # I think this should work cross-version?
 def split_buffer(buf:Buffer)->tuple[_Buffer,_Buffer]: ...
-def unpack_pickle5_buffers(bufferview:_Buffer)->tuple[_Buffer,list[SubBuffer]]: ... #TODO: Buffer typing?
+def unpack_pickle5_buffers(bufferview:_Buffer)->tuple[_Buffer,list[SubBuffer]]: ... # TODO: Buffer typing?

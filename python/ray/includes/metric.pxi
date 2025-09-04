@@ -12,7 +12,7 @@ from libcpp.string cimport string as c_string
 from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
 
-#TODO: is this actually used anywhere?? all the TagKey references I see are to the protobuf. You can't even instantiate it from purepython!
+# TODO: is this actually used anywhere?? all the TagKey references I see are to the protobuf. You can't even instantiate it from purepython!
 cdef class TagKey:
     """Cython wrapper class of C++ `opencensus::stats::TagKey`."""
     cdef c_string name

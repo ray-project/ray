@@ -1,11 +1,11 @@
+# source: gcs_client.pyi
 from asyncio import Future
 from typing import Dict, List, Optional, Sequence
 
 import ray
-from ray.core.generated import gcs_pb2, autoscaler_pb2
+from ray.core.generated import autoscaler_pb2, gcs_pb2
 from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
-from ray.includes.unique_ids import NodeID, ActorID, JobID
-
+from ray.includes.unique_ids import ActorID, JobID, NodeID
 
 class InnerGcsClient:
 

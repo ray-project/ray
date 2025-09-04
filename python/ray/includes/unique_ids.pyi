@@ -1,11 +1,14 @@
+# source: unique_ids.pxi
 from __future__ import annotations
+
 from typing import Tuple, TypeVar
 
-#backwards compatibility. Luckily circular references are fine in type stubs
+# backwards compatibility. Luckily circular references are fine in type stubs
 from ray._raylet import ObjectRef
+
 ObjectID = ObjectRef
 
-#implementations are in unique_ids.pxi
+# implementations are in unique_ids.pxi
 def check_id(b:bytes, size:int=...)->None: ...
 
 _BID = TypeVar("_BID",bound=BaseID)
@@ -104,7 +107,7 @@ class JobID(BaseID):
 
 class WorkerID(UniqueID): ...
 
-#TODO: Make ActorID generic? see CoreWorker.get_actor_handle; ActorHandle
+# TODO: Make ActorID generic? see CoreWorker.get_actor_handle; ActorHandle
 _AID = TypeVar("_AID",bound=ActorID)
 class ActorID(BaseID):
 

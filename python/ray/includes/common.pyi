@@ -1,6 +1,5 @@
-
+# source: common.pxi
 from typing import TypeVar, Union
-
 
 _GCO = TypeVar("_GCO",bound=GcsClientOptions)
 class GcsClientOptions:

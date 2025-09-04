@@ -1,3 +1,4 @@
+# source: _raylet.pxi
 import asyncio
 import contextvars
 import threading
@@ -127,18 +128,18 @@ from ray._private.custom_types import TensorTransportEnum
 
 from ray.includes.buffer import Buffer
 
-from ray.experimental.channel.shared_memory_channel import ReaderRefInfo #circular reference - .pyi only
+from ray.experimental.channel.shared_memory_channel import ReaderRefInfo # circular reference - .pyi only
 
-#for FunctionDescriptor matching
+# for FunctionDescriptor matching
 from typing_extensions import ParamSpec
 _FDArgs = ParamSpec("_FDArgs")
 _FDReturn = TypeVar("_FDReturn")
 
 __all__ = [
-    #ray.includes.libcoreworker
+    # ray.includes.libcoreworker
     "ProfileEvent",
 
-    #ray.includes.serialization
+    # ray.includes.serialization
     "_temporarily_disable_gc",
     "SubBuffer",
     "RawSerializedObject",
@@ -151,7 +152,7 @@ __all__ = [
     "unpack_pickle5_buffers",
 
 
-    #ray.includes.metric
+    # ray.includes.metric
     "Count",
     "Sum",
     "TagKey",
@@ -159,23 +160,23 @@ __all__ = [
     "Histogram",
     "Metric",
 
-    #ray.includes.ray_config
+    # ray.includes.ray_config
     "Config",
 
-    #ray.includes.gcs_client
+    # ray.includes.gcs_client
     "InnerGcsClient",
 
-    #ray.includes.function_descriptor
+    # ray.includes.function_descriptor
     "FunctionDescriptor",
     "PythonFunctionDescriptor",
     "CppFunctionDescriptor",
     "EmptyFunctionDescriptor",
     "JavaFunctionDescriptor",
 
-    #ray.includes.global_state_accessor
+    # ray.includes.global_state_accessor
     "GlobalStateAccessor",
 
-    #ray.includes.common
+    # ray.includes.common
     "GCS_AUTOSCALER_CLUSTER_CONFIG_KEY",
     "GCS_AUTOSCALER_STATE_NAMESPACE",
     "GCS_AUTOSCALER_V2_ENABLED_KEY",
@@ -186,7 +187,7 @@ __all__ = [
     "RESOURCE_UNIT_SCALING",
     "WORKER_PROCESS_SETUP_HOOK_KEY_NAME_GCS",
 
-    #ray.includes.unique_ids
+    # ray.includes.unique_ids
     "ActorClassID",
     "ActorID",
     "BaseID",
@@ -202,20 +203,20 @@ __all__ = [
     "_ID_TYPES",
     "check_id",
 
-    #ray.includes.setproctitle
+    # ray.includes.setproctitle
     "_current_proctitle",
     "_current_proctitle_lock",
     "getproctitle",
     "setproctitle",
 
-    #ray.includes.object_ref
+    # ray.includes.object_ref
     "_set_future_helper",
     "ObjectRef",
 
-    #ray.includes.buffer
+    # ray.includes.buffer
     "Buffer",
 
-    #raylet constants
+    # raylet constants
     "GRPC_STATUS_CODE_DEADLINE_EXCEEDED",
     "GRPC_STATUS_CODE_RESOURCE_EXHAUSTED",
     "GRPC_STATUS_CODE_UNAVAILABLE",
@@ -230,7 +231,7 @@ __all__ = [
     "job_config_initialization_lock",
     "job_config_initialized",
 
-    #raylet classes/functions
+    # raylet classes/functions
     "CoreWorker",
     "EmptyProfileEvent",
     "GcsClient",
@@ -252,14 +253,14 @@ __all__ = [
     "raise_sys_exit_with_custom_error_message",
     "serialize_retry_exception_allowlist",
 
-    #protobuf imports
+    # protobuf imports
     "ActorDiedErrorContext",
     "GcsNodeInfo",
     "GetAllResourceUsageReply",
     "JobTableData",
     "common_pb2",
 
-    #other ray imports
+    # other ray imports
     "DeferSigint",
     "DynamicObjectRefGenerator",
     "TensorTransportEnum",
@@ -276,7 +277,7 @@ __all__ = [
     "sync_to_async",
 ]
 
-##RAYLET IMPLEMENTATION
+## RAYLET IMPLEMENTATION
 
 OPTIMIZED: int
 GRPC_STATUS_CODE_UNAVAILABLE: int
@@ -299,7 +300,7 @@ async_task_function_name:contextvars.ContextVar[str|None]
 class HasReadInto(Protocol):
     def readinto(self,b:bytearray|memoryview,/)->None: ...
 
-_R = TypeVar("_R") #for ObjectRefs
+_R = TypeVar("_R") # for ObjectRefs
 _R2 = TypeVar("_R2")
 
 
@@ -416,7 +417,7 @@ class ObjectRefGenerator(Generic[_R],Generator[ObjectRef[_R],None,None],AsyncGen
     def _next_sync(
         self,
         timeout_s: Optional[int | float] = None
-    ) -> ObjectRef[_R]: #ObjectRef could be nil
+    ) -> ObjectRef[_R]: # ObjectRef could be nil
         """Waits for timeout_s and returns the object ref if available.
 
         If an object is not available within the given timeout, it
@@ -445,7 +446,7 @@ class ObjectRefGenerator(Generic[_R],Generator[ObjectRef[_R],None,None],AsyncGen
     async def _next_async(
             self,
             timeout_s: Optional[int | float] = None
-    )->ObjectRef[_R]: #ObjectRef could be nil
+    )->ObjectRef[_R]: # ObjectRef could be nil
         """Same API as _next_sync, but it is for async context."""
         ...
 
@@ -462,7 +463,7 @@ class ObjectRefGenerator(Generic[_R],Generator[ObjectRef[_R],None,None],AsyncGen
         #     "You cannot return or pass a generator to other task. "
         #     "Serializing a ObjectRefGenerator is not allowed.")
 
-#update module. _raylet.pyx also updates the type name of ObjectRef using cython, but can't do that here
+# update module. _raylet.pyx also updates the type name of ObjectRef using cython, but can't do that here
 ObjectRefGenerator.__module__ = "ray"
 
 # For backward compatibility
@@ -662,7 +663,7 @@ class CoreWorker:
             )->bytes: ...
 
 
-    def wait(self,  #TODO: possible to type-check the generics here properly? At least overloads
+    def wait(self,  # TODO: possible to type-check the generics here properly? At least overloads
              object_refs_or_generators:Iterable[Union[ObjectRef[_R],ObjectRefGenerator[_R2]]],
              num_returns:int,
              timeout_ms:int,
@@ -788,7 +789,7 @@ class CoreWorker:
         """
         ...
 
-    def serialize_actor_handle(self, actor_id:ActorID)->tuple[bytes,ObjectRef[ActorHandle]]: ... #TODO: generic ActorID?
+    def serialize_actor_handle(self, actor_id:ActorID)->tuple[bytes,ObjectRef[ActorHandle]]: ... # TODO: generic ActorID?
 
     def add_object_ref_reference(self, object_ref:ObjectRef)->None: ...
 
@@ -890,13 +891,13 @@ class CoreWorker:
 
     def async_delete_object_ref_stream(self, generator_id:ObjectRef[None])->None: ...
 
-    #unfortunately the generator type information is in the ObjectRefGenerator, not the underlying reference,
-    #so this function can't be properly typed. oh well
+    # unfortunately the generator type information is in the ObjectRefGenerator, not the underlying reference,
+    # so this function can't be properly typed. oh well
     def try_read_next_object_ref_stream(self, generator_id:ObjectRef[None])->ObjectRef: ...
 
     def is_object_ref_stream_finished(self, generator_id:ObjectRef[None])->bool: ...
 
-    #like try_read_next_object_ref_stream, can't be properly typed
+    # like try_read_next_object_ref_stream, can't be properly typed
     def peek_object_ref_stream(self, generator_id:ObjectRef[None])->tuple[ObjectRef,bool]: ...
 
 def _call_actor_shutdown()->None:
@@ -913,7 +914,7 @@ class StreamRedirector:
 _L = TypeVar("_L",bound=Language)
 class Language:
 
-    def __init__(self, lang:int)->None: ... #from __cinit__
+    def __init__(self, lang:int)->None: ... # from __cinit__
 
     def value(self)->int: ...
 
@@ -935,7 +936,7 @@ class GcsClient:
     This is a thin wrapper around InnerGcsClient with only call frequency collection.
     """
 
-    def __init__(self, address: str, #from __cinit__
+    def __init__(self, address: str, # from __cinit__
                   cluster_id: Optional[str] = None)->None: ...
         # For timeout (DEADLINE_EXCEEDED): retries once with timeout_ms.
         #
@@ -1107,7 +1108,7 @@ class StreamingGeneratorExecutionContext:
             for streaming generator. The stremaing generator pauses if
             total number of unconsumed objects exceed this threshold.
     """
-    #TODO: can the context's various cdef'd attributes actually be accessed outside of Cpython?
+    # TODO: can the context's various cdef'd attributes actually be accessed outside of Cpython?
 
     def initialize(self, generator: Union[Generator, AsyncGenerator])->None: ...
 
