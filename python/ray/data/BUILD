@@ -373,6 +373,7 @@ py_test(
     size = "enormous",
     srcs = ["tests/test_groupby_e2e.py"],
     tags = [
+        "data_non_parallel",
         "exclusive",
         "team:data",
     ],
