@@ -929,7 +929,7 @@ class UnserializableException(RayError):
     def __str__(self):
         return (
             "Failed to deserialize exception. Refer to https://docs.ray.io/en/latest/ray-core/objects/serialization.html#troubleshooting to troubleshoot.\n"
-            "You can register a custom serializer for the exception class to avoid this error doc reference: https://docs.ray.io/en/latest/ray-core/objects/serialization.html#customized-serialization.\n"
+            "You can register a custom serializer for the exception class to avoid this error, for reference see: https://docs.ray.io/en/latest/ray-core/objects/serialization.html#customized-serialization.\n"
             "Original exception:\n"
             f"{self._original_stack_trace}"
         )

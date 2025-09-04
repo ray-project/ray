@@ -302,7 +302,7 @@ def test_actor_repr_in_traceback(ray_start_regular):
 
 def test_unpickleable_stacktrace(shutdown_only):
     expected_output = """Failed to deserialize exception. Refer to https://docs.ray.io/en/latest/ray-core/objects/serialization.html#troubleshooting to troubleshoot.
-You can register a custom serializer for the exception class to avoid this error doc reference: https://docs.ray.io/en/latest/ray-core/objects/serialization.html#customized-serialization.
+You can register a custom serializer for the exception class to avoid this error, for reference see: https://docs.ray.io/en/latest/ray-core/objects/serialization.html#customized-serialization.
 Original exception:
 ray.exceptions.RayTaskError: ray::f() (pid=XXX, ip=YYY)
   File "FILE", line ZZ, in f
