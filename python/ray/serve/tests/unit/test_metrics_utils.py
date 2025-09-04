@@ -1,8 +1,8 @@
 import asyncio
 import sys
+from collections import defaultdict
 
 import pytest
-from toolz.tests.test_dicttoolz import defaultdict
 
 from ray._common.test_utils import async_wait_for_condition
 from ray.serve._private.metrics_utils import (
