@@ -89,12 +89,24 @@ def build_vllm_engine_processor(
 
     stages = []
 
+    # Validate concurrency input and compute processor_concurrency for CPU stages
+    if isinstance(config.concurrency, int):
+        # For CPU-only stages, we leverage auto-scaling to recycle resources.
+        processor_concurrency = (1, config.concurrency)
+    elif isinstance(config.concurrency, tuple):
+        processor_concurrency = config.concurrency
+    else:
+        raise ValueError(
+            "``concurrency`` is expected to be set as an integer or tuple,"
+            f" but got: {config.concurrency}."
+        )
+
     if config.has_image:
         stages.append(
             PrepareImageStage(
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
-                    concurrency=config.get_concurrency(),
+                    concurrency=processor_concurrency,
                     batch_size=config.batch_size,
                 ),
             )
@@ -108,7 +120,7 @@ def build_vllm_engine_processor(
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
-                    concurrency=config.get_concurrency(),
+                    concurrency=processor_concurrency,
                     batch_size=config.batch_size,
                     runtime_env=config.runtime_env,
                 ),
@@ -123,7 +135,7 @@ def build_vllm_engine_processor(
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
-                    concurrency=config.get_concurrency(),
+                    concurrency=processor_concurrency,
                     batch_size=config.batch_size,
                     runtime_env=config.runtime_env,
                 ),
@@ -175,7 +187,7 @@ def build_vllm_engine_processor(
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
-                    concurrency=config.get_concurrency(),
+                    concurrency=processor_concurrency,
                     batch_size=config.batch_size,
                     runtime_env=config.runtime_env,
                 ),
