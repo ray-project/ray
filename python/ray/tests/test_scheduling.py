@@ -20,7 +20,6 @@ from ray._private.test_utils import (
     object_memory_usage,
 )
 from ray.util.scheduling_strategies import (
-    NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
 

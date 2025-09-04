@@ -19,7 +19,6 @@ from ray._private.test_utils import (
     init_error_pubsub,
 )
 from ray.exceptions import ActorDiedError, GetTimeoutError, RayActorError, RayTaskError
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
 def test_unhandled_errors(ray_start_regular):
