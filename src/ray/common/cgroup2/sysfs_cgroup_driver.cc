@@ -56,8 +56,8 @@ Status SysFsCgroupDriver::CheckCgroupv2Enabled() {
 
   struct mntent *mnt;
   while ((mnt = getmntent(fp)) != nullptr) {
-    found_cgroupv1 = found_cgroupv1 || strcmp(mnt->mnt_fsname, "cgroup") == 0;
-    found_cgroupv2 = found_cgroupv2 || strcmp(mnt->mnt_fsname, "cgroup2") == 0;
+    found_cgroupv1 = found_cgroupv1 || strcmp(mnt->mnt_type, "cgroup") == 0;
+    found_cgroupv2 = found_cgroupv2 || strcmp(mnt->mnt_type, "cgroup2") == 0;
   }
 
   // After parsing the mount file, the file should be at the EOF position.
