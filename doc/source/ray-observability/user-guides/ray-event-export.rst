@@ -102,9 +102,11 @@ An example of the task events is as follows:
         "taskExecutionEvent":{
             "taskId":"yO9FzNARJXH///////////////8BAAAA",
             "taskState":{
-                "2":"2025-09-03T18:52:14.467402Z",
-                "1":"2025-09-03T18:52:14.467290Z",
-                "5":"2025-09-03T18:52:14.469074Z"
+                // key is the integer value of TaskStatus enum in common.proto at
+                // https://github.com/ray-project/ray/blob/master/src/ray/protobuf/common.proto
+                "2":"2025-09-03T18:52:14.467402Z", // PENDING_NODE_ASSIGNMENT
+                "1":"2025-09-03T18:52:14.467290Z", // PENDING_ARGS_AVAIL
+                "5":"2025-09-03T18:52:14.469074Z" // SUBMITTED_TO_WORKER
             },
             "nodeId":"ZvxTI6x9dlMFqMlIHErJpg5UEGK1INsKhW2zyg==",
             "workerId":"hMybCNYIFi+/yInYYhdc+qH8yMF65j/8+uCTmw==",
