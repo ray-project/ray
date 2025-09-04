@@ -418,34 +418,41 @@ class LLMRouter:
         )
         call_method = "chat" if is_chat else "completions"
 
-        async with timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
+        try:
+            async with timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
 
-            gen = self._get_response(body=body, call_method=call_method)
+                gen = self._get_response(body=body, call_method=call_method)
 
-            # In streaming with batching enabled, this first response can be a list of chunks.
-            initial_response, gen = await _peek_at_generator(gen)
+                # In streaming with batching enabled, this first response can be a list of chunks.
+                initial_response, gen = await _peek_at_generator(gen)
 
-            if isinstance(initial_response, list):
-                first_chunk = initial_response[0]
-            else:
-                first_chunk = initial_response
+                if isinstance(initial_response, list):
+                    first_chunk = initial_response[0]
+                else:
+                    first_chunk = initial_response
 
-            if isinstance(first_chunk, ErrorResponse):
-                raise OpenAIHTTPException(
-                    message=first_chunk.message,
-                    status_code=first_chunk.code,
-                    type=first_chunk.type,
+                if isinstance(first_chunk, ErrorResponse):
+                    raise OpenAIHTTPException(
+                        message=first_chunk.message,
+                        status_code=first_chunk.code,
+                        type=first_chunk.type,
+                    )
+
+                if isinstance(first_chunk, NoneStreamingResponseType):
+                    # Not streaming, first chunk should be a single response
+                    return JSONResponse(content=first_chunk.model_dump())
+
+                # In case of streaming we need to iterate over the chunks and yield them
+                openai_stream_generator = _openai_json_wrapper(gen)
+
+                return StreamingResponse(
+                    openai_stream_generator, media_type="text/event-stream"
                 )
-
-            if isinstance(first_chunk, NoneStreamingResponseType):
-                # Not streaming, first chunk should be a single response
-                return JSONResponse(content=first_chunk.model_dump())
-
-            # In case of streaming we need to iterate over the chunks and yield them
-            openai_stream_generator = _openai_json_wrapper(gen)
-
-            return StreamingResponse(
-                openai_stream_generator, media_type="text/event-stream"
+        except TimeoutError as e :
+            raise OpenAIHTTPException(
+                status_code=status.HTTP_408_REQUEST_TIMEOUT, 
+                message="Request server side timeout",
+                internal_message=str(e),
             )
 
     @fastapi_router_app.post("/v1/completions")
@@ -476,18 +483,27 @@ class LLMRouter:
         Returns:
             A response object with embeddings.
         """
-        async with timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
-            results = self._get_response(body=body, call_method="embeddings")
-            result = await results.__anext__()
-            if isinstance(result, ErrorResponse):
-                raise OpenAIHTTPException(
-                    message=result.message,
-                    status_code=result.code,
-                    type=result.type,
-                )
+        try:
+            async with timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
+                results = self._get_response(body=body, call_method="embeddings")
+                result = await results.__anext__()
+                if isinstance(result, ErrorResponse):
+                    raise OpenAIHTTPException(
+                        message=result.error.message,
+                        status_code=result.error.code,
+                        type=result.error.type,
+                    )
 
-            if isinstance(result, EmbeddingResponse):
-                return JSONResponse(content=result.model_dump())
+                if isinstance(result, EmbeddingResponse):
+                    return JSONResponse(content=result.model_dump())
+        except TimeoutError as e :
+            raise OpenAIHTTPException(
+                status_code=status.HTTP_408_REQUEST_TIMEOUT, 
+                message="Request server side timeout",
+                internal_message=str(e),
+            )
+
+            
 
     @fastapi_router_app.post("/v1/score")
     async def score(self, body: ScoreRequest) -> Response:
