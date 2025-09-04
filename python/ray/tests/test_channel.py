@@ -17,7 +17,6 @@ from ray._private.test_utils import get_actor_node_id
 from ray.dag.compiled_dag_node import CompiledDAG
 from ray.exceptions import RayChannelError, RayChannelTimeoutError
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
