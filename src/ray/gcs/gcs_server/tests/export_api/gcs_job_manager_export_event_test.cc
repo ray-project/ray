@@ -12,23 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <gtest/gtest.h>
+
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "ray/gcs/gcs_server/gcs_job_manager.h"
-
-// clang-format off
-#include "gtest/gtest.h"
-#include "ray/gcs/gcs_server/tests/gcs_server_test_util.h"
-#include "ray/gcs/store_client/in_memory_store_client.h"
-#include "ray/gcs/tests/gcs_test_util.h"
-#include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "mock/ray/pubsub/publisher.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
-
-// clang-format on
+#include "ray/common/test_utils.h"
+#include "ray/gcs/gcs_server/gcs_job_manager.h"
+#include "ray/gcs/gcs_server/gcs_kv_manager.h"
+#include "ray/gcs/store_client/in_memory_store_client.h"
 
 using json = nlohmann::json;
 
@@ -46,7 +43,7 @@ class GcsJobManagerTest : public ::testing::Test {
     });
     promise.get_future().get();
 
-    gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
+    gcs_publisher_ = std::make_shared<pubsub::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>();
     gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(store_client_);
@@ -76,7 +73,7 @@ class GcsJobManagerTest : public ::testing::Test {
   std::unique_ptr<std::thread> thread_io_service_;
   std::shared_ptr<gcs::StoreClient> store_client_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
+  std::shared_ptr<pubsub::GcsPublisher> gcs_publisher_;
   std::unique_ptr<gcs::GCSFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   std::unique_ptr<gcs::FakeInternalKVInterface> fake_kv_;
@@ -115,8 +112,7 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
 
   auto job_api_job_id = JobID::FromInt(100);
   std::string submission_id = "submission_id_100";
-  auto add_job_request =
-      Mocker::GenAddJobRequest(job_api_job_id, "namespace_100", submission_id);
+  auto add_job_request = GenAddJobRequest(job_api_job_id, "namespace_100", submission_id);
   rpc::AddJobReply empty_reply;
   std::promise<bool> promise;
   gcs_job_manager.HandleAddJob(
@@ -128,8 +124,7 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
   promise.get_future().get();
 
   std::vector<std::string> vc;
-  Mocker::ReadContentFromFile(vc,
-                              log_dir_ + "/export_events/event_EXPORT_DRIVER_JOB.log");
+  ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_DRIVER_JOB.log");
   ASSERT_EQ((int)vc.size(), 1);
   json event_data = json::parse(vc[0])["event_data"].get<json>();
   ASSERT_EQ(event_data["is_dead"], false);
@@ -148,8 +143,7 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
   job_finished_promise.get_future().get();
 
   vc.clear();
-  Mocker::ReadContentFromFile(vc,
-                              log_dir_ + "/export_events/event_EXPORT_DRIVER_JOB.log");
+  ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_DRIVER_JOB.log");
   ASSERT_EQ((int)vc.size(), 2);
   event_data = json::parse(vc[1])["event_data"].get<json>();
   ASSERT_EQ(event_data["is_dead"], true);

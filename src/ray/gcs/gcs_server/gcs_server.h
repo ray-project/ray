@@ -33,21 +33,22 @@
 #include "ray/gcs/gcs_server/pubsub_handler.h"
 #include "ray/gcs/gcs_server/runtime_env_handler.h"
 #include "ray/gcs/gcs_server/usage_stats_client.h"
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/observable_store_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
+#include "ray/pubsub/gcs_publisher.h"
+#include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
-#include "ray/raylet/scheduling/cluster_task_manager.h"
+#include "ray/raylet_client/raylet_client_pool.h"
 #include "ray/rpc/client_call.h"
-#include "ray/rpc/gcs/gcs_rpc_server.h"
-#include "ray/rpc/node_manager/raylet_client_pool.h"
+#include "ray/rpc/grpc_server.h"
+#include "ray/rpc/metrics_agent_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/throttler.h"
 
 namespace ray {
-using raylet::ClusterTaskManager;
-using raylet::NoopLocalTaskManager;
+using raylet::ClusterLeaseManager;
+using raylet::NoopLocalLeaseManager;
 
 namespace gcs {
 
@@ -55,6 +56,7 @@ struct GcsServerConfig {
   std::string grpc_server_name = "GcsServer";
   uint16_t grpc_server_port = 0;
   uint16_t grpc_server_thread_num = 1;
+  uint16_t metrics_agent_port = 0;
   std::string redis_username;
   std::string redis_password;
   std::string redis_address;
@@ -147,8 +149,8 @@ class GcsServer {
   /// Initialize cluster resource scheduler.
   void InitClusterResourceScheduler();
 
-  /// Initialize cluster task manager.
-  void InitClusterTaskManager();
+  /// Initialize cluster lease manager.
+  void InitClusterLeaseManager();
 
   /// Initialize gcs job manager.
   void InitGcsJobManager(const GcsInitData &gcs_init_data);
@@ -211,8 +213,7 @@ class GcsServer {
   /// Print the asio event loop stats for debugging.
   void PrintAsioStats();
 
-  std::unique_ptr<RedisStoreClient> CreateRedisStoreClient(
-      instrumented_io_context &io_service);
+  RedisClientOptions GetRedisClientOptions();
 
   void TryGlobalGC();
 
@@ -234,19 +235,19 @@ class GcsServer {
   rpc::CoreWorkerClientPool worker_client_pool_;
   /// The cluster resource scheduler.
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
-  /// Local task manager.
-  NoopLocalTaskManager local_task_manager_;
+  /// Local lease manager.
+  NoopLocalLeaseManager local_lease_manager_;
   /// The gcs table storage.
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  /// The cluster task manager.
-  std::unique_ptr<ClusterTaskManager> cluster_task_manager_;
-  /// [gcs_resource_manager_] depends on [cluster_task_manager_].
+  /// The cluster lease manager.
+  std::unique_ptr<ClusterLeaseManager> cluster_lease_manager_;
+  /// [gcs_resource_manager_] depends on [cluster_lease_manager_].
   /// The gcs resource manager.
   std::unique_ptr<GcsResourceManager> gcs_resource_manager_;
   /// The autoscaler state manager.
   std::unique_ptr<GcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
   /// A publisher for publishing gcs messages.
-  std::unique_ptr<GcsPublisher> gcs_publisher_;
+  std::unique_ptr<pubsub::GcsPublisher> gcs_publisher_;
   /// The gcs node manager.
   std::unique_ptr<GcsNodeManager> gcs_node_manager_;
   /// The health check manager.
@@ -294,6 +295,8 @@ class GcsServer {
   int task_pending_schedule_detected_ = 0;
   /// Throttler for global gc
   std::unique_ptr<Throttler> global_gc_throttler_;
+  /// Client to call a metrics agent gRPC server.
+  std::unique_ptr<rpc::MetricsAgentClient> metrics_agent_client_;
 };
 
 }  // namespace gcs

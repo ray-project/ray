@@ -20,10 +20,10 @@
 #include <vector>
 
 #include "absl/functional/bind_front.h"
+#include "fakes/ray/pubsub/subscriber.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/pubsub/publisher.h"
-#include "mock/ray/pubsub/subscriber.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/ray_object.h"
@@ -44,7 +44,7 @@ class ReferenceCountTest : public ::testing::Test {
   virtual void SetUp() {
     rpc::Address addr;
     publisher_ = std::make_shared<pubsub::MockPublisher>();
-    subscriber_ = std::make_shared<pubsub::MockSubscriber>();
+    subscriber_ = std::make_shared<pubsub::FakeSubscriber>();
     rc = std::make_unique<ReferenceCounter>(
         addr, publisher_.get(), subscriber_.get(), [](const NodeID &node_id) {
           return false;
@@ -61,7 +61,7 @@ class ReferenceCountTest : public ::testing::Test {
   void AssertNoLeaks() { ASSERT_EQ(rc->NumObjectIDsInScope(), 0); }
 
   std::shared_ptr<pubsub::MockPublisher> publisher_;
-  std::shared_ptr<pubsub::MockSubscriber> subscriber_;
+  std::shared_ptr<pubsub::FakeSubscriber> subscriber_;
 };
 
 class ReferenceCountLineageEnabledTest : public ::testing::Test {
@@ -70,7 +70,7 @@ class ReferenceCountLineageEnabledTest : public ::testing::Test {
   virtual void SetUp() {
     rpc::Address addr;
     publisher_ = std::make_shared<pubsub::MockPublisher>();
-    subscriber_ = std::make_shared<pubsub::MockSubscriber>();
+    subscriber_ = std::make_shared<pubsub::FakeSubscriber>();
     rc = std::make_unique<ReferenceCounter>(
         addr,
         publisher_.get(),
@@ -86,7 +86,7 @@ class ReferenceCountLineageEnabledTest : public ::testing::Test {
   }
 
   std::shared_ptr<pubsub::MockPublisher> publisher_;
-  std::shared_ptr<pubsub::MockSubscriber> subscriber_;
+  std::shared_ptr<pubsub::FakeSubscriber> subscriber_;
 };
 
 /// The 2 classes below are implemented to support distributed mock test using
@@ -107,7 +107,7 @@ using SubscriptionFailureCallbackMap =
 // static maps are used to simulate distirubted environment.
 static SubscriptionCallbackMap subscription_callback_map;
 static SubscriptionFailureCallbackMap subscription_failure_callback_map;
-static pubsub::pub_internal::SubscriptionIndex directory(
+static pubsub::SubscriptionIndex directory(
     rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
 
 static std::string GenerateID(UniqueID publisher_id, UniqueID subscriber_id) {
@@ -127,7 +127,7 @@ using PublisherFactoryFn =
 
 class MockDistributedSubscriber : public pubsub::SubscriberInterface {
  public:
-  MockDistributedSubscriber(pubsub::pub_internal::SubscriptionIndex *dict,
+  MockDistributedSubscriber(pubsub::SubscriptionIndex *dict,
                             SubscriptionCallbackMap *sub_callback_map,
                             SubscriptionFailureCallbackMap *sub_failure_callback_map,
                             UniqueID subscriber_id,
@@ -136,7 +136,7 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
         subscription_callback_map_(sub_callback_map),
         subscription_failure_callback_map_(sub_failure_callback_map),
         subscriber_id_(subscriber_id),
-        subscriber_(std::make_unique<pubsub::pub_internal::SubscriberState>(
+        subscriber_(std::make_unique<pubsub::SubscriberState>(
             subscriber_id,
             /*get_time_ms=*/[]() { return 1.0; },
             /*subscriber_timeout_ms=*/1000,
@@ -146,11 +146,11 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
 
   ~MockDistributedSubscriber() = default;
 
-  bool Subscribe(
-      const std::unique_ptr<rpc::SubMessage> sub_message,
-      const rpc::ChannelType channel_type,
+  void Subscribe(
+      std::unique_ptr<rpc::SubMessage> sub_message,
+      rpc::ChannelType channel_type,
       const rpc::Address &publisher_address,
-      const std::string &key_id_binary,
+      const std::optional<std::string> &key_id_binary,
       pubsub::SubscribeDoneCallback subscribe_done_callback,
       pubsub::SubscriptionItemCallback subscription_callback,
       pubsub::SubscriptionFailureCallback subscription_failure_callback) override {
@@ -166,9 +166,9 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
     }
     // Due to the test env, there are times that the same message id from the same
     // subscriber is subscribed twice. We should just no-op in this case.
-    if (!(directory_->HasKeyId(key_id_binary) &&
+    if (!(directory_->HasKeyId(*key_id_binary) &&
           directory_->HasSubscriber(subscriber_id_))) {
-      directory_->AddEntry(key_id_binary, subscriber_.get());
+      directory_->AddEntry(*key_id_binary, subscriber_.get());
     }
     const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
     const auto id = GenerateID(publisher_id, subscriber_id_);
@@ -184,34 +184,18 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
               .first;
     }
 
-    const auto oid = ObjectID::FromBinary(key_id_binary);
+    const auto oid = ObjectID::FromBinary(*key_id_binary);
     callback_it->second.emplace(oid, subscription_callback);
-    return failure_callback_it->second.emplace(oid, subscription_failure_callback).second;
+    failure_callback_it->second.emplace(oid, subscription_failure_callback);
   }
 
-  bool SubscribeChannel(
-      const std::unique_ptr<rpc::SubMessage> sub_message,
-      const rpc::ChannelType channel_type,
-      const rpc::Address &publisher_address,
-      pubsub::SubscribeDoneCallback subscribe_done_callback,
-      pubsub::SubscriptionItemCallback subscription_callback,
-      pubsub::SubscriptionFailureCallback subscription_failure_callback) override {
-    RAY_LOG(FATAL) << "Unimplemented!";
-    return false;
-  }
-
-  bool Unsubscribe(const rpc::ChannelType channel_type,
+  bool Unsubscribe(rpc::ChannelType channel_type,
                    const rpc::Address &publisher_address,
-                   const std::string &key_id_binary) override {
+                   const std::optional<std::string> &key_id_binary) override {
     return true;
   }
 
-  bool UnsubscribeChannel(const rpc::ChannelType channel_type,
-                          const rpc::Address &publisher_address) override {
-    return true;
-  }
-
-  bool IsSubscribed(const rpc::ChannelType channel_type,
+  bool IsSubscribed(rpc::ChannelType channel_type,
                     const rpc::Address &publisher_address,
                     const std::string &key_id_binary) const override {
     return directory_->HasKeyId(key_id_binary) &&
@@ -223,17 +207,17 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
     return "";
   }
 
-  pubsub::pub_internal::SubscriptionIndex *directory_;
+  pubsub::SubscriptionIndex *directory_;
   SubscriptionCallbackMap *subscription_callback_map_;
   SubscriptionFailureCallbackMap *subscription_failure_callback_map_;
   UniqueID subscriber_id_;
-  std::unique_ptr<pubsub::pub_internal::SubscriberState> subscriber_;
+  std::unique_ptr<pubsub::SubscriberState> subscriber_;
   PublisherFactoryFn client_factory_;
 };
 
 class MockDistributedPublisher : public pubsub::PublisherInterface {
  public:
-  MockDistributedPublisher(pubsub::pub_internal::SubscriptionIndex *dict,
+  MockDistributedPublisher(pubsub::SubscriptionIndex *dict,
                            SubscriptionCallbackMap *sub_callback_map,
                            SubscriptionFailureCallbackMap *sub_failure_callback_map,
                            WorkerID publisher_id)
@@ -243,11 +227,10 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
         publisher_id_(publisher_id) {}
   ~MockDistributedPublisher() = default;
 
-  bool RegisterSubscription(const rpc::ChannelType channel_type,
+  void RegisterSubscription(const rpc::ChannelType channel_type,
                             const UniqueID &subscriber_id,
                             const std::optional<std::string> &key_id_binary) override {
     RAY_CHECK(false) << "No need to implement it for testing.";
-    return false;
   }
 
   void PublishFailure(const rpc::ChannelType channel_type,
@@ -272,13 +255,11 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
     }
   }
 
-  bool UnregisterSubscription(const rpc::ChannelType channel_type,
+  void UnregisterSubscription(const rpc::ChannelType channel_type,
                               const UniqueID &subscriber_id,
-                              const std::optional<std::string> &key_id_binary) override {
-    return true;
-  }
+                              const std::optional<std::string> &key_id_binary) override {}
 
-  void UnregisterSubscriber(const UniqueID &subscriber_id) override { return; }
+  void UnregisterSubscriber(const UniqueID &subscriber_id) override {}
 
   void ConnectToSubscriber(
       const rpc::PubsubLongPollingRequest &request,
@@ -288,7 +269,7 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
 
   std::string DebugString() const override { return ""; }
 
-  pubsub::pub_internal::SubscriptionIndex *directory_;
+  pubsub::SubscriptionIndex *directory_;
   SubscriptionCallbackMap *subscription_callback_map_;
   SubscriptionFailureCallbackMap *subscription_failure_callback_map_;
   WorkerID publisher_id_;
@@ -837,7 +818,7 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
   RayObject buffer(std::make_shared<LocalMemoryBuffer>(data, sizeof(data)), nullptr, {});
 
   auto publisher = std::make_shared<pubsub::MockPublisher>();
-  auto subscriber = std::make_shared<pubsub::MockSubscriber>();
+  auto subscriber = std::make_shared<pubsub::FakeSubscriber>();
   auto rc = std::make_shared<ReferenceCounter>(
       rpc::Address(),
       publisher.get(),

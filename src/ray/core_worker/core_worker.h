@@ -52,21 +52,10 @@
 #include "ray/ipc/raylet_ipc_client_interface.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
-#include "ray/raylet_client/raylet_client.h"
-#include "ray/rpc/worker/core_worker_server.h"
+#include "ray/raylet_client/raylet_client_interface.h"
 #include "ray/util/process.h"
 #include "ray/util/shared_lru.h"
 #include "src/ray/protobuf/pubsub.pb.h"
-
-/// The set of gRPC handlers and their associated level of concurrency. If you want to
-/// add a new call to the worker gRPC server, do the following:
-/// 1) Add the rpc to the CoreWorkerService in core_worker.proto, e.g., "ExampleCall"
-/// 2) Add a new macro to RAY_CORE_WORKER_DECLARE_RPC_HANDLERS
-///    in core_worker_server.h,
-//     e.g. "DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(ExampleCall)"
-/// 3) Add a new macro to RAY_CORE_WORKER_RPC_HANDLERS in core_worker_server.h, e.g.
-///    "RPC_SERVICE_HANDLER(CoreWorkerService, ExampleCall, 1)"
-/// 4) Add a method to the CoreWorker class below: "CoreWorker::HandleExampleCall"
 
 namespace ray::core {
 
@@ -350,8 +339,6 @@ class CoreWorker {
   }
 
   void SetWebuiDisplay(const std::string &key, const std::string &message);
-
-  void SetActorTitle(const std::string &title);
 
   /// Sets the actor's repr name.
   ///
@@ -1494,6 +1481,19 @@ class CoreWorker {
       std::string *application_error);
 
   /// Put an object in the local plasma store.
+  ///
+  /// Return status semantics:
+  /// - Status::OK(): The object was created (or already existed) and bookkeeping was
+  ///   updated. Note: an internal ObjectExists from the plasma provider is treated
+  ///   as OK and does not surface here.
+  /// - Status::ObjectStoreFull(): The local plasma store is out of memory (or out of
+  ///   disk when spilling). The error message contains context and a short memory
+  ///   report.
+  /// - Status::IOError(): IPC/connection failures while talking to the plasma store
+  ///   (e.g., broken pipe/connection reset during shutdown, store not reachable).
+  ///
+  /// Call sites that run during shutdown may choose to tolerate IOError specifically,
+  /// but should treat all other statuses as real failures.
   Status PutInLocalPlasmaStore(const RayObject &object,
                                const ObjectID &object_id,
                                bool pin_object);
@@ -1835,9 +1835,6 @@ class CoreWorker {
 
   /// Key value pairs to be displayed on Web UI.
   std::unordered_map<std::string, std::string> webui_display_ ABSL_GUARDED_BY(mutex_);
-
-  /// Actor title that consists of class name, args, kwargs for actor construction.
-  std::string actor_title_ ABSL_GUARDED_BY(mutex_);
 
   /// Actor repr name if overrides by the user, empty string if not.
   std::string actor_repr_name_ ABSL_GUARDED_BY(mutex_);

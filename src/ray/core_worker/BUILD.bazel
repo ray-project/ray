@@ -6,14 +6,15 @@ ray_cc_library(
         "core_worker.cc",
         "core_worker_process.cc",
         "core_worker_shutdown_executor.cc",
-        "shutdown_coordinator.cc",
     ],
     hdrs = [
         "core_worker.h",
         "core_worker_process.h",
         "core_worker_rpc_proxy.h",
         "core_worker_shutdown_executor.h",
-        "shutdown_coordinator.h",
+    ],
+    implementation_deps = [
+        "//src/ray/util:time",
     ],
     deps = [
         ":actor_handle",
@@ -25,18 +26,20 @@ ray_cc_library(
         ":experimental_mutable_object_provider",
         ":future_resolver",
         ":generator_waiter",
+        ":grpc_service",
         ":memory_store",
         ":object_recovery_manager",
         ":plasma_store_provider",
         ":profile_event",
         ":reference_count",
+        ":shutdown_coordinator",
         ":task_event_buffer",
+        "//src/ray/common:protobuf_utils",
         "//src/ray/common/cgroup:cgroup_context",
         "//src/ray/common/cgroup:cgroup_manager",
         "//src/ray/common/cgroup:constants",
         "//src/ray/core_worker/task_execution:task_receiver",
         "//src/ray/core_worker/task_submission:normal_task_submitter",
-        "//src/ray/gcs:gcs_pb_util",
         "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//src/ray/ipc:raylet_ipc_client",
         "//src/ray/protobuf:pubsub_cc_proto",
@@ -44,9 +47,8 @@ ray_cc_library(
         "//src/ray/pubsub:subscriber",
         "//src/ray/raylet_client:raylet_client_lib",
         "//src/ray/rpc:core_worker_client",
-        "//src/ray/rpc:core_worker_server",
+        "//src/ray/rpc:metrics_agent_client",
         "//src/ray/stats:stats_lib",
-        "//src/ray/util",
         "//src/ray/util:container_util",
         "//src/ray/util:env",
         "//src/ray/util:event",
@@ -60,6 +62,39 @@ ray_cc_library(
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_prod",
+    ],
+)
+
+ray_cc_library(
+    name = "grpc_service",
+    srcs = [
+        "grpc_service.cc",
+    ],
+    hdrs = [
+        "grpc_service.h",
+    ],
+    visibility = [":__subpackages__"],
+    deps = [
+        "//src/ray/common:asio",
+        "//src/ray/protobuf:core_worker_cc_grpc",
+        "//src/ray/protobuf:core_worker_cc_proto",
+        "//src/ray/rpc:grpc_server",
+        "//src/ray/rpc:server_call",
+    ],
+)
+
+ray_cc_library(
+    name = "shutdown_coordinator",
+    srcs = [
+        "shutdown_coordinator.cc",
+    ],
+    hdrs = [
+        "shutdown_coordinator.h",
+    ],
+    visibility = [":__subpackages__"],
+    deps = [
+        "//src/ray/common:buffer",
+        "//src/ray/protobuf:common_cc_proto",
     ],
 )
 
@@ -86,6 +121,7 @@ ray_cc_library(
         "//src/ray/common:id",
         "//src/ray/common:ray_object",
         "//src/ray/common:task_common",
+        "//src/ray/util:process",
     ],
 )
 
@@ -139,9 +175,9 @@ ray_cc_library(
         ":core_worker_context",
         ":reference_count",
         "//src/ray/common:id",
+        "//src/ray/common:protobuf_utils",
         "//src/ray/common:task_common",
         "//src/ray/core_worker/task_submission:actor_task_submitter",
-        "//src/ray/gcs:gcs_pb_util",
         "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//src/ray/protobuf:core_worker_cc_proto",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -175,7 +211,7 @@ ray_cc_library(
     visibility = [":__subpackages__"],
     deps = [
         "//src/ray/common:id",
-        "//src/ray/common:task_common",
+        "//src/ray/common:lease",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -190,8 +226,8 @@ ray_cc_library(
     deps = [
         "//src/ray/common:asio",
         "//src/ray/common:id",
+        "//src/ray/common:protobuf_utils",
         "//src/ray/common:task_common",
-        "//src/ray/gcs:gcs_pb_util",
         "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//src/ray/protobuf:export_task_event_cc_proto",
         "//src/ray/protobuf:gcs_cc_proto",
@@ -247,13 +283,13 @@ ray_cc_library(
         ":task_manager_interface",
         "//src/ray/common:buffer",
         "//src/ray/common:id",
-        "//src/ray/gcs:gcs_pb_util",
+        "//src/ray/common:protobuf_utils",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:core_worker_cc_proto",
         "//src/ray/stats:stats_metric",
-        "//src/ray/util",
         "//src/ray/util:counter_map",
         "//src/ray/util:exponential_backoff",
+        "//src/ray/util:time",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
@@ -272,6 +308,7 @@ ray_cc_library(
         "//src/ray/common:task_common",
         "//src/ray/object_manager:object_manager_common",
         "//src/ray/object_manager/plasma:plasma_client",
+        "//src/ray/util:time",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_prod",
@@ -296,7 +333,7 @@ ray_cc_library(
     hdrs = ["experimental_mutable_object_provider.h"],
     deps = [
         ":experimental_mutable_object_manager",
-        "//src/ray/raylet_client:raylet_client_lib",
+        "//src/ray/raylet_client:raylet_client_interface",
         "//src/ray/rpc:client_call",
     ],
 )
@@ -320,7 +357,7 @@ ray_cc_library(
         ":reference_count",
         ":task_manager",
         "//src/ray/common:id",
-        "//src/ray/raylet_client:raylet_client_lib",
+        "//src/ray/raylet_client:raylet_client_pool",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",
     ],
@@ -353,6 +390,7 @@ ray_cc_library(
         "//src/ray/ipc:raylet_ipc_client_interface",
         "//src/ray/object_manager/plasma:plasma_client",
         "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/util:time",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
