@@ -43,6 +43,8 @@ namespace boost::system {
 class error_code;
 }  // namespace boost::system
 
+// NOLINTBEGIN
+
 // Return the given status if it is not OK.
 #define RAY_RETURN_NOT_OK(s)           \
   do {                                 \
@@ -60,6 +62,102 @@ class error_code;
       << "Status not OK: " << RAY_UNIQUE_VARIABLE(_s).ToString() << " "
 
 namespace ray {
+
+// Just some magic for visiting a variant
+// See https://en.cppreference.com/w/cpp/utility/variant/visit2.html
+template <class... Ts>
+struct overloaded : Ts... {
+  using Ts::operator()...;
+};
+// explicit deduction guide (not needed as of C++20)
+template <class... Ts>
+overloaded(Ts...) -> overloaded<Ts...>;
+
+namespace StatusT {
+
+#define STATUS_TYPE(status_name)                                            \
+  class status_name {                                                       \
+   public:                                                                  \
+    template <typename T>                                                   \
+    status_name(T &&message) : message_(std::forward<T>(message)) {}        \
+                                                                            \
+    const std::string &message() const { return message_; }                 \
+    std::string &message() { return message_; }                             \
+                                                                            \
+    std::string ToString() {                                                \
+      return absl::StrCat("StatusT: " #status_name ", Message:", message_); \
+    }                                                                       \
+                                                                            \
+   private:                                                                 \
+    std::string message_;                                                   \
+  };
+
+class OK {};
+
+STATUS_TYPE(OutOfMemory);
+STATUS_TYPE(KeyError);
+STATUS_TYPE(IOError);
+STATUS_TYPE(Invalid);
+STATUS_TYPE(NotFound);
+STATUS_TYPE(PermissionDenied);
+STATUS_TYPE(InvalidArgument);
+STATUS_TYPE(AlreadyExists);
+
+};  // namespace StatusT
+
+// This is just a pretty wrapper on top of std::optional<std::variant<StatusTypes...>> so
+// that we have nicer names like has_error instead of has_value for the error case and we
+// can return ok instead of std::nullopt
+template <typename... StatusTypes>
+class StatusSet {
+ public:
+  static_assert((!std::is_same_v<StatusTypes, StatusT::OK> && ...),
+                "Ok cannot be an error type");
+
+  StatusSet(StatusT::OK) : error_(std::nullopt) {}
+  template <typename StatusType>
+  StatusSet(StatusType &&status) : error_(std::forward<StatusType>(status)) {}
+
+  bool ok() const { return !error_.has_value(); }
+
+  bool has_error() const { return error_.has_value(); }
+
+  const std::variant<StatusTypes...> &error() const { return *error_; }
+
+  std::variant<StatusTypes...> &error() { return *error_; }
+
+  std::string ToString() { return has_error() ? error_.ToString() : "OK"; }
+
+ private:
+  std::optional<std::variant<StatusTypes...>> error_;
+};
+
+// Function that only returns IOError or OutOfMemory
+inline StatusSet<StatusT::IOError, StatusT::OutOfMemory> DoThing() {
+  if (std::rand() % 2 == 0) {
+    return StatusT::OK();
+  }
+  return StatusT::OutOfMemory("error message");
+}
+
+inline void UseDoThing() {
+  auto result = DoThing();
+  // Means result has error, if we really want, we can have a pretty wrapper on top so
+  // it's has_error instead of has_value for the error case
+  if (result.has_error()) {
+    // Handle our different types of errors
+    std::visit(overloaded{[](const StatusT::IOError &) {
+                            // Handle IOError
+                          },
+                          [](const StatusT::OutOfMemory &) {
+                            // Handle OutOfMemory
+                          }},
+               result.error());
+    return;
+  }
+  // Happy path
+  std::cout << "Happy thoughts";
+}
 
 // If you add to this list, please also update kCodeToStr in status.cc.
 enum class StatusCode : char {
@@ -388,5 +486,7 @@ inline Status &Status::operator=(Status &&rhs) {
 }
 
 Status boost_to_ray_status(const boost::system::error_code &error);
+
+// NOLINTEND
 
 }  // namespace ray
