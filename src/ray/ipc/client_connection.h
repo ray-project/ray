@@ -269,7 +269,7 @@ class ClientConnection : public ServerConnection {
   /// Whether the client has sent us a registration message yet.
   bool registered_;
   /// Whether the connection has been explicitly closed by the server.
-  bool closed_;
+  bool closed_ = false;
   /// The handler for a message from the client.
   MessageHandler message_handler_;
   /// The handler for an unexpected connection error from this client.

@@ -362,7 +362,8 @@ void ClientConnection::Register() {
 
 void ClientConnection::Close() {
   closed_ = true;
-  socket_.close();
+  boost::system::error_code ec;
+  socket_.close(ec);
 }
 
 void ClientConnection::ProcessMessages() {
