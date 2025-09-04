@@ -328,11 +328,10 @@ class ReplicaMetricsManager:
 
     def _push_autoscaling_metrics(self) -> Dict[str, Any]:
         look_back_period = self._autoscaling_config.look_back_period_s
+        self._metrics_store.prune_keys_and_compact_data(time.time() - look_back_period)
         self._controller_handle.record_autoscaling_metrics.remote(
             replica_id=self._replica_id,
-            window_avg=self._metrics_store.window_average(
-                self._replica_id, time.time() - look_back_period
-            ),
+            window_avg=self._metrics_store.aggregate_avg([self._replica_id])[0],
             send_timestamp=time.time(),
         )
 
