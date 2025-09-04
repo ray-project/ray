@@ -10,6 +10,8 @@ extend-exclude = [
     "python/build/",
     "python/ray/workflow/tests/mock_server.py",
     "python/ray/serve/tests/test_config_files/syntax_error.py",
+    "rllib/examples/envs/classes/multi_agent/footsies/game/proto/footsies_service_pb2.py",
+    "rllib/examples/envs/classes/multi_agent/footsies/game/proto/footsies_service_pb2_grpc.py",
 ]
 
 [tool.ruff.lint]
@@ -65,13 +67,6 @@ afterray = ["psutil", "setproctitle"]
 "python/ray/setup-dev.py" = ["I"]
 "python/ray/cloudpickle/*" = ["I"]
 "python/ray/dag/__init__.py" = ["I"]
-"python/ray/includes/*" = ["I"]
-"python/ray/internal/*" = ["I"]
-"python/ray/ray_operator/*" = ["I"]
-"python/ray/scripts/*" = ["I"]
-"python/ray/serve/generated/serve_pb2.py" = ["I"]
-"python/ray/streaming/*" = ["I"]
-"python/ray/tests/*" = ["I"]
 "python/ray/util/*" = ["I"]
 "python/ray/workers/*" = ["I"]
 "python/ray/workflow/*" = ["I"]

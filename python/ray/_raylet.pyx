@@ -2870,7 +2870,7 @@ cdef class GcsClient:
 
 
 cdef class _GcsSubscriber:
-    """Cython wrapper class of C++ `ray::gcs::PythonGcsSubscriber`."""
+    """Cython wrapper class of C++ `ray::pubsub::PythonGcsSubscriber`."""
     cdef:
         shared_ptr[CPythonGcsSubscriber] inner
 

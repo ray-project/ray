@@ -1,19 +1,19 @@
+import os
 import sys
 import warnings
-import os
 
 import pytest
 
 import ray
-from ray._private.utils import get_ray_doc_version
 from ray._private.test_utils import placement_group_assert_no_leak
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray._private.utils import get_ray_doc_version
 from ray.util.placement_group import (
-    validate_placement_group,
-    _validate_bundles,
-    _validate_bundle_label_selector,
     VALID_PLACEMENT_GROUP_STRATEGIES,
+    _validate_bundle_label_selector,
+    _validate_bundles,
+    validate_placement_group,
 )
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 def are_pairwise_unique(g):

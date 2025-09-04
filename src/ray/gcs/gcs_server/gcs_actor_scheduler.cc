@@ -328,7 +328,7 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
   // Actor leases should be sent to the raylet immediately, so we should never build up a
   // backlog in GCS.
   // Counter for generating unique lease IDs.
-  static uint32_t lease_id_counter = 1;
+  static uint32_t lease_id_counter = 0;
   actor->GetMutableLeaseSpec()->set_lease_id(
       LeaseID::FromWorker(WorkerID::FromRandom(), lease_id_counter++).Binary());
   raylet_client->RequestWorkerLease(

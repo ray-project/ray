@@ -22,7 +22,7 @@
 #include "mock/ray/core_worker/actor_creator.h"
 #include "mock/ray/core_worker/reference_count.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
-#include "ray/common/test_util.h"
+#include "ray/common/test_utils.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray::core {
@@ -135,7 +135,7 @@ TEST_P(ActorTaskSubmitterTest, TestSubmitTask) {
                                       /*owned*/ false);
 
   auto task1 = CreateActorTaskHelper(actor_id, worker_id, 0);
-  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
+  submitter_.SubmitTask(task1);
   ASSERT_EQ(io_context.poll_one(), 1);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
@@ -143,7 +143,7 @@ TEST_P(ActorTaskSubmitterTest, TestSubmitTask) {
   ASSERT_EQ(worker_client_->callbacks.size(), 1);
 
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  submitter_.SubmitTask(task2);
   ASSERT_EQ(io_context.poll_one(), 1);
   ASSERT_EQ(worker_client_->callbacks.size(), 2);
 
@@ -176,7 +176,7 @@ TEST_P(ActorTaskSubmitterTest, TestQueueingWarning) {
 
   for (int i = 0; i < 7500; i++) {
     auto task = CreateActorTaskHelper(actor_id, worker_id, i);
-    ASSERT_TRUE(submitter_.SubmitTask(task).ok());
+    submitter_.SubmitTask(task);
     ASSERT_EQ(io_context.poll_one(), 1);
     ASSERT_TRUE(worker_client_->ReplyPushTask(task.GetTaskAttempt(), Status::OK()));
   }
@@ -184,7 +184,7 @@ TEST_P(ActorTaskSubmitterTest, TestQueueingWarning) {
 
   for (int i = 7500; i < 15000; i++) {
     auto task = CreateActorTaskHelper(actor_id, worker_id, i);
-    ASSERT_TRUE(submitter_.SubmitTask(task).ok());
+    submitter_.SubmitTask(task);
     ASSERT_EQ(io_context.poll_one(), 1);
     /* no ack */
   }
@@ -192,7 +192,7 @@ TEST_P(ActorTaskSubmitterTest, TestQueueingWarning) {
 
   for (int i = 15000; i < 35000; i++) {
     auto task = CreateActorTaskHelper(actor_id, worker_id, i);
-    ASSERT_TRUE(submitter_.SubmitTask(task).ok());
+    submitter_.SubmitTask(task);
     ASSERT_EQ(io_context.poll_one(), 1);
     /* no ack */
   }
@@ -225,9 +225,9 @@ TEST_P(ActorTaskSubmitterTest, TestDependencies) {
 
   // Neither task can be submitted yet because they are still waiting on
   // dependencies.
-  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
+  submitter_.SubmitTask(task1);
   ASSERT_EQ(io_context.poll_one(), 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  submitter_.SubmitTask(task2);
   ASSERT_EQ(io_context.poll_one(), 1);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
@@ -272,9 +272,9 @@ TEST_P(ActorTaskSubmitterTest, TestOutOfOrderDependencies) {
 
   // Neither task can be submitted yet because they are still waiting on
   // dependencies.
-  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
+  submitter_.SubmitTask(task1);
   ASSERT_EQ(io_context.poll_one(), 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  submitter_.SubmitTask(task2);
   ASSERT_EQ(io_context.poll_one(), 1);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
@@ -325,9 +325,9 @@ TEST_P(ActorTaskSubmitterTest, TestActorDead) {
   ObjectID obj = ObjectID::FromRandom();
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
   task2.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj.Binary());
-  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
+  submitter_.SubmitTask(task1);
   ASSERT_EQ(io_context.poll_one(), 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  submitter_.SubmitTask(task2);
   ASSERT_EQ(io_context.poll_one(), 1);
   ASSERT_EQ(worker_client_->callbacks.size(), 1);
 
@@ -369,11 +369,11 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartNoRetry) {
   auto task3 = CreateActorTaskHelper(actor_id, worker_id, 2);
   auto task4 = CreateActorTaskHelper(actor_id, worker_id, 3);
   // Submit three tasks.
-  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
+  submitter_.SubmitTask(task1);
   ASSERT_EQ(io_context.poll_one(), 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  submitter_.SubmitTask(task2);
   ASSERT_EQ(io_context.poll_one(), 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
+  submitter_.SubmitTask(task3);
   ASSERT_EQ(io_context.poll_one(), 1);
 
   EXPECT_CALL(*task_manager_, CompletePendingTask(task1.TaskId(), _, _, _)).Times(1);
@@ -397,7 +397,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartNoRetry) {
   // Actor gets restarted.
   addr.set_port(1);
   submitter_.ConnectActor(actor_id, addr, 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task4).ok());
+  submitter_.SubmitTask(task4);
   ASSERT_EQ(io_context.poll_one(), 1);
   ASSERT_TRUE(worker_client_->ReplyPushTask(task4.GetTaskAttempt(), Status::OK()));
   ASSERT_TRUE(worker_client_->callbacks.empty());
@@ -426,11 +426,11 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartRetry) {
   auto task3 = CreateActorTaskHelper(actor_id, worker_id, 2);
   auto task4 = CreateActorTaskHelper(actor_id, worker_id, 3);
   // Submit three tasks.
-  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
+  submitter_.SubmitTask(task1);
   ASSERT_EQ(io_context.poll_one(), 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  submitter_.SubmitTask(task2);
   ASSERT_EQ(io_context.poll_one(), 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
+  submitter_.SubmitTask(task3);
   ASSERT_EQ(io_context.poll_one(), 1);
 
   // All tasks will eventually finish.
@@ -457,17 +457,17 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartRetry) {
   addr.set_port(1);
   submitter_.ConnectActor(actor_id, addr, 1);
   // A new task is submitted.
-  ASSERT_TRUE(submitter_.SubmitTask(task4).ok());
+  submitter_.SubmitTask(task4);
   ASSERT_EQ(io_context.poll_one(), 1);
   // Tasks 2 and 3 get retried. In the real world, the seq_no of these two tasks should be
   // updated to 4 and 5 by `CoreWorker::InternalHeartbeat`.
   task2.GetMutableMessage().set_attempt_number(task2.AttemptNumber() + 1);
   task2.GetMutableMessage().mutable_actor_task_spec()->set_sequence_number(4);
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  submitter_.SubmitTask(task2);
   ASSERT_EQ(io_context.poll_one(), 1);
   task3.GetMutableMessage().set_attempt_number(task2.AttemptNumber() + 1);
   task3.GetMutableMessage().mutable_actor_task_spec()->set_sequence_number(5);
-  ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
+  submitter_.SubmitTask(task3);
   ASSERT_EQ(io_context.poll_one(), 1);
   ASSERT_TRUE(worker_client_->ReplyPushTask(task4.GetTaskAttempt(), Status::OK()));
   ASSERT_TRUE(worker_client_->ReplyPushTask(task2.GetTaskAttempt(), Status::OK()));
@@ -496,11 +496,11 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderRetry) {
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
   auto task3 = CreateActorTaskHelper(actor_id, worker_id, 2);
   // Submit three tasks.
-  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
+  submitter_.SubmitTask(task1);
   ASSERT_EQ(io_context.poll_one(), 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  submitter_.SubmitTask(task2);
   ASSERT_EQ(io_context.poll_one(), 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
+  submitter_.SubmitTask(task3);
   ASSERT_EQ(io_context.poll_one(), 1);
   // All tasks will eventually finish.
   EXPECT_CALL(*task_manager_, CompletePendingTask(_, _, _, _)).Times(3);
@@ -526,7 +526,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderRetry) {
   // Retry task 2 manually (simulating task_manager and SendPendingTask's behavior)
   task2.GetMutableMessage().set_attempt_number(task2.AttemptNumber() + 1);
   task2.GetMutableMessage().mutable_actor_task_spec()->set_sequence_number(3);
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  submitter_.SubmitTask(task2);
   ASSERT_EQ(io_context.poll_one(), 1);
 
   // Only task2 should be submitted. task 3 (completed) should not be retried.
@@ -553,7 +553,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderGcs) {
   // Create four tasks for the actor.
   auto task1 = CreateActorTaskHelper(actor_id, worker_id, 0);
   // Submit a task.
-  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
+  submitter_.SubmitTask(task1);
   ASSERT_EQ(io_context.poll_one(), 1);
   EXPECT_CALL(*task_manager_, CompletePendingTask(task1.TaskId(), _, _, _)).Times(1);
   ASSERT_TRUE(worker_client_->ReplyPushTask(task1.GetTaskAttempt(), Status::OK()));
@@ -564,7 +564,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderGcs) {
   ASSERT_EQ(num_clients_connected_, 2);
   // Submit a task.
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  submitter_.SubmitTask(task2);
   ASSERT_EQ(io_context.poll_one(), 1);
   EXPECT_CALL(*task_manager_, CompletePendingTask(task2.TaskId(), _, _, _)).Times(1);
   ASSERT_TRUE(worker_client_->ReplyPushTask(task2.GetTaskAttempt(), Status::OK()));
@@ -576,7 +576,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderGcs) {
   ASSERT_EQ(num_clients_connected_, 2);
   // Submit a task.
   auto task3 = CreateActorTaskHelper(actor_id, worker_id, 2);
-  ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
+  submitter_.SubmitTask(task3);
   ASSERT_EQ(io_context.poll_one(), 1);
   EXPECT_CALL(*task_manager_, CompletePendingTask(task3.TaskId(), _, _, _)).Times(1);
   ASSERT_TRUE(worker_client_->ReplyPushTask(task3.GetTaskAttempt(), Status::OK()));
@@ -587,7 +587,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderGcs) {
   ASSERT_EQ(num_clients_connected_, 2);
   // Submit a task.
   auto task4 = CreateActorTaskHelper(actor_id, worker_id, 3);
-  ASSERT_TRUE(submitter_.SubmitTask(task4).ok());
+  submitter_.SubmitTask(task4);
   ASSERT_EQ(io_context.poll_one(), 1);
   // Tasks submitted when the actor is in RESTARTING state will fail immediately.
   // This happens in an io_service.post. Search `SendPendingTasks_ForceFail` to locate
@@ -618,7 +618,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderGcs) {
   auto task5 = CreateActorTaskHelper(actor_id, worker_id, 4);
   EXPECT_CALL(*task_manager_, FailOrRetryPendingTask(task5.TaskId(), _, _, _, _, _))
       .Times(1);
-  ASSERT_TRUE(submitter_.SubmitTask(task5).ok());
+  submitter_.SubmitTask(task5);
   ASSERT_EQ(io_context.poll_one(), 0);
 }
 
@@ -642,7 +642,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFailInflightTasks) {
   auto task2_first_attempt = CreateActorTaskHelper(actor_id, caller_worker_id, 1);
   auto task3_first_attempt = CreateActorTaskHelper(actor_id, caller_worker_id, 2);
   // Submit a task.
-  ASSERT_TRUE(submitter_.SubmitTask(task1_first_attempt).ok());
+  submitter_.SubmitTask(task1_first_attempt);
   ASSERT_EQ(io_context.poll_one(), 1);
   EXPECT_CALL(*task_manager_, CompletePendingTask(task1_first_attempt.TaskId(), _, _, _))
       .Times(1);
@@ -651,9 +651,9 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFailInflightTasks) {
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
   // Submit 2 tasks.
-  ASSERT_TRUE(submitter_.SubmitTask(task2_first_attempt).ok());
+  submitter_.SubmitTask(task2_first_attempt);
   ASSERT_EQ(io_context.poll_one(), 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task3_first_attempt).ok());
+  submitter_.SubmitTask(task3_first_attempt);
   ASSERT_EQ(io_context.poll_one(), 1);
   // Actor failed, but the task replies are delayed (or in some scenarios, lost).
   // We should still be able to fail the inflight tasks.
@@ -681,9 +681,9 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFailInflightTasks) {
       task3_first_attempt.TaskIdBinary());
   task3_second_attempt.GetMutableMessage().set_attempt_number(
       task3_first_attempt.AttemptNumber() + 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task2_second_attempt).ok());
+  submitter_.SubmitTask(task2_second_attempt);
   ASSERT_EQ(io_context.poll_one(), 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task3_second_attempt).ok());
+  submitter_.SubmitTask(task3_second_attempt);
   ASSERT_EQ(io_context.poll_one(), 1);
 
   // Restart the actor.
@@ -752,7 +752,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFastFail) {
 
   auto task1 = CreateActorTaskHelper(actor_id, worker_id, 0);
   // Submit a task.
-  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
+  submitter_.SubmitTask(task1);
   ASSERT_EQ(io_context.poll_one(), 1);
   EXPECT_CALL(*task_manager_, CompletePendingTask(task1.TaskId(), _, _, _)).Times(1);
   ASSERT_TRUE(worker_client_->ReplyPushTask(task1.GetTaskAttempt(), Status::OK()));
@@ -764,7 +764,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFastFail) {
 
   // Submit a new task. This task should fail immediately because "max_task_retries" is 0.
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  submitter_.SubmitTask(task2);
   ASSERT_EQ(io_context.poll_one(), 1);
   EXPECT_CALL(*task_manager_, CompletePendingTask(task2.TaskId(), _, _, _)).Times(0);
   EXPECT_CALL(*task_manager_, FailOrRetryPendingTask(task2.TaskId(), _, _, _, _, _))
@@ -792,7 +792,7 @@ TEST_P(ActorTaskSubmitterTest, TestPendingTasks) {
     ASSERT_FALSE(submitter_.PendingTasksFull(actor_id));
     auto task = CreateActorTaskHelper(actor_id, worker_id, i);
     tasks.push_back(task);
-    ASSERT_TRUE(submitter_.SubmitTask(task).ok());
+    submitter_.SubmitTask(task);
     ASSERT_EQ(io_context.poll_one(), 1);
   }
 
@@ -811,7 +811,7 @@ TEST_P(ActorTaskSubmitterTest, TestPendingTasks) {
   // We can submit task 10, but after that the queue is full.
   auto task = CreateActorTaskHelper(actor_id, worker_id, 10);
   tasks.push_back(task);
-  ASSERT_TRUE(submitter_.SubmitTask(task).ok());
+  submitter_.SubmitTask(task);
   ASSERT_EQ(io_context.poll_one(), 1);
   ASSERT_TRUE(submitter_.PendingTasksFull(actor_id));
 
@@ -837,7 +837,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartResubmit) {
   // Generator is pushed to worker -> generator queued for resubmit -> comes back from
   // worker -> resubmit happens.
   auto task1 = CreateActorTaskHelper(actor_id, worker_id, 0);
-  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
+  submitter_.SubmitTask(task1);
   io_context.run_one();
   submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 1);

@@ -2,26 +2,26 @@ import os
 import random
 import sys
 import tempfile
-import signal
 
 import numpy as np
 import pytest
-import psutil
 
 import ray
 from ray import cloudpickle as pickle
+from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._common.utils import hex_to_binary
 from ray._private import ray_constants
+from ray._private.state_api_test_utils import invoke_state_api, invoke_state_api_n
 from ray._private.test_utils import (
     client_test_enabled,
     wait_for_pid_to_exit,
 )
 from ray.actor import ActorClassInheritanceException
-from ray.tests.client_test_utils import create_remote_signal_actor
-from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.core.generated import gcs_pb2
-from ray._common.utils import hex_to_binary
-from ray._private.state_api_test_utils import invoke_state_api, invoke_state_api_n
+from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.util.state import list_actors
+
+import psutil
 
 
 @pytest.mark.parametrize("set_enable_auto_connect", [True, False], indirect=True)
@@ -1695,7 +1695,7 @@ def test_get_actor_after_same_name_actor_dead(shutdown_only):
     a = Actor.options(name=ACTOR_NAME, max_restarts=0, max_task_retries=-1).remote()
 
     pid = ray.get(a.get_pid.remote())
-    os.kill(pid, signal.SIGKILL)
+    psutil.Process(pid).kill()
     a_actor_id = a._actor_id.hex()
 
     wait_for_condition(lambda: ray.state.actors(a_actor_id)["State"] == "DEAD")
@@ -1728,7 +1728,7 @@ def test_get_actor_after_same_name_actor_dead(shutdown_only):
     _ = ray.get_actor(ACTOR_NAME, namespace=NAMESPACE_NAME)
 
     pid = ray.get(c.get_pid.remote())
-    os.kill(pid, signal.SIGKILL)
+    psutil.Process(pid).kill()
 
     wait_for_condition(lambda: ray.state.actors(c._actor_id.hex())["State"] == "DEAD")
 
