@@ -1,5 +1,14 @@
 group: release build
 steps:
+  - label: "custom byod build init"
+    key: custom-build-init
+    instance_type: release
+    commands:
+      - /bin/bash .buildkite/release/custom-build-init.sh
+    mount_buildkite_agent: true
+    depends_on:
+      - forge
+
   - name: raycpubaseextra-testdeps
     label: "wanda: ray.py{{matrix}}.cpu.base-extra-testdeps"
     wanda: docker/base-extra-testdeps/cpu.wanda.yaml
