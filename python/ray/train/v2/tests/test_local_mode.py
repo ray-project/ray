@@ -253,6 +253,10 @@ def test_lightning_trainer_local_mode(ray_start_6_cpus, datasource):
     assert "val_loss" in results.metrics
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Tensorflow is not installed for Python 3.12 because of keras compatibility.",
+)
 def test_tensorflow_linear_local_mode(ray_start_4_cpus):
     """Also tests air Keras callback."""
     epochs = 1
