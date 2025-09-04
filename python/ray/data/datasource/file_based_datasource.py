@@ -140,9 +140,6 @@ class FileBasedDatasource(Datasource):
         self._partitioning = partitioning
         self._ignore_missing_paths = ignore_missing_paths
         self._include_paths = include_paths
-
-        # Store unresolved paths for metadata usage.
-        unresolved_paths = paths.copy() if isinstance(paths, list) else paths
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         self._filesystem = RetryingPyFileSystem.wrap(
             self._filesystem, retryable_errors=self._data_context.retried_io_errors
@@ -198,7 +195,6 @@ class FileBasedDatasource(Datasource):
         # Read tasks serialize `FileBasedDatasource` instances, and the list of paths
         # can be large. To avoid slow serialization speeds, we store a reference to
         # the paths rather than the paths themselves.
-        self._unresolved_paths_ref = ray.put(unresolved_paths)
         self._paths_ref = ray.put(paths)
         self._file_sizes_ref = ray.put(file_sizes)
 

@@ -197,9 +197,6 @@ class ParquetDatasource(Datasource):
                 ray.get_runtime_context().get_node_id(), soft=False
             )
 
-        # Store unresolved paths for metadata usage. The list of paths can be large,
-        # so we store a reference to the paths rather than the paths themselves.
-        self._unresolved_paths_ref = ray.put(paths)
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         filesystem = RetryingPyFileSystem.wrap(
             self._filesystem,
