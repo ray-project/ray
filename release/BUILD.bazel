@@ -757,5 +757,6 @@ py_binary(
     ],
     data = [
         "release_tests.yaml",
+        "release_data_tests.yaml",
     ]
 )
