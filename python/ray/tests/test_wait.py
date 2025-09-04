@@ -1,13 +1,13 @@
 # coding: utf-8
 
-import pytest
-import numpy as np
-import time
 import logging
 import sys
+import time
+
+import numpy as np
+import pytest
 
 from ray._private.test_utils import client_test_enabled
-
 
 if client_test_enabled():
     from ray.util.client import ray

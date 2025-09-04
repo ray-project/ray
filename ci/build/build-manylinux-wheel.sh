@@ -42,13 +42,13 @@ fi
 
 # build ray wheel
 PATH="/opt/python/${PYTHON}/bin:$PATH" RAY_INSTALL_JAVA=0 \
-"/opt/python/${PYTHON}/bin/python" -m pip wheel -q -w dist . --no-deps
+"/opt/python/${PYTHON}/bin/python" -m pip wheel -v -w dist . --no-deps
 
 
 if [[ "${RAY_DISABLE_EXTRA_CPP:-}" != 1 ]]; then
   # build ray-cpp wheel
   PATH="/opt/python/${PYTHON}/bin:$PATH" RAY_INSTALL_JAVA=0 \
-  RAY_INSTALL_CPP=1 "/opt/python/${PYTHON}/bin/python" -m pip wheel -q -w dist . --no-deps
+  RAY_INSTALL_CPP=1 "/opt/python/${PYTHON}/bin/python" -m pip wheel -v -w dist . --no-deps
 fi
 
 # Rename the wheels so that they can be uploaded to PyPI. TODO(rkn): This is a
