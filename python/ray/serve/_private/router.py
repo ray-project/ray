@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import concurrent.futures
 import logging
@@ -24,6 +26,7 @@ from typing import (
 import ray
 from ray.actor import ActorHandle
 from ray.exceptions import ActorDiedError, ActorUnavailableError, RayError
+from ray.serve._private.autoscaling_state import HandleMetricReport
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
@@ -265,16 +268,15 @@ class RouterMetricsManager:
                 self.metrics_pusher.register_or_update_task(
                     self.RECORD_METRICS_TASK_NAME,
                     self._add_autoscaling_metrics_point,
-                    min(
-                        RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
-                        autoscaling_config.metrics_interval_s,
-                    ),
+                    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
                 )
                 # Push metrics to the controller periodically.
-                self.metrics_pusher.register_or_update_task(
-                    self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
-                    self.push_autoscaling_metrics_to_controller,
-                    autoscaling_config.metrics_interval_s,
+                shared = SharedHandleMetricsPusher.get_or_create(
+                    self._controller_handle
+                )
+                shared.register(self)
+                logger.info(
+                    f"Registered {self._handle_id} with shared metrics pusher {shared}."
                 )
             else:
                 self.metrics_pusher.register_or_update_task(
@@ -354,20 +356,24 @@ class RouterMetricsManager:
             and self.num_queued_requests > 0
         )
 
+    def metrics_report(self) -> HandleMetricReport:
+        timestamp = time.time()
+        return HandleMetricReport(
+            timestamp=timestamp,
+            deployment_id=self._deployment_id,
+            handle_id=self._handle_id,
+            actor_id=self._self_actor_id,
+            handle_source=self._handle_source,
+            **self._get_aggregated_requests(timestamp),
+        )
+
     def push_autoscaling_metrics_to_controller(self):
         """Pushes queued and running request metrics to the controller.
 
         These metrics are used by the controller for autoscaling.
         """
 
-        self._controller_handle.record_handle_metrics.remote(
-            send_timestamp=time.time(),
-            deployment_id=self._deployment_id,
-            handle_id=self._handle_id,
-            actor_id=self._self_actor_id,
-            handle_source=self._handle_source,
-            **self._get_aggregated_requests(),
-        )
+        self._controller_handle.record_handle_metrics.remote(self.metrics_report())
 
     def _add_autoscaling_metrics_point(self):
         """Adds metrics point for queued and running requests at replicas.
@@ -385,22 +391,21 @@ class RouterMetricsManager:
             )
 
         # Prevent in memory metrics store memory from growing
-        start_timestamp = time.time() - self.autoscaling_config.look_back_period_s
+        start_timestamp = timestamp - self.autoscaling_config.look_back_period_s
         self.metrics_store.prune_keys_and_compact_data(start_timestamp)
 
-    def _get_aggregated_requests(self):
-        running_requests = dict()
+    def _get_aggregated_requests(self, timestamp: float):
+        running_requests = {}
+
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE and self.autoscaling_config:
             look_back_period = self.autoscaling_config.look_back_period_s
-            running_requests = {
-                replica_id: self.metrics_store.window_average(
-                    replica_id, time.time() - look_back_period
-                )
+            window_start_time = timestamp - look_back_period
+            for replica_id, num_requests in self.num_requests_sent_to_replicas.items():
+                avg = self.metrics_store.window_average(replica_id, window_start_time)
                 # If data hasn't been recorded yet, return current
                 # number of queued and ongoing requests.
-                or num_requests
-                for replica_id, num_requests in self.num_requests_sent_to_replicas.items()  # noqa: E501
-            }
+                # Note: the average might be zero, which is false-y!
+                running_requests[replica_id] = avg if avg is not None else num_requests
 
         return {
             "queued_requests": self.num_queued_requests,
@@ -414,6 +419,42 @@ class RouterMetricsManager:
             await self.metrics_pusher.graceful_shutdown()
 
         self._shutdown = True
+
+
+class SharedHandleMetricsPusher:
+    def __init__(self, controller_handle: ActorHandle):
+        self._controller_handler = controller_handle
+
+        self._metrics_pusher = MetricsPusher()
+        self._router_metrics_managers: weakref.WeakSet[
+            RouterMetricsManager
+        ] = weakref.WeakSet()
+
+    @classmethod
+    @lru_cache(maxsize=None)
+    def get_or_create(cls, controller_handle: ActorHandle) -> SharedHandleMetricsPusher:
+        pusher = cls(controller_handle=controller_handle)
+        pusher.start()
+        logger.info(f"Started {pusher}.")
+        return pusher
+
+    def register(self, router_metrics_manager: RouterMetricsManager) -> None:
+        self._router_metrics_managers.add(router_metrics_manager)
+
+    def start(self) -> None:
+        self._metrics_pusher.start()
+
+        self._metrics_pusher.register_or_update_task(
+            "push_metrics_to_controller",
+            self.push_metrics,
+            RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
+        )
+
+    def push_metrics(self) -> None:
+        logger.debug("Gathering handle metrics reports...")
+        reports = [m.metrics_report() for m in self._router_metrics_managers]
+        logger.debug("Pushing handle metrics to controller...")
+        self._controller_handler.bulk_record_handle_metrics.remote(reports)
 
 
 class Router(ABC):
@@ -1013,7 +1054,7 @@ class SharedRouterLongPollClient:
     @lru_cache(maxsize=None)
     def get_or_create(
         cls, controller_handle: ActorHandle, event_loop: AbstractEventLoop
-    ) -> "SharedRouterLongPollClient":
+    ) -> SharedRouterLongPollClient:
         shared = cls(controller_handle=controller_handle, event_loop=event_loop)
         logger.info(f"Started {shared}.")
         return shared
