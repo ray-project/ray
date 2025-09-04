@@ -56,20 +56,22 @@ StatusOr<std::unique_ptr<CgroupManager>> CgroupManager::Create(
     const int64_t system_reserved_memory_bytes,
     std::unique_ptr<CgroupDriverInterface> cgroup_driver) {
   if (!cpu_weight_constraint_.IsValid(system_reserved_cpu_weight)) {
-    return Status::InvalidArgument(absl::StrFormat(
-        "Invalid constraint %s=%lld. %s must be in the range [%lld, %lld].",
-        cpu_weight_constraint_.name_,
-        system_reserved_cpu_weight,
-        cpu_weight_constraint_.Min(),
-        cpu_weight_constraint_.Max()));
+    return Status::InvalidArgument(
+        absl::StrFormat("Invalid constraint %s=%d. %s must be in the range [%d, %d].",
+                        cpu_weight_constraint_.name_,
+                        system_reserved_cpu_weight,
+                        cpu_weight_constraint_.name_,
+                        cpu_weight_constraint_.Min(),
+                        cpu_weight_constraint_.Max()));
   }
   if (!memory_min_constraint_.IsValid(system_reserved_memory_bytes)) {
-    return Status::InvalidArgument(absl::StrFormat(
-        "Invalid constraint %s=%lld. %s must be in the range [%lld, %lld].",
-        memory_min_constraint_.name_,
-        system_reserved_memory_bytes,
-        memory_min_constraint_.Min(),
-        memory_min_constraint_.Max()));
+    return Status::InvalidArgument(
+        absl::StrFormat("Invalid constraint %s=%d. %s must be in the range [%d, %d].",
+                        memory_min_constraint_.name_,
+                        system_reserved_memory_bytes,
+                        memory_min_constraint_.name_,
+                        memory_min_constraint_.Min(),
+                        memory_min_constraint_.Max()));
   }
   RAY_RETURN_NOT_OK(cgroup_driver->CheckCgroupv2Enabled());
   RAY_RETURN_NOT_OK(cgroup_driver->CheckCgroup(base_cgroup_path));
