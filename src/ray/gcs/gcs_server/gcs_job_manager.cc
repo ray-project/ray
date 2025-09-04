@@ -22,8 +22,9 @@
 #include <vector>
 
 #include "absl/strings/match.h"
-#include "ray/gcs/pb_util.h"
+#include "ray/common/protobuf_utils.h"
 #include "ray/stats/metric.h"
+#include "ray/util/time.h"
 
 namespace ray {
 namespace gcs {
@@ -128,8 +129,8 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  RAY_UNUSED(gcs_table_storage_.JobTable().Put(
-      job_id, mutable_job_table_data, {std::move(on_done), io_context_}));
+  gcs_table_storage_.JobTable().Put(
+      job_id, mutable_job_table_data, {std::move(on_done), io_context_});
 }
 
 void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
@@ -171,11 +172,8 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
     done_callback(status);
   };
 
-  Status status =
-      gcs_table_storage_.JobTable().Put(job_id, job_table_data, {on_done, io_context_});
-  if (!status.ok()) {
-    on_done(status);
-  }
+  gcs_table_storage_.JobTable().Put(
+      job_id, job_table_data, {std::move(on_done), io_context_});
 }
 
 void GcsJobManager::HandleMarkJobFinished(rpc::MarkJobFinishedRequest request,
@@ -188,13 +186,13 @@ void GcsJobManager::HandleMarkJobFinished(rpc::MarkJobFinishedRequest request,
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  Status status = gcs_table_storage_.JobTable().Get(
+  gcs_table_storage_.JobTable().Get(
       job_id,
-      {[this, job_id, send_reply](Status status,
+      {[this, job_id, send_reply](Status get_status,
                                   std::optional<rpc::JobTableData> result) {
          RAY_CHECK(thread_checker_.IsOnSameThread());
 
-         if (status.ok() && result) {
+         if (get_status.ok() && result) {
            MarkJobAsFinished(*result, send_reply);
            return;
          }
@@ -202,16 +200,13 @@ void GcsJobManager::HandleMarkJobFinished(rpc::MarkJobFinishedRequest request,
          if (!result.has_value()) {
            RAY_LOG(ERROR).WithField(job_id)
                << "Tried to mark job as finished, but no job table entry was found.";
-         } else if (!status.ok()) {
+         } else if (!get_status.ok()) {
            RAY_LOG(ERROR).WithField(job_id)
-               << "Failed to mark job as finished: " << status;
+               << "Failed to mark job as finished: " << get_status;
          }
-         send_reply(status);
+         send_reply(get_status);
        },
        io_context_});
-  if (!status.ok()) {
-    send_reply(status);
-  }
 }
 
 void GcsJobManager::ClearJobInfos(const rpc::JobTableData &job_data) {
@@ -414,8 +409,8 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
            send_reply_callback,
            job_data_key_to_indices,
            num_finished_tasks,
-           try_send_reply](const auto &result) {
-            for (const auto &data : result) {
+           try_send_reply](const auto &job_info_result) {
+            for (const auto &data : job_info_result) {
               const std::string &job_data_key = data.first;
               // The JobInfo stored by the Ray Job API.
               const std::string &job_info_json = data.second;
@@ -430,8 +425,8 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
                       << job_info_json << " Error: " << status.message();
                 }
                 // Add the JobInfo to the correct indices in the reply.
-                for (int i : job_data_key_to_indices.at(job_data_key)) {
-                  reply->mutable_job_info_list(i)->mutable_job_info()->CopyFrom(
+                for (int j : job_data_key_to_indices.at(job_data_key)) {
+                  reply->mutable_job_info_list(j)->mutable_job_info()->CopyFrom(
                       jobs_api_info);
                 }
               }
@@ -443,10 +438,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
           "job", job_api_data_keys, {kv_multi_get_callback, io_context_});
     }
   };
-  Status status = gcs_table_storage_.JobTable().GetAll({on_done, io_context_});
-  if (!status.ok()) {
-    on_done(absl::flat_hash_map<JobID, rpc::JobTableData>());
-  }
+  gcs_table_storage_.JobTable().GetAll({std::move(on_done), io_context_});
 }
 
 void GcsJobManager::HandleReportJobError(rpc::ReportJobErrorRequest request,
@@ -465,7 +457,7 @@ void GcsJobManager::HandleGetNextJobID(rpc::GetNextJobIDRequest request,
     reply->set_job_id(job_id);
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
-  RAY_CHECK_OK(gcs_table_storage_.AsyncGetNextJobID({std::move(callback), io_context_}));
+  gcs_table_storage_.AsyncGetNextJobID({std::move(callback), io_context_});
 }
 
 std::shared_ptr<rpc::JobConfig> GcsJobManager::GetJobConfig(const JobID &job_id) const {
@@ -497,7 +489,7 @@ void GcsJobManager::OnNodeDead(const NodeID &node_id) {
     }
   };
 
-  RAY_CHECK_OK(gcs_table_storage_.JobTable().GetAll({on_done, io_context_}));
+  gcs_table_storage_.JobTable().GetAll({std::move(on_done), io_context_});
 }
 
 void GcsJobManager::RecordMetrics() {

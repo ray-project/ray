@@ -12,15 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace ray {
-namespace gcs {
+#pragma once
 
-class MockGcsActor : public GcsActor {
- public:
-};
+#include <gmock/gmock.h>
 
-}  // namespace gcs
-}  // namespace ray
+#include "ray/gcs/gcs_server/gcs_actor_manager.h"
 
 namespace ray {
 namespace gcs {
