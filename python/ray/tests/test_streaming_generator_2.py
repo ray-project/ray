@@ -22,6 +22,7 @@ RECONSTRUCTION_CONFIG = {
     "task_retry_delay_ms": 100,
     "object_timeout_milliseconds": 200,
     "fetch_warn_timeout_milliseconds": 1000,
+    "raylet_rpc_server_reconnect_timeout_s": 1,
 }
 
 

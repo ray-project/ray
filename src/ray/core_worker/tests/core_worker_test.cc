@@ -190,6 +190,7 @@ class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
         memory_store_,
         *task_manager,
         NodeID::Nil(),
+        WorkerType::WORKER,
         10000,
         actor_creator,
         JobID::Nil(),

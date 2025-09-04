@@ -90,6 +90,7 @@ class NormalTaskSubmitter {
       std::shared_ptr<CoreWorkerMemoryStore> store,
       TaskManagerInterface &task_manager,
       NodeID local_node_id,
+      WorkerType worker_type,
       int64_t lease_timeout_ms,
       std::shared_ptr<ActorCreatorInterface> actor_creator,
       const JobID &job_id,
@@ -105,6 +106,7 @@ class NormalTaskSubmitter {
         lease_timeout_ms_(lease_timeout_ms),
         local_node_id_(local_node_id),
         worker_id_(WorkerID::FromBinary(rpc_address_.worker_id())),
+        worker_type_(worker_type),
         core_worker_client_pool_(std::move(core_worker_client_pool)),
         job_id_(job_id),
         lease_request_rate_limiter_(std::move(lease_request_rate_limiter)),
@@ -192,7 +194,7 @@ class NormalTaskSubmitter {
   /// Set up client state for newly granted worker lease.
   void AddWorkerLeaseClient(
       const rpc::Address &addr,
-      std::shared_ptr<RayletClientInterface> raylet_client,
+      const NodeID &node_id,
       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources,
       const SchedulingKey &scheduling_key,
       const LeaseID &lease_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -262,6 +264,9 @@ class NormalTaskSubmitter {
   /// The local worker ID.
   const WorkerID worker_id_;
 
+  /// The type of this core worker process.
+  const WorkerType worker_type_;
+
   // Protects task submission state below.
   absl::Mutex mu_;
 
@@ -271,14 +276,14 @@ class NormalTaskSubmitter {
   const JobID job_id_;
 
   /// A LeaseEntry struct is used to condense the metadata about a single executor:
-  /// (1) The lease client through which the worker should be returned
+  /// (1) The node id of the leased worker.
   /// (2) The expiration time of a worker's lease.
   /// (3) Whether the worker has assigned task to do.
-  /// (5) The resources assigned to the worker
-  /// (6) The SchedulingKey assigned to tasks that will be sent to the worker
-  /// (7) The task id used to obtain the worker lease.
+  /// (4) The resources assigned to the worker
+  /// (5) The SchedulingKey assigned to tasks that will be sent to the worker
+  /// (6) The task id used to obtain the worker lease.
   struct LeaseEntry {
-    std::shared_ptr<RayletClientInterface> raylet_client;
+    NodeID node_id;
     int64_t lease_expiration_time;
     google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources;
     SchedulingKey scheduling_key;

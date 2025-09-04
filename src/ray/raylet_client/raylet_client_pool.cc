@@ -90,7 +90,7 @@ std::shared_ptr<ray::RayletClientInterface> RayletClientPool::GetOrConnectByAddr
   auto connection = client_factory_(address);
   client_map_[node_id] = connection;
 
-  RAY_LOG(DEBUG) << "Connected to raylet " << node_id << " at "
+  RAY_LOG(ERROR) << "Connected to raylet " << node_id << " at "
                  << BuildAddress(address.ip_address(), address.port());
   RAY_CHECK(connection != nullptr);
   return connection;

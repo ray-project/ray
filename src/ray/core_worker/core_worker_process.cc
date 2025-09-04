@@ -519,6 +519,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       memory_store,
       *task_manager,
       local_node_id,
+      options.worker_type,
       RayConfig::instance().worker_lease_timeout_milliseconds(),
       actor_creator,
       worker_context->GetCurrentJobID(),

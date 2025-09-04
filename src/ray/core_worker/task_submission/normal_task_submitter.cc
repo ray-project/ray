@@ -93,14 +93,15 @@ void NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
 
 void NormalTaskSubmitter::AddWorkerLeaseClient(
     const rpc::Address &addr,
-    std::shared_ptr<RayletClientInterface> raylet_client,
+    const NodeID &node_id,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources,
     const SchedulingKey &scheduling_key,
     const LeaseID &lease_id) {
+  RAY_LOG(ERROR) << "Adding worker lease client " << node_id;
   core_worker_client_pool_->GetOrConnect(addr);
   int64_t expiration = current_time_ms() + lease_timeout_ms_;
   LeaseEntry new_lease_entry{
-      std::move(raylet_client), expiration, assigned_resources, scheduling_key, lease_id};
+      node_id, expiration, assigned_resources, scheduling_key, lease_id};
   worker_to_lease_entry_.emplace(addr, new_lease_entry);
 
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
@@ -113,12 +114,14 @@ void NormalTaskSubmitter::ReturnWorkerLease(const rpc::Address &addr,
                                             const std::string &error_detail,
                                             bool worker_exiting,
                                             const SchedulingKey &scheduling_key) {
-  RAY_LOG(DEBUG) << "Returning worker " << WorkerID::FromBinary(addr.worker_id())
-                 << " to raylet " << NodeID::FromBinary(addr.node_id());
+  RAY_LOG(ERROR) << "Returning worker " << WorkerID::FromBinary(addr.worker_id())
+                 << " to raylet " << NodeID::FromBinary(addr.node_id())
+                 << " with node id " << worker_to_lease_entry_[addr].node_id
+                 << " size of worker_to_lease_entry_ " << worker_to_lease_entry_.size();
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
   RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
   auto &lease_entry = worker_to_lease_entry_[addr];
-  RAY_CHECK(lease_entry.raylet_client);
+  RAY_CHECK(!lease_entry.node_id.IsNil());
   RAY_CHECK(!lease_entry.is_busy);
 
   // Decrement the number of active workers consuming tasks from the queue associated
@@ -129,8 +132,9 @@ void NormalTaskSubmitter::ReturnWorkerLease(const rpc::Address &addr,
     // scheduling_key_entries_ hashmap.
     scheduling_key_entries_.erase(scheduling_key);
   }
-
-  lease_entry.raylet_client->ReturnWorkerLease(
+  auto raylet_client = raylet_client_pool_->GetByID(lease_entry.node_id);
+  RAY_CHECK(raylet_client);
+  raylet_client->ReturnWorkerLease(
       addr.port(), lease_entry.lease_id, was_error, error_detail, worker_exiting);
   worker_to_lease_entry_.erase(addr);
 }
@@ -142,8 +146,10 @@ void NormalTaskSubmitter::OnWorkerIdle(
     const std::string &error_detail,
     bool worker_exiting,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources) {
+  RAY_LOG(ERROR) << "OnWorkerIdle";
   auto &lease_entry = worker_to_lease_entry_[addr];
-  if (!lease_entry.raylet_client) {
+  if (lease_entry.node_id.IsNil()) {
+    RAY_LOG(ERROR) << "OnWorkerIdle: lease_entry.node_id.IsNil()";
     return;
   }
 
@@ -162,6 +168,7 @@ void NormalTaskSubmitter::OnWorkerIdle(
       ReturnWorkerLease(addr, was_error, error_detail, worker_exiting, scheduling_key);
     }
   } else {
+    RAY_LOG(ERROR) << "Pushing task";
     auto client = core_worker_client_pool_->GetOrConnect(addr);
 
     if (!current_queue.empty() && !lease_entry.is_busy) {
@@ -318,7 +325,7 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
 
   auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(*raylet_address);
   const std::string function_or_actor_name = lease_spec.GetFunctionOrActorName();
-  RAY_LOG(DEBUG) << "Requesting lease " << lease_id << " from raylet "
+  RAY_LOG(ERROR) << "Requesting lease " << lease_id << " from raylet "
                  << NodeID::FromBinary(raylet_address->node_id()) << " for "
                  << function_or_actor_name;
 
@@ -403,13 +410,12 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
             } else if (!reply.worker_address().node_id().empty()) {
               // We got a lease for a worker. Add the lease client state and try to
               // assign work to the worker.
-              RAY_LOG(DEBUG) << "Lease granted to task " << lease_id << " from raylet "
+              RAY_LOG(ERROR) << "Lease granted to task " << lease_id << " from raylet "
                              << NodeID::FromBinary(reply.worker_address().node_id())
                              << " with worker "
                              << WorkerID::FromBinary(reply.worker_address().worker_id());
-
               AddWorkerLeaseClient(reply.worker_address(),
-                                   std::move(raylet_lease_client),
+                                   NodeID::FromBinary(reply.worker_address().node_id()),
                                    reply.resource_mapping(),
                                    scheduling_key,
                                    lease_id);
@@ -423,7 +429,7 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
             } else {
               // The raylet redirected us to a different raylet to retry at.
               RAY_CHECK(!is_spillback);
-              RAY_LOG(DEBUG) << "Redirect lease " << lease_id << " from raylet "
+              RAY_LOG(ERROR) << "Redirect lease " << lease_id << " from raylet "
                              << NodeID::FromBinary(raylet_address.node_id())
                              << " to raylet "
                              << NodeID::FromBinary(
@@ -436,6 +442,13 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
             // A lease request to a remote raylet failed. Retry locally if the lease is
             // still needed.
             // TODO(swang): Fail after some number of retries?
+            RAY_LOG(ERROR) << "Retrying attempt to schedule lease (id: " << lease_id
+                           << " name: " << function_or_actor_name
+                           << ") at remote node (id: " << raylet_address.node_id()
+                           << " ip: " << raylet_address.ip_address()
+                           << "). Try again "
+                              "on a local node. Error: "
+                           << status.ToString();
             RAY_LOG_EVERY_MS(INFO, 30 * 1000)
                 << "Retrying attempt to schedule lease (id: " << lease_id
                 << " name: " << function_or_actor_name
@@ -447,13 +460,30 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
 
             RequestNewWorkerIfNeeded(scheduling_key);
           } else {
-            RAY_LOG(WARNING)
-                << "The worker failed to receive a response from the local raylet, but "
-                   "raylet is still alive. Try again on a local node. Error: "
-                << status;
-            // TODO(sang): Maybe we should raise FATAL error if it happens too many
-            // times.
-            RequestNewWorkerIfNeeded(scheduling_key);
+            RAY_LOG(WARNING) << "The worker failed to receive a response from the local "
+                             << "raylet because the raylet is unavailable (crashed). "
+                             << "Error: " << status;
+            if (worker_type_ == WorkerType::WORKER) {
+              // Exit the worker so that caller can retry somewhere else.
+              RAY_LOG(WARNING) << "Terminating the worker due to local raylet death";
+              QuickExit();
+            }
+            RAY_CHECK(worker_type_ == WorkerType::DRIVER);
+            error_type = rpc::ErrorType::LOCAL_RAYLET_DIED;
+            error_status = status;
+            // Grpc errors are not helpful at all. So we are overwriting it.
+            std::stringstream ss;
+            ss << "The worker failed to receive a response from the local raylet"
+               << "(id: " << NodeID::FromBinary(raylet_address.node_id()).Hex()
+               << " ,ip: " << raylet_address.ip_address() << ") "
+               << "because the raylet is "
+                  "unavailable (crashed).";
+            error_info.set_error_message(ss.str());
+            tasks_to_fail = std::move(sched_entry.task_queue);
+            sched_entry.task_queue.clear();
+            if (sched_entry.CanDelete()) {
+              scheduling_key_entries_.erase(scheduling_key);
+            }
           }
         }
         error_info.set_error_type(error_type);
@@ -485,7 +515,7 @@ void NormalTaskSubmitter::PushNormalTask(
     const SchedulingKey &scheduling_key,
     TaskSpecification task_spec,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources) {
-  RAY_LOG(DEBUG) << "Pushing task " << task_spec.TaskId() << " to worker "
+  RAY_LOG(ERROR) << "Pushing task " << task_spec.TaskId() << " to worker "
                  << WorkerID::FromBinary(addr.worker_id()) << " of raylet "
                  << NodeID::FromBinary(addr.node_id());
   auto task_id = task_spec.TaskId();
@@ -554,9 +584,9 @@ void NormalTaskSubmitter::PushNormalTask(
                   failed_tasks_pending_failure_cause_.erase(task_id);
                 };
             auto &cur_lease_entry = worker_to_lease_entry_[addr];
-            RAY_CHECK(cur_lease_entry.raylet_client);
-            cur_lease_entry.raylet_client->GetWorkerFailureCause(cur_lease_entry.lease_id,
-                                                                 callback);
+            auto raylet_client = raylet_client_pool_->GetByID(cur_lease_entry.node_id);
+            RAY_CHECK(raylet_client);
+            raylet_client->GetWorkerFailureCause(cur_lease_entry.lease_id, callback);
           }
           OnWorkerIdle(addr,
                        scheduling_key,

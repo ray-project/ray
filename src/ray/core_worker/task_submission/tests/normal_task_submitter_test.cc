@@ -311,7 +311,8 @@ class MockRayletClient : public FakeRayletClient {
   bool GrantWorkerLease(
       const std::string &address,
       int port,
-      const NodeID &retry_at_node_id,
+      const NodeID &granted_node_id,
+      const NodeID &retry_at_node_id = NodeID::Nil(),
       bool cancel = false,
       std::string worker_id = WorkerID::FromRandom().Binary(),
       bool reject = false,
@@ -330,7 +331,7 @@ class MockRayletClient : public FakeRayletClient {
     } else {
       reply.mutable_worker_address()->set_ip_address(address);
       reply.mutable_worker_address()->set_port(port);
-      reply.mutable_worker_address()->set_node_id(retry_at_node_id.Binary());
+      reply.mutable_worker_address()->set_node_id(granted_node_id.Binary());
       reply.mutable_worker_address()->set_worker_id(worker_id);
     }
     rpc::ClientCallback<rpc::RequestWorkerLeaseReply> callback = PopCallbackInLock();
@@ -492,6 +493,7 @@ class NormalTaskSubmitterTest : public testing::Test {
 
   NormalTaskSubmitter CreateNormalTaskSubmitter(
       std::shared_ptr<LeaseRequestRateLimiter> rate_limiter,
+      WorkerType worker_type = WorkerType::WORKER,
       std::function<std::shared_ptr<RayletClientInterface>(const rpc::Address &)>
           raylet_client_factory = nullptr,
       std::shared_ptr<CoreWorkerMemoryStore> custom_memory_store = nullptr,
@@ -523,6 +525,7 @@ class NormalTaskSubmitterTest : public testing::Test {
         store,
         *task_manager,
         local_node_id,
+        worker_type,
         lease_timeout_ms,
         actor_creator,
         JobID::Nil(),
@@ -561,7 +564,7 @@ TEST_F(NormalTaskSubmitterTest, TestLocalityAwareSubmitOneTask) {
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
 
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, local_node_id));
   ASSERT_EQ(worker_client->callbacks.size(), 1);
   ASSERT_EQ(task_manager->num_tasks_complete, 0);
   ASSERT_EQ(task_manager->num_tasks_failed, 0);
@@ -592,7 +595,7 @@ TEST_F(NormalTaskSubmitterTest, TestSubmitOneTask) {
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
 
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, local_node_id));
   ASSERT_EQ(worker_client->callbacks.size(), 1);
   ASSERT_EQ(task_manager->num_tasks_complete, 0);
   ASSERT_EQ(task_manager->num_tasks_failed, 0);
@@ -618,7 +621,7 @@ TEST_F(NormalTaskSubmitterTest, TestRetryTaskApplicationLevelError) {
   task.GetMutableMessage().set_retry_exceptions(true);
 
   submitter.SubmitTask(task);
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, local_node_id));
   // Simulate an application-level error.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::OK(), false, true));
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
@@ -632,7 +635,7 @@ TEST_F(NormalTaskSubmitterTest, TestRetryTaskApplicationLevelError) {
   task.GetMutableMessage().set_retry_exceptions(false);
 
   submitter.SubmitTask(task);
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, local_node_id));
   // Simulate an application-level error.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::OK(), false, true));
   ASSERT_EQ(raylet_client->num_workers_returned, 2);
@@ -654,7 +657,7 @@ TEST_F(NormalTaskSubmitterTest, TestHandleTaskFailure) {
   TaskSpecification task = BuildEmptyTaskSpec();
 
   submitter.SubmitTask(task);
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, local_node_id));
   // Simulate a system failure, i.e., worker died unexpectedly.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("oops")));
   ASSERT_TRUE(raylet_client->ReplyGetWorkerFailureCause());
@@ -682,7 +685,7 @@ TEST_F(NormalTaskSubmitterTest, TestCancellationWhileHandlingTaskFailure) {
 
   TaskSpecification task = BuildEmptyTaskSpec();
   submitter.SubmitTask(task);
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, local_node_id));
   // Simulate a system failure, i.e., worker died unexpectedly so that
   // GetWorkerFailureCause is called.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("oops")));
@@ -714,6 +717,7 @@ TEST_F(NormalTaskSubmitterTest, TestHandleUnschedulableTask) {
   ASSERT_TRUE(raylet_client->GrantWorkerLease(
       "",
       0,
+      local_node_id,
       NodeID::Nil(),
       true,
       "",
@@ -728,6 +732,7 @@ TEST_F(NormalTaskSubmitterTest, TestHandleUnschedulableTask) {
   ASSERT_TRUE(raylet_client->GrantWorkerLease(
       "",
       0,
+      local_node_id,
       NodeID::Nil(),
       true,
       "",
@@ -764,6 +769,7 @@ TEST_F(NormalTaskSubmitterTest, TestHandleRuntimeEnvSetupFailed) {
   ASSERT_TRUE(raylet_client->GrantWorkerLease(
       "",
       0,
+      local_node_id,
       NodeID::Nil(),
       true,
       "",
@@ -778,6 +784,7 @@ TEST_F(NormalTaskSubmitterTest, TestHandleRuntimeEnvSetupFailed) {
   ASSERT_TRUE(raylet_client->GrantWorkerLease(
       "",
       0,
+      local_node_id,
       NodeID::Nil(),
       true,
       "",
@@ -860,7 +867,7 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeases) {
 
   // Grant the first round of leases.
   for (int i = 0; i < concurrency; i++) {
-    ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", i, NodeID::Nil()));
+    ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", i, local_node_id));
     ASSERT_EQ(worker_client->callbacks.size(), i + 1);
     ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, concurrency + i + 1);
     ASSERT_EQ(raylet_client->num_workers_requested, concurrency + i + 1);
@@ -868,7 +875,7 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeases) {
   }
   for (int i = 0; i < concurrency; i++) {
     ASSERT_TRUE(
-        raylet_client->GrantWorkerLease("localhost", concurrency + i, NodeID::Nil()));
+        raylet_client->GrantWorkerLease("localhost", concurrency + i, local_node_id));
     ASSERT_EQ(worker_client->callbacks.size(), concurrency + i + 1);
     ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, tasks.size());
     ASSERT_EQ(raylet_client->num_workers_requested, tasks.size());
@@ -915,14 +922,14 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamic) {
   ASSERT_EQ(raylet_client->reported_backlog_size, tasks.size() - 1);
 
   // Max concurrency is still 1.
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, local_node_id));
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 2);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
   ASSERT_EQ(raylet_client->reported_backlog_size, tasks.size() - 2);
 
   // Increase max concurrency. Should request leases up to the max concurrency.
   rateLimiter->limit_ = concurrency;
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, local_node_id));
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 2 + concurrency);
   ASSERT_EQ(raylet_client->num_workers_requested, 2 + concurrency);
   ASSERT_EQ(raylet_client->reported_backlog_size,
@@ -933,7 +940,7 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamic) {
   // concurrency.
   rateLimiter->limit_ = 1;
   for (int i = 0; i < concurrency - 1; i++) {
-    ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", i, NodeID::Nil()));
+    ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", i, local_node_id));
     ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 2 + concurrency);
     ASSERT_EQ(raylet_client->num_workers_requested, 2 + concurrency);
     ASSERT_EQ(raylet_client->reported_backlog_size,
@@ -946,14 +953,14 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamic) {
   raylet_client->num_workers_requested = 0;
   for (int i = 0; i < num_tasks_remaining; i++) {
     ASSERT_TRUE(
-        raylet_client->GrantWorkerLease("localhost", concurrency + i, NodeID::Nil()));
+        raylet_client->GrantWorkerLease("localhost", concurrency + i, local_node_id));
     ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, i + 1);
     ASSERT_EQ(raylet_client->num_workers_requested, i + 1);
   }
 
   lease_policy_ptr->num_lease_policy_consults = 0;
   raylet_client->num_workers_requested = 0;
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 2000, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 2000, local_node_id));
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 0);
   ASSERT_EQ(raylet_client->num_workers_requested, 0);
 
@@ -979,6 +986,7 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamicWithSpillback) 
   auto rateLimiter = std::make_shared<DynamicRateLimiter>(1);
   auto submitter = CreateNormalTaskSubmitter(
       rateLimiter,
+      WorkerType::WORKER,
       /*raylet_client_factory*/ [&](const rpc::Address &addr) { return raylet_client; });
 
   std::vector<TaskSpecification> tasks;
@@ -999,7 +1007,7 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamicWithSpillback) 
   ASSERT_EQ(raylet_client->reported_backlog_size, tasks.size() - 1);
 
   // Max concurrency is still 1.
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, local_node_id));
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 2);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
   ASSERT_EQ(raylet_client->reported_backlog_size, tasks.size() - 2);
@@ -1007,7 +1015,9 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamicWithSpillback) 
   // Increase max concurrency.
   rateLimiter->limit_ = concurrency;
   // The outstanding lease request is spilled back to a remote raylet.
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, NodeID::FromRandom()));
+  auto remote_node_id = NodeID::FromRandom();
+  ASSERT_TRUE(
+      raylet_client->GrantWorkerLease("localhost", 1001, NodeID::Nil(), remote_node_id));
   // We should request one lease request from the spillback raylet and then the
   // rest from the raylet returned by the lease policy.
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, concurrency + 1);
@@ -1020,7 +1030,7 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamicWithSpillback) 
   // concurrency.
   rateLimiter->limit_ = 1;
   for (int i = 0; i < concurrency - 1; i++) {
-    ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", i, NodeID::Nil()));
+    ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", i, local_node_id));
     ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, concurrency + 1);
     ASSERT_EQ(raylet_client->num_workers_requested, 2 + concurrency);
     ASSERT_EQ(raylet_client->reported_backlog_size,
@@ -1033,14 +1043,14 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamicWithSpillback) 
   raylet_client->num_workers_requested = 0;
   for (int i = 0; i < num_tasks_remaining; i++) {
     ASSERT_TRUE(
-        raylet_client->GrantWorkerLease("localhost", concurrency + i, NodeID::Nil()));
+        raylet_client->GrantWorkerLease("localhost", concurrency + i, local_node_id));
     ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, i + 1);
     ASSERT_EQ(raylet_client->num_workers_requested, i + 1);
   }
 
   lease_policy_ptr->num_lease_policy_consults = 0;
   raylet_client->num_workers_requested = 0;
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 2000, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 2000, local_node_id));
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 0);
   ASSERT_EQ(raylet_client->num_workers_requested, 0);
 
@@ -1076,21 +1086,21 @@ TEST_F(NormalTaskSubmitterTest, TestSubmitMultipleTasks) {
   ASSERT_EQ(raylet_client->reported_backlog_size, 0);
 
   // Task 1 is pushed; worker 2 is requested.
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, local_node_id));
   ASSERT_EQ(worker_client->callbacks.size(), 1);
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 2);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
   ASSERT_EQ(raylet_client->reported_backlog_size, 1);
 
   // Task 2 is pushed; worker 3 is requested.
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, local_node_id));
   ASSERT_EQ(worker_client->callbacks.size(), 2);
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 3);
   ASSERT_EQ(raylet_client->num_workers_requested, 3);
   ASSERT_EQ(raylet_client->reported_backlog_size, 0);
 
   // Task 3 is pushed; no more workers requested.
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1002, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1002, local_node_id));
   ASSERT_EQ(worker_client->callbacks.size(), 3);
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 3);
   ASSERT_EQ(raylet_client->num_workers_requested, 3);
@@ -1126,7 +1136,7 @@ TEST_F(NormalTaskSubmitterTest, TestReuseWorkerLease) {
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
 
   // Task 1 is pushed.
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, local_node_id));
   ASSERT_EQ(worker_client->callbacks.size(), 1);
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 2);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
@@ -1149,7 +1159,7 @@ TEST_F(NormalTaskSubmitterTest, TestReuseWorkerLease) {
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
 
   // The second lease request is returned immediately.
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, local_node_id));
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 2);
   ASSERT_EQ(raylet_client->num_workers_returned, 2);
@@ -1177,7 +1187,7 @@ TEST_F(NormalTaskSubmitterTest, TestRetryLeaseCancellation) {
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
 
   // Task 1 is pushed.
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, local_node_id));
   // Task 1 finishes, Task 2 is scheduled on the same worker.
   ASSERT_TRUE(worker_client->ReplyPushTask());
   // Task 2 finishes, Task 3 is scheduled on the same worker.
@@ -1199,7 +1209,8 @@ TEST_F(NormalTaskSubmitterTest, TestRetryLeaseCancellation) {
   ASSERT_EQ(raylet_client->num_leases_canceled, i);
   ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
   ASSERT_EQ(raylet_client->num_leases_canceled, i);
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("", 0, NodeID::Nil(), /*cancel=*/true));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease(
+      "", 0, local_node_id, NodeID::Nil(), /*cancel=*/true));
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   // The canceled lease is not returned.
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
@@ -1223,7 +1234,7 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentCancellationAndSubmission) {
   submitter.SubmitTask(task2);
 
   // Task 1 is pushed.
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, local_node_id));
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
   // Task 1 finishes, Task 2 is scheduled on the same worker.
   ASSERT_TRUE(worker_client->ReplyPushTask());
@@ -1242,11 +1253,12 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentCancellationAndSubmission) {
   // Task 2's lease request is canceled, a new worker is requested for task 3.
   ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease());
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("", 0, NodeID::Nil(), /*cancel=*/true));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease(
+      "", 0, local_node_id, NodeID::Nil(), /*cancel=*/true));
   ASSERT_EQ(raylet_client->num_workers_requested, 3);
 
   // Task 3 finishes, all workers returned.
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, local_node_id));
   ASSERT_TRUE(worker_client->ReplyPushTask());
   ASSERT_EQ(raylet_client->num_workers_returned, 2);
   ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
@@ -1268,7 +1280,7 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerNotReusedOnError) {
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
 
   // Task 1 is pushed.
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, local_node_id));
   ASSERT_EQ(worker_client->callbacks.size(), 1);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
 
@@ -1280,7 +1292,7 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerNotReusedOnError) {
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
 
   // Task 2 runs successfully on the second worker.
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, local_node_id));
   ASSERT_TRUE(worker_client->ReplyPushTask());
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
@@ -1303,7 +1315,7 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerNotReturnedOnExit) {
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
 
   // Task 1 is pushed.
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, local_node_id));
   ASSERT_EQ(worker_client->callbacks.size(), 1);
 
   // Task 1 finishes with exit status; the worker is not returned.
@@ -1329,8 +1341,10 @@ TEST_F(NormalTaskSubmitterTest, TestSpillback) {
     remote_raylet_clients[addr.port()] = client;
     return client;
   };
-  auto submitter = CreateNormalTaskSubmitter(
-      std::make_shared<StaticLeaseRequestRateLimiter>(1), raylet_client_factory);
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1),
+                                WorkerType::WORKER,
+                                raylet_client_factory);
   TaskSpecification task = BuildEmptyTaskSpec();
 
   submitter.SubmitTask(task);
@@ -1342,15 +1356,16 @@ TEST_F(NormalTaskSubmitterTest, TestSpillback) {
 
   // Spillback to a remote node.
   auto remote_node_id = NodeID::FromRandom();
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 7777, remote_node_id));
+  ASSERT_TRUE(
+      raylet_client->GrantWorkerLease("localhost", 7777, NodeID::Nil(), remote_node_id));
   ASSERT_EQ(remote_raylet_clients.count(7777), 1);
   // Confirm that lease policy is not consulted on spillback.
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 1);
   // There should be no more callbacks on the local client.
-  ASSERT_FALSE(raylet_client->GrantWorkerLease("remote", 1234, NodeID::Nil()));
+  ASSERT_FALSE(raylet_client->GrantWorkerLease("remote", 1234, local_node_id));
   // Trigger retry at the remote node.
   ASSERT_TRUE(
-      remote_raylet_clients[7777]->GrantWorkerLease("remote", 1234, NodeID::Nil()));
+      remote_raylet_clients[7777]->GrantWorkerLease("remote", 1234, remote_node_id));
 
   // The worker is returned to the remote node, not the local one.
   ASSERT_TRUE(worker_client->ReplyPushTask());
@@ -1384,6 +1399,7 @@ TEST_F(NormalTaskSubmitterTest, TestSpillbackRoundTrip) {
   auto memory_store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1),
+                                WorkerType::WORKER,
                                 raylet_client_factory,
                                 memory_store,
                                 kLongTimeout);
@@ -1398,27 +1414,33 @@ TEST_F(NormalTaskSubmitterTest, TestSpillbackRoundTrip) {
 
   // Spillback to a remote node.
   auto remote_node_id = NodeID::FromRandom();
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 7777, remote_node_id));
+  rpc::Address remote_address;
+  remote_address.set_node_id(remote_node_id.Binary());
+  remote_address.set_ip_address("localhost");
+  remote_address.set_port(7777);
+  raylet_client_pool->GetOrConnectByAddress(remote_address);
+  ASSERT_TRUE(
+      raylet_client->GrantWorkerLease("localhost", 7777, NodeID::Nil(), remote_node_id));
   ASSERT_EQ(remote_raylet_clients.count(7777), 1);
   ASSERT_EQ(remote_raylet_clients[7777]->num_workers_requested, 1);
   // Confirm that the spillback lease request has grant_or_reject set to true.
   ASSERT_EQ(remote_raylet_clients[7777]->num_grant_or_reject_leases_requested, 1);
   // Confirm that lease policy is not consulted on spillback.
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 1);
-  ASSERT_FALSE(raylet_client->GrantWorkerLease("remote", 1234, NodeID::Nil()));
+  ASSERT_FALSE(raylet_client->GrantWorkerLease("remote", 1234, local_node_id));
   // Trigger a rejection back to the local node.
   ASSERT_TRUE(remote_raylet_clients[7777]->GrantWorkerLease(
-      "local", 1234, local_node_id, false, "", /*reject=*/true));
+      "local", 1234, remote_node_id, NodeID::Nil(), false, "", /*reject=*/true));
   // We should not have created another lease client to the local raylet.
   ASSERT_EQ(remote_raylet_clients.size(), 1);
   // There should be no more callbacks on the remote node.
   ASSERT_FALSE(
-      remote_raylet_clients[7777]->GrantWorkerLease("remote", 1234, NodeID::Nil()));
+      remote_raylet_clients[7777]->GrantWorkerLease("remote", 1234, remote_node_id));
 
   // The worker is returned to the local node.
   ASSERT_EQ(raylet_client->num_grant_or_reject_leases_requested, 0);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("local", 1234, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("local", 1234, local_node_id));
   ASSERT_TRUE(worker_client->ReplyPushTask());
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
   ASSERT_EQ(remote_raylet_clients[7777]->num_workers_returned, 0);
@@ -1445,6 +1467,7 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
                        const TaskSpecification &same2,
                        const TaskSpecification &different) {
   rpc::Address address;
+  auto local_node_id = NodeID::FromRandom();
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto raylet_client_pool = std::make_shared<rpc::RayletClientPool>(
       [&](const rpc::Address &addr) { return raylet_client; });
@@ -1454,7 +1477,7 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
   auto task_manager = std::make_unique<MockTaskManager>();
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_unique<MockLeasePolicy>();
-  lease_policy->SetNodeID(NodeID::FromRandom());
+  lease_policy->SetNodeID(local_node_id);
   instrumented_io_context io_context;
   NormalTaskSubmitter submitter(
       address,
@@ -1464,7 +1487,8 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
       std::move(lease_policy),
       store,
       *task_manager,
-      NodeID::Nil(),
+      local_node_id,
+      WorkerType::WORKER,
       kLongTimeout,
       actor_creator,
       JobID::Nil(),
@@ -1481,7 +1505,7 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
       /*timeout_ms=*/1000);
 
   // same1 is pushed.
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, local_node_id));
   ASSERT_EQ(worker_client->callbacks.size(), 1);
   // Another worker is requested because same2 is pending.
   ASSERT_EQ(raylet_client->num_workers_requested, 3);
@@ -1497,7 +1521,7 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
   ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease());
 
   // different is pushed.
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, local_node_id));
   ASSERT_EQ(worker_client->callbacks.size(), 2);
   ASSERT_EQ(raylet_client->num_workers_requested, 3);
 
@@ -1514,7 +1538,8 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
   ASSERT_EQ(raylet_client->num_leases_canceled, 1);
 
   // Trigger reply to RequestWorkerLease to remove the canceled pending lease request
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1002, NodeID::Nil(), true));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease(
+      "localhost", 1002, local_node_id, NodeID::Nil(), true));
   ASSERT_EQ(raylet_client->num_workers_returned, 2);
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
@@ -1611,6 +1636,7 @@ TEST_F(NormalTaskSubmitterTest, TestBacklogReport) {
       std::make_shared<CoreWorkerMemoryStore>(store_io_context.GetIoService());
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1),
+                                WorkerType::WORKER,
                                 /*raylet_client_factory=*/nullptr,
                                 memory_store);
 
@@ -1672,6 +1698,7 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerLeaseTimeout) {
   auto memory_store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1),
+                                WorkerType::WORKER,
                                 /*raylet_client_factory=*/nullptr,
                                 memory_store,
                                 /*lease_timeout_ms=*/5);
@@ -1685,7 +1712,7 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerLeaseTimeout) {
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
 
   // Task 1 is pushed.
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, local_node_id));
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
 
   // Task 1 finishes with failure; the worker is returned due to the error even though
@@ -1697,7 +1724,7 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerLeaseTimeout) {
 
   // Task 2 runs successfully on the second worker; the worker is returned due to the
   // timeout.
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, local_node_id));
   std::this_thread::sleep_for(
       std::chrono::milliseconds(10));  // Sleep for 10ms, causing the lease to time out.
   ASSERT_TRUE(worker_client->ReplyPushTask());
@@ -1706,7 +1733,7 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerLeaseTimeout) {
 
   // Task 3 runs successfully on the third worker; the worker is returned even though it
   // hasn't timed out.
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1002, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1002, local_node_id));
   ASSERT_TRUE(worker_client->ReplyPushTask());
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 2);
@@ -1725,7 +1752,7 @@ TEST_F(NormalTaskSubmitterTest, TestKillExecutingTask) {
   TaskSpecification task = BuildEmptyTaskSpec();
 
   submitter.SubmitTask(task);
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, local_node_id));
 
   // Try force kill, exiting the worker
   submitter.CancelTask(task, true, false);
@@ -1742,7 +1769,7 @@ TEST_F(NormalTaskSubmitterTest, TestKillExecutingTask) {
   task.GetMutableMessage().set_task_id(
       TaskID::ForNormalTask(JobID::Nil(), TaskID::Nil(), 1).Binary());
   submitter.SubmitTask(task);
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, local_node_id));
 
   // Try non-force kill, worker returns normally
   submitter.CancelTask(task, false, false);
@@ -1778,7 +1805,8 @@ TEST_F(NormalTaskSubmitterTest, TestKillPendingTask) {
   ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease());
 
   // Trigger reply to RequestWorkerLease to remove the canceled pending lease request
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil(), true));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease(
+      "localhost", 1000, local_node_id, NodeID::Nil(), true));
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
   // would otherwise cause a memory leak.
@@ -1815,7 +1843,7 @@ TEST_F(NormalTaskSubmitterTest, TestQueueGeneratorForResubmit) {
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
   TaskSpecification task = BuildEmptyTaskSpec();
   submitter.SubmitTask(task);
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, local_node_id));
   ASSERT_TRUE(submitter.QueueGeneratorForResubmit(task));
   ASSERT_TRUE(worker_client->ReplyPushTask());
   ASSERT_EQ(task_manager->num_tasks_complete, 0);
@@ -1830,7 +1858,7 @@ TEST_F(NormalTaskSubmitterTest, TestCancelBeforeAfterQueueGeneratorForResubmit) 
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
   TaskSpecification task = BuildEmptyTaskSpec();
   submitter.SubmitTask(task);
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, local_node_id));
   submitter.CancelTask(task, /*force_kill=*/false, /*recursive=*/true);
   ASSERT_FALSE(submitter.QueueGeneratorForResubmit(task));
   worker_client->ReplyCancelTask();
@@ -1847,7 +1875,7 @@ TEST_F(NormalTaskSubmitterTest, TestCancelBeforeAfterQueueGeneratorForResubmit) 
   // resubmit.
   TaskSpecification task2 = BuildEmptyTaskSpec();
   submitter.SubmitTask(task2);
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, local_node_id));
   ASSERT_TRUE(submitter.QueueGeneratorForResubmit(task2));
   submitter.CancelTask(task2, /*force_kill=*/false, /*recursive=*/true);
   ASSERT_TRUE(worker_client->ReplyPushTask());
