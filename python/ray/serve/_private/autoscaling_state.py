@@ -10,8 +10,6 @@ from ray.serve._private.common import (
     ReplicaID,
     TargetCapacityDirection,
 )
-
-
 from ray.serve._private.constants import (
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
     SERVE_LOGGER_NAME,
