@@ -163,6 +163,7 @@ class RequestRouterConfig(BaseModel):
 DEFAULT_METRICS_INTERVAL_S = 10.0
 
 
+@PublicAPI(stability="alpha")
 class AggregationFunction(str, Enum):
     MEAN = "mean"
     MAX = "max"
