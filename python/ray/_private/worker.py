@@ -931,8 +931,8 @@ class Worker:
             object_id = obj_ref.hex()
             if (
                 self.gpu_object_manager.is_managed_object(object_id)
-                and object_id not in gpu_objects
-            ):
+                or not use_object_store
+            ) and object_id not in gpu_objects:
                 gpu_objects[object_id] = self.gpu_object_manager.get_gpu_object(
                     object_id
                 )

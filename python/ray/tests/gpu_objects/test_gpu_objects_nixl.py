@@ -22,7 +22,7 @@ class GPUTestActor:
             refs.append(ray.put(t, tensor_transport="nixl"))
         return refs
 
-    def consume(self, refs):
+    def consume_with_nixl(self, refs):
         tensors = [ray.get(ref) for ref in refs]
         sum = 0
         for t in tensors:
@@ -30,7 +30,7 @@ class GPUTestActor:
             sum += t.sum().item()
         return sum
 
-    def consume_object_store(self, refs):
+    def consume_with_object_store(self, refs):
         tensors = [ray.get(ref, tensor_transport="object_store") for ref in refs]
         sum = 0
         for t in tensors:
@@ -87,7 +87,7 @@ def test_intra_gpu_tensor_transfer(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
-def test_put_and_get_object(ray_start_regular):
+def test_put_and_get_object_with_nixl(ray_start_regular):
     actors = [GPUTestActor.remote() for _ in range(2)]
     src_actor, dst_actor = actors[0], actors[1]
     tensor1 = torch.tensor([1, 2, 3]).to("cuda")
@@ -95,12 +95,23 @@ def test_put_and_get_object(ray_start_regular):
     tensor3 = torch.tensor([7, 8, 9, 0, 0]).to("cuda")
     tensors = [tensor1, tensor2, tensor3]
     ref = src_actor.produce.remote(tensors)
-    ref1 = dst_actor.consume.remote(ref)
-    ref2 = dst_actor.consume_object_store.remote(ref)
+    ref1 = dst_actor.consume_with_nixl.remote(ref)
     result1 = ray.get(ref1)
-    result2 = ray.get(ref2)
     assert result1 == 45
-    assert result2 == 45
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_put_and_get_object_with_object_store(ray_start_regular):
+    actors = [GPUTestActor.remote() for _ in range(2)]
+    src_actor, dst_actor = actors[0], actors[1]
+    tensor1 = torch.tensor([1, 2, 3]).to("cuda")
+    tensor2 = torch.tensor([4, 5, 6, 0]).to("cuda")
+    tensor3 = torch.tensor([7, 8, 9, 0, 0]).to("cuda")
+    tensors = [tensor1, tensor2, tensor3]
+    ref = src_actor.produce.remote(tensors)
+    ref1 = dst_actor.consume_with_object_store.remote(ref)
+    result1 = ray.get(ref1)
+    assert result1 == 45
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)

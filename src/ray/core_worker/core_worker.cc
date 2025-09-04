@@ -1036,10 +1036,9 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
                                        /*tensor_transport=*/tensor_transport);
 
     // Register the callback to free the GPU object when it is out of scope.
-    if (tensor_transport !=
-        rpc::TensorTransport::OBJECT_STORE) {
+    if (tensor_transport != rpc::TensorTransport::OBJECT_STORE) {
       reference_counter_->AddObjectOutOfScopeOrFreedCallback(
-      *object_id, options_.free_actor_object_callback);
+          *object_id, options_.free_actor_object_callback);
     }
   } else {
     // Because in the remote worker's `HandleAssignObjectOwner`,
