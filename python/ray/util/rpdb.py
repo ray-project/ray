@@ -3,7 +3,7 @@
 # (BSD 2-Clause "Simplified" License)
 
 import errno
-from ray._common.network_utils import build_address
+from ray._common.network_utils import build_address, create_socket
 import inspect
 import json
 import logging
@@ -103,7 +103,7 @@ class _RemotePdb(Pdb):
         self._breakpoint_uuid = breakpoint_uuid
         self._quiet = quiet
         self._patch_stdstreams = patch_stdstreams
-        self._listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._listen_socket = create_socket(socket.SOCK_STREAM)
         self._listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
         self._listen_socket.bind((host, port))
         self._ip_address = ip_address
@@ -345,7 +345,8 @@ def _post_mortem():
 def _connect_pdb_client(host, port):
     if sys.platform == "win32":
         import msvcrt
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    s = create_socket(socket.SOCK_STREAM)
     s.connect((host, port))
 
     while True:

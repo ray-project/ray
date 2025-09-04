@@ -18,17 +18,28 @@
 #include <boost/asio.hpp>
 #include <boost/asio/generic/stream_protocol.hpp>
 #ifndef _WIN32
+#include <errno.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+
 #include <boost/asio/local/stream_protocol.hpp>
+#else
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #endif
 #include <boost/asio/ip/tcp.hpp>
+#include <cstdlib>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
+#include "ray/common/node_config.h"
 #include "ray/util/filesystem.h"
+#include "ray/util/logging.h"
 #include "ray/util/string_utils.h"
 
 using boost::asio::io_context;
@@ -36,8 +47,10 @@ using boost::asio::ip::tcp;
 
 namespace ray {
 
+bool IsIPv6IP(const std::string &ip) { return ip.find(':') != std::string::npos; }
+
 std::string BuildAddress(const std::string &host, const std::string &port) {
-  if (host.find(':') != std::string::npos) {
+  if (IsIPv6IP(host)) {
     // IPv6 address
     return absl::StrFormat("[%s]:%s", host, port);
   } else {
@@ -59,7 +72,7 @@ std::optional<std::array<std::string, 2>> ParseAddress(const std::string &addres
   std::string host = address.substr(0, pos);
   std::string port = address.substr(pos + 1);
 
-  if (host.find(':') != std::string::npos) {
+  if (IsIPv6IP(host)) {
     if (host.size() >= 2 && host.front() == '[' && host.back() == ']') {
       host = host.substr(1, host.size() - 2);
     } else {
@@ -74,14 +87,24 @@ std::optional<std::array<std::string, 2>> ParseAddress(const std::string &addres
 
 bool CheckPortFree(int port) {
   io_context io_service;
-  tcp::socket socket(io_service);
-  socket.open(tcp::v4());
+  auto socket = CreateTcpSocket(io_service);
   boost::system::error_code ec;
-  socket.bind(tcp::endpoint(tcp::v4(), port), ec);
-  socket.close();
+
+  bool is_ipv4 = (socket->local_endpoint(ec).protocol() == tcp::v4());
+  if (ec) {
+    // If we can't get the protocol info, fallback to IPv4
+    is_ipv4 = true;
+  }
+
+  if (is_ipv4) {
+    socket->bind(tcp::endpoint(tcp::v4(), port), ec);
+  } else {
+    socket->bind(tcp::endpoint(tcp::v6(), port), ec);
+  }
+
+  socket->close();
   return !ec.failed();
 }
-
 std::string EndpointToUrl(
     const boost::asio::generic::basic_endpoint<boost::asio::generic::stream_protocol> &ep,
     bool include_scheme) {
@@ -201,6 +224,93 @@ std::shared_ptr<absl::flat_hash_map<std::string, std::string>> ParseURL(std::str
   auto key_value_pair = parse_key_value_with_equal_delimter(token);
   result->emplace(std::string(key_value_pair.first), std::string(key_value_pair.second));
   return result;
+}
+
+std::string GetNodeIpAddressFromPerspective(const std::string &address) {
+  static const auto detect_ip = [](const std::string &target_address) -> std::string {
+    std::vector<std::pair<std::string, boost::asio::ip::udp>> test_addresses;
+    if (!target_address.empty()) {
+      test_addresses = {{target_address, boost::asio::ip::udp::v4()},
+                        {target_address, boost::asio::ip::udp::v6()}};
+    } else {
+      test_addresses = {{"8.8.8.8:53", boost::asio::ip::udp::v4()},
+                        {"[2001:4860:4860::8888]:53", boost::asio::ip::udp::v6()}};
+    }
+
+    // Try socket-based detection with IPv4/IPv6
+    for (const auto &[addr_str, protocol] : test_addresses) {
+      auto parts = ParseAddress(addr_str);
+      if (!parts.has_value()) continue;
+
+      try {
+        boost::asio::io_service net_service;
+        boost::asio::ip::udp::resolver resolver(net_service);
+        boost::asio::ip::udp::resolver::query query(protocol, (*parts)[0], (*parts)[1]);
+        auto endpoints = resolver.resolve(query);
+        boost::asio::ip::udp::endpoint ep = *endpoints;
+        boost::asio::ip::udp::socket socket(net_service, protocol);
+        socket.connect(ep);
+        boost::asio::ip::address local_addr = socket.local_endpoint().address();
+        return local_addr.to_string();
+      } catch (const std::exception &) {
+        // Continue to next address/protocol combination
+        continue;
+      }
+    }
+
+    // Fallback to hostname resolution
+    try {
+      boost::asio::io_service net_service;
+      boost::asio::ip::tcp::resolver resolver(net_service);
+      boost::asio::ip::tcp::resolver::query query(boost::asio::ip::host_name(), "");
+      auto endpoints = resolver.resolve(query);
+
+      std::string ipv6_candidate;
+      for (const auto &endpoint : endpoints) {
+        if (endpoint.endpoint().address().is_v4()) {
+          return endpoint.endpoint().address().to_string();
+        } else if (endpoint.endpoint().address().is_v6() && ipv6_candidate.empty()) {
+          ipv6_candidate = endpoint.endpoint().address().to_string();
+        }
+      }
+
+      if (!ipv6_candidate.empty()) {
+        return ipv6_candidate;
+      }
+    } catch (const std::exception &) {
+      // Hostname resolution failed
+    }
+
+    // Final fallback
+    return "127.0.0.1";
+  };
+
+  // Only use cache for default address (empty string)
+  if (address.empty()) {
+    static const std::string cached_ip = detect_ip("");
+    return cached_ip;
+  } else {
+    return detect_ip(address);
+  }
+}
+
+std::unique_ptr<boost::asio::ip::tcp::socket> CreateTcpSocket(
+    boost::asio::io_context &io_context) {
+  std::string node_ip;
+
+  if (ray::NodeConfig::Instance().HasNodeIpAddress()) {
+    node_ip = ray::NodeConfig::Instance().GetNodeIpAddress();
+  } else {
+    node_ip = GetNodeIpAddressFromPerspective();
+  }
+
+  if (IsIPv6IP(node_ip)) {
+    return std::make_unique<boost::asio::ip::tcp::socket>(io_context,
+                                                          boost::asio::ip::tcp::v6());
+  } else {
+    return std::make_unique<boost::asio::ip::tcp::socket>(io_context,
+                                                          boost::asio::ip::tcp::v4());
+  }
 }
 
 }  // namespace ray

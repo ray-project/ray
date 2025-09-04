@@ -10,12 +10,13 @@ from typing import Optional
 import numpy as np
 
 from ray.air.constants import _ERROR_REPORT_TIMEOUT
+from ray._common.network_utils import create_socket
 
 logger = logging.getLogger(__name__)
 
 
 def find_free_port():
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+    with closing(create_socket(socket.SOCK_STREAM)) as s:
         s.bind(("", 0))
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         return s.getsockname()[1]

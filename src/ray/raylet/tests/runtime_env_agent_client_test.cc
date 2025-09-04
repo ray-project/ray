@@ -30,6 +30,7 @@
 #include "gtest/gtest.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/id.h"
+#include "ray/util/network_util.h"
 #include "src/ray/protobuf/runtime_env_agent.pb.h"
 
 namespace ray {
@@ -42,15 +43,11 @@ using boost::asio::ip::port_type;
 
 port_type GetFreePort() {
   boost::asio::io_context io_service;
-  boost::asio::ip::tcp::acceptor acceptor(io_service);
-  boost::asio::ip::tcp::endpoint endpoint;
 
-  // try to bind to port 0 to find a free port
-  acceptor.open(tcp::v4());
-  acceptor.bind(tcp::endpoint(tcp::v4(), 0));
-  endpoint = acceptor.local_endpoint();
-  auto port = endpoint.port();
-  acceptor.close();
+  auto socket = ray::CreateTcpSocket(io_service);
+  socket->bind(tcp::endpoint(socket->local_endpoint().protocol(), 0));
+  auto port = socket->local_endpoint().port();
+  socket->close();
   return port;
 }
 

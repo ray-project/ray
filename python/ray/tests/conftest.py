@@ -22,9 +22,8 @@ import pytest
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._common.network_utils import build_address
+from ray._common.network_utils import build_address, create_socket
 from ray._common.test_utils import wait_for_condition
-from ray._private.conftest_utils import set_override_dashboard_url  # noqa: F401
 from ray._private.runtime_env import virtualenv_utils
 from ray._private.test_utils import (
     RayletKiller,
@@ -259,7 +258,7 @@ def _find_available_ports(start: int, end: int, *, num: int = 1) -> List[int]:
     ports = []
     for _ in range(num):
         random_port = 0
-        with socket.socket() as s:
+        with create_socket() as s:
             s.bind(("", 0))
             random_port = s.getsockname()[1]
         if random_port >= start and random_port <= end and random_port not in ports:
@@ -270,7 +269,7 @@ def _find_available_ports(start: int, end: int, *, num: int = 1) -> List[int]:
             if port in ports:
                 continue
             try:
-                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                with create_socket(socket.SOCK_STREAM) as s:
                     s.bind(("", port))
                 ports.append(port)
                 break
@@ -1220,7 +1219,7 @@ def set_runtime_env_retry_times(request):
 def listen_port(request):
     port = getattr(request, "param", 0)
     try:
-        sock = socket.socket()
+        sock = create_socket()
         if hasattr(socket, "SO_REUSEPORT"):
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 0)
 

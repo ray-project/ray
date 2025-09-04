@@ -15,6 +15,7 @@ from urllib.parse import quote_plus
 
 import pytest
 from ray._common.test_utils import wait_for_condition
+from ray._common.network_utils import create_socket
 import requests
 from click.testing import CliRunner
 from requests.exceptions import ConnectionError, HTTPError
@@ -1079,7 +1080,7 @@ def test_agent_port_conflict(shutdown_only):
     ray.shutdown()
 
     # ocuppy the port with a socket.
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s = create_socket(socket.SOCK_STREAM)
 
     wait_for_condition(
         lambda: s.connect_ex(
