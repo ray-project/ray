@@ -565,9 +565,6 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
                                /*object_info_subscriber=*/nullptr,
                                is_node_dead);
 
-  // Set fetch batch size to 2 with guard to restore after test.
-  ConfigGuard guard(RayConfig::instance().worker_fetch_request_size(), 2);
-
   // Fake plasma client that records Get calls.
   std::vector<std::vector<ObjectID>> observed_batches;
   class RecordingPlasmaGetClient : public ray::fakes::FakePlasmaClient {
@@ -603,7 +600,8 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
       /*check_signals=*/[] { return Status::OK(); },
       /*warmup=*/false,
       /*get_current_call_site=*/nullptr,
-      /*injected_plasma_client=*/fake_plasma);
+      /*store_client=*/fake_plasma,
+      /*options=*/CoreWorkerPlasmaStoreProviderOptions{.fetch_batch_size = 2});
 
   // Build a set of 5 object ids.
   std::vector<ObjectID> ids;

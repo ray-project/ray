@@ -37,6 +37,12 @@ namespace core {
 
 class TrackedBuffer;
 
+struct CoreWorkerPlasmaStoreProviderOptions {
+  // If >= 0, overrides RayConfig::instance().worker_fetch_request_size()
+  // for this provider instance only.
+  int64_t fetch_batch_size = -1;
+};
+
 // Active buffers tracker. This must be allocated as a separate structure since its
 // lifetime can exceed that of the store provider due to TrackedBuffer.
 class BufferTracker {
@@ -101,7 +107,8 @@ class CoreWorkerPlasmaStoreProvider {
       std::function<Status()> check_signals,
       bool warmup,
       std::function<std::string()> get_current_call_site = nullptr,
-      std::shared_ptr<plasma::PlasmaClientInterface> injected_plasma_client = nullptr);
+      std::shared_ptr<plasma::PlasmaClientInterface> store_client = nullptr,
+      CoreWorkerPlasmaStoreProviderOptions options = {});
 
   ~CoreWorkerPlasmaStoreProvider();
 
@@ -245,6 +252,7 @@ class CoreWorkerPlasmaStoreProvider {
   uint32_t object_store_full_delay_ms_;
   // Pointer to the shared buffer tracker.
   std::shared_ptr<BufferTracker> buffer_tracker_;
+  int64_t fetch_batch_size_override_ = -1;
 };
 
 }  // namespace core

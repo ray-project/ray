@@ -68,18 +68,10 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     std::function<Status()> check_signals,
     bool warmup,
     std::function<std::string()> get_current_call_site,
-    std::shared_ptr<plasma::PlasmaClientInterface> injected_plasma_client)
+    std::shared_ptr<plasma::PlasmaClientInterface> store_client,
+    CoreWorkerPlasmaStoreProviderOptions options)
     : raylet_ipc_client_(raylet_ipc_client),
-      // We can turn on exit_on_connection_failure on for the core worker plasma
-      // client to early exit core worker after the raylet's death because on the
-      // raylet side, we never proactively close the plasma store connection even
-      // during shutdown. So any error from the raylet side should be a sign of raylet
-      // death.
-      store_client_(
-          injected_plasma_client
-              ? std::move(injected_plasma_client)
-              : std::shared_ptr<plasma::PlasmaClientInterface>(new plasma::PlasmaClient(
-                    /*exit_on_connection_failure*/ true))),
+      store_client_(std::move(store_client)),
       reference_counter_(reference_counter),
       check_signals_(std::move(check_signals)) {
   if (get_current_call_site != nullptr) {
@@ -89,10 +81,10 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
   }
   object_store_full_delay_ms_ = RayConfig::instance().object_store_full_delay_ms();
   buffer_tracker_ = std::make_shared<BufferTracker>();
+  fetch_batch_size_override_ = options.fetch_batch_size;
   if (!store_socket.empty()) {
-    if (auto real = dynamic_cast<plasma::PlasmaClient *>(store_client_.get())) {
-      RAY_CHECK_OK(real->Connect(store_socket));
-    }
+    RAY_CHECK(store_client_ != nullptr) << "Plasma client must be provided";
+    RAY_CHECK_OK(store_client_->Connect(store_socket));
   }
   if (warmup) {
     RAY_CHECK_OK(WarmupStore());
@@ -284,7 +276,9 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     const WorkerContext &ctx,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
     bool *got_exception) {
-  int64_t batch_size = RayConfig::instance().worker_fetch_request_size();
+  int64_t batch_size = fetch_batch_size_override_ >= 0
+                           ? fetch_batch_size_override_
+                           : RayConfig::instance().worker_fetch_request_size();
   std::vector<ObjectID> batch_ids;
   absl::flat_hash_set<ObjectID> remaining(object_ids.begin(), object_ids.end());
 
@@ -424,11 +418,7 @@ Status CoreWorkerPlasmaStoreProvider::Delete(
 }
 
 StatusOr<std::string> CoreWorkerPlasmaStoreProvider::GetMemoryUsage() {
-  if (auto real = dynamic_cast<plasma::PlasmaClient *>(store_client_.get())) {
-    return real->GetMemoryUsage();
-  }
-  return Status::NotImplemented(
-      "GetMemoryUsage is unsupported by the current plasma client");
+  return store_client_->GetMemoryUsage();
 }
 
 absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>>

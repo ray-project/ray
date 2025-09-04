@@ -35,6 +35,7 @@
 #include "ray/core_worker/core_worker_rpc_proxy.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/ipc/raylet_ipc_client.h"
+#include "ray/object_manager/plasma/client.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/stats/stats.h"
 #include "ray/util/container_util.h"
@@ -353,6 +354,13 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
             /*min_concurrent_lease_cap_*/ 10);
   }
 
+  // We can turn on exit_on_connection_failure on for the core worker plasma
+  // client to early exit core worker after the raylet's death because on the
+  // raylet side, we never proactively close the plasma store connection even
+  // during shutdown. So any error from the raylet side should be a sign of raylet
+  // death.
+  auto plasma_client = std::shared_ptr<plasma::PlasmaClientInterface>(
+      new plasma::PlasmaClient(/*exit_on_connection_failure*/ true));
   auto plasma_store_provider = std::make_shared<CoreWorkerPlasmaStoreProvider>(
       options.store_socket,
       raylet_ipc_client,
@@ -361,10 +369,13 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       /*warmup=*/
       (options.worker_type != WorkerType::SPILL_WORKER &&
        options.worker_type != WorkerType::RESTORE_WORKER),
-      /*get_current_call_site=*/[this]() {
+      /*get_current_call_site=*/
+      [this]() {
         auto core_worker = GetCoreWorker();
         return core_worker->CurrentCallSite();
-      });
+      },
+      /*store_client=*/plasma_client,
+      /*options=*/CoreWorkerPlasmaStoreProviderOptions{});
   auto memory_store = std::make_shared<CoreWorkerMemoryStore>(
       io_service_,
       reference_counter.get(),

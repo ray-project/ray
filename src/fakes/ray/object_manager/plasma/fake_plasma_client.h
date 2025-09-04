@@ -33,7 +33,8 @@ namespace fakes {
 
 class FakePlasmaClient : public plasma::PlasmaClientInterface {
  public:
-  FakePlasmaClient() = default;
+  FakePlasmaClient(std::vector<std::vector<ObjectID>> *observed_batches = nullptr)
+      : observed_batches_(observed_batches) {}
 
   Status Connect(const std::string &, const std::string &, int) override {
     return Status::OK();
@@ -48,7 +49,17 @@ class FakePlasmaClient : public plasma::PlasmaClientInterface {
   Status Get(const std::vector<ObjectID> &object_ids,
              int64_t /*timeout_ms*/,
              std::vector<plasma::ObjectBuffer> *object_buffers) override {
-    object_buffers->assign(object_ids.size(), plasma::ObjectBuffer{});
+    if (observed_batches_ != nullptr) {
+      observed_batches_->push_back(object_ids);
+    }
+    // Return non-null buffers to simulate presence for tests.
+    object_buffers->resize(object_ids.size());
+    for (size_t i = 0; i < object_ids.size(); i++) {
+      uint8_t byte = 0;
+      auto parent = std::make_shared<LocalMemoryBuffer>(&byte, 1, /*copy_data=*/true);
+      (*object_buffers)[i].data = SharedMemoryBuffer::Slice(parent, 0, 1);
+      (*object_buffers)[i].metadata = SharedMemoryBuffer::Slice(parent, 0, 1);
+    }
     return Status::OK();
   }
 
@@ -85,6 +96,11 @@ class FakePlasmaClient : public plasma::PlasmaClientInterface {
   }
 
   Status Delete(const std::vector<ObjectID> &) override { return Status::OK(); }
+
+  StatusOr<std::string> GetMemoryUsage() override { return std::string("fake"); }
+
+ private:
+  std::vector<std::vector<ObjectID>> *observed_batches_;
 };
 
 }  // namespace fakes
