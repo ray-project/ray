@@ -128,5 +128,4 @@ def create_socket(socket_type: int = socket.SOCK_STREAM) -> socket.socket:
     node_ip = node_ip_address_from_perspective()
     family = socket.AF_INET6 if is_ipv6_ip(node_ip) else socket.AF_INET
 
-    # Create socket directly with Python socket API
     return socket.socket(family, socket_type)
