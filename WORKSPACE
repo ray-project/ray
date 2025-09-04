@@ -61,12 +61,12 @@ http_archive(
 load("@rules_python//python:repositories.bzl", "python_register_toolchains")
 
 python_register_toolchains(
-    name = "python3_9",
-    python_version = "3.9",
+    name = "python3_12",
+    python_version = "3.12",
     register_toolchains = False,
 )
 
-load("@python3_9//:defs.bzl", python39 = "interpreter")
+load("@python3_12//:defs.bzl", python312 = "interpreter")
 load("@rules_python//python/pip_install:repositories.bzl", "pip_install_dependencies")
 
 pip_install_dependencies()
@@ -75,7 +75,7 @@ load("@rules_python//python:pip.bzl", "pip_parse")
 
 pip_parse(
     name = "py_deps_buildkite",
-    python_interpreter_target = python39,
+    python_interpreter_target = python312,
     requirements_lock = "//release:requirements_buildkite.txt",
 )
 
