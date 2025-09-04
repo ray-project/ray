@@ -29,13 +29,14 @@
 #include "mock/ray/object_manager/object_directory.h"
 #include "mock/ray/object_manager/object_manager.h"
 #include "mock/ray/object_manager/plasma/client.h"
-#include "mock/ray/raylet/local_task_manager.h"
+#include "mock/ray/raylet/local_lease_manager.h"
 #include "mock/ray/raylet/worker_pool.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
 #include "ray/common/buffer.h"
+#include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/object_manager/plasma/client.h"
 #include "ray/raylet/local_object_manager_interface.h"
-#include "ray/raylet/scheduling/cluster_task_manager.h"
+#include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/tests/util.h"
 
 namespace ray::raylet {
@@ -182,7 +183,7 @@ class FakePlasmaClient : public plasma::PlasmaClientInterface {
       objects_in_plasma_;
 };
 
-TaskSpecification BuildTaskSpec(
+LeaseSpecification BuildLeaseSpec(
     const std::unordered_map<std::string, double> &resources) {
   TaskSpecBuilder builder;
   rpc::Address empty_address;
@@ -209,11 +210,11 @@ TaskSpecification BuildTaskSpec(
                             0,
                             TaskID::Nil(),
                             "");
-  return std::move(builder).ConsumeAndBuild();
+  return LeaseSpecification(std::move(builder).ConsumeAndBuild().GetMessage());
 }
 
-TaskSpecBuilder DetachedActorCreationTaskBuilder(const rpc::Address &owner_address,
-                                                 const ActorID &actor_id) {
+LeaseSpecification DetachedActorCreationLeaseSpec(const rpc::Address &owner_address,
+                                                  const ActorID &actor_id) {
   rpc::JobConfig config;
   const FunctionDescriptor function_descriptor =
       FunctionDescriptorBuilder::BuildPython("x", "", "", "");
@@ -253,7 +254,7 @@ TaskSpecBuilder DetachedActorCreationTaskBuilder(const rpc::Address &owner_addre
                                              /*extension_data=*/"",
                                              /*allow_out_of_order_execution=*/false,
                                              /*root_detached_actor_id=*/actor_id);
-  return task_spec_builder;
+  return LeaseSpecification(std::move(task_spec_builder).ConsumeAndBuild().GetMessage());
 }
 
 }  // namespace
@@ -262,7 +263,7 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
   {
     // Worker backlog report from a disconnected worker should be ignored.
     MockWorkerPool worker_pool;
-    MockLocalTaskManager local_task_manager;
+    MockLocalLeaseManager local_lease_manager;
 
     WorkerID worker_id = WorkerID::FromRandom();
     EXPECT_CALL(worker_pool, GetRegisteredWorker(worker_id))
@@ -271,8 +272,8 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
     EXPECT_CALL(worker_pool, GetRegisteredDriver(worker_id))
         .Times(1)
         .WillOnce(Return(nullptr));
-    EXPECT_CALL(local_task_manager, ClearWorkerBacklog(_)).Times(0);
-    EXPECT_CALL(local_task_manager, SetWorkerBacklog(_, _, _)).Times(0);
+    EXPECT_CALL(local_lease_manager, ClearWorkerBacklog(_)).Times(0);
+    EXPECT_CALL(local_lease_manager, SetWorkerBacklog(_, _, _)).Times(0);
 
     rpc::ReportWorkerBacklogRequest request;
     request.set_worker_id(worker_id.Binary());
@@ -283,13 +284,13 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
         [](Status status, std::function<void()> success, std::function<void()> failure) {
         },
         worker_pool,
-        local_task_manager);
+        local_lease_manager);
   }
 
   {
     // Worker backlog report from a connected driver should be recorded.
     MockWorkerPool worker_pool;
-    MockLocalTaskManager local_task_manager;
+    MockLocalLeaseManager local_lease_manager;
 
     WorkerID worker_id = WorkerID::FromRandom();
     std::shared_ptr<MockWorker> driver = std::make_shared<MockWorker>(worker_id, 10);
@@ -297,13 +298,13 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
     rpc::ReportWorkerBacklogRequest request;
     request.set_worker_id(worker_id.Binary());
     auto backlog_report_1 = request.add_backlog_reports();
-    auto task_spec_1 = BuildTaskSpec({{"CPU", 1}});
-    backlog_report_1->mutable_resource_spec()->CopyFrom(task_spec_1.GetMessage());
+    auto lease_spec_1 = BuildLeaseSpec({{"CPU", 1}});
+    backlog_report_1->mutable_lease_spec()->CopyFrom(lease_spec_1.GetMessage());
     backlog_report_1->set_backlog_size(1);
 
     auto backlog_report_2 = request.add_backlog_reports();
-    auto task_spec_2 = BuildTaskSpec({{"GPU", 2}});
-    backlog_report_2->mutable_resource_spec()->CopyFrom(task_spec_2.GetMessage());
+    auto lease_spec_2 = BuildLeaseSpec({{"GPU", 2}});
+    backlog_report_2->mutable_lease_spec()->CopyFrom(lease_spec_2.GetMessage());
     backlog_report_2->set_backlog_size(3);
     rpc::ReportWorkerBacklogReply reply;
 
@@ -313,12 +314,12 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
     EXPECT_CALL(worker_pool, GetRegisteredDriver(worker_id))
         .Times(1)
         .WillOnce(Return(driver));
-    EXPECT_CALL(local_task_manager, ClearWorkerBacklog(worker_id)).Times(1);
-    EXPECT_CALL(local_task_manager,
-                SetWorkerBacklog(task_spec_1.GetSchedulingClass(), worker_id, 1))
+    EXPECT_CALL(local_lease_manager, ClearWorkerBacklog(worker_id)).Times(1);
+    EXPECT_CALL(local_lease_manager,
+                SetWorkerBacklog(lease_spec_1.GetSchedulingClass(), worker_id, 1))
         .Times(1);
-    EXPECT_CALL(local_task_manager,
-                SetWorkerBacklog(task_spec_2.GetSchedulingClass(), worker_id, 3))
+    EXPECT_CALL(local_lease_manager,
+                SetWorkerBacklog(lease_spec_2.GetSchedulingClass(), worker_id, 3))
         .Times(1);
 
     NodeManager::HandleReportWorkerBacklog(
@@ -327,13 +328,13 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
         [](Status status, std::function<void()> success, std::function<void()> failure) {
         },
         worker_pool,
-        local_task_manager);
+        local_lease_manager);
   }
 
   {
     // Worker backlog report from a connected worker should be recorded.
     MockWorkerPool worker_pool;
-    MockLocalTaskManager local_task_manager;
+    MockLocalLeaseManager local_lease_manager;
 
     WorkerID worker_id = WorkerID::FromRandom();
     std::shared_ptr<MockWorker> worker = std::make_shared<MockWorker>(worker_id, 10);
@@ -341,13 +342,13 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
     rpc::ReportWorkerBacklogRequest request;
     request.set_worker_id(worker_id.Binary());
     auto backlog_report_1 = request.add_backlog_reports();
-    auto task_spec_1 = BuildTaskSpec({{"CPU", 1}});
-    backlog_report_1->mutable_resource_spec()->CopyFrom(task_spec_1.GetMessage());
+    auto lease_spec_1 = BuildLeaseSpec({{"CPU", 1}});
+    backlog_report_1->mutable_lease_spec()->CopyFrom(lease_spec_1.GetMessage());
     backlog_report_1->set_backlog_size(1);
 
     auto backlog_report_2 = request.add_backlog_reports();
-    auto task_spec_2 = BuildTaskSpec({{"GPU", 2}});
-    backlog_report_2->mutable_resource_spec()->CopyFrom(task_spec_2.GetMessage());
+    auto lease_spec_2 = BuildLeaseSpec({{"GPU", 2}});
+    backlog_report_2->mutable_lease_spec()->CopyFrom(lease_spec_2.GetMessage());
     backlog_report_2->set_backlog_size(3);
     rpc::ReportWorkerBacklogReply reply;
 
@@ -356,12 +357,12 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
         .WillOnce(Return(worker));
     EXPECT_CALL(worker_pool, GetRegisteredDriver(worker_id)).Times(0);
 
-    EXPECT_CALL(local_task_manager, ClearWorkerBacklog(worker_id)).Times(1);
-    EXPECT_CALL(local_task_manager,
-                SetWorkerBacklog(task_spec_1.GetSchedulingClass(), worker_id, 1))
+    EXPECT_CALL(local_lease_manager, ClearWorkerBacklog(worker_id)).Times(1);
+    EXPECT_CALL(local_lease_manager,
+                SetWorkerBacklog(lease_spec_1.GetSchedulingClass(), worker_id, 1))
         .Times(1);
-    EXPECT_CALL(local_task_manager,
-                SetWorkerBacklog(task_spec_2.GetSchedulingClass(), worker_id, 3))
+    EXPECT_CALL(local_lease_manager,
+                SetWorkerBacklog(lease_spec_2.GetSchedulingClass(), worker_id, 3))
         .Times(1);
 
     NodeManager::HandleReportWorkerBacklog(
@@ -370,7 +371,7 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
         [](Status status, std::function<void()> success, std::function<void()> failure) {
         },
         worker_pool,
-        local_task_manager);
+        local_lease_manager);
   }
 }
 
@@ -417,7 +418,8 @@ class NodeManagerTest : public ::testing::Test {
     local_object_manager_ =
         std::make_unique<FakeLocalObjectManager>(objects_pending_deletion_);
 
-    dependency_manager_ = std::make_unique<DependencyManager>(*mock_object_manager_);
+    lease_dependency_manager_ =
+        std::make_unique<LeaseDependencyManager>(*mock_object_manager_);
 
     cluster_resource_scheduler_ = std::make_unique<ClusterResourceScheduler>(
         io_service_,
@@ -457,10 +459,10 @@ class NodeManagerTest : public ::testing::Test {
         static_cast<float>(mock_object_manager_->GetMemoryCapacity()) *
         RayConfig::instance().max_task_args_memory_fraction());
 
-    local_task_manager_ = std::make_unique<LocalTaskManager>(
+    local_lease_manager_ = std::make_unique<LocalLeaseManager>(
         raylet_node_id_,
         *cluster_resource_scheduler_,
-        *dependency_manager_,
+        *lease_dependency_manager_,
         get_node_info_func,
         mock_worker_pool_,
         leased_workers_,
@@ -470,12 +472,12 @@ class NodeManagerTest : public ::testing::Test {
         },
         max_task_args_memory);
 
-    cluster_task_manager_ = std::make_unique<ClusterTaskManager>(
+    cluster_lease_manager_ = std::make_unique<ClusterLeaseManager>(
         raylet_node_id_,
         *cluster_resource_scheduler_,
         get_node_info_func,
-        [](const ray::RayTask &task) {},
-        *local_task_manager_);
+        [](const ray::RayLease &lease) {},
+        *local_lease_manager_);
 
     node_manager_ = std::make_unique<NodeManager>(io_service_,
                                                   raylet_node_id_,
@@ -487,12 +489,12 @@ class NodeManagerTest : public ::testing::Test {
                                                   raylet_client_pool_,
                                                   *core_worker_subscriber_,
                                                   *cluster_resource_scheduler_,
-                                                  *local_task_manager_,
-                                                  *cluster_task_manager_,
+                                                  *local_lease_manager_,
+                                                  *cluster_lease_manager_,
                                                   *mock_object_directory_,
                                                   *mock_object_manager_,
                                                   *local_object_manager_,
-                                                  *dependency_manager_,
+                                                  *lease_dependency_manager_,
                                                   mock_worker_pool_,
                                                   leased_workers_,
                                                   *mock_store_client_,
@@ -509,10 +511,10 @@ class NodeManagerTest : public ::testing::Test {
   NodeID raylet_node_id_;
   std::unique_ptr<pubsub::FakeSubscriber> core_worker_subscriber_;
   std::unique_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
-  std::unique_ptr<LocalTaskManager> local_task_manager_;
-  std::unique_ptr<ClusterTaskManagerInterface> cluster_task_manager_;
+  std::unique_ptr<LocalLeaseManager> local_lease_manager_;
+  std::unique_ptr<ClusterLeaseManagerInterface> cluster_lease_manager_;
   std::shared_ptr<LocalObjectManagerInterface> local_object_manager_;
-  std::unique_ptr<DependencyManager> dependency_manager_;
+  std::unique_ptr<LeaseDependencyManager> lease_dependency_manager_;
   std::unique_ptr<gcs::MockGcsClient> mock_gcs_client_ =
       std::make_unique<gcs::MockGcsClient>();
   std::unique_ptr<MockObjectDirectory> mock_object_directory_;
@@ -523,7 +525,7 @@ class NodeManagerTest : public ::testing::Test {
 
   std::unique_ptr<NodeManager> node_manager_;
   MockWorkerPool mock_worker_pool_;
-  absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
+  absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::shared_ptr<absl::flat_hash_set<ObjectID>> objects_pending_deletion_;
 };
 
@@ -573,7 +575,7 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedWorker) {
   PopWorkerCallback pop_worker_callback;
   EXPECT_CALL(mock_worker_pool_, PopWorker(_, _))
       .WillOnce(
-          [&](const TaskSpecification &task_spec, const PopWorkerCallback &callback) {
+          [&](const LeaseSpecification &lease_spec, const PopWorkerCallback &callback) {
             pop_worker_callback = callback;
           });
 
@@ -599,15 +601,14 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedWorker) {
   owner_address.set_worker_id(owner_worker_id.Binary());
   const auto actor_id =
       ActorID::Of(JobID::FromInt(1), TaskID::FromRandom(JobID::FromInt(1)), 0);
-  const auto task_spec_builder =
-      DetachedActorCreationTaskBuilder(owner_address, actor_id);
+  const auto lease_spec = DetachedActorCreationLeaseSpec(owner_address, actor_id);
 
   // Invoke RequestWorkerLease to request a leased worker for the task in the
   // NodeManager.
   std::promise<Status> promise;
   rpc::RequestWorkerLeaseReply reply;
   rpc::RequestWorkerLeaseRequest request;
-  request.mutable_resource_spec()->CopyFrom(task_spec_builder.GetMessage());
+  request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
   node_manager_->HandleRequestWorkerLease(
       request,
       &reply,
@@ -652,7 +653,7 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
   PopWorkerCallback pop_worker_callback;
   EXPECT_CALL(mock_worker_pool_, PopWorker(_, _))
       .WillOnce(
-          [&](const TaskSpecification &task_spec, const PopWorkerCallback &callback) {
+          [&](const LeaseSpecification &lease_spec, const PopWorkerCallback &callback) {
             pop_worker_callback = callback;
           });
 
@@ -677,15 +678,14 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
   owner_address.set_node_id(owner_node_id.Binary());
   const auto actor_id =
       ActorID::Of(JobID::FromInt(1), TaskID::FromRandom(JobID::FromInt(1)), 0);
-  const auto task_spec_builder =
-      DetachedActorCreationTaskBuilder(owner_address, actor_id);
+  const auto lease_spec = DetachedActorCreationLeaseSpec(owner_address, actor_id);
 
   // Invoke RequestWorkerLease to request a leased worker for the task in the
   // NodeManager.
   std::promise<Status> promise;
   rpc::RequestWorkerLeaseReply reply;
   rpc::RequestWorkerLeaseRequest request;
-  request.mutable_resource_spec()->CopyFrom(task_spec_builder.GetMessage());
+  request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
   node_manager_->HandleRequestWorkerLease(
       request,
       &reply,
@@ -745,6 +745,259 @@ TEST_F(NodeManagerTest, TestPinningAnObjectPendingDeletionFails) {
   EXPECT_EQ(failed_pin_reply.successes_size(), 1);
   EXPECT_FALSE(failed_pin_reply.successes(0));
 }
+
+TEST_F(NodeManagerTest, TestConsumeSyncMessage) {
+  // Create and wrap a mock resource view sync message.
+  syncer::ResourceViewSyncMessage payload;
+  payload.mutable_resources_total()->insert({"CPU", 10.0});
+  payload.mutable_resources_available()->insert({"CPU", 10.0});
+  payload.mutable_labels()->insert({"label1", "value1"});
+
+  std::string serialized;
+  ASSERT_TRUE(payload.SerializeToString(&serialized));
+
+  auto node_id = NodeID::FromRandom();
+  syncer::RaySyncMessage msg;
+  msg.set_node_id(node_id.Binary());
+  msg.set_message_type(syncer::MessageType::RESOURCE_VIEW);
+  msg.set_sync_message(serialized);
+
+  node_manager_->ConsumeSyncMessage(std::make_shared<syncer::RaySyncMessage>(msg));
+
+  // Verify node resources and labels were updated.
+  const auto &node_resources =
+      cluster_resource_scheduler_->GetClusterResourceManager().GetNodeResources(
+          scheduling::NodeID(node_id.Binary()));
+  EXPECT_EQ(node_resources.labels.at("label1"), "value1");
+  EXPECT_EQ(node_resources.total.Get(scheduling::ResourceID("CPU")).Double(), 10.0);
+  EXPECT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU")).Double(), 10.0);
+}
+
+TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesSuccessful) {
+  // Test 1: Up scaling (increasing resource capacity)
+  rpc::ResizeLocalResourceInstancesRequest request;
+  rpc::ResizeLocalResourceInstancesReply reply;
+
+  (*request.mutable_resources())["CPU"] = 8.0;
+  (*request.mutable_resources())["memory"] = 16000000.0;
+
+  bool callback_called = false;
+
+  node_manager_->HandleResizeLocalResourceInstances(
+      request,
+      &reply,
+      [&callback_called](
+          Status s, std::function<void()> success, std::function<void()> failure) {
+        callback_called = true;
+        EXPECT_TRUE(s.ok());
+      });
+  EXPECT_TRUE(callback_called);
+
+  // Check that reply contains the updated resources
+  EXPECT_EQ(reply.total_resources().at("CPU"), 8.0);
+  EXPECT_EQ(reply.total_resources().at("memory"), 16000000.0);
+
+  // Test 2: Down scaling (decreasing resources)
+  (*request.mutable_resources())["CPU"] = 4.0;
+  (*request.mutable_resources())["memory"] = 8000000.0;
+
+  reply.Clear();
+  callback_called = false;
+  node_manager_->HandleResizeLocalResourceInstances(
+      request,
+      &reply,
+      [&callback_called](
+          Status s, std::function<void()> success, std::function<void()> failure) {
+        callback_called = true;
+        EXPECT_TRUE(s.ok());
+      });
+  EXPECT_TRUE(callback_called);
+
+  // Check that reply contains the updated (reduced) resources
+  EXPECT_EQ(reply.total_resources().at("CPU"), 4.0);
+  EXPECT_EQ(reply.total_resources().at("memory"), 8000000.0);
+
+  // Test 3: No changes (same values)
+  reply.Clear();
+  callback_called = false;
+  node_manager_->HandleResizeLocalResourceInstances(
+      request,
+      &reply,
+      [&callback_called](
+          Status s, std::function<void()> success, std::function<void()> failure) {
+        callback_called = true;
+        EXPECT_TRUE(s.ok());
+      });
+  EXPECT_TRUE(callback_called);
+
+  // Should still succeed and return current state
+  EXPECT_EQ(reply.total_resources().at("CPU"), 4.0);
+  EXPECT_EQ(reply.total_resources().at("memory"), 8000000.0);
+
+  // Test 4: Now update only CPU, leaving memory unchanged
+  request.mutable_resources()->clear();
+  (*request.mutable_resources())["CPU"] = 8.0;  // Double the CPU
+
+  reply.Clear();
+  callback_called = false;
+  node_manager_->HandleResizeLocalResourceInstances(
+      request,
+      &reply,
+      [&callback_called](
+          Status s, std::function<void()> success, std::function<void()> failure) {
+        callback_called = true;
+        EXPECT_TRUE(s.ok());
+      });
+  EXPECT_TRUE(callback_called);
+
+  // Check that CPU was updated, and memory was unchanged
+  EXPECT_EQ(reply.total_resources().at("CPU"), 8.0);
+  EXPECT_EQ(reply.total_resources().at("memory"), 8000000.0);
+}
+
+TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesInvalidArgument) {
+  // Test trying to resize unit instance resources (GPU, etc.)
+  rpc::ResizeLocalResourceInstancesRequest request;
+  rpc::ResizeLocalResourceInstancesReply reply;
+
+  (*request.mutable_resources())["GPU"] = 4.0;  // GPU is a unit instance resource
+
+  bool callback_called = false;
+
+  node_manager_->HandleResizeLocalResourceInstances(
+      request,
+      &reply,
+      [&callback_called](
+          Status s, std::function<void()> success, std::function<void()> failure) {
+        callback_called = true;
+        EXPECT_FALSE(s.ok());
+        EXPECT_TRUE(s.IsInvalidArgument());
+        // Check the error message contains expected details
+        std::string error_msg = s.message();
+        EXPECT_TRUE(error_msg.find("Cannot resize unit instance resource 'GPU'") !=
+                    std::string::npos);
+        EXPECT_TRUE(error_msg.find("Unit instance resources") != std::string::npos);
+        EXPECT_TRUE(error_msg.find("cannot be resized dynamically") != std::string::npos);
+      });
+
+  // The callback should have been called with an InvalidArgument status
+  EXPECT_TRUE(callback_called);
+}
+
+TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesClamps) {
+  // Test 1: Best effort downsizing
+  rpc::ResizeLocalResourceInstancesRequest request;
+  rpc::ResizeLocalResourceInstancesReply reply;
+
+  // Initialize resources to a known state
+  (*request.mutable_resources())["CPU"] = 8.0;
+  (*request.mutable_resources())["memory"] = 16000000.0;
+
+  bool callback_called = false;
+  node_manager_->HandleResizeLocalResourceInstances(
+      request,
+      &reply,
+      [&callback_called](
+          Status s, std::function<void()> success, std::function<void()> failure) {
+        callback_called = true;
+        EXPECT_TRUE(s.ok());
+      });
+  EXPECT_TRUE(callback_called);
+
+  // Simulate resource usage by allocating task resources through the local resource
+  // manager: Use 6 out of 8 CPUs and 2 are free.
+  const absl::flat_hash_map<std::string, double> task_resources = {{"CPU", 6.0}};
+  std::shared_ptr<TaskResourceInstances> task_allocation =
+      std::make_shared<TaskResourceInstances>();
+  bool allocation_success =
+      cluster_resource_scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
+          task_resources, task_allocation);
+  EXPECT_TRUE(allocation_success);
+
+  // Now request to downsize CPU to 4. Should clamp to 6.
+  callback_called = false;
+  (*request.mutable_resources())["CPU"] = 4.0;
+  reply.Clear();
+  node_manager_->HandleResizeLocalResourceInstances(
+      request,
+      &reply,
+      [&callback_called](
+          Status s, std::function<void()> success, std::function<void()> failure) {
+        callback_called = true;
+        EXPECT_TRUE(s.ok());
+      });
+  EXPECT_TRUE(callback_called);
+  // Total CPU should be clamped to 6 because there are only 2 CPUs available.
+  // It should resize from 8 to 6 instead of resizing to 4.
+  EXPECT_EQ(reply.total_resources().at("CPU"), 6.0);
+
+  // Test 2: Extreme request (e.g., 0). Should clamp to current usage.
+  callback_called = false;
+  (*request.mutable_resources())["CPU"] = 0.0;
+  reply.Clear();
+  node_manager_->HandleResizeLocalResourceInstances(
+      request,
+      &reply,
+      [&callback_called](
+          Status s, std::function<void()> success, std::function<void()> failure) {
+        callback_called = true;
+        EXPECT_TRUE(s.ok());
+      });
+  EXPECT_TRUE(callback_called);
+  // With 6 used, total should remain 6
+  EXPECT_EQ(reply.total_resources().at("CPU"), 6.0);
+}
+
+class NodeManagerReturnWorkerLeaseIdempotentTest
+    : public NodeManagerTest,
+      public testing::WithParamInterface<std::tuple<bool, bool>> {};
+
+TEST_P(NodeManagerReturnWorkerLeaseIdempotentTest, TestDifferentRequestArgs) {
+  const auto &params = GetParam();
+  bool disconnect_worker = std::get<0>(params);
+  bool worker_exiting = std::get<1>(params);
+
+  LeaseID lease_id = LeaseID::FromRandom();
+  leased_workers_[lease_id] = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
+  rpc::ReturnWorkerLeaseRequest request;
+  rpc::ReturnWorkerLeaseReply reply1;
+  rpc::ReturnWorkerLeaseReply reply2;
+  request.set_lease_id(lease_id.Binary());
+  request.set_disconnect_worker(disconnect_worker);
+  request.set_disconnect_worker_error_detail("test");
+  request.set_worker_exiting(worker_exiting);
+
+  if (disconnect_worker) {
+    EXPECT_CALL(
+        mock_worker_pool_,
+        GetRegisteredWorker(testing::A<const std::shared_ptr<ClientConnection> &>()))
+        .Times(1)
+        .WillOnce(Return(nullptr));
+    EXPECT_CALL(
+        mock_worker_pool_,
+        GetRegisteredDriver(testing::A<const std::shared_ptr<ClientConnection> &>()))
+        .Times(1)
+        .WillOnce(Return(nullptr));
+  }
+  node_manager_->HandleReturnWorkerLease(
+      request,
+      &reply1,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(leased_workers_.size(), 0);
+  node_manager_->HandleReturnWorkerLease(
+      request,
+      &reply2,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(leased_workers_.size(), 0);
+}
+
+INSTANTIATE_TEST_SUITE_P(NodeManagerReturnWorkerLeaseIdempotentVariations,
+                         NodeManagerReturnWorkerLeaseIdempotentTest,
+                         testing::Combine(testing::Bool(), testing::Bool()));
 
 }  // namespace ray::raylet
 
