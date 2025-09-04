@@ -231,6 +231,7 @@ async def router_request_timeout(timeout_duration: float):
             internal_message=str(e),
         )
 
+
 class LLMRouter:
     def __init__(
         self,
