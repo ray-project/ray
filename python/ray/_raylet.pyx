@@ -4398,7 +4398,7 @@ cdef class CoreWorker:
             num_returns = returns[0].size()
 
         if num_returns == 0:
-            if len(outputs) > 0:
+            if outputs is not None and len(outputs) > 0:
                 # Warn if num_returns=0 but the task returns a non-None value (likely unintended).
                 task_name = self.get_current_task_name()
                 obj_value = repr(outputs)
