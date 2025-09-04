@@ -28,7 +28,7 @@
 namespace ray {
 namespace core {
 
-Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
+void NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_CHECK(task_spec.IsNormalTask());
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
 
@@ -64,14 +64,9 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     const SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
                                        task_spec.GetDependencyIds(),
                                        task_spec.GetRuntimeEnvHash());
-    auto [scheduler_key_entry_iter, new_scheduling_key_entry] =
-        scheduling_key_entries_.try_emplace(scheduling_key, SchedulingKeyEntry{});
-    auto &scheduling_key_entry = scheduler_key_entry_iter->second;
-
-    // Only set lease_spec if this is a new scheduling key entry
-    if (new_scheduling_key_entry) {
-      scheduling_key_entry.lease_spec = LeaseSpecification(task_spec.GetMessage());
-    }
+    // TODO(#56107): Only create the lease spec if this is a new scheduling key entry
+    auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+    scheduling_key_entry.lease_spec = LeaseSpecification(task_spec.GetMessage());
     scheduling_key_entry.task_queue.push_back(std::move(task_spec));
 
     if (!scheduling_key_entry.AllWorkersBusy()) {
@@ -94,7 +89,6 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     }
     RequestNewWorkerIfNeeded(scheduling_key);
   });
-  return Status::OK();
 }
 
 void NormalTaskSubmitter::AddWorkerLeaseClient(
@@ -219,11 +213,14 @@ void NormalTaskSubmitter::CancelWorkerLeaseIfNeeded(const SchedulingKey &schedul
             // The cancellation request can fail if the raylet does not have
             // the request queued. This can happen if: a) due to message
             // reordering, the raylet has not yet received the worker lease
-            // request, or b) we have already returned the worker lease
-            // request. In the former case, we should try the cancellation
-            // request again. In the latter case, the in-flight lease request
-            // should already have been removed from our local state, so we no
-            // longer need to cancel.
+            // request, b) we have already returned the worker lease
+            // request, or c) the current request is a retry and the server response to
+            // the initial request was lost after cancelling the lease. In case a), we
+            // should try the cancellation request again. In case b), the in-flight lease
+            // request should already have been removed from our local state, so we no
+            // longer need to cancel. In case c), the response for ReturnWorkerLease
+            // should have already been triggered and the pending lease request will be
+            // cleaned up.
             CancelWorkerLeaseIfNeeded(scheduling_key);
           }
         });

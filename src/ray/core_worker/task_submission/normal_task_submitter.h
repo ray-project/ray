@@ -111,9 +111,7 @@ class NormalTaskSubmitter {
         cancel_retry_timer_(std::move(cancel_timer)) {}
 
   /// Schedule a task for direct submission to a worker.
-  ///
-  /// \param[in] task_spec The task to schedule.
-  Status SubmitTask(TaskSpecification task_spec);
+  void SubmitTask(TaskSpecification task_spec);
 
   /// Either remove a pending task or send an RPC to kill a running task
   ///
