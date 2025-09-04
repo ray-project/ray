@@ -146,7 +146,9 @@ def _setup_torch_process_group(
         # For XLA backend, use the XLA init method
         dist.init_process_group(
             backend='xla',
-            init_method='env://',  # Use XLA's native init method
+            init_method='xla://',  # Use XLA's native init method
+            rank=world_rank,
+            world_size=world_size,
             timeout=timedelta(seconds=timeout_s),
         )
         
@@ -247,6 +249,8 @@ class _TorchBackend(Backend):
                 coordinator = f"{master_addr}:{pjrt_port}"
                 def _set_pjrt_envs(coord):
                     context = ray.train.get_context()
+                    
+                    os.environ["RAY_DISABLE_WORKER_REUSE"] = "1"
                     # debugging logs:
                     os.environ["TF_CPP_MIN_LOG_LEVEL"] = "0"          # verbose TF/XLA logs
                     os.environ["GRPC_VERBOSITY"] = "INFO"
