@@ -28,7 +28,7 @@ class GPUObjectMeta(NamedTuple):
     tensor_transport_meta: "TensorTransportMetadata"
     # sent_dest_actors tracks the set of actor IDs that this object has been sent to.
     sent_dest_actors: Set[str]
-    # sent_to_src_actor_and_others_warned indicates whether the object has already triggered a warning that is sent back to the source actor and other actors simultaneously.
+    # sent_to_src_actor_and_others_warned indicates whether the object has already triggered a warning about being sent back to the source actor and other actors simultaneously.
     sent_to_src_actor_and_others_warned: bool
 
 
@@ -216,16 +216,14 @@ class GPUObjectManager:
             # Update the set of destination actors for this object
             # The set inside NamedTuple is mutable, so we can modify it directly
             gpu_object_meta.sent_dest_actors.add(dst_actor._actor_id)
-            # Use the metadata directly since we modified it in-place
-            updated_meta = gpu_object_meta
             # Check if a warning should be triggered for this object:
             # 1. object has not triggered a warning yet.
             # 2. object is sent back to its source actor.
             # 3. object is also sent to at least one other actor
             if (
-                not updated_meta.sent_to_src_actor_and_others_warned
-                and src_actor._actor_id in updated_meta.sent_dest_actors
-                and len(updated_meta.sent_dest_actors) > 1
+                not gpu_object_meta.sent_to_src_actor_and_others_warned
+                and src_actor._actor_id in gpu_object_meta.sent_dest_actors
+                and len(gpu_object_meta.sent_dest_actors) > 1
             ):
                 warnings.warn(
                     f"GPU ObjectRef({obj_id}) is being passed back to the actor that created it {src_actor}. "
@@ -234,7 +232,7 @@ class GPUObjectManager:
                     UserWarning,
                 )
                 # Mark the object as warned by creating a new NamedTuple instance
-                self.managed_gpu_object_metadata[obj_id] = updated_meta._replace(
+                self.managed_gpu_object_metadata[obj_id] = gpu_object_meta._replace(
                     sent_to_src_actor_and_others_warned=True
                 )
 
