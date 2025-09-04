@@ -1,5 +1,7 @@
 import json
 import time
+import os
+import glob
 
 import pytest
 
@@ -271,6 +273,111 @@ def test_get_deployment_config(serve_instance):
     )
     # After the deployment is created, the config should be DeploymentConfig.
     assert isinstance(deployment_config, DeploymentConfig)
+
+
+def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
+    """Validate controller emits well-formed serve_autoscaling_snapshot logs.
+
+    This test deploys a simple autoscaling deployment and tails the controller
+    log until a `serve_autoscaling_snapshot` line appears, then validates the
+    JSON payload shape and a few key fields.
+    """
+    controller = _get_global_client()._controller
+
+    DEPLOY_NAME = f"snap_app_{int(time.time())}"
+
+    # Use a tiny autoscaling range so we always have autoscaling enabled.
+    autoscaling_config = {
+        "min_replicas": 1,
+        "max_replicas": 2,
+    }
+
+    @serve.deployment(name=DEPLOY_NAME, autoscaling_config=autoscaling_config)
+    def snap_app():
+        return "ok"
+
+    # Deploy once; controller should immediately emit a snapshot.
+    serve.run(snap_app.bind())
+
+    # Resolve the controller log file path. The actor returns a path relative
+    # to the Ray logs dir, so convert to absolute if needed.
+    controller_details = ray.get(controller.get_actor_details.remote())
+    log_rel = controller_details.log_file_path
+    base_logs_dir = ray._private.worker._global_node.get_logs_dir_path()
+    log_path = (
+        log_rel if os.path.isabs(log_rel) else os.path.join(base_logs_dir, log_rel)
+    )
+
+    candidate_paths = []
+    if os.path.exists(log_path):
+        candidate_paths.append(log_path)
+
+    # Also consider any controller logs in the session logs dir.
+    controller_glob = os.path.join(base_logs_dir, "serve", "controller_*.log")
+    for p in glob.glob(controller_glob):
+        if p not in candidate_paths:
+            candidate_paths.append(p)
+
+    # Helpful for debugging if the scan fails.
+    assert (
+        candidate_paths
+    ), f"No controller log candidates found; checked base {base_logs_dir}"
+
+    found = {"payload": None}
+
+    def _scan_for_snapshot() -> bool:
+        try:
+            for path in candidate_paths:
+                if not os.path.exists(path):
+                    continue
+                with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                    for line in f:
+                        marker = "serve_autoscaling_snapshot "
+                        if marker in line:
+                            try:
+                                payload_str = line.split(marker, 1)[1].strip()
+                                payload_obj = json.loads(payload_str)
+                                if payload_obj.get("deployment") != DEPLOY_NAME:
+                                    continue
+                                found["payload"] = payload_obj
+                                return True
+                            except Exception:
+                                pass
+            return False
+        except Exception:
+            return False
+
+    # Wait up to ~60s for the snapshot to appear.
+    wait_for_condition(_scan_for_snapshot, timeout=60)
+
+    payload = found["payload"]
+    assert isinstance(payload, dict)
+
+    # Basic shape checks.
+    for key in [
+        "ts",
+        "app",
+        "deployment",
+        "current_replicas",
+        "target_replicas",
+        "replicas_allowed",
+        "metrics",
+        "metrics_health",
+        "decisions",
+        "policy",
+    ]:
+        assert key in payload, f"missing key: {key}"
+
+    # Field-specific assertions.
+    assert payload["app"] == SERVE_DEFAULT_APP_NAME
+    assert payload["deployment"] == DEPLOY_NAME
+    assert isinstance(payload["current_replicas"], int)
+    assert isinstance(payload["target_replicas"], int)
+    assert set(payload["replicas_allowed"].keys()) == {"min", "max"}
+    assert isinstance(payload["metrics"], dict)
+    assert "total_requests" in payload["metrics"]
+    assert isinstance(payload["decisions"], list)
+    assert len(payload["decisions"]) >= 1
 
 
 if __name__ == "__main__":

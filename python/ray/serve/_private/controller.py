@@ -422,8 +422,8 @@ class ServeController:
                     decision = ScalingDecision(
                         timestamp_s=time.time(),
                         reason=f"current={current_replicas}, proposed={proposed_replicas}",
-                        from_replicas=int(current_replicas),
-                        to_replicas=int(proposed_replicas),
+                        prev_num_replicas=int(current_replicas),
+                        curr_num_replicas=int(proposed_replicas),
                         policy="default",
                     )
 
