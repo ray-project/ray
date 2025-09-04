@@ -3,7 +3,7 @@
 Ray Event Export
 ================
 
-Ray support exporting structured events to a configured HTTP endpoint. Each worker node
+Ray supports exporting structured events to a configured HTTP endpoint. Each worker node
 sends events to the configured HTTP endpoint through a HTTP POST request.
 
 Starting from 2.49, Ray supports exporting task events. Ray plans to support other 
