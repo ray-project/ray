@@ -987,6 +987,63 @@ class ReplicaDetails(ServeActorDetails, frozen=True):
     )
 
 
+@PublicAPI(stability="alpha")
+class AutoscalingMetricsHealth(str, Enum):
+    HEALTHY = "healthy"
+    DELAYED = "delayed"
+    UNAVAILABLE = "unavailable"
+
+
+@PublicAPI(stability="alpha")
+class AutoscalingStatus(str, Enum):
+    UPSCALING = "UPSCALING"
+    DOWNSCALING = "DOWNSCALING"
+    STABLE = "STABLE"
+
+
+@PublicAPI(stability="alpha")
+class ScalingDecision(BaseModel):
+    """One autoscaling decision with minimal provenance."""
+
+    timestamp_s: float = Field(
+        ..., description="Unix time (seconds) when the decision was made."
+    )
+    reason: str = Field(
+        ..., description="Short, human-readable reason for the decision."
+    )
+    prev_num_replicas: int = Field(
+        ..., ge=0, description="Replica count before the decision."
+    )
+    curr_num_replicas: int = Field(
+        ..., ge=0, description="Replica count after the decision."
+    )
+    policy: Optional[str] = Field(
+        None, description="Policy name or identifier (if applicable)."
+    )
+
+
+@PublicAPI(stability="alpha")
+class DeploymentAutoscalingDetail(BaseModel):
+    """Deployment-level autoscaler observability."""
+
+    scaling_status: AutoscalingStatus = Field(
+        ..., description="Current scaling direction or stability."
+    )
+    decisions: List[ScalingDecision] = Field(
+        default_factory=list, description="Recent scaling decisions."
+    )
+    metrics: Optional[Dict[str, Any]] = Field(
+        None, description="Aggregated metrics for this deployment."
+    )
+    metrics_health: AutoscalingMetricsHealth = Field(
+        AutoscalingMetricsHealth.HEALTHY,
+        description="Health of metrics collection pipeline.",
+    )
+    errors: List[str] = Field(
+        default_factory=list, description="Recent errors/abnormal events."
+    )
+
+
 @PublicAPI(stability="stable")
 class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
     """
@@ -1025,6 +1082,11 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
     )
     replicas: List[ReplicaDetails] = Field(
         description="Details about the live replicas of this deployment."
+    )
+
+    autoscaling_detail: Optional[DeploymentAutoscalingDetail] = Field(
+        default=None,
+        description="[EXPERIMENTAL] Deployment-level autoscaler observability for this deployment.",
     )
 
 

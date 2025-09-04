@@ -22,9 +22,9 @@
 #include <utility>
 #include <vector>
 
+#include "ray/common/protobuf_utils.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/gcs/pb_util.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 #include "ray/util/time.h"
@@ -80,7 +80,7 @@ const ray::rpc::ActorDeathCause GenWorkerDiedCause(
 
 const ray::rpc::ActorDeathCause GenOwnerDiedCause(
     const ray::gcs::GcsActor *actor,
-    const WorkerID &owner_id,
+    const ray::WorkerID &owner_id,
     const ray::rpc::WorkerExitType disconnect_type,
     const std::string &disconnect_detail,
     const std::string &owner_ip_address) {
@@ -153,7 +153,7 @@ bool OnInitializeActorShouldLoad(const ray::gcs::GcsInitData &gcs_init_data,
   }
 
   const auto &actor_task_spec = ray::map_find_or_die(actor_task_specs, actor_id);
-  ActorID root_detached_actor_id =
+  ray::ActorID root_detached_actor_id =
       ray::TaskSpecification(actor_task_spec).RootDetachedActorId();
   if (root_detached_actor_id.IsNil()) {
     // owner is job, NOT detached actor, should die with job
@@ -222,7 +222,7 @@ GcsActorManager::GcsActorManager(
     std::unique_ptr<GcsActorSchedulerInterface> scheduler,
     GcsTableStorage *gcs_table_storage,
     instrumented_io_context &io_context,
-    GcsPublisher *gcs_publisher,
+    pubsub::GcsPublisher *gcs_publisher,
     RuntimeEnvManager &runtime_env_manager,
     GCSFunctionManager &function_manager,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
