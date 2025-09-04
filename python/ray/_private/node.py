@@ -222,6 +222,16 @@ class Node:
             ray._private.services.write_node_ip_address(
                 self.get_session_dir_path(), node_ip_address
             )
+            if head is False:
+                node_key = f"node:{os.environ.get('HOSTNAME')}:node_ip_address"
+                logger.info(f"GCS save node {node_key}")
+                # Registering Node Information with GCS (New Enhancement)
+                self.get_gcs_client().internal_kv_put(
+                    node_key,
+                    self._node_ip_address.encode(),
+                    True,
+                    ray_constants.KV_NAMESPACE_SESSION,
+                )
 
         if ray_params.raylet_ip_address:
             raylet_ip_address = ray_params.raylet_ip_address
@@ -1105,7 +1115,22 @@ class Node:
                     "Have you started Ray instance using "
                     "`ray start` or `ray.init`?"
                 )
-
+        # When node_ip_address.json cannot be found, the node_ip_address is retrieved from GCS.
+        node_key = f"node:{os.environ.get('HOSTNAME')}:node_ip_address"
+        node_ip_address = ray._private.utils.internal_kv_get_with_retry(
+            self.get_gcs_client(),
+            node_key,
+            ray_constants.KV_NAMESPACE_SESSION,
+            num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
+        )
+        logger.info(f"Get node ip address {node_ip_address} by gcs.")
+        if node_ip_address is not None:
+            node_ip_address = (
+                node_ip_address.decode("utf-8")
+                if isinstance(node_ip_address, bytes)
+                else str(node_ip_address)
+            )
+            return node_ip_address
         raise ValueError(
             f"Can't find a `{ray_constants.RAY_NODE_IP_FILENAME}` "
             f"file from {self.get_session_dir_path()}. "
