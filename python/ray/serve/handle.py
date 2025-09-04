@@ -270,6 +270,10 @@ class _DeploymentResponseBase:
     def request_id(self) -> str:
         return self._request_metadata.request_id
 
+    @property
+    def by_reference(self) -> bool:
+        return self._request_metadata._by_reference
+
     def _fetch_future_result_sync(
         self, _timeout_s: Optional[float] = None
     ) -> ReplicaResult:

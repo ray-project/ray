@@ -87,7 +87,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
     raylet_client_pool_ = std::make_shared<rpc::RayletClientPool>(
         [this](const rpc::Address &addr) { return raylet_client_; });
     worker_client_ = std::make_shared<FakeCoreWorkerClient>();
-    gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
+    gcs_publisher_ = std::make_shared<pubsub::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>();
     gcs_table_storage_ =
@@ -214,7 +214,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
       counter;
   std::vector<std::shared_ptr<gcs::GcsActor>> failure_actors_;
   std::vector<std::shared_ptr<gcs::GcsActor>> success_actors_;
-  std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
+  std::shared_ptr<pubsub::GcsPublisher> gcs_publisher_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
   NodeID local_node_id_;

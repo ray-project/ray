@@ -335,6 +335,19 @@ class ArrowBlockAccessor(TableBlockAccessor):
             r = r.append_column(col_name, col)
         return r
 
+    def upsert_column(
+        self, column_name: str, column_data: BlockColumn
+    ) -> "pyarrow.Table":
+        assert isinstance(
+            column_data, (pyarrow.Array, pyarrow.ChunkedArray)
+        ), f"Expected either a pyarrow.Array or pyarrow.ChunkedArray, got: {type(column_data)}"
+
+        column_idx = self._table.schema.get_field_index(column_name)
+        if column_idx == -1:
+            return self._table.append_column(column_name, column_data)
+        else:
+            return self._table.set_column(column_idx, column_name, column_data)
+
     @staticmethod
     def builder() -> ArrowBlockBuilder:
         return ArrowBlockBuilder()

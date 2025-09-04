@@ -7,9 +7,9 @@ from ray.data.context import DataContext
 from ray.train.v2._internal.data_integration.interfaces import (
     DatasetShardMetadata,
     DatasetShardProvider,
-    GenDataset,
 )
 from ray.train.v2._internal.execution.callback import WorkerGroupCallback
+from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.worker_group.worker_group import (
     Worker,
     WorkerGroup,
@@ -37,15 +37,10 @@ class RayDatasetShardProvider:
 class DatasetsSetupCallback(WorkerGroupCallback):
     """The callback to setup Ray Datasets for the worker group."""
 
-    def __init__(
-        self,
-        datasets: Dict[str, GenDataset],
-        data_config: ray.train.DataConfig,
-        scaling_config: ray.train.ScalingConfig,
-    ):
-        self._datasets = datasets
-        self._data_config = data_config
-        self._scaling_config = scaling_config
+    def __init__(self, train_run_context: TrainRunContext):
+        self._datasets = train_run_context.datasets
+        self._data_config = copy.deepcopy(train_run_context.dataset_config)
+        self._scaling_config = train_run_context.scaling_config
 
         # Capture the current DataContext to propagate it to
         # the Train workers later.

@@ -2,7 +2,7 @@ group: images
 sort_key: "_images"
 steps:
   - name: raycpubase
-    label: "wanda: ray.py{{matrix}}.cpu.base"
+    label: "wanda: ray-py{{matrix}}-cpu-base"
     tags:
       - python_dependencies
       - docker
@@ -17,7 +17,7 @@ steps:
       ARCH_SUFFIX: ""
 
   - name: raycpubaseextra
-    label: "wanda: ray.py{{matrix}}.cpu.base-extra"
+    label: "wanda: ray-py{{matrix}}-cpu-base-extra"
     wanda: docker/base-extra/cpu.wanda.yaml
     matrix:
       - "3.9"
@@ -31,7 +31,7 @@ steps:
     depends_on: raycpubase
 
   - name: raycudabase
-    label: "wanda: ray.py{{matrix.python}}.cu{{matrix.cuda}}.base"
+    label: "wanda: ray-py{{matrix.python}}-cu{{matrix.cuda}}-base"
     tags:
       - python_dependencies
       - docker
@@ -58,7 +58,7 @@ steps:
       ARCH_SUFFIX: ""
 
   - name: raycudabaseextra
-    label: "wanda: ray.py{{matrix.python}}.cu{{matrix.cuda}}.base-extra"
+    label: "wanda: ray-py{{matrix.python}}-cu{{matrix.cuda}}-base-extra"
     wanda: docker/base-extra/cuda.wanda.yaml
     matrix:
       setup:
@@ -84,7 +84,7 @@ steps:
     depends_on: raycudabase
 
   - name: ray-llmbase
-    label: "wanda: ray-llm.py{{matrix.python}}.cu{{matrix.cuda}}.base"
+    label: "wanda: ray-llm-py{{matrix.python}}-cu{{matrix.cuda}}-base"
     tags:
       - python_dependencies
       - docker
@@ -101,7 +101,7 @@ steps:
       CUDA_VERSION: "{{matrix.cuda}}"
 
   - name: ray-llmbaseextra
-    label: "wanda: ray-llm.py{{matrix.python}}.cu{{matrix.cuda}}.base-extra"
+    label: "wanda: ray-llm-py{{matrix.python}}-cu{{matrix.cuda}}-base-extra"
     wanda: docker/base-extra/cuda.wanda.yaml
     matrix:
       setup:
@@ -117,7 +117,7 @@ steps:
     depends_on: ray-llmbase
 
   - name: ray-mlcpubase
-    label: "wanda: ray-ml.py{{matrix}}.cpu.base"
+    label: "wanda: ray-ml-py{{matrix}}-cpu-base"
     tags:
       - python_dependencies
       - docker
@@ -131,7 +131,7 @@ steps:
       PYTHON_VERSION: "{{matrix}}"
 
   - name: ray-mlcpubaseextra
-    label: "wanda: ray-ml.py{{matrix}}.cpu.base-extra"
+    label: "wanda: ray-ml-py{{matrix}}-cpu-base-extra"
     wanda: docker/base-extra/cpu.wanda.yaml
     matrix:
       - "3.9"
@@ -144,7 +144,7 @@ steps:
     depends_on: ray-mlcpubase
 
   - name: ray-mlcudabase
-    label: "wanda: ray-ml.py{{matrix.python}}.cu{{matrix.cuda}}.base"
+    label: "wanda: ray-ml-py{{matrix.python}}-cu{{matrix.cuda}}-base"
     tags:
       - python_dependencies
       - docker
@@ -163,7 +163,7 @@ steps:
       CUDA_VERSION: "{{matrix.cuda}}"
 
   - name: ray-mlcudabaseextra
-    label: "wanda: ray-ml.py{{matrix.python}}.cu{{matrix.cuda}}.base-extra"
+    label: "wanda: ray-ml-py{{matrix.python}}-cu{{matrix.cuda}}-base-extra"
     wanda: docker/base-extra/cuda.wanda.yaml
     matrix:
       setup:
@@ -181,7 +181,7 @@ steps:
     depends_on: ray-mlcudabase
 
   - name: ray-slimcpubase
-    label: "wanda: ray-slim.py{{matrix}}.cpu.base"
+    label: "wanda: ray-slim-py{{matrix}}-cpu-base"
     tags:
       - python_dependencies
       - docker
@@ -198,7 +198,7 @@ steps:
       ARCH_SUFFIX: ""
 
   - name: ray-slimcudabase
-    label: "wanda: ray-slim.py{{matrix.python}}.cu{{matrix.cuda}}.base"
+    label: "wanda: ray-slim-py{{matrix.python}}-cu{{matrix.cuda}}-base"
     tags:
       - python_dependencies
       - docker
