@@ -11,20 +11,17 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include "ray/core_worker/task_submission/actor_task_submitter.h"
 
-// clang-format off
 #include <memory>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "ray/core_worker/actor_creator.h"
+#include "mock/ray/core_worker/memory_store.h"
+#include "mock/ray/core_worker/reference_count.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
-#include "mock/ray/core_worker/reference_count.h"
-#include "mock/ray/core_worker/memory_store.h"
-
-// clang-format on
+#include "ray/core_worker/actor_creator.h"
+#include "ray/core_worker/task_submission/actor_task_submitter.h"
 
 namespace ray {
 namespace core {
@@ -99,7 +96,7 @@ TEST_F(DirectTaskTransportTest, ActorCreationOk) {
   EXPECT_CALL(*gcs_client->mock_actor_accessor,
               AsyncCreateActor(creation_task_spec, ::testing::_))
       .WillOnce(::testing::DoAll(::testing::SaveArg<1>(&create_cb)));
-  actor_task_submitter->SubmitActorCreationTask(creation_task_spec).ok();
+  actor_task_submitter->SubmitActorCreationTask(creation_task_spec);
   create_cb(Status::OK(), rpc::CreateActorReply());
 }
 
@@ -115,7 +112,7 @@ TEST_F(DirectTaskTransportTest, ActorCreationFail) {
   EXPECT_CALL(*gcs_client->mock_actor_accessor,
               AsyncCreateActor(creation_task_spec, ::testing::_))
       .WillOnce(::testing::DoAll(::testing::SaveArg<1>(&create_cb)));
-  actor_task_submitter->SubmitActorCreationTask(creation_task_spec).ok();
+  actor_task_submitter->SubmitActorCreationTask(creation_task_spec);
   create_cb(Status::IOError(""), rpc::CreateActorReply());
 }
 
