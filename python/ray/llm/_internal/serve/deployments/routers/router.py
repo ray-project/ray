@@ -448,9 +448,9 @@ class LLMRouter:
                 return StreamingResponse(
                     openai_stream_generator, media_type="text/event-stream"
                 )
-        except TimeoutError as e :
+        except TimeoutError as e:
             raise OpenAIHTTPException(
-                status_code=status.HTTP_408_REQUEST_TIMEOUT, 
+                status_code=status.HTTP_408_REQUEST_TIMEOUT,
                 message="Request server side timeout",
                 internal_message=str(e),
             )
@@ -496,14 +496,12 @@ class LLMRouter:
 
                 if isinstance(result, EmbeddingResponse):
                     return JSONResponse(content=result.model_dump())
-        except TimeoutError as e :
+        except TimeoutError as e:
             raise OpenAIHTTPException(
-                status_code=status.HTTP_408_REQUEST_TIMEOUT, 
+                status_code=status.HTTP_408_REQUEST_TIMEOUT,
                 message="Request server side timeout",
                 internal_message=str(e),
             )
-
-            
 
     @fastapi_router_app.post("/v1/score")
     async def score(self, body: ScoreRequest) -> Response:
