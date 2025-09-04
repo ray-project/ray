@@ -13,6 +13,7 @@ import ray
 from ray import cloudpickle
 from ray._common.utils import import_attr
 from ray.exceptions import RuntimeEnvSetupError
+from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.build_app import BuiltApplication, build_app
 from ray.serve._private.common import (
     DeploymentID,
@@ -30,8 +31,6 @@ from ray.serve._private.deploy_utils import (
     get_deploy_args,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
-from ray.serve._private.application_state import ApplicationStateManager
-from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.logging_utils import configure_component_logger

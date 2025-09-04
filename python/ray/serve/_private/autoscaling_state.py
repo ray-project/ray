@@ -11,8 +11,6 @@ from ray.serve._private.common import (
     TargetCapacityDirection,
 )
 
-from ray.serve.schema import ServeApplicationSchema, DeploymentDetails
-from ray.serve.config import AutoscalingPolicy
 
 from ray.serve._private.constants import (
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
@@ -20,6 +18,8 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
+from ray.serve.config import AutoscalingPolicy
+from ray.serve.schema import ServeApplicationSchema, DeploymentDetails
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -467,9 +467,9 @@ class AutoscalingStateManager:
         """Register autoscaling deployment info."""
         assert info.deployment_config.autoscaling_config
         if deployment_id not in self._deployment_autoscaling_states:
-            self._deployment_autoscaling_states[deployment_id] = (
-                DeploymentAutoscalingState(deployment_id)
-            )
+            self._deployment_autoscaling_states[
+                deployment_id
+            ] = DeploymentAutoscalingState(deployment_id)
         return self._deployment_autoscaling_states[deployment_id].register(
             info, curr_target_num_replicas
         )

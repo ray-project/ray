@@ -33,7 +33,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import DEFAULT, validate_ssl_config
-from ray.serve.config import ProxyLocation, RequestRouterConfig, AutoscalingPolicy
+from ray.serve.config import AutoscalingPolicy, ProxyLocation, RequestRouterConfig
 from ray.util.annotations import PublicAPI
 
 # Shared amongst multiple schemas.
