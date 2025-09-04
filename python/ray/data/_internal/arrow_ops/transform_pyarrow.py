@@ -24,7 +24,7 @@ class FieldInfo:
     """Information about a field across multiple schemas."""
 
     name: str
-    types_by_schema: List[Optional[pyarrow.DataType]]  # More descriptive name
+    types_by_schema: List[Optional[pyarrow.DataType]]
 
 
 # Minimum version support {String,List,Binary}View types
