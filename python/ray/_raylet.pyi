@@ -17,7 +17,6 @@ from  ray.includes.unique_ids import (
     ClusterID,
     ObjectID,
     PlacementGroupID,
-    _ID_TYPES,
 )
 
 
@@ -35,7 +34,6 @@ __all__ = [
     "TaskID",
     "UniqueID",
     "WorkerID",
-    "_ID_TYPES",
     "check_id",
 
     #ray.includes.object_ref
