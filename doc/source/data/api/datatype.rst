@@ -10,8 +10,3 @@ Class
 
 .. autoclass:: DataType
     :members:
-
-Decorator
----------
-
-.. autofunction:: factory_methods
