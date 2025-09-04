@@ -63,20 +63,19 @@ def build(
     Args:
         config_path: The path to the config file. If not specified, ci/raydepsets/ray.depsets.yaml will be used.
     """
-    try:
-        manager = DependencySetManager(
-            config_path=config_path,
-            workspace_dir=workspace_dir,
-            uv_cache_dir=uv_cache_dir,
-            check=check,
-        )
-        if name:
-            manager.execute_single(_get_depset(manager.config.depsets, name))
-        else:
-            manager.execute()
-        if check:
-            manager.diff_lock_files()
-    finally:
+    # try:
+    manager = DependencySetManager(
+        config_path=config_path,
+        workspace_dir=workspace_dir,
+        uv_cache_dir=uv_cache_dir,
+        check=check,
+    )
+    if name:
+        manager.execute_single(_get_depset(manager.config.depsets, name))
+    else:
+        manager.execute()
+    if check:
+        manager.diff_lock_files()
         manager.cleanup()
 
 
@@ -115,7 +114,7 @@ class DependencySetManager:
                 target_fp,
             )
 
-    def diff_lock_files(self):
+    def get_diffs(self) -> List[str]:
         diffs = []
         for output_path in self.output_paths:
             new_lock_file_fp, old_lock_file_fp = self.get_source_and_dest(output_path)
@@ -129,12 +128,19 @@ class DependencySetManager:
                 lineterm="",
             ):
                 diffs.append(diff)
-        if len(diffs) > 0:
-            raise RuntimeError(
-                "Lock files are not up to date. Please update lock files and push the changes.\n"
-                + "".join(diffs)
-            )
-        click.echo("Lock files are up to date.")
+        return diffs
+
+    def diff_lock_files(self):
+        diffs = self.get_diffs()
+        try:
+            if len(diffs) > 0:
+                raise RuntimeError(
+                    "Lock files are not up to date. Please update lock files and push the changes.\n"
+                    + "".join(diffs)
+                )
+            click.echo("Lock files are up to date.")
+        finally:
+            self.cleanup()
 
     def get_source_and_dest(self, output_path: str) -> tuple[Path, Path]:
         return (self.get_path(output_path), (Path(self.temp_dir) / output_path))
