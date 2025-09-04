@@ -284,8 +284,8 @@ class TestTaskConsumerWithRayServe:
 
         tasks_before_restart = ray.get(tracker.get_count.remote())
         assert (
-            tasks_before_restart >= 2
-        ), f"Expected at least 2 tasks processed, got {tasks_before_restart}"
+            tasks_before_restart >= 2 and tasks_before_restart < num_tasks
+        ), f"Expected at least 2 tasks processed and atleast one less than num_tasks, got {tasks_before_restart}"
 
         # Deploy second version and process remaining tasks
         signal2 = SignalActor.remote()

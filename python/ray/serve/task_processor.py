@@ -45,8 +45,7 @@ def _json_dump(obj: Any) -> Any:
     if isinstance(obj, list):
         return [_json_dump(i) for i in obj]
     try:
-        json.dumps(obj)
-        return obj
+        return json.dumps(obj)
     except (TypeError, ValueError):
         return str(obj)
 
