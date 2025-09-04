@@ -105,12 +105,6 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
   /// \return Status.
   virtual Status ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer);
 
-  /// Shuts down socket for this connection.
-  void Close() {
-    boost::system::error_code ec;
-    socket_.close(ec);
-  }
-
   /// Get the native handle of the socket.
   int GetNativeHandle() { return socket_.native_handle(); }
 
@@ -226,6 +220,14 @@ class ClientConnection : public ServerConnection {
   /// Register the client.
   void Register();
 
+  /// Close the connection forcefully.
+  ///
+  /// - Clients will receive an error the next time they interact with the connection.
+  /// - No further messages will be processed from `ProcessMessages`.
+  /// - The `ConnectionErrorHandler` may be called with an error indicating that
+  ///   outstanding reads failed.
+  void Close();
+
   /// Listen for and process messages from the client connection. Once a
   /// message has been fully received, the client manager's
   /// ProcessClientMessage handler will be called.
@@ -266,6 +268,8 @@ class ClientConnection : public ServerConnection {
 
   /// Whether the client has sent us a registration message yet.
   bool registered_;
+  /// Whether the connection has been explicitly closed by the server.
+  bool closed_ = false;
   /// The handler for a message from the client.
   MessageHandler message_handler_;
   /// The handler for an unexpected connection error from this client.
