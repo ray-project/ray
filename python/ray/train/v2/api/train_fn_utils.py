@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+from ray.train.v2._internal.data_integration.interfaces import DatasetShardMetadata
 from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
 from ray.train.v2.api.context import TrainContext
 from ray.util.annotations import PublicAPI
@@ -192,7 +193,7 @@ def get_all_reported_checkpoints() -> List["ReportedCheckpoint"]:
 
     Returns:
         List of ReportedCheckpoint objects that represent the checkpoints and
-            corresponding metrics reported by the workers.
+        corresponding metrics reported by the workers.
     """
     return get_train_fn_utils().get_all_reported_checkpoints()
 
@@ -241,4 +242,6 @@ def get_dataset_shard(dataset_name: Optional[str] = None) -> Optional["DataItera
         The ``DataIterator`` shard to use for this worker.
         If no dataset is passed into Trainer, then return None.
     """
-    return get_train_fn_utils().get_dataset_shard(dataset_name)
+    return get_train_fn_utils().get_dataset_shard(
+        DatasetShardMetadata(dataset_name=dataset_name)
+    )
