@@ -540,7 +540,7 @@ TEST_F(CoreWorkerTest, ActorTaskCancelDuringDepResolution) {
   task_message.add_args()->mutable_object_ref()->set_object_id(
       inlined_dependency_id.Binary());
   task_manager_->AddPendingTask(rpc_address_, task, "call_site");
-  ASSERT_TRUE(actor_task_submitter_->SubmitTask(task).ok());
+  actor_task_submitter_->SubmitTask(task);
 
   actor_task_submitter_->CancelTask(task, /*recursive=*/false);
 
