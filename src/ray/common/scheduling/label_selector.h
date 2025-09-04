@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -102,6 +103,20 @@ H AbslHashValue(H h, const LabelSelector &label_selector) {
     }
   }
   return h;
+}
+
+inline std::optional<absl::flat_hash_set<std::string>> GetHardNodeAffinityValues(
+    const LabelSelector &label_selector) {
+  const std::string hard_affinity_key = "ray.io/node-id";
+
+  for (const auto &constraint : label_selector.GetConstraints()) {
+    if (constraint.GetLabelKey() == hard_affinity_key) {
+      if (constraint.GetOperator() == LabelSelectorOperator::LABEL_IN) {
+        return constraint.GetLabelValues();
+      }
+    }
+  }
+  return std::nullopt;
 }
 
 }  // namespace ray

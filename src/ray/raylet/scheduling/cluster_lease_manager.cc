@@ -231,8 +231,11 @@ void ClusterLeaseManager::ScheduleAndGrantLeases() {
                        << lease.GetLeaseSpecification().LeaseId() << " is infeasible?"
                        << is_infeasible;
 
-        if (lease.GetLeaseSpecification().IsNodeAffinitySchedulingStrategy() &&
-            !lease.GetLeaseSpecification().GetNodeAffinitySchedulingStrategySoft()) {
+        auto affinity_values =
+            GetHardNodeAffinityValues(lease.GetLeaseSpecification().GetLabelSelector());
+        if ((lease.GetLeaseSpecification().IsNodeAffinitySchedulingStrategy() &&
+             !lease.GetLeaseSpecification().GetNodeAffinitySchedulingStrategySoft()) ||
+            (affinity_values.has_value() && !affinity_values->empty())) {
           // This can only happen if the target node doesn't exist or is infeasible.
           // The lease will never be schedulable in either case so we should fail it.
           if (cluster_resource_scheduler_.IsLocalNodeWithRaylet()) {
