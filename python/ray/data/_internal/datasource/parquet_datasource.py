@@ -206,7 +206,6 @@ class ParquetDatasource(Datasource):
                 ray.get_runtime_context().get_node_id(), soft=False
             )
 
-        self._unresolved_paths = paths
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         filesystem = RetryingPyFileSystem.wrap(
             self._filesystem,
