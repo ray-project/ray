@@ -1127,7 +1127,7 @@ class _PrintableStructure(Structure):
     e.g. instead of:
       >>> print str(obj)
       <class_name object at 0x7fdf82fef9e0>
-    this class will print
+      this class will print
       class_name(field_name: formatted_value, field_name: formatted_value)
 
     _fmt_ dictionary of <str _field_ name> -> <str format>
