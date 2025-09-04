@@ -39,6 +39,8 @@ message ActorExecutionEvent {
   bytes job_id = 2;
   // Current state of this actor.
   State state = 3;
+  // The process id of this actor.
+  uint32 pid = 4;
   // Contains metadata about why the actor is dead.
-  ActorDeathCause death_cause = 4;
+  ActorDeathCause death_cause = 5;
 }
