@@ -1,7 +1,7 @@
-import json
-import time
-import os
 import glob
+import json
+import os
+import time
 
 import pytest
 

@@ -1,16 +1,17 @@
 import builtins
+import json
 import logging
 import os
 import sys
-import traceback
-import json
 import time
+import traceback
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import ray
 from ray._common.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
 from ray._private.ray_logging.filters import CoreContextFilter
 from ray._private.ray_logging.formatters import JSONFormatter, TextFormatter
+from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.serve._private.common import ServeComponentType
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_JSON_LOGGING,
@@ -32,7 +33,6 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.utils import get_component_file_name
 from ray.serve.schema import EncodingType, LoggingConfig
-from ray.autoscaler._private.event_summarizer import EventSummarizer
 
 buildin_print = builtins.print
 
@@ -566,17 +566,20 @@ class ServeEventSummarizer:
         for d in list(decisions)[-limit:]:
             if hasattr(d, "dict"):
                 dd = d.dict()
-                ts = dd.get("timestamp_s") or time.time()
+                ts = dd.get("timestamp_s")
                 from_rep = dd.get("prev_num_replicas")
                 to_rep = dd.get("curr_num_replicas")
                 reason = dd.get("reason") or ""
             else:
-                ts = getattr(d, "timestamp_s", time.time())
+                ts = getattr(d, "timestamp_s", None)
                 from_rep = getattr(d, "prev_num_replicas", None)
                 to_rep = getattr(d, "curr_num_replicas", None)
                 reason = getattr(d, "reason", "") or ""
-
-            ts_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts))
+            ts_iso = (
+                time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts))
+                if ts is not None
+                else None
+            )
             if len(reason) > 80:
                 reason = reason[:77] + "..."
             out.append({"ts": ts_iso, "from": from_rep, "to": to_rep, "reason": reason})

@@ -3,7 +3,6 @@ import logging
 import os
 import pickle
 import time
-import json
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
@@ -42,10 +41,10 @@ from ray.serve._private.http_util import (
     configure_http_options_with_defaults,
 )
 from ray.serve._private.logging_utils import (
+    ServeEventSummarizer,
     configure_component_logger,
     configure_component_memory_profiler,
     get_component_logger_file_path,
-    ServeEventSummarizer,
 )
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
 from ray.serve._private.proxy_state import ProxyStateManager
@@ -71,13 +70,13 @@ from ray.serve.schema import (
     HTTPOptionsSchema,
     LoggingConfig,
     ProxyDetails,
+    ScalingDecision,
     ServeActorDetails,
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
     TargetGroup,
     gRPCOptionsSchema,
-    ScalingDecision,
 )
 from ray.util import metrics
 
@@ -413,6 +412,18 @@ class ServeController:
                     min_repl_adj = snapshot["min_replicas"]
                     max_repl_adj = snapshot["max_replicas"]
                     total_requests = snapshot["total_requests"]
+
+                    if isinstance(autoscaling_config, dict):
+                        policy_name = autoscaling_config.get("policy", "default")
+                        look_back_period_s = autoscaling_config.get(
+                            "look_back_period_s"
+                        )
+                    else:
+                        policy_name = getattr(autoscaling_config, "name", "default")
+                        look_back_period_s = getattr(
+                            autoscaling_config, "look_back_period_s", None
+                        )
+
                     if proposed_replicas > current_replicas:
                         scaling_status = "UPSCALING"
                     elif proposed_replicas < current_replicas:
@@ -424,7 +435,7 @@ class ServeController:
                         reason=f"current={current_replicas}, proposed={proposed_replicas}",
                         prev_num_replicas=int(current_replicas),
                         curr_num_replicas=int(proposed_replicas),
-                        policy="default",
+                        policy=policy_name,
                     )
 
                     self._scaling_decisions.setdefault(dep_id, []).append(decision)
@@ -454,20 +465,6 @@ class ServeController:
                             scaling_status
                         )
                     )
-                    policy_name = (
-                        getattr(autoscaling_config, "name", "default")
-                        if not isinstance(autoscaling_config, dict)
-                        else autoscaling_config.get("policy", "default")
-                    )
-                    look_back_period_s = getattr(
-                        autoscaling_config, "look_back_period_s", None
-                    )
-                    if look_back_period_s is None and isinstance(
-                        autoscaling_config, dict
-                    ):
-                        look_back_period_s = autoscaling_config.get(
-                            "look_back_period_s"
-                        )
                     payload = self._serve_event_summarizer.build_snapshot_payload(
                         app_name=app_name,
                         deployment_name=dep_name,
