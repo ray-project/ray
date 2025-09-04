@@ -51,10 +51,9 @@ from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     GRPC_CONTEXT_ARG_NAME,
     HEALTH_CHECK_METHOD,
-    RAY_SERVE_AUTOSCALING_STATS_METHOD,
-    RAY_SERVE_AUTOSCALING_STATS_TIMEOUT_S,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
+    RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
@@ -340,11 +339,13 @@ class ReplicaMetricsManager:
         now = time.time()
         window_start = now - look_back_period
 
+        # Keep the legacy window_avg ongoing requests in the merged metrics dict
+        window_avg = self._metrics_store.aggregate_avg([self._replica_id])[0]
+
         self._metrics_store.prune_keys_and_compact_data(window_start)
         self._controller_handle.record_autoscaling_metrics.remote(
             replica_id=self._replica_id,
-            window_avg=self._metrics_store.aggregate_avg([self._replica_id])[0],
-            metrics=self._metrics_store.data,
+            metrics={self._replica_id: window_avg, **self._metrics_store.data},
             send_timestamp=now,
         )
 
@@ -359,7 +360,6 @@ class ReplicaMetricsManager:
 
     async def _add_autoscaling_metrics_point_async(self) -> None:
         metrics_dict = self._replica_ongoing_requests()
-
         if self.user_callable_wrapper._user_autoscaling_stats:
             # Try to acquire the lock without waiting; skip if already running
             if self._autoscaling_stats_lock.locked():
@@ -369,15 +369,15 @@ class ReplicaMetricsManager:
                     async with self._autoscaling_stats_lock:
                         res = await asyncio.wait_for(
                             self.user_callable_wrapper.call_record_autoscaling_stats(),
-                            timeout=RAY_SERVE_AUTOSCALING_STATS_TIMEOUT_S,
+                            timeout=RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
                         )
                         metrics_dict.update(res)
                 except asyncio.TimeoutError:
-                    logger.warning(
-                        f"Replica autoscaling stats timed out after {RAY_SERVE_AUTOSCALING_STATS_TIMEOUT_S}s."
+                    logger.error(
+                        f"Replica autoscaling stats timed out after {RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S}s."
                     )
                 except Exception as ex:
-                    logger.warning(f"Replica autoscaling stats failed. {ex}")
+                    logger.error(f"Replica autoscaling stats failed. {ex}")
 
         self._metrics_store.add_metrics_point(
             metrics_dict,
@@ -1534,7 +1534,7 @@ class UserCallableWrapper:
             self._callable, REQUEST_ROUTING_STATS_METHOD, None
         )
         self._user_autoscaling_stats = getattr(
-            self._callable, RAY_SERVE_AUTOSCALING_STATS_METHOD, None
+            self._callable, "record_autoscaling_stats", None
         )
 
         logger.info(

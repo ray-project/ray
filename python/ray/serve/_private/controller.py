@@ -56,7 +56,6 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
-from ray.serve._private.metrics_utils import TimeStampedValue
 from ray.serve._private.proxy_state import ProxyStateManager
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.usage import ServeUsageTag
@@ -273,15 +272,14 @@ class ServeController:
     def record_autoscaling_metrics(
         self,
         replica_id: str,
-        window_avg: Optional[float],
-        metrics: DefaultDict[Hashable, List[TimeStampedValue]],
+        metrics: DefaultDict[Hashable, Any],
         send_timestamp: float,
     ):
         logger.debug(
-            f"Received metrics from replica {replica_id}: {window_avg} running requests"
+            f"Received metrics from replica {replica_id}: {metrics.get('window_avg', None)} running requests"
         )
-        self.autoscaling_state_manager.record_request_metrics_for_replica(
-            replica_id, window_avg, metrics, send_timestamp
+        self.autoscaling_state_manager.record_autoscaling_metrics_for_replica(
+            replica_id, metrics, send_timestamp
         )
 
     def record_handle_metrics(
@@ -308,7 +306,7 @@ class ServeController:
             send_timestamp=send_timestamp,
         )
 
-    def _dump_all_metrics_for_testing(self):
+    def _dump_all_autoscaling_metrics_for_testing(self):
         return self.autoscaling_state_manager.get_all_metrics()
 
     def _dump_autoscaling_metrics_for_testing(self):

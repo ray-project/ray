@@ -2827,10 +2827,9 @@ class TestAutoscaling:
             )
         else:
             for replica in replicas:
-                asm.record_request_metrics_for_replica(
+                asm.record_autoscaling_metrics_for_replica(
                     replica_id=replica._actor.replica_id,
-                    window_avg=req_per_replica,
-                    metrics={},
+                    metrics={replica._actor.replica_id: req_per_replica},
                     send_timestamp=timer.time(),
                 )
 
@@ -2886,7 +2885,7 @@ class TestAutoscaling:
 
             dsm.update()
             astate = asm._autoscaling_states[TEST_DEPLOYMENT_ID]
-            assert len(astate._replica_requests) == 0
+            assert len(astate._replica_metrics) == 0
 
         # status=HEALTHY, status_trigger=UPSCALE/DOWNSCALE
         dsm.update()
@@ -2984,10 +2983,9 @@ class TestAutoscaling:
             )
         else:
             for replica in replicas:
-                asm.record_request_metrics_for_replica(
+                asm.record_autoscaling_metrics_for_replica(
                     replica_id=replica._actor.replica_id,
-                    window_avg=2,
-                    metrics={},
+                    metrics={replica._actor.replica_id: 2},
                     send_timestamp=timer.time(),
                 )
 
@@ -3064,10 +3062,9 @@ class TestAutoscaling:
             )
         else:
             for replica in replicas:
-                asm.record_request_metrics_for_replica(
+                asm.record_autoscaling_metrics_for_replica(
                     replica_id=replica._actor.replica_id,
-                    window_avg=1,
-                    metrics={},
+                    metrics={replica._actor.replica_id: 1},
                     send_timestamp=timer.time(),
                 )
 
@@ -3157,10 +3154,9 @@ class TestAutoscaling:
             )
         else:
             for replica in replicas:
-                asm.record_request_metrics_for_replica(
+                asm.record_autoscaling_metrics_for_replica(
                     replica_id=replica._actor.replica_id,
-                    window_avg=1,
-                    metrics={},
+                    metrics={replica._actor.replica_id: 1},
                     send_timestamp=timer.time(),
                 )
 
