@@ -68,12 +68,6 @@ namespace rpc {
     SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE)                \
   _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, false)
 
-// Define a void RPC client method.
-#define DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(METHOD)            \
-  virtual void Handle##METHOD(::ray::rpc::METHOD##Request request, \
-                              ::ray::rpc::METHOD##Reply *reply,    \
-                              ::ray::rpc::SendReplyCallback send_reply_callback) = 0;
-
 class GrpcService;
 
 /// Class that represents an gRPC server.

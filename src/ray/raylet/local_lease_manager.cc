@@ -37,7 +37,7 @@ LocalLeaseManager::LocalLeaseManager(
     LeaseDependencyManagerInterface &lease_dependency_manager,
     internal::NodeInfoGetter get_node_info,
     WorkerPoolInterface &worker_pool,
-    absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
+    absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers,
     std::function<bool(const std::vector<ObjectID> &object_ids,
                        std::vector<std::unique_ptr<RayObject>> *results)>
         get_lease_arguments,
@@ -957,7 +957,7 @@ const RayLease *LocalLeaseManager::AnyPendingLeasesForResourceAcquisition(
 
 void LocalLeaseManager::Grant(
     std::shared_ptr<WorkerInterface> worker,
-    absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
+    absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers,
     const std::shared_ptr<TaskResourceInstances> &allocated_instances,
     const RayLease &lease,
     rpc::RequestWorkerLeaseReply *reply,
@@ -979,8 +979,8 @@ void LocalLeaseManager::Grant(
   reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
   reply->mutable_worker_address()->set_node_id(self_node_id_.Binary());
 
-  RAY_CHECK(leased_workers.find(worker->WorkerId()) == leased_workers.end());
-  leased_workers[worker->WorkerId()] = worker;
+  RAY_CHECK(!leased_workers.contains(lease_spec.LeaseId()));
+  leased_workers[lease_spec.LeaseId()] = worker;
   cluster_resource_scheduler_.GetLocalResourceManager().SetBusyFootprint(
       WorkFootprint::NODE_WORKERS);
 
