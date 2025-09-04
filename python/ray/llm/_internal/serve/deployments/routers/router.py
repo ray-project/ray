@@ -489,9 +489,9 @@ class LLMRouter:
                 result = await results.__anext__()
                 if isinstance(result, ErrorResponse):
                     raise OpenAIHTTPException(
-                        message=result.error.message,
-                        status_code=result.error.code,
-                        type=result.error.type,
+                        message=result.message,
+                        status_code=result.code,
+                        type=result.type,
                     )
 
                 if isinstance(result, EmbeddingResponse):
