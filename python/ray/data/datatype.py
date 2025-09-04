@@ -39,23 +39,24 @@ def factory_methods(cls: type):
     - Floating point: float32, float64
     - Other types: string, bool, binary
 
-    Examples of generated methods:
+    Examples of generated methods::
+
         @classmethod
         def int32(cls):
-            '''Create a DataType representing a 32-bit signed integer.
+            \"\"\"Create a DataType representing a 32-bit signed integer.
 
             Returns:
                 DataType: A DataType with PyArrow int32 type
-            '''
+            \"\"\"
             return cls.from_arrow(pa.int32())
 
         @classmethod
         def string(cls):
-            '''Create a DataType representing a variable-length string.
+            \"\"\"Create a DataType representing a variable-length string.
 
             Returns:
                 DataType: A DataType with PyArrow string type
-            '''
+            \"\"\"
             return cls.from_arrow(pa.string())
 
     Usage:
