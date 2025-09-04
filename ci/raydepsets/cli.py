@@ -84,16 +84,16 @@ class DependencySetManager:
         for depset in self.config.depsets:
             if depset.operation == "compile":
                 self.build_graph.add_node(
-                    depset.name, operation="compile", depset=depset
+                    depset.name, operation="compile", depset=depset, node_type="depset"
                 )
             elif depset.operation == "subset":
                 self.build_graph.add_node(
-                    depset.name, operation="subset", depset=depset
+                    depset.name, operation="subset", depset=depset, node_type="depset"
                 )
                 self.build_graph.add_edge(depset.source_depset, depset.name)
             elif depset.operation == "expand":
                 self.build_graph.add_node(
-                    depset.name, operation="expand", depset=depset
+                    depset.name, operation="expand", depset=depset, node_type="depset"
                 )
                 for depset_name in depset.depsets:
                     self.build_graph.add_edge(depset_name, depset.name)
@@ -103,19 +103,29 @@ class DependencySetManager:
                 for ind, hook in enumerate(depset.pre_hooks):
                     hook_name = f"{depset.name}_pre_hook_{ind+1}"
                     self.build_graph.add_node(
-                        hook_name, operation="pre_hook", depset=depset
+                        hook_name,
+                        operation="pre_hook",
+                        pre_hook=hook,
+                        node_type="pre_hook",
                     )
                     self.build_graph.add_edge(hook_name, depset.name)
 
     def execute(self):
         for node in topological_sort(self.build_graph):
-            depset = self.build_graph.nodes[node]["depset"]
-            self.execute_single(depset)
+            node_type = self.build_graph.nodes[node]["node_type"]
+            if node_type == "depset":
+                depset = self.build_graph.nodes[node]["depset"]
+                self.execute_single(depset)
+            elif node_type == "pre_hook":
+                pre_hook = self.build_graph.nodes[node]["pre_hook"]
+                self.execute_pre_hooks(pre_hook)
 
-    def exec_uv_cmd(self, cmd: str, args: List[str]) -> str:
+    def exec_uv_cmd(
+        self, cmd: str, args: List[str], stdin: Optional[bytes] = None
+    ) -> str:
         cmd = [self._uv_binary, "pip", cmd, *args]
         click.echo(f"Executing command: {cmd}")
-        status = subprocess.run(cmd, cwd=self.workspace.dir)
+        status = subprocess.run(cmd, cwd=self.workspace.dir, input=stdin)
         if status.returncode != 0:
             raise RuntimeError(f"Failed to execute command: {cmd}")
         return status.stdout
@@ -139,6 +149,7 @@ class DependencySetManager:
                 output=depset.output,
                 append_flags=depset.append_flags,
                 override_flags=depset.override_flags,
+                packages=depset.packages,
             )
         elif depset.operation == "subset":
             self.subset(
@@ -164,14 +175,16 @@ class DependencySetManager:
     def compile(
         self,
         constraints: List[str],
-        requirements: List[str],
         name: str,
         output: str,
         append_flags: Optional[List[str]] = None,
         override_flags: Optional[List[str]] = None,
+        packages: Optional[List[str]] = None,
+        requirements: Optional[List[str]] = None,
     ):
         """Compile a dependency set."""
         args = DEFAULT_UV_FLAGS.copy()
+        stdin = None
         if self._uv_cache_dir:
             args.extend(["--cache-dir", self._uv_cache_dir])
         if override_flags:
@@ -184,9 +197,13 @@ class DependencySetManager:
         if requirements:
             for requirement in requirements:
                 args.extend([requirement])
+        if packages:
+            # need to add a dash to process stdin
+            args.append("-")
+            stdin = _get_bytes(packages)
         if output:
             args.extend(["-o", output])
-        self.exec_uv_cmd("compile", args)
+        self.exec_uv_cmd("compile", args, stdin)
 
     def subset(
         self,
@@ -245,6 +262,10 @@ class DependencySetManager:
                 raise RuntimeError(
                     f"Requirement {req} is not a subset of {source_depset.name}"
                 )
+
+
+def _get_bytes(packages: List[str]) -> bytes:
+    return ("\n".join(packages) + "\n").encode("utf-8")
 
 
 def _get_depset(depsets: List[Depset], name: str) -> Depset:
