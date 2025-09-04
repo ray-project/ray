@@ -360,6 +360,11 @@ void ClientConnection::Register() {
   registered_ = true;
 }
 
+void ClientConnection::Close() {
+  closed_ = true;
+  socket_.close();
+}
+
 void ClientConnection::ProcessMessages() {
   // Wait for a message header from the client. The message header includes the
   // protocol version, the message type, and the length of the message.
@@ -399,9 +404,17 @@ void ClientConnection::ProcessMessageHeader(const boost::system::error_code &err
     return;
   }
 
+  if (closed_) {
+    // In most cases all outstanding reads will have been canceled when the socket was.
+    // closed. However, if the boost async_read call has already received data into its
+    // buffer from the poll syscall, it may succeed. If this happens, drop the message.
+    return;
+  }
+
   // If there was no error, make sure the ray cookie matches.
   if (!CheckRayCookie()) {
-    ServerConnection::Close();
+    RAY_LOG(WARNING) << "Mismatched Ray cookie, closing client connection.";
+    Close();
     return;
   }
 
@@ -468,6 +481,13 @@ void ClientConnection::ProcessMessage(const boost::system::error_code &error) {
   auto this_ptr = shared_ClientConnection_from_this();
   if (error) {
     return connection_error_handler_(std::move(this_ptr), error);
+  }
+
+  if (closed_) {
+    // In most cases all outstanding reads will have been canceled when the socket was.
+    // closed. However, if the boost async_read call has already received data into its
+    // buffer from the poll syscall, it may succeed. If this happens, drop the message.
+    return;
   }
 
   int64_t start_ms = current_time_ms();
