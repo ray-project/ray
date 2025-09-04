@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <opentelemetry/metrics/meter.h>
 #include <opentelemetry/metrics/observer_result.h>
 #include <opentelemetry/metrics/sync_instruments.h>
