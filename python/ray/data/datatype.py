@@ -25,8 +25,9 @@ PYARROW_TYPE_DEFINITIONS: Dict[str, Tuple[callable, str]] = {
     "binary": (pa.binary, "variable-length binary data"),
 }
 
-
-def _factory_methods(cls: type):
+# This has to be a public API because it is used in the documentation.
+@PublicAPI(stability="alpha")
+def factory_methods(cls: type):
     """Metaprogramming: Class decorator to generate factory methods for PyArrow types using from_arrow.
 
     This decorator automatically creates class methods for common PyArrow data types.
@@ -84,7 +85,7 @@ def _factory_methods(cls: type):
 
 @PublicAPI(stability="alpha")
 @dataclass
-@_factory_methods
+@factory_methods
 class DataType:
     """A simplified Ray Data DataType supporting Arrow, NumPy, and Python types."""
 
