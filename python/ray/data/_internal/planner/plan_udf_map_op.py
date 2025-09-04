@@ -193,6 +193,7 @@ def plan_streaming_repartition_op(
         compute_strategy=compute,
         ray_remote_args=op._ray_remote_args,
         ray_remote_args_fn=op._ray_remote_args_fn,
+        supports_fusion=False,
     )
 
 
