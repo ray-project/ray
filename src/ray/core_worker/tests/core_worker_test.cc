@@ -34,6 +34,7 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker_rpc_proxy.h"
 #include "ray/core_worker/future_resolver.h"
+#include "ray/core_worker/grpc_service.h"
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
@@ -107,7 +108,8 @@ class CoreWorkerTest : public ::testing::Test {
     auto core_worker_server =
         std::make_unique<rpc::GrpcServer>(WorkerTypeString(options.worker_type), 0, true);
     core_worker_server->RegisterService(
-        std::make_unique<rpc::CoreWorkerGrpcService>(io_service_, *service_handler),
+        std::make_unique<rpc::CoreWorkerGrpcService>(
+            io_service_, *service_handler, /*max_active_rpcs_per_handler_=*/-1),
         false /* token_auth */);
     core_worker_server->Run();
 

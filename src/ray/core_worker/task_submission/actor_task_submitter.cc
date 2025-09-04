@@ -89,7 +89,7 @@ void ActorTaskSubmitter::AddActorQueueIfNotExists(const ActorID &actor_id,
   }
 }
 
-Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) {
+void ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) {
   RAY_CHECK(task_spec.IsActorCreationTask());
   RAY_LOG(DEBUG).WithField(task_spec.ActorCreationId()).WithField(task_spec.TaskId())
       << "Submitting actor creation task";
@@ -162,11 +162,9 @@ Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) 
           }
         });
   });
-
-  return Status::OK();
 }
 
-Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
+void ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   auto task_id = task_spec.TaskId();
   auto actor_id = task_spec.ActorId();
   RAY_LOG(DEBUG).WithField(task_id) << "Submitting task";
@@ -264,10 +262,6 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
                                                      /*mark_task_object_failed*/ true,
                                                      fail_immediately);
   }
-
-  // If the task submission subsequently fails, then the client will receive
-  // the error in a callback.
-  return Status::OK();
 }
 
 void ActorTaskSubmitter::CancelDependencyResolution(const TaskID &task_id) {

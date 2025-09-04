@@ -108,11 +108,10 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
                                 bool owned) override;
 
   /// Submit a task to an actor for execution.
-  /// Always returns OK. Yes, it should just return void in the future.
-  Status SubmitTask(TaskSpecification task_spec);
+  void SubmitTask(TaskSpecification task_spec);
 
   /// Submit an actor creation task to an actor via GCS.
-  Status SubmitActorCreationTask(TaskSpecification task_spec);
+  void SubmitActorCreationTask(TaskSpecification task_spec);
 
   /// Create connection to actor and send all pending tasks.
   ///

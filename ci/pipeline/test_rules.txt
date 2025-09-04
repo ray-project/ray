@@ -14,7 +14,7 @@
 #   ;  # Semicolon to separate rules
 
 ! always lint
-! python cpp core_cpp java workflow compiled_graphs dashboard
+! python cpp core_cpp java workflow cgraphs_direct_transport dashboard
 ! ray_client runtime_env_container
 ! data dask serve ml tune train llm rllib rllib_gpu rllib_directly
 ! linux_wheels macos_wheels docker doc python_dependencies tools
@@ -94,7 +94,10 @@ python/requirements/
 
 python/ray/dag/
 python/ray/experimental/channel/
-@ python compiled_graphs
+python/ray/experimental/gpu_object_manager/
+python/ray/experimental/collective/
+python/ray/tests/gpu_objects/
+@ python cgraphs_direct_transport
 ;
 
 python/ray/util/client/
@@ -232,7 +235,7 @@ src/
 
 src/ray/core_worker/experimental*.h
 src/ray/core_worker/experimental*.cc
-@ compiled_graphs
+@ cgraphs_direct_transport
 ;
 
 .github/
