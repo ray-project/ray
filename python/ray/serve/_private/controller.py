@@ -3,7 +3,17 @@ import logging
 import os
 import pickle
 import time
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
+from typing import (
+    Any,
+    DefaultDict,
+    Dict,
+    Hashable,
+    Iterable,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import ray
 from ray._common.network_utils import build_address
@@ -46,7 +56,7 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
-from ray.serve._private.metrics_utils import InMemoryMetricsStore
+from ray.serve._private.metrics_utils import TimeStampedValue
 from ray.serve._private.proxy_state import ProxyStateManager
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.usage import ServeUsageTag
@@ -263,14 +273,12 @@ class ServeController:
     def record_autoscaling_metrics(
         self,
         replica_id: str,
-        metrics_store: InMemoryMetricsStore,
+        metrics_dict: DefaultDict[Hashable, List[TimeStampedValue]],
         send_timestamp: float,
     ):
-        """Record metrics for autoscaling directly from replicas. Either this
-        method or `record_handle_metrics` should be called, but not both"""
         logger.debug(f"Received metrics from replica {replica_id} for autoscaling.")
         self.autoscaling_state_manager.record_request_metrics_for_replica(
-            replica_id, metrics_store, send_timestamp
+            replica_id, metrics_dict, send_timestamp
         )
 
     def record_handle_metrics(
@@ -279,11 +287,9 @@ class ServeController:
         handle_id: str,
         actor_id: Optional[str],
         handle_source: DeploymentHandleSource,
-        metrics_store: InMemoryMetricsStore,
+        metrics_dict: DefaultDict[Hashable, List[TimeStampedValue]],
         send_timestamp: float,
     ):
-        """Record metrics for autoscaling directly from replicas. Either this
-        method or `record_handle_metrics` should be called, but not both"""
         logger.debug(
             f"Received metrics from handle {handle_id} for deployment {deployment_id}"
         )
@@ -292,7 +298,7 @@ class ServeController:
             handle_id=handle_id,
             actor_id=actor_id,
             handle_source=handle_source,
-            metrics_store=metrics_store,
+            metrics_dict=metrics_dict,
             send_timestamp=send_timestamp,
         )
 

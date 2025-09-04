@@ -83,7 +83,7 @@ message AutoscalingConfig {
   // The multiplicative "gain" factor to limit downscale.
   optional double downscaling_factor = 15;
 
-  // How handle metrics are aggregated for autoscaling. One of "mean", "max", "min", "sum".
+  // How handle metrics are aggregated for autoscaling. One of "mean", "max", "min".
   string aggregation_function = 16;
 }
 

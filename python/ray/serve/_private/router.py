@@ -367,7 +367,7 @@ class RouterMetricsManager:
             handle_id=self._handle_id,
             actor_id=self._self_actor_id,
             handle_source=self._handle_source,
-            metrics_store=self._get_metrics_store(),
+            metrics_dict=self._get_metrics_store().data,
         )
 
     def _add_autoscaling_metrics_point(self):

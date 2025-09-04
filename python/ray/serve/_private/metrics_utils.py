@@ -20,6 +20,7 @@ from ray.serve._private.constants import (
     METRICS_PUSHER_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
+from ray.serve.config import AggregationFunction
 
 QUEUED_REQUESTS_KEY = "queued"
 
@@ -310,6 +311,26 @@ class InMemoryMetricsStore:
             Returns (None, 0) if no valid keys have data.
         """
         return self._aggregate_reduce(keys, statistics.mean)
+
+    def aggregate(self, keys: Iterable[Hashable], method: AggregationFunction):
+        """Aggregate the entire set of timeseries values across the specified keys.
+
+        Args:
+            keys: Iterable of keys to aggregate across.
+            method: Aggregation method to use.
+        Returns:
+            A tuple of (float, int) where the first element is the aggregated value
+            and the second element is the number of valid keys used.
+            Returns (None, 0) if no valid keys have data.
+        """
+        if method == AggregationFunction.MAX:
+            return self.aggregate_max(keys)
+        elif method == AggregationFunction.MIN:
+            return self.aggregate_min(keys)
+        elif method == AggregationFunction.MEAN:
+            return self.aggregate_avg(keys)
+        else:
+            raise ValueError(f"Unknown aggregation method: {method}")
 
 
 def _bucket_latest_by_window(

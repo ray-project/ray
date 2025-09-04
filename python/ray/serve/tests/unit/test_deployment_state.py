@@ -626,8 +626,6 @@ def check_counts(
         state: deployment_state._replicas.count(states=[state])
         for state in ALL_REPLICA_STATES
     }
-    print("TOTAL: ", deployment_state._replicas.count())
-    print("STATES", replicas)
     if total is not None:
         assert deployment_state._replicas.count() == total, f"Replicas: {replicas}"
 
@@ -2837,14 +2835,14 @@ class TestAutoscaling:
                 handle_id="random",
                 actor_id=None,
                 handle_source=DeploymentHandleSource.UNKNOWN,
-                metrics_store=get_metrics_store(replicas, req_per_replica),
+                metrics_dict=get_metrics_store(replicas, req_per_replica).data,
                 send_timestamp=timer.time(),
             )
         else:
             for replica in replicas:
                 asm.record_request_metrics_for_replica(
                     replica_id=replica._actor.replica_id,
-                    metrics_store=get_metrics_store(replicas, req_per_replica),
+                    metrics_dict=get_metrics_store(replicas, req_per_replica).data,
                     send_timestamp=timer.time(),
                 )
 
@@ -2992,14 +2990,14 @@ class TestAutoscaling:
                 handle_id="random",
                 actor_id=None,
                 handle_source=DeploymentHandleSource.UNKNOWN,
-                metrics_store=get_metrics_store(replicas, 2),
+                metrics_dict=get_metrics_store(replicas, 2).data,
                 send_timestamp=timer.time(),
             )
         else:
             for replica in replicas:
                 asm.record_request_metrics_for_replica(
                     replica._actor.replica_id,
-                    get_metrics_store(replicas, 2),
+                    get_metrics_store(replicas, 2).data,
                     timer.time(),
                 )
 
@@ -3070,14 +3068,14 @@ class TestAutoscaling:
                 handle_id="random",
                 actor_id=None,
                 handle_source=DeploymentHandleSource.UNKNOWN,
-                metrics_store=get_metrics_store(replicas, 1),
+                metrics_dict=get_metrics_store(replicas, 1).data,
                 send_timestamp=timer.time(),
             )
         else:
             for replica in replicas:
                 asm.record_request_metrics_for_replica(
                     replica._actor.replica_id,
-                    get_metrics_store(replicas, 1),
+                    get_metrics_store(replicas, 1).data,
                     timer.time(),
                 )
 
@@ -3161,14 +3159,14 @@ class TestAutoscaling:
                 handle_id="random",
                 actor_id=None,
                 handle_source=DeploymentHandleSource.UNKNOWN,
-                metrics_store=get_metrics_store(replicas, 1),
+                metrics_dict=get_metrics_store(replicas, 1).data,
                 send_timestamp=timer.time(),
             )
         else:
             for replica in replicas:
                 asm.record_request_metrics_for_replica(
                     replica._actor.replica_id,
-                    get_metrics_store(replicas, 1),
+                    get_metrics_store(replicas, 1).data,
                     timer.time(),
                 )
 
@@ -3260,7 +3258,7 @@ class TestAutoscaling:
             handle_id="random",
             actor_id=None,
             handle_source=DeploymentHandleSource.UNKNOWN,
-            metrics_store=get_metrics_store([], 0, queued=1),
+            metrics_dict=get_metrics_store([], 0, queued=1).data,
             send_timestamp=timer.time(),
         )
 
@@ -3373,7 +3371,7 @@ class TestAutoscaling:
             handle_id="random",
             actor_id=None,
             handle_source=DeploymentHandleSource.UNKNOWN,
-            metrics_store=get_metrics_store([], 0, queued=1),
+            metrics_dict=get_metrics_store([], 0, queued=1).data,
             send_timestamp=timer.time(),
         )
 
@@ -3446,7 +3444,7 @@ class TestAutoscaling:
             handle_id="random",
             actor_id=None,
             handle_source=DeploymentHandleSource.UNKNOWN,
-            metrics_store=get_metrics_store([ds._replicas.get()[0]], 2),
+            metrics_dict=get_metrics_store([ds._replicas.get()[0]], 2).data,
             send_timestamp=timer.time(),
         )
         asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
@@ -3531,7 +3529,7 @@ class TestAutoscaling:
             handle_id="random",
             actor_id="d2_replica_actor_id",
             handle_source=DeploymentHandleSource.REPLICA,
-            metrics_store=get_metrics_store([ds1._replicas.get()[0]], 2),
+            metrics_dict=get_metrics_store([ds1._replicas.get()[0]], 2).data,
             send_timestamp=timer.time(),
         )
         asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())

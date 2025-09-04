@@ -163,6 +163,12 @@ class RequestRouterConfig(BaseModel):
 DEFAULT_METRICS_INTERVAL_S = 10.0
 
 
+class AggregationFunction(str, Enum):
+    MEAN = "mean"
+    MAX = "max"
+    MIN = "min"
+
+
 @PublicAPI(stability="alpha")
 class AutoscalingPolicy(BaseModel):
     name: Union[str, Callable] = Field(
@@ -229,9 +235,7 @@ class AutoscalingConfig(BaseModel):
         default=30.0, description="How long to wait before scaling up replicas."
     )
 
-    # Determines how handle metrics are aggregated to make scaling decisions.
-    aggregation_function: str = "mean"
-    _aggregation_functions = {"mean", "max", "min"}
+    aggregation_function: Union[str, AggregationFunction] = AggregationFunction.MEAN
 
     # Cloudpickled policy definition.
     _serialized_policy_def: bytes = PrivateAttr(default=b"")
@@ -280,12 +284,15 @@ class AutoscalingConfig(BaseModel):
         return v
 
     @validator("aggregation_function", always=True)
-    def aggregation_function_valid(cls, aggregation_function: str):
-        if aggregation_function not in cls._aggregation_functions:
+    def aggregation_function_valid(cls, v: Union[str, AggregationFunction]):
+        if isinstance(v, AggregationFunction):
+            return v
+        try:
+            return AggregationFunction(str(v).lower())
+        except Exception:
             raise ValueError(
-                f"scaling_function must be one of {list(cls._aggregation_functions)}"
+                f"aggregation_function must be one of {[e.value for e in AggregationFunction]}, got {v!r}"
             )
-        return aggregation_function
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -341,6 +348,9 @@ class AutoscalingConfig(BaseModel):
 
     def get_target_ongoing_requests(self) -> PositiveFloat:
         return self.target_ongoing_requests
+
+    def get_aggregation_function(self) -> AggregationFunction:
+        return self.aggregation_function
 
 
 # Keep in sync with ServeDeploymentMode in dashboard/client/src/type/serve.ts

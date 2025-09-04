@@ -1729,11 +1729,6 @@ python/ray/serve/api.py
     DOC103: Function `get_deployment_handle`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [_check_exists: bool, _record_telemetry: bool].
     DOC201: Function `get_deployment_handle` does not have a return section in docstring
 --------------------
-python/ray/serve/autoscaling_policy.py
-    DOC101: Function `_calculate_desired_num_replicas`: Docstring contains fewer arguments than in function signature.
-    DOC111: Function `_calculate_desired_num_replicas`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
-    DOC103: Function `_calculate_desired_num_replicas`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [num_running_replicas: int, total_num_requests: int]. Arguments in the docstring but not in the function signature: [current_num_ongoing_requests: List[float]].
---------------------
 python/ray/serve/batching.py
     DOC111: Method `_BatchQueue.__init__`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
     DOC101: Function `batch`: Docstring contains fewer arguments than in function signature.

@@ -331,7 +331,7 @@ class ReplicaMetricsManager:
         self._metrics_store.prune_keys_and_compact_data(time.time() - look_back_period)
         self._controller_handle.record_autoscaling_metrics.remote(
             replica_id=self._replica_id,
-            metrics_store=self._metrics_store,
+            metrics_dict=self._metrics_store.data,
             send_timestamp=time.time(),
         )
 

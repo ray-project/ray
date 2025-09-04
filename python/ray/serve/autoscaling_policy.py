@@ -22,9 +22,10 @@ def _calculate_desired_num_replicas(
     Args:
         autoscaling_config: The autoscaling parameters to use for this
             calculation.
-        total_num_requests (float): A list of the number of
-            ongoing requests for each replica.  Assumes each entry has already
-            been time-averaged over the desired lookback window.
+        total_num_requests: The total aggregate number of requests running
+            across all replicas of a deployment.
+        num_running_replicas: The current count of running replicas for this
+            a deployment.
         override_min_replicas: Overrides min_replicas from the config
             when calculating the final number of replicas.
         override_max_replicas: Overrides max_replicas from the config
@@ -97,7 +98,7 @@ def replica_queue_length_autoscaling_policy(
     """
 
     curr_target_num_replicas: int = ctx.target_num_replicas
-    total_num_requests: int = ctx.total_num_requests
+    total_num_requests: float = ctx.total_num_requests
     num_running_replicas: int = ctx.current_num_replicas
     config: Optional[AutoscalingConfig] = ctx.config
     capacity_adjusted_min_replicas: int = ctx.capacity_adjusted_min_replicas
