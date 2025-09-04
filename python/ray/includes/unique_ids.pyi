@@ -142,18 +142,3 @@ class PlacementGroupID(BaseID):
 
     @classmethod
     def nil(cls:type[_PGID])->_PGID: ...
-
-
-_ID_TYPES = [
-    ActorClassID,
-    ActorID,
-    NodeID,
-    JobID,
-    WorkerID,
-    FunctionID,
-    ObjectID,
-    TaskID,
-    UniqueID,
-    PlacementGroupID,
-    ClusterID,
-]
