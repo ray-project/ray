@@ -1,8 +1,10 @@
 from __future__ import annotations
+
 from typing import Tuple, TypeVar
 
 #backwards compatibility. Luckily circular references are fine in type stubs
 from ray._raylet import ObjectRef
+
 ObjectID = ObjectRef
 
 #implementations are in unique_ids.pxi
