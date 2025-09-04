@@ -412,7 +412,6 @@ void ClientConnection::ProcessMessageHeader(const boost::system::error_code &err
     return;
   }
 
-  // If there was no error, make sure the ray cookie matches.
   if (!CheckRayCookie()) {
     RAY_LOG(WARNING) << "Mismatched Ray cookie, closing client connection.";
     Close();
