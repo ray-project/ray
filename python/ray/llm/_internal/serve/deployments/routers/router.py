@@ -224,7 +224,7 @@ async def router_request_timeout(timeout_duration: float):
     try:
         async with timeout(timeout_duration):
             yield
-    except TimeoutError as e:
+    except asyncio.TimeoutError as e:
         raise OpenAIHTTPException(
             status_code=status.HTTP_408_REQUEST_TIMEOUT,
             message="Request server side timeout",
