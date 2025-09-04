@@ -170,6 +170,9 @@ def _find_diverging_fields(
     """
     Identify fields whose presence or types differ across the provided schemas.
 
+    Args:
+        schemas: List of PyArrow schemas to find diverging fields in.
+
     Returns:
         List of unique schemas and a dictionary of diverging fields.
     """
