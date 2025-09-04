@@ -28,7 +28,7 @@
 namespace ray {
 namespace core {
 
-Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
+void NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_CHECK(task_spec.IsNormalTask());
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
 
@@ -89,7 +89,6 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     }
     RequestNewWorkerIfNeeded(scheduling_key);
   });
-  return Status::OK();
 }
 
 void NormalTaskSubmitter::AddWorkerLeaseClient(
