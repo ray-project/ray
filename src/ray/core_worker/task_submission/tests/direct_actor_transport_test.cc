@@ -99,7 +99,7 @@ TEST_F(DirectTaskTransportTest, ActorCreationOk) {
   EXPECT_CALL(*gcs_client->mock_actor_accessor,
               AsyncCreateActor(creation_task_spec, ::testing::_))
       .WillOnce(::testing::DoAll(::testing::SaveArg<1>(&create_cb)));
-  ASSERT_TRUE(actor_task_submitter->SubmitActorCreationTask(creation_task_spec).ok());
+  actor_task_submitter->SubmitActorCreationTask(creation_task_spec).ok();
   create_cb(Status::OK(), rpc::CreateActorReply());
 }
 
@@ -115,7 +115,7 @@ TEST_F(DirectTaskTransportTest, ActorCreationFail) {
   EXPECT_CALL(*gcs_client->mock_actor_accessor,
               AsyncCreateActor(creation_task_spec, ::testing::_))
       .WillOnce(::testing::DoAll(::testing::SaveArg<1>(&create_cb)));
-  ASSERT_TRUE(actor_task_submitter->SubmitActorCreationTask(creation_task_spec).ok());
+  actor_task_submitter->SubmitActorCreationTask(creation_task_spec).ok();
   create_cb(Status::IOError(""), rpc::CreateActorReply());
 }
 

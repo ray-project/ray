@@ -556,7 +556,7 @@ TEST_F(NormalTaskSubmitterTest, TestLocalityAwareSubmitOneTask) {
 
   TaskSpecification task = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  submitter.SubmitTask(task);
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 1);
   ASSERT_EQ(raylet_client->num_is_selected_based_on_locality_leases_requested, 1);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
@@ -587,7 +587,7 @@ TEST_F(NormalTaskSubmitterTest, TestSubmitOneTask) {
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
   TaskSpecification task = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  submitter.SubmitTask(task);
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 1);
   ASSERT_EQ(raylet_client->num_is_selected_based_on_locality_leases_requested, 0);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
@@ -619,7 +619,7 @@ TEST_F(NormalTaskSubmitterTest, TestRetryTaskApplicationLevelError) {
   TaskSpecification task = BuildEmptyTaskSpec();
   task.GetMutableMessage().set_retry_exceptions(true);
 
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  submitter.SubmitTask(task);
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
   // Simulate an application-level error.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::OK(), false, true));
@@ -633,7 +633,7 @@ TEST_F(NormalTaskSubmitterTest, TestRetryTaskApplicationLevelError) {
 
   task.GetMutableMessage().set_retry_exceptions(false);
 
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  submitter.SubmitTask(task);
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
   // Simulate an application-level error.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::OK(), false, true));
@@ -655,7 +655,7 @@ TEST_F(NormalTaskSubmitterTest, TestHandleTaskFailure) {
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
   TaskSpecification task = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  submitter.SubmitTask(task);
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
   // Simulate a system failure, i.e., worker died unexpectedly.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("oops")));
@@ -683,7 +683,7 @@ TEST_F(NormalTaskSubmitterTest, TestCancellationWhileHandlingTaskFailure) {
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
 
   TaskSpecification task = BuildEmptyTaskSpec();
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  submitter.SubmitTask(task);
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
   // Simulate a system failure, i.e., worker died unexpectedly so that
   // GetWorkerFailureCause is called.
@@ -847,7 +847,7 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeases) {
   for (int i = 0; i < 2 * concurrency; i++) {
     auto task = BuildEmptyTaskSpec();
     tasks.push_back(task);
-    ASSERT_TRUE(submitter.SubmitTask(task).ok());
+    submitter.SubmitTask(task);
   }
 
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, concurrency);
@@ -903,7 +903,7 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamic) {
   for (int i = 0; i < 2 * concurrency; i++) {
     auto task = BuildEmptyTaskSpec();
     tasks.push_back(task);
-    ASSERT_TRUE(submitter.SubmitTask(task).ok());
+    submitter.SubmitTask(task);
   }
 
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 1);
@@ -988,7 +988,7 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamicWithSpillback) 
   for (int i = 0; i < 2 * concurrency; i++) {
     auto task = BuildEmptyTaskSpec();
     tasks.push_back(task);
-    ASSERT_TRUE(submitter.SubmitTask(task).ok());
+    submitter.SubmitTask(task);
   }
 
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 1);
@@ -1338,7 +1338,7 @@ TEST_F(NormalTaskSubmitterTest, TestSpillback) {
                                 raylet_client_factory);
   TaskSpecification task = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  submitter.SubmitTask(task);
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 1);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
@@ -1395,7 +1395,7 @@ TEST_F(NormalTaskSubmitterTest, TestSpillbackRoundTrip) {
                                 kLongTimeout);
   TaskSpecification task = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  submitter.SubmitTask(task);
   ASSERT_EQ(raylet_client->num_grant_or_reject_leases_requested, 0);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
@@ -1733,7 +1733,7 @@ TEST_F(NormalTaskSubmitterTest, TestKillExecutingTask) {
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
   TaskSpecification task = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  submitter.SubmitTask(task);
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
 
   // Try force kill, exiting the worker
@@ -1750,7 +1750,7 @@ TEST_F(NormalTaskSubmitterTest, TestKillExecutingTask) {
 
   task.GetMutableMessage().set_task_id(
       TaskID::ForNormalTask(JobID::Nil(), TaskID::Nil(), 1).Binary());
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  submitter.SubmitTask(task);
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
 
   // Try non-force kill, worker returns normally
@@ -1774,7 +1774,7 @@ TEST_F(NormalTaskSubmitterTest, TestKillPendingTask) {
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
   TaskSpecification task = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  submitter.SubmitTask(task);
   submitter.CancelTask(task, true, false);
   ASSERT_EQ(worker_client->kill_requests.size(), 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
@@ -1800,7 +1800,7 @@ TEST_F(NormalTaskSubmitterTest, TestKillResolvingTask) {
   TaskSpecification task = BuildEmptyTaskSpec();
   ObjectID obj1 = ObjectID::FromRandom();
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  submitter.SubmitTask(task);
   ASSERT_EQ(task_manager->num_inlined_dependencies, 0);
   submitter.CancelTask(task, true, false);
   auto data = GenerateRandomObject();
@@ -1823,7 +1823,7 @@ TEST_F(NormalTaskSubmitterTest, TestQueueGeneratorForResubmit) {
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
   TaskSpecification task = BuildEmptyTaskSpec();
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  submitter.SubmitTask(task);
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
   ASSERT_TRUE(submitter.QueueGeneratorForResubmit(task));
   ASSERT_TRUE(worker_client->ReplyPushTask());
@@ -1838,7 +1838,7 @@ TEST_F(NormalTaskSubmitterTest, TestCancelBeforeAfterQueueGeneratorForResubmit) 
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
   TaskSpecification task = BuildEmptyTaskSpec();
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  submitter.SubmitTask(task);
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
   submitter.CancelTask(task, /*force_kill=*/false, /*recursive=*/true);
   ASSERT_FALSE(submitter.QueueGeneratorForResubmit(task));
