@@ -123,26 +123,23 @@ class MultiDatasink(Datasink[Dict[str, List[SinkWriteResult]]]):
             # Check if all writes to this sink were successful
             sink_results = all_results[name]
             if all(r.success for r in sink_results):
-                try:
-                    # Construct a WriteResult for this sink
-                    # For simplicity, we'll set num_rows and size_bytes to the total for all tasks
-                    sink_write_result = WriteResult(
-                        num_rows=write_result.num_rows,
-                        size_bytes=write_result.size_bytes,
-                        write_returns=[
-                            r.write_result for r in sink_results if r.write_result
-                        ],
-                    )
-                    sink.on_write_complete(sink_write_result)
-                except Exception as e:
-                    logger.exception(f"on_write_complete failed for sink '{name}': {e}")
-                    # Call on_write_failed for this sink
-                    try:
-                        sink.on_write_failed(e)
-                    except Exception:
-                        logger.exception(
-                            f"on_write_failed also failed for sink '{name}'"
-                        )
+                sink_write_result = WriteResult(
+                    num_rows=write_result.num_rows,
+                    size_bytes=write_result.size_bytes,
+                    write_returns=[
+                        r.write_result
+                        for r in sink_results
+                        if r.write_result is not None
+                    ],
+                )
+                sink.on_write_complete(sink_write_result)
+            else:
+                # If a failure occurs during the write process, this function ensures that
+                # only the first failure is recorded and handled. When ray.data.dataset.Dataset.write_datasink
+                # is executed, it also only captures the first error encountered.
+                first_failure = next((r for r in sink_results if not r.success), None)
+                if first_failure and first_failure.error:
+                    sink.on_write_failed(first_failure.error)
 
     def on_write_failed(self, error: Exception) -> None:
         """Call on_write_failed for all sinks."""
