@@ -790,7 +790,7 @@ def dedupe_schemas_with_validation(
         return bundle, diverged
 
     diverged = True
-    if warn and enforce_schemas and not _is_empty_schema(bundle.schema):
+    if warn and enforce_schemas:
         logger.warning(
             f"Operator produced a RefBundle with a different schema "
             f"than the previous one. Previous schema: {old_schema}, "
