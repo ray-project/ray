@@ -263,14 +263,6 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
           status_(std::move(status)),
           timeout_error_info_(std::move(timeout_error_info)) {}
   };
-  /// A helper function to get task manager without holding mu_
-  /// We should use this function when access
-  /// - FailOrRetryPendingTask
-  /// - FailPendingTask
-  TaskManagerInterface &GetTaskManagerWithoutMu() {
-    mu_.AssertNotHeld();
-    return task_manager_;
-  }
 
   struct ClientQueue {
     ClientQueue(bool allow_out_of_order_execution,

@@ -4544,28 +4544,15 @@ void CoreWorker::UpdateTaskIsDebuggerPaused(const TaskID &task_id,
       worker::TaskStatusEvent::TaskStateUpdate(is_debugger_paused)));
 }
 
-void CoreWorker::TaskManagerRetryTask(TaskSpecification &spec,
-                                      bool object_recovery,
-                                      uint32_t delay_ms) {
+void CoreWorker::TaskManagerRetryTask(TaskSpecification &spec, uint32_t delay_ms) {
   spec.GetMutableMessage().set_attempt_number(spec.AttemptNumber() + 1);
-  if (!object_recovery) {
-    // Retry after a delay to emulate the existing Raylet reconstruction
-    // behaviour. TODO(ekl) backoff exponentially.
-    RAY_LOG(INFO) << "Will resubmit task after a " << delay_ms
-                  << "ms delay: " << spec.DebugString();
-    absl::MutexLock lock(&mutex_);
-    TaskToRetry task_to_retry{current_time_ms() + delay_ms, spec};
-    to_resubmit_.push(std::move(task_to_retry));
-  } else {
-    if (spec.IsActorTask()) {
-      auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
-      actor_handle->SetResubmittedActorTaskSpec(spec);
-      RAY_CHECK_OK(actor_task_submitter_->SubmitTask(spec));
-    } else {
-      RAY_CHECK(spec.IsNormalTask());
-      RAY_CHECK_OK(normal_task_submitter_->SubmitTask(spec));
-    }
-  }
+  // Retry after a delay to emulate the existing Raylet reconstruction
+  // behaviour.
+  RAY_LOG(INFO) << "Will resubmit task after a " << delay_ms
+                << "ms delay: " << spec.DebugString();
+  absl::MutexLock lock(&mutex_);
+  TaskToRetry task_to_retry{current_time_ms() + delay_ms, spec};
+  to_resubmit_.push(std::move(task_to_retry));
 }
 
 }  // namespace ray::core

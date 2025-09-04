@@ -148,7 +148,7 @@ class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
         *memory_store_,
         *reference_counter_,
         [](const RayObject &object, const ObjectID &object_id) { return Status::OK(); },
-        [](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {},
+        [](TaskSpecification &spec, uint32_t delay_ms) {},
         [](const TaskSpecification &spec) { return false; },
         [](const JobID &job_id,
            const std::string &type,

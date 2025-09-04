@@ -391,7 +391,7 @@ std::optional<rpc::ErrorType> TaskManager::ResubmitTask(
   // issue #54260.
   RAY_LOG(INFO) << "Resubmitting task that produced lost plasma object, attempt #"
                 << spec.AttemptNumber() << ": " << spec.DebugString();
-  retry_task_callback_(spec, /*object_recovery*/ true, /*delay_ms*/ 0);
+  retry_task_callback_(spec, /*delay_ms=*/0);
 
   return std::nullopt;
 }
@@ -478,7 +478,7 @@ void TaskManager::MarkGeneratorFailedAndResubmit(const TaskID &task_id) {
   // Note: Don't need to call UpdateReferencesForResubmit because CompletePendingTask or
   // FailPendingTask are not called when this is. Therefore, RemoveFinishedTaskReferences
   // never happened for this task.
-  retry_task_callback_(spec, /*object_recovery*/ true, /*delay_ms*/ 0);
+  retry_task_callback_(spec, /*delay_ms*/ 0);
 }
 
 void TaskManager::DrainAndShutdown(std::function<void()> shutdown) {
@@ -1194,7 +1194,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                                  spec.AttemptNumber(),
                                  RayConfig::instance().task_oom_retry_delay_base_ms())
                            : RayConfig::instance().task_retry_delay_ms();
-    retry_task_callback_(spec, /*object_recovery*/ false, delay_ms);
+    retry_task_callback_(spec, delay_ms);
     return true;
   } else {
     RAY_LOG(INFO) << "No retries left for task " << spec.TaskId()
