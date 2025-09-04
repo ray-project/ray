@@ -330,8 +330,8 @@ class NvidiaGpuProvider(GpuProvider):
                 logger.debug(f"Failed to retrieve GPU processes with newer API: {e}")
                 # Fallback to older API for compatibility with older drivers
                 try:
-                    nv_comp_processes = self._pynvml.nvmlDeviceGetComputeRunningProcesses(
-                        gpu_handle
+                    nv_comp_processes = (
+                        self._pynvml.nvmlDeviceGetComputeRunningProcesses(gpu_handle)
                     )
                     nv_graphics_processes = (
                         self._pynvml.nvmlDeviceGetGraphicsRunningProcesses(gpu_handle)
@@ -348,7 +348,9 @@ class NvidiaGpuProvider(GpuProvider):
                             gpu_utilization=None,  # Not available with older API
                         )
                 except self._pynvml.NVMLError as fallback_e:
-                    logger.debug(f"Failed to retrieve GPU processes with fallback API: {fallback_e}")
+                    logger.debug(
+                        f"Failed to retrieve GPU processes with fallback API: {fallback_e}"
+                    )
 
             return GpuUtilizationInfo(
                 index=gpu_index,
