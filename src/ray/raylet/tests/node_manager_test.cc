@@ -1034,7 +1034,12 @@ TEST_F(NodeManagerTest, TestHandleCancelWorkerLeaseHasLeaseNotIdempotent) {
       });
   ASSERT_EQ(leased_workers_.size(), 0);
   ASSERT_EQ(cancel_worker_lease_reply1.success(), true);
-  //
+  // Due to the message reordering case where the cancel worker lease request
+  // arrives at the raylet before the worker lease request has been received, we
+  // cannot return true on the retry since from the raylet perspective both situations are
+  // equivalent. Even if this returns false, the first request to HandleCancelWorkerLease
+  // will trigger the callback for HandleRequestWorkerLease and remove the pending lease
+  // request which prevents the CancelWorkerLease loop.
   ASSERT_EQ(cancel_worker_lease_reply2.success(), false);
 }
 
