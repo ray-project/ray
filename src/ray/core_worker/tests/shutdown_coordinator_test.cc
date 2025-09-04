@@ -148,18 +148,17 @@ TEST_F(ShutdownCoordinatorTest, RequestShutdown_IdempotentBehavior) {
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kForcedExit);  // Reason is updated
 }
 
-TEST_F(ShutdownCoordinatorTest,
-       TryInitiateShutdown_DelegatesToGraceful_OnlyFirstSucceeds) {
+TEST_F(ShutdownCoordinatorTest, RequestShutdown_DelegatesToGraceful_OnlyFirstSucceeds) {
   auto coordinator = CreateCoordinator();
 
-  EXPECT_TRUE(coordinator->TryInitiateShutdown(ShutdownReason::kUserError));
+  EXPECT_TRUE(coordinator->RequestShutdown(false, ShutdownReason::kUserError));
   const auto state = coordinator->GetState();
   EXPECT_TRUE(state == ShutdownState::kShuttingDown ||
               state == ShutdownState::kDisconnecting);
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kUserError);
 
   // Second call should fail
-  EXPECT_FALSE(coordinator->TryInitiateShutdown(ShutdownReason::kForcedExit));
+  EXPECT_FALSE(coordinator->RequestShutdown(false, ShutdownReason::kForcedExit));
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kUserError);  // unchanged
 }
 
@@ -177,24 +176,12 @@ TEST_F(ShutdownCoordinatorTest,
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kGracefulExit);
 
   // Disconnecting -> Shutdown
-  EXPECT_TRUE(coordinator->TryTransitionToShutdown());
+  EXPECT_TRUE(coordinator->RequestShutdown(true, ShutdownReason::kForcedExit));
   EXPECT_EQ(coordinator->GetState(), ShutdownState::kShutdown);
 
   // Further transitions are no-ops.
-  EXPECT_FALSE(coordinator->TryTransitionToDisconnecting());
-  EXPECT_FALSE(coordinator->TryTransitionToShutdown());
-}
-
-TEST_F(ShutdownCoordinatorTest, InvalidTransitions_FromRunning_Fail) {
-  auto coordinator = CreateCoordinator();
-
-  // Cannot transition to disconnecting from running
-  EXPECT_FALSE(coordinator->TryTransitionToDisconnecting());
-  EXPECT_EQ(coordinator->GetState(), ShutdownState::kRunning);
-
-  // Cannot transition to shutdown from running
-  EXPECT_FALSE(coordinator->TryTransitionToShutdown());
-  EXPECT_EQ(coordinator->GetState(), ShutdownState::kRunning);
+  EXPECT_FALSE(coordinator->RequestShutdown(false, ShutdownReason::kGracefulExit));
+  EXPECT_FALSE(coordinator->RequestShutdown(true, ShutdownReason::kForcedExit));
 }
 
 TEST_F(ShutdownCoordinatorTest, ForceShutdown_TransitionsDirectlyToShutdown) {
@@ -205,7 +192,7 @@ TEST_F(ShutdownCoordinatorTest, ForceShutdown_TransitionsDirectlyToShutdown) {
                                            ShutdownReason::kForcedExit));
 
   // Already in shutdown state, manual transition should fail
-  EXPECT_FALSE(coordinator->TryTransitionToShutdown());
+  EXPECT_FALSE(coordinator->RequestShutdown(true, ShutdownReason::kForcedExit));
   EXPECT_EQ(coordinator->GetState(), ShutdownState::kShutdown);
 }
 
@@ -280,28 +267,6 @@ TEST_F(ShutdownCoordinatorTest, Worker_HandleExit_OnIdleTimeout) {
                                            ShutdownReason::kIdleTimeout));
 }
 
-TEST_F(ShutdownCoordinatorTest, ShouldEarlyExit_Performance_IsFast) {
-  auto coordinator = CreateCoordinator();
-  auto start = std::chrono::high_resolution_clock::now();
-  constexpr int iterations = 1000000;
-  volatile bool result = false;
-
-  for (int i = 0; i < iterations; ++i) {
-    result = coordinator->ShouldEarlyExit();
-  }
-
-  auto end = std::chrono::high_resolution_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
-
-  // Should be very fast (less than 100ns per call on modern hardware)
-  double ns_per_call = static_cast<double>(duration.count()) / iterations;
-  EXPECT_LT(ns_per_call, 100.0)
-      << "ShouldEarlyExit too slow: " << ns_per_call << "ns per call";
-
-  // Prevent unused variable warning
-  (void)result;
-}
-
 TEST_F(ShutdownCoordinatorTest, StringRepresentations_StateAndReason_AreReadable) {
   auto coordinator = CreateCoordinator();
 
@@ -313,7 +278,7 @@ TEST_F(ShutdownCoordinatorTest, StringRepresentations_StateAndReason_AreReadable
   EXPECT_EQ(coordinator->GetStateString(), "Disconnecting");
   EXPECT_EQ(coordinator->GetReasonString(), "GracefulExit");
 
-  coordinator->TryTransitionToShutdown();
+  coordinator->RequestShutdown(true, ShutdownReason::kForcedExit);
   EXPECT_EQ(coordinator->GetStateString(), "Shutdown");
 }
 

@@ -1,21 +1,21 @@
-from typing import Any, Dict, List, Union, Tuple, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 if TYPE_CHECKING:
     import torch
 
 import ray
 from ray.dag import (
-    DAGNode,
     ClassMethodNode,
+    DAGNode,
 )
 from ray.dag.constants import COLLECTIVE_OPERATION_KEY, IS_CLASS_METHOD_OUTPUT_KEY
 from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.torch_tensor_type import Communicator, TorchTensorType
 from ray.experimental.util.types import (
-    _CollectiveOp,
     AllGatherOp,
     AllReduceOp,
     ReduceScatterOp,
+    _CollectiveOp,
 )
 from ray.util.annotations import DeveloperAPI
 
