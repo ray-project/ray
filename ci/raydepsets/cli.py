@@ -104,6 +104,8 @@ class DependencySetManager:
 
     def execute(self, single_depset_name: Optional[str] = None):
         if single_depset_name:
+            # check if the depset exists
+            _get_depset(self.config.depsets, single_depset_name)
             self.subgraph_dependency_nodes(single_depset_name)
 
         for node in topological_sort(self.build_graph):

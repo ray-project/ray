@@ -448,12 +448,12 @@ depsets:
             )
             assert len(manager.build_graph.nodes()) == 1
 
-    def test_execute_single_depset_with_subset(self):
+    def test_execute_single_depset_that_does_not_exist(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
-            with self.assertRaises(RuntimeError):
-                manager.execute(single_depset_name="subset_general_depset")
+            with self.assertRaises(KeyError):
+                manager.execute(single_depset_name="fake_depset")
 
     def test_expand(self):
         with tempfile.TemporaryDirectory() as tmpdir:
