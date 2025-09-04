@@ -7,6 +7,7 @@ import string
 import sys
 import time
 import uuid
+from collections import Counter
 from contextlib import redirect_stderr
 from pathlib import Path
 from typing import List, Tuple
@@ -1358,6 +1359,43 @@ def test_configure_default_serve_logger_with_stderr_redirect(
     assert print != redirected_print
     assert not isinstance(sys.stdout, StreamToLogger)
     assert not isinstance(sys.stderr, StreamToLogger)
+
+
+@pytest.mark.parametrize("buffer_size", [1, 100])
+def test_request_id_uniqueness_with_buffering(buffer_size, monkeypatch):
+    """Test request IDs are unique when buffering is enabled."""
+
+    monkeypatch.setenv("RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE", str(buffer_size))
+    logger = logging.getLogger("ray.serve")
+
+    @serve.deployment(logging_config={"encoding": "JSON"})
+    class TestApp:
+        async def __call__(self):
+            logger.info("Processing request")
+            logger.info("Additional log entry")
+            return "OK"
+
+    serve.run(TestApp.bind())
+
+    for _ in range(150 if buffer_size > 1 else 20):
+        httpx.get("http://127.0.0.1:8000/")
+    logs_dir = get_serve_logs_dir()
+
+    for log_file in os.listdir(logs_dir):
+        if log_file.startswith("replica"):
+            with open(os.path.join(logs_dir, log_file)) as f:
+                log_request_ids = []
+                for line in f:
+                    log_entry = json.loads(line)
+                    request_id = log_entry.get("request_id", None)
+                    if request_id:
+                        log_request_ids.append(request_id)
+                # Verify no excessive duplication
+                request_id_counts = Counter(log_request_ids)
+                for request_id, count in request_id_counts.items():
+                    assert (
+                        count <= 5
+                    ), f"Request ids duplicated with buffer size {buffer_size}"
 
 
 if __name__ == "__main__":
