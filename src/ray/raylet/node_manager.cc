@@ -970,7 +970,6 @@ void NodeManager::HandleClientConnectionError(std::shared_ptr<ClientConnection> 
 void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &client,
                                        int64_t message_type,
                                        const uint8_t *message_data) {
-  RAY_LOG(ERROR) << "ProcessClientMessage!";
   auto registered_worker = worker_pool_.GetRegisteredWorker(client);
   auto message_type_value = static_cast<protocol::MessageType>(message_type);
   RAY_LOG(ERROR) << "[Worker] Message "
@@ -1449,13 +1448,18 @@ void NodeManager::HandleAsyncGetObjectsRequest(
   }
   RAY_CHECK(worker) << "NO WORKER!";
 
-  auto task = [this, client]() {
-    RAY_LOG(ERROR) << "DISCONNECTING CLIENT.";
-    DisconnectClient(
-          client, /*graceful=*/false, rpc::WorkerExitType::SYSTEM_ERROR, "FAKE");
-  };
-  execute_after(
-      io_service_, std::move(task), std::chrono::milliseconds(1000));
+  auto result = disconnected_.insert(worker->WorkerId());
+  // Only schedule disconnect once per worker.
+  if (result.second) {
+    execute_after(
+        io_service_,
+        [this, client]() {
+          RAY_LOG(ERROR) << "DISCONNECTING CLIENT.";
+          DisconnectClient(
+              client, /*graceful=*/false, rpc::WorkerExitType::SYSTEM_ERROR, "FAKE");
+        },
+        std::chrono::milliseconds(1000));
+  }
 }
 
 void NodeManager::ProcessWaitRequestMessage(

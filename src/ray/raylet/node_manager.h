@@ -888,6 +888,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Monitors and reports node memory usage and whether it is above threshold.
   std::unique_ptr<MemoryMonitor> memory_monitor_;
+
+  /// XXX.
+  absl::flat_hash_set<WorkerID> disconnected_;
 };
 
 }  // namespace ray::raylet

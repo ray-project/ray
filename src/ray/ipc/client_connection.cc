@@ -333,13 +333,13 @@ std::shared_ptr<ClientConnection> ClientConnection::Create(
     ConnectionErrorHandler connection_error_handler,
     local_stream_socket &&socket,
     std::string debug_label,
-    std::vector<std::string> message_type_enum_names, bool log) {
+    std::vector<std::string> message_type_enum_names) {
   return std::make_shared<ClientConnection>(PrivateTag{},
                                             std::move(message_handler),
                                             std::move(connection_error_handler),
                                             std::move(socket),
                                             std::move(debug_label),
-                                            std::move(message_type_enum_names), log);
+                                            std::move(message_type_enum_names));
 }
 
 ClientConnection::ClientConnection(PrivateTag,
@@ -347,13 +347,13 @@ ClientConnection::ClientConnection(PrivateTag,
                                    ConnectionErrorHandler connection_error_handler,
                                    local_stream_socket &&socket,
                                    std::string debug_label,
-                                   std::vector<std::string> message_type_enum_names, bool log)
+                                   std::vector<std::string> message_type_enum_names)
     : ServerConnection(std::move(socket)),
       registered_(false),
       message_handler_(std::move(message_handler)),
       connection_error_handler_(std::move(connection_error_handler)),
       debug_label_(std::move(debug_label)),
-      message_type_enum_names_(std::move(message_type_enum_names)), log_(log) {}
+      message_type_enum_names_(std::move(message_type_enum_names)) {}
 
 void ClientConnection::Register() {
   RAY_CHECK(!registered_);
@@ -394,12 +394,13 @@ void ClientConnection::ProcessMessages() {
 
 void ClientConnection::ProcessMessageHeader(const boost::system::error_code &error) {
   if (error) {
-    if (log_) {
-      RAY_LOG(ERROR) << "ProcessMessageHeader ERROR: " << error;
-    }
     read_length_ = 0;
     ProcessMessage(error);
     return;
+  }
+
+  if (closed_) {
+    RAY_LOG(ERROR) << "ProcessMessageHeader after close.";
   }
 
   // If there was no error, make sure the ray cookie matches.
@@ -470,23 +471,15 @@ std::string ClientConnection::RemoteEndpointInfo() {
 void ClientConnection::ProcessMessage(const boost::system::error_code &error) {
   auto this_ptr = shared_ClientConnection_from_this();
   if (error) {
-    if (log_) {
-      RAY_LOG(ERROR) << "ProcessMessage ERROR.";
-    }
     return connection_error_handler_(std::move(this_ptr), error);
   }
 
-  if (log_) {
-    RAY_LOG(ERROR) << "ProcessMessage NO ERROR.";
+  if (closed_) {
+    RAY_LOG(ERROR) << "ProcessMessage after close.";
   }
+
   int64_t start_ms = current_time_ms();
-  if (log_) {
-    RAY_LOG(ERROR) << "Calling message_handler_ from ProcessMessage: " << message_type_enum_names_[read_type_];
-  }
   message_handler_(std::move(this_ptr), read_type_, read_message_);
-  if (log_) {
-    RAY_LOG(ERROR) << "message_handler_ finished";
-  }
   int64_t interval = current_time_ms() - start_ms;
   if (interval > RayConfig::instance().handler_warning_timeout_ms()) {
     std::string message_type;

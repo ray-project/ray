@@ -106,9 +106,10 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
   virtual Status ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer);
 
   /// Shuts down socket for this connection.
+  /// XXX.
   void Close() {
-    boost::system::error_code ec;
-    socket_.close(ec);
+    closed_ = true;
+    socket_.close();
   }
 
   /// Get the native handle of the socket.
@@ -164,6 +165,11 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
   /// Count of bytes read total.
   int64_t bytes_read_ = 0;
 
+  /// XXX: move to client connection?
+  /// Whether the connection has been closed by the server.
+  /// After the connection is closed, no more messages will be processed.
+  bool closed_;
+
  private:
   /// Asynchronously flushes the write queue. While async writes are running, the flag
   /// async_write_in_flight_ will be set. This should only be called when no async writes
@@ -197,7 +203,7 @@ class ClientConnection : public ServerConnection {
                    ConnectionErrorHandler connection_error_handler,
                    local_stream_socket &&socket,
                    std::string debug_label,
-                   std::vector<std::string> message_type_enum_names, bool log);
+                   std::vector<std::string> message_type_enum_names);
 
   ClientConnection(const ClientConnection &) = delete;
   ClientConnection &operator=(const ClientConnection &) = delete;
@@ -217,8 +223,7 @@ class ClientConnection : public ServerConnection {
       ConnectionErrorHandler connection_error_handler,
       local_stream_socket &&socket,
       std::string debug_label,
-      std::vector<std::string> message_type_enum_names,
-      bool log = false);
+      std::vector<std::string> message_type_enum_names);
 
   std::shared_ptr<ClientConnection> shared_ClientConnection_from_this() {
     return std::static_pointer_cast<ClientConnection>(shared_from_this());
@@ -240,13 +245,13 @@ class ClientConnection : public ServerConnection {
                    ConnectionErrorHandler connection_error_handler,
                    local_stream_socket &&socket,
                    std::string debug_label,
-                   std::vector<std::string> message_type_enum_names, bool log)
+                   std::vector<std::string> message_type_enum_names)
       : ClientConnection(PrivateTag{},
                          std::move(message_handler),
                          std::move(connection_error_handler),
                          std::move(socket),
                          std::move(debug_label),
-                         std::move(message_type_enum_names), log) {}
+                         std::move(message_type_enum_names)) {}
   /// Process an error from the last operation, then process the  message
   /// header from the client.
   void ProcessMessageHeader(const boost::system::error_code &error);
@@ -267,6 +272,7 @@ class ClientConnection : public ServerConnection {
 
   /// Whether the client has sent us a registration message yet.
   bool registered_;
+
   /// The handler for a message from the client.
   MessageHandler message_handler_;
   /// The handler for an unexpected connection error from this client.
@@ -281,7 +287,6 @@ class ClientConnection : public ServerConnection {
   int64_t read_type_;
   uint64_t read_length_;
   std::vector<uint8_t> read_message_;
-  bool log_;
 };
 
 // Returns `true` for any connections that have disconnected unexpectedly.
