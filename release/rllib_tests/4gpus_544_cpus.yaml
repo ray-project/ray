@@ -5,7 +5,7 @@ max_workers: 5
 
 head_node_type:
     name: head_node
-    instance_type: g4dn.12xlarge
+    instance_type: g3.16xlarge
 
 worker_node_types:
     - name: worker_node
