@@ -19,7 +19,7 @@ from ray.serve._private.constants import (
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
 from ray.serve.config import AutoscalingPolicy
-from ray.serve.schema import ServeApplicationSchema, DeploymentDetails
+from ray.serve.schema import DeploymentDetails, ServeApplicationSchema
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
