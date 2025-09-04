@@ -19,10 +19,6 @@ RUN <<EOF
 
 set -euo pipefail
 
-useradd -ms /bin/bash -d /home/ray ray --uid 1000 --gid 100
-usermod -aG sudo ray
-echo 'ray ALL=NOPASSWD: ALL' >> /etc/sudoers
-
 # Install uv
 curl -sSL -o- https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
 
