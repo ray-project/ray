@@ -437,7 +437,7 @@ class ApplicationAutoscalingState:
             deployment_autoscaling_state = self._deployment_autoscaling_states[
                 deployment_id
             ]
-            if _skip_bound_check:
+            if not _skip_bound_check:
                 deployment_autoscaling_state.apply_bounds(decision_num_replicas)
 
         return decisions

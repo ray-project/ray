@@ -464,17 +464,13 @@ class ActorReplicaWrapper:
             rank = 0
             init_args = (
                 self.replica_id,
-                (
-                    cloudpickle.dumps(deployment_info.replica_config.deployment_def)
-                    if self._deployment_is_cross_language
-                    else deployment_info.replica_config.serialized_deployment_def
-                ),
+                cloudpickle.dumps(deployment_info.replica_config.deployment_def)
+                if self._deployment_is_cross_language
+                else deployment_info.replica_config.serialized_deployment_def,
                 serialized_init_args,
-                (
-                    deployment_info.replica_config.serialized_init_kwargs
-                    if deployment_info.replica_config.serialized_init_kwargs
-                    else cloudpickle.dumps({})
-                ),
+                deployment_info.replica_config.serialized_init_kwargs
+                if deployment_info.replica_config.serialized_init_kwargs
+                else cloudpickle.dumps({}),
                 deployment_info.deployment_config.to_proto_bytes(),
                 self._version,
                 deployment_info.ingress,
@@ -498,15 +494,13 @@ class ActorReplicaWrapper:
                 # String deploymentDef
                 deployment_info.replica_config.deployment_def_name,
                 # byte[] initArgsbytes
-                (
-                    msgpack_serialize(
-                        cloudpickle.loads(
-                            deployment_info.replica_config.serialized_init_args
-                        )
+                msgpack_serialize(
+                    cloudpickle.loads(
+                        deployment_info.replica_config.serialized_init_args
                     )
-                    if self._deployment_is_cross_language
-                    else deployment_info.replica_config.serialized_init_args
-                ),
+                )
+                if self._deployment_is_cross_language
+                else deployment_info.replica_config.serialized_init_args,
                 # byte[] deploymentConfigBytes,
                 deployment_info.deployment_config.to_proto_bytes(),
                 # byte[] deploymentVersionBytes,
@@ -532,9 +526,9 @@ class ActorReplicaWrapper:
             deployment_info.deployment_config.max_ongoing_requests
             > ray_constants.DEFAULT_MAX_CONCURRENCY_ASYNC
         ):
-            actor_options["max_concurrency"] = (
-                deployment_info.deployment_config.max_ongoing_requests
-            )
+            actor_options[
+                "max_concurrency"
+            ] = deployment_info.deployment_config.max_ongoing_requests
 
         return ReplicaSchedulingRequest(
             replica_id=self.replica_id,
@@ -2103,7 +2097,18 @@ class DeploymentState:
         return True
 
     def autoscale(self, target_num_replicas=None) -> int:
-        """Autoscale the deployment based on metrics.
+        """
+        Autoscale the deployment based on metrics or an externally provided target number of replica count.
+
+        If `target_num_replicas` is provided, it overrides the internal autoscaling
+        decision logic and is used directly—typically for application-level autoscaling.
+        If `target_num_replicas` is None, deployment-level autoscaling metrics are used
+        to determine the target number of replicas.
+
+        Args:
+            target_num_replicas (int, optional): External target number of replicas to scale to.
+                Used only when application-level autoscaling decisions are applied.
+                Defaults to None.
 
         Returns:
             Whether the target state has changed.
@@ -3168,10 +3173,10 @@ class DeploymentStateManager:
         )
         if RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY:
             # Tuple of target node to compact, and its draining deadline
-            node_info: Optional[Tuple[str, float]] = (
-                self._deployment_scheduler.get_node_to_compact(
-                    allow_new_compaction=allow_new_compaction
-                )
+            node_info: Optional[
+                Tuple[str, float]
+            ] = self._deployment_scheduler.get_node_to_compact(
+                allow_new_compaction=allow_new_compaction
             )
             if node_info:
                 target_node_id, deadline = node_info
