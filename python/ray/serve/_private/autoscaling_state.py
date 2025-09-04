@@ -73,13 +73,11 @@ class ReplicaMetricReport:
     """Report from a replica on ongoing requests.
 
     Args:
-        running_requests: Average number of running requests at the
-            replica.
+        metrics: Dict[str, List[Any]] of metric_name: List[metric_value]
         timestamp: The time at which this report was received.
     """
 
-    running_requests: float
-    metrics: dict
+    metrics: dict[str, List[Any]]
     timestamp: float
 
 
@@ -134,8 +132,7 @@ class AutoscalingState:
         self._handle_requests: Dict[str, HandleMetricReport] = dict()
         # Map from replica ID to replica request metric report. Metrics
         # are removed from this dict when a replica is stopped.
-        self._replica_requests: Dict[ReplicaID, ReplicaMetricReport] = dict()
-        # Prometheus + Custom metrics from each replica
+        # Prometheus + Custom metrics from each replica are also included
         self._replica_metrics: Dict[ReplicaID, ReplicaMetricReport] = dict()
 
         self._deployment_info = None
@@ -169,8 +166,7 @@ class AutoscalingState:
         return self.apply_bounds(target_num_replicas)
 
     def on_replica_stopped(self, replica_id: ReplicaID):
-        if replica_id in self._replica_requests:
-            del self._replica_requests[replica_id]
+        if replica_id in self._replica_metrics:
             del self._replica_metrics[replica_id]
 
     def get_num_replicas_lower_bound(self) -> int:
@@ -228,9 +224,13 @@ class AutoscalingState:
 
         replica_id = replica_metric_report.replica_id
         send_timestamp = replica_metric_report.timestamp
+
+        if not replica_metric_report or replica_metric_report.metrics.get(RUNNING_REQUESTS_KEY, None) is None:
+            return
+
         if (
-            replica_id not in self._replica_requests
-            or send_timestamp > self._replica_requests[replica_id].timestamp
+            replica_id not in self._replica_metrics
+            or send_timestamp > self._replica_metrics[replica_id].timestamp
         ):
             self._replica_requests[replica_id] = replica_metric_report
 
