@@ -34,7 +34,9 @@ class ScalingConfig(ScalingConfigV1):
         num_workers: The number of workers (Ray actors) to launch.
             Each worker will reserve 1 CPU by default. The number of CPUs
             reserved by each worker can be overridden with the
-            ``resources_per_worker`` argument.
+            ``resources_per_worker`` argument. If the number of workers is 0,
+            the training function will run in local mode, meaning the training
+            function runs in the same process.
         use_gpu: If True, training will be done on GPUs (1 per worker).
             Defaults to False. The number of GPUs reserved by each
             worker can be overridden with the ``resources_per_worker``
@@ -119,6 +121,13 @@ class ScalingConfig(ScalingConfigV1):
                     "`accelerator_type` must be specified in ScalingConfig when "
                     "`use_tpu=True` and `num_workers` > 1."
                 )
+
+        if self.num_workers == 0:
+            logger.info(
+                "Running in local mode. The training function will run in the same process. "
+                "If you are using it and running into issues please file a report at "
+                "https://github.com/ray-project/ray/issues."
+            )
 
         super().__post_init__()
 
