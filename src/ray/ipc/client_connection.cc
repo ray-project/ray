@@ -472,7 +472,7 @@ void ClientConnection::ProcessMessage(const boost::system::error_code &error) {
     return connection_error_handler_(std::move(this_ptr), error);
   }
 
-  RAY_CHECK(!closed_) << "ProcessMessage after close.";
+  RAY_CHECK(!closed_) << "ProcessMessage after close: " << message_type_enum_names_[read_type_];
 
   int64_t start_ms = current_time_ms();
   message_handler_(std::move(this_ptr), read_type_, read_message_);
