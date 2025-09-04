@@ -59,7 +59,7 @@ class TestCustomServeMetrics:
 
         # Wait for controller to receive new metrics
         wait_for_condition(
-            lambda _: "counter"
+            lambda: "counter"
             in get_autoscaling_metrics_from_controller(serve_instance, dep_id),
             timeout=15,
         )
@@ -97,6 +97,8 @@ class TestCustomServeMetrics:
 
         # Call deployment 3 times
         [handle.remote() for _ in range(3)]
+
+        # SignalActor to
 
         # Wait for controller to receive new metrics
         wait_for_condition(
