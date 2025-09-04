@@ -253,23 +253,27 @@ class LocalTrainContext(TrainContext):
     def __init__(
         self,
         experiment_name: str,
+        world_size: int = 1,
+        world_rank: int = 0,
     ):
         self.experiment_name = experiment_name
+        self.world_size = world_size
+        self.world_rank = world_rank
 
     def get_experiment_name(self) -> str:
         return self.experiment_name
 
     def get_world_size(self) -> int:
-        return 1
+        return self.world_size
 
     def get_world_rank(self) -> int:
-        return 0
+        return self.world_rank
 
     def get_local_rank(self) -> int:
-        return 0
+        return self.world_rank
 
     def get_local_world_size(self) -> int:
-        return 1
+        return self.world_size
 
     def get_node_rank(self) -> int:
         """For local mode, we only use one node."""
