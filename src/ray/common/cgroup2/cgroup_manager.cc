@@ -55,8 +55,22 @@ StatusOr<std::unique_ptr<CgroupManager>> CgroupManager::Create(
     const int64_t system_reserved_cpu_weight,
     const int64_t system_reserved_memory_bytes,
     std::unique_ptr<CgroupDriverInterface> cgroup_driver) {
-  // TODO(#54703): Add bounds checking for system_reserved_cpu_weight
-  // and system_reserved_memory_bytes.
+  if (!cpu_weight_constraint_.IsValid(system_reserved_cpu_weight)) {
+    return Status::InvalidArgument(absl::StrFormat(
+        "Invalid constraint %s=%lld. %s must be in the range [%lld, %lld].",
+        cpu_weight_constraint_.name_,
+        system_reserved_cpu_weight,
+        cpu_weight_constraint_.Min(),
+        cpu_weight_constraint_.Max()));
+  }
+  if (!memory_min_constraint_.IsValid(system_reserved_memory_bytes)) {
+    return Status::InvalidArgument(absl::StrFormat(
+        "Invalid constraint %s=%lld. %s must be in the range [%lld, %lld].",
+        memory_min_constraint_.name_,
+        system_reserved_memory_bytes,
+        memory_min_constraint_.Min(),
+        memory_min_constraint_.Max()));
+  }
   RAY_RETURN_NOT_OK(cgroup_driver->CheckCgroupv2Enabled());
   RAY_RETURN_NOT_OK(cgroup_driver->CheckCgroup(base_cgroup_path));
   StatusOr<std::unordered_set<std::string>> available_controllers =
@@ -119,16 +133,15 @@ void CgroupManager::RegisterMoveAllProcesses(const std::string &from,
 
 // TODO(#54703): This is a placeholder for cleanup. This will call
 // CgroupDriver::AddConstraint(cgroup, constraint, default_value).
+template <typename T>
 void CgroupManager::RegisterRemoveConstraint(const std::string &cgroup,
-                                             const std::string &constraint) {
+                                             const Constraint<T> &constraint) {
   cleanup_operations_.emplace_back(
       [constrained_cgroup = cgroup, constraint_to_remove = constraint]() {
-        auto constraint_metadata = supported_constraints_.find(constraint_to_remove);
-        RAY_CHECK(constraint_metadata != supported_constraints_.end());
         RAY_LOG(INFO) << absl::StrFormat(
             "Setting constraint %s to default value %lld for cgroup %s",
-            constraint_to_remove,
-            constraint_metadata->second.default_value,
+            constraint_to_remove.name_,
+            constraint_to_remove.default_value_,
             constrained_cgroup);
       });
 }
@@ -151,8 +164,8 @@ Status CgroupManager::Initialize(int64_t system_reserved_cpu_weight,
 
   // The cpu.weight is distributed between the system and application cgroups.
   // The application cgroup gets whatever is leftover from the system cgroup.
-  int64_t max_cpu_weight = supported_constraints_.at(kCPUWeightConstraint).Max();
-  int64_t application_cgroup_cpu_weight = max_cpu_weight - system_reserved_cpu_weight;
+  int64_t application_cgroup_cpu_weight =
+      cpu_weight_constraint_.Max() - system_reserved_cpu_weight;
 
   RAY_LOG(INFO) << absl::StrFormat(
       "Initializing CgroupManager at base cgroup path at %s. Ray's cgroup "
@@ -164,12 +177,12 @@ Status CgroupManager::Initialize(int64_t system_reserved_cpu_weight,
       node_cgroup_path_,
       supported_controllers,
       system_cgroup_path_,
-      kCPUWeightConstraint,
+      cpu_weight_constraint_.name_,
       system_reserved_cpu_weight,
-      kMemoryMinConstraint,
+      memory_min_constraint_.name_,
       system_reserved_memory_bytes,
       application_cgroup_path_,
-      kCPUWeightConstraint,
+      cpu_weight_constraint_.name_,
       application_cgroup_cpu_weight);
 
   // Create the cgroup heirarchy:
@@ -208,21 +221,24 @@ Status CgroupManager::Initialize(int64_t system_reserved_cpu_weight,
 
   RAY_RETURN_NOT_OK(
       cgroup_driver_->AddConstraint(system_cgroup_path_,
-                                    kMemoryMinConstraint,
-                                    std::to_string(system_reserved_memory_bytes)));
-  RegisterRemoveConstraint(system_cgroup_path_, kMemoryMinConstraint);
+                                    cpu_weight_constraint_.controller_,
+                                    cpu_weight_constraint_.name_,
+                                    std::to_string(system_reserved_cpu_weight)));
+  RegisterRemoveConstraint(system_cgroup_path_, cpu_weight_constraint_);
 
   RAY_RETURN_NOT_OK(
       cgroup_driver_->AddConstraint(system_cgroup_path_,
-                                    kCPUWeightConstraint,
-                                    std::to_string(system_reserved_cpu_weight)));
-  RegisterRemoveConstraint(system_cgroup_path_, kCPUWeightConstraint);
+                                    memory_min_constraint_.controller_,
+                                    memory_min_constraint_.name_,
+                                    std::to_string(system_reserved_memory_bytes)));
+  RegisterRemoveConstraint(system_cgroup_path_, memory_min_constraint_);
 
   RAY_RETURN_NOT_OK(
       cgroup_driver_->AddConstraint(application_cgroup_path_,
-                                    kCPUWeightConstraint,
+                                    cpu_weight_constraint_.controller_,
+                                    cpu_weight_constraint_.name_,
                                     std::to_string(application_cgroup_cpu_weight)));
-  RegisterRemoveConstraint(application_cgroup_path_, kCPUWeightConstraint);
+  RegisterRemoveConstraint(application_cgroup_path_, cpu_weight_constraint_);
 
   return Status::OK();
 }

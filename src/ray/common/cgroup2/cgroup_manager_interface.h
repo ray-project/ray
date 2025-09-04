@@ -39,23 +39,6 @@ namespace ray {
     system     application
 */
 class CgroupManagerInterface {
-  // TODO(#54703): The Constraint struct, supported_constraints_, and
-  // supported_controllers_ are duplicated across CgroupManagerInterface and
-  // CgroupDriverInterface. It makes sense for these to be separated into two concerns:
-  //  1) Checking which controllers and constraints are supported in Ray should be in
-  //  CgroupManagerInterface.
-  //  2) Checking what values are allowed for constraints should be inside
-  //  CgroupDriverInterface.
-  // This will be done in a later PR.
-  struct Constraint {
-    std::pair<int64_t, int64_t> range;
-    std::string controller;
-    int64_t default_value;
-
-    int64_t Max() const { return range.second; }
-    int64_t Min() const { return range.first; }
-  };
-
  public:
   // TODO(#54703): These will be implemented in a later PR to move processes
   // into a cgroup.
@@ -72,16 +55,35 @@ class CgroupManagerInterface {
   inline static const std::string kNodeCgroupName = "ray_node";
   inline static const std::string kSystemCgroupName = "system";
   inline static const std::string kApplicationCgroupName = "application";
-  inline static const std::string kCPUWeightConstraint = "cpu.weight";
-  inline static const std::string kMemoryMinConstraint = "memory.min";
 
-  inline static const std::unordered_map<std::string, Constraint> supported_constraints_ =
-      {{kCPUWeightConstraint, {{1, 10000}, "cpu", 100}},
-       {
-           kMemoryMinConstraint,
-           {{0, std::numeric_limits<size_t>::max()}, "memory", 0},
-       }};
+  // Controllers that can be enabled in Ray.
   inline static const std::unordered_set<std::string> supported_controllers_ = {"cpu",
                                                                                 "memory"};
+  /**
+    Metadata about constraints that can be used.
+    @tparam the type of value that the constraint can take.
+  */
+  template <typename T>
+  struct Constraint {
+    std::string name_;
+    std::string controller_;
+    std::pair<T, T> range_;
+    T default_value_;
+    T Max() const { return range_.second; }
+    T Min() const { return range_.first; }
+    bool IsValid(T value) const { return value <= Max() && value >= Min(); }
+  };
+
+  // cpu.weight distributes a cgroup's cpu cycles between it's children.
+  // See https://docs.kernel.org/admin-guide/cgroup-v2.html#cpu-interface-files
+  inline static const Constraint<int64_t> cpu_weight_constraint_{
+      "cpu.weight", "cpu", {1, 10000}, 100};
+
+  // memory.min guarantees hard memory protection. If the memory usage of a cgroup
+  // is within its effective min boundary, the cgroup’s memory won’t be reclaimed under
+  // any conditions.
+  // See https://docs.kernel.org/admin-guide/cgroup-v2.html#memory-interface-files
+  inline static const Constraint<int64_t> memory_min_constraint_{
+      "memory.min", "memory", {0, std::numeric_limits<int64_t>::max()}, 0};
 };
 }  // namespace ray
