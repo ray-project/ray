@@ -92,7 +92,7 @@ class MetricsPusher:
         task_func: Callable,
         interval_s: int,
     ) -> None:
-        """Register a task under the provided name, or update it.
+        """Register a async or sync task under the provided name, or update it.
 
         This method is idempotent - if a task is already registered with
         the specified name, it will update it with the most recent info.
