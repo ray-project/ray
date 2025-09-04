@@ -42,7 +42,7 @@ def _derive_metadata(read_task: ReadTask, read_task_ref: ObjectRef) -> BlockMeta
         warnings.warn(
             "The serialized size of your read function named "
             f"'{read_task.read_fn.__name__}' is {memory_string(task_size)}. This size "
-            "relatively large. As a result, Ray might excessively "
+            "is relatively large. As a result, Ray might excessively "
             "spill objects during execution. To fix this issue, avoid accessing "
             f"`self` or other large objects in '{read_task.read_fn.__name__}'."
         )
