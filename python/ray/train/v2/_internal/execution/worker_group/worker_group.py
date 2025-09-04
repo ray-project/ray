@@ -37,7 +37,6 @@ from ray.train.v2._internal.execution.callback import (
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.context import (
     DistributedContext,
-    StorageContext,
     TrainRunContext,
 )
 from ray.train.v2._internal.execution.worker_group.poll import (
@@ -145,11 +144,7 @@ class WorkerGroup:
         """
         self._train_run_context = train_run_context
         run_config = self._train_run_context.run_config
-        self._storage_context = StorageContext(
-            storage_path=run_config.storage_path,
-            experiment_dir_name=run_config.name,
-            storage_filesystem=run_config.storage_filesystem,
-        )
+        self._storage_context = run_config.storage_context
 
         self._worker_group_context: WorkerGroupContext = worker_group_context
 

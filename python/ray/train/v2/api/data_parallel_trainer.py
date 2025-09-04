@@ -30,7 +30,6 @@ from ray.train.v2._internal.callbacks import (
     TPUReservationCallback,
     WorkingDirectorySetupCallback,
 )
-from ray.train.v2._internal.callbacks.datasets import GenDataset
 from ray.train.v2._internal.callbacks.env_callback import _initialize_env_callbacks
 from ray.train.v2._internal.callbacks.metrics import (
     ControllerMetricsCallback,
@@ -42,6 +41,7 @@ from ray.train.v2._internal.constants import (
     METRICS_ENABLED_ENV_VAR,
     get_env_vars_to_propagate,
 )
+from ray.train.v2._internal.data_integration.interfaces import GenDataset
 from ray.train.v2._internal.execution.callback import RayTrainCallback
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.controller import TrainController
@@ -164,9 +164,7 @@ class DataParallelTrainer:
         )
         backend_setup_callback = BackendSetupCallback(self.backend_config)
         datasets_setup_callback = DatasetsSetupCallback(
-            datasets=self.datasets,
-            data_config=self.data_config,
-            scaling_config=self.scaling_config,
+            train_run_context=self.train_run_context
         )
         tpu_reservation_setup_callback = TPUReservationCallback()
         callbacks.extend(
