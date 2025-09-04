@@ -1,5 +1,6 @@
 import logging
 from dataclasses import dataclass
+from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional, Union
 
@@ -263,7 +264,7 @@ class RunConfig:
                 "https://github.com/ray-project/ray/issues/49454"
             )
 
-    @property
+    @cached_property
     def storage_context(self) -> StorageContext:
         return StorageContext(
             storage_path=self.storage_path,
