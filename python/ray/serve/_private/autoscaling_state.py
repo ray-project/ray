@@ -12,6 +12,7 @@ from ray.serve._private.common import (
 )
 
 from ray.serve.schema import ServeApplicationSchema, DeploymentDetails
+from ray.serve.config import AutoscalingPolicy
 
 from ray.serve._private.constants import (
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
@@ -381,8 +382,9 @@ class ApplicationAutoscalingState:
     ):
         self._app_name = app_name
         self._deployment_autoscaling_states = deployment_autoscaling_states
-        self._config = None
-        self._policy = None
+        self._config: ServeApplicationSchema = None
+        self._policy: AutoscalingPolicy = None
+        self._policy_state: Dict[str, Dict] = None
 
     def register(self, config: ServeApplicationSchema) -> int:
         self._config = config
@@ -496,6 +498,9 @@ class AutoscalingStateManager:
         return self._app_autoscaling_states[app_name].apply_autoscale_policy(
             deployments
         )
+
+    def is_part_of_autoscaling_application(self, deployment_id: DeploymentID):
+        return deployment_id.app_name in self._app_autoscaling_states
 
     def update_running_replica_ids(
         self, deployment_id: DeploymentID, running_replicas: List[ReplicaID]

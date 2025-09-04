@@ -33,7 +33,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import DEFAULT, validate_ssl_config
-from ray.serve.config import ProxyLocation, RequestRouterConfig
+from ray.serve.config import ProxyLocation, RequestRouterConfig, AutoscalingPolicy
 from ray.util.annotations import PublicAPI
 
 # Shared amongst multiple schemas.
@@ -557,7 +557,7 @@ class ServeApplicationSchema(BaseModel):
         ),
     )
 
-    autoscaling_policy: Optional[Dict] = Field(
+    autoscaling_policy: Optional[AutoscalingPolicy] = Field(
         default=DEFAULT.VALUE,
         description=(
             "Cross deployment autoscaling policy "

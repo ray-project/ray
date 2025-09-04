@@ -442,16 +442,18 @@ class ApplicationState:
 
     def autoscale(self):
         deployments: Dict[str, DeploymentDetails] = self.list_deployment_details()
-        decisions: Dict[str, int] = (
-            self._autoscaling_state_manager.apply_autoscaling_decision(deployments)
+        decisions: Dict[
+            str, int
+        ] = self._autoscaling_state_manager.apply_autoscaling_decision(
+            self._name, deployments
         )
 
         for deployment_name, decision_num_replicas in decisions.items():
             deployment_id: DeploymentID = DeploymentID(
                 name=deployment_name, app_name=self._name
             )
-            self._deployment_state_manager._deployment_states[deployment_id].autoscale(
-                target_num_replicas=decision_num_replicas
+            self._deployment_state_manager.autoscale(
+                deployment_id, decision_num_replicas
             )
 
     def apply_deployment_info(
@@ -474,10 +476,7 @@ class ApplicationState:
                 f'Invalid route prefix "{route_prefix}", it must start with "/"'
             )
 
-        if (
-            self._target_state.config is not None
-            and self._target_state.config.autoscaling_policy is not None
-        ):
+        if self.should_autoscale():
             self._autoscaling_state_manager.register_application(
                 self._name, self._target_state.config
             )

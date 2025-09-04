@@ -1739,6 +1739,9 @@ class DeploymentState:
         """
         return (
             self._id in self._autoscaling_state_manager._deployment_autoscaling_states
+            and not self._autoscaling_state_manager.is_part_of_autoscaling_application(
+                self._id
+            )
         )
 
     def get_checkpoint_data(self) -> DeploymentTargetState:
@@ -3237,6 +3240,11 @@ class DeploymentStateManager:
             self.save_checkpoint()
 
         return any_recovering
+
+    def autoscale(self, deployment_id: DeploymentID, target_num_replicas: int):
+        self._deployment_states[deployment_id].autoscale(
+            target_num_replicas=target_num_replicas
+        )
 
     def _handle_scheduling_request_failures(
         self,
