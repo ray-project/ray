@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import functools
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, List
 
 from ray.data.block import BatchColumn
+from ray.data.datatype import DataType
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
@@ -68,6 +69,8 @@ class Expr(ABC):
         This class should not be instantiated directly. Use the concrete
         subclasses like ColumnExpr, LiteralExpr, etc.
     """
+
+    data_type: DataType
 
     @abstractmethod
     def structurally_equals(self, other: Any) -> bool:
@@ -174,6 +177,7 @@ class ColumnExpr(Expr):
     """
 
     name: str
+    data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
 
     def structurally_equals(self, other: Any) -> bool:
         return isinstance(other, ColumnExpr) and self.name == other.name
@@ -192,12 +196,22 @@ class LiteralExpr(Expr):
 
     Example:
         >>> from ray.data.expressions import lit
+        >>> import numpy as np
         >>> # Create a literal value
         >>> five = lit(5) # Creates LiteralExpr(value=5)
         >>> name = lit("John") # Creates LiteralExpr(value="John")
+        >>> numpy_val = lit(np.int32(42)) # Creates LiteralExpr with numpy type
     """
 
     value: Any
+    data_type: DataType = field(init=False)
+
+    def __post_init__(self):
+        # Infer the type from the value using DataType.infer_dtype
+        inferred_dtype = DataType.infer_dtype(self.value)
+
+        # Use object.__setattr__ since the dataclass is frozen
+        object.__setattr__(self, "data_type", inferred_dtype)
 
     def structurally_equals(self, other: Any) -> bool:
         return (
@@ -232,6 +246,8 @@ class BinaryExpr(Expr):
     left: Expr
     right: Expr
 
+    data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
+
     def structurally_equals(self, other: Any) -> bool:
         return (
             isinstance(other, BinaryExpr)
@@ -263,7 +279,7 @@ class UDFExpr(Expr):
         >>> import pyarrow as pa
         >>> import pyarrow.compute as pc
         >>>
-        >>> @udf()
+        >>> @udf(return_dtype=DataType.int32())
         ... def add_one(x: pa.Array) -> pa.Array:
         ...     return pc.add(x, 1)
         >>>
@@ -289,7 +305,9 @@ class UDFExpr(Expr):
         )
 
 
-def _create_udf_callable(fn: Callable[..., BatchColumn]) -> Callable[..., UDFExpr]:
+def _create_udf_callable(
+    fn: Callable[..., BatchColumn], return_dtype: DataType
+) -> Callable[..., UDFExpr]:
     """Create a callable that generates UDFExpr when called with expressions."""
 
     def udf_callable(*args, **kwargs) -> UDFExpr:
@@ -312,6 +330,7 @@ def _create_udf_callable(fn: Callable[..., BatchColumn]) -> Callable[..., UDFExp
             fn=fn,
             args=expr_args,
             kwargs=expr_kwargs,
+            data_type=return_dtype,
         )
 
     # Preserve original function metadata
@@ -324,7 +343,7 @@ def _create_udf_callable(fn: Callable[..., BatchColumn]) -> Callable[..., UDFExp
 
 
 @PublicAPI(stability="alpha")
-def udf() -> Callable[..., UDFExpr]:
+def udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
     """
     Decorator to convert a UDF into an expression-compatible function.
 
@@ -336,6 +355,9 @@ def udf() -> Callable[..., UDFExpr]:
     multiple values from that column across the batch. Under the hood, when working
     with multiple columns, they get translated to PyArrow arrays (one array per column).
 
+    Args:
+        return_dtype: The data type of the return value of the UDF
+
     Returns:
         A callable that creates UDFExpr instances when called with expressions
 
@@ -346,12 +368,12 @@ def udf() -> Callable[..., UDFExpr]:
         >>> import ray
         >>>
         >>> # UDF that operates on a batch of values (PyArrow Array)
-        >>> @udf()
+        >>> @udf(return_dtype=DataType.int32())
         ... def add_one(x: pa.Array) -> pa.Array:
         ...     return pc.add(x, 1)  # Vectorized operation on the entire Array
         >>>
         >>> # UDF that combines multiple columns (each as a PyArrow Array)
-        >>> @udf()
+        >>> @udf(return_dtype=DataType.string())
         ... def format_name(first: pa.Array, last: pa.Array) -> pa.Array:
         ...     return pc.binary_join_element_wise(first, last, " ")  # Vectorized string concatenation
         >>>
@@ -372,7 +394,7 @@ def udf() -> Callable[..., UDFExpr]:
     """
 
     def decorator(func: Callable[..., BatchColumn]) -> Callable[..., UDFExpr]:
-        return _create_udf_callable(func)
+        return _create_udf_callable(func, return_dtype)
 
     return decorator
 
@@ -383,6 +405,7 @@ class DownloadExpr(Expr):
     """Expression that represents a download operation."""
 
     uri_column_name: str
+    data_type: DataType = field(default_factory=lambda: DataType.binary(), init=False)
 
     def structurally_equals(self, other: Any) -> bool:
         return (
