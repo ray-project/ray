@@ -197,7 +197,8 @@ def test_multi_datasink_partial_failure(ray_start_regular_shared):
 
     ds = ray.data.range(10, override_num_blocks=2)
     # The first sink should write successfully, while the second sink will fail
-    ds.write_datasink(multi_sink, ray_remote_args={"max_retries": 0})
+    with pytest.raises(ValueError):
+        ds.write_datasink(multi_sink, ray_remote_args={"max_retries": 0})
 
     # Check that the first sink has written data successfully
     assert sink1.num_ok == 1
