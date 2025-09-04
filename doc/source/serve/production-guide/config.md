@@ -102,6 +102,8 @@ These are the fields per `application`:
 - **`deployments (optional)`**: A list of deployment options that allows you to override the `@serve.deployment` settings specified in the deployment graph code. Each entry in this list must include the deployment `name`, which must match one in the code. If this section is omitted, Serve launches all deployments in the graph with the parameters specified in the code. See how to [configure serve deployment options](serve-configure-deployment).
 - **`args`**: Arguments that are passed to the [application builder](serve-app-builder-guide).
 
+## Example config
+
 Below is a config for the [`Text ML Model` example](serve-in-production-example) that follows the format explained above:
 
 ```yaml
