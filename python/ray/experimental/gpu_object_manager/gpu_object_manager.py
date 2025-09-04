@@ -120,48 +120,59 @@ class GPUObjectManager:
         obj_id = obj_ref.hex()
         return obj_id in self.pending_gpu_object_metadata
 
-    def receive_pending_gpu_object(self, obj_ref: ObjectRef):
+    def receive_pending_gpu_object(self, obj_ref: ObjectRef, use_object_store: bool):
         """
         Receive the pending GPU objects.
 
         Args:
             obj_ref: The ObjectRef of the GPU object.
+            use_object_store: Whether to use the object store to receive the GPU object.
 
+        Returns:
+            None
         """
         from ray.experimental.collective import get_tensor_transport_manager
         import torch
 
         obj_id = obj_ref.hex()
         gpu_object_meta = self.pending_gpu_object_metadata.pop(obj_id)
-        tensor_transport_backend = gpu_object_meta.tensor_transport_backend
+        if use_object_store:
+            # Put the GPU object metadata in the managed GPU object metadata dictionary.
+            # Later `fetch_object` will use this metadata to fetch the GPU object from
+            # the source actor using object store.
+            self.managed_gpu_object_metadata[obj_id] = gpu_object_meta
+            return
+        else:
+            tensor_transport_backend = gpu_object_meta.tensor_transport_backend
 
-        tensor_transport_manager = get_tensor_transport_manager(
-            tensor_transport_backend
-        )
-
-        tensor_transport_meta = gpu_object_meta.tensor_transport_meta
-        tensors = []
-
-        for meta in tensor_transport_meta.tensor_meta:
-            shape, dtype = meta
-            tensor = torch.zeros(
-                shape,
-                dtype=dtype,
-                device=tensor_transport_meta.tensor_device,
+            tensor_transport_manager = get_tensor_transport_manager(
+                tensor_transport_backend
             )
-            tensors.append(tensor)
-        communicator_meta = tensor_transport_manager.get_communicator_metadata(
-            None, None, tensor_transport_backend
-        )
-        tensor_transport_manager.recv_multiple_tensors(
-            tensors, tensor_transport_meta, communicator_meta
-        )
+
+            tensor_transport_meta = gpu_object_meta.tensor_transport_meta
+            tensors = []
+
+            for meta in tensor_transport_meta.tensor_meta:
+                shape, dtype = meta
+                tensor = torch.zeros(
+                    shape,
+                    dtype=dtype,
+                    device=tensor_transport_meta.tensor_device,
+                )
+                tensors.append(tensor)
+            communicator_meta = tensor_transport_manager.get_communicator_metadata(
+                None, None, tensor_transport_backend
+            )
+            tensor_transport_manager.recv_multiple_tensors(
+                tensors, tensor_transport_meta, communicator_meta
+            )
         tensor_transport = TensorTransportEnum.from_str(
             gpu_object_meta.tensor_transport_backend
         )
+        src_actor = ray.get_runtime_context().current_actor
         self.add_gpu_object_ref(
             obj_ref,
-            None,
+            src_actor,
             tensor_transport,
             pre_computed_tensor_transport_meta=tensor_transport_meta,
         )
@@ -243,7 +254,6 @@ class GPUObjectManager:
 
         if self.gpu_object_store.has_object(obj_id):
             return
-
         gpu_object_meta = self.managed_gpu_object_metadata[obj_id]
         src_actor = gpu_object_meta.src_actor
         tensors = ray.get(

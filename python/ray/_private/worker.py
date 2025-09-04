@@ -886,11 +886,12 @@ class Worker:
             tensor_transport_val=tensor_transport.value,
         )
         if tensors:
+            src_actor = ray.get_runtime_context().current_actor
             self.get_serialization_context().store_gpu_objects(ret.hex(), tensors)
             gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
             gpu_object_manager.add_gpu_object_ref(
                 ret,
-                None,
+                src_actor,
                 tensor_transport,
                 pre_computed_tensor_transport_meta=tensor_transport_meta,
             )
@@ -903,23 +904,35 @@ class Worker:
         for e in out:
             _unhandled_error_handler(e)
 
-    def deserialize_objects(self, serialized_objects, object_refs):
+    def deserialize_objects(
+        self, serialized_objects, object_refs, tensor_transport_hint=None
+    ):
         gpu_objects: Dict[str, List["torch.Tensor"]] = {}
         for obj_ref, (_, _, tensor_transport) in zip(object_refs, serialized_objects):
             # If using a non-object store transport, then tensors will be sent
             # out-of-band. Get them before deserializing the object store data.
-            if (
-                obj_ref.tensor_transport() == TensorTransportEnum.OBJECT_STORE.value
+            tensor_transport_hint_val = (
+                tensor_transport_hint.value
+                if tensor_transport_hint is not None
+                else obj_ref.tensor_transport()
+            )
+            use_object_store = (
+                tensor_transport_hint_val == TensorTransportEnum.OBJECT_STORE.value
                 and (
                     tensor_transport is None
                     or tensor_transport == TensorTransportEnum.OBJECT_STORE
                 )
-            ):
-                continue
+            )
+
             if self.gpu_object_manager.is_pending_gpu_object(obj_ref):
-                self.gpu_object_manager.receive_pending_gpu_object(obj_ref)
+                self.gpu_object_manager.receive_pending_gpu_object(
+                    obj_ref, use_object_store
+                )
             object_id = obj_ref.hex()
-            if object_id not in gpu_objects:
+            if (
+                self.gpu_object_manager.is_managed_object(object_id)
+                and object_id not in gpu_objects
+            ):
                 gpu_objects[object_id] = self.gpu_object_manager.get_gpu_object(
                     object_id
                 )
@@ -940,6 +953,7 @@ class Worker:
         timeout: Optional[float] = None,
         return_exceptions: bool = False,
         skip_deserialization: bool = False,
+        tensor_transport: Optional[str] = None,
     ) -> Tuple[List[serialization.SerializedRayObject], bytes]:
         """Get the values in the object store associated with the IDs.
 
@@ -958,6 +972,7 @@ class Worker:
                 raised.
             skip_deserialization: If true, only the buffer will be released and
                 the object associated with the buffer will not be deserialized.
+            tensor_transport: The tensor transport to use for the GPU object.
         Returns:
             list: List of deserialized objects or None if skip_deserialization is True.
             bytes: UUID of the debugger breakpoint we should drop
@@ -993,8 +1008,14 @@ class Worker:
                     ]
         if skip_deserialization:
             return None, debugger_breakpoint
-
-        values = self.deserialize_objects(serialized_objects, object_refs)
+        tensor_transport = (
+            TensorTransportEnum.from_str(tensor_transport)
+            if tensor_transport is not None
+            else None
+        )
+        values = self.deserialize_objects(
+            serialized_objects, object_refs, tensor_transport_hint=tensor_transport
+        )
         if not return_exceptions:
             # Raise exceptions instead of returning them to the user.
             for i, value in enumerate(values):
@@ -2837,6 +2858,7 @@ def get(
     ],
     *,
     timeout: Optional[float] = None,
+    tensor_transport: Optional[str] = None,
 ) -> Union[Any, List[Any]]:
     """Get a remote object or a list of remote objects from the object store.
 
@@ -2872,6 +2894,7 @@ def get(
             corresponding object becomes available. Setting ``timeout=0`` will
             return the object immediately if it's available, else raise
             GetTimeoutError in accordance with the above docstring.
+        tensor_transport: The tensor transport to use for the GPU object.
 
     Returns:
         A Python object or a list of Python objects.
@@ -2931,7 +2954,9 @@ def get(
                 "'object_refs' must either be an ObjectRef or a list of ObjectRefs. "
             )
 
-        values, debugger_breakpoint = worker.get_objects(object_refs, timeout=timeout)
+        values, debugger_breakpoint = worker.get_objects(
+            object_refs, timeout=timeout, tensor_transport=tensor_transport
+        )
         for i, value in enumerate(values):
             if isinstance(value, RayError):
                 if isinstance(value, ray.exceptions.ObjectLostError):

@@ -1,5 +1,4 @@
 import sys
-import time
 
 import pytest
 import torch
@@ -25,6 +24,14 @@ class GPUTestActor:
 
     def consume(self, refs):
         tensors = [ray.get(ref) for ref in refs]
+        sum = 0
+        for t in tensors:
+            assert t.device.type == "cuda"
+            sum += t.sum().item()
+        return sum
+
+    def consume_object_store(self, refs):
+        tensors = [ray.get(ref, tensor_transport="object_store") for ref in refs]
         sum = 0
         for t in tensors:
             assert t.device.type == "cuda"
@@ -89,8 +96,11 @@ def test_put_and_get_object(ray_start_regular):
     tensors = [tensor1, tensor2, tensor3]
     ref = src_actor.produce.remote(tensors)
     ref1 = dst_actor.consume.remote(ref)
+    ref2 = dst_actor.consume_object_store.remote(ref)
     result1 = ray.get(ref1)
+    result2 = ray.get(ref2)
     assert result1 == 45
+    assert result2 == 45
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
@@ -98,7 +108,6 @@ def test_put_gc(ray_start_regular):
     actor = GPUTestActor.remote()
     ref = actor.gc.remote()
     assert ray.get(ref) == "Success"
-    time.sleep(10)
 
 
 if __name__ == "__main__":
