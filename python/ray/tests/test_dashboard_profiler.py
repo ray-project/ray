@@ -1,8 +1,9 @@
-import pytest
-import subprocess
 import os
-import requests
+import subprocess
 import sys
+
+import pytest
+import requests
 
 import ray
 from ray._private.test_utils import (

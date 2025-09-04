@@ -21,7 +21,6 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/common_protocol.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/util/container_util.h"
 
@@ -200,9 +199,14 @@ void ActorInfoAccessor::AsyncGetAllByFilter(
     request.mutable_filters()->set_job_id(job_id.value().Binary());
   }
   if (actor_state_name) {
-    rpc::ActorTableData::ActorState actor_state =
-        StringToActorState(actor_state_name.value());
-    request.mutable_filters()->set_state(actor_state);
+    static absl::flat_hash_map<std::string, rpc::ActorTableData::ActorState>
+        actor_state_map = {
+            {"DEPENDENCIES_UNREADY", rpc::ActorTableData::DEPENDENCIES_UNREADY},
+            {"PENDING_CREATION", rpc::ActorTableData::PENDING_CREATION},
+            {"ALIVE", rpc::ActorTableData::ALIVE},
+            {"RESTARTING", rpc::ActorTableData::RESTARTING},
+            {"DEAD", rpc::ActorTableData::DEAD}};
+    request.mutable_filters()->set_state(actor_state_map[*actor_state_name]);
   }
 
   client_impl_->GetGcsRpcClient().GetAllActorInfo(
