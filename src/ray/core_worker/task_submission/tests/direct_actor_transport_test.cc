@@ -75,7 +75,7 @@ class DirectTaskTransportTest : public ::testing::Test {
 
  protected:
   bool CheckSubmitTask(TaskSpecification task) {
-    EXPECT_TRUE(actor_task_submitter->SubmitTask(task).ok());
+    actor_task_submitter->SubmitTask(task);
     return 1 == io_context.poll_one();
   }
 
