@@ -191,7 +191,7 @@ void RayletClient::CancelWorkerLease(
     const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) {
   rpc::CancelWorkerLeaseRequest request;
   request.set_lease_id(lease_id.Binary());
-  grpc_client_->CancelWorkerLease(request, callback);
+  grpc_client_->CancelWorkerLease(std::move(request), callback);
 }
 
 void RayletClient::PrepareBundleResources(
