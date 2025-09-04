@@ -76,7 +76,6 @@ def build(
         manager.execute()
     if check:
         manager.diff_lock_files()
-        manager.cleanup()
 
 
 class DependencySetManager:
@@ -132,15 +131,13 @@ class DependencySetManager:
 
     def diff_lock_files(self):
         diffs = self.get_diffs()
-        try:
-            if len(diffs) > 0:
-                raise RuntimeError(
-                    "Lock files are not up to date. Please update lock files and push the changes.\n"
-                    + "".join(diffs)
-                )
-            click.echo("Lock files are up to date.")
-        finally:
-            self.cleanup()
+        self.cleanup()
+        if len(diffs) > 0:
+            raise RuntimeError(
+                "Lock files are not up to date. Please update lock files and push the changes.\n"
+                + "".join(diffs)
+            )
+        click.echo("Lock files are up to date.")
 
     def get_source_and_dest(self, output_path: str) -> tuple[Path, Path]:
         return (self.get_path(output_path), (Path(self.temp_dir) / output_path))
