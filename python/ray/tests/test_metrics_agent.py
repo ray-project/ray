@@ -43,6 +43,7 @@ from ray.dashboard.modules.aggregator.tests.test_aggregator_agent import (
     get_event_aggregator_grpc_stub,
 )
 from ray.util.metrics import Counter, Gauge, Histogram, Metric
+from ray._raylet import JobID, TaskID
 from ray.util.state import list_nodes
 
 os.environ["RAY_event_stats"] = "1"
@@ -144,6 +145,7 @@ _DASHBOARD_METRICS = [
 _EVENT_AGGREGATOR_METRICS = [
     "ray_event_aggregator_agent_events_received_total",
     "ray_event_aggregator_agent_events_buffer_add_failures_total",
+    # HTTP publisher metrics
     "ray_event_aggregator_agent_http_events_published_total",
     "ray_event_aggregator_agent_http_events_filtered_total",
     "ray_event_aggregator_agent_http_publish_failures_total",
@@ -153,6 +155,17 @@ _EVENT_AGGREGATOR_METRICS = [
     "ray_event_aggregator_agent_http_publish_duration_seconds_bucket",
     "ray_event_aggregator_agent_http_publish_duration_seconds_count",
     "ray_event_aggregator_agent_http_publish_duration_seconds_sum",
+    # GCS publisher metrics
+    "ray_event_aggregator_agent_gcs_events_published_total",
+    "ray_event_aggregator_agent_gcs_publish_failures_total",
+    "ray_event_aggregator_agent_gcs_publish_queue_dropped_events_total",
+    "ray_event_aggregator_agent_gcs_publish_duration_seconds_bucket",
+    "ray_event_aggregator_agent_gcs_publish_duration_seconds_count",
+    "ray_event_aggregator_agent_gcs_publish_duration_seconds_sum",
+    "ray_event_aggregator_agent_gcs_publish_consecutive_failures",
+    "ray_event_aggregator_agent_gcs_time_since_last_success_seconds",
+    # Task metadata buffer metrics
+    "ray_event_aggregator_agent_task_metadata_buffer_dropped_events_total",
 ]
 
 _NODE_METRICS = [
@@ -484,6 +497,7 @@ def httpserver_listen_address():
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 2,
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS": "True",
                 # Turn off task events generation to avoid the task events from the
                 # cluster impacting the test result
                 "RAY_task_events_report_interval_ms": 0,
@@ -511,6 +525,7 @@ def test_metrics_export_event_aggregator_agent(
         event_aggregator_metrics = [
             "ray_event_aggregator_agent_events_received_total",
             "ray_event_aggregator_agent_events_buffer_add_failures_total",
+            # HTTP publisher metrics
             "ray_event_aggregator_agent_http_publisher_published_events_total",
             "ray_event_aggregator_agent_http_publisher_filtered_events_total",
             "ray_event_aggregator_agent_http_publisher_failures_total",
@@ -520,6 +535,17 @@ def test_metrics_export_event_aggregator_agent(
             "ray_event_aggregator_agent_http_publisher_publish_duration_seconds_bucket",
             "ray_event_aggregator_agent_http_publisher_publish_duration_seconds_count",
             "ray_event_aggregator_agent_http_publisher_publish_duration_seconds_sum",
+            # GCS publisher metrics
+            "ray_event_aggregator_agent_gcs_publisher_events_published_total",
+            "ray_event_aggregator_agent_gcs_publisher_publish_failures_total",
+            "ray_event_aggregator_agent_gcs_publisher_queue_dropped_events_total",
+            "ray_event_aggregator_agent_gcs_publisher_publish_duration_seconds_bucket",
+            "ray_event_aggregator_agent_gcs_publisher_publish_duration_seconds_count",
+            "ray_event_aggregator_agent_gcs_publisher_publish_duration_seconds_sum",
+            "ray_event_aggregator_agent_gcs_publisher_consecutive_failures_since_last_success",
+            "ray_event_aggregator_agent_gcs_publisher_time_since_last_success_seconds",
+            # Task metadata buffer metrics
+            "ray_event_aggregator_agent_task_metadata_buffer_dropped_events_total",
         ]
         return all(metric in metrics_names for metric in event_aggregator_metrics)
 
@@ -529,20 +555,30 @@ def test_metrics_export_event_aggregator_agent(
             "ray_event_aggregator_agent_events_received_total": 3.0,
             "ray_event_aggregator_agent_events_buffer_add_failures_total": 0.0,
             "ray_event_aggregator_agent_http_publisher_published_events_total": 1.0,
-            "ray_event_aggregator_agent_http_publisher_filtered_events_total": 1.0,
+            "ray_event_aggregator_agent_http_publisher_filtered_events_total": 1.0,  # Profile event is filtered out
             "ray_event_aggregator_agent_http_publisher_failures_total": 0.0,
+            "ray_event_aggregator_agent_http_publisher_queue_dropped_events_total": 1.0,  # dropped due to max buffer size
+            "ray_event_aggregator_agent_gcs_publisher_events_published_total": 2.0,
+            "ray_event_aggregator_agent_gcs_publisher_publish_failures_total": 0.0,
+            "ray_event_aggregator_agent_gcs_publisher_queue_dropped_events_total": 1.0,  # dropped due to max buffer size
         }
         for descriptor, expected_value in expected_metrics_values.items():
             samples = [m for m in metric_samples if m.name == descriptor]
             if not samples:
+                print(f"Metric {descriptor} not found")
                 return False
             if samples[0].value != expected_value:
+                print(
+                    f"Metric {descriptor} value {samples[0].value} does not match expected {expected_value}"
+                )
                 return False
         return True
 
     now = time.time_ns()
     seconds, nanos = divmod(now, 10**9)
     timestamp = Timestamp(seconds=seconds, nanos=nanos)
+    job_id = JobID.from_int(1)
+    valid_task_id_bytes = TaskID.for_fake_task(job_id).binary()
     request = AddEventsRequest(
         events_data=RayEventsData(
             events=[
@@ -574,7 +610,7 @@ def test_metrics_export_event_aggregator_agent(
             task_events_metadata=TaskEventsMetadata(
                 dropped_task_attempts=[
                     TaskAttempt(
-                        task_id=b"1",
+                        task_id=valid_task_id_bytes,
                         attempt_number=1,
                     ),
                 ],

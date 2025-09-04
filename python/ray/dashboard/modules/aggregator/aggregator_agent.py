@@ -2,16 +2,19 @@ import asyncio
 import os
 from concurrent.futures import ThreadPoolExecutor
 import logging
+from ray._private.gcs_utils import create_gcs_channel
 from ray.dashboard.modules.aggregator.multi_consumer_event_buffer import (
     MultiConsumerEventBuffer,
 )
 from ray.dashboard.modules.aggregator.publisher.async_publisher_client import (
     AsyncHttpPublisherClient,
+    AsyncGCSPublisherClient,
 )
 from ray.dashboard.modules.aggregator.publisher.ray_event_publisher import (
     NoopPublisher,
     RayEventsPublisher,
 )
+from ray.dashboard.modules.aggregator.task_metadata_buffer import TaskMetadataBuffer
 
 try:
     import prometheus_client
@@ -27,6 +30,7 @@ from ray.core.generated import (
     events_event_aggregator_service_pb2,
     events_event_aggregator_service_pb2_grpc,
     events_base_event_pb2,
+    gcs_service_pb2_grpc,
 )
 
 logger = logging.getLogger(__name__)
@@ -72,6 +76,10 @@ EXPOSABLE_EVENT_TYPES = os.environ.get(
 PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SVC = ray_constants.env_bool(
     f"{env_var_prefix}_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SVC", True
 )
+# flag to enable publishing events to GCS
+PUBLISH_EVENTS_TO_GCS = ray_constants.env_bool(
+    f"{env_var_prefix}_PUBLISH_EVENTS_TO_GCS", False
+)
 
 # Metrics
 if prometheus_client:
@@ -88,6 +96,7 @@ if prometheus_client:
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
+    # External HTTP service publisher metrics
     events_published_to_http_svc = Counter(
         f"{metrics_prefix}_http_publisher_published_events_total",
         "Total number of events successfully published to the HTTP service.",
@@ -130,6 +139,50 @@ if prometheus_client:
         tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
         namespace="ray",
     )
+    # GCS publisher metrics
+    events_published_to_gcs = Counter(
+        f"{metrics_prefix}_gcs_publisher_events_published_total",
+        "Total number of events successfully published to GCS.",
+        tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
+        namespace="ray",
+    )
+    events_failed_to_publish_to_gcs = Counter(
+        f"{metrics_prefix}_gcs_publisher_publish_failures_total",
+        "Total number of events failed to publish to GCS after retries.",
+        tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
+        namespace="ray",
+    )
+    events_dropped_in_gcs_publish_queue = Counter(
+        f"{metrics_prefix}_gcs_publisher_queue_dropped_events_total",
+        "Total number of events dropped due to the GCS publish queue being full.",
+        tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS) + ("event_type",),
+        namespace="ray",
+    )
+    gcs_publish_latency_seconds = Histogram(
+        f"{metrics_prefix}_gcs_publisher_publish_duration_seconds",
+        "Duration of GCS publish calls in seconds.",
+        tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS) + ("Outcome",),
+        namespace="ray",
+    )
+    gcs_failed_attempts_since_last_success = Gauge(
+        f"{metrics_prefix}_gcs_publisher_consecutive_failures_since_last_success",
+        "Number of consecutive failed publish attempts since the last success.",
+        tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
+        namespace="ray",
+    )
+    gcs_time_since_last_success_seconds = Gauge(
+        f"{metrics_prefix}_gcs_publisher_time_since_last_success_seconds",
+        "Seconds since the last successful publish to GCS.",
+        tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
+        namespace="ray",
+    )
+    # Task metadata buffer metrics
+    events_dropped_in_task_metadata_buffer = Counter(
+        f"{metrics_prefix}_task_metadata_buffer_dropped_events_total",
+        "Total number of events dropped due to the task metadata buffer being full.",
+        tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
+        namespace="ray",
+    )
 
 
 class AggregatorAgent(
@@ -138,8 +191,8 @@ class AggregatorAgent(
 ):
     """
     AggregatorAgent is a dashboard agent module that collects events sent with
-    gRPC from other components, buffers them, and periodically sends them to an
-    external service with HTTP POST requests for further processing or storage
+    gRPC from other components, buffers them, and periodically sends them to GCS and
+    an external service with HTTP POST requests for further processing or storage
     """
 
     def __init__(self, dashboard_agent) -> None:
@@ -153,6 +206,9 @@ class AggregatorAgent(
             max_workers=THREAD_POOL_EXECUTOR_MAX_WORKERS,
             thread_name_prefix="event_aggregator_agent_executor",
         )
+
+        # Task metadata buffer accumulates dropped task attempts for GCS publishing
+        self._task_metadata_buffer = TaskMetadataBuffer()
 
         self._lock = asyncio.Lock()
         self._events_received_since_last_metrics_update = 0
@@ -189,6 +245,27 @@ class AggregatorAgent(
             )
             self._http_endpoint_publisher = NoopPublisher()
 
+        if PUBLISH_EVENTS_TO_GCS:
+            logger.info("Publishing events to GCS is enabled")
+            self._event_processing_enabled = True
+            self._async_gcs_channel = create_gcs_channel(self.gcs_address, aio=True)
+            self._async_gcs_event_stub = (
+                gcs_service_pb2_grpc.RayEventExportGcsServiceStub(
+                    self._async_gcs_channel
+                )
+            )
+            self._gcs_publisher = RayEventsPublisher(
+                name="gcs-publisher",
+                publish_client=AsyncGCSPublisherClient(
+                    gcs_stub=self._async_gcs_event_stub
+                ),
+                event_buffer=self._event_buffer,
+                task_metadata_buffer=self._task_metadata_buffer,
+            )
+        else:
+            logger.info("Publishing events to GCS is disabled")
+            self._gcs_publisher = NoopPublisher()
+
     async def AddEvents(self, request, context) -> None:
         """
         gRPC handler for adding events to the event aggregator. Receives events from the
@@ -197,10 +274,8 @@ class AggregatorAgent(
         if not self._event_processing_enabled:
             return events_event_aggregator_service_pb2.AddEventsReply()
 
-        # TODO(myan) #54515: Considering adding a mechanism to also send out the events
-        # metadata (e.g. dropped task attempts) to help with event processing at the
-        # downstream
         events_data = request.events_data
+        await self._task_metadata_buffer.merge(events_data.task_events_metadata)
         for event in events_data.events:
             async with self._lock:
                 self._events_received_since_last_metrics_update += 1
@@ -247,6 +322,10 @@ class AggregatorAgent(
         http_endpoint_publisher_metrics = await (
             self._http_endpoint_publisher.get_and_reset_metrics()
         )
+        gcs_publisher_metrics = await self._gcs_publisher.get_and_reset_metrics()
+        task_metadata_buffer_metrics = (
+            await self._task_metadata_buffer.get_and_reset_metrics()
+        )
 
         # Aggregator agent metrics
         async with self._lock:
@@ -284,6 +363,31 @@ class AggregatorAgent(
             "time_since_last_success_seconds", None
         )
 
+        # Task metadata buffer metrics
+        _task_metadata_buffer_dropped_metadata_count = task_metadata_buffer_metrics.get(
+            "dropped_metadata_count", 0
+        )
+
+        # GCS publisher metrics
+        _events_published_to_gcs = gcs_publisher_metrics.get("published", 0)
+        _events_failed_to_publish_to_gcs = gcs_publisher_metrics.get("failed", 0)
+        _events_dropped_in_gcs_publish_queue_by_type = gcs_publisher_metrics.get(
+            "dropped_events", {}
+        )
+        _gcs_publish_latency_success_samples = gcs_publisher_metrics.get(
+            "success_latency_seconds", []
+        )
+        _gcs_publish_latency_failure_samples = gcs_publisher_metrics.get(
+            "failure_latency_seconds", []
+        )
+        _gcs_failed_attempts_since_last_success = gcs_publisher_metrics.get(
+            "failed_attempts_since_last_success", 0
+        )
+        _gcs_time_since_last_success_seconds = gcs_publisher_metrics.get(
+            "time_since_last_success_seconds", None
+        )
+
+        # Emit metrics to Prometheus
         events_received.labels(**common_labels).inc(_events_received)
         events_failed_to_add_to_aggregator.labels(**common_labels).inc(
             _events_failed_to_add_to_aggregator
@@ -321,6 +425,40 @@ class AggregatorAgent(
                 float(_time_since_last_success_seconds)
             )
 
+        events_published_to_gcs.labels(**common_labels).inc(_events_published_to_gcs)
+        events_failed_to_publish_to_gcs.labels(**common_labels).inc(
+            _events_failed_to_publish_to_gcs
+        )
+
+        for (
+            _event_type,
+            _dropped_count,
+        ) in _events_dropped_in_gcs_publish_queue_by_type.items():
+            events_dropped_in_gcs_publish_queue.labels(
+                **common_labels, event_type=str(_event_type)
+            ).inc(_dropped_count)
+
+        for _sample in _gcs_publish_latency_success_samples:
+            gcs_publish_latency_seconds.labels(
+                **common_labels, Outcome="success"
+            ).observe(float(_sample))
+        for _sample in _gcs_publish_latency_failure_samples:
+            gcs_publish_latency_seconds.labels(
+                **common_labels, Outcome="failure"
+            ).observe(float(_sample))
+        gcs_failed_attempts_since_last_success.labels(**common_labels).set(
+            int(_gcs_failed_attempts_since_last_success)
+        )
+        if _gcs_time_since_last_success_seconds is not None:
+            gcs_time_since_last_success_seconds.labels(**common_labels).set(
+                float(_gcs_time_since_last_success_seconds)
+            )
+
+        # Task metadata buffer metrics
+        events_dropped_in_task_metadata_buffer.labels(**common_labels).inc(
+            _task_metadata_buffer_dropped_metadata_count
+        )
+
     async def run(self, server) -> None:
         if server:
             events_event_aggregator_service_pb2_grpc.add_EventAggregatorServiceServicer_to_server(
@@ -329,8 +467,12 @@ class AggregatorAgent(
 
         await asyncio.gather(
             self._http_endpoint_publisher.run_forever(),
+            self._gcs_publisher.run_forever(),
             self._update_metrics(),
         )
+
+        self._executor.shutdown()
+        self._async_gcs_channel.close()
 
     @staticmethod
     def is_minimal_module() -> bool:
