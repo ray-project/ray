@@ -2224,7 +2224,7 @@ def struct_with_null_tensor_values_expected():
                 "struct",
                 pa.struct(
                     [
-                        ("tensor", ArrowVariableShapedTensorType(pa.float32(), 2)),
+                        ("tensor", ArrowTensorTypeV2((2,), pa.float32())),
                         ("value", pa.int64()),
                     ]
                 ),
@@ -2825,7 +2825,7 @@ def unify_schemas_missing_tensor_fields_schemas():
                 "struct",
                 pa.struct(
                     [
-                        ("tensor", ArrowVariableShapedTensorType(pa.int32(), 2)),
+                        ("tensor", ArrowTensorType((2, 2), pa.int32())),
                         ("value", pa.int64()),
                     ]
                 ),
@@ -2887,7 +2887,7 @@ def unify_schemas_nested_struct_tensors_schemas():
                                 [
                                     (
                                         "tensor",
-                                        ArrowVariableShapedTensorType(pa.float32(), 2),
+                                        ArrowTensorType((3, 3), pa.float32()),
                                     ),
                                     ("data", pa.string()),
                                 ]
