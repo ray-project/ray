@@ -1,7 +1,7 @@
 #source: object_ref.pxi
-from typing import Any, Awaitable, Callable, Generator, TypeVar, Union
 import asyncio
 import concurrent.futures
+from typing import Any, Awaitable, Callable, Generator, TypeVar, Union
 
 from ray.includes.unique_ids import BaseID, JobID, TaskID
 
