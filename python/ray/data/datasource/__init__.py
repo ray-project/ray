@@ -6,6 +6,7 @@ from ray.data.datasource.datasink import (
     WriteResult,
     WriteReturnType,
 )
+from ray.data.datasource.multi_datasink import MultiDatasink, SinkWriteResult
 from ray.data.datasource.datasource import (
     Datasource,
     RandomIntRowDatasource,
@@ -48,6 +49,8 @@ __all__ = [
     "DeltaSharingDatasource",
     "DefaultFileMetadataProvider",
     "DummyOutputDatasink",
+    "MultiDatasink",
+    "SinkWriteResult",
     "FastFileMetadataProvider",
     "FileBasedDatasource",
     "FileShuffleConfig",

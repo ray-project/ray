@@ -7,7 +7,7 @@ import pytest
 import ray
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block, BlockAccessor
-from ray.data.datasource import Datasink
+from ray.data.datasource import Datasink, MultiDatasink
 from ray.data.datasource.datasink import DummyOutputDatasink, WriteResult
 
 
@@ -166,6 +166,129 @@ def test_write_result(ray_start_regular_shared):
     assert datasink.ids == list(range(num_items))
     assert datasink.num_rows == num_items
     assert datasink.size_bytes == pytest.approx(num_items * size_bytes_per_row, rel=0.1)
+
+
+def test_multi_datasink(ray_start_regular_shared):
+    """Test the basic functionality of MultiDatasink."""
+    sink1 = DummyOutputDatasink()
+    sink2 = DummyOutputDatasink()
+    multi_sink = MultiDatasink({"sink1": sink1, "sink2": sink2})
+
+    ds = ray.data.range(10, override_num_blocks=2)
+    ds.write_datasink(multi_sink)
+
+    # Check that both sinks have written data successfully
+    assert sink1.num_ok == 1
+    assert sink1.num_failed == 0
+    assert ray.get(sink1.data_sink.get_rows_written.remote()) == 10
+
+    assert sink2.num_ok == 1
+    assert sink2.num_failed == 0
+    assert ray.get(sink2.data_sink.get_rows_written.remote()) == 10
+
+
+def test_multi_datasink_partial_failure(ray_start_regular_shared):
+    """Test the partial failure scenario of MultiDatasink."""
+    sink1 = DummyOutputDatasink()
+    sink2 = DummyOutputDatasink()
+    # Disable the second sink
+    sink2.enabled = False
+    multi_sink = MultiDatasink({"sink1": sink1, "sink2": sink2})
+
+    ds = ray.data.range(10, override_num_blocks=2)
+    # The first sink should write successfully, while the second sink will fail
+    ds.write_datasink(multi_sink, ray_remote_args={"max_retries": 0})
+
+    # Check that the first sink has written data successfully
+    assert sink1.num_ok == 1
+    assert sink1.num_failed == 0
+    assert ray.get(sink1.data_sink.get_rows_written.remote()) == 10
+
+    # The second sink should fail without affecting the overall operation
+    assert sink2.num_ok == 0
+    assert sink2.num_failed == 1
+
+
+def test_multi_datasink_different_types(ray_start_regular_shared):
+    """Test that MultiDatasink supports sinks with different return types."""
+
+    @dataclass
+    class CustomWriteResult:
+        ids: List[int]
+
+    class CustomDatasink(Datasink[CustomWriteResult]):
+        def __init__(self) -> None:
+            self.ids = []
+            self.num_ok = 0
+            self.num_failed = 0
+
+        def write(self, blocks: Iterable[Block], ctx: TaskContext):
+            ids = []
+            for b in blocks:
+                ids.extend(b["id"].to_pylist())
+            return CustomWriteResult(ids=ids)
+
+        def on_write_complete(self, write_result: WriteResult[CustomWriteResult]):
+            self.num_ok += 1
+            ids = []
+            for result in write_result.write_returns:
+                ids.extend(result.ids)
+            self.ids = sorted(ids)
+
+        def on_write_failed(self, error: Exception) -> None:
+            self.num_failed += 1
+
+    # Create two sinks of different types
+    standard_sink = DummyOutputDatasink()
+    custom_sink = CustomDatasink()
+
+    # Create MultiDatasink
+    multi_sink = MultiDatasink({"standard": standard_sink, "custom": custom_sink})
+
+    # Write data
+    ds = ray.data.range(10, override_num_blocks=2)
+    ds.write_datasink(multi_sink)
+
+    # Verify that both sinks have processed the data correctly
+    assert standard_sink.num_ok == 1
+    assert standard_sink.num_failed == 0
+    assert ray.get(standard_sink.data_sink.get_rows_written.remote()) == 10
+
+    assert custom_sink.num_ok == 1
+    assert custom_sink.num_failed == 0
+    assert custom_sink.ids == list(range(10))
+
+
+def test_multi_datasink_min_rows_property(ray_start_regular_shared):
+    """Test that MultiDatasink correctly handles the min_rows_per_write property."""
+
+    class MockDatasink(Datasink[None]):
+        def __init__(self, min_rows_per_write):
+            self._min_rows_per_write = min_rows_per_write
+
+        def write(self, blocks: Iterable[Block], ctx: TaskContext) -> None:
+            pass
+
+        @property
+        def min_rows_per_write(self):
+            return self._min_rows_per_write
+
+    # Create sinks with different min_rows_per_write values
+    sink1 = MockDatasink(5)
+    sink2 = MockDatasink(10)
+    sink3 = MockDatasink(None)
+
+    # Test with only two sinks that have values
+    multi_sink1 = MultiDatasink({"sink1": sink1, "sink2": sink2})
+    assert multi_sink1.min_rows_per_write == 10
+
+    # Test with a sink that has None value
+    multi_sink2 = MultiDatasink({"sink1": sink1, "sink3": sink3})
+    assert multi_sink2.min_rows_per_write == 5
+
+    # Test with all sinks having None values
+    multi_sink3 = MultiDatasink({"sink3": sink3})
+    assert multi_sink3.min_rows_per_write is None
 
 
 if __name__ == "__main__":

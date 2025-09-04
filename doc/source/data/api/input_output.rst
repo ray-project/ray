@@ -380,6 +380,7 @@ Datasink API
 
    Dataset.write_datasink
    Datasink
+   MultiDatasink
    datasource.RowBasedFileDatasink
    datasource.BlockBasedFileDatasink
    datasource.FileBasedDatasource
