@@ -19,9 +19,6 @@ RUN <<EOF
 
 set -euo pipefail
 
-# Install uv
-curl -sSL -o- https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
-
 # Install Python versions
 uv python install 3.9 3.10 3.11 3.12 3.13
 
