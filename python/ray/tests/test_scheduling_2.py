@@ -436,7 +436,7 @@ def test_node_affinity_scheduling_strategy_soft_spill_on_unavailable(ray_start_c
     assert ray.get(worker_node_ref, timeout=10) == worker_node.node_id
 
 
-def test_node_affinity_scheduling_strategy_fail_on_unavailable(ray_start_cluster):
+def test_node_affinity_label_selector_fail_on_unavailable(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1)
     ray.init(address=cluster.address)
