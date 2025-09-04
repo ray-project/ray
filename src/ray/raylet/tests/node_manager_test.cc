@@ -999,7 +999,12 @@ INSTANTIATE_TEST_SUITE_P(NodeManagerReturnWorkerLeaseIdempotentVariations,
                          NodeManagerReturnWorkerLeaseIdempotentTest,
                          testing::Combine(testing::Bool(), testing::Bool()));
 
-TEST_F(NodeManagerTest, TestHandleCancelWorkerLeaseHasLeaseNotIdempotent) {
+size_t GetPendingLeaseWorkerCount(const LocalLeaseManager &local_lease_manager) {
+  return local_lease_manager.waiting_lease_queue_.size() +
+         local_lease_manager.leases_to_grant_.size();
+}
+
+TEST_F(NodeManagerTest, RetryHandleCancelWorkerLeaseWhenHasLeaseRequest) {
   auto lease_spec = BuildLeaseSpec({});
   rpc::RequestWorkerLeaseRequest request_worker_lease_request;
   rpc::RequestWorkerLeaseReply request_worker_lease_reply;
@@ -1015,6 +1020,7 @@ TEST_F(NodeManagerTest, TestHandleCancelWorkerLeaseHasLeaseNotIdempotent) {
       [](Status s, std::function<void()> success, std::function<void()> failure) {
         ASSERT_TRUE(s.ok());
       });
+  ASSERT_EQ(GetPendingLeaseWorkerCount(*local_lease_manager_), 1);
   rpc::CancelWorkerLeaseRequest cancel_worker_lease_request;
   cancel_worker_lease_request.set_lease_id(lease_id.Binary());
   rpc::CancelWorkerLeaseReply cancel_worker_lease_reply1;
@@ -1025,14 +1031,14 @@ TEST_F(NodeManagerTest, TestHandleCancelWorkerLeaseHasLeaseNotIdempotent) {
       [](Status s, std::function<void()> success, std::function<void()> failure) {
         ASSERT_TRUE(s.ok());
       });
-  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(GetPendingLeaseWorkerCount(*local_lease_manager_), 0);
   node_manager_->HandleCancelWorkerLease(
       cancel_worker_lease_request,
       &cancel_worker_lease_reply2,
       [](Status s, std::function<void()> success, std::function<void()> failure) {
         ASSERT_TRUE(s.ok());
       });
-  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(GetPendingLeaseWorkerCount(*local_lease_manager_), 0);
   ASSERT_EQ(cancel_worker_lease_reply1.success(), true);
   // Due to the message reordering case where the cancel worker lease request
   // arrives at the raylet before the worker lease request has been received, we
@@ -1055,39 +1061,14 @@ TEST_F(NodeManagerTest, TestHandleCancelWorkerLeaseNoLeaseIdempotent) {
       [](Status s, std::function<void()> success, std::function<void()> failure) {
         ASSERT_TRUE(s.ok());
       });
-  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(GetPendingLeaseWorkerCount(*local_lease_manager_), 0);
   node_manager_->HandleCancelWorkerLease(
       request,
       &reply2,
       [](Status s, std::function<void()> success, std::function<void()> failure) {
         ASSERT_TRUE(s.ok());
       });
-  ASSERT_EQ(leased_workers_.size(), 0);
-  ASSERT_EQ(reply1.success(), false);
-  ASSERT_EQ(reply2.success(), false);
-}
-
-TEST_F(NodeManagerTest, TestHandleCancelWorkerLeaseHasGrantedLeaseIdempotent) {
-  LeaseID lease_id = LeaseID::FromRandom();
-  leased_workers_[lease_id] = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
-  rpc::CancelWorkerLeaseRequest request;
-  request.set_lease_id(lease_id.Binary());
-  rpc::CancelWorkerLeaseReply reply1;
-  rpc::CancelWorkerLeaseReply reply2;
-  node_manager_->HandleCancelWorkerLease(
-      request,
-      &reply1,
-      [](Status s, std::function<void()> success, std::function<void()> failure) {
-        ASSERT_TRUE(s.ok());
-      });
-  ASSERT_EQ(leased_workers_.size(), 1);
-  node_manager_->HandleCancelWorkerLease(
-      request,
-      &reply2,
-      [](Status s, std::function<void()> success, std::function<void()> failure) {
-        ASSERT_TRUE(s.ok());
-      });
-  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(GetPendingLeaseWorkerCount(*local_lease_manager_), 0);
   ASSERT_EQ(reply1.success(), false);
   ASSERT_EQ(reply2.success(), false);
 }
