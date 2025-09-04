@@ -3,7 +3,9 @@ import logging
 import os
 import sys
 import traceback
-from typing import Any, Optional
+import json
+import time
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import ray
 from ray._common.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
@@ -30,6 +32,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.utils import get_component_file_name
 from ray.serve.schema import EncodingType, LoggingConfig
+from ray.autoscaler._private.event_summarizer import EventSummarizer
 
 buildin_print = builtins.print
 
@@ -517,3 +520,152 @@ class LoggingContext:
     def __exit__(self, et, ev, tb):
         if self.level is not None:
             self.logger.setLevel(self.old_level)
+
+
+class ServeEventSummarizer:
+    """Serve-specific wrapper around Ray's EventSummarizer.
+
+    Centralizes autoscaling snapshot formatting, decision summarization,
+    throttled note emission, and change-signature calculation so controller logic
+    remains small and consistent.
+    """
+
+    def __init__(self, logger: logging.Logger):
+        self._summarizer = EventSummarizer()
+        self._logger = logger
+
+    def compute_signature(
+        self,
+        *,
+        current_replicas: int,
+        proposed_replicas: int,
+        min_replicas: Optional[int],
+        max_replicas: Optional[int],
+        scaling_status: str,
+        total_requests: float,
+    ) -> Tuple[int, int, Optional[int], Optional[int], str, float]:
+        """Return a hashable signature that represents the visible snapshot state.
+
+        The controller uses this to avoid emitting duplicate logs when nothing
+        material changed.
+        """
+        return (
+            int(current_replicas),
+            int(proposed_replicas),
+            None if min_replicas is None else int(min_replicas),
+            None if max_replicas is None else int(max_replicas),
+            str(scaling_status),
+            float(total_requests or 0.0),
+        )
+
+    def summarize_recent_decisions(
+        self, decisions: Sequence[Any], *, limit: int = 2
+    ) -> List[Dict[str, Any]]:
+        """Convert recent ScalingDecision objects into compact dicts for logs."""
+        out: List[Dict[str, Any]] = []
+        for d in list(decisions)[-limit:]:
+            if hasattr(d, "dict"):
+                dd = d.dict()
+                ts = dd.get("timestamp_s") or time.time()
+                from_rep = dd.get("prev_num_replicas")
+                to_rep = dd.get("curr_num_replicas")
+                reason = dd.get("reason") or ""
+            else:
+                ts = getattr(d, "timestamp_s", time.time())
+                from_rep = getattr(d, "prev_num_replicas", None)
+                to_rep = getattr(d, "curr_num_replicas", None)
+                reason = getattr(d, "reason", "") or ""
+
+            ts_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts))
+            if len(reason) > 80:
+                reason = reason[:77] + "..."
+            out.append({"ts": ts_iso, "from": from_rep, "to": to_rep, "reason": reason})
+        return out
+
+    def format_scaling_status(self, scaling_status: str) -> str:
+        """Return a human-friendly scaling status string."""
+        return {
+            "UPSCALING": "scaling up",
+            "DOWNSCALING": "scaling down",
+            "STABLE": "stable",
+        }.get(str(scaling_status), str(scaling_status).lower())
+
+    def format_metrics_health_text(
+        self,
+        *,
+        last_metrics_age_s: Optional[float],
+        look_back_period_s: Optional[float],
+    ) -> str:
+        """Return a short human-friendly health string based on freshness."""
+        if last_metrics_age_s is None:
+            return "ok"
+        threshold = look_back_period_s or 30.0
+        if last_metrics_age_s > threshold:
+            return f"delayed (last update {int(last_metrics_age_s)}s ago)"
+        return "ok"
+
+    def build_snapshot_payload(
+        self,
+        *,
+        app_name: str,
+        deployment_name: str,
+        current_replicas: int,
+        proposed_replicas: int,
+        min_replicas: Optional[int],
+        max_replicas: Optional[int],
+        scaling_status_h: str,
+        policy_name: str,
+        look_back_period_s: Optional[float],
+        queued_requests: Optional[float],
+        total_requests: float,
+        last_metrics_age_s: Optional[float],
+        errors: Optional[List[str]],
+        recent_decisions: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Build the single JSON payload we log as a one-liner."""
+        ts_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        health_text = self.format_metrics_health_text(
+            last_metrics_age_s=last_metrics_age_s, look_back_period_s=look_back_period_s
+        )
+        return {
+            "ts": ts_iso,
+            "app": app_name,
+            "deployment": deployment_name,
+            "current_replicas": int(current_replicas),
+            "target_replicas": int(proposed_replicas),
+            "replicas_allowed": {
+                "min": None if min_replicas is None else int(min_replicas),
+                "max": None if max_replicas is None else int(max_replicas),
+            },
+            "scaling_status": scaling_status_h,
+            "policy": policy_name,
+            "metrics": {
+                "look_back_period_s": look_back_period_s,
+                "queued_requests": None
+                if queued_requests is None
+                else float(queued_requests),
+                "total_requests": float(total_requests or 0.0),
+            },
+            "metrics_health": health_text,
+            "errors": errors or [],
+            "decisions": recent_decisions,
+        }
+
+    def log_snapshot(self, payload: Dict[str, Any]) -> None:
+        """Emit the canonical one-line JSON snapshot."""
+        self._logger.info(
+            "serve_autoscaling_snapshot " + json.dumps(payload, separators=(",", ":"))
+        )
+
+    def note_once_per_interval(
+        self, *, message: str, key: str, interval_s: int = 60
+    ) -> None:
+        """Emit a short note at most once per interval for the given key.
+
+        This is used to surface repeated, noisy conditions (e.g. delayed metrics)
+        without spamming logs.
+        """
+        self._summarizer.add_once_per_interval(message, key, interval_s)
+        for line in self._summarizer.summary():
+            self._logger.info("serve_autoscaling_note " + line)
+        self._summarizer.clear()
