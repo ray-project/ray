@@ -1,4 +1,3 @@
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -115,20 +114,12 @@ class TestCli(unittest.TestCase):
         assert result.stderr.decode("utf-8") == ""
 
     def test_compile(self):
-        compiled_file = Path(
-            _runfiles.Rlocation(
-                f"{_REPO_NAME}/ci/raydepsets/tests/test_data/requirements_compiled_test.txt"
-            )
-        )
-        output_file = Path(
-            _runfiles.Rlocation(
-                f"{_REPO_NAME}/ci/raydepsets/tests/test_data/requirements_compiled.txt"
-            )
-        )
-        shutil.copy(compiled_file, output_file)
-
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
+            save_file_as(
+                Path(tmpdir) / "requirements_compiled_test.txt",
+                Path(tmpdir) / "requirements_compiled.txt",
+            )
             manager = _create_test_manager(tmpdir)
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
@@ -153,7 +144,7 @@ class TestCli(unittest.TestCase):
             output_file = Path(
                 _runfiles.Rlocation(f"{tmpdir}/requirements_compiled.txt")
             )
-            shutil.copy(compiled_file, output_file)
+            save_file_as(compiled_file, output_file)
             manager = _create_test_manager(tmpdir)
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
@@ -649,6 +640,49 @@ class TestCli(unittest.TestCase):
                 output="requirements_compiled_test.txt",
             )
             manager.diff_lock_files()
+
+    def test_compile_with_packages(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            save_file_as(
+                Path(tmpdir) / "requirements_compiled_test.txt",
+                Path(tmpdir) / "requirements_compiled_test_packages.txt",
+            )
+            manager = _create_test_manager(tmpdir)
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                packages=["emoji==2.9.0", "pyperclip==1.6.0"],
+                append_flags=["--no-annotate", "--no-header"],
+                name="packages_test_depset",
+                output="requirements_compiled_test_packages.txt",
+            )
+            output_file = Path(tmpdir) / "requirements_compiled_test_packages.txt"
+            output_text = output_file.read_text()
+            output_file_valid = Path(tmpdir) / "requirements_compiled_test.txt"
+            output_text_valid = output_file_valid.read_text()
+            assert output_text == output_text_valid
+
+    def test_compile_with_packages_and_requirements(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            save_file_as(
+                Path(tmpdir) / "requirements_compiled_test.txt",
+                Path(tmpdir) / "requirements_compiled_test_packages.txt",
+            )
+            manager = _create_test_manager(tmpdir)
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                packages=["emoji==2.9.0", "pyperclip==1.6.0"],
+                requirements=["requirements_test.txt"],
+                append_flags=["--no-annotate", "--no-header"],
+                name="packages_test_depset",
+                output="requirements_compiled_test_packages.txt",
+            )
+            output_file = Path(tmpdir) / "requirements_compiled_test_packages.txt"
+            output_text = output_file.read_text()
+            output_file_valid = Path(tmpdir) / "requirements_compiled_test.txt"
+            output_text_valid = output_file_valid.read_text()
+            assert output_text == output_text_valid
 
 
 if __name__ == "__main__":

@@ -167,10 +167,12 @@ class DependencySetManager:
             depset = self.build_graph.nodes[node]["depset"]
             self.execute_single(depset)
 
-    def exec_uv_cmd(self, cmd: str, args: List[str]) -> str:
+    def exec_uv_cmd(
+        self, cmd: str, args: List[str], stdin: Optional[bytes] = None
+    ) -> str:
         cmd = [self._uv_binary, "pip", cmd, *args]
         click.echo(f"Executing command: {cmd}")
-        status = subprocess.run(cmd, cwd=self.workspace.dir)
+        status = subprocess.run(cmd, cwd=self.workspace.dir, input=stdin)
         if status.returncode != 0:
             raise RuntimeError(f"Failed to execute command: {cmd}")
         return status.stdout
@@ -184,6 +186,7 @@ class DependencySetManager:
                 output=depset.output,
                 append_flags=depset.append_flags,
                 override_flags=depset.override_flags,
+                packages=depset.packages,
             )
         elif depset.operation == "subset":
             self.subset(
@@ -209,14 +212,16 @@ class DependencySetManager:
     def compile(
         self,
         constraints: List[str],
-        requirements: List[str],
         name: str,
         output: str,
         append_flags: Optional[List[str]] = None,
         override_flags: Optional[List[str]] = None,
+        packages: Optional[List[str]] = None,
+        requirements: Optional[List[str]] = None,
     ):
         """Compile a dependency set."""
         args = DEFAULT_UV_FLAGS.copy()
+        stdin = None
         if self._uv_cache_dir:
             args.extend(["--cache-dir", self._uv_cache_dir])
         if override_flags:
@@ -229,9 +234,13 @@ class DependencySetManager:
         if requirements:
             for requirement in requirements:
                 args.extend([requirement])
+        if packages:
+            # need to add a dash to process stdin
+            args.append("-")
+            stdin = _get_bytes(packages)
         if output:
             args.extend(["-o", output])
-        self.exec_uv_cmd("compile", args)
+        self.exec_uv_cmd("compile", args, stdin)
 
     def subset(
         self,
@@ -300,6 +309,10 @@ class DependencySetManager:
     def cleanup(self):
         if self.temp_dir:
             shutil.rmtree(self.temp_dir)
+
+
+def _get_bytes(packages: List[str]) -> bytes:
+    return ("\n".join(packages) + "\n").encode("utf-8")
 
 
 def _get_depset(depsets: List[Depset], name: str) -> Depset:

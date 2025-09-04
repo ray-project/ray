@@ -113,14 +113,10 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
                                 bool owned);
 
   /// Submit a task to an actor for execution.
-  ///
-  /// \param[in] task_spec The task spec to submit.
-  ///
-  /// \return Status::Invalid if the task is not yet supported.
-  Status SubmitTask(TaskSpecification task_spec);
+  void SubmitTask(TaskSpecification task_spec);
 
   /// Submit an actor creation task to an actor via GCS.
-  Status SubmitActorCreationTask(TaskSpecification task_spec);
+  void SubmitActorCreationTask(TaskSpecification task_spec);
 
   /// Create connection to actor and send all pending tasks.
   ///
@@ -236,11 +232,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   ///
   /// \param task_spec The task spec of a task that will be canceled.
   /// \param recursive If true, it will cancel all child tasks.
-  /// \return True if cancel request is not needed or it will be
-  /// requested. False otherwise. Note that tasks could be "not"
-  /// canceled although the status is true because it is an
-  /// asynchronous API.
-  Status CancelTask(TaskSpecification task_spec, bool recursive);
+  void CancelTask(TaskSpecification task_spec, bool recursive);
 
   /// Retry the CancelTask in milliseconds.
   void RetryCancelTask(TaskSpecification task_spec, bool recursive, int64_t milliseconds);
