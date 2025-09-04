@@ -353,6 +353,41 @@ async def test_runtime_env_setup_logged_to_job_driver_logs(
         assert start_message in logs
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --num-cpus=1"],
+    indirect=True,
+)
+async def test_job_starting_timeout(
+    call_ray_start, tmp_path, monkeypatch  # noqa: F811
+):
+    """Test the timeout when starting jobs."""
+
+    monkeypatch.setenv(RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR, "1")
+
+    ray.init(address=call_ray_start)
+    gcs_client = ray._private.worker.global_worker.gcs_client
+    job_manager = JobManager(gcs_client, tmp_path)
+
+    # Submit a job with unsatisfied resource.
+    job_id = await job_manager.submit_job(
+        entrypoint="echo 'hello world'",
+        entrypoint_num_cpus=2,
+    )
+
+    # Wait for the job to timeout.
+    await async_wait_for_condition(
+        check_job_failed, job_manager=job_manager, job_id=job_id
+    )
+
+    # Check that the job timed out.
+    job_info = await job_manager.get_job_info(job_id)
+    assert job_info.status == JobStatus.FAILED
+    assert "Job supervisor actor failed to start within" in job_info.message
+    assert job_info.driver_exit_code is None
+
+
 @pytest.fixture
 def shared_ray_instance():
     # Remove ray address for test ray cluster in case we have

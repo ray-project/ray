@@ -74,6 +74,8 @@ class JobManager:
     LOG_TAIL_SLEEP_S = 1
     JOB_MONITOR_LOOP_PERIOD_S = 1
     WAIT_FOR_ACTOR_DEATH_TIMEOUT_S = 0.1
+    # Timeout duration (in seconds) for job supervisor ping requests.
+    PING_TIMEOUT_S = 1
 
     def __init__(self, gcs_client: GcsClient, logs_dir: str):
         self._gcs_client = gcs_client
@@ -258,7 +260,17 @@ class JobManager:
                         continue
 
                 # Verify `JobSupervisor` is alive and reachable
-                await job_supervisor.ping.remote()
+                try:
+                    await asyncio.wait_for(
+                        job_supervisor.ping.remote(), timeout=self.PING_TIMEOUT_S
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        f"Job supervisor ping timed out for job {job_id}. "
+                        f"Timeout threshold: {self.PING_TIMEOUT_S} seconds. "
+                        "This may indicate that the cluster does not have enough resources to schedule the job supervisor."
+                    )
+                    continue
                 # Reset consecutive failures counter
                 num_consecutive_failures = 0
 
