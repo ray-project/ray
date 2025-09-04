@@ -310,7 +310,7 @@ py_library(
         "ray_release/buildkite/aws_instance_types.csv",
         "ray_release/schema.json",
         "//doc:example_configs",
-        "//doc/source/train/examples/pytorch/distributing-pytorch/ci:ci_yamls",
+        "//doc/source/train/examples/pytorch/distributing-pytorch/ci:ci_yamls"
     ],
     imports = ["."],
     visibility = ["//visibility:public"],
@@ -755,4 +755,7 @@ py_binary(
     deps = [
         ":ray_release",
     ],
+    data = [
+        "release_tests.yaml",
+    ]
 )
