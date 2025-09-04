@@ -91,7 +91,7 @@ The `logging_config` is global config, you can configure controller & proxy & re
 
 ## Application config 
 
-You configure one or more deployments as part of your Serve appliation. See [deployment config](serve-configure-deployment).
+You configure one or more deployments as part of your Serve application. See [deployment config](serve-configure-deployment).
 
 These are the fields per `application`:
 
