@@ -6,7 +6,6 @@ steps:
   - name: min-allpython
     label: "wanda: min-allpython"
     wanda: ci/docker/min.allpython.wanda.yaml
-    depends_on: forge
     env:
       DEFAULT_PYTHON_VERSION: "3.9"
     tags: always
