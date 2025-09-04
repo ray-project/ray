@@ -1,3 +1,4 @@
+import uuid
 import pytest
 import sys
 import asyncio
@@ -6,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from ray._common.test_utils import async_wait_for_condition
 from ray.dashboard.modules.aggregator.publisher.ray_event_publisher import (
-    RayEventsPublisher,
+    RayEventPublisher,
     NoopPublisher,
 )
 from ray.dashboard.modules.aggregator.publisher.async_publisher_client import (
@@ -60,10 +61,11 @@ def base_kwargs():
         "initial_backoff": 0,
         "max_backoff": 0,
         "jitter_ratio": 0,
+        "enable_publisher_stats": True,
     }
 
 
-class TestRayEventsPublisher:
+class TestRayEventPublisher:
     """Test the main RayEventsPublisher functionality."""
 
     @pytest.mark.asyncio
@@ -80,14 +82,15 @@ class TestRayEventsPublisher:
 
         client = MockPublisherClient(side_effect=side_effect)
         event_buffer = MultiConsumerEventBuffer(max_size=10, max_batch_size=10)
-        publisher = RayEventsPublisher(
-            name=base_kwargs["name"],
+        publisher = RayEventPublisher(
+            name=base_kwargs["name"] + str(uuid.uuid4()),
             publish_client=client,
             event_buffer=event_buffer,
             max_retries=base_kwargs["max_retries"],
             initial_backoff=base_kwargs["initial_backoff"],
             max_backoff=base_kwargs["max_backoff"],
             jitter_ratio=base_kwargs["jitter_ratio"],
+            enable_publisher_stats=True,
         )
 
         task = asyncio.create_task(publisher.run_forever())
@@ -112,7 +115,7 @@ class TestRayEventsPublisher:
             with pytest.raises(asyncio.CancelledError):
                 await task
 
-        metrics = await publisher.get_and_reset_metrics()
+        metrics = await publisher.get_and_reset_publisher_stats()
         assert metrics["published"] == 1
         assert metrics["failed"] == 0
 
@@ -121,14 +124,15 @@ class TestRayEventsPublisher:
         """Test publish that fails all retries and records failed events."""
         client = MockPublisherClient(publish_result=PublishStats(False, 0, 0))
         event_buffer = MultiConsumerEventBuffer(max_size=10, max_batch_size=10)
-        publisher = RayEventsPublisher(
-            name=base_kwargs["name"],
+        publisher = RayEventPublisher(
+            name=base_kwargs["name"] + str(uuid.uuid4()),
             publish_client=client,
             event_buffer=event_buffer,
             max_retries=2,  # override to finite retries
             initial_backoff=0,
             max_backoff=0,
             jitter_ratio=0,
+            enable_publisher_stats=True,
         )
 
         task = asyncio.create_task(publisher.run_forever())
@@ -148,7 +152,7 @@ class TestRayEventsPublisher:
             # wait for publish attempts (initial + 2 retries)
             await async_wait_for_condition(lambda: len(client.publish_calls) == 3)
             assert len(client.publish_calls) == 3
-            metrics = await publisher.get_and_reset_metrics()
+            metrics = await publisher.get_and_reset_publisher_stats()
             print(metrics)
             assert metrics["failed"] == 1  # batch_size = 1
         finally:
@@ -317,12 +321,11 @@ class TestNoopPublisher:
         with pytest.raises(asyncio.CancelledError):
             await task
 
-        metrics = await publisher.get_and_reset_metrics()
+        metrics = await publisher.get_and_reset_publisher_stats()
         assert metrics == {
             "published": 0,
             "filtered_out": 0,
             "failed": 0,
-            "queue_dropped": 0,
         }
 
 

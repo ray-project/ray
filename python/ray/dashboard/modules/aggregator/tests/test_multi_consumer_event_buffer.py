@@ -1,5 +1,6 @@
 import asyncio
 import sys
+import uuid
 import pytest
 import random
 from google.protobuf.timestamp_pb2 import Timestamp
@@ -37,7 +38,9 @@ class TestMultiConsumerEventBuffer:
     async def test_add_and_consume_event_basic(self):
         """Test basic event addition."""
         buffer = MultiConsumerEventBuffer(max_size=10, max_batch_size=5)
-        consumer_id = await buffer.register_consumer()
+        consumer_id = await buffer.register_consumer(
+            "test_consumer" + str(uuid.uuid4())
+        )
         assert await buffer.size() == 0
 
         event = _create_test_event(b"event1")
@@ -53,7 +56,9 @@ class TestMultiConsumerEventBuffer:
     async def test_add_event_buffer_overflow(self):
         """Test buffer overflow behavior and eviction logic."""
         buffer = MultiConsumerEventBuffer(max_size=3, max_batch_size=2)
-        consumer_id = await buffer.register_consumer()
+        consumer_id = await buffer.register_consumer(
+            "test_consumer" + str(uuid.uuid4())
+        )
 
         # Add events to fill buffer
         events = []
@@ -76,18 +81,14 @@ class TestMultiConsumerEventBuffer:
         await buffer.add_event(overflow_event)
 
         assert await buffer.size() == 3  # Still max size
-        first_event_type_name = RayEvent.EventType.Name(event_types[0])
-        evicted_events_count = await buffer.get_and_reset_evicted_events_count(
-            consumer_id
-        )
-        assert first_event_type_name in evicted_events_count
-        assert evicted_events_count[first_event_type_name] == 1
 
     @pytest.mark.asyncio
     async def test_wait_for_batch_multiple_events(self):
         """Test waiting for batch when multiple events are immediately available and when when not all events are available."""
         buffer = MultiConsumerEventBuffer(max_size=10, max_batch_size=3)
-        consumer_id = await buffer.register_consumer()
+        consumer_id = await buffer.register_consumer(
+            "test_consumer" + str(uuid.uuid4())
+        )
 
         # Add multiple events
         events = []
@@ -117,8 +118,8 @@ class TestMultiConsumerEventBuffer:
     async def test_multiple_consumers_independent_cursors(self):
         """Test that multiple consumers have independent cursors."""
         buffer = MultiConsumerEventBuffer(max_size=10, max_batch_size=2)
-        consumer_id_1 = await buffer.register_consumer()
-        consumer_id_2 = await buffer.register_consumer()
+        consumer_id_1 = await buffer.register_consumer("consumer1")
+        consumer_id_2 = await buffer.register_consumer("consumer2")
 
         # Add events
         events = []
@@ -147,14 +148,8 @@ class TestMultiConsumerEventBuffer:
             events.append(event)
             await buffer.add_event(event)
 
-        # no events are evicted for consumer 1
-        eviction_stats1 = await buffer.get_and_reset_evicted_events_count(consumer_id_1)
-        assert eviction_stats1 == {}
-
-        # 2 unprocessed events are evicted for consumer 2
-        eviction_stats2 = await buffer.get_and_reset_evicted_events_count(consumer_id_2)
-        assert "TASK_DEFINITION_EVENT" in eviction_stats2
-        assert eviction_stats2["TASK_DEFINITION_EVENT"] == 2
+        # Just ensure buffer remains at max size
+        assert await buffer.size() == 10
 
         # consumer 1 will read the next 2 events, not affected by the evictions
         # consumer 1's cursor is adjusted internally to account for the evicted events
@@ -166,18 +161,12 @@ class TestMultiConsumerEventBuffer:
         assert batch5 == events[4:6]  # events[2:4] are lost
 
     @pytest.mark.asyncio
-    async def test_get_and_reset_evicted_events_count_unknown_consumer(self):
-        """Test error handling for unknown consumer in evicted events count."""
-        buffer = MultiConsumerEventBuffer(max_size=10, max_batch_size=5)
-
-        with pytest.raises(KeyError, match="unknown consumer"):
-            await buffer.get_and_reset_evicted_events_count("nonexistent_consumer")
-
-    @pytest.mark.asyncio
     async def test_wait_for_batch_blocks_until_event_available(self):
         """Test that wait_for_batch blocks until at least one event is available."""
         buffer = MultiConsumerEventBuffer(max_size=10, max_batch_size=5)
-        consumer_id = await buffer.register_consumer()
+        consumer_id = await buffer.register_consumer(
+            "test_consumer" + str(uuid.uuid4())
+        )
 
         # Start waiting for batch (should block)
         async def wait_for_batch():
@@ -210,7 +199,9 @@ class TestMultiConsumerEventBuffer:
         total_events = 40
         max_batch_size = 2
         buffer = MultiConsumerEventBuffer(max_size=100, max_batch_size=max_batch_size)
-        consumer_id = await buffer.register_consumer()
+        consumer_id = await buffer.register_consumer(
+            "test_consumer" + str(uuid.uuid4())
+        )
 
         produced_events = []
         consumed_events = []
