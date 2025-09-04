@@ -4578,7 +4578,7 @@
     script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1_2p6d.yaml --skip-hf-token true
 
 - name: llm_serve_llama_3dot1_8B_quantized_tp1_2p6d_lmcache
-  frequency: nightly
+  frequency: manual # todo(ray-llm): fix this test with new/old lmcache version and new vllm version and re-enable it.
   python: "3.11"
   group: llm-serve
   team: llm
