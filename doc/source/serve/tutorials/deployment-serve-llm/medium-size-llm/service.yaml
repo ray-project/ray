@@ -1,0 +1,10 @@
+#service.yaml
+name: deploy-llama-3-70b
+containerfile: ./Dockerfile
+compute_config:
+  auto_select_worker_config: true 
+working_dir: .
+cloud:
+applications:
+# Point to your app in your Python module
+- import_path: serve_llama_3_1_70b:app
