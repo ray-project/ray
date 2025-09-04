@@ -10,6 +10,7 @@ os.environ["RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S"] = "3"
 
 import ray
 from ray import serve
+from ray._common.test_utils import wait_for_condition
 from ray.serve._private.common import DeploymentID
 
 
@@ -17,7 +18,7 @@ def get_autoscaling_metrics_from_controller(
     client, deployment_id: DeploymentID
 ) -> Dict[str, float]:
     """Get autoscaling metrics from the controller for testing."""
-    ref = client._controller._dump_all_metrics_for_testing.remote()
+    ref = client._controller._dump_all_autoscaling_metrics_for_testing.remote()
     metrics = ray.get(ref)
     return metrics.get(deployment_id, {})
 
@@ -57,7 +58,11 @@ class TestCustomServeMetrics:
         [handle.remote() for _ in range(3)]
 
         # Wait for controller to receive new metrics
-        time.sleep(10)
+        wait_for_condition(
+            lambda _: "counter"
+            in get_autoscaling_metrics_from_controller(serve_instance, dep_id),
+            timeout=15,
+        )
         metrics = get_autoscaling_metrics_from_controller(serve_instance, dep_id)
 
         # The final counter value recorded by the controller should be 3
@@ -82,7 +87,7 @@ class TestCustomServeMetrics:
                 return "Hello, world"
 
             async def record_autoscaling_stats(self) -> Dict[str, Any]:
-                # Sleep beyond RAY_SERVE_AUTOSCALING_STATS_TIMEOUT_S
+                # Sleep beyond RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S
                 time.sleep(12)
                 return {"counter": self.counter}
 
@@ -94,7 +99,12 @@ class TestCustomServeMetrics:
         [handle.remote() for _ in range(3)]
 
         # Wait for controller to receive new metrics
-        time.sleep(10)
+        wait_for_condition(
+            lambda: "counter"
+            in get_autoscaling_metrics_from_controller(serve_instance, dep_id),
+            timeout=10,
+        )
+
         metrics = get_autoscaling_metrics_from_controller(serve_instance, dep_id)
 
         # The should have no counter metric because asyncio timeout would have stopped the method execution
