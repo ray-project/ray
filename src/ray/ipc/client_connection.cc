@@ -399,9 +399,7 @@ void ClientConnection::ProcessMessageHeader(const boost::system::error_code &err
     return;
   }
 
-  if (closed_) {
-    RAY_LOG(ERROR) << "ProcessMessageHeader after close.";
-  }
+  RAY_CHECK(!closed_) << "ProcessMessageHeader after close.";
 
   // If there was no error, make sure the ray cookie matches.
   if (!CheckRayCookie()) {
@@ -474,9 +472,7 @@ void ClientConnection::ProcessMessage(const boost::system::error_code &error) {
     return connection_error_handler_(std::move(this_ptr), error);
   }
 
-  if (closed_) {
-    RAY_LOG(ERROR) << "ProcessMessage after close.";
-  }
+  RAY_CHECK(!closed_) << "ProcessMessage after close.";
 
   int64_t start_ms = current_time_ms();
   message_handler_(std::move(this_ptr), read_type_, read_message_);
