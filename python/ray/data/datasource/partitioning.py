@@ -434,11 +434,10 @@ class PathPartitionFilter:
         """
         filtered_paths = paths
         if self._filter_fn is not None:
-            filtered_paths = [path for path in paths if self.apply(path)]
+            filtered_paths = [
+                path for path in paths if self._filter_fn(self._parser(path))
+            ]
         return filtered_paths
-
-    def apply(self, path: str) -> bool:
-        return self._filter_fn(self._parser(path))
 
     @property
     def parser(self) -> PathPartitionParser:
