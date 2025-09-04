@@ -457,6 +457,24 @@ py_test(
 )
 
 py_test(
+    name = "test_custom_byod_build_init_helper",
+    size = "small",
+    srcs = ["ray_release/tests/test_custom_byod_build_init_helper.py"],
+    data = [
+        "ray_release/configs/oss_config.yaml",
+    ],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_release",
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
     name = "test_cluster_manager",
     size = "small",
     srcs = ["ray_release/tests/test_cluster_manager.py"],
@@ -692,6 +710,20 @@ py_test(
     ],
 )
 
+py_test(
+    name = "test_template",
+    srcs = ["ray_release/tests/test_template.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_release",
+        bk_require("pytest"),
+    ],
+)
+
 py_binary(
     name = "build_pipeline",
     srcs = ["ray_release/scripts/build_pipeline.py"],
@@ -710,6 +742,15 @@ py_binary(
 py_binary(
     name = "custom_byod_build",
     srcs = ["ray_release/scripts/custom_byod_build.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ":ray_release",
+    ],
+)
+
+py_binary(
+    name = "custom_byod_build_init",
+    srcs = ["ray_release/scripts/custom_byod_build_init.py"],
     exec_compatible_with = ["//:hermetic_python"],
     deps = [
         ":ray_release",

@@ -57,6 +57,9 @@ ray_cc_library(
     name = "actor_task_submitter",
     srcs = ["actor_task_submitter.cc"],
     hdrs = ["actor_task_submitter.h"],
+    implementation_deps = [
+        "//src/ray/util:time",
+    ],
     visibility = [
         ":__subpackages__",
         "//src/ray/core_worker:__pkg__",
@@ -68,8 +71,8 @@ ray_cc_library(
         ":sequential_actor_submit_queue",
         "//src/ray/common:asio",
         "//src/ray/common:id",
+        "//src/ray/common:protobuf_utils",
         "//src/ray/core_worker:actor_creator",
-        "//src/ray/gcs:gcs_pb_util",
         "//src/ray/rpc:core_worker_client",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -81,6 +84,9 @@ ray_cc_library(
     name = "normal_task_submitter",
     srcs = ["normal_task_submitter.cc"],
     hdrs = ["normal_task_submitter.h"],
+    implementation_deps = [
+        "//src/ray/util:time",
+    ],
     visibility = [
         ":__subpackages__",
         "//src/ray/core_worker:__pkg__",
@@ -89,10 +95,10 @@ ray_cc_library(
         ":dependency_resolver",
         "//src/ray/common:id",
         "//src/ray/common:lease",
+        "//src/ray/common:protobuf_utils",
         "//src/ray/core_worker:lease_policy",
         "//src/ray/core_worker:memory_store",
         "//src/ray/core_worker:task_manager_interface",
-        "//src/ray/gcs:gcs_pb_util",
         "//src/ray/raylet_client:raylet_client_interface",
         "//src/ray/rpc:core_worker_client",
         "@com_google_absl//absl/base:core_headers",
