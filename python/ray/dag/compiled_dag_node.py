@@ -77,7 +77,6 @@ from ray.experimental.compiled_dag_ref import (
     _process_return_vals,
 )
 from ray.util.annotations import DeveloperAPI
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
