@@ -4544,10 +4544,8 @@ void CoreWorker::UpdateTaskIsDebuggerPaused(const TaskID &task_id,
       worker::TaskStatusEvent::TaskStateUpdate(is_debugger_paused)));
 }
 
-void CoreWorker::TaskManagerRetryTask(TaskSpecification &spec, uint32_t delay_ms) {
+void CoreWorker::QueueRetryCallback(TaskSpecification &spec, uint32_t delay_ms) {
   spec.GetMutableMessage().set_attempt_number(spec.AttemptNumber() + 1);
-  // Retry after a delay to emulate the existing Raylet reconstruction
-  // behaviour.
   RAY_LOG(INFO) << "Will resubmit task after a " << delay_ms
                 << "ms delay: " << spec.DebugString();
   absl::MutexLock lock(&mutex_);
