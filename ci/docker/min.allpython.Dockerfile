@@ -5,7 +5,7 @@ FROM cr.ray.io/rayproject/forge
 ARG DEFAULT_PYTHON_VERSION=3.9
 
 # create a writable dir for the forge user
-RUN mkdir -p /home/forge/app && chown -R forge:forge /home/forge
+RUN mkdir -p /home/forge/app && chown -R forge /home/forge
 
 WORKDIR /home/forge/app
 
