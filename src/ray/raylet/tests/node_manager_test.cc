@@ -999,7 +999,7 @@ INSTANTIATE_TEST_SUITE_P(NodeManagerReturnWorkerLeaseIdempotentVariations,
                          NodeManagerReturnWorkerLeaseIdempotentTest,
                          testing::Combine(testing::Bool(), testing::Bool()));
 
-TEST_F(NodeManagerTest, TestHandleCancelWorkerLeaseHasLeaseIdempotent) {
+TEST_F(NodeManagerTest, TestHandleCancelWorkerLeaseHasLeaseNotIdempotent) {
   auto lease_spec = BuildLeaseSpec({});
   rpc::RequestWorkerLeaseRequest request_worker_lease_request;
   rpc::RequestWorkerLeaseReply request_worker_lease_reply;
@@ -1034,6 +1034,7 @@ TEST_F(NodeManagerTest, TestHandleCancelWorkerLeaseHasLeaseIdempotent) {
       });
   ASSERT_EQ(leased_workers_.size(), 0);
   ASSERT_EQ(cancel_worker_lease_reply1.success(), true);
+  //
   ASSERT_EQ(cancel_worker_lease_reply2.success(), false);
 }
 
