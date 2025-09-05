@@ -3,7 +3,7 @@
 Anti-pattern: Forking new processes in application code
 ========================================================
 
-**Summary:** Don't fork new processes in Ray application code—for example, in  
+**Summary:** Don't fork new processes in Ray application code—for example, in 
 driver, tasks or actors. Instead, use the "spawn" method to start new processes or use Ray 
 tasks and actors to parallelize your workload
 
