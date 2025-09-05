@@ -2,7 +2,7 @@
 
 apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openjdk-17-jdk net-tools curl netcat gnupg libsnappy-dev && rm -rf /var/lib/apt/lists/*
 
-export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64/
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64/
 
 curl -O https://dist.apache.org/repos/dist/release/hadoop/common/KEYS
 
@@ -39,7 +39,7 @@ chmod a+x entrypoint.sh
 
 # Add JAVA_HOME env var to `/etc/hadoop/hadoop-env.sh`
 # Probably would be better to refer to JAVA_HOME env var, but not sure about sed syntax.
-sed -i "1s/^/JAVA_HOME=\/usr\/lib\/jvm\/java-8-openjdk-amd64\/\n/" $HADOOP_CONF_DIR/hadoop-env.sh
+sed -i "1s/^/JAVA_HOME=\/usr\/lib\/jvm\/java-17-openjdk-amd64\/\n/" $HADOOP_CONF_DIR/hadoop-env.sh
 
 # The following makes sure that ssh localhost should work without needing a password.
 sudo apt-get update
