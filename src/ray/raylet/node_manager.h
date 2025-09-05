@@ -115,6 +115,11 @@ struct NodeManagerConfig {
   int max_io_workers;
   // The key-value labels of this node.
   absl::flat_hash_map<std::string, std::string> labels;
+  // If enabled, will move system processes into
+  // @see CgroupManager::
+  // Feature is linux only.
+  // TODO(#54703): Clean up the comment before 8/n is created.
+  bool enable_resource_isolation = false;
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler,

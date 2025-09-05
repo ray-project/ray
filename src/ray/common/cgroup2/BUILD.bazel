@@ -28,25 +28,57 @@ ray_cc_library(
     ],
 )
 
+config_setting(
+    name = "is_linux",
+    constraint_values = ["@platforms//os:linux"],
+)
+
+# This target is available for all platforms, but it compiles different
+# implementations for different platforms.
 ray_cc_library(
     name = "cgroup_manager",
-    srcs = ["cgroup_manager.cc"],
-    hdrs = [
-        "cgroup_manager.h",
-        "scoped_cgroup_operation.h",
-    ],
-    target_compatible_with = [
-        "@platforms//os:linux",
-    ],
+    srcs = select({
+        ":is_linux": ["cgroup_manager.cc"],
+        "//conditions:default": ["noop_cgroup_manager.cc"],
+    }),
+    hdrs = ["cgroup_manager.h"] + select({
+        ":is_linux": ["scoped_cgroup_operation.h"],
+        "//conditions:default": [],
+    }),
+    visibility = ["//visibility:public"],
     deps = [
         ":cgroup_driver_interface",
         ":cgroup_manager_interface",
         "//src/ray/common:status",
         "//src/ray/common:status_or",
-        "//src/ray/util:logging",
-        "@com_google_absl//absl/strings",
-    ],
+    ] + select({
+        ":is_linux": [
+            "//src/ray/util:logging",
+            "@com_google_absl//absl/strings",
+        ],
+        "//conditions:default": [],
+    }),
 )
+
+# ray_cc_library(
+#     name = "cgroup_manager",
+#     srcs = ["cgroup_manager.cc"],
+#     hdrs = [
+#         "cgroup_manager.h",
+#         "scoped_cgroup_operation.h",
+#     ],
+#     target_compatible_with = [
+#         "@platforms//os:linux",
+#     ],
+#     deps = [
+#         ":cgroup_driver_interface",
+#         ":cgroup_manager_interface",
+#         "//src/ray/common:status",
+#         "//src/ray/common:status_or",
+#         "//src/ray/util:logging",
+#         "@com_google_absl//absl/strings",
+#     ],
+# )
 
 ray_cc_library(
     name = "sysfs_cgroup_driver",

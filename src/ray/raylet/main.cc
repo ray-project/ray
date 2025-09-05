@@ -24,11 +24,14 @@
 #include "gflags/gflags.h"
 #include "nlohmann/json.hpp"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/cgroup2/cgroup_manager.h"
+#include "ray/common/cgroup2/sysfs_cgroup_driver.h"
 #include "ray/common/constants.h"
 #include "ray/common/id.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
+#include "ray/common/status_or.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/object_manager/ownership_object_directory.h"
 #include "ray/raylet/local_object_manager.h"
@@ -110,6 +113,15 @@ DEFINE_bool(huge_pages, false, "Enable huge pages.");
 DEFINE_string(labels,
               "",
               "Define the key-value format of node labels, which is a serialized JSON.");
+
+// TODO(#54703): Link user-facing documentation from OSS if relevant.
+DEFINE_bool(enable_resource_isolation,
+            false,
+            "Enables resource isolation through cgroupv2. The raylet will create and "
+            "manage a cgroup hierarchy if this flag is enabled.");
+DEFINE_string(cgroup_path, "", "");
+DEFINE_int64(system_reserved_cpu_weight, -1, "");
+DEFINE_int64(system_reserved_memory_bytes, -1, "");
 
 absl::flat_hash_map<std::string, std::string> parse_node_labels(
     const std::string &labels_json_str) {
@@ -217,11 +229,38 @@ int main(int argc, char *argv[]) {
   const std::string session_name = FLAGS_session_name;
   const bool is_head_node = FLAGS_head;
   const std::string labels_json_str = FLAGS_labels;
+  const bool enable_resource_isolation = FLAGS_enable_resource_isolation;
+  const std::string cgroup_path = FLAGS_cgroup_path;
+  const int64_t system_reserved_cpu_weight = FLAGS_system_reserved_cpu_weight;
+  const int64_t system_reserved_memory_bytes = FLAGS_system_reserved_memory_bytes;
 
   RAY_CHECK_NE(FLAGS_cluster_id, "") << "Expected cluster ID.";
   ray::ClusterID cluster_id = ray::ClusterID::FromHex(FLAGS_cluster_id);
   RAY_LOG(INFO) << "Setting cluster ID to: " << cluster_id;
   gflags::ShutDownCommandLineFlags();
+
+  if (enable_resource_isolation) {
+    // invariant checking
+    // TODO(#54703): Add useful error messages for any of these invariants failing.
+    RAY_CHECK(!cgroup_path.empty());
+    RAY_CHECK_NE(system_reserved_cpu_weight, -1);
+    RAY_CHECK_NE(system_reserved_memory_bytes, -1);
+    // Is it worth checking to see if the platform is not Linux? I think it's a
+    // misconfiguration/misunderstanding on the users part to pass these flags.
+    // Atleast a warning?
+  }
+
+  std::unique_ptr<ray::SysFsCgroupDriver> cgroup_driver;
+  ray::StatusOr<std::unique_ptr<ray::CgroupManager>> cgroup_manager =
+      ray::CgroupManager::Create(std::move(cgroup_path),
+                                 node_id,
+                                 system_reserved_cpu_weight,
+                                 system_reserved_memory_bytes,
+                                 std::move(cgroup_driver));
+
+  // TODO(#54703) - If you cannot create the CgroupManager, there's likely a real issue.
+  RAY_CHECK(cgroup_manager.ok())
+      << "An explanation and then throw up" << cgroup_manager.ToString();
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
@@ -412,6 +451,7 @@ int main(int argc, char *argv[]) {
     node_manager_config.max_worker_port = max_worker_port;
     node_manager_config.worker_ports = worker_ports;
     node_manager_config.labels = parse_node_labels(labels_json_str);
+    node_manager_config.enable_resource_isolation = false;
 
     if (!python_worker_command.empty()) {
       node_manager_config.worker_commands.emplace(
