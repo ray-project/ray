@@ -8,6 +8,7 @@ import runfiles
 from networkx import DiGraph, topological_sort
 import tempfile
 import difflib
+import sys
 
 from ci.raydepsets.workspace import Depset, Workspace
 
@@ -75,7 +76,13 @@ def build(
     else:
         manager.execute()
     if check:
-        manager.diff_lock_files()
+        try:
+            manager.diff_lock_files()
+        except RuntimeError as e:
+            click.echo(e, err=True)
+            sys.exit(1)
+        finally:
+            manager.cleanup()
 
 
 class DependencySetManager:
