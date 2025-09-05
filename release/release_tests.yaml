@@ -4105,6 +4105,30 @@
     prepare: bash prepare.sh
     script: python run_gcs_ft_on_k8s.py
 
+- name: azure_cluster_launcher
+  group: cluster-launcher-test
+  working_dir: ../python/ray/autoscaler/
+
+  frequency: nightly
+  team: clusters
+
+  cluster:
+    byod: {}
+    cluster_compute: aws/tests/aws_compute.yaml
+
+  run:
+    timeout: 2400
+    script: python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10
+
+  variations:
+    - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10
+    - __suffix__: v2
+      run:
+        script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10
+
+
 - name: aws_cluster_launcher
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
