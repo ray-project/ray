@@ -4666,6 +4666,7 @@
   python: "3.11"  # necessary for the llm-cu128 image
   working_dir: nightly_tests
   team: data
+  group: data-tests
 
   cluster:
     byod:
@@ -4688,6 +4689,7 @@
   python: "3.11"
   working_dir: nightly_tests
   team: data
+  group: data-tests
 
   cluster:
     byod:
