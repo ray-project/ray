@@ -23,6 +23,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
+    AUTOSCALER_SUMMARIZER_DECISION_HISTORY_MAX,
     CONTROL_LOOP_INTERVAL_S,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
     RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
@@ -36,12 +37,14 @@ from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.endpoint_state import EndpointState
+from ray.serve._private.event_summarizer import (
+    ServeAutoscalingEventSummarizer,
+)
 from ray.serve._private.grpc_util import set_proxy_default_grpc_options
 from ray.serve._private.http_util import (
     configure_http_options_with_defaults,
 )
 from ray.serve._private.logging_utils import (
-    ServeEventSummarizer,
     configure_component_logger,
     configure_component_memory_profiler,
     get_component_logger_file_path,
@@ -226,7 +229,7 @@ class ServeController:
         self._update_proxy_nodes()
 
         # Serve-side summarizer to throttle repetitive notes and build payloads.
-        self._serve_event_summarizer = ServeEventSummarizer(logger)
+        self._serve_event_summarizer = ServeAutoscalingEventSummarizer()
 
         # Caches for autoscaling observability
         self._last_autoscaling_snapshots = {}
@@ -434,9 +437,12 @@ class ServeController:
                 )
 
                 self._scaling_decisions.setdefault(dep_id, []).append(decision)
-                if len(self._scaling_decisions[dep_id]) > 50:
+                if (
+                    len(self._scaling_decisions[dep_id])
+                    > AUTOSCALER_SUMMARIZER_DECISION_HISTORY_MAX
+                ):
                     self._scaling_decisions[dep_id] = self._scaling_decisions[dep_id][
-                        -50:
+                        -1 * AUTOSCALER_SUMMARIZER_DECISION_HISTORY_MAX :
                     ]
                 key = (app_name, dep_name)
                 signature = self._serve_event_summarizer.compute_signature(
