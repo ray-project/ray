@@ -1,5 +1,6 @@
 import enum
 import os
+from urllib.parse import urlparse
 
 
 class ProtocolsProvider:
@@ -131,36 +132,57 @@ class ProtocolsProvider:
 
         Raises:
             ImportError: If required dependencies are not installed.
-            ValueError: If required environment variables are not set.
+            ValueError: If the ABFSS URI format is invalid.
         """
         try:
+            import adlfs
             from azure.identity import DefaultAzureCredential
-            from azure.storage.blob import BlobServiceClient  # noqa: F401
-            from smart_open import open as open_file
         except ImportError:
             raise ImportError(
-                "You must `pip install azure-storage-blob azure-identity smart_open[azure]` "
+                "You must `pip install adlfs azure-identity` "
                 "to fetch URIs in Azure Blob File System Secure. "
                 + cls._MISSING_DEPENDENCIES_WARNING
             )
 
-        # Define authentication variable
-        azure_storage_account_name = os.getenv("AZURE_STORAGE_ACCOUNT")
+        def open_file(uri, mode, *, transport_params=None):
+            # Parse and validate the ABFSS URI
+            parsed = urlparse(uri)
 
-        if not azure_storage_account_name:
-            raise ValueError(
-                "Azure Blob File System Secure authentication requires "
-                "AZURE_STORAGE_ACCOUNT environment variable to be set."
+            # Validate ABFSS URI format: abfss://container@account.dfs.core.windows.net/path
+            if not parsed.netloc or "@" not in parsed.netloc:
+                raise ValueError(
+                    f"Invalid ABFSS URI format - missing container@account: {uri}"
+                )
+
+            container_part, hostname_part = parsed.netloc.split("@", 1)
+
+            # Validate container name (must be non-empty)
+            if not container_part:
+                raise ValueError(
+                    f"Invalid ABFSS URI format - empty container name: {uri}"
+                )
+
+            # Validate hostname format
+            if not hostname_part or not hostname_part.endswith(".dfs.core.windows.net"):
+                raise ValueError(
+                    f"Invalid ABFSS URI format - invalid hostname (must end with .dfs.core.windows.net): {uri}"
+                )
+
+            # Extract and validate account name
+            azure_storage_account_name = hostname_part.split(".")[0]
+            if not azure_storage_account_name:
+                raise ValueError(
+                    f"Invalid ABFSS URI format - empty account name: {uri}"
+                )
+
+            # Handle ABFSS URI with adlfs
+            filesystem = adlfs.AzureBlobFileSystem(
+                account_name=azure_storage_account_name,
+                credential=DefaultAzureCredential(),
             )
+            return filesystem.open(uri, mode)
 
-        account_url = f"https://{azure_storage_account_name}.dfs.core.windows.net/"
-        transport_params = {
-            "client": BlobServiceClient(
-                account_url=account_url, credential=DefaultAzureCredential()
-            )
-        }
-
-        return open_file, transport_params
+        return open_file, None
 
     @classmethod
     def download_remote_uri(cls, protocol: str, source_uri: str, dest_file: str):
