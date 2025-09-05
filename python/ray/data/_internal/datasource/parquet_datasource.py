@@ -114,7 +114,7 @@ class _ParquetFragment:
         return self._file_size
 
     @property
-    def original(self):
+    def original(self) -> "ParquetFileFragment":
         return self._fragment
 
     def __reduce__(self):
