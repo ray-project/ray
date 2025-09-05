@@ -1,3 +1,4 @@
+import json
 import logging
 import threading
 import time
@@ -6,7 +7,9 @@ from enum import Enum, auto
 from typing import Any, Callable, Dict, List, Optional, Set
 
 from celery import Celery
+from celery.signals import task_failure, task_unknown
 
+from ray.serve import get_replica_context
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.schema import (
     CeleryAdapterConfig,
@@ -33,6 +36,18 @@ class AsyncCapability(Enum):
     CANCEL_TASK = auto()  # Ability to cancel tasks asynchronously
     GET_METRICS = auto()  # Ability to retrieve metrics asynchronously
     HEALTH_CHECK = auto()  # Ability to perform health checks asynchronously
+
+
+def _json_dump(obj: Any) -> Any:
+    """Recursively make an object JSON serializable."""
+    if isinstance(obj, dict):
+        return {k: _json_dump(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_json_dump(i) for i in obj]
+    try:
+        return json.dumps(obj)
+    except (TypeError, ValueError):
+        return str(obj)
 
 
 @PublicAPI(stability="alpha")
@@ -88,12 +103,9 @@ class TaskProcessorAdapter(ABC):
         return len(self._async_capabilities) > 0
 
     @abstractmethod
-    def initialize(self, config: TaskProcessorConfig):
+    def initialize(self):
         """
-        Initialize the task processor with the given configuration.
-
-        Args:
-            config: TaskProcessorConfig containing adapter-specific configuration, queue names, retry settings, and other options.
+        Initialize the task processor.
         """
         pass
 
@@ -322,6 +334,7 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
     _app: Celery
     _config: TaskProcessorConfig
     _worker_thread: Optional[threading.Thread] = None
+    _worker_hostname: Optional[str] = None
 
     def __init__(self, config: TaskProcessorConfig):
         super().__init__()
@@ -336,33 +349,69 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
         # Celery adapter does not support any async capabilities
         # self._async_capabilities is already an empty set from parent class
 
-    def initialize(self, config: TaskProcessorConfig):
+    def initialize(self):
         self._app = Celery(
-            config.queue_name,
-            backend=config.adapter_config.backend_url,
-            broker=config.adapter_config.broker_url,
+            self._config.queue_name,
+            backend=self._config.adapter_config.backend_url,
+            broker=self._config.adapter_config.broker_url,
         )
 
         self._app.conf.update(
             loglevel="info",
             worker_pool="threads",
-            worker_concurrency=config.adapter_config.worker_concurrency,
-            max_retries=config.max_retries,
-            task_default_queue=config.queue_name,
+            worker_concurrency=self._config.adapter_config.worker_concurrency,
+            max_retries=self._config.max_retries,
+            task_default_queue=self._config.queue_name,
             # Store task results so they can be retrieved after completion
             task_ignore_result=False,
             # Acknowledge tasks only after completion (not when received) for better reliability
             task_acks_late=True,
             # Reject and requeue tasks when worker is lost to prevent data loss
-            reject_on_worker_lost=True,
+            task_reject_on_worker_lost=True,
+            # Only prefetch 1 task at a time to match concurrency and prevent task hoarding
+            worker_prefetch_multiplier=1,
         )
 
-        if config.adapter_config.broker_transport_options is not None:
+        queue_config = {
+            self._config.queue_name: {
+                "exchange": self._config.queue_name,
+                "exchange_type": "direct",
+                "routing_key": self._config.queue_name,
+            },
+        }
+
+        if self._config.failed_task_queue_name:
+            queue_config[self._config.failed_task_queue_name] = {
+                "exchange": self._config.failed_task_queue_name,
+                "exchange_type": "direct",
+                "routing_key": self._config.failed_task_queue_name,
+            }
+
+        if self._config.unprocessable_task_queue_name:
+            queue_config[self._config.unprocessable_task_queue_name] = {
+                "exchange": self._config.unprocessable_task_queue_name,
+                "exchange_type": "direct",
+                "routing_key": self._config.unprocessable_task_queue_name,
+            }
+
+        self._app.conf.update(
+            task_queues=queue_config,
+            task_routes={
+                # Default tasks go to main queue
+                "*": {"queue": self._config.queue_name},
+            },
+        )
+
+        if self._config.adapter_config.broker_transport_options is not None:
             self._app.conf.update(
-                broker_transport_options=config.adapter_config.broker_transport_options,
+                broker_transport_options=self._config.adapter_config.broker_transport_options,
             )
 
-        ### TODO(harshit|SERVE-987): add the failed_task_queue_name and unprocessable_task_queue_name business logic here
+        if self._config.failed_task_queue_name:
+            task_failure.connect(self._handle_task_failure)
+
+        if self._config.unprocessable_task_queue_name:
+            task_unknown.connect(self._handle_unknown_task)
 
     def register_task_handle(self, func, name=None):
         task_options = {
@@ -410,13 +459,25 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
             logger.info("Celery worker thread is already running.")
             return
 
+        unique_id = get_replica_context().replica_tag
+        self._worker_hostname = f"{self._app.main}_{unique_id}"
+
+        worker_args = [
+            "worker",
+            f"--hostname={self._worker_hostname}",
+            "-Q",
+            self._config.queue_name,
+        ]
+
         self._worker_thread = threading.Thread(
             target=self._app.worker_main,
-            args=(("worker", f"--hostname={self._app.main}"),),
+            args=(worker_args,),
         )
         self._worker_thread.start()
 
-        logger.info(f"Celery worker thread started with hostname: {self._app.main}")
+        logger.info(
+            f"Celery worker thread started with hostname: {self._worker_hostname}"
+        )
 
     def stop_consumer(self, timeout: float = 10.0):
         """Signals the Celery worker to shut down and waits for it to terminate."""
@@ -428,7 +489,7 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
 
         # Use the worker's hostname for targeted shutdown
         self._app.control.broadcast(
-            "shutdown", destination=[f"celery@{self._app.main}"]
+            "shutdown", destination=[f"celery@{self._worker_hostname}"]
         )
         self._worker_thread.join(timeout=timeout)
 
@@ -440,7 +501,9 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
         self._worker_thread = None
 
     def shutdown(self):
+        logger.info("Shutting down Celery worker...")
         self._app.control.shutdown()
+        logger.info("Celery worker shutdown complete...")
 
     def cancel_task_sync(self, task_id) -> bool:
         return self._app.AsyncResult(task_id).cancel()
@@ -460,3 +523,105 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
         More details can be found here: https://docs.celeryq.dev/en/stable/reference/celery.app.control.html#celery.app.control.Control.ping
         """
         return self._app.control.ping()
+
+    def _handle_task_failure(
+        self,
+        sender: Any = None,
+        task_id: str = None,
+        args: Any = None,
+        kwargs: Any = None,
+        einfo: Any = None,
+        **kw,
+    ):
+        """Handle task failures and route them to appropriate dead letter queues.
+
+        This method is called when a task fails after all retry attempts have been
+        exhausted. It logs the failure and moves the task to failed_task_queue
+
+        Args:
+            sender: The task object that failed
+            task_id: Unique identifier of the failed task
+            args: Positional arguments passed to the task
+            kwargs: Keyword arguments passed to the task
+            einfo: Exception info object containing exception details and traceback
+            **kw: Additional keyword arguments passed by Celery
+        """
+        logger.info(
+            f"Task failure detected for task_id: {task_id}, args: {args}, kwargs: {kwargs}, einfo: {einfo}"
+        )
+
+        dlq_args = [
+            task_id,
+            str(einfo.exception),
+            _json_dump(args),
+            _json_dump(kwargs),
+            str(einfo),
+        ]
+
+        if self._config.failed_task_queue_name:
+            self._move_task_to_queue(
+                self._config.failed_task_queue_name,
+                sender.name,
+                dlq_args,
+            )
+
+            logger.error(
+                f"Task {task_id} failed after max retries. Exception: {einfo}. Moved it to the {self._config.failed_task_queue_name} queue."
+            )
+
+    def _handle_unknown_task(
+        self,
+        sender: Any = None,
+        name: str = None,
+        id: str = None,
+        message: Any = None,
+        exc: Any = None,
+        **kwargs,
+    ):
+        """Handle unknown or unregistered tasks received by Celery.
+
+        This method is called when Celery receives a task that it doesn't recognize
+        (i.e., a task that hasn't been registered with the Celery app). These tasks
+        are moved to the unprocessable task queue if configured.
+
+        Args:
+            sender: The Celery app or worker that detected the unknown task
+            name: Name of the unknown task
+            id: Task ID of the unknown task
+            message: The raw message received for the unknown task
+            exc: The exception raised when trying to process the unknown task
+            **kwargs: Additional context information from Celery
+        """
+        logger.info(
+            f"Unknown task detected by Celery. Name: {name}, ID: {id}, Message: {message}"
+        )
+
+        if self._config.unprocessable_task_queue_name:
+            self._move_task_to_queue(
+                self._config.unprocessable_task_queue_name,
+                name,
+                [
+                    name,
+                    id,
+                    _json_dump(message),
+                    str(exc),
+                    _json_dump(kwargs),
+                ],
+            )
+
+    def _move_task_to_queue(self, queue_name: str, task_name: str, args: list):
+        """Helper function to move a task to a specified queue."""
+        try:
+            logger.info(
+                f"Moving task: {task_name} to queue: {queue_name}, args: {args}"
+            )
+            self._app.send_task(
+                name=task_name,
+                queue=queue_name,
+                args=args,
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to move task: {task_name} to queue: {queue_name}, error: {e}"
+            )
+            raise e
