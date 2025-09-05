@@ -292,7 +292,7 @@ class ParquetDatasource(Datasource):
             self._file_metadata_shuffler = np.random.default_rng(shuffle.seed)
 
         # Sample small number of parquet files to estimate
-        #   - Encoding ratio: ration of file size on disk to approximate expected
+        #   - Encoding ratio: ratio of file size on disk to approximate expected
         #     size of the corresponding block in memory
         #   - Default batch-size: number of rows to be read from a file at a time,
         #     used to limit amount of memory pressure
