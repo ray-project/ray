@@ -349,7 +349,7 @@ class NvidiaGpuProvider(GpuProvider):
                         )
                 except self._pynvml.NVMLError as fallback_e:
                     logger.debug(
-                        f"Failed to retrieve GPU processes with fallback API: {fallback_e}"
+                        f"Failed to retrieve GPU processes using `nvmlDeviceGetComputeRunningProcesses` and `nvmlDeviceGetGraphicsRunningProcesses`: {fallback_e}"
                     )
 
             return GpuUtilizationInfo(
