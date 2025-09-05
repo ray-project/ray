@@ -875,7 +875,8 @@ class Worker:
             _is_experimental_channel=_is_experimental_channel,
             tensor_transport_val=tensor_transport.value,
         )
-        self.gpu_object_manager.put_object(ret, tensor_transport, tensors)
+        if tensors:
+            self.gpu_object_manager.put_object(ret, tensor_transport, tensors)
         return ret
 
     def raise_errors(self, serialized_objects, object_refs):

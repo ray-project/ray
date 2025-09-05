@@ -1,5 +1,4 @@
 import sys
-import time
 
 import pytest
 import torch
@@ -113,7 +112,6 @@ def test_put_and_get_object_with_object_store(ray_start_regular):
     ref1 = dst_actor.consume_with_object_store.remote(ref)
     result1 = ray.get(ref1)
     assert result1 == 45
-    time.sleep(10)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)

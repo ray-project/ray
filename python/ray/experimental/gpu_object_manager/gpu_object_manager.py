@@ -342,18 +342,22 @@ class GPUObjectManager:
         self,
         obj_ref: ObjectRef,
         tensor_transport: TensorTransportEnum,
-        tensors: Optional[List["torch.Tensor"]] = None,
+        tensors: List["torch.Tensor"],
     ):
         """
         Put the GPU object into the GPU object manager.
+
+        Args:
+            obj_ref: The object ref of the GPU object.
+            tensor_transport: The tensor transport backend to use.
+            tensors: The tensors to put into the GPU object manager.
+
         """
         from ray.experimental.gpu_object_manager.gpu_object_store import (
             _tensor_transport_to_collective_backend,
         )
         from ray.experimental.collective import get_tensor_transport_manager
 
-        if not tensors:
-            return
         tensor_transport_backend = _tensor_transport_to_collective_backend(
             tensor_transport
         )
