@@ -36,6 +36,18 @@ GOOGLE_TPU_V5LITEPOD = "TPU-V5LITEPOD"
 GOOGLE_TPU_V6E = "TPU-V6E"
 HUAWEI_NPU_910B = "Ascend910B"
 HUAWEI_NPU_910B4 = "Ascend910B4"
+APPLE_M1 = "M1"
+APPLE_M1_PRO = "M1-Pro"
+APPLE_M1_MAX = "M1-Max"
+APPLE_M1_ULTRA = "M1-Ultra"
+APPLE_M2 = "M2"
+APPLE_M2_PRO = "M2-Pro"
+APPLE_M2_MAX = "M2-Max"
+APPLE_M2_ULTRA = "M2-Ultra"
+APPLE_M3 = "M3"
+APPLE_M3_PRO = "M3-Pro"
+APPLE_M3_MAX = "M3-Max"
+APPLE_SILICON = "Apple-Silicon"
 
 # Use these instead of NVIDIA_A100 if you need a specific accelerator size. Note that
 # these labels are not auto-added to nodes, you'll have to add them manually in
