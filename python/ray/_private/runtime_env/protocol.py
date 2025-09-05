@@ -226,7 +226,7 @@ class ProtocolsProvider:
                 )
 
         with open_file(source_uri, "rb", transport_params=tp) as fin:
-            with open_file(dest_file, "wb") as fout:
+            with open(dest_file, "wb") as fout:
                 fout.write(fin.read())
 
 
