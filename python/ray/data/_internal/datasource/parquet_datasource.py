@@ -102,14 +102,20 @@ class _NoIOSerializableParquetFragment:
     serialization protocol that actually does network RPCs during serialization
     (to fetch metadata)"""
 
-    def __init__(self, f: "ParquetFileFragment"):
+    def __init__(self, f: "ParquetFileFragment", file_size: int):
         self._fragment = f
+        self._file_size = file_size
+
+    @property
+    def file_size(self) -> int:
+        return self._file_size
 
     def __reduce__(self):
         return self._fragment.format.make_fragment, (
             self._fragment.path,
             self._fragment.filesystem,
             self._fragment.partition_expression,
+            file_size
         )
 
 
@@ -253,7 +259,8 @@ class ParquetDatasource(Datasource):
         # network calls when `_ParquetDatasourceReader` is serialized. See
         # `_SerializedFragment()` implementation for more details.
         self._pq_fragments = [
-            _NoIOSerializableParquetFragment(p) for p in pq_ds.fragments
+            _NoIOSerializableParquetFragment(fragment, file_size)
+            for fragment, file_size in zip(pq_ds.fragments, file_sizes)
         ]
         self._pq_paths = [p.path for p in pq_ds.fragments]
         self._meta_provider = meta_provider
@@ -266,6 +273,7 @@ class ParquetDatasource(Datasource):
         self._file_metadata_shuffler = None
         self._include_paths = include_paths
         self._partitioning = partitioning
+
         if shuffle == "files":
             self._file_metadata_shuffler = np.random.default_rng()
         elif isinstance(shuffle, FileShuffleConfig):
@@ -273,7 +281,6 @@ class ParquetDatasource(Datasource):
 
         self._encoding_ratio = _estimate_files_encoding_ratio(
             self._pq_fragments,
-            self._metadata,
             to_batches_kwargs=to_batch_kwargs,
             columns=data_columns,
             schema=self._read_schema,
@@ -513,7 +520,6 @@ def _estimate_memory_block_size(
 
 def _estimate_files_encoding_ratio(
     fragments: List[_NoIOSerializableParquetFragment],
-    metadata: List[ParquetFileMetadata],
     *,
     to_batches_kwargs: Optional[Dict[str, Any]],
     columns: Optional[List[str]],
@@ -527,13 +533,13 @@ def _estimate_files_encoding_ratio(
     if not DataContext.get_current().decoding_size_estimation:
         return PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
 
-    sampled_fragments, sampled_metadata = zip(*_sample_fragments(
-        self._pq_fragments,
+    sampled_fragments = _sample_fragments(
+        fragments,
         to_batches_kwargs=to_batch_kwargs,
         columns=data_columns,
         schema=self._read_schema,
         local_scheduling=self._local_scheduling,
-    ))
+    )
 
     in_mem_block_sizes = _estimate_in_mem_block_sizes(
         sampled_fragments,
@@ -543,7 +549,7 @@ def _estimate_files_encoding_ratio(
     )
 
     in_mem_block_sizes_arr = np.array(in_mem_block_sizes)
-    file_sizes_arr = np.array([m.num_bytes for m in sampled_metadata])
+    file_sizes_arr = np.array([f.file_size for f in fragments])
 
     avg_expansion_ratio = np.mean(in_mem_block_sizes_arr / file_sizes_arr)
 
@@ -635,8 +641,7 @@ def get_parquet_dataset(paths, filesystem, dataset_kwargs):
 
 def _sample_fragments(
     fragments: List[_NoIOSerializableParquetFragment],
-    metadata: List[ParquetFileMetadata],
-) -> List[Tuple[_NoIOSerializableParquetFragment, ParquetFileMetadata]]:
+) -> List[_NoIOSerializableParquetFragment]:
     num_files = len(fragments)
     num_samples = int(num_files * PARQUET_ENCODING_RATIO_ESTIMATE_SAMPLING_RATIO)
     min_num_samples = min(PARQUET_ENCODING_RATIO_ESTIMATE_MIN_NUM_SAMPLES, num_files)
@@ -646,7 +651,7 @@ def _sample_fragments(
     # Evenly distributed to choose which file to sample, to avoid biased prediction
     # if data is skewed.
     return [
-        (fragments[idx], metadata[idx])
+        fragments[idx]
         for idx in np.linspace(0, num_files - 1, num_samples).astype(int).tolist()
     ]
 
