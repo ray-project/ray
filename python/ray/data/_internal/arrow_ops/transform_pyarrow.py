@@ -237,7 +237,7 @@ def _find_diverging_fields(
             has_object = has_tensor = False
 
             for schema in unique_schemas:
-                if name in schema.names:
+                try:
                     field_type = schema.field(name).type
                     non_null_types.append(field_type)
                     # Check for object/tensor types
@@ -245,7 +245,7 @@ def _find_diverging_fields(
                         field_type, ArrowPythonObjectType
                     )
                     has_tensor = has_tensor or _contains_tensor_type(field_type)
-                else:
+                except KeyError:
                     has_missing = True
 
                 # Early exit if we find both
@@ -426,10 +426,12 @@ def unify_schemas(
         updated_schemas = []
         for schema in schemas_to_unify:
             for name, new_type in overrides.items():
-                if name in schema.names:
+                try:
                     idx = schema.get_field_index(name)
                     field = schema.field(name).with_type(new_type)
                     schema = schema.set(idx, field)
+                except KeyError:
+                    pass
             updated_schemas.append(schema)
         schemas_to_unify = updated_schemas
 
