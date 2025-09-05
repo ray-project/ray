@@ -1016,8 +1016,122 @@ class HTTPProxy(GenericProxy):
         yield status
 
 
+class ProxyActorInterface(ABC):
+    """Abstract interface for proxy actors in Ray Serve.
+
+    This interface defines the contract that all proxy actor implementations must follow,
+    allowing for different proxy backends (Ray HTTP/gRPC proxies, HAProxy, etc.).
+    """
+
+    def __init__(
+        self,
+        http_options: HTTPOptions,
+        grpc_options: gRPCOptions,
+        *,
+        node_id: NodeId,
+        node_ip_address: str,
+        logging_config: LoggingConfig,
+        long_poll_client: Optional[LongPollClient] = None,
+    ):
+        """Initialize the proxy actor.
+
+        Args:
+            http_options: HTTP configuration options
+            grpc_options: gRPC configuration options
+            node_id: ID of the node this proxy is running on
+            node_ip_address: IP address of the node
+            logging_config: Logging configuration
+            long_poll_client: Optional long poll client for receiving updates
+        """
+        self._node_id = node_id
+        self._node_ip_address = node_ip_address
+        self._http_options = http_options
+        self._grpc_options = grpc_options
+        self._logging_config = logging_config
+        self.long_poll_client = long_poll_client
+
+    @abstractmethod
+    async def ready(self) -> str:
+        """Blocks until the proxy is ready to serve requests.
+
+        Returns:
+            JSON-serialized metadata containing proxy information (worker ID, log file path, etc.)
+        """
+        pass
+
+    @abstractmethod
+    async def update_draining(
+        self, draining: bool, _after: Optional[Any] = None
+    ) -> None:
+        """Update the draining status of the proxy.
+
+        Args:
+            draining: Whether the proxy should be draining
+            _after: Optional ObjectRef for scheduling dependency
+        """
+        pass
+
+    @abstractmethod
+    async def is_drained(self, _after: Optional[Any] = None) -> bool:
+        """Check whether the proxy is drained.
+
+        Args:
+            _after: Optional ObjectRef for scheduling dependency
+
+        Returns:
+            True if the proxy is drained, False otherwise
+        """
+        pass
+
+    @abstractmethod
+    async def check_health(self) -> None:
+        """Check the health of the proxy.
+
+        Raises:
+            Exception: if the proxy is unhealthy
+        """
+        pass
+
+    @abstractmethod
+    def pong(self) -> str:
+        """Respond to ping from replicas.
+
+        Returns:
+            A response string
+        """
+        pass
+
+    @abstractmethod
+    async def receive_asgi_messages(self, request_metadata: RequestMetadata) -> bytes:
+        """Handle ASGI messages for HTTP requests.
+
+        Args:
+            request_metadata: Metadata about the request
+
+        Returns:
+            Serialized ASGI messages
+        """
+        pass
+
+    # Testing and debugging methods
+    @abstractmethod
+    def _get_http_options(self) -> HTTPOptions:
+        """Get HTTP options used by the proxy."""
+        pass
+
+    @abstractmethod
+    def _get_logging_config(self) -> Tuple:
+        """Get the logging configuration."""
+        pass
+
+    @abstractmethod
+    def _dump_ingress_replicas_for_testing(self, route: str) -> Set:
+        """Get replicas for a route (for testing)."""
+        pass
+
+
 @ray.remote(num_cpus=0)
-class ProxyActor:
+class ProxyActor(ProxyActorInterface):
     def __init__(
         self,
         http_options: HTTPOptions,
