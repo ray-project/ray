@@ -30,7 +30,6 @@ from ray.data._internal.util import rows_same
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource import DefaultFileMetadataProvider
-from ray.data.datasource.parquet_meta_provider import PARALLELIZE_META_FETCH_THRESHOLD
 from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
@@ -650,49 +649,6 @@ def test_parquet_read_with_udf(
 
     ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
     np.testing.assert_array_equal(sorted(ones), np.array(one_data[:2]) + 1)
-
-
-@pytest.mark.parametrize(
-    "fs,data_path",
-    [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
-        (lazy_fixture("s3_fs_with_space"), lazy_fixture("s3_path_with_space")),
-        (
-            lazy_fixture("s3_fs_with_anonymous_crendential"),
-            lazy_fixture("s3_path_with_anonymous_crendential"),
-        ),
-    ],
-)
-def test_parquet_read_parallel_meta_fetch(
-    ray_start_regular_shared, fs, data_path, target_max_block_size_infinite_or_default
-):
-    setup_data_path = _unwrap_protocol(data_path)
-    num_dfs = PARALLELIZE_META_FETCH_THRESHOLD + 1
-    for idx in range(num_dfs):
-        df = pd.DataFrame({"one": list(range(3 * idx, 3 * (idx + 1)))})
-        table = pa.Table.from_pandas(df)
-        path = os.path.join(setup_data_path, f"test_{idx}.parquet")
-        pq.write_table(table, path, filesystem=fs)
-
-    parallelism = 8
-    ds = ray.data.read_parquet(
-        data_path, filesystem=fs, override_num_blocks=parallelism
-    )
-
-    # Test metadata-only parquet ops.
-    assert ds.count() == num_dfs * 3
-    assert ds.size_bytes() > 0
-    # Schema information and input files are available from Parquet metadata,
-    # so we do not need to compute the first block.
-    assert ds.schema() is not None
-    input_files = ds.input_files()
-    assert len(input_files) == num_dfs, input_files
-
-    # Forces a data read.
-    values = [s["one"] for s in ds.take(limit=3 * num_dfs)]
-    assert sorted(values) == list(range(3 * num_dfs))
 
 
 def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
