@@ -511,18 +511,15 @@ def _fetch_parquet_file_info(
     )
 
     avg_row_size: Optional[int] = None
-
-    try:
-        # Use first batch in-memory size for estimation.
-        batch = next(batches_iter)
-    except StopIteration:
-        pass
-    else:
+    # Use first batch non-empty batch to estimate the avg size of the
+    # row in-memory
+    for batch in batches_iter:
         if batch.num_rows > 0:
             avg_row_size = math.ceil(batch.nbytes / batch.num_rows)
+            break
 
     return _ParquetFileInfo(
-        in_mem_row_size=avg_row_size,
+        avg_row_in_mem_bytes=avg_row_size,
         metadata=metadata,
     )
 
