@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 import numpy as np
 from packaging.version import parse as parse_version
@@ -23,7 +23,6 @@ except ImportError:
 class FieldInfo:
     """Information about a field across multiple schemas."""
 
-    name: str
     types_by_schema: List[Optional[pyarrow.DataType]]
 
 
@@ -164,57 +163,97 @@ def take_table(
     return table
 
 
+def _contains_tensor_type(dtype: "pyarrow.DataType") -> bool:
+    """
+    Recursively check if a PyArrow type contains tensor types.
+    """
+    import pyarrow
+
+    from ray.air.util.tensor_extensions.arrow import get_arrow_extension_tensor_types
+
+    tensor_types = get_arrow_extension_tensor_types()
+
+    if isinstance(dtype, tensor_types):
+        return True
+
+    if pyarrow.types.is_struct(dtype):
+        return any(_contains_tensor_type(field.type) for field in dtype)
+    elif pyarrow.types.is_list(dtype) or pyarrow.types.is_large_list(dtype):
+        return _contains_tensor_type(dtype.value_type)
+    elif pyarrow.types.is_map(dtype):
+        return _contains_tensor_type(dtype.key_type) or _contains_tensor_type(
+            dtype.item_type
+        )
+    elif pyarrow.types.is_union(dtype):
+        return any(
+            _contains_tensor_type(dtype.field(i).type) for i in range(dtype.num_fields)
+        )
+
+    return False
+
+
 def _find_diverging_fields(
-    schemas: List["pyarrow.Schema"],
-) -> Tuple[List["pyarrow.Schema"], Dict[str, FieldInfo]]:
+    unique_schemas: List["pyarrow.Schema"],
+) -> Dict[str, FieldInfo]:
     """
     Identify fields whose presence or types differ across the provided schemas.
 
     Args:
-        schemas: List of PyArrow schemas to find diverging fields in.
+        unique_schemas: List of PyArrow schemas to find diverging fields in.
 
     Returns:
-        List of unique schemas and a dictionary of diverging fields.
+        A dictionary of diverging fields.
     """
-    # Deduplicate schemas
-    unique_schemas = [schemas[0]]
-    for schema in schemas[1:]:
-        if not schema.equals(schemas[0]):
-            unique_schemas.append(schema)
+    # Only process fields that might diverge
+    first_schema_fields = set(unique_schemas[0].names)
+    diverging_field_names = set()
 
-    if len(unique_schemas) == 1:
-        return unique_schemas, {}
+    # Quick check: find fields that are missing in any schema
+    for schema in unique_schemas[1:]:
+        schema_fields = set(schema.names)
+        diverging_field_names.update(
+            first_schema_fields.symmetric_difference(schema_fields)
+        )
 
-    # Build field info map
-    field_info_map = {}
-    for idx, schema in enumerate(unique_schemas):
-        for field in schema:
-            if field.name not in field_info_map:
-                field_info_map[field.name] = FieldInfo(
-                    name=field.name, types_by_schema=[None] * len(unique_schemas)
+    # Check for type differences only in common fields
+    common_fields = first_schema_fields
+    for schema in unique_schemas[1:]:
+        common_fields &= set(schema.names)
+
+    for field_name in common_fields:
+        types = [schema.field(field_name).type for schema in unique_schemas]
+        if len(set(types)) > 1:  # Types differ
+            diverging_field_names.add(field_name)
+
+    # Only build FieldInfo objects for actually diverging fields
+    diverging_fields = {}
+    if diverging_field_names:
+        from ray.air.util.object_extensions.arrow import ArrowPythonObjectType
+
+        for name in diverging_field_names:
+            types_by_schema = []
+            has_object, has_tensor = False, False
+            for schema in unique_schemas:
+                try:
+                    field_type = schema.field(name).type
+                except KeyError:
+                    field_type = None
+                types_by_schema.append(field_type)
+                # Only validate tensor/object mixing for diverging fields
+                has_object = field_type is not None and (
+                    has_object or isinstance(field_type, ArrowPythonObjectType)
                 )
-            field_info_map[field.name].types_by_schema[idx] = field.type
+                has_tensor = field_type is not None and (
+                    has_tensor or _contains_tensor_type(field_type)
+                )
+                if has_object and has_tensor:
+                    raise ValueError(
+                        f"Found columns with both objects and tensors: {name}"
+                    )
 
-    # Filter to diverging fields (missing or different types)
-    diverging_fields = {
-        name: info
-        for name, info in field_info_map.items()
-        if None in info.types_by_schema or len(set(info.types_by_schema)) > 1
-    }
+            diverging_fields[name] = FieldInfo(types_by_schema=types_by_schema)
 
-    # Validate tensor/object mixing
-    from ray.air.util.object_extensions.arrow import ArrowPythonObjectType
-    from ray.air.util.tensor_extensions.arrow import get_arrow_extension_tensor_types
-
-    tensor_types = get_arrow_extension_tensor_types()
-    for name, info in diverging_fields.items():
-        types = [t for t in info.types_by_schema if t is not None]
-        has_object = any(isinstance(t, ArrowPythonObjectType) for t in types)
-        has_tensor = any(isinstance(t, tensor_types) for t in types)
-        if has_object and has_tensor:
-            raise ValueError(f"Found columns with both objects and tensors: {name}")
-
-    return unique_schemas, diverging_fields
+    return diverging_fields
 
 
 def _reconcile_field(
@@ -308,12 +347,11 @@ def _unify_schemas_pyarrow(
 def _is_special_type(dtype: pyarrow.DataType) -> bool:
     """Check if a type requires special handling during unification."""
     from ray.air.util.object_extensions.arrow import ArrowPythonObjectType
-    from ray.air.util.tensor_extensions.arrow import get_arrow_extension_tensor_types
 
-    tensor_types = get_arrow_extension_tensor_types()
-
-    return isinstance(dtype, (ArrowPythonObjectType, tensor_types)) or (
-        pyarrow.types.is_list(dtype) and pyarrow.types.is_null(dtype.value_type)
+    return (
+        isinstance(dtype, ArrowPythonObjectType)
+        or _contains_tensor_type(dtype)
+        or (pyarrow.types.is_list(dtype) and pyarrow.types.is_null(dtype.value_type))
     )
 
 
@@ -329,17 +367,28 @@ def unify_schemas(
     if not schemas:
         raise ValueError("No schemas provided for unify_schemas")
 
+    # Deduplicate schemas. Calling this before PyArrow's unify_schemas is more efficient (100x faster).
+
     # Remove metadata for hashability
-    schemas = [s.remove_metadata() for s in schemas]
+    schemas[0].remove_metadata()
+    schemas_to_unify = [schemas[0]]
+    for schema in schemas[1:]:
+        schema.remove_metadata()
+        if not schema.equals(schemas[0]):
+            schemas_to_unify.append(schema)
+
+    # If there is only one schema, return it
+    if len(schemas_to_unify) == 1:
+        return schemas_to_unify[0]
 
     # Try PyArrow's unification first
     try:
-        return _unify_schemas_pyarrow(schemas, promote_types)
-    except Exception:
+        return _unify_schemas_pyarrow(schemas_to_unify, promote_types)
+    except pyarrow.lib.ArrowTypeError:
         pass
 
     # Find diverging fields
-    schemas_to_unify, diverging_fields = _find_diverging_fields(schemas)
+    diverging_fields = _find_diverging_fields(schemas_to_unify)
 
     # If no divergences, return the single schema
     if not diverging_fields:
