@@ -10,7 +10,7 @@ Starting from 2.49, Ray supports exporting task events. Ray plans to support oth
 event types, including actor events, node events, job events, etc., in the future.  
 
 .. note:: 
-    Ray event export feature is still in alpha version. The way to configure event 
+    Ray Event Export is still in alpha. The way to configure event 
     reporting and the format of the events are subject to change.
 
 Enable event reporting
