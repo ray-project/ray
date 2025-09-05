@@ -263,6 +263,7 @@ class JobManager:
                 num_consecutive_failures = 0
 
             except Exception as e:
+                job_status = await self._job_info_client.get_status(job_id)
                 target_job_error_message = ""
                 target_job_error_type: Optional[JobErrorType] = None
                 if job_status is not None and job_status.is_terminal():
