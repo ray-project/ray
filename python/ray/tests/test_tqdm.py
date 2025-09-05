@@ -4,8 +4,8 @@ import time
 import pytest
 
 import ray
-from ray.experimental import tqdm_ray
 from ray._common.test_utils import wait_for_condition
+from ray.experimental import tqdm_ray
 
 
 def test_distributed_tqdm_remote():

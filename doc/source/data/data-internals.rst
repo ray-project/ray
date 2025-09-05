@@ -96,7 +96,7 @@ images), then Ray Data can’t bound the block size.
 Shuffle Algorithms
 ------------------
 
-In data processing shuffling refers to the process of redistributing individual dataset's partitions (that in Ray Data are
+In data processing, shuffling refers to the process of redistributing individual dataset's partitions (that in Ray Data are
 called :ref:`blocks <data_key_concepts>`).
 
 Ray Data implements two main shuffle algorithms:

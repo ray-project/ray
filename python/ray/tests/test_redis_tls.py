@@ -1,5 +1,7 @@
-import pytest
 import sys
+
+import pytest
+
 import ray
 from ray._private.test_utils import external_redis_test_enabled
 

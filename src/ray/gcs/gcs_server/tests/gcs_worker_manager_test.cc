@@ -21,22 +21,23 @@
 
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
-#include "ray/gcs/tests/gcs_test_util.h"
 #include "ray/util/process.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
-using namespace ::testing;  // NOLINT
-using namespace ray::gcs;   // NOLINT
-using namespace ray;        // NOLINT
+using namespace ::testing;    // NOLINT
+using namespace ray::gcs;     // NOLINT
+using namespace ray::pubsub;  // NOLINT
+using namespace ray;          // NOLINT
 
 class GcsWorkerManagerTest : public Test {
  public:
   GcsWorkerManagerTest() {
-    gcs_publisher_ =
-        std::make_shared<GcsPublisher>(std::make_unique<ray::pubsub::MockPublisher>());
+    gcs_publisher_ = std::make_shared<pubsub::GcsPublisher>(
+        std::make_unique<ray::pubsub::MockPublisher>());
     gcs_table_storage_ =
         std::make_unique<gcs::GcsTableStorage>(std::make_unique<InMemoryStoreClient>());
   }
@@ -74,7 +75,7 @@ class GcsWorkerManagerTest : public Test {
   std::unique_ptr<std::thread> thread_io_service_;
   instrumented_io_context io_service_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
+  std::shared_ptr<pubsub::GcsPublisher> gcs_publisher_;
   std::shared_ptr<gcs::GcsWorkerManager> worker_manager_;
 };
 

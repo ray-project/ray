@@ -3,7 +3,7 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass
-from typing import Callable, List, Optional, Union
+from typing import TYPE_CHECKING, Callable, List, Optional, Union
 
 import pandas as pd
 
@@ -66,6 +66,10 @@ from ray.train.v2.api.exceptions import (
     TrainingFailedError,
 )
 from ray.train.v2.api.result import Result
+
+if TYPE_CHECKING:
+    from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
+
 
 logger = logging.getLogger(__name__)
 
@@ -274,6 +278,10 @@ class TrainController:
         self, num_workers: int, resources_per_worker: dict
     ) -> Optional[ControllerError]:
         """Start the worker group and launch the train function.
+
+        Args:
+            num_workers: The number of workers to start.
+            resources_per_worker: The resources per worker to start.
 
         Returns:
             None if the worker group was successfully started,
@@ -537,7 +545,6 @@ class TrainController:
             raise ValueError(
                 f"Cannot get result when controller is in state {controller_state}"
             )
-
         return self._build_result()
 
     def get_training_failed_error(self) -> Optional[TrainingFailedError]:
@@ -553,3 +560,10 @@ class TrainController:
             return controller_state.training_failed_error
 
         return None
+
+    async def get_all_reported_checkpoints(
+        self, expected_num_report_calls: int
+    ) -> List["ReportedCheckpoint"]:
+        return await self._checkpoint_manager.get_all_reported_checkpoints(
+            expected_num_report_calls
+        )

@@ -6,8 +6,8 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-import pytest
 import numpy as np
+import pytest
 
 import ray.cluster_utils
 from ray._private.test_utils import client_test_enabled

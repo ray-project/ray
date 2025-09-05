@@ -3,12 +3,11 @@
 Tests that can run on a shared Ray cluster fixture should go in test_multiprocessing.py
 """
 import math
+import multiprocessing as mp
 import os
 import sys
-import multiprocessing as mp
 
 import pytest
-
 
 import ray
 from ray._private.test_utils import external_redis_test_enabled

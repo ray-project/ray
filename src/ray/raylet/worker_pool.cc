@@ -28,11 +28,11 @@
 
 #include "absl/strings/str_split.h"
 #include "ray/common/constants.h"
+#include "ray/common/lease/lease_spec.h"
+#include "ray/common/protobuf_utils.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/status.h"
-#include "ray/common/task/task_spec.h"
-#include "ray/gcs/pb_util.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 #include "ray/util/network_util.h"
@@ -186,12 +186,12 @@ void WorkerPool::Start() {
   }
 
   if (RayConfig::instance().enable_worker_prestart()) {
-    rpc::TaskSpec rpc_task_spec;
-    rpc_task_spec.set_language(Language::PYTHON);
-    rpc_task_spec.mutable_runtime_env_info()->set_serialized_runtime_env("{}");
+    rpc::LeaseSpec rpc_lease_spec;
+    rpc_lease_spec.set_language(Language::PYTHON);
+    rpc_lease_spec.mutable_runtime_env_info()->set_serialized_runtime_env("{}");
 
-    TaskSpecification task_spec{std::move(rpc_task_spec)};
-    PrestartWorkersInternal(task_spec, num_prestart_python_workers);
+    LeaseSpecification lease_spec{std::move(rpc_lease_spec)};
+    PrestartWorkersInternal(lease_spec, num_prestart_python_workers);
   }
 }
 
@@ -481,7 +481,7 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
     auto it = all_jobs_.find(job_id);
     if (it == all_jobs_.end()) {
       RAY_LOG(DEBUG) << "Job config of job " << job_id << " are not local yet.";
-      // Will reschedule ready tasks in `NodeManager::HandleJobStarted`.
+      // Will reschedule ready leases in `NodeManager::HandleJobStarted`.
       *status = PopWorkerStatus::JobConfigMissing;
       process_failed_job_config_missing_++;
       return {Process(), (StartupToken)-1};
@@ -631,7 +631,7 @@ void WorkerPool::MonitorPopWorkerRequestForRegistration(
     auto &requests = state.pending_registration_requests;
     auto it = std::find(requests.begin(), requests.end(), pop_worker_request);
     if (it != requests.end()) {
-      // Pop and fail the task...
+      // Pop and fail the lease...
       requests.erase(it);
       PopWorkerStatus status = PopWorkerStatus::WorkerPendingRegistration;
       PopWorkerCallbackAsync(pop_worker_request->callback_, nullptr, status);
@@ -876,7 +876,7 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
                                   const rpc::JobConfig &job_config,
                                   std::function<void(Status, int)> send_reply_callback) {
   int port;
-  RAY_CHECK(!driver->GetAssignedTaskId().IsNil());
+  RAY_CHECK(driver->GetGrantedLeaseId().IsNil());
   Status status = GetNextFreePort(&port);
   if (!status.ok()) {
     send_reply_callback(status, /*port=*/0);
@@ -894,12 +894,12 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
     if (!first_job_registered_ && RayConfig::instance().prestart_worker_first_driver() &&
         !RayConfig::instance().enable_worker_prestart()) {
       RAY_LOG(DEBUG) << "PrestartDefaultCpuWorkers " << num_prestart_python_workers;
-      rpc::TaskSpec rpc_task_spec;
-      rpc_task_spec.set_language(Language::PYTHON);
-      rpc_task_spec.mutable_runtime_env_info()->set_serialized_runtime_env("{}");
+      rpc::LeaseSpec rpc_lease_spec;
+      rpc_lease_spec.set_language(Language::PYTHON);
+      rpc_lease_spec.mutable_runtime_env_info()->set_serialized_runtime_env("{}");
 
-      TaskSpecification task_spec{std::move(rpc_task_spec)};
-      PrestartWorkersInternal(task_spec, num_prestart_python_workers);
+      LeaseSpecification lease_spec{std::move(rpc_lease_spec)};
+      PrestartWorkersInternal(lease_spec, num_prestart_python_workers);
     }
 
     // Invoke the `send_reply_callback` later to only finish driver
@@ -1049,11 +1049,12 @@ void WorkerPool::PopDeleteWorker(
 }
 
 void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
-  // Since the worker is now idle, unset its assigned task ID.
-  RAY_CHECK(worker->GetAssignedTaskId().IsNil())
-      << "Idle workers cannot have an assigned task ID";
-
-  // Find a task that this worker can fit. If there's none, put it in the idle pool.
+  // Since the worker is now idle, verify that it has no assigned lease ID.
+  RAY_CHECK(worker->GetGrantedLeaseId().IsNil())
+      << "Idle workers cannot have an assigned lease ID";
+  RAY_CHECK(worker->GetWorkerType() != rpc::WorkerType::DRIVER)
+      << "Idle workers cannot be drivers";
+  // Find a lease that this worker can fit. If there's none, put it in the idle pool.
   // First find in pending_registration_requests, then in pending_start_requests.
   std::shared_ptr<PopWorkerRequest> pop_worker_request = nullptr;
   auto &state = GetStateForLanguage(worker->GetLanguage());
@@ -1062,7 +1063,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
         state.pending_registration_requests.begin(),
         state.pending_registration_requests.end(),
         [this, &worker](const std::shared_ptr<PopWorkerRequest> &request) {
-          return WorkerFitsForTask(*worker, *request) == WorkerUnfitForTaskReason::NONE;
+          return WorkerFitForLease(*worker, *request) == WorkerUnfitForLeaseReason::NONE;
         });
     if (it != state.pending_registration_requests.end()) {
       pop_worker_request = *it;
@@ -1074,7 +1075,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
         state.pending_start_requests.begin(),
         state.pending_start_requests.end(),
         [this, &worker](const std::shared_ptr<PopWorkerRequest> &request) {
-          return WorkerFitsForTask(*worker, *request) == WorkerUnfitForTaskReason::NONE;
+          return WorkerFitForLease(*worker, *request) == WorkerUnfitForLeaseReason::NONE;
         });
     if (it != state.pending_start_requests.end()) {
       pop_worker_request = *it;
@@ -1085,7 +1086,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   if (pop_worker_request) {
     bool used = pop_worker_request->callback_(worker, PopWorkerStatus::OK, "");
     if (!used) {
-      // Retry PushWorker. Maybe it can be used by other tasks.
+      // Retry PushWorker. Maybe it can be used by other leases.
       // Can we have tail call optimization for this? :)
       return PushWorker(worker);
     }
@@ -1097,7 +1098,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     absl::Time keep_alive_until =
         now +
         absl::Milliseconds(RayConfig::instance().idle_worker_killing_time_threshold_ms());
-    if (worker->GetAssignedTaskTime() == absl::Time()) {
+    if (worker->GetGrantedLeaseTime() == absl::Time()) {
       // Newly registered worker. Respect worker_startup_keep_alive_duration if any.
       auto it = state.worker_processes.find(worker->GetStartupToken());
       if (it != state.worker_processes.end()) {
@@ -1107,9 +1108,9 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
         }
       }
 
-      // If the worker never held any tasks, then we should consider it first when
+      // If the worker never held any leases, then we should consider it first when
       // choosing which idle workers to kill because it is not warmed up and is slower
-      // than those workers who served tasks before.
+      // than those workers who held leases before.
       // See https://github.com/ray-project/ray/pull/36766
       //
       // Also, we set keep_alive_until w.r.t. worker_startup_keep_alive_duration.
@@ -1158,7 +1159,7 @@ void WorkerPool::TryKillingIdleWorkers() {
   }
 
   // Compute the soft limit for the number of idle workers to keep around.
-  // This assumes the common case where each task requires 1 CPU.
+  // This assumes the common case where each lease requires 1 CPU.
   const auto num_desired_idle_workers = get_num_cpus_available_();
   RAY_LOG(DEBUG) << "Idle workers: " << idle_of_all_languages_.size()
                  << ", idle workers that are eligible to kill: "
@@ -1237,64 +1238,64 @@ void WorkerPool::KillIdleWorker(const IdleWorkerEntry &entry) {
       });
 }
 
-WorkerUnfitForTaskReason WorkerPool::WorkerFitsForTask(
+WorkerUnfitForLeaseReason WorkerPool::WorkerFitForLease(
     const WorkerInterface &worker, const PopWorkerRequest &pop_worker_request) const {
   if (worker.IsDead()) {
-    return WorkerUnfitForTaskReason::OTHERS;
+    return WorkerUnfitForLeaseReason::OTHERS;
   }
   // These workers are exiting. So skip them.
   if (pending_exit_idle_workers_.contains(worker.WorkerId())) {
-    return WorkerUnfitForTaskReason::OTHERS;
+    return WorkerUnfitForLeaseReason::OTHERS;
   }
   if (worker.GetLanguage() != pop_worker_request.language_) {
-    return WorkerUnfitForTaskReason::OTHERS;
+    return WorkerUnfitForLeaseReason::OTHERS;
   }
   if (worker.GetWorkerType() != pop_worker_request.worker_type_) {
-    return WorkerUnfitForTaskReason::OTHERS;
+    return WorkerUnfitForLeaseReason::OTHERS;
   }
 
   // For scheduling requests with a root detached actor ID, ensure that either the
   // worker has _no_ detached actor ID or it matches the request.
   // NOTE(edoakes): the job ID for a worker with no detached actor ID must still match,
-  // which is checked below. The pop_worker_request for a task rooted in a detached
+  // which is checked below. The pop_worker_request for a lease rooted in a detached
   // actor will have the job ID of the job that created the detached actor.
   if (!pop_worker_request.root_detached_actor_id_.IsNil() &&
       !worker.GetRootDetachedActorId().IsNil() &&
       pop_worker_request.root_detached_actor_id_ != worker.GetRootDetachedActorId()) {
-    return WorkerUnfitForTaskReason::ROOT_MISMATCH;
+    return WorkerUnfitForLeaseReason::ROOT_MISMATCH;
   }
 
   // Only consider workers that haven't been assigned to a job yet or have been assigned
   // to the requested job.
   const auto worker_job_id = worker.GetAssignedJobId();
   if (!worker_job_id.IsNil() && pop_worker_request.job_id_ != worker_job_id) {
-    return WorkerUnfitForTaskReason::ROOT_MISMATCH;
+    return WorkerUnfitForLeaseReason::ROOT_MISMATCH;
   }
 
   // If the request asks for a is_gpu, and the worker is assigned a different is_gpu,
   // then skip it.
   if (!OptionalsMatchOrEitherEmpty(pop_worker_request.is_gpu_, worker.GetIsGpu())) {
-    return WorkerUnfitForTaskReason::OTHERS;
+    return WorkerUnfitForLeaseReason::OTHERS;
   }
   // If the request asks for a is_actor_worker, and the worker is assigned a different
   // is_actor_worker, then skip it.
   if (!OptionalsMatchOrEitherEmpty(pop_worker_request.is_actor_worker_,
                                    worker.GetIsActorWorker())) {
-    return WorkerUnfitForTaskReason::OTHERS;
+    return WorkerUnfitForLeaseReason::OTHERS;
   }
   // Skip workers with a mismatched runtime_env.
-  // Even if the task doesn't have a runtime_env specified, we cannot schedule it to a
-  // worker with a runtime_env because the task is expected to run in the base
+  // Even if the lease doesn't have a runtime_env specified, we cannot schedule it to a
+  // worker with a runtime_env because the lease is expected to run in the base
   // environment.
   if (worker.GetRuntimeEnvHash() != pop_worker_request.runtime_env_hash_) {
-    return WorkerUnfitForTaskReason::RUNTIME_ENV_MISMATCH;
+    return WorkerUnfitForLeaseReason::RUNTIME_ENV_MISMATCH;
   }
   // Skip if the dynamic_options doesn't match.
   if (LookupWorkerDynamicOptions(worker.GetStartupToken()) !=
       pop_worker_request.dynamic_options_) {
-    return WorkerUnfitForTaskReason::DYNAMIC_OPTIONS_MISMATCH;
+    return WorkerUnfitForLeaseReason::DYNAMIC_OPTIONS_MISMATCH;
   }
-  return WorkerUnfitForTaskReason::NONE;
+  return WorkerUnfitForLeaseReason::NONE;
 }
 
 void WorkerPool::StartNewWorker(
@@ -1361,32 +1362,27 @@ void WorkerPool::StartNewWorker(
   }
 }
 
-void WorkerPool::PopWorker(const TaskSpecification &task_spec,
+void WorkerPool::PopWorker(const LeaseSpecification &lease_spec,
                            const PopWorkerCallback &callback) {
-  RAY_LOG(DEBUG) << "Pop worker for task " << task_spec.TaskId() << " task name "
-                 << task_spec.FunctionDescriptor()->ToString();
-  // Code path of actor task.
-  RAY_CHECK(!task_spec.IsActorTask()) << "Direct call shouldn't reach here.";
-
   auto pop_worker_request = std::make_shared<PopWorkerRequest>(
-      task_spec.GetLanguage(),
+      lease_spec.GetLanguage(),
       rpc::WorkerType::WORKER,
-      task_spec.JobId(),
-      task_spec.RootDetachedActorId(),
-      /*is_gpu=*/task_spec.GetRequiredResources().Get(scheduling::ResourceID::GPU()) > 0,
-      /*is_actor_worker=*/task_spec.IsActorCreationTask(),
-      task_spec.RuntimeEnvInfo(),
-      task_spec.GetRuntimeEnvHash(),
-      task_spec.DynamicWorkerOptionsOrEmpty(),
+      lease_spec.JobId(),
+      lease_spec.RootDetachedActorId(),
+      /*is_gpu=*/lease_spec.GetRequiredResources().Get(scheduling::ResourceID::GPU()) > 0,
+      /*is_actor_worker=*/lease_spec.IsActorCreationTask(),
+      lease_spec.RuntimeEnvInfo(),
+      lease_spec.GetRuntimeEnvHash(),
+      lease_spec.DynamicWorkerOptionsOrEmpty(),
       /*worker_startup_keep_alive_duration=*/std::nullopt,
-      [this, task_spec, callback](
+      [this, lease_spec, callback](
           const std::shared_ptr<WorkerInterface> &worker,
           PopWorkerStatus status,
           const std::string &runtime_env_setup_error_message) -> bool {
-        // We got a worker suitable for the task. Now let's check if the task is still
+        // We got a worker suitable for the lease. Now let's check if the lease is still
         // executable.
-        if (worker && finished_jobs_.contains(task_spec.JobId()) &&
-            task_spec.RootDetachedActorId().IsNil()) {
+        if (worker && finished_jobs_.contains(lease_spec.JobId()) &&
+            lease_spec.RootDetachedActorId().IsNil()) {
           // When a job finishes, node manager will kill leased workers one time
           // and worker pool will kill idle workers periodically.
           // The current worker is already removed from the idle workers
@@ -1407,21 +1403,21 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
 
 std::shared_ptr<WorkerInterface> WorkerPool::FindAndPopIdleWorker(
     const PopWorkerRequest &pop_worker_request) {
-  absl::flat_hash_map<WorkerUnfitForTaskReason, size_t> skip_reason_count;
+  absl::flat_hash_map<WorkerUnfitForLeaseReason, size_t> skip_reason_count;
 
-  auto worker_fits_for_task_fn = [this, &pop_worker_request, &skip_reason_count](
+  auto worker_fit_for_lease_fn = [this, &pop_worker_request, &skip_reason_count](
                                      const IdleWorkerEntry &entry) -> bool {
-    WorkerUnfitForTaskReason reason =
-        WorkerFitsForTask(*entry.worker, pop_worker_request);
-    if (reason == WorkerUnfitForTaskReason::NONE) {
+    WorkerUnfitForLeaseReason reason =
+        WorkerFitForLease(*entry.worker, pop_worker_request);
+    if (reason == WorkerUnfitForLeaseReason::NONE) {
       return true;
     }
     skip_reason_count[reason]++;
-    if (reason == WorkerUnfitForTaskReason::DYNAMIC_OPTIONS_MISMATCH) {
+    if (reason == WorkerUnfitForLeaseReason::DYNAMIC_OPTIONS_MISMATCH) {
       ray_metric_num_cached_workers_skipped_dynamic_options_mismatch_.Record(1);
-    } else if (reason == WorkerUnfitForTaskReason::RUNTIME_ENV_MISMATCH) {
+    } else if (reason == WorkerUnfitForLeaseReason::RUNTIME_ENV_MISMATCH) {
       ray_metric_num_cached_workers_skipped_runtime_environment_mismatch_.Record(1);
-    } else if (reason == WorkerUnfitForTaskReason::ROOT_MISMATCH) {
+    } else if (reason == WorkerUnfitForLeaseReason::ROOT_MISMATCH) {
       ray_metric_num_cached_workers_skipped_job_mismatch_.Record(1);
     }
     return false;
@@ -1429,7 +1425,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::FindAndPopIdleWorker(
   auto &state = GetStateForLanguage(pop_worker_request.language_);
   auto worker_it = std::find_if(idle_of_all_languages_.rbegin(),
                                 idle_of_all_languages_.rend(),
-                                worker_fits_for_task_fn);
+                                worker_fit_for_lease_fn);
   if (worker_it == idle_of_all_languages_.rend()) {
     RAY_LOG(DEBUG) << "No cached worker, cached workers skipped due to "
                    << debug_string(skip_reason_count);
@@ -1444,7 +1440,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::FindAndPopIdleWorker(
   idle_of_all_languages_.erase(lit);
 
   // Assigned workers should always match the request's job_id
-  // *except* if the task originates from a detached actor.
+  // *except* if the lease originates from a detached actor.
   RAY_CHECK(worker->GetAssignedJobId().IsNil() ||
             worker->GetAssignedJobId() == pop_worker_request.job_id_ ||
             !pop_worker_request.root_detached_actor_id_.IsNil());
@@ -1452,7 +1448,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::FindAndPopIdleWorker(
 }
 
 void WorkerPool::PopWorker(std::shared_ptr<PopWorkerRequest> pop_worker_request) {
-  // If there's an idle worker that fits the task, use it.
+  // If there's an idle worker that fits the lease, use it.
   // Else, start a new worker.
   auto worker = FindAndPopIdleWorker(*pop_worker_request);
   if (worker == nullptr) {
@@ -1465,21 +1461,21 @@ void WorkerPool::PopWorker(std::shared_ptr<PopWorkerRequest> pop_worker_request)
   PopWorkerCallbackAsync(pop_worker_request->callback_, worker, PopWorkerStatus::OK);
 }
 
-void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
+void WorkerPool::PrestartWorkers(const LeaseSpecification &lease_spec,
                                  int64_t backlog_size) {
   int64_t num_available_cpus = get_num_cpus_available_();
-  // Code path of task that needs a dedicated worker.
+  // Code path of lease that needs a dedicated worker.
   RAY_LOG(DEBUG) << "PrestartWorkers, num_available_cpus " << num_available_cpus
-                 << " backlog_size " << backlog_size << " task spec "
-                 << task_spec.DebugString() << " has runtime env "
-                 << task_spec.HasRuntimeEnv();
-  if ((task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) ||
-      task_spec.GetLanguage() != ray::Language::PYTHON) {
+                 << " backlog_size " << backlog_size << " lease spec "
+                 << lease_spec.DebugString() << " has runtime env "
+                 << lease_spec.HasRuntimeEnv();
+  if (lease_spec.IsActorCreationTask() && lease_spec.DynamicWorkerOptionsSize() > 0 &&
+      lease_spec.GetLanguage() != ray::Language::PYTHON) {
     return;  // Not handled.
   }
 
-  auto &state = GetStateForLanguage(task_spec.GetLanguage());
-  // The number of available workers that can be used for this task spec.
+  auto &state = GetStateForLanguage(lease_spec.GetLanguage());
+  // The number of available workers that can be used for this lease spec.
   int num_usable_workers = state.idle.size();
   for (auto &entry : state.worker_processes) {
     num_usable_workers += entry.second.is_pending_registration ? 1 : 0;
@@ -1490,48 +1486,48 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
   if (num_usable_workers < desired_usable_workers) {
     // Account for workers that are idle or already starting.
     int64_t num_needed = desired_usable_workers - num_usable_workers;
-    RAY_LOG(DEBUG) << "Prestarting " << num_needed << " workers given task backlog size "
+    RAY_LOG(DEBUG) << "Prestarting " << num_needed << " workers given lease backlog size "
                    << backlog_size << " and available CPUs " << num_available_cpus
                    << " num idle workers " << state.idle.size()
                    << " num registered workers " << state.registered_workers.size();
-    PrestartWorkersInternal(task_spec, num_needed);
+    PrestartWorkersInternal(lease_spec, num_needed);
   }
 }
 
-void WorkerPool::PrestartWorkersInternal(const TaskSpecification &task_spec,
+void WorkerPool::PrestartWorkersInternal(const LeaseSpecification &lease_spec,
                                          int64_t num_needed) {
   RAY_LOG(DEBUG) << "PrestartWorkers " << num_needed;
   for (int ii = 0; ii < num_needed; ++ii) {
     // Prestart worker with no runtime env.
-    if (IsRuntimeEnvEmpty(task_spec.SerializedRuntimeEnv())) {
+    if (IsRuntimeEnvEmpty(lease_spec.SerializedRuntimeEnv())) {
       PopWorkerStatus status;
       StartWorkerProcess(
-          task_spec.GetLanguage(), rpc::WorkerType::WORKER, task_spec.JobId(), &status);
+          lease_spec.GetLanguage(), rpc::WorkerType::WORKER, lease_spec.JobId(), &status);
       continue;
     }
 
     // Prestart worker with runtime env.
     GetOrCreateRuntimeEnv(
-        task_spec.SerializedRuntimeEnv(),
-        task_spec.RuntimeEnvConfig(),
-        task_spec.JobId(),
-        [this, task_spec = task_spec](bool successful,
-                                      const std::string &serialized_runtime_env_context,
-                                      const std::string &setup_error_message) {
+        lease_spec.SerializedRuntimeEnv(),
+        lease_spec.RuntimeEnvConfig(),
+        lease_spec.JobId(),
+        [this, lease_spec = lease_spec](bool successful,
+                                        const std::string &serialized_runtime_env_context,
+                                        const std::string &setup_error_message) {
           if (!successful) {
             RAY_LOG(ERROR) << "Fails to create or get runtime env "
                            << setup_error_message;
             return;
           }
           PopWorkerStatus status;
-          StartWorkerProcess(task_spec.GetLanguage(),
+          StartWorkerProcess(lease_spec.GetLanguage(),
                              rpc::WorkerType::WORKER,
-                             task_spec.JobId(),
+                             lease_spec.JobId(),
                              &status,
                              /*dynamic_options=*/{},
-                             task_spec.GetRuntimeEnvHash(),
+                             lease_spec.GetRuntimeEnvHash(),
                              serialized_runtime_env_context,
-                             task_spec.RuntimeEnvInfo());
+                             lease_spec.RuntimeEnvInfo());
         });
   }
 }

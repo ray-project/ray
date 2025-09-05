@@ -21,7 +21,7 @@ namespace ray {
 namespace gcs {
 
 InternalPubSubHandler::InternalPubSubHandler(instrumented_io_context &io_service,
-                                             gcs::GcsPublisher &gcs_publisher)
+                                             pubsub::GcsPublisher &gcs_publisher)
     : io_service_(io_service), gcs_publisher_(gcs_publisher) {}
 
 void InternalPubSubHandler::HandleGcsPublish(rpc::GcsPublishRequest request,
@@ -90,15 +90,6 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
                      << ". If you see this message, please file an issue to Ray Github.";
     }
   }
-  send_reply_callback(Status::OK(), nullptr, nullptr);
-}
-
-void InternalPubSubHandler::HandleGcsUnregisterSubscriber(
-    rpc::GcsUnregisterSubscriberRequest request,
-    rpc::GcsUnregisterSubscriberReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  const auto subscriber_id = UniqueID::FromBinary(request.subscriber_id());
-  gcs_publisher_.GetPublisher().UnregisterSubscriber(subscriber_id);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

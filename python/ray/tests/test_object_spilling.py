@@ -1,34 +1,34 @@
 import copy
 import json
+import os
 import platform
 import random
 import sys
 from datetime import datetime, timedelta
-from unittest.mock import patch
 from pathlib import Path
-import os
+from unittest.mock import patch
 
-import psutil
 import numpy as np
 import pytest
 
-
 import ray
+import ray.remote_function
+from ray._common.test_utils import wait_for_condition
 from ray._private.external_storage import (
+    ExternalStorageSmartOpenImpl,
+    FileSystemStorage,
+    _get_unique_spill_filename,
     create_url_with_offset,
     parse_url_with_offset,
-    _get_unique_spill_filename,
-    FileSystemStorage,
-    ExternalStorageSmartOpenImpl,
 )
 from ray._private.internal_api import memory_summary
-from ray._common.test_utils import wait_for_condition
-import ray.remote_function
 from ray.tests.conftest import (
     buffer_object_spilling_config,
     file_system_object_spilling_config,
     mock_distributed_fs_object_spilling_config,
 )
+
+import psutil
 
 # Note: Disk write speed can be as low as 6 MiB/s in AWS Mac instances, so we have to
 # increase the timeout.

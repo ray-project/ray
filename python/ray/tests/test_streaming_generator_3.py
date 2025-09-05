@@ -1,10 +1,10 @@
 import asyncio
-import pytest
-import numpy as np
 import sys
 import time
-
 from collections import Counter
+
+import numpy as np
+import pytest
 
 import ray
 from ray._raylet import ObjectRefGenerator

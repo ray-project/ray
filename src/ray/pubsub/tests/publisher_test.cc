@@ -19,7 +19,6 @@
 #include <string>
 #include <vector>
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
@@ -28,20 +27,16 @@
 namespace ray {
 
 namespace pubsub {
+
 namespace {
 const NodeID kDefaultPublisherId = NodeID::FromRandom();
 }
-
-using pub_internal::SubscriberState;
-using pub_internal::SubscriptionIndex;
 
 class PublisherTest : public ::testing::Test {
  public:
   PublisherTest() : periodical_runner_(PeriodicalRunner::Create(io_service_)) {}
 
-  ~PublisherTest() {}
-
-  void SetUp() {
+  void SetUp() override {
     publisher_ = std::make_shared<Publisher>(
         /*channels=*/
         std::vector<rpc::ChannelType>{
@@ -60,26 +55,23 @@ class PublisherTest : public ::testing::Test {
     request_.set_publisher_id(kDefaultPublisherId.Binary());
   }
 
-  void TearDown() {}
-
   void ResetSequenceId() { sequence_id_ = 0; }
 
   int64_t GetNextSequenceId() { return ++sequence_id_; }
 
-  const rpc::PubMessage GeneratePubMessage(const ObjectID &object_id,
-                                           int64_t sequence_id = 0) {
+  rpc::PubMessage GeneratePubMessage(const ObjectID &object_id, int64_t sequence_id = 0) {
     rpc::PubMessage pub_message;
     auto *object_eviction_msg = pub_message.mutable_worker_object_eviction_message();
     object_eviction_msg->set_object_id(object_id.Binary());
     pub_message.set_key_id(object_id.Binary());
     pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
-    RAY_LOG(INFO) << "message sequence_id is" << sequence_id;
+    RAY_LOG(INFO) << "message sequence_id is " << sequence_id;
     pub_message.set_sequence_id(sequence_id);
     return pub_message;
   }
 
-  const rpc::PubMessage GenerateErrorInfoMessage(const std::string &id,
-                                                 const std::string &text) {
+  rpc::PubMessage GenerateErrorInfoMessage(const std::string &id,
+                                           const std::string &text) {
     rpc::PubMessage pub_message;
     auto *error_msg = pub_message.mutable_error_info_message();
     error_msg->set_error_message(text);
@@ -232,7 +224,7 @@ TEST_F(PublisherTest, TestSubscriptionIndexErase) {
     auto current = it++;
     auto subscriber_id = *current;
     oid_subscribers.erase(current);
-    ASSERT_EQ(subscription_index.EraseEntry(oid.Binary(), subscriber_id), 1);
+    subscription_index.EraseEntry(oid.Binary(), subscriber_id);
     i++;
   }
   const auto &subscribers_from_index =
@@ -272,8 +264,8 @@ TEST_F(PublisherTest, TestSubscriptionIndexEraseMultiSubscribers) {
   subscription_index.AddEntry(oid.Binary(), subscriber_1);
   subscription_index.AddEntry(oid2.Binary(), subscriber_1);
   subscription_index.AddEntry(oid.Binary(), subscriber_2);
-  ASSERT_TRUE(subscription_index.EraseEntry(oid.Binary(), subscriber_id));
-  ASSERT_FALSE(subscription_index.EraseEntry(oid.Binary(), subscriber_id));
+  subscription_index.EraseEntry(oid.Binary(), subscriber_id);
+  subscription_index.EraseEntry(oid.Binary(), subscriber_id);
 }
 
 TEST_F(PublisherTest, TestSubscriptionIndexEraseSubscriber) {
@@ -1048,24 +1040,19 @@ TEST_F(PublisherTest, TestUnregisterSubscription) {
   ASSERT_EQ(long_polling_connection_replied, false);
 
   // Connection should be replied (removed) when the subscriber is unregistered.
-  int erased = publisher_->UnregisterSubscription(
+  publisher_->UnregisterSubscription(
       rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary());
-  ASSERT_EQ(erased, 1);
   ASSERT_EQ(long_polling_connection_replied, false);
 
   // Make sure when the entries don't exist, it doesn't delete anything.
-  ASSERT_EQ(publisher_->UnregisterSubscription(rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                               subscriber_id_,
-                                               ObjectID::FromRandom().Binary()),
-            0);
-  ASSERT_EQ(
-      publisher_->UnregisterSubscription(
-          rpc::ChannelType::WORKER_OBJECT_EVICTION, NodeID::FromRandom(), oid.Binary()),
-      0);
-  ASSERT_EQ(publisher_->UnregisterSubscription(rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                               NodeID::FromRandom(),
-                                               ObjectID::FromRandom().Binary()),
-            0);
+  publisher_->UnregisterSubscription(rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                                     subscriber_id_,
+                                     ObjectID::FromRandom().Binary());
+  publisher_->UnregisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, NodeID::FromRandom(), oid.Binary());
+  publisher_->UnregisterSubscription(rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                                     NodeID::FromRandom(),
+                                     ObjectID::FromRandom().Binary());
   ASSERT_EQ(long_polling_connection_replied, false);
   // Metadata won't be removed until we unregsiter the subscriber.
   publisher_->UnregisterSubscriber(subscriber_id_);
@@ -1115,25 +1102,93 @@ TEST_F(PublisherTest, TestUnregisterSubscriber) {
 // Test if registration / unregistration is idempotent.
 TEST_F(PublisherTest, TestRegistrationIdempotency) {
   const auto oid = ObjectID::FromRandom();
-  ASSERT_TRUE(publisher_->RegisterSubscription(
-      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary()));
-  ASSERT_FALSE(publisher_->RegisterSubscription(
-      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary()));
-  ASSERT_FALSE(publisher_->RegisterSubscription(
-      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary()));
-  ASSERT_FALSE(publisher_->RegisterSubscription(
-      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary()));
-  ASSERT_FALSE(publisher_->CheckNoLeaks());
-  ASSERT_TRUE(publisher_->UnregisterSubscription(
-      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary()));
-  ASSERT_FALSE(publisher_->UnregisterSubscription(
-      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary()));
+
+  // Double register and assert publish
+  publisher_->RegisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary());
+  publisher_->RegisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary());
+  publisher_->ConnectToSubscriber(
+      request_,
+      reply.mutable_publisher_id(),
+      reply.mutable_pub_messages(),
+      [](Status, std::function<void()>, std::function<void()>) {});
+  publisher_->Publish(GeneratePubMessage(oid));
+  ASSERT_EQ(reply.publisher_id(), kDefaultPublisherId.Binary());
+  ASSERT_EQ(reply.pub_messages().size(), 1);
+  reply = rpc::PubsubLongPollingReply();
+
+  // Reconnect, unregister and assert no publish messages
+  request_.set_max_processed_sequence_id(1);
+  publisher_->ConnectToSubscriber(
+      request_,
+      reply.mutable_publisher_id(),
+      reply.mutable_pub_messages(),
+      [](Status, std::function<void()>, std::function<void()>) {});
+  publisher_->UnregisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary());
+  publisher_->UnregisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary());
+  auto pub_message = GeneratePubMessage(oid);
+  publisher_->Publish(pub_message);
+  ASSERT_TRUE(reply.pub_messages().empty());
   ASSERT_TRUE(publisher_->CheckNoLeaks());
-  ASSERT_TRUE(publisher_->RegisterSubscription(
-      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary()));
+
+  // Register and connect. Then unregister a couple times and make sure there's no
+  // publish.
+  publisher_->RegisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary());
+  publisher_->ConnectToSubscriber(
+      request_,
+      reply.mutable_publisher_id(),
+      reply.mutable_pub_messages(),
+      [](Status, std::function<void()>, std::function<void()>) {});
   ASSERT_FALSE(publisher_->CheckNoLeaks());
-  ASSERT_TRUE(publisher_->UnregisterSubscription(
-      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary()));
+  publisher_->UnregisterSubscriber(subscriber_id_);
+  publisher_->UnregisterSubscriber(subscriber_id_);
+  publisher_->UnregisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary());
+  ASSERT_TRUE(publisher_->CheckNoLeaks());
+  publisher_->Publish(GeneratePubMessage(oid));
+  ASSERT_TRUE(reply.pub_messages().empty());
+}
+
+TEST_F(PublisherTest, TestSubscriberLostAPublish) {
+  const auto oid = ObjectID::FromRandom();
+  send_reply_callback = [](Status, std::function<void()>, std::function<void()>) {};
+
+  // Subscriber registers and connects and publisher publishes.
+  publisher_->RegisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary());
+  publisher_->ConnectToSubscriber(request_,
+                                  reply.mutable_publisher_id(),
+                                  reply.mutable_pub_messages(),
+                                  send_reply_callback);
+  publisher_->Publish(GeneratePubMessage(oid));
+  ASSERT_EQ(reply.pub_messages().size(), 1);
+  reply = rpc::PubsubLongPollingReply();
+
+  // The publisher publishes while there's no active request, then the Subscriber retries
+  // the LongPollingRequest with the same max_sequence_id since it lost the reply from the
+  // publisher. The subscriber should get both the 1st and 2nd messages.
+  publisher_->Publish(GeneratePubMessage(oid));
+  publisher_->ConnectToSubscriber(request_,
+                                  reply.mutable_publisher_id(),
+                                  reply.mutable_pub_messages(),
+                                  send_reply_callback);
+  ASSERT_EQ(reply.pub_messages().size(), 2);
+  auto max_processed = reply.pub_messages(1).sequence_id();
+  reply = rpc::PubsubLongPollingReply();
+
+  // Subscriber got the reply this time, sends another request with a higher
+  // max_sequence_id, and then the publisher publishes.
+  request_.set_max_processed_sequence_id(max_processed);
+  publisher_->ConnectToSubscriber(request_,
+                                  reply.mutable_publisher_id(),
+                                  reply.mutable_pub_messages(),
+                                  send_reply_callback);
+  publisher_->Publish(GeneratePubMessage(oid));
+  ASSERT_EQ(reply.pub_messages().size(), 1);
 }
 
 TEST_F(PublisherTest, TestPublishFailure) {

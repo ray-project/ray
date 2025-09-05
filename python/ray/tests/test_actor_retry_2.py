@@ -2,11 +2,11 @@ import os
 import sys
 from collections import defaultdict
 from typing import Optional
-from ray._common.test_utils import SignalActor
 
 import pytest
 
 import ray
+from ray._common.test_utils import SignalActor
 
 
 class MyError(Exception):

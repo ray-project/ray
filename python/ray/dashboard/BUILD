@@ -40,6 +40,7 @@ py_test_run_all_subdirectory(
         "tests/test_dashboard.py",
         "tests/test_state_head.py",
         "modules/serve/tests/**/*.py",
+        "modules/job/tests/test_job_manager.py",
     ],
     extra_srcs = [],
     tags = [
@@ -53,6 +54,17 @@ py_test(
     name = "test_cli_integration",
     size = "large",
     srcs = ["modules/job/tests/test_cli_integration.py"],
+    tags = [
+        "exclusive",
+        "team:core",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
+    name = "test_job_manager",
+    size = "large",
+    srcs = ["modules/job/tests/test_job_manager.py"],
     tags = [
         "exclusive",
         "team:core",

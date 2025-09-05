@@ -1,7 +1,8 @@
-import ray
-import pytest
 import sys
 
+import pytest
+
+import ray
 from ray.experimental import shuffle
 
 

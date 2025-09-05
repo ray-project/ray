@@ -37,8 +37,6 @@ namespace ray {
 
 namespace pubsub {
 
-namespace pub_internal {
-
 class SubscriberState;
 
 /// State for an entity / topic in a pub/sub channel.
@@ -54,8 +52,8 @@ class EntityState {
   bool Publish(const std::shared_ptr<rpc::PubMessage> &pub_message, size_t msg_size);
 
   /// Manages the set of subscribers of this entity.
-  bool AddSubscriber(SubscriberState *subscriber);
-  bool RemoveSubscriber(const UniqueID &subscriber_id);
+  void AddSubscriber(SubscriberState *subscriber);
+  void RemoveSubscriber(const UniqueID &subscriber_id);
 
   /// Gets the current set of subscribers, keyed by subscriber IDs.
   const absl::flat_hash_map<UniqueID, SubscriberState *> &Subscribers() const;
@@ -101,16 +99,15 @@ class SubscriptionIndex {
 
   /// Adds a new subscriber and the key it subscribes to.
   /// When `key_id` is empty, the subscriber subscribes to all keys.
-  /// NOTE: The method is idempotent. If it adds a duplicated entry, it will be no-op.
-  bool AddEntry(const std::string &key_id, SubscriberState *subscriber);
+  void AddEntry(const std::string &key_id, SubscriberState *subscriber);
 
   /// Erases the subscriber from this index.
   /// Returns whether the subscriber exists before the call.
-  bool EraseSubscriber(const UniqueID &subscriber_id);
+  void EraseSubscriber(const UniqueID &subscriber_id);
 
   /// Erases the subscriber from the particular key.
   /// When `key_id` is empty, the subscriber subscribes to all keys.
-  bool EraseEntry(const std::string &key_id, const UniqueID &subscriber_id);
+  void EraseEntry(const std::string &key_id, const UniqueID &subscriber_id);
 
   /// Test only.
   /// Returns true if the entity id exists in the index.
@@ -231,8 +228,6 @@ class SubscriberState {
   std::string publisher_id_binary_;
 };
 
-}  // namespace pub_internal
-
 /// Protocol detail
 ///
 /// - Subscriber always send a long polling connection as long as there are subscribed
@@ -272,7 +267,7 @@ class Publisher : public PublisherInterface {
         publisher_id_(publisher_id) {
     // Insert index map for each channel.
     for (auto type : channels) {
-      subscription_index_map_.emplace(type, pub_internal::SubscriptionIndex(type));
+      subscription_index_map_.emplace(type, SubscriptionIndex(type));
     }
 
     periodical_runner_->RunFnPeriodically([this] { CheckDeadSubscribers(); },
@@ -286,7 +281,7 @@ class Publisher : public PublisherInterface {
       google::protobuf::RepeatedPtrField<rpc::PubMessage> *pub_messages,
       rpc::SendReplyCallback send_reply_callback) override;
 
-  bool RegisterSubscription(const rpc::ChannelType channel_type,
+  void RegisterSubscription(const rpc::ChannelType channel_type,
                             const UniqueID &subscriber_id,
                             const std::optional<std::string> &key_id) override;
 
@@ -295,16 +290,13 @@ class Publisher : public PublisherInterface {
   void PublishFailure(const rpc::ChannelType channel_type,
                       const std::string &key_id) override;
 
-  bool UnregisterSubscription(const rpc::ChannelType channel_type,
+  void UnregisterSubscription(const rpc::ChannelType channel_type,
                               const UniqueID &subscriber_id,
                               const std::optional<std::string> &key_id) override;
 
   void UnregisterSubscriber(const UniqueID &subscriber_id) override;
 
   std::string DebugString() const override;
-
-  /// Flushes all inflight pollings and unregisters all subscribers.
-  void UnregisterAll();
 
   /// Check all subscribers, detect which subscribers are dead or its connection is timed
   /// out, and clean up their metadata. This uses the goal-oriented logic to clean up all
@@ -373,12 +365,12 @@ class Publisher : public PublisherInterface {
   mutable absl::Mutex mutex_;
 
   /// Mapping of node id -> subscribers.
-  absl::flat_hash_map<UniqueID, std::unique_ptr<pub_internal::SubscriberState>>
-      subscribers_ ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<UniqueID, std::unique_ptr<SubscriberState>> subscribers_
+      ABSL_GUARDED_BY(mutex_);
 
   /// Index that stores the mapping of messages <-> subscribers.
-  absl::flat_hash_map<rpc::ChannelType, pub_internal::SubscriptionIndex>
-      subscription_index_map_ ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<rpc::ChannelType, SubscriptionIndex> subscription_index_map_
+      ABSL_GUARDED_BY(mutex_);
 
   /// The maximum number of objects to publish for each publish calls.
   const int64_t publish_batch_size_;

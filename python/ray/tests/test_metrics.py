@@ -2,18 +2,19 @@ import os
 import platform
 import sys
 
-import psutil
 import pytest
-from ray._common.test_utils import wait_for_condition
 import requests
 
 import ray
-from ray._private.test_utils import (
-    wait_until_succeeded_without_exception,
-    get_node_stats,
-)
 from ray._common.network_utils import build_address
+from ray._common.test_utils import wait_for_condition
+from ray._private.test_utils import (
+    get_node_stats,
+    wait_until_succeeded_without_exception,
+)
 from ray.core.generated import common_pb2
+
+import psutil
 
 _WIN32 = os.name == "nt"
 

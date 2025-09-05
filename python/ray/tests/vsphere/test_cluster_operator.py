@@ -8,6 +8,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from ray.autoscaler._private.vsphere.cluster_operator_client import (
+    ClusterOperatorClient,
+    VMNodeStatus,
+)
 from ray.autoscaler.tags import (
     NODE_KIND_HEAD,
     NODE_KIND_WORKER,
@@ -20,11 +24,6 @@ from ray.autoscaler.tags import (
     TAG_RAY_NODE_STATUS,
     TAG_RAY_USER_NODE_TYPE,
 )
-from ray.autoscaler._private.vsphere.cluster_operator_client import (
-    ClusterOperatorClient,
-    VMNodeStatus,
-)
-
 
 _CLUSTER_NAME = "ray-cluster"
 _PROVIDER_CONFIG = {
@@ -146,8 +145,8 @@ _CLUSTER_RESPONSE = {
 
 
 def create_random_pvt_key():
-    from cryptography.hazmat.primitives.asymmetric import rsa
     from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
 
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     pem_private_key = private_key.private_bytes(

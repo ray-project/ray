@@ -4,6 +4,6 @@ ray_cc_library(
     name = "fake_raylet_client",
     hdrs = ["raylet_client.h"],
     deps = [
-        "//src/ray/raylet_client:raylet_client_lib",
+        "//src/ray/raylet_client:raylet_client_interface",
     ],
 )

@@ -1,20 +1,20 @@
 import os
 import sys
 import time
-from typing import Optional, Dict
+from typing import Dict, Optional
 
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
 import ray._private.gcs_utils as gcs_utils
 import ray._private.ray_constants
-from ray._raylet import GcsClient
-from ray.core.generated import autoscaler_pb2
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     convert_actor_state,
     make_global_state_accessor,
 )
+from ray._raylet import GcsClient
+from ray.core.generated import autoscaler_pb2
 
 
 def test_replenish_resources(ray_start_regular):

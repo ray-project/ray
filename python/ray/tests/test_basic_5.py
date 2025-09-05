@@ -2,22 +2,22 @@
 import gc
 import logging
 import os
+import subprocess
 import sys
 import time
-import subprocess
-from unittest.mock import Mock, patch
 import unittest
+from unittest.mock import Mock, patch
 
 import pytest
 
 import ray
 import ray.cluster_utils
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray._private.test_utils import (
+    client_test_enabled,
     run_string_as_driver,
     wait_for_pid_to_exit,
-    client_test_enabled,
 )
-from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 
 logger = logging.getLogger(__name__)
 

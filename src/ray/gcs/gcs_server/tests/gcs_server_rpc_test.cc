@@ -19,8 +19,8 @@
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
+#include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
-#include "ray/gcs/tests/gcs_test_util.h"
 #include "ray/rpc/gcs/gcs_rpc_client.h"
 
 namespace ray {
@@ -230,14 +230,14 @@ class GcsServerTest : public ::testing::Test {
 TEST_F(GcsServerTest, TestActorInfo) {
   // Create actor_table_data
   JobID job_id = JobID::FromInt(1);
-  auto actor_table_data = Mocker::GenActorTableData(job_id);
+  auto actor_table_data = GenActorTableData(job_id);
   // TODO(sand): Add tests that don't require checkponit.
 }
 
 TEST_F(GcsServerTest, TestJobInfo) {
   // Create job_table_data
   JobID job_id = JobID::FromInt(1);
-  auto job_table_data = Mocker::GenJobTableData(job_id);
+  auto job_table_data = GenJobTableData(job_id);
 
   // Add job
   rpc::AddJobRequest add_job_request;
@@ -253,17 +253,17 @@ TEST_F(GcsServerTest, TestJobInfo) {
 TEST_F(GcsServerTest, TestJobGarbageCollection) {
   // Create job_table_data
   JobID job_id = JobID::FromInt(1);
-  auto job_table_data = Mocker::GenJobTableData(job_id);
+  auto job_table_data = GenJobTableData(job_id);
 
   // Add job
   rpc::AddJobRequest add_job_request;
   add_job_request.mutable_data()->CopyFrom(*job_table_data);
   ASSERT_TRUE(AddJob(add_job_request));
 
-  auto actor_table_data = Mocker::GenActorTableData(job_id);
+  auto actor_table_data = GenActorTableData(job_id);
 
   // Register detached actor for job
-  auto detached_actor_table_data = Mocker::GenActorTableData(job_id);
+  auto detached_actor_table_data = GenActorTableData(job_id);
   detached_actor_table_data->set_is_detached(true);
 
   // Mark job finished
@@ -279,7 +279,7 @@ TEST_F(GcsServerTest, TestJobGarbageCollection) {
 
 TEST_F(GcsServerTest, TestNodeInfo) {
   // Create gcs node info
-  auto gcs_node_info = Mocker::GenNodeInfo();
+  auto gcs_node_info = GenNodeInfo();
 
   // Register node info
   rpc::RegisterNodeRequest register_node_info_request;
@@ -308,9 +308,9 @@ TEST_F(GcsServerTest, TestNodeInfo) {
 
 TEST_F(GcsServerTest, TestNodeInfoFilters) {
   // Create gcs node info
-  auto node1 = Mocker::GenNodeInfo(1, "127.0.0.1", "node1");
-  auto node2 = Mocker::GenNodeInfo(2, "127.0.0.2", "node2");
-  auto node3 = Mocker::GenNodeInfo(3, "127.0.0.3", "node3");
+  auto node1 = GenNodeInfo(1, "127.0.0.1", "node1");
+  auto node2 = GenNodeInfo(2, "127.0.0.2", "node2");
+  auto node3 = GenNodeInfo(3, "127.0.0.3", "node3");
 
   // Register node infos
   for (auto &node : {node1, node2, node3}) {
@@ -442,7 +442,7 @@ TEST_F(GcsServerTest, TestNodeInfoFilters) {
 
 TEST_F(GcsServerTest, TestWorkerInfo) {
   // Report worker failure
-  auto worker_failure_data = Mocker::GenWorkerTableData();
+  auto worker_failure_data = GenWorkerTableData();
   worker_failure_data->mutable_worker_address()->set_ip_address("127.0.0.1");
   worker_failure_data->mutable_worker_address()->set_port(5566);
   rpc::ReportWorkerFailureRequest report_worker_failure_request;
@@ -452,7 +452,7 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
   ASSERT_EQ(worker_table_data.size(), 1);
 
   // Add worker info
-  auto worker_data = Mocker::GenWorkerTableData();
+  auto worker_data = GenWorkerTableData();
   worker_data->mutable_worker_address()->set_worker_id(WorkerID::FromRandom().Binary());
   rpc::AddWorkerInfoRequest add_worker_request;
   add_worker_request.mutable_worker_data()->CopyFrom(*worker_data);

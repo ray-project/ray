@@ -1,12 +1,13 @@
 import sys
+import time
+from collections import Counter
+
 import pytest
 
 import ray
-import time
-from collections import Counter
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._raylet import GcsClient
 from ray.core.generated import autoscaler_pb2, common_pb2
-from ray._common.test_utils import wait_for_condition, SignalActor
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,

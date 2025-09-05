@@ -22,7 +22,7 @@
 
 #include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "mock/ray/pubsub/publisher.h"
-#include "ray/gcs/tests/gcs_test_util.h"
+#include "ray/common/test_utils.h"
 
 namespace ray {
 class GcsNodeManagerTest : public ::testing::Test {
@@ -33,7 +33,7 @@ class GcsNodeManagerTest : public ::testing::Test {
         [raylet_client = std::move(raylet_client)](const rpc::Address &) {
           return raylet_client;
         });
-    gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(
+    gcs_publisher_ = std::make_unique<pubsub::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
     io_context_ = std::make_unique<InstrumentedIOContextWithThread>("GcsNodeManagerTest");
   }
@@ -41,7 +41,7 @@ class GcsNodeManagerTest : public ::testing::Test {
  protected:
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::unique_ptr<rpc::RayletClientPool> client_pool_;
-  std::unique_ptr<gcs::GcsPublisher> gcs_publisher_;
+  std::unique_ptr<pubsub::GcsPublisher> gcs_publisher_;
   std::unique_ptr<InstrumentedIOContextWithThread> io_context_;
 };
 
@@ -52,7 +52,7 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
                                    client_pool_.get(),
                                    ClusterID::Nil());
   // Test Add/Get/Remove functionality.
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
 
   node_manager.AddNode(node);
@@ -77,7 +77,7 @@ TEST_F(GcsNodeManagerTest, TestListener) {
         added_nodes.emplace_back(std::move(node));
       });
   for (int i = 0; i < node_count; ++i) {
-    auto node = Mocker::GenNodeInfo();
+    auto node = GenNodeInfo();
     node_manager.AddNode(node);
   }
   ASSERT_EQ(node_count, added_nodes.size());
@@ -114,7 +114,7 @@ TEST_F(GcsNodeManagerTest, TestUpdateAliveNode) {
                                    ClusterID::Nil());
 
   // Create a test node
-  auto node = Mocker::GenNodeInfo();
+  auto node = GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
 
   // Add the node to the manager

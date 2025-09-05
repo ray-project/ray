@@ -5,7 +5,7 @@ import threading
 import time
 import weakref
 from abc import ABC, abstractmethod
-from asyncio import AbstractEventLoop
+from asyncio import AbstractEventLoop, ensure_future, futures
 from collections import defaultdict
 from collections.abc import MutableMapping
 from contextlib import contextmanager
@@ -42,7 +42,11 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
-from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
+from ray.serve._private.metrics_utils import (
+    QUEUED_REQUESTS_KEY,
+    InMemoryMetricsStore,
+    MetricsPusher,
+)
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.request_router import PendingRequest, RequestRouter
 from ray.serve._private.request_router.pow_2_router import (
@@ -53,16 +57,12 @@ from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     generate_request_id,
     resolve_deployment_response,
-    run_coroutine_or_future_threadsafe,
 )
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-
-QUEUED_REQUESTS_KEY = "queued"
 
 
 class RouterMetricsManager:
@@ -147,7 +147,14 @@ class RouterMetricsManager:
 
         if self._cached_metrics_enabled:
             self._cached_num_router_requests = defaultdict(int)
-            event_loop.create_task(self._report_cached_metrics_forever())
+
+            def create_metrics_task():
+                event_loop.create_task(self._report_cached_metrics_forever())
+
+            # the constructor is called in the user thread, but its trying to create a task on the event loop
+            # which is running in the router thread. This is not thread safe, so we need to use call_soon_threadsafe
+            # to create the task on the event loop thread safely.
+            event_loop.call_soon_threadsafe(create_metrics_task)
 
     @contextmanager
     def wrap_request_assignment(self, request_meta: RequestMetadata):
@@ -386,10 +393,11 @@ class RouterMetricsManager:
         running_requests = dict()
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE and self.autoscaling_config:
             look_back_period = self.autoscaling_config.look_back_period_s
+            self.metrics_store.prune_keys_and_compact_data(
+                time.time() - look_back_period
+            )
             running_requests = {
-                replica_id: self.metrics_store.window_average(
-                    replica_id, time.time() - look_back_period
-                )
+                replica_id: self.metrics_store.aggregate_avg([replica_id])[0]
                 # If data hasn't been recorded yet, return current
                 # number of queued and ongoing requests.
                 or num_requests
@@ -949,17 +957,34 @@ class SingletonThreadRouter(Router):
                 )
                 result.cancel()
 
-        task = self._asyncio_loop.create_task(
-            self._asyncio_router.assign_request(
-                request_meta, *request_args, **request_kwargs
+        concurrent_future = concurrent.futures.Future()
+
+        def create_task_and_setup():
+            task = self._asyncio_loop.create_task(
+                self._asyncio_router.assign_request(
+                    request_meta, *request_args, **request_kwargs
+                )
             )
-        )
-        # Route the actual request assignment coroutine on the asyncio loop thread.
-        concurrent_future = run_coroutine_or_future_threadsafe(
-            task,
-            loop=self._asyncio_loop,
-        )
-        task.add_done_callback(lambda _: asyncio_future_callback(_, concurrent_future))
+
+            # Set up your cancellation callback
+            task.add_done_callback(
+                lambda _: asyncio_future_callback(_, concurrent_future)
+            )
+
+            try:
+                # chain the two futures to handle direction channel of cancellation
+                futures._chain_future(
+                    ensure_future(task, loop=self._asyncio_loop), concurrent_future
+                )
+            except (SystemExit, KeyboardInterrupt):
+                raise
+            except BaseException as exc:
+                if concurrent_future.set_running_or_notify_cancel():
+                    concurrent_future.set_exception(exc)
+                raise
+
+        # Schedule on the event loop thread
+        self._asyncio_loop.call_soon_threadsafe(create_task_and_setup)
         return concurrent_future
 
     def shutdown(self) -> concurrent.futures.Future:

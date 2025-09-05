@@ -1450,6 +1450,20 @@ py_test(
 )
 
 py_test(
+    name = "test_download_expression",
+    size = "small",
+    srcs = ["tests/test_download_expression.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_context",
     size = "small",
     srcs = ["tests/test_context.py"],

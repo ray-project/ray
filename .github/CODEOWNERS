@@ -29,6 +29,9 @@
 /doc/source/cluster/ @ray-project/ray-core @ray-project/ray-docs
 /doc/source/ray-core/ @ray-project/ray-core @ray-project/ray-docs
 
+# Public protobuf files.
+/src/ray/protobuf/public/ @edoakes @jjyao
+
 # ==== Libraries and frameworks ====
 
 # Dependencies

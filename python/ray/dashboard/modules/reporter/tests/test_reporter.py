@@ -313,6 +313,7 @@ def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_
 
 def test_report_stats():
     dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
     agent = ReporterAgent(dashboard_agent)
     # Assume it is a head node.
     agent._is_head_node = True
@@ -374,6 +375,7 @@ def test_report_stats():
 
 def test_report_stats_gpu():
     dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
     agent = ReporterAgent(dashboard_agent)
     # Assume it is a head node.
     agent._is_head_node = True
@@ -494,6 +496,7 @@ def test_report_stats_gpu():
 
 def test_report_per_component_stats_gpu():
     dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
     agent = ReporterAgent(dashboard_agent)
     # Assume it is a head node.
     agent._is_head_node = True
@@ -857,6 +860,7 @@ def test_report_per_component_stats_gpu():
 
 def test_get_tpu_usage():
     dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
     agent = ReporterAgent(dashboard_agent)
 
     fake_metrics_content = """
@@ -913,6 +917,7 @@ def test_get_tpu_usage():
 
 def test_report_stats_tpu():
     dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
     agent = ReporterAgent(dashboard_agent)
 
     STATS_TEMPLATE["tpus"] = [
@@ -985,6 +990,7 @@ def test_report_stats_tpu():
 
 def test_report_per_component_stats():
     dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
     agent = ReporterAgent(dashboard_agent)
     # Assume it is a head node.
     agent._is_head_node = True

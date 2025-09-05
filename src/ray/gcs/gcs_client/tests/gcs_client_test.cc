@@ -22,13 +22,14 @@
 #include "absl/strings/substitute.h"
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
-#include "ray/gcs/tests/gcs_test_util.h"
 #include "ray/rpc/gcs/gcs_rpc_client.h"
 #include "ray/util/network_util.h"
 #include "ray/util/path_utils.h"
 #include "ray/util/raii.h"
+#include "ray/util/time.h"
 
 using namespace std::chrono_literals;  // NOLINT
 
@@ -421,11 +422,11 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
 INSTANTIATE_TEST_SUITE_P(RedisMigration, GcsClientTest, testing::Bool());
 
 TEST_P(GcsClientTest, TestCheckAlive) {
-  auto node_info1 = Mocker::GenNodeInfo();
+  auto node_info1 = GenNodeInfo();
   node_info1->set_node_manager_address("172.1.2.3");
   node_info1->set_node_manager_port(31292);
 
-  auto node_info2 = Mocker::GenNodeInfo();
+  auto node_info2 = GenNodeInfo();
   node_info2->set_node_manager_address("172.1.2.4");
   node_info2->set_node_manager_port(31293);
 
@@ -458,11 +459,11 @@ TEST_P(GcsClientTest, TestCheckAlive) {
 }
 
 TEST_P(GcsClientTest, TestGcsClientCheckAlive) {
-  auto node_info1 = Mocker::GenNodeInfo();
+  auto node_info1 = GenNodeInfo();
   node_info1->set_node_manager_address("172.1.2.3");
   node_info1->set_node_manager_port(31292);
 
-  auto node_info2 = Mocker::GenNodeInfo();
+  auto node_info2 = GenNodeInfo();
   node_info2->set_node_manager_address("172.1.2.4");
   node_info2->set_node_manager_port(31293);
 
@@ -491,7 +492,7 @@ TEST_P(GcsClientTest, TestGcsClientCheckAlive) {
 TEST_P(GcsClientTest, TestJobInfo) {
   // Create job table data.
   JobID add_job_id = JobID::FromInt(1);
-  auto job_table_data = Mocker::GenJobTableData(add_job_id);
+  auto job_table_data = GenJobTableData(add_job_id);
 
   // Subscribe to all jobs.
   std::atomic<int> job_updates(0);
@@ -515,7 +516,7 @@ TEST_P(GcsClientTest, TestActorInfo) {
   // Create actor table data.
   JobID job_id = JobID::FromInt(1);
   AddJob(job_id);
-  auto actor_table_data = Mocker::GenActorTableData(job_id);
+  auto actor_table_data = GenActorTableData(job_id);
   ActorID actor_id = ActorID::FromBinary(actor_table_data->actor_id());
 
   // Subscribe to any update operations of an actor.
@@ -533,7 +534,7 @@ TEST_P(GcsClientTest, TestActorInfo) {
 
 TEST_P(GcsClientTest, TestNodeInfo) {
   // Create gcs node info.
-  auto gcs_node1_info = Mocker::GenNodeInfo();
+  auto gcs_node1_info = GenNodeInfo();
   NodeID node1_id = NodeID::FromBinary(gcs_node1_info->node_id());
 
   // Subscribe to node addition and removal events from GCS.
@@ -557,7 +558,7 @@ TEST_P(GcsClientTest, TestNodeInfo) {
   EXPECT_EQ(gcs_client_->Nodes().GetSelfInfo().state(), gcs_node1_info->state());
 
   // Register a node to GCS.
-  auto gcs_node2_info = Mocker::GenNodeInfo();
+  auto gcs_node2_info = GenNodeInfo();
   NodeID node2_id = NodeID::FromBinary(gcs_node2_info->node_id());
   ASSERT_TRUE(RegisterNode(*gcs_node2_info));
   WaitForExpectedCount(register_count, 2);
@@ -572,7 +573,7 @@ TEST_P(GcsClientTest, TestNodeInfo) {
 
 TEST_P(GcsClientTest, TestUnregisterNode) {
   // Create gcs node info.
-  auto gcs_node_info = Mocker::GenNodeInfo();
+  auto gcs_node_info = GenNodeInfo();
   NodeID node_id = NodeID::FromBinary(gcs_node_info->node_id());
 
   // Register local node to GCS.
@@ -601,7 +602,7 @@ TEST_P(GcsClientTest, TestUnregisterNode) {
 
 TEST_P(GcsClientTest, TestGetAllAvailableResources) {
   // Register node.
-  auto node_info = Mocker::GenNodeInfo();
+  auto node_info = GenNodeInfo();
   node_info->mutable_resources_total()->insert({"CPU", 1.0});
   node_info->mutable_resources_total()->insert({"GPU", 10.0});
 
@@ -634,7 +635,7 @@ TEST_P(GcsClientTest, TestWorkerInfo) {
   ASSERT_TRUE(SubscribeToWorkerFailures(on_subscribe));
 
   // Report a worker failure to GCS when this worker doesn't exist.
-  auto worker_data = Mocker::GenWorkerTableData();
+  auto worker_data = GenWorkerTableData();
   worker_data->mutable_worker_address()->set_worker_id(WorkerID::FromRandom().Binary());
   ASSERT_TRUE(ReportWorkerFailure(worker_data));
   WaitForExpectedCount(worker_failure_count, 1);
@@ -653,7 +654,7 @@ TEST_P(GcsClientTest, TestJobTableResubscribe) {
 
   // Test that subscription of the job table can still work when GCS server restarts.
   JobID job_id = JobID::FromInt(1);
-  auto job_table_data = Mocker::GenJobTableData(job_id);
+  auto job_table_data = GenJobTableData(job_id);
 
   // Subscribe to all jobs.
   std::atomic<int> job_update_count(0);
@@ -681,7 +682,7 @@ TEST_P(GcsClientTest, TestActorTableResubscribe) {
   // Test that subscription of the actor table can still work when GCS server restarts.
   JobID job_id = JobID::FromInt(1);
   AddJob(job_id);
-  auto actor_table_data = Mocker::GenActorTableData(job_id);
+  auto actor_table_data = GenActorTableData(job_id);
   auto actor_id = ActorID::FromBinary(actor_table_data->actor_id());
 
   // Number of notifications for the following `SubscribeActor` operation.
@@ -744,7 +745,7 @@ TEST_P(GcsClientTest, TestNodeTableResubscribe) {
   };
   ASSERT_TRUE(SubscribeToNodeChange(node_subscribe));
 
-  auto node_info = Mocker::GenNodeInfo(1);
+  auto node_info = GenNodeInfo(1);
   ASSERT_TRUE(RegisterNode(*node_info));
   NodeID node_id = NodeID::FromBinary(node_info->node_id());
   std::string key = "CPU";
@@ -753,7 +754,7 @@ TEST_P(GcsClientTest, TestNodeTableResubscribe) {
 
   RestartGcsServer();
 
-  node_info = Mocker::GenNodeInfo(1);
+  node_info = GenNodeInfo(1);
   ASSERT_TRUE(RegisterNode(*node_info));
   node_id = NodeID::FromBinary(node_info->node_id());
   gcs_server_->UpdateGcsResourceManagerInTest(node_id, resources);
@@ -776,7 +777,7 @@ TEST_P(GcsClientTest, TestWorkerTableResubscribe) {
   RestartGcsServer();
 
   // Add a worker before report worker failure to GCS.
-  auto worker_data = Mocker::GenWorkerTableData();
+  auto worker_data = GenWorkerTableData();
   worker_data->mutable_worker_address()->set_worker_id(WorkerID::FromRandom().Binary());
   ASSERT_TRUE(AddWorker(worker_data));
 
@@ -791,7 +792,7 @@ TEST_P(GcsClientTest, TestGcsTableReload) {
     return;
   }
   // Register node to GCS.
-  auto node_info = Mocker::GenNodeInfo();
+  auto node_info = GenNodeInfo();
   ASSERT_TRUE(RegisterNode(*node_info));
 
   // Restart GCS.
@@ -858,7 +859,7 @@ TEST_P(GcsClientTest, DISABLED_TestGetActorPerf) {
     task_spec.add_args()->CopyFrom(task_arg);
   }
   for (int index = 0; index < actor_count; ++index) {
-    auto actor_table_data = Mocker::GenActorTableData(job_id);
+    auto actor_table_data = GenActorTableData(job_id);
     RegisterActor(actor_table_data, false, true);
   }
 
@@ -885,7 +886,7 @@ TEST_P(GcsClientTest, TestEvictExpiredDestroyedActors) {
   absl::flat_hash_set<ActorID> actor_ids;
   int actor_count = RayConfig::instance().maximum_gcs_destroyed_actor_cached_count();
   for (int index = 0; index < actor_count; ++index) {
-    auto actor_table_data = Mocker::GenActorTableData(job_id);
+    auto actor_table_data = GenActorTableData(job_id);
     RegisterActor(actor_table_data, false);
     actor_ids.insert(ActorID::FromBinary(actor_table_data->actor_id()));
   }
@@ -895,7 +896,7 @@ TEST_P(GcsClientTest, TestEvictExpiredDestroyedActors) {
   ReconnectClient();
 
   for (int index = 0; index < actor_count; ++index) {
-    auto actor_table_data = Mocker::GenActorTableData(job_id);
+    auto actor_table_data = GenActorTableData(job_id);
     RegisterActor(actor_table_data, false);
     actor_ids.insert(ActorID::FromBinary(actor_table_data->actor_id()));
   }
@@ -937,7 +938,7 @@ TEST_P(GcsClientTest, TestGcsAuth) {
   RayConfig::instance().initialize(R"({"enable_cluster_auth": true})");
   // Restart GCS.
   RestartGcsServer();
-  auto node_info = Mocker::GenNodeInfo();
+  auto node_info = GenNodeInfo();
   if (!no_redis_) {
     // If we are backed by Redis, we can reuse cluster ID, so the RPC passes.
     EXPECT_TRUE(RegisterNode(*node_info));
@@ -953,14 +954,14 @@ TEST_P(GcsClientTest, TestGcsAuth) {
 
 TEST_P(GcsClientTest, TestRegisterHeadNode) {
   // Test at most only one head node is alive in GCS server
-  auto head_node_info = Mocker::GenNodeInfo(1);
+  auto head_node_info = GenNodeInfo(1);
   head_node_info->set_is_head_node(true);
   ASSERT_TRUE(RegisterNode(*head_node_info));
 
-  auto worker_node_info = Mocker::GenNodeInfo(1);
+  auto worker_node_info = GenNodeInfo(1);
   ASSERT_TRUE(RegisterNode(*worker_node_info));
 
-  auto head_node_info_2 = Mocker::GenNodeInfo(1);
+  auto head_node_info_2 = GenNodeInfo(1);
   head_node_info_2->set_is_head_node(true);
   ASSERT_TRUE(RegisterNode(*head_node_info_2));
 

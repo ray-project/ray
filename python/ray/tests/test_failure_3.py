@@ -1,21 +1,22 @@
-import os
-import sys
-import signal
-import time
-import threading
 import json
+import os
+import signal
+import sys
+import threading
+import time
 from pathlib import Path
 
-import ray
 import numpy as np
 import pytest
-import psutil
 
-from ray._private.test_utils import (
-    wait_for_pid_to_exit,
-    run_string_as_driver_nonblocking,
-)
+import ray
 from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._private.test_utils import (
+    run_string_as_driver_nonblocking,
+    wait_for_pid_to_exit,
+)
+
+import psutil
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 

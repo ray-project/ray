@@ -10,7 +10,6 @@ import time
 import pytest
 
 import ray
-import psutil
 import ray.cluster_utils
 from ray._common.test_utils import SignalActor
 from ray._private.test_utils import (
@@ -18,6 +17,8 @@ from ray._private.test_utils import (
     run_string_as_driver,
 )
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+
+import psutil
 
 logger = logging.getLogger(__name__)
 

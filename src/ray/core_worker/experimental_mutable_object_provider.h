@@ -18,7 +18,7 @@
 #include <vector>
 
 #include "ray/core_worker/experimental_mutable_object_manager.h"
-#include "ray/raylet_client/raylet_client.h"
+#include "ray/raylet_client/raylet_client_interface.h"
 #include "ray/rpc/client_call.h"
 
 namespace ray {

@@ -14,6 +14,10 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "ray/ipc/raylet_ipc_client_interface.h"
 
 namespace ray {
