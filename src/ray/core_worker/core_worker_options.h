@@ -107,8 +107,7 @@ struct CoreWorkerOptions {
         entrypoint(""),
         worker_launch_time_ms(-1),
         worker_launched_time_ms(-1),
-        debug_source(""),
-        enable_resource_isolation(false) {}
+        debug_source("") {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
@@ -212,10 +211,6 @@ struct CoreWorkerOptions {
   // Source information for `CoreWorker`, used for debugging and informational purpose,
   // rather than functional purpose.
   std::string debug_source;
-
-  // If true, core worker enables resource isolation through cgroupv2 by reserving
-  // resources for ray system processes.
-  bool enable_resource_isolation = false;
 };
 }  // namespace core
 }  // namespace ray
