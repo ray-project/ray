@@ -21,7 +21,7 @@ def _generate_custom_build_step_key(image: str) -> str:
 def get_images_from_tests(tests: List[Test]) -> List[Tuple[str, str, str]]:
     """Get a list of custom BYOD images to build from a list of tests."""
     custom_byod_images = set()
-    build_id = os.environ.get("RAYCI_BUILD_ID", "") or "${RAYCI_BUILD_ID}"
+    build_id = os.environ.get("RAYCI_BUILD_ID", "") or "$$RAYCI_BUILD_ID"
     for test in tests:
         if not test.require_custom_byod_image():
             continue
@@ -57,6 +57,9 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
                 f"aws ecr get-login-password --region {config['byod_ecr_region']} | docker login --username AWS --password-stdin {config['byod_ecr']}",
                 f"bazelisk run //release:custom_byod_build -- --image-name {image} --base-image {base_image} --post-build-script {post_build_script}",
             ],
+            "env": {
+                "RAYCI_BUILD_ID": "$RAYCI_BUILD_ID"
+            }
         }
         if "ray-ml" in image:
             step["depends_on"] = config["image_build_step_ml"]
