@@ -296,7 +296,6 @@ class ParquetDatasource(Datasource):
 
         sampled_file_infos = _fetch_file_infos(
             sampled_fragments,
-            to_batches_kwargs=to_batch_kwargs,
             columns=columns,
             schema=schema,
             local_scheduling=self._local_scheduling,
@@ -485,7 +484,6 @@ def read_fragments(
 def _fetch_parquet_file_info(
     fragment: _ParquetFragment,
     *,
-    to_batches_kwargs: Optional[Dict[str, Any]],
     columns: Optional[List[str]],
     schema: Optional["pyarrow.Schema"],
 ) -> "_ParquetFileInfo":
@@ -509,15 +507,12 @@ def _fetch_parquet_file_info(
         1,
     )
 
-    # Use the batch_size calculated above, and ignore the one specified by user if set.
-    # This is to avoid sampling too few or too many rows.
-    to_batches_kwargs.pop("batch_size", None)
-
     batches_iter = row_group_fragment.to_batches(
         columns=columns,
         schema=schema,
         batch_size=batch_size,
-        **to_batches_kwargs,
+        # Limit prefetching to just 1 batch
+        batch_readahead=1,
     )
 
     avg_row_size: Optional[int] = None
@@ -586,7 +581,6 @@ def _estimate_files_encoding_ratio(
 def _fetch_file_infos(
     sampled_fragments: List[_ParquetFragment],
     *,
-    to_batches_kwargs: Optional[Dict[str, Any]],
     columns: Optional[List[str]],
     schema: Optional["pyarrow.Schema"],
     local_scheduling: Optional[bool],
@@ -606,7 +600,6 @@ def _fetch_file_infos(
                 retry_exceptions=[OSError],
             ).remote(
                 fragment,
-                to_batches_kwargs=to_batches_kwargs,
                 columns=columns,
                 schema=schema,
             )
