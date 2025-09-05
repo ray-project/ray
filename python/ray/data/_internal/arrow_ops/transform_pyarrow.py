@@ -23,7 +23,8 @@ except ImportError:
 class FieldInfo:
     """Information about a field across multiple schemas."""
 
-    types_by_schema: List[Optional[pyarrow.DataType]]
+    non_null_types: List[pyarrow.DataType]
+    has_missing: bool
 
 
 # Minimum version support {String,List,Binary}View types
@@ -231,27 +232,31 @@ def _find_diverging_fields(
         from ray.air.util.object_extensions.arrow import ArrowPythonObjectType
 
         for name in diverging_field_names:
-            types_by_schema = []
-            has_object, has_tensor = False, False
+            non_null_types = []
+            has_missing = False
+            has_object = has_tensor = False
+
             for schema in unique_schemas:
-                try:
+                if name in schema.names:
                     field_type = schema.field(name).type
-                except KeyError:
-                    field_type = None
-                types_by_schema.append(field_type)
-                # Only validate tensor/object mixing for diverging fields
-                has_object = field_type is not None and (
-                    has_object or isinstance(field_type, ArrowPythonObjectType)
-                )
-                has_tensor = field_type is not None and (
-                    has_tensor or _contains_tensor_type(field_type)
-                )
+                    non_null_types.append(field_type)
+                    # Check for object/tensor types
+                    has_object = has_object or isinstance(
+                        field_type, ArrowPythonObjectType
+                    )
+                    has_tensor = has_tensor or _contains_tensor_type(field_type)
+                else:
+                    has_missing = True
+
+                # Early exit if we find both
                 if has_object and has_tensor:
                     raise ValueError(
                         f"Found columns with both objects and tensors: {name}"
                     )
 
-            diverging_fields[name] = FieldInfo(types_by_schema=types_by_schema)
+            diverging_fields[name] = FieldInfo(
+                non_null_types=non_null_types, has_missing=has_missing
+            )
 
     return diverging_fields
 
@@ -272,7 +277,7 @@ def _reconcile_field(
     )
 
     # Get non-null types for analysis
-    non_null_types = [t for t in field_info.types_by_schema if t is not None]
+    non_null_types = field_info.non_null_types
     if not non_null_types:
         return None
 
@@ -283,9 +288,8 @@ def _reconcile_field(
     # 1. Tensor fields
     tensor_field_types = [t for t in non_null_types if isinstance(t, tensor_types)]
     if tensor_field_types:
-        has_missing = None in field_info.types_by_schema
         needs_variable_shape = (
-            has_missing
+            field_info.has_missing
             or ArrowTensorType._need_variable_shaped_tensor_array(tensor_field_types)
         )
 
@@ -307,12 +311,14 @@ def _reconcile_field(
     struct_types = [t for t in non_null_types if pyarrow.types.is_struct(t)]
     if struct_types:
         # Convert struct types to schemas
-        struct_schemas = [
-            pyarrow.schema(list(t))
-            if pyarrow.types.is_struct(t)
-            else pyarrow.schema([])
-            for t in field_info.types_by_schema or [pyarrow.schema([])]
-        ]
+        struct_schemas = []
+        for t in non_null_types:
+            if pyarrow.types.is_struct(t):
+                struct_schemas.append(pyarrow.schema(list(t)))
+
+        # Add empty schema if field is missing from some schemas
+        if field_info.has_missing:
+            struct_schemas.append(pyarrow.schema([]))
         # Recursively unify
         unified_struct = unify_schemas(struct_schemas, promote_types=promote_types)
         return pyarrow.struct(list(unified_struct))
@@ -397,8 +403,10 @@ def unify_schemas(
     # Check if we need custom handling
     needs_custom_handling = False
     for info in diverging_fields.values():
-        types = [t for t in info.types_by_schema if t is not None]
-        if any(_is_special_type(t) or pyarrow.types.is_struct(t) for t in types):
+        if any(
+            _is_special_type(t) or pyarrow.types.is_struct(t)
+            for t in info.non_null_types
+        ):
             needs_custom_handling = True
             break
 
