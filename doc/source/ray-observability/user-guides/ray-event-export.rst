@@ -3,11 +3,16 @@
 Ray Event Export
 ================
 
-Ray supports exporting structured events to a configured HTTP endpoint. Each worker node
-sends events to the configured HTTP endpoint through a HTTP POST request.
+Starting from 2.49, Ray supports exporting structured events to a configured HTTP 
+endpoint. Each node sends events to the endpoint through an HTTP POST request.
 
-Starting from 2.49, Ray supports exporting task events. Ray plans to support other 
-event types, including actor events, node events, job events, etc., in the future.  
+Ray 2.49 supports exporting task events. Future releases include support for other 
+event types, such as actor events, node events, job events, and more.
+
+Previously, Ray's :ref:`task events <task-events>` were only used internally by the Ray Dashboard 
+and :ref:`State API <state-api-overview-ref>` for monitoring and debugging. With the new event 
+export feature, you can now send these raw events to external systems for custom analytics, 
+monitoring, and integration with third-party tools.
 
 .. note:: 
     Ray Event Export is still in alpha. The way to configure event 
@@ -19,7 +24,7 @@ To enable event reporting, you need to set the ``RAY_enable_core_worker_ray_even
 variable to ``1`` when starting each Ray worker node.
 
 To set the target HTTP endpoint, set the ``RAY_events_export_addr`` 
-environment variable to a valid HTTP URL with the scheme of ``http``.
+environment variable to a valid HTTP URL with the ``http://`` URL scheme.
 
 Event format
 ------------
@@ -42,7 +47,7 @@ For each task, Ray exports two types of events: Task Definition Event and Task E
   generated during task execution. 
   See `src/ray/protobuf/public/events_task_execution_event.proto <https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_task_execution_event.proto>`_ for the event format.
 
-An example of the task events is as follows:
+An example of a Task Definition Event and a Task Execution Event:
 
 .. code-block:: json
 
