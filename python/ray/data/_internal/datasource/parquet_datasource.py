@@ -17,7 +17,6 @@ from typing import (
 import numpy as np
 
 import ray
-import ray.cloudpickle as cloudpickle
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import (
@@ -34,9 +33,6 @@ from ray.data.datasource.file_based_datasource import FileShuffleConfig
 from ray.data.datasource.file_meta_provider import (
     _handle_read_os_error,
     _list_files,
-)
-from ray.data.datasource.parquet_meta_provider import (
-    ParquetFileMetadata,
 )
 from ray.data.datasource.partitioning import (
     PartitionDataType,

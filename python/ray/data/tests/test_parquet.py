@@ -21,16 +21,15 @@ from ray.air.util.tensor_extensions.arrow import (
 from ray.data import FileShuffleConfig, Schema
 from ray.data._internal.datasource.parquet_bulk_datasource import ParquetBulkDatasource
 from ray.data._internal.datasource.parquet_datasource import (
-    NUM_CPUS_FOR_META_FETCH_TASK,
     ParquetDatasource,
 )
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
 from ray.data._internal.util import rows_same
-from ray.data.block import BlockAccessor, BlockMetadata
+from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
-from ray.data.datasource import DefaultFileMetadataProvider, ParquetMetadataProvider
+from ray.data.datasource import DefaultFileMetadataProvider
 from ray.data.datasource.parquet_meta_provider import PARALLELIZE_META_FETCH_THRESHOLD
 from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
 from ray.data.datasource.path_util import _unwrap_protocol

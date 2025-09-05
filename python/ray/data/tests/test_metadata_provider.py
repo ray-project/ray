@@ -6,8 +6,6 @@ from functools import partial
 from unittest.mock import patch
 
 import pandas as pd
-import pyarrow as pa
-import pyarrow.parquet as pq
 import pytest
 from pyarrow.fs import LocalFileSystem
 from pytest_lazy_fixtures import lf as lazy_fixture
@@ -17,7 +15,6 @@ from ray.data.datasource import (
     DefaultFileMetadataProvider,
     FastFileMetadataProvider,
     FileMetadataProvider,
-    ParquetMetadataProvider,
 )
 from ray.data.datasource.file_based_datasource import (
     FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
@@ -27,7 +24,6 @@ from ray.data.datasource.file_meta_provider import (
     _get_file_infos_parallel,
     _get_file_infos_serial,
 )
-from ray.data.datasource.parquet_meta_provider import _get_total_bytes
 from ray.data.datasource.path_util import (
     _resolve_paths_and_filesystem,
     _unwrap_protocol,
