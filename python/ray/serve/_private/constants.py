@@ -477,3 +477,8 @@ if RAY_SERVE_THROUGHPUT_OPTIMIZED:
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE = 1000
     RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP = False
     RAY_SERVE_LOG_TO_STDERR = False
+
+# The maximum allowed RPC latency in milliseconds.
+# This is used to detect and warn about long RPC latencies
+# between the controller and the replicas.
+RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS = 2000

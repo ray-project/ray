@@ -28,6 +28,7 @@ from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
     DeploymentTargetInfo,
+    HandleMetricReport,
     ReplicaID,
     RequestMetadata,
     RunningReplicaInfo,
@@ -46,6 +47,7 @@ from ray.serve._private.metrics_utils import (
     QUEUED_REQUESTS_KEY,
     InMemoryMetricsStore,
     MetricsPusher,
+    TimeStampedValue,
 )
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.request_router import PendingRequest, RequestRouter
@@ -360,14 +362,8 @@ class RouterMetricsManager:
 
         These metrics are used by the controller for autoscaling.
         """
-
-        self._controller_handle.record_handle_metrics.remote(
-            send_timestamp=time.time(),
-            deployment_id=self._deployment_id,
-            handle_id=self._handle_id,
-            actor_id=self._self_actor_id,
-            handle_source=self._handle_source,
-            **self._get_aggregated_requests(),
+        self._controller_handle.record_autoscaling_metrics_from_handle.remote(
+            self._get_metrics_report()
         )
 
     def _add_autoscaling_metrics_point(self):
@@ -389,25 +385,41 @@ class RouterMetricsManager:
         start_timestamp = time.time() - self.autoscaling_config.look_back_period_s
         self.metrics_store.prune_keys_and_compact_data(start_timestamp)
 
-    def _get_aggregated_requests(self):
+    def _get_metrics_report(self):
         running_requests = dict()
+        avg_running_requests = dict()
+        timestamp = time.time()
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE and self.autoscaling_config:
             look_back_period = self.autoscaling_config.look_back_period_s
             self.metrics_store.prune_keys_and_compact_data(
                 time.time() - look_back_period
             )
-            running_requests = {
-                replica_id: self.metrics_store.aggregate_avg([replica_id])[0]
-                # If data hasn't been recorded yet, return current
-                # number of queued and ongoing requests.
-                or num_requests
-                for replica_id, num_requests in self.num_requests_sent_to_replicas.items()  # noqa: E501
-            }
+            # Combine two loops into one for efficiency
+            for replica_id, num_requests in self.num_requests_sent_to_replicas.items():
+                # Calculate avg running requests
+                avg_running_requests[replica_id] = (
+                    self.metrics_store.aggregate_avg([replica_id])[0]
+                    # If data hasn't been recorded yet, return current
+                    # number of queued and ongoing requests.
+                    or num_requests
+                )
+                # Get running requests data
+                running_requests[replica_id] = self.metrics_store.data.get(
+                    replica_id, [TimeStampedValue(timestamp, num_requests)]
+                )
 
-        return {
-            "queued_requests": self.num_queued_requests,
-            "running_requests": running_requests,
-        }
+        handle_metric_report = HandleMetricReport(
+            deployment_id=self._deployment_id,
+            handle_id=self._handle_id,
+            actor_id=self._self_actor_id,
+            handle_source=self._handle_source,
+            queued_requests=self.num_queued_requests,
+            avg_running_requests=avg_running_requests,
+            running_requests=running_requests,
+            timestamp=timestamp,
+        )
+
+        return handle_metric_report
 
     async def shutdown(self):
         """Shutdown metrics manager gracefully."""

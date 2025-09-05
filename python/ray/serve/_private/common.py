@@ -754,3 +754,86 @@ OBJ_REF_NOT_SUPPORTED_ERROR = RuntimeError(
     "Converting by-value DeploymentResponses to ObjectRefs is not supported. "
     "Use handle.options(_by_reference=True) to enable it."
 )
+
+
+@dataclass(order=True)
+class TimeStampedValue:
+    timestamp: float
+    value: float = field(compare=False)
+
+
+@dataclass
+class HandleMetricReport:
+    """Report from a deployment handle on queued and ongoing requests.
+
+    Args:
+        deployment_id: The deployment ID of the deployment handle.
+        handle_id: The handle ID of the deployment handle.
+        actor_id: If the deployment handle (from which this metric was
+            sent) lives on an actor, the actor ID of that actor.
+        handle_source: Describes what kind of entity holds this
+            deployment handle: a Serve proxy, a Serve replica, or
+            unknown.
+        queued_requests: The current number of queued requests at the
+            handle, i.e. requests that haven't been assigned to any
+            replica yet.
+        avg_running_requests: A map of replica ID to the average number of
+            requests, assigned through the handle, running at that
+            replica. This is average over the past look_back_period_s seconds.
+            This field will be dropped in the future when fully migrate to
+            doing aggregation on the controller.
+        running_requests: A map of replica ID to the list of number of requests
+            running at that replica over the past look_back_period_s seconds.
+            This is a list because we take multiple measurements over time.
+        timestamp: The time at which this report was created.
+    """
+
+    deployment_id: DeploymentID
+    handle_id: str
+    actor_id: str
+    handle_source: DeploymentHandleSource
+    queued_requests: float
+    avg_running_requests: Dict[ReplicaID, float]
+    running_requests: Dict[ReplicaID, List[TimeStampedValue]]
+    timestamp: float
+
+    @property
+    def total_requests(self) -> float:
+        """Total number of queued and running requests."""
+        return self.queued_requests + sum(self.avg_running_requests.values())
+
+    @property
+    def is_serve_component_source(self) -> bool:
+        """Whether the handle source is a Serve actor.
+
+        More specifically, this returns whether a Serve actor tracked
+        by the controller holds the deployment handle that sent this
+        report. If the deployment handle lives on a driver, a Ray task,
+        or an actor that's not a Serve replica, then this returns False.
+        """
+        return self.handle_source in [
+            DeploymentHandleSource.PROXY,
+            DeploymentHandleSource.REPLICA,
+        ]
+
+
+@dataclass
+class ReplicaMetricReport:
+    """Report from a replica on ongoing requests.
+
+    Args:
+        replica_id: The replica ID of the replica.
+        avg_running_requests: Average number of running requests at the
+            replica. This is average over the past look_back_period_s seconds.
+            This field will be dropped in the future when fully migrate to
+            doing aggregation on the controller.
+        running_requests: A list of number of requests running at that replica
+            over the past look_back_period_s seconds. This is a list because
+            we take multiple measurements over time.
+        timestamp: The time at which this report was created.
+    """
+
+    replica_id: ReplicaID
+    avg_running_requests: Optional[float]
+    running_requests: List[TimeStampedValue]
+    timestamp: float
