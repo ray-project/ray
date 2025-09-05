@@ -26,7 +26,7 @@
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/grpc_service_interfaces.h"
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
+#include "ray/pubsub/gcs_publisher.h"
 #include "ray/raylet_client/raylet_client_pool.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/event.h"
@@ -49,7 +49,7 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   ///
   /// \param gcs_publisher GCS message publisher.
   /// \param gcs_table_storage GCS table external storage accessor.
-  GcsNodeManager(GcsPublisher *gcs_publisher,
+  GcsNodeManager(pubsub::GcsPublisher *gcs_publisher,
                  GcsTableStorage *gcs_table_storage,
                  instrumented_io_context &io_context,
                  rpc::RayletClientPool *raylet_client_pool,
@@ -262,7 +262,7 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   std::vector<std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)>>
       node_removed_listeners_;
   /// A publisher for publishing gcs messages.
-  GcsPublisher *gcs_publisher_;
+  pubsub::GcsPublisher *gcs_publisher_;
   /// Storage for GCS tables.
   GcsTableStorage *gcs_table_storage_;
   instrumented_io_context &io_context_;
