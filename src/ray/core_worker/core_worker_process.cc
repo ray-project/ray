@@ -375,7 +375,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
         return core_worker->CurrentCallSite();
       },
       /*store_client=*/plasma_client,
-      /*options=*/CoreWorkerPlasmaStoreProviderOptions{});
+      /*fetch_batch_size_override=*/-1);
   auto memory_store = std::make_shared<CoreWorkerMemoryStore>(
       io_service_,
       reference_counter.get(),

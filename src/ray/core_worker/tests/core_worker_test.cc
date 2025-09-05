@@ -601,7 +601,7 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
       /*warmup=*/false,
       /*get_current_call_site=*/nullptr,
       /*store_client=*/fake_plasma,
-      /*options=*/CoreWorkerPlasmaStoreProviderOptions{.fetch_batch_size = 2});
+      /*fetch_batch_size_override=*/2);
 
   // Build a set of 5 object ids.
   std::vector<ObjectID> ids;

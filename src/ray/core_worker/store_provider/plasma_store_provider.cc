@@ -69,7 +69,7 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     bool warmup,
     std::function<std::string()> get_current_call_site,
     std::shared_ptr<plasma::PlasmaClientInterface> store_client,
-    CoreWorkerPlasmaStoreProviderOptions options)
+    int64_t fetch_batch_size_override)
     : raylet_ipc_client_(raylet_ipc_client),
       store_client_(std::move(store_client)),
       reference_counter_(reference_counter),
@@ -81,7 +81,7 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
   }
   object_store_full_delay_ms_ = RayConfig::instance().object_store_full_delay_ms();
   buffer_tracker_ = std::make_shared<BufferTracker>();
-  fetch_batch_size_override_ = options.fetch_batch_size;
+  fetch_batch_size_override_ = fetch_batch_size_override;
   if (!store_socket.empty()) {
     RAY_CHECK(store_client_ != nullptr) << "Plasma client must be provided";
     RAY_CHECK_OK(store_client_->Connect(store_socket));
