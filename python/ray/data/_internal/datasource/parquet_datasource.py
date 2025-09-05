@@ -1,4 +1,5 @@
 import logging
+import math
 import warnings
 from dataclasses import dataclass
 from typing import (
@@ -25,7 +26,7 @@ from ray.data._internal.util import (
     _is_local_scheme,
     iterate_with_retry,
 )
-from ray.data.block import Block, BlockAccessor
+from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource
 from ray.data.datasource.datasource import ReadTask
@@ -115,13 +116,11 @@ class _ParquetFragment:
             self._fragment.path,
             self._fragment.filesystem,
             self._fragment.partition_expression,
-            self._file_size
+            self._file_size,
         )
 
     @staticmethod
-    def make_fragment(
-        format, path, filesystem, partition_expression, file_size
-    ):
+    def make_fragment(format, path, filesystem, partition_expression, file_size):
         fragment = format.make_fragment(path, filesystem, partition_expression)
         return _ParquetFragment(fragment, file_size)
 
@@ -299,10 +298,7 @@ class ParquetDatasource(Datasource):
         )
 
         sampled_file_infos = _fetch_file_infos(
-            sampled_fragments,
-            to_batch_kwargs,
-            columns, schema,
-            self._local_scheduling
+            sampled_fragments, to_batch_kwargs, columns, schema, self._local_scheduling
         )
 
         self._encoding_ratio = _estimate_files_encoding_ratio(
@@ -337,9 +333,7 @@ class ParquetDatasource(Datasource):
                 files_metadata[i]
                 for i in self._file_metadata_shuffler.permutation(len(files_metadata))
             ]
-            pq_fragments, pq_paths = list(
-                map(list, zip(*shuffled_files_metadata))
-            )
+            pq_fragments, pq_paths = list(map(list, zip(*shuffled_files_metadata)))
         else:
             pq_fragments, pq_paths = (
                 self._pq_fragments,
@@ -525,7 +519,6 @@ def _fetch_parquet_file_info(
         if batch.num_rows > 0:
             avg_row_size = math.ceil(batch.nbytes / batch.num_rows)
 
-
     return _ParquetFileInfo(
         in_mem_row_size=avg_row_size,
         metadata=metadata,
@@ -556,7 +549,9 @@ def _estimate_files_encoding_ratio(
 
     avg_expansion_ratio = np.mean(in_mem_block_sizes_arr / file_sizes_arr)
 
-    logger.debug(f"Estimated parquet encoding ratio from sampling is {avg_expansion_ratio:.5f}.")
+    logger.debug(
+        f"Estimated parquet encoding ratio from sampling is {avg_expansion_ratio:.5f}."
+    )
 
     return max(avg_expansion_ratio, PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND)
 
@@ -566,7 +561,7 @@ def _fetch_file_infos(
     to_batches_kwargs: Optional[Dict[str, Any]],
     columns: Optional[List[str]],
     schema: Optional["pyarrow.Schema"],
-    local_scheduling: Optional[bool]
+    local_scheduling: Optional[bool],
 ) -> List[_ParquetFileInfo]:
     fetc_file_info = cached_remote_fn(_fetch_parquet_file_info)
     futures = []
@@ -577,7 +572,8 @@ def _fetch_file_infos(
         # same machine to cause OOM issue, as sampling can be memory-intensive.
         futures.append(
             fetc_file_info.options(
-                scheduling_strategy=local_scheduling or DataContext.get_current().scheduling_strategy,
+                scheduling_strategy=local_scheduling
+                or DataContext.get_current().scheduling_strategy,
                 # Retry in case of transient errors during sampling.
                 retry_exceptions=[OSError],
             ).remote(

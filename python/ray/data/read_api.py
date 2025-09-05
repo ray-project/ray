@@ -95,6 +95,7 @@ from ray.data.datasource.file_based_datasource import (
 from ray.data.datasource.file_meta_provider import (
     DefaultFileMetadataProvider,
     FastFileMetadataProvider,
+    FileMetadataProvider,
 )
 from ray.data.datasource.partitioning import Partitioning
 from ray.types import ObjectRef
@@ -3883,7 +3884,7 @@ def read_delta(
     columns: Optional[List[str]] = None,
     parallelism: int = -1,
     ray_remote_args: Optional[Dict[str, Any]] = None,
-    meta_provider: Optional[FileMetadatProvider] = None,
+    meta_provider: Optional[FileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Optional[Partitioning] = Partitioning("hive"),
     shuffle: Union[Literal["files"], None] = None,
