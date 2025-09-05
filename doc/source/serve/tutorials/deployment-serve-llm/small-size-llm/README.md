@@ -13,7 +13,7 @@ jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
 A small LLM runs on a single node with 1–2 GPUs, making it fast, inexpensive, and simple to use. It’s ideal for prototyping, lightweight applications, latency-critical use cases, cost-sensitive deployments, and environments with limited resources where efficiency matters more than peak accuracy.
 
 
-For larger models, see [Deploying a medium-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html) or [Deploying a large-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/large-size-llm/README.html).
+For larger models, see [Deploying a medium-sized LLM](https://docs.ray.io/en/master/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html) or [Deploying a large-sized LLM](https://docs.ray.io/en/master/serve/tutorials/deployment-serve-llm/large-size-llm/README.html).
 
 ---
 
