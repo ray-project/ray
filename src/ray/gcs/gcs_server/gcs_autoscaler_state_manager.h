@@ -14,37 +14,40 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/rpc/gcs_server/gcs_rpc_server.h"
-#include "ray/rpc/node_manager/node_manager_client_pool.h"
+#include "ray/gcs/gcs_server/gcs_node_manager.h"
+#include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
+#include "ray/gcs/gcs_server/grpc_service_interfaces.h"
+#include "ray/gcs/gcs_server/state_util.h"
+#include "ray/pubsub/gcs_publisher.h"
+#include "ray/raylet_client/raylet_client_pool.h"
 #include "ray/util/thread_checker.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace gcs {
 
-class GcsActorManager;
-class GcsNodeManager;
-class GcsPlacementGroupManager;
-class GcsResourceManager;
-
-class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler {
+class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateServiceHandler {
  public:
   GcsAutoscalerStateManager(std::string session_name,
                             GcsNodeManager &gcs_node_manager,
                             GcsActorManager &gcs_actor_manager,
                             const GcsPlacementGroupManager &gcs_placement_group_manager,
-                            rpc::NodeManagerClientPool &raylet_client_pool,
+                            rpc::RayletClientPool &raylet_client_pool,
                             InternalKVInterface &kv,
                             instrumented_io_context &io_context,
-                            GcsPublisher *gcs_publisher);
+                            pubsub::GcsPublisher *gcs_publisher);
 
   void HandleGetClusterResourceState(
       rpc::autoscaler::GetClusterResourceStateRequest request,
@@ -92,8 +95,8 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
 
  private:
   /// \brief Get the aggregated resource load from all nodes.
-  absl::flat_hash_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
-  GetAggregatedResourceLoad() const;
+  absl::flat_hash_map<ResourceDemandKey, rpc::ResourceDemand> GetAggregatedResourceLoad()
+      const;
 
   /// \brief Internal method for populating the rpc::ClusterResourceState
   /// protobuf.
@@ -171,7 +174,7 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
   /// TODO: Implement the function
   void CancelInfeasibleRequests() const;
 
-  // Ray cluster session name.
+  // The current Ray session name.
   const std::string session_name_;
 
   /// Gcs node manager that provides node status information.
@@ -184,14 +187,14 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
   const GcsPlacementGroupManager &gcs_placement_group_manager_;
 
   /// Raylet client pool.
-  rpc::NodeManagerClientPool &raylet_client_pool_;
+  rpc::RayletClientPool &raylet_client_pool_;
 
   // Handler for internal KV
   InternalKVInterface &kv_;
   instrumented_io_context &io_context_;
 
   // A publisher for publishing gcs messages.
-  GcsPublisher *gcs_publisher_;
+  pubsub::GcsPublisher *gcs_publisher_;
 
   // The default value of the last seen version for the request is 0, which indicates
   // no version has been reported. So the first reported version should be 1.

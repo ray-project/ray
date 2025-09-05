@@ -10,7 +10,8 @@ import pandas as pd
 import pytest
 
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
+from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
@@ -138,7 +139,9 @@ def test_all_to_all_operator():
 
     # Check we return transformed bundles.
     assert not op.completed()
-    assert _take_outputs(op) == [[1, 2], [3, 4]]
+    outputs = _take_outputs(op)
+    expected = [[1, 2], [3, 4]]
+    assert sorted(outputs) == expected, f"Expected {expected}, got {outputs}"
     stats = op.get_stats()
     assert "FooStats" in stats
     assert op.completed()
@@ -514,7 +517,9 @@ def test_map_operator_ray_args(shutdown_only, use_actors):
     run_op_tasks_sync(op)
 
     # Check we don't hang and complete with num_gpus=1.
-    assert _take_outputs(op) == [[i * 2] for i in range(10)]
+    outputs = _take_outputs(op)
+    expected = [[i * 2] for i in range(10)]
+    assert sorted(outputs) == expected, f"Expected {expected}, got {outputs}"
     assert op.completed()
 
 
@@ -547,7 +552,11 @@ def test_map_operator_shutdown(shutdown_only, use_actors):
         run_op_tasks_sync(op)
     op.add_input(input_op.get_next(), 0)
     assert op.num_active_tasks() == 1
-    op.shutdown(timer=Timer())
+    # Regular Ray tasks can be interrupted/cancelled, so graceful shutdown works.
+    # Actors running time.sleep() cannot be interrupted gracefully and need ray.kill() to release resources.
+    # After proper shutdown, both should return the GPU to ray.available_resources().
+    force_shutdown = use_actors
+    op.shutdown(timer=Timer(), force=force_shutdown)
 
     # Tasks/actors should be cancelled/killed.
     wait_for_condition(lambda: (ray.available_resources().get("GPU", 0) == 1.0))
@@ -584,23 +593,49 @@ def test_actor_pool_map_operator_init(ray_start_regular_shared, data_context_ove
         op.start(ExecutionOptions())
 
 
-def test_actor_pool_map_operator_should_add_input(ray_start_regular_shared):
+@pytest.mark.parametrize(
+    "max_tasks_in_flight_strategy, max_tasks_in_flight_ctx, max_concurrency, expected_max_tasks_in_flight",
+    [
+        # Compute strategy takes precedence
+        (3, 5, 4, 3),
+        # DataContext.max_tasks_in_flight_per_actor takes precedence
+        (None, 5, 4, 5),
+        # Max tasks in-flight is derived as max_concurrency x 2
+        (None, None, 4, 8),
+    ],
+)
+def test_actor_pool_map_operator_should_add_input(
+    ray_start_regular_shared,
+    max_tasks_in_flight_strategy,
+    max_tasks_in_flight_ctx,
+    max_concurrency,
+    expected_max_tasks_in_flight,
+    restore_data_context,
+):
     """Tests that ActorPoolMapOperator refuses input when actors are pending."""
 
-    def _sleep(block_iter: Iterable[Block]) -> Iterable[Block]:
-        time.sleep(999)
+    ctx = DataContext.get_current()
+    ctx.max_tasks_in_flight_per_actor = max_tasks_in_flight_ctx
 
-    input_op = InputDataBuffer(
-        DataContext.get_current(), make_ref_bundles([[i] for i in range(10)])
+    input_op = InputDataBuffer(ctx, make_ref_bundles([[i] for i in range(10)]))
+
+    compute_strategy = ActorPoolStrategy(
+        size=1,
+        max_tasks_in_flight_per_actor=max_tasks_in_flight_strategy,
     )
-    compute_strategy = ActorPoolStrategy(size=1)
+
+    def _failing_transform(
+        block_iter: Iterable[Block], task_context: TaskContext
+    ) -> Iterable[Block]:
+        raise ValueError("expected failure")
 
     op = MapOperator.create(
-        create_map_transformer_from_block_fn(_sleep),
+        create_map_transformer_from_block_fn(_failing_transform),
         input_op=input_op,
-        data_context=DataContext.get_current(),
+        data_context=ctx,
         name="TestMapper",
         compute_strategy=compute_strategy,
+        ray_remote_args={"max_concurrency": max_concurrency},
     )
 
     op.start(ExecutionOptions())
@@ -610,8 +645,8 @@ def test_actor_pool_map_operator_should_add_input(ray_start_regular_shared):
     run_op_tasks_sync(op)
     assert op.should_add_input()
 
-    # Can accept up to four inputs per actor by default.
-    for _ in range(4):
+    # Assert that single actor can accept up to N tasks
+    for _ in range(expected_max_tasks_in_flight):
         assert op.should_add_input()
         op.add_input(input_op.get_next(), 0)
     assert not op.should_add_input()
@@ -652,7 +687,7 @@ def test_actor_pool_map_operator_num_active_tasks_and_completed(shutdown_only):
     assert op.num_active_tasks() == 0
 
     # Scale up to the max size, the second half of the actors will be pending.
-    actor_pool.scale_up(num_actors)
+    actor_pool.scale(ActorPoolScalingRequest(delta=num_actors))
     assert actor_pool.num_pending_actors() == num_actors
     # `num_active_tasks` should exclude the metadata tasks for the pending actors.
     assert op.num_active_tasks() == 0
@@ -762,7 +797,7 @@ def _make_ref_bundles(raw_bundles: List[List[List[Any]]]) -> List[RefBundle]:
     rbs = []
     for raw_bundle in raw_bundles:
         blocks = []
-
+        schema = None
         for raw_block in raw_bundle:
             print(f">>> {raw_block=}")
 
@@ -770,8 +805,9 @@ def _make_ref_bundles(raw_bundles: List[List[List[Any]]]) -> List[RefBundle]:
             blocks.append(
                 (ray.put(block), BlockAccessor.for_block(block).get_metadata())
             )
+            schema = BlockAccessor.for_block(block).schema()
 
-        rb = RefBundle(blocks=blocks, owns_blocks=True)
+        rb = RefBundle(blocks=blocks, owns_blocks=True, schema=schema)
 
         rbs.append(rb)
 
@@ -1184,9 +1220,12 @@ def test_input_data_buffer_does_not_free_inputs():
     block = pd.DataFrame({"id": [0]})
     block_ref = ray.put(block)
     metadata = BlockAccessor.for_block(block).get_metadata()
+    schema = BlockAccessor.for_block(block).schema()
     op = InputDataBuffer(
         DataContext.get_current(),
-        input_data=[RefBundle([(block_ref, metadata)], owns_blocks=False)],
+        input_data=[
+            RefBundle([(block_ref, metadata)], owns_blocks=False, schema=schema)
+        ],
     )
 
     op.get_next()

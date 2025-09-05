@@ -14,15 +14,20 @@
 
 #pragma once
 
+#include <boost/thread.hpp>
 #include <memory>
+#include <string>
 
 #include "ray/core_worker/core_worker_options.h"
+#include "ray/core_worker/grpc_service.h"
+#include "ray/rpc/metrics_agent_client.h"
 #include "ray/util/mutex_protected.h"
 
 namespace ray {
 namespace core {
 
 class CoreWorker;
+class CoreWorkerServiceHandlerProxy;
 
 /// Lifecycle management of the `CoreWorker` instance in a process.
 ///
@@ -74,7 +79,6 @@ class CoreWorkerProcess {
   /// \param[in] options The various initialization options.
   static void Initialize(const CoreWorkerOptions &options);
 
-  /// Get the core worker.
   /// NOTE (kfstorm): Here we return a reference instead of a `shared_ptr` to make sure
   /// `CoreWorkerProcess` has full control of the destruction timing of `CoreWorker`.
   static CoreWorker &GetCoreWorker();
@@ -109,7 +113,6 @@ class CoreWorkerProcess {
   ///
   /// \param[in] quick_exit If set to true, quick exit if uninitialized without
   /// crash.
-  /// \return Void.
   static void EnsureInitialized(bool quick_exit);
 
   static void HandleAtExit();
@@ -128,6 +131,9 @@ class CoreWorkerProcessImpl {
 
   /// Try to get core worker. Returns nullptr if core worker doesn't exist.
   std::shared_ptr<CoreWorker> TryGetCoreWorker() const;
+
+  std::shared_ptr<CoreWorker> CreateCoreWorker(CoreWorkerOptions options,
+                                               const WorkerID &worker_id);
 
   /// Get the `CoreWorker` instance. The process will be exited if
   /// the core worker is nullptr.
@@ -150,6 +156,32 @@ class CoreWorkerProcessImpl {
 
   /// The worker ID of this worker.
   const WorkerID worker_id_;
+
+  /// Event loop where the IO events are handled. e.g. async GCS operations.
+  instrumented_io_context io_service_{/*enable_lag_probe=*/false,
+                                      /*running_on_single_thread=*/true};
+
+  /// Keeps the io_service_ alive.
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
+
+  /// Event loop where tasks are processed.
+  /// task_execution_service_ should be destructed first to avoid
+  /// issues like https://github.com/ray-project/ray/issues/18857
+  instrumented_io_context task_execution_service_{/*enable_lag_probe=*/false,
+                                                  /*running_on_single_thread=*/true};
+
+  /// The asio work to keep task_execution_service_ alive.
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
+      task_execution_service_work_;
+
+  // Thread that runs a boost::asio service to process IO events.
+  boost::thread io_thread_;
+
+  /// The proxy service handler that routes the RPC calls to the core worker.
+  std::unique_ptr<CoreWorkerServiceHandlerProxy> service_handler_;
+
+  /// The client to export metrics to the metrics agent.
+  std::unique_ptr<ray::rpc::MetricsAgentClient> metrics_agent_client_;
 };
 }  // namespace core
 }  // namespace ray

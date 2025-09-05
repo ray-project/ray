@@ -1,28 +1,28 @@
 import os
-import pytest
-import sys
 import platform
-from ray._private.test_utils import (
-    wait_for_condition,
-    chdir,
-    check_local_files_gced,
-    generate_runtime_env_dict,
-)
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+import pytest
+import yaml
+
+import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.runtime_env import dependency_utils
 from ray._private.runtime_env.conda import _get_conda_dict_with_ray_inserted
 from ray._private.runtime_env.dependency_utils import (
     INTERNAL_PIP_FILENAME,
     MAX_INTERNAL_PIP_FILENAME_TRIES,
 )
+from ray._private.test_utils import (
+    chdir,
+    check_local_files_gced,
+    generate_runtime_env_dict,
+)
 from ray.runtime_env import RuntimeEnv
 from ray.util.state import list_tasks
-
-import yaml
-import tempfile
-from pathlib import Path
-import subprocess
-
-import ray
 
 if not os.environ.get("CI"):
     # This flags turns on the local development that link against current ray
@@ -204,9 +204,6 @@ class TestGC:
 
 
 def test_import_in_subprocess(shutdown_only):
-
-    ray.init()
-
     @ray.remote(runtime_env={"pip": ["pip-install-test==0.5"]})
     def f():
         return subprocess.run(["python", "-c", "import pip_install_test"]).returncode
@@ -335,6 +332,10 @@ def test_working_dir_applies_for_pip_creation_files(start_cluster, tmp_working_d
     assert ray.get(test_import.remote()) == "pip_install_test"
 
 
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform != "linux",
+    reason="Requires PR wheels built in CI, so only run on linux CI machines.",
+)
 def test_working_dir_applies_for_conda_creation(start_cluster, tmp_working_dir):
     cluster, address = start_cluster
 
@@ -367,6 +368,26 @@ def test_working_dir_applies_for_conda_creation(start_cluster, tmp_working_dir):
         return pip_install_test.__name__
 
     assert ray.get(test_import.remote()) == "pip_install_test"
+
+
+def test_pip_install_options(shutdown_only):
+    # Test that this successfully builds a ray runtime environment using pip_install_options
+    @ray.remote(
+        runtime_env={
+            "pip": {
+                "packages": ["pip-install-test==0.5"],
+                "pip_install_options": [
+                    "--no-cache-dir",
+                    "--no-build-isolation",
+                    "--disable-pip-version-check",
+                ],
+            }
+        }
+    )
+    def f():
+        return True
+
+    assert ray.get(f.remote())
 
 
 if __name__ == "__main__":

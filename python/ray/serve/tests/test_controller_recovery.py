@@ -5,12 +5,12 @@ import re
 import sys
 import time
 
+import httpx
 import pytest
-import requests
 
 import ray
 from ray import serve
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.exceptions import RayTaskError
 from ray.serve._private.common import DeploymentID, ReplicaState
 from ray.serve._private.constants import (
@@ -19,9 +19,12 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
 )
-from ray.serve._private.test_utils import check_replica_counts
-from ray.serve.schema import LoggingConfig
-from ray.serve.tests.test_failure import request_with_retries
+from ray.serve._private.test_utils import (
+    check_replica_counts,
+    get_application_url,
+    request_with_retries,
+)
+from ray.serve.schema import LoggingConfig, ServeDeploySchema
 from ray.util.state import list_actors
 
 
@@ -51,9 +54,7 @@ def test_recover_start_from_replica_actor_names(serve_instance, deployment_optio
 
     serve.run(TransientConstructorFailureDeployment.bind(), name="app")
     for _ in range(10):
-        response = request_with_retries(
-            "/recover_start_from_replica_actor_names/", timeout=30
-        )
+        response = request_with_retries(timeout=30, app_name="app")
         assert response.text == "hii"
     # Assert 2 replicas are running in deployment deployment after partially
     # successful deploy() call with transient error
@@ -64,7 +65,7 @@ def test_recover_start_from_replica_actor_names(serve_instance, deployment_optio
     replica_version_hash = None
     for replica in deployment_dict[id]:
         ref = replica.actor_handle.initialize_and_get_metadata.remote()
-        _, version, _, _, _ = ray.get(ref)
+        _, version, _, _, _, _ = ray.get(ref)
         if replica_version_hash is None:
             replica_version_hash = hash(version)
         assert replica_version_hash == hash(version), (
@@ -92,10 +93,11 @@ def test_recover_start_from_replica_actor_names(serve_instance, deployment_optio
 
     # Kill controller and wait for endpoint to be available again
     ray.kill(serve.context._global_client._controller, no_restart=False)
+    wait_for_condition(
+        lambda: get_application_url("HTTP", "app", use_localhost=True) is not None
+    )
     for _ in range(10):
-        response = request_with_retries(
-            "/recover_start_from_replica_actor_names/", timeout=30
-        )
+        response = request_with_retries(timeout=30, app_name="app")
         assert response.text == "hii"
 
     # Ensure recovered replica names are the same
@@ -116,7 +118,7 @@ def test_recover_start_from_replica_actor_names(serve_instance, deployment_optio
     for replica_name in recovered_replica_names:
         actor_handle = ray.get_actor(replica_name, namespace=SERVE_NAMESPACE)
         ref = actor_handle.initialize_and_get_metadata.remote()
-        _, version, _, _, _ = ray.get(ref)
+        _, version, _, _, _, _ = ray.get(ref)
         assert replica_version_hash == hash(
             version
         ), "Replica version hash should be the same after recover from actor names"
@@ -471,10 +473,39 @@ def test_controller_crashes_with_logging_config(serve_instance):
     proxy_handle = list(proxy_handles.values())[0]
     file_path = ray.get(proxy_handle._get_logging_config.remote())
     # Send request, we should see json logging and debug log message in proxy log.
-    resp = requests.get("http://127.0.0.1:8000")
+    resp = httpx.get("http://localhost:8000")
     assert resp.status_code == 200
     wait_for_condition(
         check_log_file, log_file=file_path, expected_regex=['.*"message":.*GET / 200.*']
+    )
+
+
+def test_controller_recover_and_deploy(serve_instance):
+    """Ensure that in-progress deploy can finish even after controller dies."""
+    client = serve_instance
+    signal = SignalActor.options(name="signal123").remote()
+
+    config_json = {
+        "applications": [
+            {
+                "name": SERVE_DEFAULT_APP_NAME,
+                "import_path": "ray.serve.tests.test_config_files.hangs.app",
+            }
+        ]
+    }
+    config = ServeDeploySchema.parse_obj(config_json)
+    client.deploy_apps(config)
+
+    wait_for_condition(
+        lambda: serve.status().applications["default"].status == "DEPLOYING"
+    )
+    ray.kill(client._controller, no_restart=False)
+
+    signal.send.remote()
+
+    # When controller restarts, it should redeploy config automatically
+    wait_for_condition(
+        lambda: httpx.get(f"{get_application_url()}/").text == "hello world"
     )
 
 

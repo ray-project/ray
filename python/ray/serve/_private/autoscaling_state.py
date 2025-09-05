@@ -1,7 +1,7 @@
 import logging
 import time
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 from ray.serve._private.common import (
     DeploymentHandleSource,
@@ -10,7 +10,6 @@ from ray.serve._private.common import (
     TargetCapacityDirection,
 )
 from ray.serve._private.constants import (
-    RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
@@ -77,6 +76,45 @@ class ReplicaMetricReport:
 
     running_requests: float
     timestamp: float
+
+
+@dataclass
+class AutoscalingContext:
+    """Rich context provided to custom autoscaling policies."""
+
+    # Deployment information
+    deployment_id: DeploymentID
+    deployment_name: str
+    app_name: Optional[str]
+
+    # Current state
+    current_num_replicas: int
+    target_num_replicas: int
+    running_replicas: List[ReplicaID]
+
+    # Built-in metrics
+    total_num_requests: float
+    queued_requests: Optional[float]
+    requests_per_replica: Dict[ReplicaID, float]
+
+    # Custom metrics
+    aggregated_metrics: Dict[str, Dict[ReplicaID, float]]
+    raw_metrics: Dict[str, Dict[ReplicaID, List[float]]]
+
+    # Capacity and bounds
+    capacity_adjusted_min_replicas: int
+    capacity_adjusted_max_replicas: int
+
+    # Policy state
+    policy_state: Dict[str, Any]
+
+    # Timing
+    last_scale_up_time: Optional[float]
+    last_scale_down_time: Optional[float]
+    current_time: Optional[float]
+
+    # Config
+    config: Optional[Any]
 
 
 class AutoscalingState:
@@ -271,15 +309,28 @@ class AutoscalingState:
         `_skip_bound_check` is True, then the bounds are not applied.
         """
 
-        decision_num_replicas = self._policy(
-            curr_target_num_replicas=curr_target_num_replicas,
+        autoscaling_context: AutoscalingContext = AutoscalingContext(
+            deployment_id=self._deployment_id,
+            deployment_name=self._deployment_id.name,
+            app_name=self._deployment_id.app_name,
+            current_num_replicas=len(self._running_replicas),
+            target_num_replicas=curr_target_num_replicas,
+            running_replicas=self._running_replicas,
             total_num_requests=self.get_total_num_requests(),
-            num_running_replicas=len(self._running_replicas),
-            config=self._config,
             capacity_adjusted_min_replicas=self.get_num_replicas_lower_bound(),
             capacity_adjusted_max_replicas=self.get_num_replicas_upper_bound(),
-            policy_state=self._policy_state,
+            policy_state=self._policy_state.copy(),
+            current_time=time.time(),
+            config=self._config,
+            queued_requests=None,
+            requests_per_replica=None,
+            aggregated_metrics=None,
+            raw_metrics=None,
+            last_scale_up_time=None,
+            last_scale_down_time=None,
         )
+
+        decision_num_replicas, self._policy_state = self._policy(autoscaling_context)
 
         if _skip_bound_check:
             return decision_num_replicas
@@ -293,27 +344,25 @@ class AutoscalingState:
         If there are 0 running replicas, then returns the total number
         of requests queued at handles
 
-        If the flag RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE is
-        set to 1, the returned average includes both queued and ongoing
-        requests. Otherwise, the returned average includes only ongoing
-        requests.
+        This code assumes that the metrics are either emmited on handles
+        or on replicas, but not both. Its the responsibility of the writer
+        to ensure enclusivity of the metrics.
         """
 
         total_requests = 0
 
-        if (
-            RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
-            or len(self._running_replicas) == 0
-        ):
-            for handle_metric in self._handle_requests.values():
-                total_requests += handle_metric.queued_requests
+        for id in self._running_replicas:
+            if id in self._replica_requests:
+                total_requests += self._replica_requests[id].running_requests
+
+        metrics_collected_on_replicas = total_requests > 0
+        for handle_metric in self._handle_requests.values():
+            total_requests += handle_metric.queued_requests
+
+            if not metrics_collected_on_replicas:
                 for id in self._running_replicas:
                     if id in handle_metric.running_requests:
                         total_requests += handle_metric.running_requests[id]
-        else:
-            for id in self._running_replicas:
-                if id in self._replica_requests:
-                    total_requests += self._replica_requests[id].running_requests
 
         return total_requests
 

@@ -1,4 +1,5 @@
 import logging
+import sys
 import threading
 import uuid
 from dataclasses import dataclass, field
@@ -6,28 +7,32 @@ from queue import Queue
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import ray
-from ray.data.iterator import DataIterator
-from ray.train import Checkpoint
+from ray.actor import ActorHandle
+from ray.data import DataIterator, Dataset
 from ray.train._internal import session
 from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.util import _copy_doc, invoke_context_managers
-from ray.train.v2.api.config import RunConfig
+from ray.train.v2.api.config import RunConfig, ScalingConfig
 
 if TYPE_CHECKING:
+    from ray.train import BackendConfig, Checkpoint, DataConfig
+    from ray.train.v2._internal.data_integration.interfaces import (
+        DatasetShardMetadata,
+        DatasetShardProvider,
+    )
     from ray.train.v2._internal.execution.callback import TrainContextCallback
     from ray.train.v2._internal.execution.worker_group.thread_runner import ThreadRunner
+    from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
 
 logger = logging.getLogger(__file__)
 
 
-@dataclass
+@dataclass(frozen=True)
 class TrainRunContext:
     """Holds the metadata and context for the current training run."""
-
-    # TODO: Make this dataclass immutable after refactoring the train context.
 
     # The unique ID of the training run.
     run_id: str = field(init=False, default_factory=lambda: uuid.uuid4().hex)
@@ -35,8 +40,20 @@ class TrainRunContext:
     # The run configuration for the current training run.
     run_config: RunConfig
 
-    # TODO: Add more fields that are shared across all workers and controllers.
-    # For example, StorageContext, ScalingConfig, etc.
+    # The configuration passed to the training function.
+    train_loop_config: Optional[Dict[str, Any]]
+
+    # The scaling configuration for the current training run.
+    scaling_config: ScalingConfig
+
+    # The configuration for the training backend (e.g., PyTorch, XGBoost).
+    backend_config: "BackendConfig"
+
+    # The datasets used in the current training run.
+    datasets: Dict[str, Dataset]
+
+    # The configuration for dataset ingestion and sharding.
+    dataset_config: "DataConfig"
 
     def get_run_config(self) -> RunConfig:
         """Returns the run config of the current training run."""
@@ -76,16 +93,20 @@ class ExecutionContext:
 
 
 @dataclass
-class TrainContext(TrainRunContext):
+class TrainContext:
+    train_run_context: TrainRunContext
     distributed_context: DistributedContext
     execution_context: ExecutionContext
     storage_context: StorageContext
-    dataset_shards: Dict[str, DataIterator]
-    checkpoint: Optional[Checkpoint] = None
+    controller_actor: ActorHandle
+
+    dataset_shard_provider: "DatasetShardProvider"
+    checkpoint: Optional["Checkpoint"] = None
+    num_report_calls: int = 0
 
     @_copy_doc(session.get_experiment_name)
     def get_experiment_name(self) -> str:
-        return self.run_config.name
+        return self.train_run_context.run_config.name
 
     @_copy_doc(session.get_world_size)
     def get_world_size(self) -> int:
@@ -121,7 +142,14 @@ class TrainContext(TrainRunContext):
     def get_checkpoint(self):
         return self.checkpoint
 
-    def get_dataset_shard(self, dataset_name: str) -> DataIterator:
+    def get_all_reported_checkpoints(self) -> List["ReportedCheckpoint"]:
+        return ray.get(
+            self.controller_actor.get_all_reported_checkpoints.remote(
+                self.num_report_calls
+            )
+        )
+
+    def get_dataset_shard(self, dataset_info: "DatasetShardMetadata") -> DataIterator:
         """Returns the :class:`ray.data.DataIterator` shard for this worker.
 
         Call :meth:`~ray.data.DataIterator.iter_torch_batches` or
@@ -129,19 +157,13 @@ class TrainContext(TrainRunContext):
         appropriate framework-specific data type.
 
         Args:
-            dataset_name: Name of the dataset shard.
+            dataset_info: The shard metadata, including the dataset name and worker rank.
         Returns:
             The ``DataIterator`` shard with the given name for this worker.
         Raises:
             KeyError: If the dataset shard with the given name is not found.
         """
-        try:
-            return self.dataset_shards[dataset_name]
-        except KeyError:
-            raise KeyError(
-                f"Dataset {dataset_name} not found. Available datasets: "
-                f"{list(self.dataset_shards.keys())}."
-            )
+        return self.dataset_shard_provider.get_dataset_shard(dataset_info)
 
     def get_context_callbacks(self) -> List["TrainContextCallback"]:
         return self.execution_context.train_context_callbacks
@@ -171,6 +193,7 @@ class TrainContext(TrainRunContext):
                 world_rank=self.distributed_context.world_rank,
                 world_size=self.distributed_context.world_size,
                 data=checkpoint_dir_name,
+                caller_method_name="ray.train.report",
             )
         )
 
@@ -178,9 +201,14 @@ class TrainContext(TrainRunContext):
         self,
         checkpoint_dir_name: str,
         metrics: Dict[str, Any],
-        checkpoint: Optional[Checkpoint] = None,
+        checkpoint: Optional["Checkpoint"] = None,
     ) -> _TrainingResult:
         """Save the checkpoint to remote storage.
+
+        Args:
+            checkpoint_dir_name: The checkpoint dir to persist to.
+            metrics: The metrics to report.
+            checkpoint: The checkpoint to report.
 
         Returns:
             The training result object containing the persisted checkpoint.
@@ -201,9 +229,9 @@ class TrainContext(TrainRunContext):
     def report(
         self,
         metrics: Dict[str, Any],
-        checkpoint: Optional[Checkpoint] = None,
+        checkpoint: Optional["Checkpoint"] = None,
         checkpoint_dir_name: Optional[str] = None,
-    ):
+    ) -> None:
         """
         Upload checkpoint to remote storage and put a training
         result on the result queue of this worker process.
@@ -221,6 +249,17 @@ class TrainContext(TrainRunContext):
         related information and not the worker related actions. This refactor
         would also require the `TrainContextCallback` to be updated as well.
         """
+        if "torch" in sys.modules:
+            from ray.air._internal.torch_utils import contains_tensor
+
+            if contains_tensor(metrics):
+                raise ValueError(
+                    "Passing objects containg Torch tensors as metrics "
+                    "is not supported as it will throw an exception on "
+                    "deserialization. You can either convert the tensors "
+                    "to Python objects (ex: `.numpy()`, `.item()`, etc.) "
+                    "or save tensors as part of the checkpoint files instead."
+                )
 
         with invoke_context_managers(
             [
@@ -243,6 +282,7 @@ class TrainContext(TrainRunContext):
             # TODO (hpguo): Add a metrics to track the blocking time waiting for the
             # training result to be consumed by the controller.
             self.get_result_queue().put(training_result)
+            self.num_report_calls += 1
 
 
 # The global variable holding the current TrainContext
@@ -253,6 +293,16 @@ _context_lock = threading.Lock()
 
 
 def get_train_context() -> TrainContext:
+    """Get the internal train context.
+
+    Note:
+        This should not be used directly by user-facing APIs. User-facing APIs should
+        call :class:`~ray.train.v2._internal.execution.train_fn_utils.TrainFnUtils`
+        or use :class:`~ray.train.v2.api.context.TrainContext` instead.
+
+    Returns:
+        The internal TrainContext for this worker.
+    """
     with _context_lock:
         if _train_context is None:
             raise RuntimeError("TrainContext has not been initialized.")

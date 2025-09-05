@@ -39,7 +39,7 @@ Preparing an environment using the Ray Cluster launcher
 
 The first way to set up dependencies is to prepare a single environment across the cluster before starting the Ray runtime.
 
-- You can build all your files and dependencies into a container image and specify this in your your :ref:`Cluster YAML Configuration <cluster-config>`.
+- You can build all your files and dependencies into a container image and specify this in your :ref:`Cluster YAML Configuration <cluster-config>`.
 
 - You can also install packages using ``setup_commands`` in the Ray Cluster configuration file (:ref:`reference <cluster-configuration-setup-commands>`); these commands will be run as each node joins the cluster.
   Note that for production settings, it is recommended to build any necessary packages into a container image instead.
@@ -546,6 +546,7 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
   `“requirements.txt” <https://pip.pypa.io/en/stable/user_guide/#requirements-files>`_ file, or (3) a python dictionary that has three fields: (a) ``packages`` (required, List[str]): a list of pip packages,
   (b) ``pip_check`` (optional, bool): whether to enable `pip check <https://pip.pypa.io/en/stable/cli/pip_check/>`_ at the end of pip install, defaults to ``False``.
   (c) ``pip_version`` (optional, str): the version of pip; Ray will spell the package name "pip" in front of the ``pip_version`` to form the final requirement string.
+  (d) ``pip_install_options`` (optional, List[str]): user-provided options for ``pip install`` command. Defaults to ``["--disable-pip-version-check", "--no-cache-dir"]``.
   The syntax of a requirement specifier is defined in full in `PEP 508 <https://www.python.org/dev/peps/pep-0508/>`_.
   This will be installed in the Ray workers at runtime.  Packages in the preinstalled cluster environment will still be available.
   To use a library like Ray Serve or Ray Tune, you will need to include ``"ray[serve]"`` or ``"ray[tune]"`` here.
@@ -612,7 +613,7 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 
   - Example: ``{"LD_LIBRARY_PATH": "${LD_LIBRARY_PATH}:/home/admin/my_lib"}``
 
-  - Non-existant variable example: ``{"ENV_VAR_NOT_EXIST": "${ENV_VAR_NOT_EXIST}:/home/admin/my_lib"}`` -> ``ENV_VAR_NOT_EXIST=":/home/admin/my_lib"``.
+  - Non-existent variable example: ``{"ENV_VAR_NOT_EXIST": "${ENV_VAR_NOT_EXIST}:/home/admin/my_lib"}`` -> ``ENV_VAR_NOT_EXIST=":/home/admin/my_lib"``.
 
 - ``nsight`` (Union[str, Dict[str, str]]): specifies the config for the Nsight System Profiler. The value is either (1) "default", which refers to the `default config <https://github.com/ray-project/ray/blob/master/python/ray/_private/runtime_env/nsight.py#L20>`_, or (2) a dict of Nsight System Profiler options and their values.
   See :ref:`here <profiling-nsight-profiler>` for more details on setup and usage.
@@ -849,7 +850,7 @@ Your ``runtime_env`` dictionary should contain:
   To avoid this, use the ``zip -r`` command directly on the directory you want to compress from its parent's directory. For example, if you have a directory structure such as: ``a/b`` and you what to compress ``b``, issue the ``zip -r b`` command from the directory ``a.``
   If Ray detects more than a single directory at the top level, it will use the entire zip file instead of the top-level directory, which may lead to unexpected behavior.
 
-Currently, three types of remote URIs are supported for hosting ``working_dir`` and ``py_modules`` packages:
+Currently, four types of remote URIs are supported for hosting ``working_dir`` and ``py_modules`` packages:
 
 - ``HTTPS``: ``HTTPS`` refers to URLs that start with ``https``.
   These are particularly useful because remote Git providers (e.g. GitHub, Bitbucket, GitLab, etc.) use ``https`` URLs as download links for repository archives.
@@ -880,7 +881,18 @@ Currently, three types of remote URIs are supported for hosting ``working_dir`` 
 
     - ``runtime_env = {"working_dir": "gs://example_bucket/example_file.zip"}``
 
-Note that the ``smart_open``, ``boto3``, and ``google-cloud-storage`` packages are not installed by default, and it is not sufficient to specify them in the ``pip`` section of your ``runtime_env``.
+- ``Azure``: ``Azure`` refers to URIs starting with ``azure://`` that point to compressed packages stored in `Azure Blob Storage <https://azure.microsoft.com/en-us/products/storage/blobs>`_.
+  To use packages via ``Azure`` URIs, you must have the ``smart_open``, ``azure-storage-blob``, and ``azure-identity`` libraries (you can install them using ``pip install smart_open[azure] azure-storage-blob azure-identity``).
+  Ray supports two authentication methods for Azure Blob Storage:
+  
+  1. Connection string: Set the environment variable ``AZURE_STORAGE_CONNECTION_STRING`` with your Azure storage connection string.
+  2. Managed Identity: Set the environment variable ``AZURE_STORAGE_ACCOUNT`` with your Azure storage account name. This will use Azure's Managed Identity for authentication.
+
+  - Example:
+
+    - ``runtime_env = {"working_dir": "azure://container-name/example_file.zip"}``
+
+Note that the ``smart_open``, ``boto3``, ``google-cloud-storage``, ``azure-storage-blob``, and ``azure-identity`` packages are not installed by default, and it is not sufficient to specify them in the ``pip`` section of your ``runtime_env``.
 The relevant packages must already be installed on all nodes of the cluster when Ray starts.
 
 Hosting a Dependency on a Remote Git Provider: Step-by-Step Guide

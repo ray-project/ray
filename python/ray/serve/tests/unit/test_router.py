@@ -10,8 +10,8 @@ from unittest.mock import Mock, patch
 import pytest
 
 import ray
+from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray._common.utils import get_or_create_event_loop
-from ray._private.test_utils import async_wait_for_condition, wait_for_condition
 from ray.exceptions import ActorDiedError, ActorUnavailableError
 from ray.serve._private.common import (
     DeploymentHandleSource,
@@ -22,7 +22,10 @@ from ray.serve._private.common import (
     RunningReplicaInfo,
 )
 from ray.serve._private.config import DeploymentConfig
-from ray.serve._private.constants import RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
+from ray.serve._private.constants import (
+    RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+    RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
+)
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.request_router import (
     PendingRequest,
@@ -43,10 +46,19 @@ from ray.serve.exceptions import BackPressureError
 
 
 class FakeReplicaResult(ReplicaResult):
-    def __init__(self, replica_id, is_generator_object: bool):
+    def __init__(
+        self,
+        replica_id,
+        is_generator_object: bool,
+        queue_len_info: Optional[ReplicaQueueLengthInfo] = None,
+    ):
         self._replica_id = replica_id
         self._is_generator_object = is_generator_object
+        self._queue_len_info = queue_len_info
         self.cancelled = False
+
+    async def get_rejection_response(self):
+        return self._queue_len_info
 
     def get(self, timeout_s: Optional[float]):
         raise NotImplementedError
@@ -101,9 +113,9 @@ class FakeReplica(RunningReplica):
     def get_queue_len(self, *, deadline_s: float) -> int:
         raise NotImplementedError
 
-    async def send_request(
+    def try_send_request(
         self, pr: PendingRequest, with_rejection: bool
-    ) -> Tuple[Optional[FakeReplicaResult], Optional[ReplicaQueueLengthInfo]]:
+    ) -> FakeReplicaResult:
         if with_rejection:
             if self._error:
                 raise self._error
@@ -115,21 +127,16 @@ class FakeReplica(RunningReplica):
                 self._queue_len_info is not None
             ), "Must set queue_len_info to use `send_request_with_rejection`."
 
-            return (
-                FakeReplicaResult(self._replica_id, is_generator_object=True),
-                self._queue_len_info,
+            return FakeReplicaResult(
+                self._replica_id,
+                is_generator_object=True,
+                queue_len_info=self._queue_len_info,
             )
         else:
             if pr.metadata.is_streaming:
-                return (
-                    FakeReplicaResult(self._replica_id, is_generator_object=True),
-                    None,
-                )
+                return FakeReplicaResult(self._replica_id, is_generator_object=True)
             else:
-                return (
-                    FakeReplicaResult(self._replica_id, is_generator_object=False),
-                    None,
-                )
+                return FakeReplicaResult(self._replica_id, is_generator_object=False)
 
 
 class FakeRequestRouter(RequestRouter):
@@ -180,6 +187,11 @@ class FakeRequestRouter(RequestRouter):
                 replica_id, queue_len_info.num_ongoing_requests
             )
 
+    def on_send_request(self, replica_id: ReplicaID):
+        if self._use_queue_len_cache:
+            num_ongoing_requests = self._replica_queue_len_cache.get(replica_id) or 0
+            self._replica_queue_len_cache.update(replica_id, num_ongoing_requests + 1)
+
     def on_replica_actor_unavailable(self, replica_id: ReplicaID):
         self._replica_queue_len_cache.invalidate_key(replica_id)
 
@@ -197,7 +209,7 @@ class FakeRequestRouter(RequestRouter):
         for _ in range(num):
             self._blocked_requests.pop(0).set()
 
-    async def choose_replica_for_request(
+    async def _choose_replica_for_request(
         self, pr: PendingRequest, *, is_retry: bool = False
     ) -> FakeReplica:
         if self._block_requests:
@@ -218,7 +230,7 @@ class FakeRequestRouter(RequestRouter):
 
     async def choose_replicas(
         self,
-        replicas_ranks: List[List[RunningReplica]],
+        candidate_replicas: List[RunningReplica],
         pending_request: Optional[PendingRequest] = None,
     ) -> List[List[RunningReplica]]:
         pass
@@ -760,7 +772,8 @@ def running_replica_info(replica_id: ReplicaID) -> RunningReplicaInfo:
 
 
 class TestRouterMetricsManager:
-    def test_num_router_requests(self):
+    @pytest.mark.asyncio
+    async def test_num_router_requests(self):
         tags = {
             "deployment": "a",
             "application": "b",
@@ -779,15 +792,19 @@ class TestRouterMetricsManager:
             ),
             FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
             FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
+            event_loop=asyncio.get_event_loop(),
         )
         assert metrics_manager.num_router_requests.get_count(tags) is None
 
         n = random.randint(1, 10)
         for _ in range(n):
             metrics_manager.inc_num_total_requests(route="/alice")
+
+        await asyncio.sleep(RAY_SERVE_METRICS_EXPORT_INTERVAL_MS * 2 / 1000)
         assert metrics_manager.num_router_requests.get_count(tags) == n
 
-    def test_num_queued_requests_gauge(self):
+    @pytest.mark.asyncio
+    async def test_num_queued_requests_gauge(self):
         tags = {
             "deployment": "a",
             "application": "b",
@@ -805,18 +822,23 @@ class TestRouterMetricsManager:
             ),
             FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
             FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
+            event_loop=asyncio.get_event_loop(),
         )
         assert metrics_manager.num_queued_requests_gauge.get_value(tags) == 0
 
         n, m = random.randint(0, 10), random.randint(0, 5)
         for _ in range(n):
             metrics_manager.inc_num_queued_requests()
+        await asyncio.sleep(RAY_SERVE_METRICS_EXPORT_INTERVAL_MS * 2 / 1000)
         assert metrics_manager.num_queued_requests_gauge.get_value(tags) == n
         for _ in range(m):
             metrics_manager.dec_num_queued_requests()
+
+        await asyncio.sleep(RAY_SERVE_METRICS_EXPORT_INTERVAL_MS * 2 / 1000)
         assert metrics_manager.num_queued_requests_gauge.get_value(tags) == n - m
 
-    def test_track_requests_sent_to_replicas(self):
+    @pytest.mark.asyncio
+    async def test_track_requests_sent_to_replicas(self):
         d_id = DeploymentID(name="a", app_name="b")
         metrics_manager = RouterMetricsManager(
             d_id,
@@ -829,6 +851,7 @@ class TestRouterMetricsManager:
             ),
             FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
             FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
+            event_loop=asyncio.get_event_loop(),
         )
 
         # r1: number requests -> 0, removed from list of running replicas -> prune
@@ -845,6 +868,7 @@ class TestRouterMetricsManager:
         for i in range(4):
             for _ in range(i + 1):
                 metrics_manager.inc_num_running_requests_for_replica(replica_ids[i])
+        await asyncio.sleep(RAY_SERVE_METRICS_EXPORT_INTERVAL_MS * 2 / 1000)
 
         # All 4 replicas should have a positive number of requests
         for i, r in enumerate(replica_ids):
@@ -866,6 +890,7 @@ class TestRouterMetricsManager:
             metrics_manager.dec_num_running_requests_for_replica(r1)
         for _ in range(2):
             metrics_manager.dec_num_running_requests_for_replica(r2)
+        await asyncio.sleep(RAY_SERVE_METRICS_EXPORT_INTERVAL_MS * 2 / 1000)
         assert metrics_manager.num_requests_sent_to_replicas[r1] == 0
         assert metrics_manager.num_requests_sent_to_replicas[r2] == 0
 
@@ -883,12 +908,13 @@ class TestRouterMetricsManager:
         )
 
         # Running replicas reduces to [r2, r4]
-        metrics_manager.update_running_replicas(
+        metrics_manager._update_running_replicas(
             [
                 running_replica_info(r2),
                 running_replica_info(r4),
             ]
         )
+        await asyncio.sleep(RAY_SERVE_METRICS_EXPORT_INTERVAL_MS * 2 / 1000)
 
         # Only r1 should be pruned, the rest should still be tracked.
         assert r1 not in metrics_manager.num_requests_sent_to_replicas
@@ -896,7 +922,8 @@ class TestRouterMetricsManager:
         assert r3 in metrics_manager.num_requests_sent_to_replicas
         assert r4 in metrics_manager.num_requests_sent_to_replicas
 
-    def test_should_send_scaled_to_zero_optimized_push(self):
+    @pytest.mark.asyncio
+    async def test_should_send_scaled_to_zero_optimized_push(self):
         metrics_manager = RouterMetricsManager(
             DeploymentID(name="a", app_name="b"),
             "random",
@@ -908,6 +935,7 @@ class TestRouterMetricsManager:
             ),
             FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
             FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
+            event_loop=asyncio.get_event_loop(),
         )
 
         # Not an autoscaling deployment, should not push metrics
@@ -926,10 +954,11 @@ class TestRouterMetricsManager:
         # All 3 conditions satisfied, should push metrics
         assert metrics_manager.should_send_scaled_to_zero_optimized_push(0)
 
+    @pytest.mark.asyncio
     @patch(
         "ray.serve._private.router.RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", "1"
     )
-    def test_push_autoscaling_metrics_to_controller(self):
+    async def test_push_autoscaling_metrics_to_controller(self):
         timer = MockTimer()
         start = random.randint(50, 100)
         timer.reset(start)
@@ -956,6 +985,7 @@ class TestRouterMetricsManager:
                 ),
                 FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
                 FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
+                event_loop=asyncio.get_event_loop(),
             )
             metrics_manager._deployment_config = DeploymentConfig(
                 autoscaling_config=AutoscalingConfig()
@@ -992,7 +1022,7 @@ class TestRouterMetricsManager:
     )
     @pytest.mark.asyncio
     @patch(
-        "ray.serve._private.router.RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_PERIOD_S",
+        "ray.serve._private.router.RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S",
         0.01,
     )
     async def test_memory_cleared(self):
@@ -1014,6 +1044,7 @@ class TestRouterMetricsManager:
             ),
             FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
             FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
+            event_loop=asyncio.get_event_loop(),
         )
         metrics_manager.update_deployment_config(
             deployment_config=DeploymentConfig(
@@ -1051,16 +1082,17 @@ class TestRouterMetricsManager:
         metrics_manager.dec_num_running_requests_for_replica(r3)
 
         # update running replicas {r2}
-        metrics_manager.update_running_replicas([running_replica_info(r2)])
+        metrics_manager._update_running_replicas([running_replica_info(r2)])
         await async_wait_for_condition(
             check_database, expected={r1, r2, QUEUED_REQUESTS_KEY}
         )
 
+    @pytest.mark.asyncio
     @patch(
         "ray.serve._private.router.RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", "1"
     )
     @patch("ray.serve._private.router.MetricsPusher")
-    def test_update_deployment_config(self, metrics_pusher_mock):
+    async def test_update_deployment_config(self, metrics_pusher_mock):
         metrics_manager = RouterMetricsManager(
             DeploymentID(name="a", app_name="b"),
             "random",
@@ -1072,6 +1104,7 @@ class TestRouterMetricsManager:
             ),
             FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
             FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
+            event_loop=asyncio.get_event_loop(),
         )
 
         # Without autoscaling config, do nothing

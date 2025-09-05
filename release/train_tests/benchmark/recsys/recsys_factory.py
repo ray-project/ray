@@ -12,7 +12,7 @@ import ray.train.torch
 
 from constants import DatasetKey
 from config import DataloaderType, BenchmarkConfig
-from factory import BenchmarkFactory
+from benchmark_factory import BenchmarkFactory
 from dataloader_factory import (
     BaseDataLoaderFactory,
 )

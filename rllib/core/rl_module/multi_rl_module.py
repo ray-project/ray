@@ -20,7 +20,6 @@ from typing import (
 
 import gymnasium as gym
 
-from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import (
@@ -466,26 +465,6 @@ class MultiRLModule(RLModule):
         return list(self._rl_modules.items())
 
     @override(RLModule)
-    def output_specs_train(self) -> SpecType:
-        return []
-
-    @override(RLModule)
-    def output_specs_inference(self) -> SpecType:
-        return []
-
-    @override(RLModule)
-    def output_specs_exploration(self) -> SpecType:
-        return []
-
-    @override(RLModule)
-    def _default_input_specs(self) -> SpecType:
-        """MultiRLModule should not check the input specs.
-
-        The underlying single-agent RLModules will check the input specs.
-        """
-        return []
-
-    @override(RLModule)
     def as_multi_rl_module(self) -> "MultiRLModule":
         """Returns self in order to match `RLModule.as_multi_rl_module()` behavior.
 
@@ -516,6 +495,22 @@ class MultiRLModule(RLModule):
                 f"Module with module_id {module_id} not found. "
                 f"Available modules: {set(self.keys())}"
             )
+
+    @Deprecated(error=False)
+    def output_specs_train(self):
+        pass
+
+    @Deprecated(error=False)
+    def output_specs_inference(self):
+        pass
+
+    @Deprecated(error=False)
+    def output_specs_exploration(self):
+        pass
+
+    @Deprecated(error=False)
+    def _default_input_specs(self):
+        pass
 
 
 @PublicAPI(stability="alpha")

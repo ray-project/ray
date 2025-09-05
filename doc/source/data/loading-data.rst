@@ -482,16 +482,19 @@ Ray Data interoperates with distributed data processing frameworks like `Daft <h
 
     .. tab-item:: Daft
 
-        To create a :class:`~ray.data.dataset.Dataset` from a `Daft DataFrame <https://www.getdaft.io/projects/docs/en/stable/api_docs/dataframe.html>`_, call
+        To create a :class:`~ray.data.dataset.Dataset` from a `Daft DataFrame <https://docs.getdaft.io/en/stable/api/dataframe/>`_, call
         :func:`~ray.data.from_daft`. This function executes the Daft dataframe and constructs a ``Dataset`` backed by the resultant arrow data produced
         by your Daft query.
 
+        .. warning::
+            :func:`~ray.data.from_daft` doesn't work with PyArrow 14 and later. For more
+            information, see `this issue <https://github.com/ray-project/ray/issues/54837>`__.
+
         .. testcode::
+            :skipif: True
 
             import daft
             import ray
-
-            ray.init()
 
             df = daft.from_pydict({"int_col": [i for i in range(10000)], "str_col": [str(i) for i in range(10000)]})
             ds = ray.data.from_daft(df)
@@ -512,7 +515,12 @@ Ray Data interoperates with distributed data processing frameworks like `Daft <h
         ``Dataset`` backed by the distributed Pandas DataFrame partitions that underly
         the Dask DataFrame.
 
+        ..
+          We skip the code snippet below because `from_dask` doesn't work with PyArrow 
+          14 and later. For more information, see https://github.com/ray-project/ray/issues/54837
+
         .. testcode::
+            :skipif: True
 
             import dask.dataframe as dd
             import pandas as pd
@@ -569,21 +577,21 @@ Ray Data interoperates with distributed data processing frameworks like `Daft <h
         call :func:`~ray.data.read_iceberg`. This function creates a ``Dataset`` backed by
         the distributed files that underlie the Iceberg table.
 
-        ..
-
         .. testcode::
             :skipif: True
 
-            >>> import ray
-            >>> from pyiceberg.expressions import EqualTo
-            >>> ds = ray.data.read_iceberg(
-            ...     table_identifier="db_name.table_name",
-            ...     row_filter=EqualTo("column_name", "literal_value"),
-            ...     catalog_kwargs={"name": "default", "type": "glue"}
-            ... )
+            import ray
+            from pyiceberg.expressions import EqualTo
 
+            ds = ray.data.read_iceberg(
+                table_identifier="db_name.table_name",
+                row_filter=EqualTo("column_name", "literal_value"),
+                catalog_kwargs={"name": "default", "type": "glue"}
+            )
+            ds.show(3)
 
         .. testoutput::
+            :options: +MOCK
 
             {'col1': 0, 'col2': '0'}
             {'col1': 1, 'col2': '1'}
@@ -622,6 +630,7 @@ Ray Data interoperates with distributed data processing frameworks like `Daft <h
         DataFrame.
 
         .. testcode::
+            :skipif: True
 
             import mars
             import mars.dataframe as md
@@ -668,7 +677,10 @@ Ray Data interoperates with HuggingFace, PyTorch, and TensorFlow datasets.
             `IterableDatasetDict <https://huggingface.co/docs/datasets/en/package_reference/main_classes#datasets.IterableDatasetDict>`_
             objects aren't supported.
 
+        .. This snippet below is skipped because of  https://github.com/ray-project/ray/issues/54837.
+
         .. testcode::
+            :skipif: True
 
             import ray.data
             from datasets import load_dataset

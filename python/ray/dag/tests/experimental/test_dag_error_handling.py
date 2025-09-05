@@ -3,29 +3,27 @@ import copy
 import logging
 import pickle
 import re
+import signal
 import sys
 import time
 
 import pytest
 
-
-from ray.exceptions import ActorDiedError, RayChannelError, RayChannelTimeoutError
 import ray
 import ray._private
 import ray.cluster_utils
-from ray.dag import DAGContext, InputNode, MultiOutputNode
-from ray.tests.conftest import *  # noqa
+from ray._common.test_utils import SignalActor
 from ray._common.utils import (
     get_or_create_event_loop,
 )
 from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     wait_for_pid_to_exit,
-    SignalActor,
 )
-import signal
-
+from ray.dag import DAGContext, InputNode, MultiOutputNode
 from ray.dag.tests.experimental.actor_defs import Actor
+from ray.exceptions import ActorDiedError, RayChannelError, RayChannelTimeoutError
+from ray.tests.conftest import *  # noqa
 
 logger = logging.getLogger(__name__)
 

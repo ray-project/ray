@@ -12,15 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace ray {
-namespace gcs {
+#pragma once
 
-class MockGcsActor : public GcsActor {
- public:
-};
+#include <gmock/gmock.h>
 
-}  // namespace gcs
-}  // namespace ray
+#include "ray/gcs/gcs_server/gcs_actor_manager.h"
 
 namespace ray {
 namespace gcs {
@@ -28,7 +24,8 @@ namespace gcs {
 class MockGcsActorManager : public GcsActorManager {
  public:
   MockGcsActorManager(RuntimeEnvManager &runtime_env_manager,
-                      GcsFunctionManager &function_manager)
+                      GCSFunctionManager &function_manager,
+                      rpc::CoreWorkerClientPool &worker_client_pool)
       : GcsActorManager(
             /*scheduler=*/
             nullptr,
@@ -38,7 +35,7 @@ class MockGcsActorManager : public GcsActorManager {
             runtime_env_manager,
             function_manager,
             [](const ActorID &) {},
-            [](const rpc::Address &) { return nullptr; }) {}
+            worker_client_pool) {}
 
   MOCK_METHOD(void,
               HandleRegisterActor,

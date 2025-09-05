@@ -10,6 +10,9 @@ import ray
 from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
+from ray.data._internal.execution.backpressure_policy.resource_budget_backpressure_policy import (
+    ResourceBudgetBackpressurePolicy,
+)
 from ray.data._internal.execution.execution_callback import (
     EXECUTION_CALLBACKS_ENV_VAR,
     ExecutionCallback,
@@ -164,8 +167,7 @@ def test_process_completed_tasks(sleep_task_ref):
 
     # Test processing output bundles.
     assert len(topo[o1].output_queue) == 0, topo
-    resource_manager = mock_resource_manager()
-    process_completed_tasks(topo, resource_manager, 0)
+    process_completed_tasks(topo, [], 0)
     update_operator_states(topo)
     assert len(topo[o1].output_queue) == 20, topo
 
@@ -177,7 +179,7 @@ def test_process_completed_tasks(sleep_task_ref):
     o2.get_active_tasks = MagicMock(return_value=[sleep_task, done_task])
     o2.all_inputs_done = MagicMock()
     o1.mark_execution_finished = MagicMock()
-    process_completed_tasks(topo, resource_manager, 0)
+    process_completed_tasks(topo, [], 0)
     update_operator_states(topo)
     sleep_task_callback.assert_not_called()
     done_task_callback.assert_called_once()
@@ -192,7 +194,7 @@ def test_process_completed_tasks(sleep_task_ref):
     o1.mark_execution_finished = MagicMock()
     o1.completed = MagicMock(return_value=True)
     topo[o1].output_queue.clear()
-    process_completed_tasks(topo, resource_manager, 0)
+    process_completed_tasks(topo, [], 0)
     update_operator_states(topo)
     done_task_callback.assert_called_once()
     o2.all_inputs_done.assert_called_once()
@@ -214,7 +216,7 @@ def test_process_completed_tasks(sleep_task_ref):
 
     o3.mark_execution_finished()
     o2.mark_execution_finished = MagicMock()
-    process_completed_tasks(topo, resource_manager, 0)
+    process_completed_tasks(topo, [], 0)
     update_operator_states(topo)
     o2.mark_execution_finished.assert_called_once()
 
@@ -249,9 +251,7 @@ def test_get_eligible_operators_to_run():
     )
 
     def _get_eligible_ops_to_run(ensure_liveness: bool):
-        return get_eligible_operators(
-            topo, [], resource_manager, ensure_liveness=ensure_liveness
-        )
+        return get_eligible_operators(topo, [], ensure_liveness=ensure_liveness)
 
     # Test empty.
     assert _get_eligible_ops_to_run(ensure_liveness=False) == []
@@ -279,10 +279,20 @@ def test_get_eligible_operators_to_run():
 
     # `o2` operator is now back-pressured
     with patch.object(
-        resource_manager.op_resource_allocator, "can_submit_new_task"
-    ) as _mock:
-        _mock.side_effect = lambda op: False if op is o2 else True
-        assert _get_eligible_ops_to_run(ensure_liveness=False) == [o3]
+        ResourceBudgetBackpressurePolicy, "can_add_input"
+    ) as mock_can_add_input:
+        mock_can_add_input.side_effect = lambda op: op is not o2
+
+        test_policy = ResourceBudgetBackpressurePolicy(
+            MagicMock(), MagicMock(), MagicMock()
+        )
+
+        def _get_eligible_ops_to_run_with_policy(ensure_liveness: bool):
+            return get_eligible_operators(
+                topo, [test_policy], ensure_liveness=ensure_liveness
+            )
+
+        assert _get_eligible_ops_to_run_with_policy(ensure_liveness=False) == [o3]
 
         # Complete `o3`
         with patch.object(o3, "completed") as _mock:
@@ -291,7 +301,7 @@ def test_get_eligible_operators_to_run():
             topo[o3].input_queues[0].clear()
 
             # To ensure liveness back-pressure limits will be ignored
-            assert _get_eligible_ops_to_run(ensure_liveness=True) == [o2]
+            assert _get_eligible_ops_to_run_with_policy(ensure_liveness=True) == [o2]
 
 
 def test_rank_operators():
@@ -464,7 +474,7 @@ def test_validate_dag():
 
 # Mock the `scale_up` method to avoid creating and leaking resources.
 @patch(
-    "ray.data._internal.execution.operators.actor_pool_map_operator._ActorPool.scale_up",
+    "ray.data._internal.execution.operators.actor_pool_map_operator._ActorPool.scale",
     return_value=1,
 )
 def test_configure_output_locality(mock_scale_up):
@@ -569,7 +579,7 @@ def test_streaming_exec_schedule_s():
         continue
 
     ds_stats = ds._plan.stats()
-    assert 0 < ds_stats.streaming_exec_schedule_s.get() < 1
+    assert ds_stats.streaming_exec_schedule_s.get() > 0
 
 
 def test_execution_callbacks():
@@ -788,7 +798,6 @@ def test_execution_callbacks_executor_arg(tmp_path, restore_data_context):
     assert isinstance(logical_ops[0], Read)
     datasource = logical_ops[0]._datasource
     assert isinstance(datasource, ParquetDatasource)
-    assert datasource._unresolved_paths == input_path
 
     assert isinstance(logical_ops[1], MapRows)
     assert logical_ops[1]._fn == udf

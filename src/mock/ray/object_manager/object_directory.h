@@ -21,16 +21,6 @@ namespace ray {
 
 class MockObjectDirectory : public IObjectDirectory {
  public:
-  MOCK_METHOD(void,
-              LookupRemoteConnectionInfo,
-              (RemoteConnectionInfo & connection_info),
-              (const, override));
-
-  MOCK_METHOD(std::vector<RemoteConnectionInfo>,
-              LookupAllRemoteConnections,
-              (),
-              (const, override));
-
   MOCK_METHOD(void, HandleNodeRemoved, (const NodeID &node_id), (override));
 
   MOCK_METHOD(ray::Status,

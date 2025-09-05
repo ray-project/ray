@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional
 
+from ray._private.ray_constants import env_float
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -20,6 +21,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.execution.util import memory_string
+from ray.data._internal.util import GiB
 from ray.data.context import DataContext
 from ray.util.debug import log_once
 
@@ -44,7 +46,9 @@ class ResourceManager:
     # The fraction of the object store capacity that will be used as the default object
     # store memory limit for the streaming executor,
     # when `ReservationOpResourceAllocator` is enabled.
-    DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION = 0.5
+    DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION = env_float(
+        "RAY_DATA_OBJECT_STORE_MEMORY_LIMIT_FRACTION", 0.5
+    )
 
     # The fraction of the object store capacity that will be used as the default object
     # store memory limit for the streaming executor,
@@ -105,6 +109,37 @@ class ResourceManager:
             )
         )
 
+        self._warn_about_object_store_memory_if_needed()
+
+    def _warn_about_object_store_memory_if_needed(self):
+        """Warn if object store memory is configured below 50% of total memory."""
+        import ray
+        from ray.data.context import WARN_PREFIX
+        from ray.util.debug import log_once
+
+        if not ray.is_initialized():
+            return
+
+        cluster_resources = ray.cluster_resources()
+        total_memory = cluster_resources.get("memory", 0)
+        object_store_memory = cluster_resources.get("object_store_memory", 0)
+
+        # Check if we have actual numeric values (not mocks or None)
+        if total_memory > 0:
+            object_store_fraction = object_store_memory / total_memory
+
+            if object_store_fraction < 0.5 and log_once(
+                "ray_data_object_store_memory_warning"
+            ):
+                logger.warning(
+                    f"{WARN_PREFIX} Ray's object store is configured to use only "
+                    f"{object_store_fraction:.1%} of available memory ({object_store_memory/GiB:.1f}GiB "
+                    f"out of {total_memory/GiB:.1f}GiB total). For optimal Ray Data performance, "
+                    f"we recommend setting the object store to at least 50% of available memory. "
+                    f"You can do this by setting the 'object_store_memory' parameter when calling "
+                    f"ray.init() or by setting the RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION environment variable."
+                )
+
     def _estimate_object_store_memory(
         self, op: "PhysicalOperator", state: "OpState"
     ) -> int:
@@ -160,9 +195,12 @@ class ResourceManager:
             assert not op_usage.object_store_memory
             assert not op_running_usage.object_store_memory
             assert not op_pending_usage.object_store_memory
-            op_usage.object_store_memory = self._estimate_object_store_memory(op, state)
-            op_running_usage.object_store_memory = self._estimate_object_store_memory(
-                op, state
+
+            used_object_store = self._estimate_object_store_memory(op, state)
+
+            op_usage = op_usage.copy(object_store_memory=used_object_store)
+            op_running_usage = op_running_usage.copy(
+                object_store_memory=used_object_store
             )
 
             if isinstance(op, ReportsExtraResourceUsage):
@@ -228,7 +266,10 @@ class ResourceManager:
         exclude = self._options.exclude_resources
         total_resources = self._get_total_resources()
         default_mem_fraction = self._object_store_memory_limit_fraction
-        total_resources.object_store_memory *= default_mem_fraction
+        total_resources = total_resources.copy(
+            object_store_memory=total_resources.object_store_memory
+            * default_mem_fraction
+        )
         self._global_limits = default_limits.min(total_resources).subtract(exclude)
         return self._global_limits
 
@@ -275,6 +316,20 @@ class ResourceManager:
         assert self._op_resource_allocator is not None
         return self._op_resource_allocator
 
+    def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
+        """Return the maximum bytes of pending task outputs can be read for
+        the given operator. None means no limit."""
+        if self._op_resource_allocator is None:
+            return None
+        return self._op_resource_allocator.max_task_output_bytes_to_read(op)
+
+    def get_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
+        """Return the budget for the given operator, or None if the operator
+        has unlimited budget."""
+        if self._op_resource_allocator is None:
+            return None
+        return self._op_resource_allocator.get_budget(op)
+
 
 class OpResourceAllocator(ABC):
     """An interface for dynamic operator resource allocation.
@@ -293,19 +348,15 @@ class OpResourceAllocator(ABC):
         ...
 
     @abstractmethod
-    def can_submit_new_task(self, op: PhysicalOperator) -> bool:
-        """Return whether the given operator can submit a new task."""
-        ...
-
-    @abstractmethod
     def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
         """Return the maximum bytes of pending task outputs can be read for
         the given operator. None means no limit."""
         ...
 
     @abstractmethod
-    def get_budget(self, op: PhysicalOperator) -> ExecutionResources:
-        """Return the budget for the given operator."""
+    def get_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
+        """Return the budget for the given operator, or None if the operator
+        has unlimited budget."""
         ...
 
 
@@ -511,15 +562,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
         self._total_shared = remaining
 
-    def can_submit_new_task(self, op: PhysicalOperator) -> bool:
-        if op not in self._op_budgets:
-            return True
-        budget = self._op_budgets[op]
-        res = op.incremental_resource_usage().satisfies_limit(budget)
-        return res
-
-    def get_budget(self, op: PhysicalOperator) -> ExecutionResources:
-        return self._op_budgets[op]
+    def get_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
+        return self._op_budgets.get(op)
 
     def _should_unblock_streaming_output_backpressure(
         self, op: PhysicalOperator
@@ -622,8 +666,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             # exceeded `_reserved_for_op_outputs`.
             op_outputs_usage = self._get_op_outputs_usage_with_downstream(op)
             op_mem_usage += max(op_outputs_usage - self._reserved_for_op_outputs[op], 0)
-            op_usage = self._resource_manager.get_op_usage(op).copy()
-            op_usage.object_store_memory = op_mem_usage
+            op_usage = self._resource_manager.get_op_usage(op).copy(
+                object_store_memory=op_mem_usage
+            )
             op_reserved = self._op_reserved[op]
             # How much of the reserved resources are remaining.
             op_reserved_remaining = op_reserved.subtract(op_usage).max(
@@ -663,13 +708,29 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 op_shared,
                 to_borrow,
             )
-            self._op_budgets[op] = self._op_budgets[op].add(op_shared)
-            # We don't limit GPU resources, as not all operators
-            # use GPU resources.
-            self._op_budgets[op].gpu = float("inf")
+
+            if op.min_max_resource_requirements()[1].gpu > 0:
+                # If an operator needs GPU, we just allocate all GPUs to it.
+                # TODO(hchen): allocate resources across multiple GPU operators.
+
+                # The op_usage can be more than the global limit in the following cases:
+                # 1. The op is setting a minimum concurrency that is larger than
+                #    available num of GPUs.
+                # 2. The cluster scales down, and the global limit decreases.
+                target_num_gpu = max(
+                    self._resource_manager.get_global_limits().gpu
+                    - self._resource_manager.get_op_usage(op).gpu,
+                    0,
+                )
+            else:
+                target_num_gpu = 0
+
+            self._op_budgets[op] = (
+                self._op_budgets[op].add(op_shared).copy(gpu=target_num_gpu)
+            )
 
         # A materializing operator like `AllToAllOperator` waits for all its input
-        # operator’s outputs before processing data. This often forces the input
+        # operator's outputs before processing data. This often forces the input
         # operator to exceed its object store memory budget. To prevent deadlock, we
         # disable object store memory backpressure for the input operator.
         for op in eligible_ops:
@@ -677,4 +738,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 isinstance(next_op, MATERIALIZING_OPERATORS)
                 for next_op in op.output_dependencies
             ):
-                self._op_budgets[op].object_store_memory = float("inf")
+                self._op_budgets[op] = self._op_budgets[op].copy(
+                    object_store_memory=float("inf")
+                )

@@ -28,4 +28,4 @@ class DreamerV3Learner(Learner):
 
         # Update EMA weights of the critic.
         for module_id, module in self.module._rl_modules.items():
-            module.critic.update_ema()
+            module.unwrapped().critic.update_ema()

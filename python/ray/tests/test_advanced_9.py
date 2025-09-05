@@ -1,24 +1,26 @@
 import os
-import psutil
 import subprocess
 import sys
-import time
 
 import pytest
 
 import ray
 import ray._private.ray_constants as ray_constants
+import ray.util.state
+from ray._common.network_utils import parse_address
+from ray._common.test_utils import Semaphore, wait_for_condition
 from ray._private.test_utils import (
-    Semaphore,
-    external_redis_test_enabled,
     client_test_enabled,
-    run_string_as_driver,
-    wait_for_condition,
+    external_redis_test_enabled,
     get_gcs_memory_used,
+    run_string_as_driver,
     run_string_as_driver_nonblocking,
 )
+from ray._raylet import GCS_PID_KEY, GcsClient
 from ray.experimental.internal_kv import _internal_kv_list
 from ray.tests.conftest import call_ray_start
+
+import psutil
 
 
 @pytest.fixture
@@ -191,10 +193,9 @@ def test_node_liveness_after_restart(ray_start_cluster):
     wait_for_condition(lambda: len([n for n in ray.nodes() if n["Alive"]]) == 2)
 
     cluster.remove_node(worker)
+    wait_for_condition(lambda: len([n for n in ray.nodes() if n["Alive"]]) == 1)
     worker = cluster.add_node(node_manager_port=9037)
-    for _ in range(10):
-        wait_for_condition(lambda: len([n for n in ray.nodes() if n["Alive"]]) == 2)
-        time.sleep(1)
+    wait_for_condition(lambda: len([n for n in ray.nodes() if n["Alive"]]) == 2)
 
 
 @pytest.mark.skipif(
@@ -264,8 +265,20 @@ def test_gcs_connection_no_leak(ray_start_cluster):
 
     def get_gcs_num_of_connections():
         p = psutil.Process(gcs_server_pid)
-        print(">>", len(p.connections()))
-        return len(p.connections())
+        num_connections = len(p.connections())
+        print(">>", num_connections)
+        return num_connections
+
+    @ray.remote
+    class GcsKVActor:
+        def __init__(self, address):
+            self.gcs_client = GcsClient(address=address)
+            self.gcs_client.internal_kv_get(
+                GCS_PID_KEY.encode(),
+            )
+
+        def ready(self):
+            return "WORLD"
 
     @ray.remote
     class A:
@@ -273,15 +286,18 @@ def test_gcs_connection_no_leak(ray_start_cluster):
             print("HELLO")
             return "WORLD"
 
+    gcs_kv_actor = None
+
     with ray.init(cluster.address):
-        # Wait for everything to be ready.
-        time.sleep(10)
-        # Note: `fds_without_workers` need to be recorded *after* `ray.init`, because
+        # Wait for workers  to be ready.
+        gcs_kv_actor = GcsKVActor.remote(cluster.address)
+        _ = ray.get(gcs_kv_actor.ready.remote())
+        # Note: `fds_with_some_workers` need to be recorded *after* `ray.init`, because
         # a prestarted worker is started on the first driver init. This worker keeps 1
         # connection to the GCS, and it stays alive even after the driver exits. If
         # we move this line before `ray.init`, we will find 1 extra connection after
         # the driver exits.
-        fds_without_workers = get_gcs_num_of_connections()
+        fds_with_some_workers = get_gcs_num_of_connections()
         num_of_actors = 10
         actors = [A.remote() for _ in range(num_of_actors)]
         print(ray.get([t.ready.remote() for t in actors]))
@@ -292,7 +308,7 @@ def test_gcs_connection_no_leak(ray_start_cluster):
     # Make sure the # of fds opened by the GCS dropped.
     # This assumes worker processes are not created after the actor worker
     # processes die.
-    wait_for_condition(lambda: get_gcs_num_of_connections() <= fds_without_workers)
+    wait_for_condition(lambda: get_gcs_num_of_connections() < fds_with_some_workers)
     num_fds_after_workers_die = get_gcs_num_of_connections()
 
     n = cluster.add_node(wait=True)
@@ -303,7 +319,7 @@ def test_gcs_connection_no_leak(ray_start_cluster):
     cluster.remove_node(n)
 
     # Make sure the # of fds opened by the GCS dropped.
-    wait_for_condition(lambda: get_gcs_num_of_connections() <= fds_without_workers)
+    wait_for_condition(lambda: get_gcs_num_of_connections() < fds_with_some_workers)
 
 
 @pytest.mark.parametrize(
@@ -320,7 +336,7 @@ import os
 import time
 @ray.remote(num_cpus=3)
 def use_gpu():
-    time.sleep(1)
+    pass
 
 @ray.remote(num_gpus=10)
 class A:
@@ -381,7 +397,7 @@ def test_redis_full(ray_start_cluster_head):
 
     gcs_address = ray_start_cluster_head.gcs_address
     redis_addr = os.environ["RAY_REDIS_ADDRESS"]
-    host, port = redis_addr.split(":")
+    host, port = parse_address(redis_addr)
     if os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS", "1") != "1":
         cli = redis.RedisCluster(host, int(port))
     else:

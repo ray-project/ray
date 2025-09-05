@@ -1,10 +1,8 @@
 import asyncio
 import fnmatch
-import inspect
 import io
 import json
 import logging
-import math
 import os
 import pathlib
 import random
@@ -12,6 +10,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import timeit
 import traceback
@@ -20,7 +19,6 @@ from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from dataclasses import dataclass
 from datetime import datetime
-from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import requests
@@ -30,8 +28,10 @@ import ray
 import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray._private.services
-import ray._private.usage.usage_lib as ray_usage_lib
+import ray._private.services as services
 import ray._private.utils
+from ray._common.network_utils import build_address, parse_address
+from ray._common.test_utils import wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray._private import (
     ray_constants,
@@ -462,12 +462,12 @@ def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "ut
     with proc:
         output = proc.communicate(driver_script.encode(encoding=encode))[0]
         if proc.returncode:
-            print(ray._private.utils.decode(output, encode_type=encode))
+            print(ray._common.utils.decode(output, encode_type=encode))
             logger.error(proc.stderr)
             raise subprocess.CalledProcessError(
                 proc.returncode, proc.args, output, proc.stderr
             )
-        out = ray._private.utils.decode(output, encode_type=encode)
+        out = ray._common.utils.decode(output, encode_type=encode)
     return out
 
 
@@ -493,7 +493,7 @@ def run_string_as_driver_stdout_stderr(
     with proc:
         outputs_bytes = proc.communicate(driver_script.encode(encoding=encode))
         out_str, err_str = [
-            ray._private.utils.decode(output, encode_type=encode)
+            ray._common.utils.decode(output, encode_type=encode)
             for output in outputs_bytes
         ]
         if proc.returncode:
@@ -576,43 +576,6 @@ def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
     raise RuntimeError("It took too much time to kill an actor: {}".format(actor_id))
 
 
-def wait_for_condition(
-    condition_predictor,
-    timeout=10,
-    retry_interval_ms=100,
-    raise_exceptions=False,
-    **kwargs: Any,
-):
-    """Wait until a condition is met or time out with an exception.
-
-    Args:
-        condition_predictor: A function that predicts the condition.
-        timeout: Maximum timeout in seconds.
-        retry_interval_ms: Retry interval in milliseconds.
-        raise_exceptions: If true, exceptions that occur while executing
-            condition_predictor won't be caught and instead will be raised.
-        **kwargs: Arguments to pass to the condition_predictor.
-
-    Raises:
-        RuntimeError: If the condition is not met before the timeout expires.
-    """
-    start = time.time()
-    last_ex = None
-    while time.time() - start <= timeout:
-        try:
-            if condition_predictor(**kwargs):
-                return
-        except Exception:
-            if raise_exceptions:
-                raise
-            last_ex = ray._private.utils.format_error_message(traceback.format_exc())
-        time.sleep(retry_interval_ms / 1000.0)
-    message = "The condition wasn't met before the timeout expired."
-    if last_ex is not None:
-        message += f" Last exception: {last_ex}"
-    raise RuntimeError(message)
-
-
 def wait_for_assertion(
     assertion_predictor: Callable,
     timeout: int = 10,
@@ -651,38 +614,6 @@ def wait_for_assertion(
         )
     except RuntimeError:
         assertion_predictor(**kwargs)  # Should fail assert
-
-
-async def async_wait_for_condition(
-    condition_predictor, timeout=10, retry_interval_ms=100, **kwargs: Any
-):
-    """Wait until a condition is met or time out with an exception.
-
-    Args:
-        condition_predictor: A function that predicts the condition.
-        timeout: Maximum timeout in seconds.
-        retry_interval_ms: Retry interval in milliseconds.
-
-    Raises:
-        RuntimeError: If the condition is not met before the timeout expires.
-    """
-    start = time.time()
-    last_ex = None
-    while time.time() - start <= timeout:
-        try:
-            if inspect.iscoroutinefunction(condition_predictor):
-                if await condition_predictor(**kwargs):
-                    return
-            else:
-                if condition_predictor(**kwargs):
-                    return
-        except Exception as ex:
-            last_ex = ex
-        await asyncio.sleep(retry_interval_ms / 1000.0)
-    message = "The condition wasn't met before the timeout expired."
-    if last_ex is not None:
-        message += f" Last exception: {last_ex}"
-    raise RuntimeError(message)
 
 
 @dataclass
@@ -727,7 +658,7 @@ def get_metric_check_condition(
     node_info = ray.nodes()[0]
     metrics_export_port = node_info["MetricsExportPort"]
     addr = node_info["NodeManagerAddress"]
-    prom_addr = export_addr or f"{addr}:{metrics_export_port}"
+    prom_addr = export_addr or build_address(addr, metrics_export_port)
 
     def f():
         for metric_pattern in metrics_to_check:
@@ -808,72 +739,6 @@ def generate_system_config_map(**kwargs):
     return ray_kwargs
 
 
-@ray.remote
-class Collector:
-    def __init__(self):
-        self.items = []
-
-    def add(self, item):
-        self.items.append(item)
-
-    def get(self):
-        return self.items
-
-
-@ray.remote(num_cpus=0)
-class SignalActor:
-    def __init__(self):
-        self.ready_event = asyncio.Event()
-        self.num_waiters = 0
-
-    def send(self, clear=False):
-        self.ready_event.set()
-        if clear:
-            self.ready_event.clear()
-
-    async def wait(self, should_wait=True):
-        if should_wait:
-            self.num_waiters += 1
-            await self.ready_event.wait()
-            self.num_waiters -= 1
-
-    async def cur_num_waiters(self):
-        return self.num_waiters
-
-
-@ray.remote(num_cpus=0)
-class Semaphore:
-    def __init__(self, value=1):
-        self._sema = asyncio.Semaphore(value=value)
-
-    async def acquire(self):
-        await self._sema.acquire()
-
-    async def release(self):
-        self._sema.release()
-
-    async def locked(self):
-        return self._sema.locked()
-
-
-def dicts_equal(dict1, dict2, abs_tol=1e-4):
-    """Compares to dicts whose values may be floating point numbers."""
-
-    if dict1.keys() != dict2.keys():
-        return False
-
-    for k, v in dict1.items():
-        if (
-            isinstance(v, float)
-            and isinstance(dict2[k], float)
-            and math.isclose(v, dict2[k], abs_tol=abs_tol)
-        ):
-            continue
-        if v != dict2[k]:
-            return False
-    return True
-
-
 def same_elements(elems_a, elems_b):
     """Checks if two iterables (such as lists) contain the same elements. Elements
     do not have to be hashable (this allows us to compare sets of dicts for
@@ -906,9 +771,8 @@ def put_object(obj, use_ray_put):
 
 
 def wait_until_server_available(address, timeout_ms=5000, retry_interval_ms=100):
-    ip_port = address.split(":")
-    ip = ip_port[0]
-    port = int(ip_port[1])
+    ip, port_str = parse_address(address)
+    port = int(port_str)
     time_elapsed = 0
     start = time.time()
     while time_elapsed <= timeout_ms:
@@ -1429,7 +1293,7 @@ class ResourceKillerActor:
         head_node_id,
         kill_interval_s: float = 60,
         kill_delay_s: float = 0,
-        max_to_kill: int = 2,
+        max_to_kill: Optional[int] = 2,
         batch_size_to_kill: int = 1,
         kill_filter_fn: Optional[Callable] = None,
     ):
@@ -1468,11 +1332,12 @@ class ResourceKillerActor:
 
             for to_kill in to_kills:
                 self._kill_resource(*to_kill)
-            if len(self.killed) >= self.max_to_kill:
+            if self.max_to_kill is not None and len(self.killed) >= self.max_to_kill:
                 break
             await asyncio.sleep(self.kill_interval_s - sleep_interval)
 
         self.done.set_result(True)
+        await self.stop_run()
 
     async def _find_resources_to_kill(self):
         raise NotImplementedError
@@ -1482,6 +1347,9 @@ class ResourceKillerActor:
 
     async def stop_run(self):
         was_running = self.is_running
+        if was_running:
+            self._cleanup()
+
         self.is_running = False
         return was_running
 
@@ -1489,6 +1357,13 @@ class ResourceKillerActor:
         """Get the total number of killed resources"""
         await self.done
         return self.killed
+
+    def _cleanup(self):
+        """Cleanup any resources created by the killer.
+
+        Overriding this method is optional.
+        """
+        pass
 
 
 class NodeKillerBase(ResourceKillerActor):
@@ -1546,7 +1421,7 @@ class RayletKiller(NodeKillerBase):
 
         from ray.core.generated import node_manager_pb2_grpc
 
-        raylet_address = f"{ip}:{port}"
+        raylet_address = build_address(ip, port)
         channel = grpc.insecure_channel(raylet_address)
         stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
         try:
@@ -1562,30 +1437,80 @@ class EC2InstanceTerminator(NodeKillerBase):
     def _kill_resource(self, node_id, node_to_kill_ip, _):
         if node_to_kill_ip is not None:
             try:
-                self._terminate_ec2_instance(node_to_kill_ip)
+                _terminate_ec2_instance(node_to_kill_ip)
             except Exception:
                 pass
             logging.info(f"Terminated instance, {node_id=}, address={node_to_kill_ip}")
             self.killed.add(node_id)
 
-    def _terminate_ec2_instance(self, ip):
-        # This command uses IMDSv2 to get the host instance id and region.
-        # After that it terminates itself using aws cli.
-        multi_line_command = (
-            'TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600");'  # noqa: E501
-            'instanceId=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id/);'  # noqa: E501
-            'region=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/region);'  # noqa: E501
-            "aws ec2 terminate-instances --region $region --instance-ids $instanceId"  # noqa: E501
-        )
-        # This is a feature on Anyscale platform that enables
-        # easy ssh access to worker nodes.
-        ssh_command = f"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 ray@{ip} '{multi_line_command}'"  # noqa: E501
 
-        result = subprocess.run(
-            ssh_command, shell=True, capture_output=True, text=True, check=True
+@ray.remote(num_cpus=0)
+class EC2InstanceTerminatorWithGracePeriod(NodeKillerBase):
+    def __init__(self, *args, grace_period_s: int = 30, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self._grace_period_s = grace_period_s
+        self._kill_threads: Set[threading.Thread] = set()
+
+    def _kill_resource(self, node_id, node_to_kill_ip, _):
+        assert node_id not in self.killed
+
+        # Clean up any completed threads.
+        for thread in self._kill_threads.copy():
+            if not thread.is_alive():
+                thread.join()
+                self._kill_threads.remove(thread)
+
+        def _kill_node_with_grace_period(node_id, node_to_kill_ip):
+            self._drain_node(node_id)
+            time.sleep(self._grace_period_s)
+            # Anyscale extends the drain deadline if you shut down the instance
+            # directly. To work around this, we force-stop Ray on the node. Anyscale
+            # should then terminate it shortly after without updating the drain
+            # deadline.
+            _execute_command_on_node("ray stop --force", node_to_kill_ip)
+
+        logger.info(f"Starting killing thread {node_id=}, {node_to_kill_ip=}")
+        thread = threading.Thread(
+            target=_kill_node_with_grace_period,
+            args=(node_id, node_to_kill_ip),
+            daemon=True,
         )
-        print(f"STDOUT:\n{result.stdout}\n")
-        print(f"STDERR:\n{result.stderr}\n")
+        thread.start()
+        self._kill_threads.add(thread)
+        self.killed.add(node_id)
+
+    def _drain_node(self, node_id: str) -> None:
+        # We need to lazily import this object. Otherwise, Ray can't serialize the
+        # class.
+        from ray.core.generated import autoscaler_pb2
+
+        assert ray.NodeID.from_hex(node_id) != ray.NodeID.nil()
+
+        logging.info(f"Draining node {node_id=}")
+        address = services.canonicalize_bootstrap_address_or_die(addr="auto")
+        gcs_client = ray._raylet.GcsClient(address=address)
+        deadline_timestamp_ms = (time.time_ns() // 1e6) + (self._grace_period_s * 1e3)
+
+        try:
+            is_accepted, _ = gcs_client.drain_node(
+                node_id,
+                autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
+                "",
+                deadline_timestamp_ms,
+            )
+        except ray.exceptions.RayError as e:
+            logger.error(f"Failed to drain node {node_id=}")
+            raise e
+
+        assert is_accepted, "Drain node request was rejected"
+
+    def _cleanup(self):
+        for thread in self._kill_threads.copy():
+            thread.join()
+            self._kill_threads.remove(thread)
+
+        assert not self._kill_threads
 
 
 @ray.remote(num_cpus=0)
@@ -1820,50 +1745,6 @@ def no_resource_leaks_excluding_node_resources():
     return cluster_resources == available_resources
 
 
-@contextmanager
-def simulate_storage(
-    storage_type: str,
-    root: Optional[str] = None,
-    port: int = 5002,
-    region: str = "us-west-2",
-):
-    """Context that simulates a given storage type and yields the URI.
-
-    Args:
-        storage_type: The storage type to simiulate ("fs" or "s3")
-        root: Root directory of the URI to return (e.g., s3 bucket name)
-        port: The port of the localhost endpoint where s3 is being served (s3 only)
-        region: The s3 region (s3 only)
-    """
-    if storage_type == "fs":
-        if root is None:
-            with tempfile.TemporaryDirectory() as d:
-                yield "file://" + d
-        else:
-            yield "file://" + root
-    elif storage_type == "s3":
-        from moto.server import ThreadedMotoServer
-
-        old_env = os.environ
-        os.environ["AWS_ACCESS_KEY_ID"] = "testing"
-        os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
-        os.environ["AWS_SECURITY_TOKEN"] = "testing"
-        os.environ["AWS_SESSION_TOKEN"] = "testing"
-
-        root = root or uuid.uuid4().hex
-        s3_server = f"http://localhost:{port}"
-        server = ThreadedMotoServer(port=port)
-        server.start()
-        url = f"s3://{root}?region={region}&endpoint_override={s3_server}"
-        yield url
-        server.stop()
-
-        os.environ = old_env
-
-    else:
-        raise NotImplementedError(f"Unknown storage type: {storage_type}")
-
-
 def job_hook(**kwargs):
     """Function called by reflection by test_cli_integration."""
     cmd = " ".join(kwargs["entrypoint"])
@@ -1871,7 +1752,7 @@ def job_hook(**kwargs):
     sys.exit(0)
 
 
-def find_free_port():
+def find_free_port() -> int:
     sock = socket.socket()
     sock.bind(("", 0))
     port = sock.getsockname()[1]
@@ -1893,7 +1774,9 @@ def get_node_stats(raylet, num_retry=5, timeout=2):
 
     from ray.core.generated import node_manager_pb2_grpc
 
-    raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
+    raylet_address = build_address(
+        raylet["NodeManagerAddress"], raylet["NodeManagerPort"]
+    )
     channel = ray._private.utils.init_grpc_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     for _ in range(num_retry):
@@ -1945,7 +1828,9 @@ def kill_raylet(raylet, graceful=False):
 
     from ray.core.generated import node_manager_pb2_grpc
 
-    raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
+    raylet_address = build_address(
+        raylet["NodeManagerAddress"], raylet["NodeManagerPort"]
+    )
     channel = grpc.insecure_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     try:
@@ -2097,84 +1982,34 @@ def reset_autoscaler_v2_enabled_cache():
     u.cached_is_autoscaler_v2 = None
 
 
-def skip_flaky_core_test_premerge(reason: str):
-    """
-    Decorator to skip a test if it is flaky (e.g. in premerge)
-
-    Default we will skip the flaky test if not specified otherwise in
-    CI with CI_SKIP_FLAKY_TEST="0"
-    """
-    import pytest
-
-    def wrapper(func):
-        return pytest.mark.skipif(
-            os.environ.get("CI_SKIP_FLAKY_TEST", "1") == "1", reason=reason
-        )(func)
-
-    return wrapper
+def _terminate_ec2_instance(node_ip: str) -> None:
+    logging.info(f"Terminating instance {node_ip}")
+    # This command uses IMDSv2 to get the host instance id and region.
+    # After that it terminates itself using aws cli.
+    command = (
+        'instanceId=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id/);'  # noqa: E501
+        'region=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/region);'  # noqa: E501
+        "aws ec2 terminate-instances --region $region --instance-ids $instanceId"  # noqa: E501
+    )
+    _execute_command_on_node(command, node_ip)
 
 
-def _get_library_usages() -> Set[str]:
-    return set(
-        ray_usage_lib.get_library_usages_to_report(
-            ray.experimental.internal_kv.internal_kv_get_gcs_client()
+def _execute_command_on_node(command: str, node_ip: str):
+    logging.debug(f"Executing command on node {node_ip}: {command}")
+
+    multi_line_command = (
+        'TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600");'  # noqa: E501
+        f"{command}"
+    )
+
+    # This is a feature on Anyscale platform that enables
+    # easy ssh access to worker nodes.
+    ssh_command = f"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 ray@{node_ip} '{multi_line_command}'"  # noqa: E501
+
+    try:
+        subprocess.run(
+            ssh_command, shell=True, capture_output=True, text=True, check=True
         )
-    )
-
-
-def _get_extra_usage_tags() -> Dict[str, str]:
-    return ray_usage_lib.get_extra_usage_tags_to_report(
-        ray.experimental.internal_kv.internal_kv_get_gcs_client()
-    )
-
-
-class TelemetryCallsite(Enum):
-    DRIVER = "driver"
-    ACTOR = "actor"
-    TASK = "task"
-
-
-def check_library_usage_telemetry(
-    use_lib_fn: Callable[[], None],
-    *,
-    callsite: TelemetryCallsite,
-    expected_library_usages: List[Set[str]],
-    expected_extra_usage_tags: Optional[Dict[str, str]] = None,
-):
-    """Helper for writing tests to validate library usage telemetry.
-
-    `use_lib_fn` is a callable that will be called from the provided callsite.
-    After calling it, the telemetry data to export will be validated against
-    expected_library_usages and expected_extra_usage_tags.
-    """
-    assert len(_get_library_usages()) == 0, _get_library_usages()
-
-    if callsite == TelemetryCallsite.DRIVER:
-        use_lib_fn()
-    elif callsite == TelemetryCallsite.ACTOR:
-
-        @ray.remote
-        class A:
-            def __init__(self):
-                use_lib_fn()
-
-        a = A.remote()
-        ray.get(a.__ray_ready__.remote())
-    elif callsite == TelemetryCallsite.TASK:
-
-        @ray.remote
-        def f():
-            use_lib_fn()
-
-        ray.get(f.remote())
-    else:
-        assert False, f"Unrecognized callsite: {callsite}"
-
-    library_usages = _get_library_usages()
-    extra_usage_tags = _get_extra_usage_tags()
-
-    assert library_usages in expected_library_usages, library_usages
-    if expected_extra_usage_tags:
-        assert all(
-            [extra_usage_tags[k] == v for k, v in expected_extra_usage_tags.items()]
-        ), extra_usage_tags
+    except subprocess.CalledProcessError as e:
+        print("Exit code:", e.returncode)
+        print("Stderr:", e.stderr)

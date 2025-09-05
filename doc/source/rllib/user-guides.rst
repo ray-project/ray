@@ -15,6 +15,7 @@ User Guides
     checkpoints
     metrics-logger
     single-agent-episode
+    connector-v2
     rllib-replay-buffers
     rllib-offline
     rl-modules
@@ -72,6 +73,14 @@ RLlib Feature Guides
         .. button-ref:: single-agent-episode
 
             How to process trajectories through episodes
+
+    .. grid-item-card::
+        :img-top: /rllib/images/rllib-logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: connector-v2
+
+            How To Use Connectors and Connector pipelines?
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg

@@ -2,651 +2,340 @@ import asyncio
 import json
 import random
 from random import randint
-from typing import AsyncGenerator, Dict, Optional
+from typing import AsyncGenerator, Dict, Union
 
-from PIL import Image
-from transformers import AutoTokenizer
-from vllm import CompletionOutput, PromptType, RequestOutput
-from vllm.config import KVTransferConfig, ModelConfig, VllmConfig
-from vllm.engine.protocol import EngineClient
-from vllm.sampling_params import SamplingParams as VLLMInternalSamplingParams
-
-from ray.llm._internal.serve.configs.error_handling import ValidationError
-from ray.llm._internal.serve.configs.openai_api_models_patch import (
-    ResponseFormatJsonObject,
+from ray.llm._internal.common.utils.cloud_utils import LoraMirrorConfig
+from ray.llm._internal.serve.configs.openai_api_models import (
+    ChatCompletionRequest,
+    ChatCompletionResponse,
+    CompletionRequest,
+    CompletionResponse,
+    EmbeddingRequest,
+    EmbeddingResponse,
+    ErrorResponse,
+    ScoreRequest,
+    ScoreResponse,
 )
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
-    FinishReason,
     LLMConfig,
-    LLMRawResponse,
-    LogProb,
-    LogProbs,
-    Prompt,
 )
 from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine_stats import (
-    VLLMEngineStats,
-    VLLMEngineStatTracker,
-)
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
-    KV_TRANSFER_PARAMS_KEY,
-    VLLMGenerationRequest,
-    VLLMSamplingParams,
-)
-from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
-    InitializeNodeOutput,
-)
+from ray.llm._internal.serve.utils.lora_serve_utils import LoraModelLoader
 
 
 class MockVLLMEngine(LLMEngine):
+    """Mock vLLM Engine that generates fake text responses.
+
+    - In case of LoRA it generates a prefix with the model name in the text part of the response.
+    """
+
     def __init__(self, llm_config: LLMConfig):
-        """Create a vLLM Engine class
+        """Create a mock vLLM Engine.
 
         Args:
             llm_config: The llm configuration for this engine
         """
-        assert isinstance(
-            llm_config, LLMConfig
-        ), f"Got invalid config {llm_config} of type {type(llm_config)}"
         self.llm_config = llm_config
-
-        # Try to set up prompt_format when applied.
-        try:
-            self.llm_config.prompt_format.set_processor(
-                self.llm_config.model_loading_config.model_source
-            )
-        except OSError:
-            pass
-
-        self._stats = VLLMEngineStatTracker()
-
-    @staticmethod
-    async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
-        return InitializeNodeOutput(
-            placement_group=None,
-            runtime_env={},
-            extra_init_kwargs={},
-        )
-
-    async def start(self):
-        """No-Op"""
-        return
-
-    @staticmethod
-    async def async_range(count):
-        for i in range(count):
-            yield i
-            await asyncio.sleep(0.0)
-
-    async def prepare_request(
-        self, request_id: str, prompt: Prompt, stream: bool, **kwargs
-    ) -> VLLMGenerationRequest:
-
-        if isinstance(prompt.prompt, list):
-            # Simplification: Assume prompt is a list of messages with one user message
-            assert len(prompt.prompt) == 1
-            assert hasattr(prompt.prompt[0], "content")
-            prompt_text = prompt.prompt[0].content
-        else:
-            prompt_text = prompt.prompt
-
-        return VLLMGenerationRequest(
-            request_id=request_id,
-            prompt=prompt_text,
-            stream=stream,
-            sampling_params=VLLMSamplingParams.from_prompt(prompt),
-        )
-
-    async def generate(self, vllm_engine_request: VLLMGenerationRequest):
-        sampling_params = self._parse_sampling_params(
-            vllm_engine_request.sampling_params
-        )
-        max_tokens = sampling_params.max_tokens
-        if not max_tokens:
-            max_tokens = randint(1, 10)
-        prompt = vllm_engine_request.prompt
-        prompt_len = (
-            len(prompt.split()) if isinstance(prompt, str) else len(prompt.prompt)
-        )
-        generation_time = 0.001
-
-        async for i in self.async_range(max_tokens):
-            if i == max_tokens - 1:
-                finish_reason = FinishReason.STOP
-            else:
-                finish_reason = None
-            llm_response = LLMRawResponse(
-                generated_text=f"test_{i} ",
-                num_input_tokens=prompt_len,
-                num_input_tokens_batch=prompt_len,
-                num_generated_tokens=1,
-                preprocessing_time=0,
-                generation_time=generation_time,
-                finish_reason=finish_reason,
-                logprobs=self.get_logprobs(i, vllm_engine_request, sampling_params),
-            )
-            yield llm_response
-            await asyncio.sleep(generation_time)
-
-    async def check_health(self) -> None:
-        return
-
-    def stats(self) -> VLLMEngineStats:
-        return self._stats.to_stats()
-
-    def shutdown(self, shutdown_pg: bool = True):
-        raise NotImplementedError()
-
-    def _parse_sampling_params(
-        self, sampling_params: VLLMSamplingParams
-    ) -> VLLMInternalSamplingParams:
-        try:
-            if sampling_params.n != 1:
-                raise ValueError("n>1 is not supported yet in rayllm")
-            if sampling_params.logprobs:
-                if sampling_params.top_logprobs:
-                    if not (0 <= sampling_params.top_logprobs <= 5):
-                        raise ValueError("top_logprobs must be between 0 and 5")
-                    log_probs = sampling_params.top_logprobs
-                else:
-                    log_probs = 1
-            else:
-                if sampling_params.top_logprobs:
-                    raise ValueError(
-                        "if top_logprobs is specified, logprobs must be set to `True`"
-                    )
-                log_probs = None
-
-            return VLLMInternalSamplingParams(
-                n=1,
-                best_of=sampling_params.best_of,
-                presence_penalty=sampling_params.presence_penalty
-                if sampling_params.presence_penalty is not None
-                else 0.0,
-                frequency_penalty=sampling_params.frequency_penalty
-                if sampling_params.frequency_penalty is not None
-                else 0.0,
-                repetition_penalty=sampling_params.repetition_penalty
-                if sampling_params.repetition_penalty is not None
-                else 1.0,
-                temperature=sampling_params.temperature
-                if sampling_params.temperature is not None
-                else 1.0,
-                top_p=sampling_params.top_p
-                if sampling_params.top_p is not None
-                else 1.0,
-                top_k=sampling_params.top_k
-                if sampling_params.top_k is not None
-                else -1,
-                stop=sampling_params.stop,
-                stop_token_ids=sampling_params.stop_tokens,
-                ignore_eos=False,
-                # vLLM will cancel internally if input+output>max_tokens
-                max_tokens=sampling_params.max_tokens
-                or self.llm_config.max_request_context_length,
-                logprobs=log_probs,
-            )
-        except Exception as e:
-            # Wrap the error in ValidationError so the status code
-            # returned to the user is correct.
-            raise ValidationError(str(e)) from e
-
-    def get_logprobs(
-        self,
-        i: int,
-        vllm_engine_request: VLLMGenerationRequest,
-        sampling_params: VLLMSamplingParams,
-    ):
-        """Helper function for generating LLMRawResponse logprobs"""
-        num_logprobs = sampling_params.logprobs
-        top_logprobs = vllm_engine_request.sampling_params.top_logprobs
-        if num_logprobs:
-            log_probs = [
-                LogProbs.create(
-                    logprobs=[
-                        LogProb(
-                            logprob=0.0,
-                            token=(
-                                f"test_{i} " if idx == 0 else f"candidate_token_{idx}"
-                            ),
-                            bytes=[],
-                        )
-                        for idx in range(num_logprobs)
-                    ],
-                    top_logprobs=top_logprobs,
-                )
-            ]
-        else:
-            log_probs = None
-
-        return log_probs
-
-
-class MockEchoVLLMEngine(MockVLLMEngine):
-    """
-    Mock engine that responds with information about the request sent to it. Useful
-    for testing the contents of VLLMGenerationRequests created in RayLLM code up to
-    the vLLM boundary.
-    """
-
-    def _convert_to_json(self, vllm_engine_request: VLLMGenerationRequest) -> Dict:
-        """Converts request to json.
-
-        If the request contains an image, this method removes the image
-        from `vllm_engine_request` and sets `has_image: true` in the
-        output dictionary.
-        This is because `Image.Image` is not json serializable.
-        """
-        mm_data = vllm_engine_request.multi_modal_data
-        if isinstance(mm_data, dict) and "image" in mm_data:
-            assert isinstance(mm_data["image"], Image.Image) or (
-                isinstance(mm_data["image"], list)
-                and all(
-                    [
-                        isinstance(image, Image.Image)
-                        for image in vllm_engine_request.multi_modal_data["image"]
-                    ]
-                )
-            ), "Image must be of type Image.Image or a list of Image.Image"
-            mm_data["image"] = None
-            has_image = True
-        else:
-            has_image = False
-        res = vllm_engine_request.model_dump()
-        res.update({"has_image": has_image})
-        return json.dumps(res)
-
-    async def generate(self, vllm_engine_request: VLLMGenerationRequest):
-        yield LLMRawResponse(
-            generated_text=self._convert_to_json(vllm_engine_request),
-            num_input_tokens=0,
-            num_input_tokens_batch=0,
-            num_generated_tokens=1,
-            preprocessing_time=0,
-            generation_time=0.01,
-            finish_reason=FinishReason.STOP,
-            logprobs=None,
-        )
-
-
-class MockMultiplexEngine(LLMEngine):
-    def __init__(self, *args, **kwargs):
         self.started = False
-
-    @staticmethod
-    async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
-        return InitializeNodeOutput(
-            placement_group=None,
-            runtime_env={},
-            extra_init_kwargs={},
-        )
-
-    async def prepare_request(
-        self,
-        request_id: str,
-        prompt: Prompt,
-        stream: bool,
-        disk_lora_model: Optional[DiskMultiplexConfig] = None,
-    ) -> VLLMGenerationRequest:
-
-        if isinstance(prompt.prompt, list):
-            # Simplification: Assume prompt is a list of messages with one user message
-            assert len(prompt.prompt) == 1
-            assert hasattr(prompt.prompt[0], "content")
-            prompt_text = prompt.prompt[0].content
-        else:
-            prompt_text = prompt.prompt
-
-        output = VLLMGenerationRequest(
-            request_id=request_id,
-            prompt=prompt_text,
-            stream=stream,
-            sampling_params=VLLMSamplingParams.from_prompt(prompt),
-            disk_multiplex_config=disk_lora_model,
-        )
-        return output
+        self._current_lora_model: Dict[str, DiskMultiplexConfig] = {}
 
     async def start(self):
+        """Start the mock engine."""
         self.started = True
 
-    async def generate(self, arg):
-        assert self.started, "Engine was not started"
-        yield arg
-
-    async def check_health(self):
-        return True
-
-
-class FakeLoraModelLoader:
-    async def load_model(
-        self, lora_model_id: str, llm_config: LLMConfig
-    ) -> DiskMultiplexConfig:
-        return DiskMultiplexConfig.model_validate(
-            {
-                "model_id": lora_model_id,
-                "max_total_tokens": llm_config.max_request_context_length,
-                "local_path": "/local/path",
-                "lora_assigned_int_id": 1,
-            }
-        )
-
-
-class MockJSONModeVLLMEngine(MockVLLMEngine):
-    async def generate_text(self, max_tokens, prompt_len):
-        generation_time = 0.001
-        async for i in self.async_range(max_tokens):
-            if i == max_tokens - 1:
-                finish_reason = FinishReason.STOP
-            else:
-                finish_reason = None
-            llm_response = LLMRawResponse(
-                generated_text=f"test_{i} ",
-                num_input_tokens=prompt_len,
-                num_input_tokens_batch=prompt_len,
-                num_generated_tokens=1,
-                preprocessing_time=0,
-                generation_time=generation_time,
-                finish_reason=finish_reason,
-            )
-            yield llm_response
-            await asyncio.sleep(generation_time)
-
-    async def generate_json(self, json_schema, max_tokens, prompt_len):
-        random_valid_json = str(generate_from_schema(json_schema))
-        # the json has double quotes where single quotes should be and single quotes where double quotes should be:
-        random_valid_json = random_valid_json.replace("'", '"')
-
-        tokens = split_string_into_chunks(random_valid_json, max_tokens)
-
-        generation_time = 0.001
-        async for i in self.async_range(max_tokens):
-            finish_reason = None
-            if i == max_tokens - 1:
-                finish_reason = FinishReason.STOP
-
-            generated_text = tokens[i]
-            llm_response = LLMRawResponse(
-                generated_text=generated_text,
-                num_input_tokens=prompt_len,
-                num_input_tokens_batch=prompt_len,
-                num_generated_tokens=1,
-                preprocessing_time=0,
-                generation_time=generation_time,
-                finish_reason=finish_reason,
-            )
-            yield llm_response
-            await asyncio.sleep(generation_time)
-
-    async def generate(self, vllm_engine_request: VLLMGenerationRequest):
-        sampling_params = self._parse_sampling_params(
-            vllm_engine_request.sampling_params
-        )
-        max_tokens = sampling_params.max_tokens
-        if not max_tokens:
-            max_tokens = randint(1, 10)
-        prompt = vllm_engine_request.prompt
-        prompt_len = get_prompt_length(prompt)
-        response_format = sampling_params.response_format
-        if response_format and isinstance(response_format, ResponseFormatJsonObject):
-            response_format = sampling_params.response_format
-            generator = self.generate_json(
-                response_format.json_schema,
-                max_tokens=max_tokens,
-                prompt_len=prompt_len,
-            )
-        else:
-            generator = self.generate_text(max_tokens=max_tokens, prompt_len=prompt_len)
-        async for x in generator:
-            yield x
-
-    def _parse_sampling_params(
-        self, sampling_params: VLLMSamplingParams
-    ) -> VLLMInternalSamplingParams:
-        new_sampling_params = super()._parse_sampling_params(sampling_params)
-        new_sampling_params.response_format = sampling_params.response_format
-        return new_sampling_params
-
-
-class MockPDDisaggVLLMEngineClient(EngineClient):
-    """
-    Mock vllm EngineClient that supports PD Disaggregation.
-    """
-
-    def __init__(self, vllm_config: VllmConfig):
-        self._llm_config = vllm_config
-        self._model_config = vllm_config.model_config
-
-    @property
-    def kv_transfer_config(self):
-        # https://github.com/vllm-project/vllm/blob/980a172474fa0f32433dda87ae1fa4aadba24c51/vllm/config.py#L4061
-        kv_transfer_config = self._llm_config.kv_transfer_config
-        if kv_transfer_config is not None:
-            assert isinstance(kv_transfer_config, KVTransferConfig)
-        return kv_transfer_config
-
-    @staticmethod
-    async def async_range(count):
-        for i in range(count):
-            yield i
-            await asyncio.sleep(0.0)
-
-    def is_running(self) -> bool:
-        return True
-
-    @property
-    def is_stopped(self) -> bool:
-        return False
-
-    @property
-    def errored(self) -> bool:
-        return False
-
-    @property
-    def dead_error(self) -> BaseException:
-        return None
-
-    def generate(
-        self,
-        prompt: PromptType,
-        sampling_params: VLLMInternalSamplingParams,
-        request_id: str,
-        **kwargs,
-    ) -> AsyncGenerator[RequestOutput, None]:
-        """Generate outputs for a request."""
-        max_tokens = sampling_params.max_tokens or randint(1, 10)
-
-        # vLLM uses `extra_args` to pass in `kv_transfer_params`:
-        # https://github.com/vllm-project/vllm/blob/980a172474fa0f32433dda87ae1fa4aadba24c51/vllm/v1/request.py#L65
-        kv_transfer_params = None
-        if (
-            self.kv_transfer_config is not None
-            and KV_TRANSFER_PARAMS_KEY in sampling_params.extra_args
-        ):
-            # For now we don't test the items in request/response, so just pass empty dict.
-            kv_transfer_params = {}  # noqa: F841
-
-        async def generate_response():
-            # vLLM EngineClient spits accumulated output in the response.
-            # ray serve's engine spits output in chunk.
-            accumulated_output = ""
-            async for i in self.async_range(max_tokens):
-                accumulated_output += f"mock_pd_client_response_{i} "
-                yield RequestOutput(
-                    finished=(i == max_tokens - 1),
-                    request_id=request_id,
-                    prompt=prompt,
-                    prompt_token_ids=[i],
-                    prompt_logprobs=[0.0],
-                    outputs=[
-                        CompletionOutput(
-                            index=i,
-                            text=accumulated_output,
-                            token_ids=[i],
-                            cumulative_logprob=None,
-                            logprobs=None,
-                        )
-                    ],
-                    # In vllm==0.8.5, RequestOutput does not accept kv_transfer_params
-                    # which will raise exception. see https://github.com/vllm-project/vllm/pull/18513
-                    # TODO(lk-chen): uncomment this once we bump vllm version in test env.
-                    # kv_transfer_params=kv_transfer_params,
-                )
-
-        return generate_response()
-
-    def encode(
-        self,
-        prompt: PromptType,
-        request_id: str,
-        **kwargs,
-    ) -> AsyncGenerator:
-        """Generate outputs for a request from a pooling model."""
-        raise NotImplementedError("Not expected to be reached")
-
-    async def abort(self, request_id: str) -> None:
-        """Abort a request.
-
-        Args:
-            request_id: The unique id of the request.
-        """
-        return
-
-    async def get_vllm_config(self):
-        """Get the vllm configuration of the vLLM engine."""
-        return self._llm_config
-
-    async def get_model_config(self):
-        """Get the model configuration of the vLLM engine."""
-        return self._model_config
-
-    async def get_decoding_config(self):
-        """Get the decoding configuration of the vLLM engine."""
-        raise NotImplementedError("Not expected to be reached")
-
-    async def get_input_preprocessor(self):
-        """Get the input processor of the vLLM engine."""
-        raise NotImplementedError("Not expected to be reached")
-
-    async def get_tokenizer(
-        self,
-        lora_request=None,
-    ) -> any:
-        """Get the appropriate tokenizer for the request"""
-        return AutoTokenizer.from_pretrained(self._model_config.model)
-
-    async def is_tracing_enabled(self) -> bool:
-        """Check if tracing is enabled"""
-        raise NotImplementedError("Not expected to be reached")
-
-    async def do_log_stats(
-        self,
-        scheduler_outputs=None,
-        model_output=None,
-    ) -> None:
-        raise NotImplementedError("Not expected to be reached")
+    async def resolve_lora(self, lora_model: DiskMultiplexConfig):
+        """Resolve/load a LoRA model."""
+        self._current_lora_model[lora_model.model_id] = lora_model
 
     async def check_health(self) -> None:
-        """Raise if unhealthy"""
-        return
+        """Check the health of the mock engine."""
+        if not self.started:
+            raise RuntimeError("Engine not started")
+
+    async def reset_prefix_cache(self) -> None:
+        """Reset the prefix cache of the mock engine."""
+        if not self.started:
+            raise RuntimeError("Engine not started")
 
     async def start_profile(self) -> None:
-        """Start profiling the engine"""
-        raise NotImplementedError("Not expected to be reached")
+        """Start profiling of the mock engine."""
+        if not self.started:
+            raise RuntimeError("Engine not started")
 
     async def stop_profile(self) -> None:
-        """Start profiling the engine"""
-        raise NotImplementedError("Not expected to be reached")
+        """Stop profiling of the mock engine."""
+        if not self.started:
+            raise RuntimeError("Engine not started")
 
-    async def reset_prefix_cache(self, device=None) -> None:
-        """Reset the prefix cache"""
-        raise NotImplementedError("Not expected to be reached")
+    async def chat(
+        self, request: ChatCompletionRequest
+    ) -> AsyncGenerator[Union[str, ChatCompletionResponse, ErrorResponse], None]:
+        """Mock chat completion."""
+        if not self.started:
+            raise RuntimeError("Engine not started")
 
-    async def sleep(self, level: int = 1) -> None:
-        """Sleep the engine"""
-        raise NotImplementedError("Not expected to be reached")
+        # Extract prompt text from messages
+        prompt_text = ""
+        if request.messages:
+            for message in request.messages:
+                if hasattr(message, "content") and message.content:
+                    prompt_text += str(message.content) + " "
 
-    async def wake_up(self, tags: Optional[list[str]] = None) -> None:
-        """Wake up the engine"""
-        raise NotImplementedError("Not expected to be reached")
+        max_tokens = getattr(request, "max_tokens", None) or randint(1, 10)
 
-    async def is_sleeping(self) -> bool:
-        """Check whether the engine is sleeping"""
-        raise NotImplementedError("Not expected to be reached")
+        # Generate streaming response
+        async for response in self._generate_chat_response(
+            request=request, prompt_text=prompt_text.strip(), max_tokens=max_tokens
+        ):
+            yield response
 
-    async def add_lora(self, lora_request) -> None:
-        """Load a new LoRA adapter into the engine for future requests."""
-        raise NotImplementedError("Not expected to be reached")
+    async def completions(
+        self, request: CompletionRequest
+    ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
+        """Mock text completion."""
+        if not self.started:
+            raise RuntimeError("Engine not started")
 
+        prompt_text = str(request.prompt) if request.prompt else ""
+        max_tokens = getattr(request, "max_tokens", None) or randint(5, 20)
 
-class MockPDDisaggVLLMEngine(VLLMEngine):
-    async def _start_engine(self) -> EngineClient:
-        return MockPDDisaggVLLMEngineClient(
-            VllmConfig(
-                model_config=ModelConfig(
-                    model=self.llm_config.model_loading_config.model_id,
-                    task="auto",
-                    tokenizer=self.llm_config.model_loading_config.model_id,
-                    tokenizer_mode="auto",
-                    trust_remote_code=False,
-                    dtype="auto",
-                    seed=0,
-                )
+        # Generate streaming response
+        async for response in self._generate_completion_response(
+            request=request, prompt_text=prompt_text, max_tokens=max_tokens
+        ):
+            yield response
+
+    async def embeddings(
+        self, request: EmbeddingRequest
+    ) -> AsyncGenerator[Union[str, EmbeddingResponse, ErrorResponse], None]:
+        """Mock embeddings generation."""
+        if not self.started:
+            raise RuntimeError("Engine not started")
+
+        # Generate a mock embedding response
+        embedding_data = []
+        inputs = request.input if isinstance(request.input, list) else [request.input]
+
+        for i, text in enumerate(inputs):
+            # Generate random embedding vector
+            dimensions = getattr(request, "dimensions", None) or 1536
+            embedding = [random.uniform(-1, 1) for _ in range(dimensions)]
+
+            embedding_data.append(
+                {"object": "embedding", "embedding": embedding, "index": i}
             )
+
+        response = EmbeddingResponse(
+            object="list",
+            data=embedding_data,
+            model=getattr(request, "model", "mock-model"),
+            usage={
+                "prompt_tokens": len(str(request.input).split()),
+                "total_tokens": len(str(request.input).split()),
+            },
+        )
+        yield response
+
+    async def score(
+        self, request: ScoreRequest
+    ) -> AsyncGenerator[Union[str, ScoreResponse, ErrorResponse], None]:
+        """Mock score generation for text pairs."""
+        if not self.started:
+            raise RuntimeError("Engine not started")
+
+        # Extract text_1 and text_2 from the request
+        text_1 = getattr(request, "text_1", "")
+        text_2 = getattr(request, "text_2", "")
+
+        # Convert to lists if they aren't already
+        text_1_list = text_1 if isinstance(text_1, list) else [text_1]
+        text_2_list = text_2 if isinstance(text_2, list) else [text_2]
+
+        # Generate mock scores for each pair
+        score_data = []
+        for i, (t1, t2) in enumerate(zip(text_1_list, text_2_list)):
+            # Generate a random score (can be any float value)
+            score = random.uniform(-10.0, 10.0)
+
+            score_data.append({"object": "score", "score": score, "index": i})
+
+        # Create the response
+        response = ScoreResponse(
+            object="list",
+            data=score_data,
+            model=getattr(request, "model", "mock-model"),
+            usage={
+                "prompt_tokens": len(str(text_1).split()) + len(str(text_2).split()),
+                "total_tokens": len(str(text_1).split()) + len(str(text_2).split()),
+            },
+        )
+        yield response
+
+    async def _generate_chat_response(
+        self, request: ChatCompletionRequest, prompt_text: str, max_tokens: int
+    ) -> AsyncGenerator[Union[str, ChatCompletionResponse], None]:
+        """Generate mock chat completion response."""
+
+        request_id = request.request_id or f"chatcmpl-{random.randint(1000, 9999)}"
+        lora_prefix = (
+            ""
+            if request.model not in self._current_lora_model
+            else f"[lora_model] {request.model}: "
+        )
+        if request.stream:
+            # Streaming response - return SSE formatted strings
+            created_time = int(asyncio.get_event_loop().time())
+            model_name = getattr(request, "model", "mock-model")
+
+            for i in range(max_tokens):
+                if i == 0:
+                    token = f"{lora_prefix}test_{i} "
+                else:
+                    token = f"test_{i} "
+                if i == max_tokens - 1:
+                    # no space for the last token
+                    token = f"test_{i}"
+
+                # Create streaming chunk
+                choice = {
+                    "index": 0,
+                    "delta": {
+                        "content": token,
+                        "role": "assistant" if i == 0 else None,
+                    },
+                    "finish_reason": "stop" if i == max_tokens - 1 else None,
+                }
+
+                chunk_data = {
+                    "id": request_id,
+                    "object": "chat.completion.chunk",
+                    "created": created_time,
+                    "model": model_name,
+                    "choices": [choice],
+                }
+
+                # Format as SSE
+                yield f"data: {json.dumps(chunk_data)}\n\n"
+                await asyncio.sleep(0.01)  # Simulate processing time
+
+            # Send final [DONE] message
+            yield "data: [DONE]\n\n"
+        else:
+            # Non-streaming response - return response object
+            generated_text = " ".join([f"test_{i}" for i in range(max_tokens)])
+            generated_text = f"{lora_prefix}{generated_text}"
+
+            choice = {
+                "index": 0,
+                "message": {"role": "assistant", "content": generated_text},
+                "finish_reason": "stop",
+            }
+
+            response = ChatCompletionResponse(
+                id=request_id,
+                object="chat.completion",
+                created=int(asyncio.get_event_loop().time()),
+                model=getattr(request, "model", "mock-model"),
+                choices=[choice],
+                usage={
+                    "prompt_tokens": len(prompt_text.split()),
+                    "completion_tokens": max_tokens,
+                    "total_tokens": len(prompt_text.split()) + max_tokens,
+                },
+            )
+
+            yield response
+
+    async def _generate_completion_response(
+        self, request: CompletionRequest, prompt_text: str, max_tokens: int
+    ) -> AsyncGenerator[Union[str, CompletionResponse], None]:
+        """Generate mock completion response."""
+
+        request_id = request.request_id or f"cmpl-{random.randint(1000, 9999)}"
+        lora_prefix = (
+            ""
+            if request.model not in self._current_lora_model
+            else f"[lora_model] {request.model}: "
+        )
+        if request.stream:
+            # Streaming response - return SSE formatted strings
+            created_time = int(asyncio.get_event_loop().time())
+            model_name = getattr(request, "model", "mock-model")
+
+            for i in range(max_tokens):
+                if i == 0:
+                    token = f"{lora_prefix}test_{i} "
+                else:
+                    token = f"test_{i} "
+                if i == max_tokens - 1:
+                    # no space for the last token
+                    token = f"test_{i}"
+
+                choice = {
+                    "index": 0,
+                    "text": token,
+                    "finish_reason": "stop" if i == max_tokens - 1 else None,
+                }
+
+                chunk_data = {
+                    "id": request_id,
+                    "object": "text_completion",
+                    "created": created_time,
+                    "model": model_name,
+                    "choices": [choice],
+                }
+
+                # Format as SSE
+                yield f"data: {json.dumps(chunk_data)}\n\n"
+                await asyncio.sleep(0.01)
+
+            # Send final [DONE] message
+            yield "data: [DONE]\n\n"
+        else:
+            # Non-streaming response - return response object
+            generated_text = " ".join([f"test_{i}" for i in range(max_tokens)])
+            generated_text = f"{lora_prefix}{generated_text}"
+
+            choice = {"index": 0, "text": generated_text, "finish_reason": "stop"}
+
+            response = CompletionResponse(
+                id=request_id,
+                object="text_completion",
+                created=int(asyncio.get_event_loop().time()),
+                model=getattr(request, "model", "mock-model"),
+                choices=[choice],
+                usage={
+                    "prompt_tokens": len(prompt_text.split()),
+                    "completion_tokens": max_tokens,
+                    "total_tokens": len(prompt_text.split()) + max_tokens,
+                },
+            )
+
+            yield response
+
+
+class FakeLoraModelLoader(LoraModelLoader):
+    """Fake LoRA model loader for testing that bypasses S3 entirely."""
+
+    async def load_model_from_config(
+        self, lora_model_id: str, llm_config
+    ) -> DiskMultiplexConfig:
+        """Load a fake LoRA model without any S3 access."""
+        return DiskMultiplexConfig(
+            model_id=lora_model_id,
+            max_total_tokens=llm_config.max_request_context_length,
+            local_path="/fake/local/path",
+            lora_assigned_int_id=random.randint(1, 100),
         )
 
-
-def generate_from_schema(schema):
-    if "type" not in schema:
-        raise ValueError("Schema must have a 'type' property")
-
-    # Check for enum and return a random value from it
-    if "enum" in schema:
-        return schema["enum"][0]
-
-    if schema["type"] == "object":
-        obj = {}
-        for prop, prop_schema in schema.get("properties", {}).items():
-            obj[prop] = generate_from_schema(prop_schema)
-        return obj
-
-    elif schema["type"] == "array":
-        item_schema = schema.get("items", {})
-        return [generate_from_schema(item_schema) for _ in range(random.randint(1, 3))]
-
-    elif schema["type"] == "string":
-        return "sample_string"
-
-    elif schema["type"] == "integer":
-        return random.randint(0, 100)
-
-    elif schema["type"] == "number":
-        return random.uniform(0, 100)
-
-    elif schema["type"] == "boolean":
-        return random.choice([True, False])
-
-    else:
-        raise ValueError(f"Unsupported type: {schema['type']}")
-
-
-def split_string_into_chunks(s, n):
-    if n <= 0:
-        raise ValueError("Number of chunks must be greater than 0")
-
-    chunk_size = len(s) // n
-    remainder = len(s) % n
-
-    chunks = []
-    start = 0
-    for i in range(n):
-        end = start + chunk_size + (1 if i < remainder else 0)
-        chunks.append(s[start:end])
-        start = end
-
-    return chunks
-
-
-def get_prompt_length(prompt):
-    return len(prompt.split()) if isinstance(prompt, str) else len(prompt)
+    async def load_model(
+        self, lora_model_id: str, lora_mirror_config: LoraMirrorConfig
+    ) -> DiskMultiplexConfig:
+        """Load a fake LoRA model."""
+        return DiskMultiplexConfig(
+            model_id=lora_model_id,
+            max_total_tokens=lora_mirror_config.max_total_tokens,
+            local_path="/fake/local/path",
+            lora_assigned_int_id=random.randint(1, 100),
+        )

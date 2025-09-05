@@ -4,9 +4,9 @@ If you need a customized Ray instance (e.g., to change system config or env vars
 put the test in `test_reference_counting_standalone.py`.
 """
 # coding: utf-8
+import copy
 import logging
 import os
-import copy
 import pickle
 import signal
 import sys
@@ -17,15 +17,14 @@ import numpy as np
 import pytest
 
 import ray
+import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.internal_api import memory_summary
 from ray._private.test_utils import (
-    SignalActor,
     put_object,
-    wait_for_condition,
     wait_for_num_actors,
 )
-import ray._private.gcs_utils as gcs_utils
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
@@ -211,6 +210,7 @@ def test_pass_returned_object_ref(one_cpu_100MiB_shared, use_ray_put, failure):
 # returned by another task to the end of the chain. The reference should still
 # exist while the final task in the chain is running and should be removed once
 # it finishes.
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 @pytest.mark.parametrize(
     "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
 )

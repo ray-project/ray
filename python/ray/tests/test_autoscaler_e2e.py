@@ -4,13 +4,13 @@ import sys
 import pytest
 
 import ray
-from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
+from ray._common.network_utils import build_address
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import (
-    wait_for_condition,
-    get_metric_check_condition,
     MetricSamplePattern,
-    SignalActor,
+    get_metric_check_condition,
 )
+from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.autoscaler.node_launch_exception import NodeLaunchException
 
 
@@ -162,7 +162,7 @@ def test_ray_status_e2e(local_autoscaling_cluster, shutdown_only):
 def test_metrics(local_autoscaling_cluster, shutdown_only):
 
     info = ray.init(address="auto")
-    autoscaler_export_addr = "{}:{}".format(
+    autoscaler_export_addr = build_address(
         info.address_info["node_ip_address"], AUTOSCALER_METRIC_PORT
     )
 

@@ -12,7 +12,10 @@ msrestazure==0.6.4
 beautifulsoup4==4.11.1
 boto3==1.26.76
 # Todo: investigate if we can get rid of this and exchange for ray.cloudpickle
-cloudpickle==2.2.0
+cloudpickle==2.2.0 ; python_version < "3.12"
+cloudpickle==3.0.0 ; python_version >= "3.12"
+tornado==6.1 ; python_version < "3.12"
+tornado==6.2.0 ; python_version >= "3.12"
 cython==0.29.37
 fastapi>=0.115.12
 feather-format==0.4.1
@@ -33,14 +36,12 @@ moto[s3,server]==4.2.12
 mypy==1.7.0
 numba==0.59.1
 openpyxl==3.0.10
-opentelemetry-api==1.26.0
-opentelemetry-sdk==1.26.0
-opentelemetry-exporter-otlp>=1.26.0
-opencensus-proto==0.1.0
+opentelemetry-api
+opentelemetry-sdk
 pexpect==4.8.0
 Pillow==10.3.0; platform_system != "Windows"
 proxy.py==2.4.3
-pydantic>=2.9.0
+pydantic>=2.10.0
 pydot==1.4.2
 pygame==2.5.2
 Pygments==2.18.0
@@ -49,20 +50,21 @@ pyspark==3.4.1
 pytest==7.4.4
 pytest-asyncio==0.17.2
 pytest-aiohttp==1.1.0
-pytest-httpserver==1.0.6
+pytest-httpserver==1.1.3
 pytest-rerunfailures==11.1.2
 pytest-sugar==0.9.5
 pytest-lazy-fixtures==1.1.2
 pytest-timeout==2.1.0
-pytest-virtualenv==1.7.0; python_version < "3.12"
+pytest-virtualenv==1.8.1; python_version < "3.12"
 pytest-sphinx @ git+https://github.com/ray-project/pytest-sphinx
 pytest-mock==3.14.0
-redis==4.4.2
+redis
 scikit-learn==1.3.2
 smart_open[s3]==6.2.0
-tqdm==4.64.1
+tqdm==4.67.1
 trustme==0.9.0
 testfixtures==7.0.0
+uv==0.8.9
 uvicorn==0.22.0
 vsphere-automation-sdk @ git+https://github.com/vmware/vsphere-automation-sdk-python.git@v8.0.1.0
 werkzeug==2.3.8
@@ -82,11 +84,9 @@ jupytext>1.13.6
 jinja2>=3.1.6
 pytest-docker-tools==3.1.3
 pytest-forked==1.4.0
-nbval==0.11.0
-bash_kernel==0.10.0
 
 # For dataset tests
-polars==0.14.21
+polars>=1.32.3,<2.0.0
 
 importlib-metadata==6.11.0
 
@@ -109,6 +109,9 @@ backoff==1.10
 threadpoolctl==3.1.0
 numexpr==2.8.4
 
+# For test_gpu_objects_gloo.py
+tensordict==0.8.3 ; sys_platform != "darwin"
+
 # For `serve run --reload` CLI.
 watchfiles==0.19.0
 
@@ -128,3 +131,9 @@ pyopenssl>=25.0.0
 starlette>=0.40.0
 requests>=2.32.3
 docker>=7.1.0
+protobuf>=4,<5
+
+# TODO(aslonnie): remove this
+# this is required as some packages depends on ray and will pick up older version of
+# ray, which has overly strict version requirements.
+ray>=2.47.1

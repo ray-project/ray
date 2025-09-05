@@ -78,7 +78,7 @@ cdef class GlobalStateAccessor:
         for item in items:
             c_node_info.ParseFromString(item)
             node_info = {
-                "NodeID": ray._private.utils.binary_to_hex(c_node_info.node_id()),
+                "NodeID": ray._common.utils.binary_to_hex(c_node_info.node_id()),
                 "Alive": c_node_info.state() == CGcsNodeState.ALIVE,
                 "NodeManagerAddress": c_node_info.node_manager_address().decode(),
                 "NodeManagerHostname": c_node_info.node_manager_hostname().decode(),
@@ -118,7 +118,7 @@ cdef class GlobalStateAccessor:
         results = {}
         while draining_nodes_it != draining_nodes.end():
             draining_node_id = dereference(draining_nodes_it).first
-            results[ray._private.utils.binary_to_hex(
+            results[ray._common.utils.binary_to_hex(
                 draining_node_id.Binary())] = dereference(draining_nodes_it).second
             postincrement(draining_nodes_it)
 

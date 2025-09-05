@@ -1,10 +1,11 @@
 import sys
 
 import pytest
+from ray._common.test_utils import wait_for_condition
 import requests
 
 import ray._private.ray_constants as ray_constants
-from ray._private.test_utils import find_free_port, wait_for_condition
+from ray._private.test_utils import find_free_port
 from ray.tests.conftest import *  # noqa: F401 F403
 
 
@@ -24,7 +25,7 @@ def test_healthz_head(monkeypatch, ray_start_cluster):
 def test_healthz_agent_1(monkeypatch, ray_start_cluster):
     agent_port = find_free_port()
     h = ray_start_cluster.add_node(dashboard_agent_listen_port=agent_port)
-    uri = f"http://localhost:{agent_port}/api/local_raylet_healthz"
+    uri = f"http://{h.node_ip_address}:{agent_port}/api/local_raylet_healthz"
 
     wait_for_condition(lambda: requests.get(uri).status_code == 200)
 
@@ -42,7 +43,7 @@ def test_healthz_agent_2(monkeypatch, ray_start_cluster):
 
     agent_port = find_free_port()
     h = ray_start_cluster.add_node(dashboard_agent_listen_port=agent_port)
-    uri = f"http://localhost:{agent_port}/api/local_raylet_healthz"
+    uri = f"http://{h.node_ip_address}:{agent_port}/api/local_raylet_healthz"
 
     wait_for_condition(lambda: requests.get(uri).status_code == 200)
 

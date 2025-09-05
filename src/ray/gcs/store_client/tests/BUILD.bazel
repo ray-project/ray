@@ -1,0 +1,122 @@
+load("//bazel:ray.bzl", "ray_cc_library", "ray_cc_test")
+
+ray_cc_library(
+    name = "store_client_test_lib",
+    hdrs = ["store_client_test_base.h"],
+    deps = [
+        "//src/ray/common:test_utils",
+        "//src/ray/gcs/store_client",
+    ],
+)
+
+ray_cc_test(
+    name = "redis_store_client_test",
+    size = "small",
+    srcs = ["redis_store_client_test.cc"],
+    args = [
+        "$(location //:redis-server)",
+        "$(location //:redis-cli)",
+    ],
+    data = [
+        "//:redis-cli",
+        "//:redis-server",
+    ],
+    tags = ["team:core"],
+    deps = [
+        ":store_client_test_lib",
+        "//src/ray/gcs/store_client:redis_store_client",
+        "//src/ray/util:network_util",
+        "//src/ray/util:path_utils",
+        "//src/ray/util:raii",
+        "@boost//:optional",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "chaos_redis_store_client_test",
+    size = "small",
+    srcs = ["redis_store_client_test.cc"],
+    args = [
+        "$(location //:redis-server)",
+        "$(location //:redis-cli)",
+    ],
+    data = [
+        "//:redis-cli",
+        "//:redis-server",
+    ],
+    env = {"REDIS_CHAOS": "1"},
+    tags = [
+        "no_windows",
+        "team:core",
+    ],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
+    deps = [
+        ":store_client_test_lib",
+        "//src/ray/gcs/store_client:redis_store_client",
+        "//src/ray/util:network_util",
+        "//src/ray/util:path_utils",
+        "//src/ray/util:raii",
+        "@boost//:optional",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "in_memory_store_client_test",
+    size = "small",
+    srcs = ["in_memory_store_client_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        ":store_client_test_lib",
+        "//src/ray/gcs/store_client:in_memory_store_client",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "observable_store_client_test",
+    size = "small",
+    srcs = ["observable_store_client_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        ":store_client_test_lib",
+        "//src/ray/gcs/store_client:in_memory_store_client",
+        "//src/ray/gcs/store_client:observable_store_client",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "redis_callback_reply_test",
+    size = "small",
+    srcs = ["redis_callback_reply_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/gcs/store_client:redis_store_client",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "redis_async_context_test",
+    size = "small",
+    srcs = ["redis_async_context_test.cc"],
+    args = [
+        "$(location //:redis-server)",
+        "$(location //:redis-cli)",
+    ],
+    data = [
+        "//:redis-cli",
+        "//:redis-server",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:test_utils",
+        "//src/ray/gcs/store_client:redis_store_client",
+        "//src/ray/util:raii",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

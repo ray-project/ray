@@ -104,6 +104,7 @@ LightGBM
     :toctree: doc/
 
     ~train.lightgbm.LightGBMTrainer
+    ~train.lightgbm.get_network_params
     ~train.lightgbm.RayTrainReportCallback
 
 
@@ -142,11 +143,20 @@ Ray Train Utilities
     :nosignatures:
     :toctree: doc/
 
+    ~train.get_all_reported_checkpoints
     ~train.get_checkpoint
     ~train.get_context
     ~train.get_dataset_shard
     ~train.report
 
+**Collective**
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~train.collective.barrier
+    ~train.collective.broadcast_from_rank_zero
 
 Ray Train Output
 ----------------
@@ -156,6 +166,7 @@ Ray Train Output
     :template: autosummary/class_without_autosummary.rst
     :toctree: doc/
 
+    ~train.ReportedCheckpoint
     ~train.Result
 
 Ray Train Errors
@@ -166,7 +177,8 @@ Ray Train Errors
     :template: autosummary/class_without_autosummary.rst
     :toctree: doc/
 
-    ~train.v2.api.exceptions.TrainingFailedError
+    ~train.v2.api.exceptions.ControllerError
+    ~train.v2.api.exceptions.WorkerGroupError
 
 Ray Tune Integration Utilities
 ------------------------------

@@ -38,6 +38,7 @@ GcsTaskManager::GcsTaskManager(instrumented_io_context &io_service)
           RayConfig::instance().task_events_max_num_task_in_gcs(),
           stats_counter_,
           std::make_unique<FinishedTaskActorTaskGcPolicy>())),
+      ray_event_converter_(std::make_unique<GcsRayEventConverter>()),
       periodical_runner_(PeriodicalRunner::Create(io_service_)) {
   periodical_runner_->RunFnPeriodically([this] { task_event_storage_->GcJobSummary(); },
                                         5 * 1000,
@@ -638,15 +639,33 @@ void GcsTaskManager::GcsTaskManagerStorage::RecordDataLossFromWorker(
   }
 }
 
-void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
-                                            rpc::AddTaskEventDataReply *reply,
-                                            rpc::SendReplyCallback send_reply_callback) {
+void GcsTaskManager::RecordTaskEventData(rpc::AddTaskEventDataRequest &request) {
   auto data = std::move(*request.mutable_data());
   task_event_storage_->RecordDataLossFromWorker(data);
 
   for (auto events_by_task : *data.mutable_events_by_task()) {
     stats_counter_.Increment(kTotalNumTaskEventsReported);
     task_event_storage_->AddOrReplaceTaskEvent(std::move(events_by_task));
+  }
+}
+
+void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
+                                            rpc::AddTaskEventDataReply *reply,
+                                            rpc::SendReplyCallback send_reply_callback) {
+  RecordTaskEventData(request);
+
+  // Processed all the task events
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+}
+
+void GcsTaskManager::HandleAddEvents(rpc::events::AddEventsRequest request,
+                                     rpc::events::AddEventsReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) {
+  auto task_event_data_requests =
+      ray_event_converter_->ConvertToTaskEventDataRequests(std::move(request));
+
+  for (auto &task_event_data : task_event_data_requests) {
+    RecordTaskEventData(task_event_data);
   }
 
   // Processed all the task events

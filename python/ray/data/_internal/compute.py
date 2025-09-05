@@ -49,6 +49,9 @@ class TaskPoolStrategy(ComputeStrategy):
             other == "tasks" and self.size is None
         )
 
+    def __repr__(self) -> str:
+        return f"TaskPoolStrategy(size={self.size})"
+
 
 class ActorPoolStrategy(ComputeStrategy):
     """Specify the compute strategy for a Dataset transform.
@@ -124,6 +127,15 @@ class ActorPoolStrategy(ComputeStrategy):
             and self.max_size == other.max_size
             and self.max_tasks_in_flight_per_actor
             == other.max_tasks_in_flight_per_actor
+        )
+
+    def __repr__(self) -> str:
+        return (
+            f"ActorPoolStrategy(min_size={self.min_size}, "
+            f"max_size={self.max_size}, "
+            f"max_tasks_in_flight_per_actor={self.max_tasks_in_flight_per_actor})"
+            f"num_workers={self.num_workers}, "
+            f"ready_to_total_workers_ratio={self.ready_to_total_workers_ratio})"
         )
 
 

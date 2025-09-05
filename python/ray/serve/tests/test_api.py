@@ -1,17 +1,17 @@
 import asyncio
 import os
 import sys
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, overload
 
+import httpx
 import pytest
-import requests
 import starlette.responses
 from fastapi import FastAPI
 
 import ray
 from ray import serve
-from ray._private.pydantic_compat import BaseModel, ValidationError
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._common.pydantic_compat import BaseModel, ValidationError
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.api import call_user_app_builder_with_args_if_necessary
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
@@ -27,6 +27,8 @@ from ray.serve._private.request_router.replica_wrapper import (
 from ray.serve._private.request_router.request_router import (
     RequestRouter,
 )
+from ray.serve._private.test_utils import get_application_url
+from ray.serve.config import RequestRouterConfig
 from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
@@ -74,13 +76,19 @@ class AsyncCounter:
 class FakeRequestRouter(RequestRouter):
     async def choose_replicas(
         self,
-        replicas_ranks: List[List[RunningReplica]],
+        candidate_replicas: List[RunningReplica],
         pending_request: Optional[PendingRequest] = None,
     ) -> List[List[RunningReplica]]:
-        return replicas_ranks
+        return [candidate_replicas]
+
+    def initialize_state(self, test_parameter: int = 0):
+        print("Called initialize_state in FakeRequestRouter")
+        self.test_parameter = test_parameter
 
 
-@serve.deployment(request_router_class=FakeRequestRouter)
+@serve.deployment(
+    request_router_config=RequestRouterConfig(request_router_class=FakeRequestRouter)
+)
 class AppWithCustomRequestRouter:
     def __call__(self) -> str:
         return "Hello, world!"
@@ -92,11 +100,11 @@ def test_e2e(serve_instance):
         return {"method": starlette_request.method}
 
     serve.run(function.bind())
-
-    resp = requests.get("http://127.0.0.1:8000/api").json()["method"]
+    url = f"{get_application_url()}/api"
+    resp = httpx.get(url).json()["method"]
     assert resp == "GET"
 
-    resp = requests.post("http://127.0.0.1:8000/api").json()["method"]
+    resp = httpx.post(url).json()["method"]
     assert resp == "POST"
 
 
@@ -106,7 +114,8 @@ def test_starlette_response_basic(serve_instance):
         return starlette.responses.Response("Hello, world!", media_type="text/plain")
 
     serve.run(basic.bind())
-    assert requests.get("http://127.0.0.1:8000/").text == "Hello, world!"
+    url = f"{get_application_url()}/"
+    assert httpx.get(url).text == "Hello, world!"
 
 
 def test_starlette_response_html(serve_instance):
@@ -117,10 +126,8 @@ def test_starlette_response_html(serve_instance):
         )
 
     serve.run(html.bind())
-    assert (
-        requests.get("http://127.0.0.1:8000/").text
-        == "<html><body><h1>Hello, world!</h1></body></html>"
-    )
+    url = f"{get_application_url()}/"
+    assert httpx.get(url).text == "<html><body><h1>Hello, world!</h1></body></html>"
 
 
 def test_starlette_response_plain_text(serve_instance):
@@ -129,7 +136,8 @@ def test_starlette_response_plain_text(serve_instance):
         return starlette.responses.PlainTextResponse("Hello, world!")
 
     serve.run(plain_text.bind())
-    assert requests.get("http://127.0.0.1:8000/").text == "Hello, world!"
+    url = f"{get_application_url()}/"
+    assert httpx.get(url).text == "Hello, world!"
 
 
 def test_starlette_response_json(serve_instance):
@@ -138,7 +146,8 @@ def test_starlette_response_json(serve_instance):
         return starlette.responses.JSONResponse({"hello": "world"})
 
     serve.run(json.bind())
-    assert requests.get("http://127.0.0.1:8000/json").json()["hello"] == "world"
+    url = f"{get_application_url()}/json"
+    assert httpx.get(url).json()["hello"] == "world"
 
 
 def test_starlette_response_redirect(serve_instance):
@@ -148,11 +157,13 @@ def test_starlette_response_redirect(serve_instance):
 
     @serve.deployment(name="redirect")
     def redirect():
-        return starlette.responses.RedirectResponse(url="http://127.0.0.1:8000/")
+        url = get_application_url("HTTP", app_name="app1")
+        return starlette.responses.RedirectResponse(url=url)
 
     serve.run(basic.bind(), name="app1", route_prefix="/")
     serve.run(redirect.bind(), name="app2", route_prefix="/redirect")
-    assert requests.get("http://127.0.0.1:8000/redirect").text == "Hello, world!"
+    url = f"{get_application_url(app_name='app2')}"
+    assert httpx.get(url, follow_redirects=True).text == "Hello, world!"
 
 
 def test_starlette_response_streaming(serve_instance):
@@ -168,7 +179,8 @@ def test_starlette_response_streaming(serve_instance):
         )
 
     serve.run(streaming.bind())
-    resp = requests.get("http://127.0.0.1:8000/")
+    url = f"{get_application_url()}/"
+    resp = httpx.get(url)
     assert resp.text == "123"
     assert resp.status_code == 418
 
@@ -182,11 +194,8 @@ def test_deploy_function_no_params(serve_instance, use_async):
         expected_output = "sync!"
         deployment_cls = sync_d
     handle = serve.run(deployment_cls.bind())
-
-    assert (
-        requests.get(f"http://localhost:8000/{deployment_cls.name}").text
-        == expected_output
-    )
+    url = f"{get_application_url()}/{deployment_cls.name}"
+    assert httpx.get(url).text == expected_output
     assert handle.remote().result() == expected_output
 
 
@@ -200,11 +209,8 @@ def test_deploy_function_no_params_call_with_param(serve_instance, use_async):
         deployment_cls = sync_d
 
     handle = serve.run(deployment_cls.bind())
-
-    assert (
-        requests.get(f"http://localhost:8000/{deployment_cls.name}").text
-        == expected_output
-    )
+    url = f"{get_application_url()}/{deployment_cls.name}"
+    assert httpx.get(url).text == expected_output
     with pytest.raises(
         TypeError, match=r"\(\) takes 0 positional arguments but 1 was given"
     ):
@@ -223,12 +229,9 @@ def test_deploy_class_no_params(serve_instance, use_async):
 
     handle = serve.run(deployment_cls.bind())
 
-    assert requests.get(f"http://127.0.0.1:8000/{deployment_cls.name}").json() == {
-        "count": 1
-    }
-    assert requests.get(f"http://127.0.0.1:8000/{deployment_cls.name}").json() == {
-        "count": 2
-    }
+    url = f"{get_application_url()}/{deployment_cls.name}"
+    assert httpx.get(url).json() == {"count": 1}
+    assert httpx.get(url).json() == {"count": 2}
     assert handle.remote().result() == {"count": 3}
 
 
@@ -296,7 +299,8 @@ def test_scaling_replicas(serve_instance):
 
     counter_result = []
     for _ in range(10):
-        resp = requests.get("http://127.0.0.1:8000/counter").json()
+        url = f"{get_application_url()}/counter"
+        resp = httpx.get(url).json()
         counter_result.append(resp)
 
     # If the load is shared among two replicas. The max result cannot be 10.
@@ -306,7 +310,8 @@ def test_scaling_replicas(serve_instance):
 
     counter_result = []
     for _ in range(10):
-        resp = requests.get("http://127.0.0.1:8000/counter").json()
+        url = f"{get_application_url()}/counter"
+        resp = httpx.get(url).json()
         counter_result.append(resp)
     # Give some time for a replica to spin down. But majority of the request
     # should be served by the only remaining replica.
@@ -325,7 +330,8 @@ def test_starlette_request(serve_instance):
     UVICORN_HIGH_WATER_MARK = 65536  # max bytes in one message
     long_string = "x" * 10 * UVICORN_HIGH_WATER_MARK
 
-    resp = requests.post("http://127.0.0.1:8000/api", data=long_string).text
+    url = f"{get_application_url()}/api"
+    resp = httpx.post(url, data=long_string).text
     assert resp == long_string
 
 
@@ -394,22 +400,26 @@ def test_deploy_application_basic(serve_instance):
     # Test function deployment with app name
     f_handle = serve.run(f.bind(), name="app_f")
     assert f_handle.remote().result() == "got f"
-    assert requests.get("http://127.0.0.1:8000/").text == "got f"
+    url = f"{get_application_url(app_name='app_f')}/"
+    assert httpx.get(url).text == "got f"
 
     # Test function deployment with app name and route_prefix
     g_handle = serve.run(g.bind(), name="app_g", route_prefix="/app_g")
     assert g_handle.remote().result() == "got g"
-    assert requests.get("http://127.0.0.1:8000/app_g").text == "got g"
+    url = f"{get_application_url(app_name='app_g')}"
+    assert httpx.get(url).text == "got g"
 
     # Test function deployment with app name and route_prefix set in deployment
     # decorator
     h_handle = serve.run(h.bind(), name="app_h", route_prefix="/my_prefix")
     assert h_handle.remote().result() == "got h"
-    assert requests.get("http://127.0.0.1:8000/my_prefix").text == "got h"
+    url = f"{get_application_url(app_name='app_h')}"
+    assert httpx.get(url).text == "got h"
 
     # Test FastAPI
     serve.run(MyFastAPIDeployment.bind(), name="FastAPI", route_prefix="/hello")
-    assert requests.get("http://127.0.0.1:8000/hello").text == '"Hello, world!"'
+    url = f"{get_application_url(app_name='FastAPI')}"
+    assert httpx.get(url, follow_redirects=True).text == '"Hello, world!"'
 
 
 def test_delete_application(serve_instance):
@@ -426,17 +436,20 @@ def test_delete_application(serve_instance):
     f_handle = serve.run(f.bind(), name="app_f")
     g_handle = serve.run(g.bind(), name="app_g", route_prefix="/app_g")
     assert f_handle.remote().result() == "got f"
-    assert requests.get("http://127.0.0.1:8000/").text == "got f"
+    url = get_application_url("HTTP", app_name="app_f")
+    assert httpx.get(url).text == "got f"
 
     serve.delete("app_f")
-    assert "Path '/' not found" in requests.get("http://127.0.0.1:8000/").text
+    url = "http://localhost:8000/app_f"
+    assert "Path '/app_f' not found" in httpx.get(url).text
 
     # delete again, no exception & crash expected.
     serve.delete("app_f")
 
     # make sure no affect to app_g
     assert g_handle.remote().result() == "got g"
-    assert requests.get("http://127.0.0.1:8000/app_g").text == "got g"
+    url = get_application_url("HTTP", app_name="app_g")
+    assert httpx.get(url).text == "got g"
 
 
 @pytest.mark.asyncio
@@ -519,7 +532,8 @@ def test_deploy_application_with_same_name(serve_instance):
 
     handle = serve.run(Model.bind(), name="app")
     assert handle.remote().result() == "got model"
-    assert requests.get("http://127.0.0.1:8000/").text == "got model"
+    url = get_application_url("HTTP", app_name="app")
+    assert httpx.get(url).text == "got model"
     deployment_info = ray.get(controller._all_running_replicas.remote())
     assert DeploymentID(name="Model", app_name="app") in deployment_info
 
@@ -531,7 +545,8 @@ def test_deploy_application_with_same_name(serve_instance):
 
     handle = serve.run(Model1.bind(), name="app")
     assert handle.remote().result() == "got model1"
-    assert requests.get("http://127.0.0.1:8000/").text == "got model1"
+    url = get_application_url("HTTP", app_name="app")
+    assert httpx.get(url).text == "got model1"
     deployment_info = ray.get(controller._all_running_replicas.remote())
     assert DeploymentID(name="Model1", app_name="app") in deployment_info
     assert (
@@ -541,8 +556,15 @@ def test_deploy_application_with_same_name(serve_instance):
 
     # Redeploy with same app to update route prefix
     serve.run(Model1.bind(), name="app", route_prefix="/my_app")
-    assert requests.get("http://127.0.0.1:8000/my_app").text == "got model1"
-    assert requests.get("http://127.0.0.1:8000/").status_code == 404
+    url_new = get_application_url("HTTP", app_name="app")
+    # Reread the url to get the correct port value
+    old_url_route_prefix = "/"
+    url = (
+        get_application_url("HTTP", app_name="app", exclude_route_prefix=True)
+    ) + old_url_route_prefix
+
+    assert httpx.get(url_new).text == "got model1"
+    assert httpx.get(url).status_code == 404
 
 
 def test_deploy_application_with_route_prefix_conflict(serve_instance):
@@ -555,7 +577,8 @@ def test_deploy_application_with_route_prefix_conflict(serve_instance):
 
     handle = serve.run(Model.bind(), name="app")
     assert handle.remote().result() == "got model"
-    assert requests.get("http://127.0.0.1:8000/").text == "got model"
+    url = get_application_url("HTTP", app_name="app")
+    assert httpx.get(url).text == "got model"
 
     # Second app with the same route_prefix fails to be deployed
     @serve.deployment
@@ -569,10 +592,11 @@ def test_deploy_application_with_route_prefix_conflict(serve_instance):
     # Update the route prefix
     handle = serve.run(Model1.bind(), name="app1", route_prefix="/model1")
     assert handle.remote().result() == "got model1"
-    assert requests.get("http://127.0.0.1:8000/model1").text == "got model1"
+    url_new = get_application_url("HTTP", app_name="app1")
+    assert httpx.get(url_new).text == "got model1"
 
     # The "app" application should still work properly
-    assert requests.get("http://127.0.0.1:8000/").text == "got model"
+    assert httpx.get(url).text == "got model"
 
 
 class TestAppBuilder:
@@ -888,7 +912,7 @@ def test_status_constructor_error(serve_instance):
     # return a 503 error to reflect the failed deployment state.
     # The timeout is there to prevent the test from hanging and blocking
     # the test suite if it does fail.
-    r = requests.post("http://localhost:8000", timeout=10)
+    r = httpx.post("http://localhost:8000/", timeout=10)
     assert r.status_code == 503 and "unavailable" in r.text
 
     @serve.deployment
@@ -1092,6 +1116,73 @@ def test_deploy_app_with_custom_request_router(serve_instance):
 
     handle = serve.run(AppWithCustomRequestRouter.bind())
     assert handle.remote().result() == "Hello, world!"
+
+
+@serve.deployment(
+    request_router_config=RequestRouterConfig(
+        request_router_class="ray.serve.tests.test_api.FakeRequestRouter",
+        request_router_kwargs=dict(test_parameter=4848),
+    )
+)
+class AppWithCustomRequestRouterAndKwargs:
+    def __call__(self) -> str:
+        return "Hello, world!"
+
+
+def test_custom_request_router_kwargs(serve_instance):
+    """Check that custom kwargs can be passed to the request router."""
+
+    handle = serve.run(AppWithCustomRequestRouterAndKwargs.bind())
+    assert handle.remote().result() == "Hello, world!"
+
+
+def test_overloaded_app_builder_signatures():
+    """Test that call_user_app_builder_with_args_if_necessary validates the base
+    function signature with a pydantic basemodel, rather than the overload that
+    accepts a dict (for the sake of lint permissiveness).
+    """
+
+    class Config(BaseModel):
+        name: str
+        value: int = 42
+
+    @serve.deployment
+    class MockDeployment:
+        def __call__(self):
+            return "mock"
+
+    mock_app = MockDeployment.bind()
+
+    # Overloaded function where the implementation has a pydantic annotation
+    @overload
+    def overloaded_builder(args: dict) -> Application:
+        ...
+
+    def overloaded_builder(args: Config) -> Application:
+        """Implementation with pydantic BaseModel annotation."""
+
+        assert isinstance(args, Config), f"Expected Config but got {type(args)}"
+        return mock_app
+
+    # Test 1: Valid input should work and convert to Config model
+    result = call_user_app_builder_with_args_if_necessary(
+        overloaded_builder, {"name": "test", "value": 123}
+    )
+    assert isinstance(result, Application)
+
+    # Test 2: Invalid dict input should raise validation error
+    # Missing required field 'name'
+    with pytest.raises(ValidationError):
+        call_user_app_builder_with_args_if_necessary(
+            overloaded_builder, {"value": 123}  # Missing required 'name' field
+        )
+
+    # Test 3: Wrong type should also raise validation error
+    with pytest.raises(ValidationError):
+        call_user_app_builder_with_args_if_necessary(
+            overloaded_builder,
+            {"name": "test", "value": "not_an_int"},  # 'value' should be int
+        )
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ from packaging.version import Version
 
 import ray
 from ray import train, tune
-from ray._private.usage.usage_lib import TagKey
+from ray._common.usage.usage_lib import TagKey
 from ray.air._internal import usage as air_usage
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.integrations import comet, mlflow, wandb

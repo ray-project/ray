@@ -9,13 +9,13 @@ import pytest
 import yaml
 
 from ray import serve
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.llm._internal.serve.builders.application_builders import (
     build_llm_deployment,
     build_openai_app,
 )
 from ray.llm._internal.serve.configs.constants import (
-    RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS,
+    DEFAULT_LLM_ROUTER_TARGET_ONGOING_REQUESTS,
 )
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
@@ -70,6 +70,12 @@ def serve_config_separate_model_config_files():
                 "RAYLLM_VLLM_ENGINE_CLS": "ray.llm.tests.serve.mocks.mock_vllm_engine.MockVLLMEngine"
             }
 
+            # Explicitly set accelerator_type to None to avoid GPU placement groups
+            llm_config_yaml["accelerator_type"] = None
+
+            # Explicitly set resources_per_bundle to use CPU instead of GPU
+            llm_config_yaml["resources_per_bundle"] = {"CPU": 1}
+
             os.makedirs(os.path.dirname(llm_config_dst), exist_ok=True)
             with open(llm_config_dst, "w") as f:
                 yaml.dump(llm_config_yaml, f)
@@ -83,7 +89,9 @@ def serve_config_separate_model_config_files():
 
 
 class TestBuildOpenaiApp:
-    def test_build_openai_app(self, get_llm_serve_args, shutdown_ray_and_serve):
+    def test_build_openai_app(
+        self, get_llm_serve_args, shutdown_ray_and_serve, disable_placement_bundles
+    ):
         """Test `build_openai_app` can build app and run it with Serve."""
 
         app = build_openai_app(
@@ -93,7 +101,10 @@ class TestBuildOpenaiApp:
         serve.run(app)
 
     def test_build_openai_app_with_config(
-        self, serve_config_separate_model_config_files, shutdown_ray_and_serve
+        self,
+        serve_config_separate_model_config_files,
+        shutdown_ray_and_serve,
+        disable_placement_bundles,
     ):
         """Test `build_openai_app` can be used in serve config."""
 
@@ -127,7 +138,7 @@ class TestBuildOpenaiApp:
         p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
         p.wait()
 
-    def test_router_built_with_autoscaling_configs(self):
+    def test_router_built_with_autoscaling_configs(self, disable_placement_bundles):
         """Test that the router is built with the correct autoscaling configs that
         will scale.
         """
@@ -169,7 +180,7 @@ class TestBuildOpenaiApp:
         assert router_autoscaling_config.max_replicas == 12  # (1 + 1 + 4) * 2
         assert (
             router_autoscaling_config.target_ongoing_requests
-            == RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS
+            == DEFAULT_LLM_ROUTER_TARGET_ONGOING_REQUESTS
         )
 
 
@@ -178,18 +189,20 @@ class TestBuildVllmDeployment:
         self,
         llm_config_with_mock_engine,
         shutdown_ray_and_serve,
+        disable_placement_bundles,
     ):
         """Test `build_llm_deployment` can build a vLLM deployment."""
 
         app = build_llm_deployment(llm_config_with_mock_engine)
         assert isinstance(app, serve.Application)
         handle = serve.run(app)
-        assert handle.deployment_name.startswith("LLMDeployment")
+        assert handle.deployment_name.startswith("LLMServer")
 
     def test_build_llm_deployment_with_name_prefix(
         self,
         llm_config_with_mock_engine,
         shutdown_ray_and_serve,
+        disable_placement_bundles,
     ):
         """Test `build_llm_deployment` can build a vLLM deployment with name prefix."""
 
@@ -205,6 +218,7 @@ class TestBuildVllmDeployment:
         self,
         llm_config_with_mock_engine,
         shutdown_ray_and_serve,
+        disable_placement_bundles,
     ):
         """Test `build_llm_deployment` can build a vLLM deployment with name prefix and deployment config."""
 

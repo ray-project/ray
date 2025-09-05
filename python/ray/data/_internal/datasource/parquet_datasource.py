@@ -24,7 +24,6 @@ from ray.data._internal.util import (
     RetryingPyFileSystem,
     _check_pyarrow_version,
     _is_local_scheme,
-    call_with_retry,
     iterate_with_retry,
 )
 from ray.data.block import Block, BlockAccessor
@@ -33,10 +32,13 @@ from ray.data.datasource import Datasource
 from ray.data.datasource.datasource import ReadTask
 from ray.data.datasource.file_based_datasource import FileShuffleConfig
 from ray.data.datasource.file_meta_provider import (
-    DefaultFileMetadataProvider,
     _handle_read_os_error,
+    _list_files,
 )
-from ray.data.datasource.parquet_meta_provider import ParquetMetadataProvider
+from ray.data.datasource.parquet_meta_provider import (
+    ParquetFileMetadata,
+    ParquetMetadataProvider,
+)
 from ray.data.datasource.partitioning import (
     PartitionDataType,
     Partitioning,
@@ -101,12 +103,19 @@ class _SampleInfo:
     estimated_bytes_per_row: Optional[int]
 
 
-# TODO(ekl) this is a workaround for a pyarrow serialization bug, where serializing a
-# raw pyarrow file fragment causes S3 network calls.
-class SerializedFragment:
-    def __init__(self, frag: "ParquetFileFragment"):
-        self._data = cloudpickle.dumps(
-            (frag.format, frag.path, frag.filesystem, frag.partition_expression)
+class _NoIOSerializableFragmentWrapper:
+    """This is a workaround to avoid utilizing `ParquetFileFragment` original
+    serialization protocol that actually does network RPCs during serialization
+    (to fetch metadata)"""
+
+    def __init__(self, f: "ParquetFileFragment"):
+        self._fragment = f
+
+    def __reduce__(self):
+        return self._fragment.format.make_fragment, (
+            self._fragment.path,
+            self._fragment.filesystem,
+            self._fragment.partition_expression,
         )
 
     def deserialize(self) -> "ParquetFileFragment":
@@ -122,7 +131,7 @@ class SerializedFragment:
 
 # Visible for test mocking.
 def _deserialize_fragments(
-    serialized_fragments: List[SerializedFragment],
+    serialized_fragments: List[_NoIOSerializableFragmentWrapper],
 ) -> List["pyarrow._dataset.ParquetFileFragment"]:
     return [p.deserialize() for p in serialized_fragments]
 
@@ -197,35 +206,30 @@ class ParquetDatasource(Datasource):
                 ray.get_runtime_context().get_node_id(), soft=False
             )
 
-        self._unresolved_paths = paths
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         filesystem = RetryingPyFileSystem.wrap(
             self._filesystem,
             retryable_errors=DataContext.get_current().retried_io_errors,
         )
 
-        # HACK: PyArrow's `ParquetDataset` errors if input paths contain non-parquet
-        # files. To avoid this, we expand the input paths with the default metadata
-        # provider and then apply the partition filter or file extensions.
-        if partition_filter is not None or file_extensions is not None:
-            default_meta_provider = DefaultFileMetadataProvider()
-            expanded_paths, _ = map(
-                list, zip(*default_meta_provider.expand_paths(paths, filesystem))
+        listed_files = _list_files(
+            paths,
+            filesystem,
+            partition_filter=partition_filter,
+            file_extensions=file_extensions,
+        )
+
+        if listed_files:
+            paths, file_sizes = zip(*listed_files)
+        else:
+            paths, file_sizes = [], []
+
+        if dataset_kwargs is not None:
+            logger.warning(
+                "Please note that `ParquetDatasource.__init__`s `dataset_kwargs` "
+                "is a deprecated parameter and will be removed in the future."
             )
-
-            paths = list(expanded_paths)
-            if partition_filter is not None:
-                paths = partition_filter(paths)
-            if file_extensions is not None:
-                paths = [
-                    path for path in paths if _has_file_extension(path, file_extensions)
-                ]
-
-            filtered_paths = set(expanded_paths) - set(paths)
-            if filtered_paths:
-                logger.info(f"Filtered out {len(filtered_paths)} paths")
-
-        if dataset_kwargs is None:
+        else:
             dataset_kwargs = {}
 
         if "partitioning" in dataset_kwargs:
@@ -238,7 +242,9 @@ class ParquetDatasource(Datasource):
         # duplicating the partition data, we disable PyArrow's partitioning.
         dataset_kwargs["partitioning"] = None
 
-        pq_ds = get_parquet_dataset(paths, filesystem, dataset_kwargs)
+        # NOTE: ParquetDataset only accepts list of paths, hence we need to convert
+        #       it to a list
+        pq_ds = get_parquet_dataset(list(paths), filesystem, dataset_kwargs)
 
         # `read_schema` is the schema object that will be used to perform
         # read operations.
@@ -277,12 +283,13 @@ class ParquetDatasource(Datasource):
                     "scheduling_strategy"
                 ] = DataContext.get_current().scheduling_strategy
 
-            self._metadata = (
-                meta_provider.prefetch_file_metadata(
-                    pq_ds.fragments, **prefetch_remote_args
+            self._metadata = [
+                ParquetFileMetadata(
+                    num_bytes=num_bytes,
                 )
-                or []
-            )
+                for num_bytes in file_sizes
+            ]
+
         except OSError as e:
             _handle_read_os_error(e, paths)
 
@@ -292,7 +299,9 @@ class ParquetDatasource(Datasource):
         # NOTE: Store the custom serialized `ParquetFileFragment` to avoid unexpected
         # network calls when `_ParquetDatasourceReader` is serialized. See
         # `_SerializedFragment()` implementation for more details.
-        self._pq_fragments = [SerializedFragment(p) for p in pq_ds.fragments]
+        self._pq_fragments = [
+            _NoIOSerializableFragmentWrapper(p) for p in pq_ds.fragments
+        ]
         self._pq_paths = [p.path for p in pq_ds.fragments]
         self._meta_provider = meta_provider
         self._block_udf = _block_udf
@@ -332,7 +341,7 @@ class ParquetDatasource(Datasource):
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0
         for file_metadata in self._metadata:
-            total_size += file_metadata.total_byte_size
+            total_size += file_metadata.num_bytes
         return total_size * self._encoding_ratio
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
@@ -373,7 +382,6 @@ class ParquetDatasource(Datasource):
 
             meta = self._meta_provider(
                 paths,
-                self._inferred_schema,
                 num_fragments=len(fragments),
                 prefetched_metadata=metadata,
             )
@@ -404,6 +412,7 @@ class ParquetDatasource(Datasource):
                 self._include_paths,
                 self._partitioning,
             )
+
             read_tasks.append(
                 ReadTask(
                     lambda f=fragments: read_fragments(
@@ -418,6 +427,7 @@ class ParquetDatasource(Datasource):
                         partitioning,
                     ),
                     meta,
+                    schema=self._inferred_schema,
                 )
             )
 
@@ -442,17 +452,12 @@ def read_fragments(
     data_columns,
     partition_columns,
     schema,
-    serialized_fragments: List[SerializedFragment],
+    fragments: List["ParquetFileFragment"],
     include_paths: bool,
     partitioning: Partitioning,
 ) -> Iterator["pyarrow.Table"]:
     # This import is necessary to load the tensor extension type.
     from ray.data.extensions.tensor_extension import ArrowTensorType  # noqa
-
-    # Deserialize after loading the filesystem class.
-    fragments: List[
-        "pyarrow._dataset.ParquetFileFragment"
-    ] = _deserialize_fragments_with_retry(serialized_fragments)
 
     # Ensure that we're reading at least one dataset fragment.
     assert len(fragments) > 0
@@ -477,11 +482,13 @@ def read_fragments(
             }
 
         def get_batch_iterable():
+            if batch_size is not None:
+                to_batches_kwargs["batch_size"] = batch_size
+
             return fragment.to_batches(
                 use_threads=use_threads,
                 columns=data_columns,
                 schema=schema,
-                batch_size=batch_size,
                 **to_batches_kwargs,
             )
 
@@ -507,29 +514,16 @@ def read_fragments(
                     yield table
 
 
-def _deserialize_fragments_with_retry(fragments):
-    # The deserialization retry helps when the upstream datasource is not able to
-    # handle overloaded read request or failed with some retriable failures.
-    # For example when reading data from HA hdfs service, hdfs might
-    # lose connection for some unknown reason expecially when
-    # simutaneously running many hyper parameter tuning jobs
-    # with ray.data parallelism setting at high value like the default 200
-    # Such connection failure can be restored with some waiting and retry.
-    return call_with_retry(
-        lambda: _deserialize_fragments(fragments),
-        description="deserialize fragments",
-        max_attempts=FILE_READING_RETRY,
-    )
-
-
 def _sample_fragment(
     to_batches_kwargs,
     columns,
     schema,
-    file_fragment: SerializedFragment,
+    fragment: "ParquetFileFragment",
 ) -> _SampleInfo:
-    # Sample the first rows batch from file fragment `serialized_fragment`.
-    fragment = _deserialize_fragments_with_retry([file_fragment])[0]
+    # If the fragment has no row groups, it's an empty or metadata-only file.
+    # Skip it by returning empty sample info.
+    if fragment.metadata.num_row_groups == 0:
+        return _SampleInfo(actual_bytes_per_row=None, estimated_bytes_per_row=None)
 
     # Only sample the first row group.
     fragment = fragment.subset(row_group_ids=[0])
@@ -593,16 +587,20 @@ def estimate_files_encoding_ratio(sample_infos: List[_SampleInfo]) -> float:
     return max(ratio, PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND)
 
 
-def estimate_default_read_batch_size_rows(sample_infos: List[_SampleInfo]) -> int:
+def estimate_default_read_batch_size_rows(
+    sample_infos: List[_SampleInfo],
+) -> Optional[int]:
+    ctx = DataContext.get_current()
+    if ctx.target_max_block_size is None:
+        return None
+
     def compute_batch_size_rows(sample_info: _SampleInfo) -> int:
         # 'actual_bytes_per_row' is None if the sampled file was empty and 0 if the data
         # was all null.
         if not sample_info.actual_bytes_per_row:
             return PARQUET_READER_ROW_BATCH_SIZE
         else:
-            max_parquet_reader_row_batch_size_bytes = (
-                DataContext.get_current().target_max_block_size // 10
-            )
+            max_parquet_reader_row_batch_size_bytes = ctx.target_max_block_size // 10
             return max(
                 1,
                 min(
@@ -726,7 +724,10 @@ def _add_partition_fields_to_schema(
             field_type = pa.from_numpy_dtype(partitioning.field_types[field_name])
         else:
             field_type = pa.string()
-        schema = schema.append(pa.field(field_name, field_type))
+        if field_name not in schema.names:
+            # Without this check, we would add the same partition field multiple times,
+            # which silently fails when asking for `pa.field()`.
+            schema = schema.append(pa.field(field_name, field_type))
 
     return schema
 
@@ -810,4 +811,7 @@ def _infer_data_and_partition_columns(
         partition_columns = [
             column for column in user_specified_columns if column in partitions
         ]
+    else:
+        partition_columns = []
+
     return data_columns, partition_columns

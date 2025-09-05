@@ -1,4 +1,3 @@
-import asyncio
 import json
 import logging
 import os
@@ -8,15 +7,15 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Optional
 from unittest.mock import patch
 
 import pytest
+from ray._common.test_utils import wait_for_condition
 import requests
 import yaml
 
 import ray
-from ray import NodeID
 from ray._private.runtime_env.packaging import (
     create_package,
     download_and_unpack_package,
@@ -25,17 +24,10 @@ from ray._private.runtime_env.packaging import (
 from ray._private.test_utils import (
     chdir,
     format_web_url,
-    ray_constants,
-    wait_for_condition,
     wait_until_server_available,
-)
-from ray.dashboard.consts import (
-    DASHBOARD_AGENT_ADDR_IP_PREFIX,
-    DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
 )
 from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
 from ray.dashboard.modules.job.common import uri_to_http_components
-from ray.dashboard.modules.job.job_head import JobHead
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.dashboard.modules.job.tests.test_cli_integration import set_env_var
 from ray.dashboard.modules.version import CURRENT_VERSION
@@ -744,202 +736,6 @@ ray.init(address="auto")
 
     with open(path) as f:
         assert f.read().strip() == "Ray rocks!"
-
-
-@pytest.mark.asyncio
-async def test_job_head_pick_random_job_agent(monkeypatch):
-    with set_env_var("CANDIDATE_AGENT_NUMBER", "2"):
-        import importlib
-
-        importlib.reload(ray.dashboard.consts)
-
-        # Fake GCS client
-        class _FakeGcsClient:
-            def __init__(self):
-                self._kv: Dict[bytes, bytes] = {}
-
-            @staticmethod
-            def ensure_bytes(key: Union[bytes, str]) -> bytes:
-                return key.encode() if isinstance(key, str) else key
-
-            async def async_internal_kv_put(
-                self, key: Union[bytes, str], value: bytes, **kwargs
-            ):
-                key = self.ensure_bytes(key)
-                self._kv[key] = value
-
-            async def async_internal_kv_get(self, key: Union[bytes, str], **kwargs):
-                key = self.ensure_bytes(key)
-                return self._kv.get(key, None)
-
-            async def async_internal_kv_multi_get(
-                self, keys: List[Union[bytes, str]], **kwargs
-            ):
-                return {key: self.internal_kv_get(key) for key in keys}
-
-            async def async_internal_kv_del(self, key: Union[bytes, str], **kwargs):
-                key = self.ensure_bytes(key)
-                self._kv.pop(key)
-
-            async def async_internal_kv_keys(self, prefix: Union[bytes, str], **kwargs):
-                prefix = self.ensure_bytes(prefix)
-                return [key for key in self._kv.keys() if key.startswith(prefix)]
-
-        class MockJobHead(JobHead):
-            def __init__(self):
-                self._agents = dict()
-                self._gcs_client = _FakeGcsClient()
-
-            @property
-            def gcs_client(self):
-                # Overrides JobHead.gcs_client
-                return self._gcs_client
-
-        job_head = MockJobHead()
-        job_head._gcs_client = _FakeGcsClient()
-
-        async def add_agent(agent):
-            node_id = agent[0]
-            node_ip = agent[1]["ipAddress"]
-            http_port = agent[1]["httpPort"]
-            grpc_port = agent[1]["grpcPort"]
-
-            await job_head._gcs_client.async_internal_kv_put(
-                f"{DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id.hex()}".encode(),
-                json.dumps([node_ip, http_port, grpc_port]).encode(),
-                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-            )
-            await job_head._gcs_client.async_internal_kv_put(
-                f"{DASHBOARD_AGENT_ADDR_IP_PREFIX}{node_ip}".encode(),
-                json.dumps([node_id.hex(), http_port, grpc_port]).encode(),
-                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-            )
-
-        async def del_agent(agent):
-            node_id = agent[0]
-            node_ip = agent[1]["ipAddress"]
-            await job_head._gcs_client.async_internal_kv_del(
-                f"{DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id.hex()}".encode(),
-                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-            )
-            await job_head._gcs_client.async_internal_kv_del(
-                f"{DASHBOARD_AGENT_ADDR_IP_PREFIX}{node_ip}".encode(),
-                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-            )
-
-        head_node_id = NodeID.from_random()
-        await job_head._gcs_client.async_internal_kv_put(
-            ray_constants.KV_HEAD_NODE_ID_KEY,
-            head_node_id.hex().encode(),
-            namespace=ray_constants.KV_NAMESPACE_JOB,
-        )
-
-        agent_1 = (
-            head_node_id,
-            dict(
-                ipAddress="1.1.1.1",
-                httpPort=1,
-                grpcPort=1,
-                httpAddress="1.1.1.1:1",
-            ),
-        )
-        agent_2 = (
-            NodeID.from_random(),
-            dict(
-                ipAddress="2.2.2.2",
-                httpPort=2,
-                grpcPort=2,
-                httpAddress="2.2.2.2:2",
-            ),
-        )
-        agent_3 = (
-            NodeID.from_random(),
-            dict(
-                ipAddress="3.3.3.3",
-                httpPort=3,
-                grpcPort=3,
-                httpAddress="3.3.3.3:3",
-            ),
-        )
-
-        # Disable Head-node routing for the Ray job critical ops (enabling
-        # random agent sampling)
-        monkeypatch.setattr(
-            f"{JobHead.__module__}.RAY_JOB_AGENT_USE_HEAD_NODE_ONLY", False
-        )
-
-        # Check only 1 agent present, only agent being returned
-        await add_agent(agent_1)
-        job_agent_client = await job_head.get_target_agent()
-        assert job_agent_client._agent_address == "http://1.1.1.1:1"
-
-        # Remove only agent, no agents present, should time out
-        await del_agent(agent_1)
-        with pytest.raises(asyncio.TimeoutError):
-            await asyncio.wait_for(job_head.get_target_agent(), timeout=3)
-
-        # Enable Head-node routing for the Ray job critical ops (disabling
-        # random agent sampling)
-        monkeypatch.setattr(
-            f"{JobHead.__module__}.RAY_JOB_AGENT_USE_HEAD_NODE_ONLY", True
-        )
-
-        # Add 3 agents
-        await add_agent(agent_1)
-        await add_agent(agent_2)
-        await add_agent(agent_3)
-
-        # Make sure returned agent is a head-node
-        # NOTE: We run 3 tims to make sure we're not hitting branch probabilistically
-        for _ in range(3):
-            job_agent_client = await job_head.get_target_agent()
-            assert job_agent_client._agent_address == "http://1.1.1.1:1"
-
-        # Disable Head-node routing for the Ray job critical ops (enabling
-        # random agent sampling)
-        monkeypatch.setattr(
-            f"{JobHead.__module__}.RAY_JOB_AGENT_USE_HEAD_NODE_ONLY", False
-        )
-
-        # Theoretically, the probability of failure is 1/3^100
-        addresses_1 = set()
-        for address in range(100):
-            job_agent_client = await job_head.get_target_agent()
-            addresses_1.add(job_agent_client._agent_address)
-        assert len(addresses_1) == 2
-        addresses_2 = set()
-        for address in range(100):
-            job_agent_client = await job_head.get_target_agent()
-            addresses_2.add(job_agent_client._agent_address)
-        assert len(addresses_2) == 2 and addresses_1 == addresses_2
-
-        for agent in [agent_1, agent_2, agent_3]:
-            if f"http://{agent[1]['httpAddress']}" in addresses_2:
-                break
-        await del_agent(agent)
-
-        # Theoretically, the probability of failure is 1/2^100
-        addresses_3 = set()
-        for address in range(100):
-            job_agent_client = await job_head.get_target_agent()
-            addresses_3.add(job_agent_client._agent_address)
-        assert len(addresses_3) == 2
-        assert addresses_2 - addresses_3 == {f"http://{agent[1]['httpAddress']}"}
-        addresses_4 = set()
-        for address in range(100):
-            job_agent_client = await job_head.get_target_agent()
-            addresses_4.add(job_agent_client._agent_address)
-        assert addresses_4 == addresses_3
-
-        for agent in [agent_1, agent_2, agent_3]:
-            if f"http://{agent[1]['httpAddress']}" in addresses_4:
-                break
-        await del_agent(agent)
-        address = None
-        for _ in range(3):
-            job_agent_client = await job_head.get_target_agent()
-            assert address is None or address == job_agent_client._agent_address
-            address = job_agent_client._agent_address
 
 
 @pytest.mark.asyncio

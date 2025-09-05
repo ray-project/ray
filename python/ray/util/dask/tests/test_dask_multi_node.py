@@ -2,14 +2,13 @@ import sys
 
 import dask
 import pytest
+import dask.dataframe as dd
+import numpy as np
+import pandas as pd
 
 import ray
 from ray.tests.conftest import *  # noqa: F403, F401
 from ray.util.dask import enable_dask_on_ray
-
-pytestmark = pytest.mark.skipif(
-    sys.version_info >= (3, 12), reason="Skip dask tests for Python version 3.12+"
-)
 
 
 @pytest.fixture
@@ -66,6 +65,26 @@ def test_ray_dask_resources(ray_start_cluster, ray_enable_dask_on_ray):
     with pytest.raises(ValueError):
         c = dask.delayed(get_node_id)
         result = c().compute(resources={"pin": 0.01})
+
+    def get_node_id(row):
+        return pd.Series(ray._private.worker.global_worker.node.unique_id)
+
+    # Test annotations on compute.
+    df = dd.from_pandas(
+        pd.DataFrame(np.random.randint(0, 2, size=(2, 2)), columns=["age", "grade"]),
+        npartitions=2,
+    )
+    c = df.apply(get_node_id, axis=1, meta={0: str})
+    with dask.annotate(ray_remote_args=dict(num_gpus=1, resources={"pin": 0.01})):
+        result = c.compute(optimize_graph=False)
+    assert result[0].iloc[0] == pinned_node.unique_id
+
+    # Test compute global Ray remote args.
+    c = df.apply(get_node_id, axis=1, meta={0: str})
+    result = c.compute(
+        ray_remote_args={"resources": {"pin": 0.01}}, optimize_graph=False
+    )
+    assert result[0].iloc[0] == pinned_node.unique_id
 
 
 if __name__ == "__main__":

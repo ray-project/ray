@@ -32,6 +32,7 @@
 #include "ray/object_manager/push_manager.h"
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/object_manager/object_manager_server.h"
+#include "ray/stats/metric.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
@@ -52,7 +53,7 @@ struct ObjectManagerConfig {
   /// Object chunk size, in bytes
   uint64_t object_chunk_size;
   /// Max object push bytes in flight.
-  uint64_t max_bytes_in_flight;
+  int64_t max_bytes_in_flight;
   /// The store socket name.
   std::string store_socket_name;
   /// The time in milliseconds to wait until a Push request
@@ -101,6 +102,7 @@ class ObjectManagerInterface {
       const TaskMetricsKey &task_key) const = 0;
   virtual int GetServerPort() const = 0;
   virtual void FreeObjects(const std::vector<ObjectID> &object_ids, bool local_only) = 0;
+  virtual void HandleNodeRemoved(const NodeID &node_id) = 0;
   virtual bool IsPlasmaObjectSpillable(const ObjectID &object_id) = 0;
   virtual int64_t GetUsedMemory() const = 0;
   virtual bool PullManagerHasPullsQueued() const = 0;
@@ -174,6 +176,7 @@ class ObjectManager : public ObjectManagerInterface,
       instrumented_io_context &main_service,
       const NodeID &self_node_id,
       const ObjectManagerConfig &config,
+      gcs::GcsClient &gcs_client,
       IObjectDirectory *object_directory,
       RestoreSpilledObjectCallback restore_spilled_object,
       std::function<std::string(const ObjectID &)> get_spilled_object_url,
@@ -203,7 +206,6 @@ class ObjectManager : public ObjectManagerInterface,
   ///
   /// \param object_id The object's object id.
   /// \param node_id The remote node's id.
-  /// \return Void.
   void Push(const ObjectID &object_id, const NodeID &node_id);
 
   /// Pull a bundle of objects. This will attempt to make all objects in the
@@ -229,6 +231,12 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param local_only Whether keep this request with local object store
   ///                   or send it to all the object stores.
   void FreeObjects(const std::vector<ObjectID> &object_ids, bool local_only) override;
+
+  /// Cancel all pushes that have not yet been sent to the removed node and erases the
+  /// associated client if it exists.
+  ///
+  /// \param node_id The ID of the node that was removed.
+  void HandleNodeRemoved(const NodeID &node_id) override;
 
   /// Returns debug string for class.
   ///
@@ -272,14 +280,12 @@ class ObjectManager : public ObjectManagerInterface,
   ///
   /// \param object_id The object's object id.
   /// \param node_id The remote node's id.
-  /// \return Void.
   void PushLocalObject(const ObjectID &object_id, const NodeID &node_id);
 
   /// Pushing a known spilled object to a remote object manager.
   /// \param object_id The object's object id.
   /// \param node_id The remote node's id.
   /// \param spilled_url The url of the spilled object.
-  /// \return Void.
   void PushFromFilesystem(const ObjectID &object_id,
                           const NodeID &node_id,
                           const std::string &spilled_url);
@@ -345,7 +351,6 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param end_time_us The time when the object manager finished sending the
   /// chunk.
   /// \param status The status of the send (e.g., did it succeed or fail).
-  /// \return Void.
   void HandleSendFinished(const ObjectID &object_id,
                           const NodeID &node_id,
                           uint64_t chunk_index,
@@ -401,6 +406,10 @@ class ObjectManager : public ObjectManagerInterface,
 
   NodeID self_node_id_;
   const ObjectManagerConfig config_;
+
+  /// The GCS Client shared by everything on the raylet
+  gcs::GcsClient &gcs_client_;
+
   /// The object directory interface to access object information.
   IObjectDirectory *object_directory_;
 
@@ -489,6 +498,32 @@ class ObjectManager : public ObjectManagerInterface,
   /// create the object in plasma. This is usually due to out-of-memory in
   /// plasma.
   size_t num_chunks_received_failed_due_to_plasma_ = 0;
+
+  /// Metrics
+  ray::stats::Gauge ray_metric_object_store_available_memory_{
+      /*name=*/"object_store_available_memory",
+      /*description=*/"Amount of memory currently available in the object store.",
+      /*unit=*/"bytes"};
+
+  ray::stats::Gauge ray_metric_object_store_used_memory_{
+      /*name=*/"object_store_used_memory",
+      /*description=*/"Amount of memory currently occupied in the object store.",
+      /*unit=*/"bytes"};
+
+  ray::stats::Gauge ray_metric_object_store_fallback_memory_{
+      /*name=*/"object_store_fallback_memory",
+      /*description=*/"Amount of memory in fallback allocations in the filesystem.",
+      /*unit=*/"bytes"};
+
+  ray::stats::Gauge ray_metric_object_store_local_objects_{
+      /*name=*/"object_store_num_local_objects",
+      /*description=*/"Number of objects currently in the object store.",
+      /*unit=*/"objects"};
+
+  ray::stats::Gauge ray_metric_object_manager_pull_requests_{
+      /*name=*/"object_manager_num_pull_requests",
+      /*description=*/"Number of active pull requests for objects.",
+      /*unit=*/"requests"};
 };
 
 }  // namespace ray

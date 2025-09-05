@@ -13,8 +13,10 @@ This example shows how to deploy DeepSeek R1 or V3 with Ray Serve LLM.
 To run this example, install the following:
 
 ```bash
-pip install "ray[llm]"
+pip install "ray[llm]==2.46.0"
 ```
+
+Note: Deploying DeepSeek-R1 requires at least 720GB of free disk space per worker node to store model weights.
 
 ## Deployment
 
@@ -51,7 +53,6 @@ llm_config = LLMConfig(
         "max_model_len": 16384,
         "enable_chunked_prefill": True,
         "enable_prefix_caching": True,
-        "trust_remote_code": True,
     },
 )
 
@@ -89,7 +90,6 @@ applications:
           max_model_len: 16384
           enable_chunked_prefill: true
           enable_prefix_caching: true
-          trust_remote_code: true
   import_path: ray.serve.llm:build_openai_app
   name: llm_app
   route_prefix: "/"
@@ -161,3 +161,24 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 ```
 :::
 ::::
+
+## Deploying with KubeRay
+
+Create a KubeRay cluster using the {ref}`Ray Serve LLM KubeRay guide <kuberay-rayservice-llm-example>` with sufficient GPU resources for DeepSeek R1. For example, two 8xH100 nodes.
+
+Deploy DeepSeek-R1 as a RayService with the following configuration file:
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.deepseek.yaml
+```
+
+## Troubleshooting
+
+### Multi-Node GPU Issues
+
+Since DeepSeek typically requires multi-node GPU deployment, you may encounter issues specific to multi-node GPU serving. Common problems include:
+
+* **NCCL initialization failures**: Especially on H100 instances due to outdated `aws-ofi-plugin` versions
+* **Pipeline parallelism hangs**: When `pipeline_parallel_size > 1`, the model serving may hang due to resource conflicts
+
+For comprehensive troubleshooting of multi-node GPU serving issues, refer to {ref}`Troubleshooting multi-node GPU serving on KubeRay <serve-multi-node-gpu-troubleshooting>`.

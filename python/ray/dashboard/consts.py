@@ -65,10 +65,18 @@ RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR = "RAY_JOB_START_TIMEOUT_SECONDS"
 # Port that dashboard prometheus metrics will be exported to
 DASHBOARD_METRIC_PORT = env_integer("DASHBOARD_METRIC_PORT", 44227)
 
-NODE_TAG_KEYS = ["ip", "Version", "SessionName", "IsHeadNode"]
+# We use RayNodeType to mark head/worker nodes. IsHeadNode is retained
+# for backward compatibility for user-customized dashboards that might rely on it
+NODE_TAG_KEYS = ["ip", "Version", "SessionName", "IsHeadNode", "RayNodeType"]
 GPU_TAG_KEYS = NODE_TAG_KEYS + ["GpuDeviceName", "GpuIndex"]
+
+# TpuDeviceName and TpuIndex are expected to be equal to the number of TPU
+# chips in the cluster. TpuType and TpuTopology are proportional to the number
+# of node pools.
+TPU_TAG_KEYS = NODE_TAG_KEYS + ["TpuDeviceName", "TpuIndex", "TpuType", "TpuTopology"]
 CLUSTER_TAG_KEYS = ["node_type", "Version", "SessionName"]
 COMPONENT_METRICS_TAG_KEYS = ["ip", "pid", "Version", "Component", "SessionName"]
+COMPONENT_GPU_TAG_KEYS = GPU_TAG_KEYS + COMPONENT_METRICS_TAG_KEYS
 
 # Dashboard metrics are tracked separately at the dashboard. TODO(sang): Support GCS.
 # Note that for dashboard subprocess module, the component name is "dashboard_[module_name]".

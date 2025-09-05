@@ -1,6 +1,7 @@
-import click
 import os
 from typing import Optional
+
+import click
 
 from ci.ray_ci.automation.update_version_lib import (
     get_current_version,

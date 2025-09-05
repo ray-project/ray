@@ -21,6 +21,8 @@ aws_requests_auth
 # Below are requirements only used by ray_ci
 tzdata
 requests >= 2.31.0
+tqdm
+networkx
 -r requirements-doc.txt
 
 # Upgrades

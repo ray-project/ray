@@ -7,12 +7,13 @@ from typing import Dict
 
 import grpc
 import pytest
+from ray._common.test_utils import wait_for_condition
 import requests
 
 import ray
 import ray._private.ray_constants as ray_constants
 from ray import serve
-from ray._private.test_utils import generate_system_config_map, wait_for_condition
+from ray._private.test_utils import generate_system_config_map
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.schema import HTTPOptionsSchema, ServeInstanceDetails
 from ray.serve.tests.conftest import *  # noqa: F401 F403
@@ -54,7 +55,6 @@ def test_serve_namespace(ray_start_stop):
     )
     print("Deployments are live and reachable over HTTP.\n")
 
-    ray.init(address="auto", namespace="serve")
     my_app_status = serve.status().applications["my_app"]
     assert (
         len(my_app_status.deployments) == 2
@@ -62,8 +62,6 @@ def test_serve_namespace(ray_start_stop):
     )
     print("Successfully retrieved deployment statuses with Python API.")
     print("Shutting down Python API.")
-    serve.shutdown()
-    ray.shutdown()
 
 
 @pytest.mark.parametrize(

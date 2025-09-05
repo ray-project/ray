@@ -152,6 +152,17 @@ py_test(
 )
 
 py_test(
+    name = "test_env_callbacks",
+    size = "small",
+    srcs = ["tests/test_env_callbacks.py"],
+    tags = [
+        "exclusive",
+        "team:ml",
+    ],
+    deps = [":tune_lib"],
+)
+
+py_test(
     name = "test_experiment",
     size = "small",
     srcs = ["tests/test_experiment.py"],

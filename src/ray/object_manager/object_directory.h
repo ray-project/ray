@@ -29,19 +29,6 @@
 
 namespace ray {
 
-/// Connection information for remote object managers.
-struct RemoteConnectionInfo {
-  explicit RemoteConnectionInfo(const NodeID &id) : node_id(id) {}
-
-  // Returns whether there is enough information to connect to the remote
-  // object manager.
-  bool Connected() const { return !ip.empty(); }
-
-  NodeID node_id;
-  std::string ip;
-  uint16_t port;
-};
-
 /// Callback for object location notifications.
 using OnLocationsFound = std::function<void(const ray::ObjectID &object_id,
                                             const std::unordered_set<ray::NodeID> &,
@@ -53,20 +40,6 @@ using OnLocationsFound = std::function<void(const ray::ObjectID &object_id,
 class IObjectDirectory {
  public:
   virtual ~IObjectDirectory() {}
-
-  /// Lookup how to connect to a remote object manager.
-  ///
-  /// \param connection_info The connection information to fill out. This
-  /// should be pre-populated with the requested node ID. If the directory
-  /// has information about the requested node, then the rest of the fields
-  /// in this struct will be populated accordingly.
-  virtual void LookupRemoteConnectionInfo(
-      RemoteConnectionInfo &connection_info) const = 0;
-
-  /// Get information for all connected remote object managers.
-  ///
-  /// \return A vector of information for all connected remote object managers.
-  virtual std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const = 0;
 
   /// Handle the removal of an object manager node. This updates the
   /// locations of all subscribed objects that have the removed node as a

@@ -11,6 +11,7 @@ class GlobalConfig(TypedDict):
     byod_ray_ml_cr_repo: str
     byod_ray_llm_cr_repo: str
     byod_ecr: str
+    byod_ecr_region: str
     byod_aws_cr: str
     byod_gcp_cr: str
     state_machine_pr_aws_bucket: str
@@ -67,6 +68,10 @@ def _init_global_config(config_file: str):
             config_content.get("byod", {}).get("byod_ecr")
             or config_content.get("release_byod", {}).get("byod_ecr")
         ),
+        byod_ecr_region=(
+            config_content.get("byod", {}).get("byod_ecr_region")
+            or config_content.get("release_byod", {}).get("byod_ecr_region")
+        ),
         byod_aws_cr=(
             config_content.get("byod", {}).get("aws_cr")
             or config_content.get("release_byod", {}).get("aws_cr")
@@ -100,6 +105,7 @@ def _init_global_config(config_file: str):
         ci_pipeline_buildkite_secret=config_content.get("ci_pipeline", {}).get(
             "buildkite_secret"
         ),
+        kuberay_disabled=config_content.get("kuberay", {}).get("disabled", 0) == 1,
     )
     # setup GCP workload identity federation
     os.environ[

@@ -13,7 +13,6 @@
 # well with a lot of libraries including openai, boto3, ray
 # ruff: noqa: I001
 from benchmark.bm import run_bm
-
 import os
 from pathlib import Path  # noqa: E402
 from typing import Optional
@@ -22,6 +21,7 @@ import click
 import pytest
 import logging
 import anyscale
+
 from benchmark.common import read_from_s3, get_llm_config
 from benchmark.firehose_utils import FirehoseRecord, RecordName
 from test_utils import (
@@ -74,7 +74,6 @@ SERVICE_NAME = "serve_llm_release_test_service"
 @click.option(
     "--timeout", type=int, default=600, help="Ray LLM service timeout parameter."
 )
-@click.option("--vllm-use-v1", is_flag=True, help="Use vLLM v1 engine in this test.")
 @click.option(
     "--run-vllm-profiler",
     is_flag=True,
@@ -87,7 +86,6 @@ def main(
     run_serve_llm_profiler: bool,
     skip_hf_token: bool,
     timeout: int,
-    vllm_use_v1: bool,
     run_vllm_profiler: bool,
 ):
     if image_uri is None:
@@ -98,8 +96,6 @@ def main(
     applications = get_applications(serve_config_file)
     compute_config = get_current_compute_config_name()
     env_vars = get_hf_token_env_var() if not skip_hf_token else {}
-    vllm_use_v1_env = "1" if vllm_use_v1 else "0"
-    env_vars["VLLM_USE_V1"] = vllm_use_v1_env
 
     if run_vllm_profiler:
 
@@ -107,7 +103,6 @@ def main(
             image_uri,
             serve_config_file,
             env_vars["HUGGING_FACE_HUB_TOKEN"],
-            vllm_use_v1_env,
         )
 
     # Start Ray LLM Service while vLLM job is running
@@ -178,7 +173,7 @@ def main(
                         "service_name": SERVICE_NAME,
                         "py_version": get_python_version_from_image(image_uri),
                         "tag": tag,
-                        "vllm_engine": f"V{vllm_use_v1_env}",
+                        "vllm_engine": "V1",
                         **result,
                     },
                 )
@@ -203,9 +198,7 @@ def main(
             record.write(verbose=True)
 
 
-def submit_benchmark_vllm_job(
-    image_uri: str, serve_config_file: str, hf_token: str, vllm_use_v1_env: str
-):
+def submit_benchmark_vllm_job(image_uri: str, serve_config_file: str, hf_token: str):
     s3_storage_path = get_vllm_s3_storage_path()
 
     working_dir = str(Path(__file__).parent)
@@ -230,7 +223,6 @@ def submit_benchmark_vllm_job(
         env_vars={
             "BUILDKITE_BRANCH": os.environ.get("BUILDKITE_BRANCH", ""),
             "HF_TOKEN": hf_token,
-            "VLLM_USE_V1": vllm_use_v1_env,
         },
         max_retries=0,
     )

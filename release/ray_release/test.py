@@ -382,6 +382,12 @@ class Test(dict):
         """
         return self.get("env") == "gce"
 
+    def is_kuberay(self) -> bool:
+        """
+        Returns whether this test is running on KubeRay.
+        """
+        return self.get("env") == "kuberay"
+
     def is_high_impact(self) -> bool:
         # a test is high impact if it catches regressions frequently, this field is
         # populated by the determine_microcheck_tests.py script
@@ -535,23 +541,11 @@ class Test(dict):
             # TODO(can): this is a temporary backdoor that should be removed
             # once civ2 is fully rolled out.
             return byod_image_tag
-        commit = os.environ.get(
-            "COMMIT_TO_TEST",
-            os.environ["BUILDKITE_COMMIT"],
-        )
-        branch = os.environ.get(
-            "BRANCH_TO_TEST",
-            os.environ["BUILDKITE_BRANCH"],
-        )
-        pr = os.environ.get("BUILDKITE_PULL_REQUEST", "false")
-        ray_version = commit[:6]
-        if pr != "false":
-            ray_version = f"pr-{pr}.{ray_version}"
-        elif branch.startswith("releases/"):
-            release_name = branch[len("releases/") :]
-            ray_version = f"{release_name}.{ray_version}"
-        python_version = f"py{self.get_python_version().replace('.',   '')}"
-        return f"{ray_version}-{python_version}-{self.get_tag_suffix()}"
+        build_id = os.environ.get("RAYCI_BUILD_ID", "")
+        if not build_id:
+            raise ValueError("RAYCI_BUILD_ID is not set")
+        python_version = "py" + self.get_python_version().replace(".", "")
+        return f"{build_id}-{python_version}-{self.get_tag_suffix()}"
 
     def get_byod_image_tag(self) -> str:
         """
@@ -585,7 +579,7 @@ class Test(dict):
         """
         Returns the anyscale byod ecr to use for this test.
         """
-        if self.is_gce():
+        if self.is_gce() or self.is_kuberay():
             return get_global_config()["byod_gcp_cr"]
         byod_ecr = get_global_config()["byod_aws_cr"]
         if byod_ecr:

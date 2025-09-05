@@ -5,8 +5,8 @@ import pandas as pd
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.internal_api import memory_summary
-from ray._private.test_utils import wait_for_condition
 from ray.tests.conftest import *  # noqa
 
 

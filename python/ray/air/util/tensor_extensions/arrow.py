@@ -10,7 +10,8 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 import numpy as np
 import pyarrow as pa
 from packaging.version import parse as parse_version
-from pyarrow import FixedShapeTensorArray, FixedShapeTensorScalar, FixedShapeTensorType
+import ray.cloudpickle as cloudpickle
+from enum import Enum
 
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.util.tensor_extensions.utils import (
@@ -23,9 +24,11 @@ from ray.data._internal.numpy_support import (
     convert_to_numpy,
     _convert_datetime_to_np_datetime,
 )
-from ray.data._internal.util import GiB
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.common import INT32_MAX
+from ray._private.ray_constants import env_integer
+
 
 PYARROW_VERSION = get_pyarrow_version()
 # Minimum version of Arrow that supports subclassable ExtensionScalars.
@@ -36,9 +39,19 @@ MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.
 
 NUM_BYTES_PER_UNICODE_CHAR = 4
 
-# NOTE: Overflow threshold in bytes for most Arrow types using int32 as
-#       its offsets
-INT32_OVERFLOW_THRESHOLD = 2 * GiB
+
+class _SerializationFormat(Enum):
+    # JSON format is legacy and inefficient, only kept for backward compatibility
+    JSON = 0
+    CLOUDPICKLE = 1
+
+
+# Set the default serialization format for Arrow extension types.
+ARROW_EXTENSION_SERIALIZATION_FORMAT = _SerializationFormat(
+    _SerializationFormat.JSON  # legacy
+    if env_integer("RAY_DATA_ARROW_EXTENSION_SERIALIZATION_LEGACY_JSON_FORMAT", 0) == 1
+    else _SerializationFormat.CLOUDPICKLE  # default
+)
 
 # List of scalar types supported by Arrow's FixedShapeTensorArray
 _FIXED_SHAPE_TENSOR_ARRAY_SUPPORTED_SCALAR_TYPES = (
@@ -56,6 +69,21 @@ _FIXED_SHAPE_TENSOR_ARRAY_SUPPORTED_SCALAR_TYPES = (
 
 
 logger = logging.getLogger(__name__)
+
+
+def _deserialize_with_fallback(serialized: bytes, field_name: str = "data"):
+    """Deserialize data with cloudpickle first, fallback to JSON."""
+    try:
+        # Try cloudpickle first (new format)
+        return cloudpickle.loads(serialized)
+    except Exception:
+        # Fallback to JSON format (legacy)
+        try:
+            return json.loads(serialized)
+        except json.JSONDecodeError:
+            raise ValueError(
+                f"Unable to deserialize {field_name} from {type(serialized)}"
+            )
 
 
 @DeveloperAPI
@@ -340,7 +368,7 @@ def _infer_pyarrow_type(
         #
         #       Check out test cases for this method for an additional context.
         if isinstance(obj, (str, bytes)):
-            return len(obj) > INT32_OVERFLOW_THRESHOLD
+            return len(obj) > INT32_MAX
 
         return False
 
@@ -470,7 +498,14 @@ class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
         )
 
     def __arrow_ext_serialize__(self):
-        return json.dumps(self._shape).encode()
+        if ARROW_EXTENSION_SERIALIZATION_FORMAT == _SerializationFormat.CLOUDPICKLE:
+            return cloudpickle.dumps(self._shape)
+        elif ARROW_EXTENSION_SERIALIZATION_FORMAT == _SerializationFormat.JSON:
+            return json.dumps(self._shape).encode()
+        else:
+            raise ValueError(
+                f"Invalid serialization format: {ARROW_EXTENSION_SERIALIZATION_FORMAT}"
+            )
 
     def __arrow_ext_class__(self):
         """
@@ -553,6 +588,9 @@ class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
             shape = arr_type.shape
         return False
 
+    def __hash__(self) -> int:
+        return hash((type(self), self.extension_name, self.storage_type, self._shape))
+
 
 @PublicAPI(stability="beta")
 class ArrowTensorType(_BaseFixedShapeArrowTensorType):
@@ -563,6 +601,7 @@ class ArrowTensorType(_BaseFixedShapeArrowTensorType):
     """
 
     OFFSET_DTYPE = np.int32
+    __hash__ = _BaseFixedShapeArrowTensorType.__hash__
 
     def __init__(self, shape: Tuple[int, ...], dtype: pa.DataType):
         """
@@ -577,7 +616,7 @@ class ArrowTensorType(_BaseFixedShapeArrowTensorType):
 
     @classmethod
     def __arrow_ext_deserialize__(cls, storage_type, serialized):
-        shape = tuple(json.loads(serialized))
+        shape = tuple(_deserialize_with_fallback(serialized, "shape"))
         return cls(shape, storage_type.value_type)
 
     def __eq__(self, other):
@@ -593,6 +632,7 @@ class ArrowTensorTypeV2(_BaseFixedShapeArrowTensorType):
     """Arrow ExtensionType (v2) for tensors (supporting tensors > 4Gb)."""
 
     OFFSET_DTYPE = np.int64
+    __hash__ = _BaseFixedShapeArrowTensorType.__hash__
 
     def __init__(self, shape: Tuple[int, ...], dtype: pa.DataType):
         """
@@ -607,7 +647,7 @@ class ArrowTensorTypeV2(_BaseFixedShapeArrowTensorType):
 
     @classmethod
     def __arrow_ext_deserialize__(cls, storage_type, serialized):
-        shape = tuple(json.loads(serialized))
+        shape = tuple(_deserialize_with_fallback(serialized, "shape"))
         return cls(shape, storage_type.value_type)
 
     def __eq__(self, other):
@@ -1068,11 +1108,18 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
         )
 
     def __arrow_ext_serialize__(self):
-        return json.dumps(self._ndim).encode()
+        if ARROW_EXTENSION_SERIALIZATION_FORMAT == _SerializationFormat.CLOUDPICKLE:
+            return cloudpickle.dumps(self._ndim)
+        elif ARROW_EXTENSION_SERIALIZATION_FORMAT == _SerializationFormat.JSON:
+            return json.dumps(self._ndim).encode()
+        else:
+            raise ValueError(
+                f"Invalid serialization format: {ARROW_EXTENSION_SERIALIZATION_FORMAT}"
+            )
 
     @classmethod
     def __arrow_ext_deserialize__(cls, storage_type, serialized):
-        ndim = json.loads(serialized)
+        ndim = _deserialize_with_fallback(serialized, "ndim")
         dtype = storage_type["data"].type.value_type
         return cls(dtype, ndim)
 
@@ -1113,6 +1160,9 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
         offset = raw_values.offset
         data_buffer = raw_values.buffers()[1]
         return _to_ndarray_helper(shape, value_type, offset, data_buffer)
+
+    def __hash__(self) -> int:
+        return hash((type(self), self.extension_name, self.storage_type, self._ndim))
 
 
 # NOTE: We need to inherit from the mixin before pa.ExtensionArray to ensure that the

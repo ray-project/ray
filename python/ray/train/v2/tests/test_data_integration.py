@@ -1,5 +1,3 @@
-from unittest.mock import MagicMock
-
 import pytest
 
 import ray.data
@@ -7,13 +5,17 @@ import ray.train
 from ray.data import DataContext, ExecutionResources
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data.tests.conftest import restore_data_context  # noqa: F401
-from ray.train.v2._internal.callbacks import DatasetsSetupCallback
-from ray.train.v2._internal.execution.context import TrainRunContext
+from ray.train.v2._internal.callbacks.datasets import DatasetsSetupCallback
+from ray.train.v2._internal.data_integration.interfaces import DatasetShardMetadata
 from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
 )
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
-from ray.train.v2.tests.util import DummyObjectRefWrapper, DummyWorkerGroup
+from ray.train.v2.tests.util import (
+    DummyObjectRefWrapper,
+    DummyWorkerGroup,
+    create_dummy_run_context,
+)
 
 # TODO(justinvyu): Bring over more tests from ray/air/tests/test_new_dataset_config.py
 
@@ -76,24 +78,30 @@ def test_dataset_setup_callback(ray_start_4_cpus):
         num_workers=scaling_config.num_workers,
         resources_per_worker=scaling_config.resources_per_worker,
     )
+    train_run_context = create_dummy_run_context(
+        datasets={"train": train_ds, "valid": valid_ds},
+        dataset_config=data_config,
+        scaling_config=scaling_config,
+    )
     worker_group = DummyWorkerGroup(
-        train_run_context=MagicMock(spec=TrainRunContext),
+        train_run_context=train_run_context,
         worker_group_context=worker_group_context,
     )
     worker_group._start()
 
-    callback = DatasetsSetupCallback(
-        datasets={"train": train_ds, "valid": valid_ds},
-        data_config=data_config,
-        scaling_config=scaling_config,
-    )
-    dataset_shards = callback.before_init_train_context(worker_group.get_workers())[
-        "dataset_shards"
-    ]
-    assert len(dataset_shards) == NUM_WORKERS
+    callback = DatasetsSetupCallback(train_run_context)
+    dataset_manager_for_each_worker = callback.before_init_train_context(
+        worker_group.get_workers()
+    )["dataset_shard_provider"]
+    assert len(dataset_manager_for_each_worker) == NUM_WORKERS
 
-    processed_train_ds = dataset_shards[0]["train"]
-    processed_valid_ds = dataset_shards[0]["valid"]
+    dataset_manager = dataset_manager_for_each_worker[0]
+    processed_train_ds = dataset_manager.get_dataset_shard(
+        DatasetShardMetadata(dataset_name="train")
+    )
+    processed_valid_ds = dataset_manager.get_dataset_shard(
+        DatasetShardMetadata(dataset_name="valid")
+    )
 
     assert isinstance(processed_train_ds, StreamSplitDataIterator)
     assert not isinstance(processed_valid_ds, StreamSplitDataIterator)

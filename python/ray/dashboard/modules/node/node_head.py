@@ -87,7 +87,7 @@ def _actor_table_data_to_dict(message):
             "parentId",
             "jobId",
             "workerId",
-            "rayletId",
+            "nodeId",
             "callerId",
             "taskId",
             "parentTaskId",
@@ -115,6 +115,7 @@ def _actor_table_data_to_dict(message):
         "reprName",
         "placementGroupId",
         "callSite",
+        "labelSelector",
     }
     light_message = {k: v for (k, v) in orig_message.items() if k in fields}
     light_message["actorClass"] = orig_message["className"]
@@ -135,7 +136,7 @@ def _actor_table_data_to_dict(message):
     light_message["startTime"] = int(light_message["startTime"])
     light_message["endTime"] = int(light_message["endTime"])
     light_message["requiredResources"] = dict(message.required_resources)
-
+    light_message["labelSelector"] = dict(message.label_selector)
     return light_message
 
 
@@ -151,6 +152,8 @@ class NodeHead(SubprocessModule):
         # The time it takes until the head node is registered. None means
         # head node hasn't been registered.
         self._head_node_registration_time_s = None
+        # The node ID of the current head node
+        self._registered_head_node_id = None
         # Queue of dead nodes to be removed, up to MAX_DEAD_NODES_TO_CACHE
         self._dead_node_queue = deque()
 
@@ -232,7 +235,19 @@ class NodeHead(SubprocessModule):
 
     async def _update_node(self, node: dict):
         node_id = node["nodeId"]  # hex
-        if node["isHeadNode"] and not self._head_node_registration_time_s:
+        if (
+            node["isHeadNode"]
+            and node["state"] == "ALIVE"
+            and self._registered_head_node_id != node_id
+        ):
+            if self._registered_head_node_id is not None:
+                logger.warning(
+                    "A new head node has become ALIVE. New head node ID: %s, old head node ID: %s, internal states: %s",
+                    node_id,
+                    self._registered_head_node_id,
+                    self.get_internal_states(),
+                )
+            self._registered_head_node_id = node_id
             self._head_node_registration_time_s = time.time() - self._module_start_time
             # Put head node ID in the internal KV to be read by JobAgent.
             # TODO(architkulkarni): Remove once State API exposes which
@@ -561,7 +576,7 @@ class NodeHead(SubprocessModule):
                 # Update node actors and job actors.
                 node_actors = defaultdict(dict)
                 for actor_id_bytes, updated_actor_table in actor_dicts.items():
-                    node_id = updated_actor_table["address"]["rayletId"]
+                    node_id = updated_actor_table["address"]["nodeId"]
                     # Update only when node_id is not Nil.
                     if node_id != actor_consts.NIL_NODE_ID:
                         node_actors[node_id][actor_id_bytes] = updated_actor_table
@@ -638,7 +653,7 @@ class NodeHead(SubprocessModule):
             actor_table_data = actor
 
         actor_id = actor_table_data["actorId"]
-        node_id = actor_table_data["address"]["rayletId"]
+        node_id = actor_table_data["address"]["nodeId"]
 
         if actor_table_data["state"] == "DEAD":
             self._destroyed_actors_queue.append(actor_id)
@@ -673,7 +688,7 @@ class NodeHead(SubprocessModule):
                     actor_id = self._destroyed_actors_queue.popleft()
                     if actor_id in DataSource.actors:
                         actor = DataSource.actors.pop(actor_id)
-                        node_id = actor["address"].get("rayletId")
+                        node_id = actor["address"].get("nodeId")
                         if node_id and node_id != actor_consts.NIL_NODE_ID:
                             del DataSource.node_actors[node_id][actor_id]
                 await asyncio.sleep(ACTOR_CLEANUP_FREQUENCY)

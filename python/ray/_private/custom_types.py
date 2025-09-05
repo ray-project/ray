@@ -1,9 +1,7 @@
+from enum import Enum
 from typing import Literal
 
 from ray.core.generated.common_pb2 import (
-    GLOO,
-    NCCL,
-    OBJECT_STORE,
     ErrorType,
     Language,
     TaskStatus,
@@ -116,19 +114,27 @@ ERROR_TYPE = [
     "NODE_DIED",
     "END_OF_STREAMING_GENERATOR",
     "ACTOR_UNAVAILABLE",
+    "GENERATOR_TASK_FAILED_FOR_OBJECT_RECONSTRUCTION",
 ]
 # The Language enum is used in the export API so it is public
 # and any modifications must be backward compatible.
 LANGUAGE = ["PYTHON", "JAVA", "CPP"]
 
 # See `common.proto` for more details.
-TENSOR_TRANSPORT = [
-    "OBJECT_STORE",
-    "NCCL",
-    "GLOO",
-]
-TypeTensorTransport = Literal[tuple(TENSOR_TRANSPORT)]
-TypeTensorTransportEnum = Literal[OBJECT_STORE, NCCL, GLOO]
+class TensorTransportEnum(Enum):
+    OBJECT_STORE = TensorTransport.Value("OBJECT_STORE")
+    NCCL = TensorTransport.Value("NCCL")
+    GLOO = TensorTransport.Value("GLOO")
+    NIXL = TensorTransport.Value("NIXL")
+
+    @classmethod
+    def from_str(cls, name: str) -> "TensorTransportEnum":
+        name = name.upper()
+        if name not in cls.__members__:
+            raise ValueError(
+                f"Invalid tensor transport {name}, must be one of {list(cls.__members__.keys())}."
+            )
+        return cls[name]
 
 
 def validate_protobuf_enum(grpc_enum, custom_enum):
@@ -157,4 +163,4 @@ validate_protobuf_enum(WorkerExitType, WORKER_EXIT_TYPE)
 validate_protobuf_enum(TaskType, TASK_TYPE)
 validate_protobuf_enum(ErrorType, ERROR_TYPE)
 validate_protobuf_enum(Language, LANGUAGE)
-validate_protobuf_enum(TensorTransport, TENSOR_TRANSPORT)
+validate_protobuf_enum(TensorTransport, list(TensorTransportEnum.__members__.keys()))

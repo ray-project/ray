@@ -1,6 +1,7 @@
 import uuid
 from pathlib import Path
 from typing import List, Optional
+from unittest.mock import create_autospec
 
 import pytest
 
@@ -12,6 +13,7 @@ from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
     CheckpointManager,
 )
 from ray.train.v2._internal.execution.storage import StorageContext
+from ray.train.v2._internal.execution.worker_group import Worker
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -87,9 +89,11 @@ def _checkpoint_managers_equal(cm1: CheckpointManager, cm2: CheckpointManager) -
         ),
     ],
 )
-def test_save_load_state_equivalence(
+async def test_save_load_state_equivalence(
     monkeypatch, tmp_path, checkpoint_config: CheckpointConfig
 ):
+    # Use async here because register_checkpoint creates an async task
+
     # Mock the delete function as we don't want report checkpoints to be deleted.
     monkeypatch.setattr(
         ray.train.v2._internal.execution.checkpoint.checkpoint_manager,
@@ -111,8 +115,9 @@ def test_save_load_state_equivalence(
     )
 
     # Register the training results into checkpoint manager
-    for tr in training_results:
+    for i, tr in enumerate(training_results):
         checkpoint_manager.register_checkpoint(tr)
+        assert checkpoint_manager._num_report_calls == i + 1
         loaded_checkpoint_manager = CheckpointManager(
             storage_context=storage_context,
             checkpoint_config=checkpoint_config,
@@ -141,6 +146,31 @@ def test_load_state_error(tmp_path, json_state):
         CheckpointManagerInitializationError,
     ):
         checkpoint_manager._load_state(json_state)
+
+
+async def test_before_init_train_context(tmp_path):
+
+    storage_context = StorageContext(
+        storage_path=tmp_path,
+        experiment_dir_name="my_experiment_name",
+    )
+    checkpoint_manager = CheckpointManager(
+        storage_context=storage_context,
+        checkpoint_config=CheckpointConfig(),
+    )
+    workers = [create_autospec(Worker, instance=True) for _ in range(4)]
+
+    # Assert without a checkpoint.
+    assert checkpoint_manager.before_init_train_context(workers) == {
+        "checkpoint": [None] * 4,
+    }
+
+    # Assert with a checkpoint
+    latest_checkpoint_result = _create_dummy_training_results(1, storage_context)[0]
+    checkpoint_manager.register_checkpoint(latest_checkpoint_result)
+    assert checkpoint_manager.before_init_train_context(workers) == {
+        "checkpoint": [latest_checkpoint_result.checkpoint] * 4,
+    }
 
 
 if __name__ == "__main__":

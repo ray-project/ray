@@ -42,29 +42,20 @@
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/profile_event.h"
 #include "ray/core_worker/reference_count.h"
+#include "ray/core_worker/shutdown_coordinator.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/task_event_buffer.h"
-#include "ray/core_worker/transport/normal_task_submitter.h"
-#include "ray/core_worker/transport/task_receiver.h"
+#include "ray/core_worker/task_execution/task_receiver.h"
+#include "ray/core_worker/task_submission/normal_task_submitter.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/ipc/raylet_ipc_client_interface.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
-#include "ray/raylet_client/raylet_client.h"
-#include "ray/rpc/worker/core_worker_server.h"
+#include "ray/raylet_client/raylet_client_interface.h"
 #include "ray/util/process.h"
 #include "ray/util/shared_lru.h"
 #include "src/ray/protobuf/pubsub.pb.h"
-
-/// The set of gRPC handlers and their associated level of concurrency. If you want to
-/// add a new call to the worker gRPC server, do the following:
-/// 1) Add the rpc to the CoreWorkerService in core_worker.proto, e.g., "ExampleCall"
-/// 2) Add a new macro to RAY_CORE_WORKER_DECLARE_RPC_HANDLERS
-///    in core_worker_server.h,
-//     e.g. "DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(ExampleCall)"
-/// 3) Add a new macro to RAY_CORE_WORKER_RPC_HANDLERS in core_worker_server.h, e.g.
-///    "RPC_SERVICE_HANDLER(CoreWorkerService, ExampleCall, 1)"
-/// 4) Add a method to the CoreWorker class below: "CoreWorker::HandleExampleCall"
 
 namespace ray::core {
 
@@ -163,13 +154,43 @@ class TaskToRetryDescComparator {
 /// The root class that contains all the core and language-independent functionalities
 /// of the worker. This class is supposed to be used to implement app-language (Java,
 /// Python, etc) workers.
-class CoreWorker : public rpc::CoreWorkerServiceHandler {
+class CoreWorker {
  public:
   /// Construct a CoreWorker instance.
   ///
-  /// \param[in] options The various initialization options.
-  /// \param[in] worker_id ID of this worker.
-  CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id);
+  /// All member variables are injected either from CoreWorkerProcess or test code
+
+  CoreWorker(CoreWorkerOptions options,
+             std::unique_ptr<WorkerContext> worker_context,
+             instrumented_io_context &io_service,
+             std::unique_ptr<rpc::ClientCallManager> client_call_manager,
+             std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
+             std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
+             std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
+             std::unique_ptr<rpc::GrpcServer> core_worker_server,
+             rpc::Address rpc_address,
+             std::shared_ptr<gcs::GcsClient> gcs_client,
+             std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
+             std::shared_ptr<ray::RayletClientInterface> local_raylet_rpc_client,
+             boost::thread &io_thread,
+             std::shared_ptr<ReferenceCounter> reference_counter,
+             std::shared_ptr<CoreWorkerMemoryStore> memory_store,
+             std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider,
+             std::shared_ptr<experimental::MutableObjectProviderInterface>
+                 experimental_mutable_object_provider,
+             std::unique_ptr<FutureResolver> future_resolver,
+             std::shared_ptr<TaskManager> task_manager,
+             std::shared_ptr<ActorCreatorInterface> actor_creator,
+             std::unique_ptr<ActorTaskSubmitter> actor_task_submitter,
+             std::unique_ptr<pubsub::PublisherInterface> object_info_publisher,
+             std::unique_ptr<pubsub::SubscriberInterface> object_info_subscriber,
+             std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter,
+             std::unique_ptr<NormalTaskSubmitter> normal_task_submitter,
+             std::unique_ptr<ObjectRecoveryManager> object_recovery_manager,
+             std::unique_ptr<ActorManager> actor_manager,
+             instrumented_io_context &task_execution_service,
+             std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
+             uint32_t pid);
 
   CoreWorker(CoreWorker const &) = delete;
 
@@ -181,13 +202,19 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// If the core worker is initiated at a driver, the driver is responsible for calling
   /// the shutdown API before terminating. If the core worker is initiated at a worker,
   /// shutdown must be called before terminating the task execution loop.
-  ~CoreWorker() override;
+  ~CoreWorker();
 
   void operator=(CoreWorker const &other) = delete;
 
   ///
   /// Public methods used by `CoreWorkerProcess` and `CoreWorker` itself.
   ///
+
+  /// Get the Plasma Store Usage.
+  ///
+  /// \param output[out] memory usage from the plasma store
+  /// \return error status if unable to get response from the plasma store
+  Status GetPlasmaUsage(std::string &output);
 
   /// Gracefully disconnect the worker from Raylet.
   /// Once the method is returned, it is guaranteed that raylet is
@@ -197,7 +224,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param exit_detail The detailed reason for a given exit.
   /// \param creation_task_exception_pb_bytes It is given when the worker is
   /// disconnected because the actor is failed due to its exception in its init method.
-  /// \return Void.
   void Disconnect(const rpc::WorkerExitType &exit_type,
                   const std::string &exit_detail,
                   const std::shared_ptr<LocalMemoryBuffer>
@@ -208,11 +234,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// This must be called before deallocating a worker / driver's core worker for memory
   /// safety.
   ///
-  /// \return void.
   void Shutdown();
 
   /// Start receiving and executing tasks.
-  /// \return void.
   void RunTaskExecutionLoop();
 
   const WorkerID &GetWorkerID() const;
@@ -221,20 +245,20 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   Language GetLanguage() const { return options_.language; }
 
-  WorkerContext &GetWorkerContext() { return worker_context_; }
+  WorkerContext &GetWorkerContext() { return *worker_context_; }
 
-  const TaskID &GetCurrentTaskId() const { return worker_context_.GetCurrentTaskID(); }
+  const TaskID &GetCurrentTaskId() const { return worker_context_->GetCurrentTaskID(); }
 
   const std::string GetCurrentTaskName() const {
-    return worker_context_.GetCurrentTask() != nullptr
-               ? worker_context_.GetCurrentTask()->GetName()
+    return worker_context_->GetCurrentTask() != nullptr
+               ? worker_context_->GetCurrentTask()->GetName()
                : "";
   }
 
   const std::string GetCurrentTaskFunctionName() const {
-    return (worker_context_.GetCurrentTask() != nullptr &&
-            worker_context_.GetCurrentTask()->FunctionDescriptor() != nullptr)
-               ? worker_context_.GetCurrentTask()->FunctionDescriptor()->CallSiteString()
+    return (worker_context_->GetCurrentTask() != nullptr &&
+            worker_context_->GetCurrentTask()->FunctionDescriptor() != nullptr)
+               ? worker_context_->GetCurrentTask()->FunctionDescriptor()->CallSiteString()
                : "";
   }
 
@@ -245,16 +269,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void UpdateTaskIsDebuggerPaused(const TaskID &task_id, const bool is_debugger_paused);
 
   int64_t GetCurrentTaskAttemptNumber() const {
-    return worker_context_.GetCurrentTask() != nullptr
-               ? worker_context_.GetCurrentTask()->AttemptNumber()
+    return worker_context_->GetCurrentTask() != nullptr
+               ? worker_context_->GetCurrentTask()->AttemptNumber()
                : 0;
   }
 
-  JobID GetCurrentJobId() const { return worker_context_.GetCurrentJobID(); }
+  JobID GetCurrentJobId() const { return worker_context_->GetCurrentJobID(); }
 
-  int64_t GetTaskDepth() const { return worker_context_.GetTaskDepth(); }
+  int64_t GetTaskDepth() const { return worker_context_->GetTaskDepth(); }
 
-  NodeID GetCurrentNodeId() const { return NodeID::FromBinary(rpc_address_.raylet_id()); }
+  NodeID GetCurrentNodeId() const { return NodeID::FromBinary(rpc_address_.node_id()); }
 
   /// Read the next index of a ObjectRefStream of generator_id.
   /// This API always return immediately.
@@ -300,23 +324,21 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void TryDelPendingObjectRefStreams();
 
   PlacementGroupID GetCurrentPlacementGroupId() const {
-    return worker_context_.GetCurrentPlacementGroupId();
+    return worker_context_->GetCurrentPlacementGroupId();
   }
 
   bool ShouldCaptureChildTasksInPlacementGroup() const {
-    return worker_context_.ShouldCaptureChildTasksInPlacementGroup();
+    return worker_context_->ShouldCaptureChildTasksInPlacementGroup();
   }
 
   bool GetCurrentTaskRetryExceptions() const {
     if (options_.is_local_mode) {
       return false;
     }
-    return worker_context_.GetCurrentTask()->ShouldRetryExceptions();
+    return worker_context_->GetCurrentTask()->ShouldRetryExceptions();
   }
 
   void SetWebuiDisplay(const std::string &key, const std::string &message);
-
-  void SetActorTitle(const std::string &title);
 
   /// Sets the actor's repr name.
   ///
@@ -416,27 +438,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                           rpc::Address *owner_address,
                           std::string *serialized_object_status);
 
-  /// Get the owner information of an object. This should be
-  /// called when serializing an object ID, and the returned information should
-  /// be stored with the serialized object ID. If the ownership of the object
-  /// cannot be established, then we terminate the process.
-  ///
-  /// This can only be called on object IDs that we created via task
-  /// submission, ray.put, or object IDs that we deserialized. It cannot be
-  /// called on object IDs that were created randomly, e.g.,
-  /// ObjectID::FromRandom.
-  ///
-  /// Postcondition: Get(object_id) is valid.
-  ///
-  /// \param[in] object_id The object ID to serialize.
-  /// appended to the serialized object ID.
-  /// \param[out] owner_address The address of the object's owner. This should
-  /// be appended to the serialized object ID.
-  /// \param[out] serialized_object_status The serialized object status protobuf.
-  void GetOwnershipInfoOrDie(const ObjectID &object_id,
-                             rpc::Address *owner_address,
-                             std::string *serialized_object_status);
-
   /// Add a reference to an ObjectID that was deserialized by the language
   /// frontend. This will also start the process to resolve the future.
   /// Specifically, we will periodically contact the owner, until we learn that
@@ -502,7 +503,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] contained_object_ids The IDs serialized in this object.
   /// \param[out] object_id Object ID generated for the put.
   /// \param[out] data Buffer for the user to write the object into.
-  /// \param[in] created_by_worker create by worker or not.
   /// \param[in] owner_address The address of object's owner. If not provided,
   /// defaults to this worker.
   /// \param[in] inline_small_object Whether to inline create this object if it's
@@ -515,7 +515,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::vector<ObjectID> &contained_object_ids,
       ObjectID *object_id,
       std::shared_ptr<Buffer> *data,
-      bool created_by_worker,
       const std::unique_ptr<rpc::Address> &owner_address = nullptr,
       bool inline_small_object = true);
 
@@ -613,7 +612,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] writer_object_id The ID of the object.
   /// \param[in] remote_reader_node_ids The list of remote reader's node ids.
-  Status ExperimentalRegisterMutableObjectWriter(
+  void ExperimentalRegisterMutableObjectWriter(
       const ObjectID &writer_object_id,
       const std::vector<NodeID> &remote_reader_node_ids);
 
@@ -785,15 +784,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Implements gRPC server handler.
   /// If an executor can generator task return before the task is finished,
   /// it invokes this endpoint via ReportGeneratorItemReturns RPC.
-  void HandleReportGeneratorItemReturns(
-      rpc::ReportGeneratorItemReturnsRequest request,
-      rpc::ReportGeneratorItemReturnsReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Get a string describing object store memory usage for debugging purposes.
-  ///
-  /// \return std::string The string describing memory usage.
-  std::string MemoryUsageString();
+  void HandleReportGeneratorItemReturns(rpc::ReportGeneratorItemReturnsRequest request,
+                                        rpc::ReportGeneratorItemReturnsReply *reply,
+                                        rpc::SendReplyCallback send_reply_callback);
 
   ///
   /// Public methods related to task submission.
@@ -1016,15 +1009,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Create a profile event and push it the TaskEventBuffer when the event is destructed.
   std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_name);
 
-  int64_t GetNumTasksSubmitted() const {
-    return normal_task_submitter_->GetNumTasksSubmitted();
-  }
-
-  int64_t GetNumLeasesRequested() const {
-    return normal_task_submitter_->GetNumLeasesRequested();
-  }
-
  public:
+  friend class CoreWorkerProcessImpl;
+
   /// Allocate the return object for an executing task. The caller should write into the
   /// data buffer of the allocated buffer, then call SealReturnObject() to seal it.
   /// To avoid deadlock, the caller should allocate and seal a single object at a time.
@@ -1152,122 +1139,125 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Implements gRPC server handler.
   void HandlePushTask(rpc::PushTaskRequest request,
                       rpc::PushTaskReply *reply,
-                      rpc::SendReplyCallback send_reply_callback) override;
+                      rpc::SendReplyCallback send_reply_callback);
 
   /// Implements gRPC server handler.
-  void HandleActorCallArgWaitComplete(
-      rpc::ActorCallArgWaitCompleteRequest request,
-      rpc::ActorCallArgWaitCompleteReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
+  void HandleActorCallArgWaitComplete(rpc::ActorCallArgWaitCompleteRequest request,
+                                      rpc::ActorCallArgWaitCompleteReply *reply,
+                                      rpc::SendReplyCallback send_reply_callback);
 
   /// Implements gRPC server handler.
   void HandleRayletNotifyGCSRestart(rpc::RayletNotifyGCSRestartRequest request,
                                     rpc::RayletNotifyGCSRestartReply *reply,
-                                    rpc::SendReplyCallback send_reply_callback) override;
+                                    rpc::SendReplyCallback send_reply_callback);
 
   /// Implements gRPC server handler.
   void HandleGetObjectStatus(rpc::GetObjectStatusRequest request,
                              rpc::GetObjectStatusReply *reply,
-                             rpc::SendReplyCallback send_reply_callback) override;
+                             rpc::SendReplyCallback send_reply_callback);
 
   /// Implements gRPC server handler.
   void HandleWaitForActorRefDeleted(rpc::WaitForActorRefDeletedRequest request,
                                     rpc::WaitForActorRefDeletedReply *reply,
-                                    rpc::SendReplyCallback send_reply_callback) override;
+                                    rpc::SendReplyCallback send_reply_callback);
 
   // Implements gRPC server handler.
   void HandlePubsubLongPolling(rpc::PubsubLongPollingRequest request,
                                rpc::PubsubLongPollingReply *reply,
-                               rpc::SendReplyCallback send_reply_callback) override;
+                               rpc::SendReplyCallback send_reply_callback);
 
   // Implements gRPC server handler.
   void HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request,
                                 rpc::PubsubCommandBatchReply *reply,
-                                rpc::SendReplyCallback send_reply_callback) override;
+                                rpc::SendReplyCallback send_reply_callback);
 
   // Implements gRPC server handler.
-  void HandleUpdateObjectLocationBatch(
-      rpc::UpdateObjectLocationBatchRequest request,
-      rpc::UpdateObjectLocationBatchReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
+  void HandleUpdateObjectLocationBatch(rpc::UpdateObjectLocationBatchRequest request,
+                                       rpc::UpdateObjectLocationBatchReply *reply,
+                                       rpc::SendReplyCallback send_reply_callback);
 
   /// Implements gRPC server handler.
   void HandleGetObjectLocationsOwner(rpc::GetObjectLocationsOwnerRequest request,
                                      rpc::GetObjectLocationsOwnerReply *reply,
-                                     rpc::SendReplyCallback send_reply_callback) override;
+                                     rpc::SendReplyCallback send_reply_callback);
 
   /// Implements gRPC server handler.
   void HandleKillActor(rpc::KillActorRequest request,
                        rpc::KillActorReply *reply,
-                       rpc::SendReplyCallback send_reply_callback) override;
+                       rpc::SendReplyCallback send_reply_callback);
 
   /// Implements gRPC server handler.
   void HandleCancelTask(rpc::CancelTaskRequest request,
                         rpc::CancelTaskReply *reply,
-                        rpc::SendReplyCallback send_reply_callback) override;
+                        rpc::SendReplyCallback send_reply_callback);
 
   /// Implements gRPC server handler.
   void HandleRemoteCancelTask(rpc::RemoteCancelTaskRequest request,
                               rpc::RemoteCancelTaskReply *reply,
-                              rpc::SendReplyCallback send_reply_callback) override;
+                              rpc::SendReplyCallback send_reply_callback);
 
   /// Implements gRPC server handler.
   void HandlePlasmaObjectReady(rpc::PlasmaObjectReadyRequest request,
                                rpc::PlasmaObjectReadyReply *reply,
-                               rpc::SendReplyCallback send_reply_callback) override;
+                               rpc::SendReplyCallback send_reply_callback);
 
   /// Creates a new mutable object.
-  void HandleRegisterMutableObjectReader(
-      rpc::RegisterMutableObjectReaderRequest request,
-      rpc::RegisterMutableObjectReaderReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
+  void HandleRegisterMutableObjectReader(rpc::RegisterMutableObjectReaderRequest request,
+                                         rpc::RegisterMutableObjectReaderReply *reply,
+                                         rpc::SendReplyCallback send_reply_callback);
 
   /// Get statistics from core worker.
   void HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request,
                                 rpc::GetCoreWorkerStatsReply *reply,
-                                rpc::SendReplyCallback send_reply_callback) override;
+                                rpc::SendReplyCallback send_reply_callback);
 
   /// Trigger local GC on this worker.
   void HandleLocalGC(rpc::LocalGCRequest request,
                      rpc::LocalGCReply *reply,
-                     rpc::SendReplyCallback send_reply_callback) override;
+                     rpc::SendReplyCallback send_reply_callback);
 
   /// Delete objects explicitly.
   void HandleDeleteObjects(rpc::DeleteObjectsRequest request,
                            rpc::DeleteObjectsReply *reply,
-                           rpc::SendReplyCallback send_reply_callback) override;
+                           rpc::SendReplyCallback send_reply_callback);
 
   // Spill objects to external storage.
   void HandleSpillObjects(rpc::SpillObjectsRequest request,
                           rpc::SpillObjectsReply *reply,
-                          rpc::SendReplyCallback send_reply_callback) override;
+                          rpc::SendReplyCallback send_reply_callback);
 
   // Restore objects from external storage.
   void HandleRestoreSpilledObjects(rpc::RestoreSpilledObjectsRequest request,
                                    rpc::RestoreSpilledObjectsReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) override;
+                                   rpc::SendReplyCallback send_reply_callback);
 
   // Delete objects from external storage.
   void HandleDeleteSpilledObjects(rpc::DeleteSpilledObjectsRequest request,
                                   rpc::DeleteSpilledObjectsReply *reply,
-                                  rpc::SendReplyCallback send_reply_callback) override;
+                                  rpc::SendReplyCallback send_reply_callback);
 
   // Make the this worker exit.
   // This request fails if the core worker owns any object.
   void HandleExit(rpc::ExitRequest request,
                   rpc::ExitReply *reply,
-                  rpc::SendReplyCallback send_reply_callback) override;
+                  rpc::SendReplyCallback send_reply_callback);
 
   // Set local worker as the owner of object.
   // Request by borrower's worker, execute by owner's worker.
   void HandleAssignObjectOwner(rpc::AssignObjectOwnerRequest request,
                                rpc::AssignObjectOwnerReply *reply,
-                               rpc::SendReplyCallback send_reply_callback) override;
+                               rpc::SendReplyCallback send_reply_callback);
 
   // Get the number of pending tasks.
   void HandleNumPendingTasks(rpc::NumPendingTasksRequest request,
                              rpc::NumPendingTasksReply *reply,
-                             rpc::SendReplyCallback send_reply_callback) override;
+                             rpc::SendReplyCallback send_reply_callback);
+
+  // Free GPU objects from the in-actor GPU object store.
+  void HandleFreeActorObject(rpc::FreeActorObjectRequest request,
+                             rpc::FreeActorObjectReply *reply,
+                             rpc::SendReplyCallback send_reply_callback);
+
   ///
   /// Public methods related to async actor call. This should only be used when
   /// the actor is (1) direct actor and (2) using async mode.
@@ -1288,7 +1278,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] success_callback The callback to use the result object.
   /// \param[in] python_user_callback The user-provided Python callback object that
   /// will be called inside of `success_callback`.
-  /// \return void
   void GetAsync(const ObjectID &object_id,
                 SetResultCallback success_callback,
                 void *python_user_callback);
@@ -1342,6 +1331,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
             const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes =
                 nullptr);
 
+  void TaskManagerRetryTask(TaskSpecification &spec,
+                            bool object_recovery,
+                            uint32_t delay_ms);
+
  private:
   static nlohmann::json OverrideRuntimeEnv(const nlohmann::json &child,
                                            const std::shared_ptr<nlohmann::json> &parent);
@@ -1355,29 +1348,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   FRIEND_TEST(TestOverrideRuntimeEnv, TestCondaInherit);
   FRIEND_TEST(TestOverrideRuntimeEnv, TestCondaOverride);
 
-  /// Register core worker to worker pool.
-  Status RegisterWorkerToRaylet(raylet::RayletConnection &conn,
-                                const WorkerID &worker_id,
-                                rpc::WorkerType worker_type,
-                                const JobID &job_id,
-                                int runtime_env_hash,
-                                const Language &language,
-                                const std::string &ip_address,
-                                const std::string &serialized_job_config,
-                                const StartupToken &startup_token,
-                                NodeID *raylet_id,
-                                int *port);
-
-  Status RegisterWorkerToRayletWithPort(raylet::RayletConnection &conn,
-                                        const WorkerID &worker_id,
-                                        rpc::WorkerType worker_type,
-                                        const JobID &job_id,
-                                        int runtime_env_hash,
-                                        const Language &language,
-                                        const std::string &ip_address,
-                                        const std::string &serialized_job_config,
-                                        const StartupToken &startup_token,
-                                        int port);
+  /// Used to lazily subscribe to node_changes only if the worker takes any owner actions.
+  void SubscribeToNodeChanges();
 
   std::shared_ptr<rpc::RuntimeEnvInfo> OverrideTaskOrActorRuntimeEnvInfo(
       const std::string &serialized_runtime_env_info) const;
@@ -1418,9 +1390,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                         const std::string &task_name);
 
   void SetActorId(const ActorID &actor_id);
-
-  /// Run the io_service_ event loop. This should be called in a background thread.
-  void RunIOService();
 
   /// Forcefully exit the worker. `Force` means it will exit actor without draining
   /// or cleaning any resources.
@@ -1512,6 +1481,19 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       std::string *application_error);
 
   /// Put an object in the local plasma store.
+  ///
+  /// Return status semantics:
+  /// - Status::OK(): The object was created (or already existed) and bookkeeping was
+  ///   updated. Note: an internal ObjectExists from the plasma provider is treated
+  ///   as OK and does not surface here.
+  /// - Status::ObjectStoreFull(): The local plasma store is out of memory (or out of
+  ///   disk when spilling). The error message contains context and a short memory
+  ///   report.
+  /// - Status::IOError(): IPC/connection failures while talking to the plasma store
+  ///   (e.g., broken pipe/connection reset during shutdown, store not reachable).
+  ///
+  /// Call sites that run during shutdown may choose to tolerate IOError specifically,
+  /// but should treat all other statuses as real failures.
   Status PutInLocalPlasmaStore(const RayObject &object,
                                const ObjectID &object_id,
                                bool pin_object);
@@ -1610,25 +1592,17 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// the new worker to reject messages meant for the old one.
   bool HandleWrongRecipient(const WorkerID &intended_worker_id,
                             const rpc::SendReplyCallback &send_reply_callback) {
-    if (intended_worker_id != worker_context_.GetWorkerID()) {
+    if (intended_worker_id != worker_context_->GetWorkerID()) {
       std::ostringstream stream;
       stream << "Mismatched WorkerID: ignoring RPC for previous worker "
              << intended_worker_id
-             << ", current worker ID: " << worker_context_.GetWorkerID();
+             << ", current worker ID: " << worker_context_->GetWorkerID();
       auto msg = stream.str();
       RAY_LOG(ERROR) << msg;
       send_reply_callback(Status::Invalid(msg), nullptr, nullptr);
       return true;
     } else {
       return false;
-    }
-  }
-
-  /// Wait until the worker is initialized.
-  void WaitUntilInitialized() override {
-    absl::MutexLock lock(&initialize_mutex_);
-    while (!initialized_) {
-      intialize_cv_.WaitWithTimeout(&initialize_mutex_, absl::Seconds(1));
     }
   }
 
@@ -1700,6 +1674,17 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                     const int64_t timeout_ms,
                     std::vector<std::shared_ptr<RayObject>> &results);
 
+  /// Helper to compute idleness from precomputed counters.
+  ///
+  /// We consider the worker to be idle if it doesn't have object references and it
+  /// doesn't have any object pinning RPCs in flight and it doesn't have pending tasks.
+  bool IsIdle(size_t num_objects_with_references,
+              int64_t pins_in_flight,
+              size_t num_pending_tasks) const;
+
+  /// Convenience overload that fetches counters and evaluates idleness.
+  bool IsIdle() const;
+
   /// Get the caller ID used to submit tasks from this worker to an actor.
   ///
   /// \return The caller ID. For non-actor tasks, this is the current task ID.
@@ -1730,7 +1715,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make
   /// this a ThreadContext.
-  WorkerContext worker_context_;
+  std::unique_ptr<WorkerContext> worker_context_;
 
   /// The ID of the current task being executed by the main thread. If there
   /// are multiple threads, they will have a thread-local task ID stored in the
@@ -1739,16 +1724,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   std::string main_thread_task_name_ ABSL_GUARDED_BY(mutex_);
 
-  /// States that used for initialization.
-  absl::Mutex initialize_mutex_;
-  absl::CondVar intialize_cv_;
-  bool initialized_ ABSL_GUARDED_BY(initialize_mutex_) = false;
-
   /// Event loop where the IO events are handled. e.g. async GCS operations.
-  instrumented_io_context io_service_;
-
-  /// Keeps the io_service_ alive.
-  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
+  instrumented_io_context &io_service_;
 
   /// Shared client call manager.
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
@@ -1756,8 +1733,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Shared core worker client pool.
   std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool_;
 
+  // Shared raylet client pool.
+  std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
+
   /// The runner to run function periodically.
-  std::shared_ptr<PeriodicalRunner> periodical_runner_;
+  std::shared_ptr<PeriodicalRunnerInterface> periodical_runner_;
 
   /// RPC server used to receive tasks to execute.
   std::unique_ptr<rpc::GrpcServer> core_worker_server_;
@@ -1771,14 +1751,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // Client to the GCS shared by core worker interfaces.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 
-  // Client to the raylet shared by core worker interfaces. This needs to be a
-  // shared_ptr for direct calls because we can lease multiple workers through
-  // one client, and we need to keep the connection alive until we return all
-  // of the workers.
-  std::shared_ptr<raylet::RayletClient> local_raylet_client_;
+  // Client to the local Raylet that goes over a local socket.
+  std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client_;
+
+  // Client to the local Raylet that goes over a gRPC connection.
+  std::shared_ptr<RayletClientInterface> local_raylet_rpc_client_;
 
   // Thread that runs a boost::asio service to process IO events.
-  boost::thread io_thread_;
+  boost::thread &io_thread_;
 
   // Keeps track of object ID reference counts.
   std::shared_ptr<ReferenceCounter> reference_counter_;
@@ -1794,7 +1774,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider_;
 
   /// Manages mutable objects that must be transferred across nodes.
-  std::shared_ptr<experimental::MutableObjectProvider>
+  std::shared_ptr<experimental::MutableObjectProviderInterface>
       experimental_mutable_object_provider_;
 
   std::unique_ptr<FutureResolver> future_resolver_;
@@ -1813,10 +1793,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::unique_ptr<ActorTaskSubmitter> actor_task_submitter_;
 
   // A class to publish object status from other raylets/workers.
-  std::unique_ptr<pubsub::Publisher> object_info_publisher_;
+  std::unique_ptr<pubsub::PublisherInterface> object_info_publisher_;
 
   // A class to subscribe object status from other raylets/workers.
-  std::unique_ptr<pubsub::Subscriber> object_info_subscriber_;
+  std::unique_ptr<pubsub::SubscriberInterface> object_info_subscriber_;
 
   // Rate limit the concurrent pending lease requests for submitting
   // tasks.
@@ -1856,9 +1836,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Key value pairs to be displayed on Web UI.
   std::unordered_map<std::string, std::string> webui_display_ ABSL_GUARDED_BY(mutex_);
 
-  /// Actor title that consists of class name, args, kwargs for actor construction.
-  std::string actor_title_ ABSL_GUARDED_BY(mutex_);
-
   /// Actor repr name if overrides by the user, empty string if not.
   std::string actor_repr_name_ ABSL_GUARDED_BY(mutex_);
 
@@ -1883,11 +1860,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Event loop where tasks are processed.
   /// task_execution_service_ should be destructed first to avoid
   /// issues like https://github.com/ray-project/ray/issues/18857
-  instrumented_io_context task_execution_service_;
-
-  /// The asio work to keep task_execution_service_ alive.
-  boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
-      task_execution_service_work_;
+  instrumented_io_context &task_execution_service_;
 
   // Queue of tasks to resubmit when the specified time passes.
   std::priority_queue<TaskToRetry, std::deque<TaskToRetry>, TaskToRetryDescComparator>
@@ -1908,18 +1881,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// If this value is set, it means the exit process has begun.
   std::optional<std::string> exiting_detail_ ABSL_GUARDED_BY(mutex_);
 
-  /// TODO(kevin85421): the shutdown logic contained in `Disconnect`, `Exit`, and
-  /// `Shutdown` should be unified to avoid mistakes due to complex dependent semantics.
-  /// See https://github.com/ray-project/ray/issues/51642.
-
-  /// Used to ensure that the `CoreWorker::Exit` method is called at most once.
-  std::atomic<bool> is_exited_ = false;
-  /// Used to ensure that the `CoreWorker::Shutdown` method is called at most once.
-  std::atomic<bool> is_shutdown_ = false;
+  /// Unified shutdown coordinator that manages all shutdown operations.
+  /// Implements a thread-safe, single state machine that coordinates
+  /// all shutdown entry points.
+  std::unique_ptr<ShutdownCoordinator> shutdown_coordinator_;
 
   int64_t max_direct_call_object_size_;
-
-  friend class CoreWorkerTest;
 
   TaskCounter task_counter_;
 
@@ -1935,6 +1902,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Worker's PID
   uint32_t pid_;
+
+  /// Callback to cleanup actor instance before shutdown
+  std::function<void()> actor_shutdown_callback_;
 
   // Guards generator_ids_pending_deletion_.
   absl::Mutex generator_ids_pending_deletion_mutex_;
@@ -1955,18 +1925,17 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Maps serialized runtime env info to **immutable** deserialized protobuf.
   mutable utils::container::ThreadSafeSharedLruCache<std::string, rpc::RuntimeEnvInfo>
       runtime_env_json_serialization_cache_;
-};
 
-// Lease request rate-limiter based on cluster node size.
-// It returns max(num_nodes_in_cluster, min_concurrent_lease_limit)
-class ClusterSizeBasedLeaseRequestRateLimiter : public LeaseRequestRateLimiter {
- public:
-  explicit ClusterSizeBasedLeaseRequestRateLimiter(size_t min_concurrent_lease_limit);
-  size_t GetMaxPendingLeaseRequestsPerSchedulingCategory() override;
-  void OnNodeChanges(const rpc::GcsNodeInfo &data);
+  /// Used to ensure we only subscribe to node changes once.
+  std::once_flag subscribe_to_node_changes_flag_;
 
- private:
-  const size_t min_concurrent_lease_cap_;
-  std::atomic<size_t> num_alive_nodes_;
+  // Grant CoreWorkerShutdownExecutor access to CoreWorker internals for orchestrating
+  // the shutdown procedure without exposing additional public APIs.
+  friend class CoreWorkerShutdownExecutor;
+
+  /// Used to block in certain spots if the GCS node cache is needed.
+  std::mutex gcs_client_node_cache_populated_mutex_;
+  std::condition_variable gcs_client_node_cache_populated_cv_;
+  bool gcs_client_node_cache_populated_ = false;
 };
 }  // namespace ray::core

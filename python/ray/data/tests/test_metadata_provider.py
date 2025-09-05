@@ -27,6 +27,7 @@ from ray.data.datasource.file_meta_provider import (
     _get_file_infos_parallel,
     _get_file_infos_serial,
 )
+from ray.data.datasource.parquet_meta_provider import _get_total_bytes
 from ray.data.datasource.path_util import (
     _resolve_paths_and_filesystem,
     _unwrap_protocol,
@@ -38,13 +39,6 @@ from ray.tests.conftest import *  # noqa
 
 def df_to_csv(dataframe, path, **kwargs):
     dataframe.to_csv(path, **kwargs)
-
-
-def _get_parquet_file_meta_size_bytes(file_metas):
-    return sum(
-        sum(m.row_group(i).total_byte_size for i in range(m.num_row_groups))
-        for m in file_metas
-    )
 
 
 def _get_file_sizes_bytes(paths, fs):
@@ -63,10 +57,10 @@ def _get_file_sizes_bytes(paths, fs):
 def test_file_metadata_providers_not_implemented():
     meta_provider = FileMetadataProvider()
     with pytest.raises(NotImplementedError):
-        meta_provider(["/foo/bar.csv"], None)
+        meta_provider(["/foo/bar.csv"])
     meta_provider = BaseFileMetadataProvider()
     with pytest.raises(NotImplementedError):
-        meta_provider(["/foo/bar.csv"], None, rows_per_file=None, file_sizes=[None])
+        meta_provider(["/foo/bar.csv"], rows_per_file=None, file_sizes=[None])
     with pytest.raises(NotImplementedError):
         meta_provider.expand_paths(["/foo/bar.csv"], None)
 
@@ -108,18 +102,18 @@ def test_default_parquet_metadata_provider(fs, data_path):
 
     meta = meta_provider(
         [p.path for p in pq_ds.fragments],
-        pq_ds.schema,
         num_fragments=len(pq_ds.fragments),
         prefetched_metadata=fragment_file_metas,
     )
-    expected_meta_size_bytes = _get_parquet_file_meta_size_bytes(
-        [f.metadata for f in pq_ds.fragments]
+
+    expected_meta_size_bytes = sum(
+        [_get_total_bytes(f.metadata) for f in pq_ds.fragments]
     )
+
     assert meta.size_bytes == expected_meta_size_bytes
     assert meta.num_rows == 6
     assert len(paths) == 2
     assert all(path in meta.input_files for path in paths)
-    assert meta.schema.equals(pq_ds.schema)
 
 
 @pytest.mark.parametrize(
@@ -175,7 +169,6 @@ def test_default_file_metadata_provider(
 
     meta = meta_provider(
         paths,
-        None,
         rows_per_file=3,
         file_sizes=file_sizes,
     )
@@ -183,7 +176,6 @@ def test_default_file_metadata_provider(
     assert meta.num_rows == 6
     assert len(paths) == 2
     assert all(path in meta.input_files for path in paths)
-    assert meta.schema is None
 
 
 @pytest.mark.parametrize(
@@ -477,7 +469,6 @@ def test_fast_file_metadata_provider(
 
     meta = meta_provider(
         paths,
-        None,
         rows_per_file=3,
         file_sizes=file_sizes,
     )
@@ -485,7 +476,6 @@ def test_fast_file_metadata_provider(
     assert meta.num_rows == 6
     assert len(paths) == 2
     assert all(path in meta.input_files for path in paths)
-    assert meta.schema is None
 
 
 def test_fast_file_metadata_provider_ignore_missing():

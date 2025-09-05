@@ -9,14 +9,14 @@ import socket
 import sys
 import time
 
+import httpx
 import pytest
-import requests
 
 import ray
 from ray import serve
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     run_string_as_driver,
-    wait_for_condition,
 )
 from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster, cluster_not_supported
@@ -80,7 +80,7 @@ def lower_slow_startup_threshold_and_reset():
 
 
 def test_shutdown(ray_shutdown):
-    ray.init(num_cpus=16)
+    ray.init(num_cpus=8)
     serve.start(http_options=dict(port=8003))
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
     cluster_node_info_cache = create_cluster_node_info_cache(gcs_client)
@@ -125,13 +125,60 @@ def test_shutdown(ray_shutdown):
     wait_for_condition(check_dead)
 
 
+@pytest.mark.asyncio
+async def test_shutdown_async(ray_shutdown):
+    ray.init(num_cpus=8)
+    serve.start(http_options=dict(port=8003))
+    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+    cluster_node_info_cache = create_cluster_node_info_cache(gcs_client)
+    cluster_node_info_cache.update()
+
+    @serve.deployment
+    def f():
+        pass
+
+    serve.run(f.bind())
+
+    actor_names = [
+        SERVE_CONTROLLER_NAME,
+        format_actor_name(
+            SERVE_PROXY_NAME,
+            cluster_node_info_cache.get_alive_nodes()[0][0],
+        ),
+    ]
+
+    def check_alive():
+        alive = True
+        for actor_name in actor_names:
+            try:
+                ray.get_actor(actor_name, namespace=SERVE_NAMESPACE)
+            except ValueError:
+                alive = False
+        return alive
+
+    wait_for_condition(check_alive)
+
+    await serve.shutdown_async()
+
+    def check_dead():
+        for actor_name in actor_names:
+            try:
+                ray.get_actor(actor_name, namespace=SERVE_NAMESPACE)
+                return False
+            except ValueError:
+                pass
+        return True
+
+    wait_for_condition(check_dead)
+
+
 def test_single_app_shutdown_actors(ray_shutdown):
     """Tests serve.shutdown() works correctly in single-app case
 
     Ensures that after deploying a (nameless) app using serve.run(), serve.shutdown()
     deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
     """
-    address = ray.init(num_cpus=16)["address"]
+    address = ray.init(num_cpus=8)["address"]
     serve.start(http_options=dict(port=8003))
 
     @serve.deployment
@@ -165,13 +212,54 @@ def test_single_app_shutdown_actors(ray_shutdown):
     wait_for_condition(check_dead)
 
 
+@pytest.mark.asyncio
+async def test_single_app_shutdown_actors_async(ray_shutdown):
+    """Tests serve.shutdown_async() works correctly in single-app case
+
+    Ensures that after deploying a (nameless) app using serve.run(), serve.shutdown_async()
+    deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
+    """
+    address = ray.init(num_cpus=8)["address"]
+    serve.start(http_options=dict(port=8003))
+
+    @serve.deployment
+    def f():
+        pass
+
+    serve.run(f.bind(), name="app")
+
+    actor_names = {
+        "ServeController",
+        "ProxyActor",
+        "ServeReplica:app:f",
+    }
+
+    def check_alive():
+        actors = list_actors(
+            address=address,
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")],
+        )
+        return {actor["class_name"] for actor in actors} == actor_names
+
+    def check_dead():
+        actors = list_actors(
+            address=address,
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")],
+        )
+        return len(actors) == 0
+
+    wait_for_condition(check_alive)
+    await serve.shutdown_async()
+    wait_for_condition(check_dead)
+
+
 def test_multi_app_shutdown_actors(ray_shutdown):
     """Tests serve.shutdown() works correctly in multi-app case.
 
     Ensures that after deploying multiple distinct applications, serve.shutdown()
     deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
     """
-    address = ray.init(num_cpus=16)["address"]
+    address = ray.init(num_cpus=8)["address"]
     serve.start(http_options=dict(port=8003))
 
     @serve.deployment
@@ -207,6 +295,49 @@ def test_multi_app_shutdown_actors(ray_shutdown):
     wait_for_condition(check_dead)
 
 
+@pytest.mark.asyncio
+async def test_multi_app_shutdown_actors_async(ray_shutdown):
+    """Tests serve.shutdown_async() works correctly in multi-app case.
+
+    Ensures that after deploying multiple distinct applications, serve.shutdown_async()
+    deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
+    """
+    address = ray.init(num_cpus=8)["address"]
+    serve.start(http_options=dict(port=8003))
+
+    @serve.deployment
+    def f():
+        pass
+
+    serve.run(f.bind(), name="app1", route_prefix="/app1")
+    serve.run(f.bind(), name="app2", route_prefix="/app2")
+
+    actor_names = {
+        "ServeController",
+        "ProxyActor",
+        "ServeReplica:app1:f",
+        "ServeReplica:app2:f",
+    }
+
+    def check_alive():
+        actors = list_actors(
+            address=address,
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")],
+        )
+        return {actor["class_name"] for actor in actors} == actor_names
+
+    def check_dead():
+        actors = list_actors(
+            address=address,
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")],
+        )
+        return len(actors) == 0
+
+    wait_for_condition(check_alive)
+    await serve.shutdown_async()
+    wait_for_condition(check_dead)
+
+
 def test_deployment(ray_cluster):
     # https://github.com/ray-project/ray/issues/11437
 
@@ -224,7 +355,7 @@ def test_deployment(ray_cluster):
 
     handle = serve.run(f.bind(), name="f", route_prefix="/say_hi_f")
     assert handle.remote().result() == "from_f"
-    assert requests.get("http://localhost:8000/say_hi_f").text == "from_f"
+    assert httpx.get("http://localhost:8000/say_hi_f").text == "from_f"
 
     serve.context._global_client = None
     ray.shutdown()
@@ -239,13 +370,13 @@ def test_deployment(ray_cluster):
 
     handle = serve.run(g.bind(), name="g", route_prefix="/say_hi_g")
     assert handle.remote().result() == "from_g"
-    assert requests.get("http://localhost:8000/say_hi_g").text == "from_g"
-    assert requests.get("http://localhost:8000/say_hi_f").text == "from_f"
+    assert httpx.get("http://localhost:8000/say_hi_g").text == "from_g"
+    assert httpx.get("http://localhost:8000/say_hi_f").text == "from_f"
 
 
 def test_connect(ray_shutdown):
     # Check that you can make API calls from within a deployment.
-    ray.init(num_cpus=16, namespace="serve")
+    ray.init(num_cpus=8, namespace="serve")
     serve.start()
 
     @serve.deployment
@@ -410,10 +541,10 @@ def test_middleware(ray_shutdown):
         "Access-Control-Request-Method": "GET",
     }
     root = f"http://localhost:{port}"
-    resp = requests.options(root, headers=headers)
+    resp = httpx.options(root, headers=headers)
     assert resp.headers["access-control-allow-origin"] == "*"
 
-    resp = requests.get(f"{root}/-/routes", headers=headers)
+    resp = httpx.get(f"{root}/-/routes", headers=headers)
     assert resp.headers["access-control-allow-origin"] == "*"
 
 
@@ -429,12 +560,12 @@ def test_http_root_path(ray_shutdown):
     serve.run(hello.bind(), route_prefix="/hello")
 
     # check routing works as expected
-    resp = requests.get(f"http://127.0.0.1:{port}{root_path}/hello")
+    resp = httpx.get(f"http://127.0.0.1:{port}{root_path}/hello")
     assert resp.status_code == 200
     assert resp.text == "hello"
 
     # check advertized routes are prefixed correctly
-    resp = requests.get(f"http://127.0.0.1:{port}{root_path}/-/routes")
+    resp = httpx.get(f"http://127.0.0.1:{port}{root_path}/-/routes")
     assert resp.status_code == 200
     assert resp.json() == {"/hello": "default"}
 
@@ -454,7 +585,7 @@ def test_no_http(ray_shutdown):
         {"http_options": {"location": "NoServer"}},
     ]
 
-    address = ray.init(num_cpus=16)["address"]
+    address = ray.init(num_cpus=8)["address"]
     for i, option in enumerate(options):
         print(f"[{i+1}/{len(options)}] Running with {option}")
         serve.start(**option)
@@ -509,6 +640,30 @@ def test_serve_shutdown(ray_shutdown):
     assert len(serve.status().applications) == 1
 
     serve.shutdown()
+    serve.start()
+
+    assert len(serve.status().applications) == 0
+
+    serve.run(A.bind())
+
+    assert len(serve.status().applications) == 1
+
+
+@pytest.mark.asyncio
+async def test_serve_shutdown_async(ray_shutdown):
+    ray.init(namespace="serve")
+    serve.start()
+
+    @serve.deployment
+    class A:
+        def __call__(self, *args):
+            return "hi"
+
+    serve.run(A.bind())
+
+    assert len(serve.status().applications) == 1
+
+    await serve.shutdown_async()
     serve.start()
 
     assert len(serve.status().applications) == 0
@@ -706,7 +861,7 @@ def test_build_app_task_uses_zero_cpus(ray_shutdown):
 
     # If the task required any resources, this would fail.
     wait_for_condition(
-        lambda: requests.get("http://localhost:8000/").text == "May I take your order?"
+        lambda: httpx.get("http://localhost:8000/").text == "May I take your order?"
     )
 
     serve.shutdown()

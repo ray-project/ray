@@ -6,10 +6,10 @@ Ray Tune Examples
 =================
 
 .. tip:: 
-    See :ref:`overview` to learn more about Tune features.
+    See :ref:`tune-main` to learn more about Tune features.
 
 
-Below are examples for using Ray Tune for a variety use cases and sorted by categories:
+Below are examples for using Ray Tune for a variety of use cases and sorted by categories:
 
 * `ML frameworks`_
 * `Experiment tracking tools`_
@@ -132,22 +132,22 @@ Learn how to use Tune in your browser with the following Colab-based exercises.
      - Library
      - Colab link
    * - Basics of using Tune
-     - Pytorch
+     - PyTorch
      - .. image:: https://colab.research.google.com/assets/colab-badge.svg
           :target: https://colab.research.google.com/github/ray-project/tutorial/blob/master/tune_exercises/exercise_1_basics.ipynb
           :alt: Open in Colab
    * - Using search algorithms and trial schedulers to optimize your model
-     - Pytorch
+     - PyTorch
      - .. image:: https://colab.research.google.com/assets/colab-badge.svg
           :target: https://colab.research.google.com/github/ray-project/tutorial/blob/master/tune_exercises/exercise_2_optimize.ipynb
           :alt: Open in Colab
    * - Using Population-Based Training (PBT)
-     - Pytorch
+     - PyTorch
      - .. image:: https://colab.research.google.com/assets/colab-badge.svg
           :target: https://colab.research.google.com/github/ray-project/tutorial/blob/master/tune_exercises/exercise_3_pbt.ipynb" target="_parent
           :alt: Open in Colab
    * - Fine-tuning Hugging Face Transformers with PBT
-     - Hugging Face Transformers and Pytorch
+     - Hugging Face Transformers and PyTorch
      - .. image:: https://colab.research.google.com/assets/colab-badge.svg
           :target: https://colab.research.google.com/drive/1tQgAKgcKQzheoh503OzhS4N9NtfFgmjF?usp=sharing
           :alt: Open in Colab

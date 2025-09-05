@@ -6,8 +6,8 @@ from packaging.version import parse as parse_version
 
 from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.ray_constants import env_integer
+from ray._private.utils import INT32_MAX
 from ray.air.util.tensor_extensions.arrow import (
-    INT32_OVERFLOW_THRESHOLD,
     MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY,
     PYARROW_VERSION,
 )
@@ -18,6 +18,8 @@ except ImportError:
     pyarrow = None
 
 
+# Minimum version support {String,List,Binary}View types
+MIN_PYARROW_VERSION_VIEW_TYPES = parse_version("16.0.0")
 MIN_PYARROW_VERSION_TYPE_PROMOTION = parse_version("14.0.0")
 
 
@@ -65,6 +67,21 @@ def _create_empty_table(schema: "pyarrow.Schema"):
     return pa.table(arrays, schema=schema)
 
 
+def _hash_partition(
+    table: "pyarrow.Table",
+    num_partitions: int,
+) -> np.ndarray:
+
+    partitions = np.zeros((table.num_rows,), dtype=np.int64)
+    for i in range(table.num_rows):
+        _tuple = tuple(c[i] for c in table.columns)
+        partitions[i] = hash(_tuple) % num_partitions
+
+    # Convert to ndarray to compute hash partition indices
+    # more efficiently
+    return partitions
+
+
 def hash_partition(
     table: "pyarrow.Table",
     *,
@@ -88,15 +105,7 @@ def hash_partition(
         return {0: table}
 
     projected_table = table.select(hash_cols)
-
-    partitions = np.zeros((projected_table.num_rows,))
-    for i in range(projected_table.num_rows):
-        _tuple = tuple(c[i] for c in projected_table.columns)
-        partitions[i] = hash(_tuple) % num_partitions
-
-    # Convert to ndarray to compute hash partition indices
-    # more efficiently
-    partitions_array = np.asarray(partitions)
+    partitions_array = _hash_partition(projected_table, num_partitions=num_partitions)
     # For every partition compile list of indices of rows falling
     # under that partition
     indices = [np.where(partitions_array == p)[0] for p in range(num_partitions)]
@@ -170,6 +179,17 @@ def unify_schemas(
         ArrowVariableShapedTensorType,
     )
 
+    # The schema metadata might be unhashable.
+    # We need schemas to be hashable for unification
+    schemas = [schema.remove_metadata() for schema in schemas]
+    try:
+        if len(set(schemas)) == 1:
+            # Early exit because unifying can be expensive
+            return schemas.pop()
+    except Exception as e:
+        # Unsure if there are cases where schemas are NOT hashable
+        logger.debug(f"Failed to hash the schemas (for deduplication): {e}")
+
     schemas_to_unify = []
     schema_field_overrides = {}
 
@@ -180,6 +200,12 @@ def unify_schemas(
     all_columns = set()
     for schema in schemas:
         for col_name in schema.names:
+            # Check for duplicate field names in this schema
+            if schema.names.count(col_name) > 1:
+                # This is broken for Pandas blocks and broken with the logic here
+                raise ValueError(
+                    f"Schema {schema} has multiple fields with the same name: {col_name}"
+                )
             col_type = schema.field(col_name).type
             if pa.types.is_list(col_type) and pa.types.is_null(col_type.value_type):
                 cols_with_null_list.add(col_name)
@@ -195,20 +221,16 @@ def unify_schemas(
 
     columns_with_objects = set()
     columns_with_tensor_array = set()
+    columns_with_struct = set()
     for col_name in all_columns:
         for s in schemas:
-            indices = s.get_all_field_indices(col_name)
-            if len(indices) > 1:
-                # This is broken for Pandas blocks and broken with the logic here
-                raise ValueError(
-                    f"Schema {s} has multiple fields with the same name: {col_name}"
-                )
-            elif len(indices) == 0:
-                continue
-            if isinstance(s.field(col_name).type, ArrowPythonObjectType):
-                columns_with_objects.add(col_name)
-            if isinstance(s.field(col_name).type, arrow_tensor_types):
-                columns_with_tensor_array.add(col_name)
+            if col_name in s.names:
+                if isinstance(s.field(col_name).type, ArrowPythonObjectType):
+                    columns_with_objects.add(col_name)
+                if isinstance(s.field(col_name).type, arrow_tensor_types):
+                    columns_with_tensor_array.add(col_name)
+                if isinstance(s.field(col_name).type, pa.StructType):
+                    columns_with_struct.add(col_name)
 
     if len(columns_with_objects.intersection(columns_with_tensor_array)) > 0:
         # This is supportable if we use object type, but it will be expensive
@@ -220,10 +242,18 @@ def unify_schemas(
         tensor_array_types = [
             s.field(col_name).type
             for s in schemas
-            if isinstance(s.field(col_name).type, arrow_tensor_types)
+            if col_name in s.names
+            and isinstance(s.field(col_name).type, arrow_tensor_types)
         ]
 
-        if ArrowTensorType._need_variable_shaped_tensor_array(tensor_array_types):
+        # Check if we have missing tensor fields (some schemas don't have this field)
+        has_missing_fields = len(tensor_array_types) < len(schemas)
+
+        # Convert to variable-shaped if needed or if we have missing fields
+        if (
+            ArrowTensorType._need_variable_shaped_tensor_array(tensor_array_types)
+            or has_missing_fields
+        ):
             if isinstance(tensor_array_types[0], ArrowVariableShapedTensorType):
                 new_type = tensor_array_types[0]
             elif isinstance(tensor_array_types[0], arrow_fixed_shape_tensor_types):
@@ -240,6 +270,23 @@ def unify_schemas(
 
     for col_name in columns_with_objects:
         schema_field_overrides[col_name] = ArrowPythonObjectType()
+
+    for col_name in columns_with_struct:
+        field_types = [s.field(col_name).type for s in schemas]
+
+        # Unify struct schemas
+        struct_schemas = []
+        for t in field_types:
+            if t is not None and pa.types.is_struct(t):
+                struct_schemas.append(pa.schema(list(t)))
+            else:
+                struct_schemas.append(pa.schema([]))
+
+        unified_struct_schema = unify_schemas(
+            struct_schemas, promote_types=promote_types
+        )
+
+        schema_field_overrides[col_name] = pa.struct(list(unified_struct_schema))
 
     if cols_with_null_list:
         # For each opaque list column, iterate through all schemas until we find
@@ -258,9 +305,10 @@ def unify_schemas(
         # Go through all schemas and update the types of columns from the above loop.
         for schema in schemas:
             for col_name, col_new_type in schema_field_overrides.items():
-                var_shaped_col = schema.field(col_name).with_type(col_new_type)
-                col_idx = schema.get_field_index(col_name)
-                schema = schema.set(col_idx, var_shaped_col)
+                if col_name in schema.names:
+                    var_shaped_col = schema.field(col_name).with_type(col_new_type)
+                    col_idx = schema.get_field_index(col_name)
+                    schema = schema.set(col_idx, var_shaped_col)
             schemas_to_unify.append(schema)
     else:
         schemas_to_unify = schemas
@@ -360,6 +408,12 @@ def _backfill_missing_fields(
     """
     import pyarrow as pa
 
+    from ray.air.util.tensor_extensions.arrow import (
+        ArrowTensorType,
+        ArrowVariableShapedTensorType,
+        get_arrow_extension_tensor_types,
+    )
+
     # Flatten chunked arrays into a single array if necessary
     if isinstance(column, pa.ChunkedArray):
         column = pa.concat_arrays(column.chunks)
@@ -379,6 +433,8 @@ def _backfill_missing_fields(
     if column.type == unified_struct_type:
         return column
 
+    tensor_types = get_arrow_extension_tensor_types()
+
     aligned_fields = []
 
     # Iterate over the fields in the unified struct type schema
@@ -396,6 +452,22 @@ def _backfill_missing_fields(
                     unified_struct_type=field_type,
                     block_length=block_length,
                 )
+
+            # Handle tensor extension type mismatches
+            elif isinstance(field_type, tensor_types) and isinstance(
+                current_array.type, tensor_types
+            ):
+                # Convert to variable-shaped if needed
+                if ArrowTensorType._need_variable_shaped_tensor_array(
+                    [current_array.type, field_type]
+                ) and not isinstance(current_array.type, ArrowVariableShapedTensorType):
+                    # Only convert if it's not already a variable-shaped tensor array
+                    current_array = current_array.to_variable_shaped_tensor_array()
+
+            # The schema should already be unified by unify_schemas, so types
+            # should be compatible. If not, let the error propagate up.
+            # No explicit casting needed - PyArrow will handle type compatibility
+            # during struct creation or raise appropriate errors.
             aligned_fields.append(current_array)
         else:
             # If the field is missing, fill with nulls
@@ -790,8 +862,35 @@ def combine_chunked_array(
         return _try_combine_chunks_safe(array)
 
 
+# List of variable-width types using int64 offsets
+_VARIABLE_WIDTH_INT64_OFFSET_PA_TYPE_PREDICATES = [
+    pyarrow.types.is_large_list,
+    pyarrow.types.is_large_string,
+    pyarrow.types.is_large_binary,
+]
+
+
+# List of variable-width types using int32 offsets
+_VARIABLE_WIDTH_INT32_OFFSET_PA_TYPE_PREDICATES = [
+    pyarrow.types.is_string,
+    pyarrow.types.is_binary,
+    pyarrow.types.is_list,
+    # Modeled as list<struct<key, val>>
+    pyarrow.types.is_map,
+]
+
+if PYARROW_VERSION > MIN_PYARROW_VERSION_VIEW_TYPES:
+    _VARIABLE_WIDTH_INT32_OFFSET_PA_TYPE_PREDICATES.extend(
+        [
+            pyarrow.types.is_string_view,
+            pyarrow.types.is_binary_view,
+            pyarrow.types.is_list_view,
+        ]
+    )
+
+
 def _try_combine_chunks_safe(
-    array: "pyarrow.ChunkedArray", max_chunk_size=INT32_OVERFLOW_THRESHOLD
+    array: "pyarrow.ChunkedArray",
 ) -> Union["pyarrow.Array", "pyarrow.ChunkedArray"]:
     """This method provides a safe way of combining `ChunkedArray`s exceeding 2 GiB
     in size, which aren't using "large_*" types (and therefore relying on int32
@@ -809,10 +908,13 @@ def _try_combine_chunks_safe(
         with potentially smaller number of chunks that have resulted from clumping
         the original ones)
 
+    Args:
+        array: The PyArrow ChunkedArray to safely combine.
+
     Returns:
-        - pa.Array if it's possible to combine provided pa.ChunkedArray into single
-        contiguous array
-        - pa.ChunkedArray (albeit with chunks re-combined) if it's not possible to
+        - ``pyarrow.Array`` if it's possible to combine provided ``pyarrow.ChunkedArray``
+        into single contiguous array
+        - ``pyarrow.ChunkedArray`` (albeit with chunks re-combined) if it's not possible to
         produce single pa.Array
     """
 
@@ -824,53 +926,53 @@ def _try_combine_chunks_safe(
         array
     ), f"Arrow `ExtensionType`s are not accepted (got {array.type})"
 
-    int64_type_predicates = [
-        pa.types.is_large_list,
-        pa.types.is_large_string,
-        pa.types.is_large_binary,
-        pa.types.is_large_unicode,
-    ]
-
-    if array.nbytes < max_chunk_size or any(
-        p(array.type) for p in int64_type_predicates
+    # It's safe to combine provided `ChunkedArray` in either of 2 cases:
+    #   - It's type is NOT a variable-width type (list, binary, string, map),
+    #     using int32 offsets into underlying data (bytes) array
+    #   - It's type is a variable-width type using int64 offsets (large_list,
+    #     large_string, etc)
+    #   - It's cumulative byte-size is < INT32_MAX
+    if (
+        not any(p(array.type) for p in _VARIABLE_WIDTH_INT32_OFFSET_PA_TYPE_PREDICATES)
+        or any(p(array.type) for p in _VARIABLE_WIDTH_INT64_OFFSET_PA_TYPE_PREDICATES)
+        or array.nbytes < INT32_MAX
     ):
-        # It's safe to combine provided `ChunkedArray` in either of 2 cases:
-        #   - It's cumulative size is < 2 GiB
-        #   - It's of 'large' kind (ie one using int64 offsets internally)
         return array.combine_chunks()
 
     # In this case it's actually *NOT* safe to try to directly combine
     # Arrow's `ChunkedArray` and is impossible to produce single, contiguous
     # `Array` since
-    #     - It's estimated to hold > 2 GiB
-    #     - Its type is not of the "large" kind (and hence is using int32
-    #       offsets internally, which would overflow)
+    #     - It's of variable-width type that uses int32 offsets
+    #     - It's cumulative estimated byte-size is > INT32_MAX (2 GiB)
     #
     # In this case instead of combining into single contiguous array, we
-    # instead just "clump" existing chunks into bigger ones, but no bigger
-    # than 2 GiB each.
+    # instead "clump" existing chunks into ones such that each of these is < INT32_MAX.
     #
     # NOTE: This branch actually returns `ChunkedArray` and not an `Array`
 
-    # To stay under 2 GiB limit we are slicing provided list of chunks into
-    # slices no larger than 2 GiB (as compared to just directly using `concat_arrays`)
-    slices = []
+    new_chunks = []
 
-    cur_slice_start = 0
-    cur_slice_size_bytes = 0
+    cur_chunk_group = []
+    cur_chunk_group_size = 0
 
-    for i, chunk in enumerate(array.chunks):
+    for chunk in array.chunks:
         chunk_size = chunk.nbytes
 
-        if cur_slice_size_bytes + chunk_size > max_chunk_size:
-            slices.append(array.chunks[cur_slice_start:i])
+        assert chunk_size <= INT32_MAX
 
-            cur_slice_start = i
-            cur_slice_size_bytes = 0
+        if cur_chunk_group_size + chunk_size > INT32_MAX:
+            # Combine an accumulated group, append to the new list of chunks
+            if cur_chunk_group:
+                new_chunks.append(pa.concat_arrays(cur_chunk_group))
 
-        cur_slice_size_bytes += chunk_size
+            cur_chunk_group = []
+            cur_chunk_group_size = 0
+
+        cur_chunk_group.append(chunk)
+        cur_chunk_group_size += chunk_size
 
     # Add remaining chunks as last slice
-    slices.append(array.chunks[cur_slice_start:])
+    if cur_chunk_group:
+        new_chunks.append(pa.concat_arrays(cur_chunk_group))
 
-    return pa.chunked_array([pa.concat_arrays(s) for s in slices])
+    return pa.chunked_array(new_chunks)

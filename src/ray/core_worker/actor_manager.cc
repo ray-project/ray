@@ -19,7 +19,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/gcs/pb_util.h"
+#include "ray/common/protobuf_utils.h"
 
 namespace ray {
 namespace core {
@@ -160,7 +160,7 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   actor_task_submitter_.AddActorQueueIfNotExists(
       actor_id,
       actor_handle->MaxPendingCalls(),
-      actor_handle->ExecuteOutOfOrder(),
+      actor_handle->AllowOutOfOrderExecution(),
       /*fail_if_actor_unreachable=*/actor_handle->MaxTaskRetries() == 0,
       owned);
   bool inserted = false;
@@ -214,8 +214,8 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                                                 const rpc::ActorTableData &actor_data) {
   const auto &actor_state = rpc::ActorTableData::ActorState_Name(actor_data.state());
   const auto worker_id = WorkerID::FromBinary(actor_data.address().worker_id());
-  const auto raylet_id = NodeID::FromBinary(actor_data.address().raylet_id());
-  RAY_LOG(INFO).WithField(actor_id).WithField(worker_id).WithField(raylet_id)
+  const auto node_id = NodeID::FromBinary(actor_data.address().node_id());
+  RAY_LOG(INFO).WithField(actor_id).WithField(worker_id).WithField(node_id)
       << "received notification on actor, state: " << actor_state
       << ", ip address: " << actor_data.address().ip_address()
       << ", port: " << actor_data.address().port()

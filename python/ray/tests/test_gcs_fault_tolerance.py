@@ -3,32 +3,33 @@ import os
 import signal
 import subprocess
 import sys
-import time
 import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
-from filelock import FileLock
 import pytest
+from filelock import FileLock
 
 import ray
-from ray.autoscaler.v2.sdk import get_cluster_status
-from ray.util.placement_group import placement_group
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 import ray._private.gcs_utils as gcs_utils
+from ray._common.network_utils import parse_address
+from ray._common.test_utils import wait_for_condition
 from ray._private import ray_constants
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.test_utils import (
     convert_actor_state,
     external_redis_test_enabled,
     generate_system_config_map,
-    wait_for_condition,
-    wait_for_pid_to_exit,
-    run_string_as_driver,
     redis_sentinel_replicas,
+    run_string_as_driver,
+    wait_for_pid_to_exit,
 )
-from ray.job_submission import JobSubmissionClient, JobStatus
 from ray._raylet import GcsClient
-from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray.autoscaler.v2.sdk import get_cluster_status
+from ray.job_submission import JobStatus, JobSubmissionClient
+from ray.util.placement_group import placement_group
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.state import list_placement_groups
 
 import psutil
@@ -662,7 +663,7 @@ def test_redis_failureover(redis_replicas, ray_start_cluster_head_with_external_
     import redis
 
     redis_addr = os.environ.get("RAY_REDIS_ADDRESS")
-    ip, port = redis_addr.split(":")
+    ip, port = parse_address(redis_addr)
     redis_cli = redis.Redis(ip, port)
 
     def get_connected_nodes():
@@ -678,7 +679,7 @@ def test_redis_failureover(redis_replicas, ray_start_cluster_head_with_external_
     leader_cli = None
     follower_cli = []
     for addr in nodes:
-        ip, port = addr.split(":")
+        ip, port = parse_address(addr)
         cli = redis.Redis(ip, port)
         meta = nodes[addr]
         flags = meta["flags"].split(",")
@@ -793,7 +794,7 @@ def test_redis_with_sentinel_failureover(
     import redis
 
     redis_addr = os.environ.get("RAY_REDIS_ADDRESS")
-    ip, port = redis_addr.split(":")
+    ip, port = parse_address(redis_addr)
     redis_cli = redis.Redis(ip, port)
     print(redis_cli.info("sentinel"))
     redis_name = redis_cli.info("sentinel")["master0"]["name"]
@@ -973,7 +974,7 @@ def test_redis_data_loss_no_leak(ray_start_regular_with_external_redis):
     redis_addr = os.environ.get("RAY_REDIS_ADDRESS")
     import redis
 
-    ip, port = redis_addr.split(":")
+    ip, port = parse_address(redis_addr)
     cli = redis.Redis(ip, port)
     cli.flushall()
     raylet_proc = ray._private.worker._global_node.all_processes[
@@ -1007,6 +1008,7 @@ def test_redis_logs(external_redis):
         # assert "redis_context.cc" not in result.output
     finally:
         from click.testing import CliRunner
+
         import ray.scripts.scripts as scripts
 
         runner = CliRunner(env={"RAY_USAGE_STATS_PROMPT_ENABLED": "0"})
@@ -1311,6 +1313,68 @@ def test_pg_removal_after_gcs_restarts(
         return all("group" not in k for k in r_keys)
 
     wait_for_condition(verify_pg_resources_cleaned, timeout=30)
+
+
+def test_mark_job_finished_rpc_retry_and_idempotency(shutdown_only, monkeypatch):
+    """
+    Test that MarkJobFinished RPC retries work correctly and are idempotent
+    when network failures occur.
+
+    This test verifies the fix for issue #53645 where duplicate MarkJobFinished
+    calls would crash the GCS due to non-idempotent RemoveJobReference().
+    Uses RPC failure injection to simulate network retry scenarios.
+    """
+    # Inject RPC failures for MarkJobFinished - simulate network failures
+    # Format: method_name=max_failures:request_failure_prob:response_failure_prob
+    # We inject request failures to force retries and test idempotency
+    monkeypatch.setenv(
+        "RAY_testing_rpc_failure",
+        "ray::rpc::JobInfoGcsService.grpc_client.MarkJobFinished=3:50:0",
+    )
+
+    ray.init(num_cpus=1)
+
+    @ray.remote
+    def test_task(i):
+        return i * 2
+
+    # Submit several tasks to ensure job has some work
+    futures = [test_task.remote(i) for i in range(5)]
+    results = ray.get(futures)
+    assert results == [0, 2, 4, 6, 8]
+
+    # Get job ID for verification
+    job_id = ray.get_runtime_context().get_job_id()
+    assert job_id is not None
+
+    # Shutdown Ray - this will trigger MarkJobFinished with potential retries
+    # The RPC failure injection will cause some calls to fail, forcing retries
+    # The fix ensures that multiple calls to RemoveJobReference are handled gracefully
+    ray.shutdown()
+
+    # If we reach here without crashing, the test passes
+    assert True
+
+
+def test_concurrent_mark_job_finished(shutdown_only):
+    """
+    Test that concurrent or rapid successive calls to job finish operations
+    don't cause issues.
+    """
+    ray.init(num_cpus=2)
+
+    @ray.remote
+    def concurrent_task(task_id):
+        _ = sum(i * i for i in range(100))
+        return f"task_{task_id}_completed"
+
+    # Submit multiple tasks
+    futures = [concurrent_task.remote(i) for i in range(10)]
+    results = ray.get(futures)
+
+    # Verify all tasks completed
+    expected = [f"task_{i}_completed" for i in range(10)]
+    assert results == expected
 
 
 if __name__ == "__main__":

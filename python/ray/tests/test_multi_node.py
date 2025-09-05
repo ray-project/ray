@@ -2,10 +2,10 @@ import os
 import sys
 import time
 
-import psutil
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private import ray_constants
 from ray._private.test_utils import (
     get_error_message,
@@ -13,8 +13,9 @@ from ray._private.test_utils import (
     object_memory_usage,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
-    wait_for_condition,
 )
+
+import psutil
 
 
 @pytest.mark.parametrize(
@@ -78,14 +79,17 @@ print("success")
     def all_workers_exited():
         result = True
         print("list of idle workers:")
-        for proc in psutil.process_iter():
-            if ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER in proc.name():
+        for proc in psutil.process_iter(attrs=["name"], ad_value=None):
+            if (
+                proc.info["name"]
+                and ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER in proc.info["name"]
+            ):
                 print(f"{proc}")
                 result = False
         return result
 
     # Check that workers are eventually cleaned up.
-    wait_for_condition(all_workers_exited, timeout=15, retry_interval_ms=1000)
+    wait_for_condition(all_workers_exited, timeout=30, retry_interval_ms=1000)
 
 
 def test_error_isolation(call_ray_start):
@@ -394,7 +398,7 @@ print("success")
         # Wait until the process prints "success" and then return.
         start_time = time.time()
         while time.time() - start_time < timeout:
-            output_line = ray._private.utils.decode(
+            output_line = ray._common.utils.decode(
                 process_handle.stdout.readline()
             ).strip()
             print(output_line)

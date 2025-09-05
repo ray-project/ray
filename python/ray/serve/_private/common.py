@@ -14,6 +14,7 @@ from ray.serve.generated.serve_pb2 import (
     DeploymentStatusTrigger as DeploymentStatusTriggerProto,
 )
 from ray.serve.grpc_util import RayServegRPCContext
+from ray.util.annotations import PublicAPI
 
 REPLICA_ID_FULL_ID_STR_PREFIX = "SERVE_REPLICA::"
 
@@ -33,10 +34,16 @@ class DeploymentID:
         return str(self)
 
 
+@PublicAPI(stability="alpha")
 @dataclass(frozen=True)
 class ReplicaID:
+    """A unique identifier for a replica."""
+
     unique_id: str
+    """A unique identifier for the replica within the deployment."""
+
     deployment_id: DeploymentID
+    """The deployment this replica belongs to."""
 
     def to_full_id_str(self) -> str:
         s = f"{self.deployment_id.name}#{self.unique_id}"
@@ -118,6 +125,8 @@ class DeploymentStatus(str, Enum):
 
 
 class DeploymentStatusTrigger(str, Enum):
+    """Explains how a deployment reached its current DeploymentStatus."""
+
     UNSPECIFIED = "UNSPECIFIED"
     CONFIG_UPDATE_STARTED = "CONFIG_UPDATE_STARTED"
     CONFIG_UPDATE_COMPLETED = "CONFIG_UPDATE_COMPLETED"
@@ -136,6 +145,9 @@ class DeploymentStatusInternalTrigger(str, Enum):
     CONFIG_UPDATE = "CONFIG_UPDATE"
     AUTOSCALE_UP = "AUTOSCALE_UP"
     AUTOSCALE_DOWN = "AUTOSCALE_DOWN"
+    # MANUALLY_INCREASE_NUM_REPLICAS and MANUALLY_DECREASE_NUM_REPLICAS are used
+    # instead of CONFIG_UPDATE when the config update only scales
+    # the number of replicas.
     MANUALLY_INCREASE_NUM_REPLICAS = "MANUALLY_INCREASE_NUM_REPLICAS"
     MANUALLY_DECREASE_NUM_REPLICAS = "MANUALLY_DECREASE_NUM_REPLICAS"
     REPLICA_STARTUP_FAILED = "REPLICA_STARTUP_FAILED"
@@ -222,6 +234,7 @@ class DeploymentStatusInfo:
 
         Args:
             trigger: An internal trigger that determines the state
+                transition. This is the new incoming trigger causing the
                 transition.
             message: The message to set in status info.
 
@@ -303,8 +316,21 @@ class DeploymentStatusInfo:
                 )
 
         elif self.status in {DeploymentStatus.UPSCALING, DeploymentStatus.DOWNSCALING}:
+            # Failures occurred while upscaling/downscaling
+            if trigger == DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.UNHEALTHY,
+                    status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
+                    message=message,
+                )
+            elif trigger == DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.UNHEALTHY,
+                    status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
+                    message=message,
+                )
             # Deployment transitions to healthy
-            if trigger == DeploymentStatusInternalTrigger.HEALTHY:
+            elif trigger == DeploymentStatusInternalTrigger.HEALTHY:
                 return self._updated_copy(
                     status=DeploymentStatus.HEALTHY,
                     status_trigger=DeploymentStatusTrigger.UPSCALE_COMPLETED
@@ -321,45 +347,58 @@ class DeploymentStatusInfo:
                     message=message,
                 )
 
-            # Upscale replicas before previous upscaling/downscaling has finished
-            elif (
-                self.status_trigger == DeploymentStatusTrigger.AUTOSCALING
-                and trigger == DeploymentStatusInternalTrigger.AUTOSCALE_UP
-            ) or (
-                self.status_trigger == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
-                and trigger
-                == DeploymentStatusInternalTrigger.MANUALLY_INCREASE_NUM_REPLICAS
-            ):
-                return self._updated_copy(
-                    status=DeploymentStatus.UPSCALING, message=message
-                )
+            elif self.status_trigger == DeploymentStatusTrigger.AUTOSCALING:
+                # Upscale replicas before previous autoscaling has finished
+                if trigger == DeploymentStatusInternalTrigger.AUTOSCALE_UP:
+                    return self._updated_copy(
+                        status=DeploymentStatus.UPSCALING,
+                        message=message,
+                    )
+                # Downscale replicas before previous autoscaling has finished
+                elif trigger == DeploymentStatusInternalTrigger.AUTOSCALE_DOWN:
+                    return self._updated_copy(
+                        status=DeploymentStatus.DOWNSCALING,
+                        message=message,
+                    )
+                # Manually upscale replicas with config update before previous autoscaling has finished
+                elif (
+                    trigger
+                    == DeploymentStatusInternalTrigger.MANUALLY_INCREASE_NUM_REPLICAS
+                ):
+                    return self._updated_copy(
+                        status=DeploymentStatus.UPSCALING,
+                        status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+                        message=message,
+                    )
+                # Manually downscale replicas with config update before previous autoscaling has finished
+                elif (
+                    trigger
+                    == DeploymentStatusInternalTrigger.MANUALLY_DECREASE_NUM_REPLICAS
+                ):
+                    return self._updated_copy(
+                        status=DeploymentStatus.DOWNSCALING,
+                        status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+                        message=message,
+                    )
 
-            # Downscale replicas before previous upscaling/downscaling has finished
-            elif (
-                self.status_trigger == DeploymentStatusTrigger.AUTOSCALING
-                and trigger == DeploymentStatusInternalTrigger.AUTOSCALE_DOWN
-            ) or (
-                self.status_trigger == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
-                and trigger
-                == DeploymentStatusInternalTrigger.MANUALLY_DECREASE_NUM_REPLICAS
-            ):
-                return self._updated_copy(
-                    status=DeploymentStatus.DOWNSCALING, message=message
-                )
+            elif self.status_trigger == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED:
+                # Upscale replicas before previous config update has finished
+                if (
+                    trigger
+                    == DeploymentStatusInternalTrigger.MANUALLY_INCREASE_NUM_REPLICAS
+                ):
+                    return self._updated_copy(
+                        status=DeploymentStatus.UPSCALING, message=message
+                    )
 
-            # Failures occurred while upscaling/downscaling
-            elif trigger == DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED:
-                return self._updated_copy(
-                    status=DeploymentStatus.UNHEALTHY,
-                    status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
-                    message=message,
-                )
-            elif trigger == DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED:
-                return self._updated_copy(
-                    status=DeploymentStatus.UNHEALTHY,
-                    status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
-                    message=message,
-                )
+                # Downscale replicas before previous config update has finished
+                elif (
+                    trigger
+                    == DeploymentStatusInternalTrigger.MANUALLY_DECREASE_NUM_REPLICAS
+                ):
+                    return self._updated_copy(
+                        status=DeploymentStatus.DOWNSCALING, message=message
+                    )
 
         elif self.status == DeploymentStatus.HEALTHY:
             # Deployment remains healthy
@@ -511,6 +550,7 @@ class RunningReplicaInfo:
     max_ongoing_requests: int
     is_cross_language: bool = False
     multiplexed_model_ids: List[str] = field(default_factory=list)
+    routing_stats: Dict[str, Any] = field(default_factory=dict)
     port: Optional[int] = None
 
     def __post_init__(self):
@@ -529,6 +569,7 @@ class RunningReplicaInfo:
                     str(self.max_ongoing_requests),
                     str(self.is_cross_language),
                     str(self.multiplexed_model_ids),
+                    str(self.routing_stats),
                 ]
             )
         )
@@ -564,9 +605,16 @@ class ServeComponentType(str, Enum):
 
 
 @dataclass
-class MultiplexedReplicaInfo:
+class RequestRoutingInfo:
+    """Information about the request routing.
+
+    It includes deployment name (from ReplicaID), replica tag (from ReplicaID),
+    multiplex model ids, and routing stats.
+    """
+
     replica_id: ReplicaID
-    model_ids: List[str]
+    multiplexed_model_ids: Optional[List[str]] = None
+    routing_stats: Optional[Dict[str, Any]] = None
 
 
 @dataclass
@@ -612,6 +660,8 @@ class RequestMetadata:
 
     # If this request expects a streaming response.
     is_streaming: bool = False
+
+    _http_method: str = ""
 
     # The protocol to serve this request
     _request_protocol: RequestProtocol = RequestProtocol.UNDEFINED
@@ -696,3 +746,11 @@ class CreatePlacementGroupRequest:
     target_node_id: str
     name: str
     runtime_env: Optional[str] = None
+
+
+# This error is used to raise when a by-value DeploymentResponse is converted to an
+# ObjectRef.
+OBJ_REF_NOT_SUPPORTED_ERROR = RuntimeError(
+    "Converting by-value DeploymentResponses to ObjectRefs is not supported. "
+    "Use handle.options(_by_reference=True) to enable it."
+)

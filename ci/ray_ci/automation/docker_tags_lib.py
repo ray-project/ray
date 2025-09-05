@@ -1,28 +1,28 @@
-import subprocess
-import re
-from datetime import datetime
-from typing import List, Optional, Callable, Tuple
 import os
-import sys
-from dateutil import parser
 import platform
+import re
+import subprocess
+import sys
+from datetime import datetime
+from typing import Callable, List, Optional, Tuple
 
-import docker
 import requests
 import runfiles
+from dateutil import parser
 
-from ci.ray_ci.utils import logger
+import docker
 from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VERSION
 from ci.ray_ci.docker_container import (
-    GPU_PLATFORM,
-    PYTHON_VERSIONS_RAY,
-    PYTHON_VERSIONS_RAY_ML,
-    PLATFORMS_RAY,
-    PLATFORMS_RAY_ML,
     ARCHITECTURES_RAY,
     ARCHITECTURES_RAY_ML,
+    GPU_PLATFORM,
+    PLATFORMS_RAY,
+    PLATFORMS_RAY_ML,
+    PYTHON_VERSIONS_RAY,
+    PYTHON_VERSIONS_RAY_ML,
     RayType,
 )
+from ci.ray_ci.utils import logger
 
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 SHA_LENGTH = 6
@@ -626,6 +626,7 @@ def _write_to_file(file_path: str, content: List[str]) -> None:
 
 
 def generate_index(index_name: str, tags: List[str]) -> bool:
+    print(f"Generating index {index_name} with tags {tags}")
     # Make sure tag is an image and not an index
     for tag in tags:
         return_code, output = _call_crane_manifest(tag)

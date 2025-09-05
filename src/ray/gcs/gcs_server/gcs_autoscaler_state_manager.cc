@@ -19,10 +19,9 @@
 #include <utility>
 #include <vector>
 
-#include "ray/gcs/gcs_server/gcs_actor_manager.h"
-#include "ray/gcs/gcs_server/gcs_node_manager.h"
-#include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
-#include "ray/gcs/pb_util.h"
+#include "ray/common/protobuf_utils.h"
+#include "ray/util/string_utils.h"
+#include "ray/util/time.h"
 
 namespace ray {
 namespace gcs {
@@ -32,10 +31,10 @@ GcsAutoscalerStateManager::GcsAutoscalerStateManager(
     GcsNodeManager &gcs_node_manager,
     GcsActorManager &gcs_actor_manager,
     const GcsPlacementGroupManager &gcs_placement_group_manager,
-    rpc::NodeManagerClientPool &raylet_client_pool,
+    rpc::RayletClientPool &raylet_client_pool,
     InternalKVInterface &kv,
     instrumented_io_context &io_context,
-    GcsPublisher *gcs_publisher)
+    pubsub::GcsPublisher *gcs_publisher)
     : session_name_(std::move(session_name)),
       gcs_node_manager_(gcs_node_manager),
       gcs_actor_manager_(gcs_actor_manager),
@@ -91,10 +90,9 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
 
       if (gcs_publisher_ != nullptr) {
         std::string error_type = "infeasible_resource_requests";
-        auto error_data_ptr = gcs::CreateErrorTableData(
+        auto error_data = CreateErrorTableData(
             error_type, error_message, absl::FromUnixMillis(current_time_ms()));
-        RAY_CHECK_OK(
-            gcs_publisher_->PublishError(session_name_, *error_data_ptr, nullptr));
+        gcs_publisher_->PublishError(session_name_, std::move(error_data));
       }
     }
   };
@@ -218,6 +216,10 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
     // Add the strategy as detail info for the gang resource request.
     gang_resource_req->set_details(FormatPlacementGroupDetails(pg_data));
 
+    // Create a BundleSelector. Only one BundleSelector will be created for now.
+    // Multiple will be added when we implement the fallback mechanism.
+    auto *bundle_selector = gang_resource_req->add_bundle_selectors();
+
     // Copy the PG's bundles to the request.
     for (auto &&bundle : std::move(*pg_data.mutable_bundles())) {
       if (!NodeID::FromBinary(bundle.node_id()).IsNil()) {
@@ -229,14 +231,28 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
         // to node crashed.
         continue;
       }
-      // Add the resources.
-      auto resource_req = gang_resource_req->add_requests();
-      *resource_req->mutable_resources_bundle() =
-          std::move(*bundle.mutable_unit_resources());
+
+      const auto &unit_resources = bundle.unit_resources();
+
+      // Add the resources. This field will be removed after migrating to
+      // use the BundleSelector for GangResourceRequests.
+      auto legacy_resource_req = gang_resource_req->add_requests();
+      *legacy_resource_req->mutable_resources_bundle() = unit_resources;
+
+      // Add ResourceRequest for this bundle.
+      auto *bundle_resource_req = bundle_selector->add_resource_requests();
+      *bundle_resource_req->mutable_resources_bundle() = unit_resources;
+
+      // Parse label selector map into LabelSelector proto in ResourceRequest
+      if (!bundle.label_selector().empty()) {
+        ray::LabelSelector selector(bundle.label_selector());
+        *bundle_resource_req->add_label_selectors() = selector.ToProto();
+      }
 
       // Add the placement constraint.
       if (pg_constraint.has_value()) {
-        resource_req->add_placement_constraints()->CopyFrom(pg_constraint.value());
+        legacy_resource_req->add_placement_constraints()->CopyFrom(pg_constraint.value());
+        bundle_resource_req->add_placement_constraints()->CopyFrom(pg_constraint.value());
       }
     }
   }
@@ -262,6 +278,8 @@ void GcsAutoscalerStateManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
   // autoscaler reports). Temporary underreporting when node is added is fine.
   (*node_info->second.second.mutable_resources_total()) = node.resources_total();
   (*node_info->second.second.mutable_resources_available()) = node.resources_total();
+  // Populate node labels.
+  (*node_info->second.second.mutable_labels()) = node.labels();
 }
 
 void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(rpc::ResourcesData data) {
@@ -280,11 +298,10 @@ void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(rpc::ResourcesData da
   iter->second.first = absl::Now();
 }
 
-absl::flat_hash_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
+absl::flat_hash_map<ResourceDemandKey, rpc::ResourceDemand>
 GcsAutoscalerStateManager::GetAggregatedResourceLoad() const {
   RAY_CHECK(thread_checker_.IsOnSameThread());
-  absl::flat_hash_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
-      aggregate_load;
+  absl::flat_hash_map<ResourceDemandKey, rpc::ResourceDemand> aggregate_load;
   for (const auto &info : node_resource_info_) {
     gcs::FillAggregateLoad(info.second.second, &aggregate_load);
   }
@@ -304,7 +321,9 @@ void GcsAutoscalerStateManager::GetPendingResourceRequests(
     rpc::autoscaler::ClusterResourceState *state) {
   RAY_CHECK(thread_checker_.IsOnSameThread());
   auto aggregate_load = GetAggregatedResourceLoad();
-  for (const auto &[shape, demand] : aggregate_load) {
+  for (auto &[key, demand] : aggregate_load) {
+    const auto &shape = key.shape;
+
     auto num_pending = demand.num_infeasible_requests_queued() + demand.backlog_size() +
                        demand.num_ready_requests_queued();
     if (num_pending > 0) {
@@ -312,6 +331,11 @@ void GcsAutoscalerStateManager::GetPendingResourceRequests(
       pending_req->set_count(num_pending);
       auto req = pending_req->mutable_request();
       req->mutable_resources_bundle()->insert(shape.begin(), shape.end());
+
+      // Add label selectors to ResourceRequest
+      for (auto &selector : key.label_selectors) {
+        *req->add_label_selectors() = std::move(selector);
+      }
     }
   }
 }
@@ -385,11 +409,18 @@ void GcsAutoscalerStateManager::GetNodeStates(
     node_state_proto->mutable_total_resources()->insert(total.begin(), total.end());
 
     // Add dynamic PG labels.
+    // DEPRECATED: Dynamic labels feature is deprecated. Do not introduce new usages.
+    // This assignment is kept only for backward compatibility in the autoscaler, where
+    // the placement group ID is needed to enforce antiaffinity constraints for
+    // strict-spread placement group scheduling.
     const auto &pgs_on_node = gcs_placement_group_manager_.GetBundlesOnNode(node_id);
     for (const auto &[pg_id, _bundle_indices] : pgs_on_node) {
       node_state_proto->mutable_dynamic_labels()->insert(
           {FormatPlacementGroupLabelName(pg_id.Hex()), ""});
     }
+    // Add Ray node labels.
+    const auto &node_labels = gcs_node_info.labels();
+    node_state_proto->mutable_labels()->insert(node_labels.begin(), node_labels.end());
   };
 
   const auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
@@ -445,17 +476,13 @@ void GcsAutoscalerStateManager::HandleDrainNode(
     return;
   }
 
-  if (RayConfig::instance().enable_reap_actor_death()) {
-    gcs_actor_manager_.SetPreemptedAndPublish(node_id);
-  }
+  gcs_actor_manager_.SetPreemptedAndPublish(node_id);
 
   auto node = std::move(maybe_node.value());
-  rpc::Address raylet_address;
-  raylet_address.set_raylet_id(node->node_id());
-  raylet_address.set_ip_address(node->node_manager_address());
-  raylet_address.set_port(node->node_manager_port());
-
-  const auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(raylet_address);
+  auto raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
+      node_id, node->node_manager_address(), node->node_manager_port());
+  const auto raylet_client =
+      raylet_client_pool_.GetOrConnectByAddress(std::move(raylet_address));
   raylet_client->DrainRaylet(
       request.reason(),
       request.reason_message(),
@@ -484,14 +511,35 @@ std::string GcsAutoscalerStateManager::DebugString() const {
          << last_cluster_resource_state_version_ << "\n- pending demands:\n";
 
   auto aggregate_load = GetAggregatedResourceLoad();
-  for (const auto &[shape, demand] : aggregate_load) {
+  for (const auto &[key, demand] : aggregate_load) {
     auto num_pending = demand.num_infeasible_requests_queued() + demand.backlog_size() +
                        demand.num_ready_requests_queued();
 
     stream << "\t{";
     if (num_pending > 0) {
-      for (const auto &[resource, quantity] : shape) {
-        stream << resource << ": " << quantity << ", ";
+      for (const auto &entry : key.shape) {
+        stream << entry.first << ": " << entry.second << ", ";
+      }
+      if (!key.label_selectors.empty()) {
+        stream << "label_selectors: [";
+        for (const auto &selector : key.label_selectors) {
+          stream << "{";
+          for (const auto &constraint : selector.label_constraints()) {
+            stream << constraint.label_key() << " "
+                   << (constraint.operator_() ==
+                               rpc::LabelSelectorOperator::LABEL_OPERATOR_IN
+                           ? "in"
+                           : "!in")
+                   << " [";
+            for (const auto &val : constraint.label_values()) {
+              stream << val << ",";
+            }
+            stream << "]"
+                   << " ";
+          }
+          stream << "}, ";
+        }
+        stream << "]";
       }
     }
     stream << "} * " << num_pending << "\n";
@@ -560,29 +608,28 @@ void GcsAutoscalerStateManager::CancelInfeasibleRequests() const {
   for (const auto &node_infeasible_request_pair : per_node_infeasible_requests) {
     const auto &node_id = node_infeasible_request_pair.first;
     const auto &infeasible_shapes = node_infeasible_request_pair.second;
-    const auto raylet_client = raylet_client_pool_.GetOrConnectByID(node_id);
+    const auto raylet_client = raylet_client_pool_.GetByID(node_id);
 
-    if (raylet_client.has_value()) {
+    if (raylet_client) {
       std::string resource_shapes_str =
           ray::VectorToString(infeasible_shapes, ray::DebugString<std::string, double>);
 
       RAY_LOG(WARNING) << "Canceling infeasible requests on node " << node_id
                        << " with infeasible_shapes=" << resource_shapes_str;
 
-      (*raylet_client)
-          ->CancelTasksWithResourceShapes(
-              infeasible_shapes,
-              [node_id](const Status &status,
-                        const rpc::CancelTasksWithResourceShapesReply &) {
-                if (status.ok()) {
-                  RAY_LOG(INFO) << "Infeasible tasks cancelled on node " << node_id;
-                } else {
-                  // Autoscaler will eventually retry the infeasible task cancellation
-                  RAY_LOG(WARNING)
-                      << "Failed to cancel infeasible requests on node " << node_id
-                      << ". RPC failed with status: " << status.ToString();
-                }
-              });
+      raylet_client->CancelLeasesWithResourceShapes(
+          infeasible_shapes,
+          [node_id](const Status &status,
+                    const rpc::CancelLeasesWithResourceShapesReply &) {
+            if (status.ok()) {
+              RAY_LOG(INFO) << "Infeasible tasks cancelled on node " << node_id;
+            } else {
+              // Autoscaler will eventually retry the infeasible task cancellation
+              RAY_LOG(WARNING) << "Failed to cancel infeasible requests on node "
+                               << node_id
+                               << ". RPC failed with status: " << status.ToString();
+            }
+          });
     } else {
       RAY_LOG(WARNING) << "Failed to cancel infeasible requests on node " << node_id
                        << ". Raylet client to the node is not available.";

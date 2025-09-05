@@ -9,6 +9,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -23,16 +24,33 @@ class RequestRoutingContext:
     should_backoff: bool = False
 
 
+@PublicAPI(stability="alpha")
 @dataclass
 class PendingRequest:
+    """A request that is pending execution by a replica."""
+
     args: List[Any]
+    """Positional arguments for the request."""
+
     kwargs: Dict[Any, Any]
+    """Keyword arguments for the request."""
+
     metadata: RequestMetadata
+    """Metadata for the request, including request ID and whether it's streaming."""
+
     created_at: float = field(default_factory=time.time)
+    """Timestamp when the request was created."""
+
     future: asyncio.Future = field(default_factory=lambda: asyncio.Future())
+    """An asyncio Future that will be set when the request is routed."""
+
     routing_context: RequestRoutingContext = field(
         default_factory=RequestRoutingContext
     )
+    """Context for request routing, used to track routing attempts and backoff."""
+
+    resolved: bool = False
+    """Whether the arguments have been resolved."""
 
     def reset_future(self):
         """Reset the `asyncio.Future`, must be called if this request is re-used."""

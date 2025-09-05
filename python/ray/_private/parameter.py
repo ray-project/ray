@@ -4,7 +4,7 @@ from typing import Dict, List, Optional
 
 import ray._private.ray_constants as ray_constants
 from ray._private.resource_isolation_config import ResourceIsolationConfig
-from ray._private.utils import check_ray_client_dependencies_installed
+from ray._private.utils import get_ray_client_dependency_error
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +36,6 @@ class RayParams:
         node_manager_port: The port to use for the node manager.
         gcs_server_port: The port to use for the GCS server.
         node_ip_address: The IP address of the node that we are on.
-        raylet_ip_address: The IP address of the raylet that this node
-            connects to.
         min_worker_port: The lowest port number that workers will bind
             on. If not set or set to 0, random ports will be chosen.
         max_worker_port: The highest port number that workers will bind
@@ -48,10 +46,6 @@ class RayParams:
         ray_client_server_port: The port number the ray client server
             will bind on. If not set, the ray client server will not
             be started.
-        object_ref_seed: Used to seed the deterministic generation of
-            object refs. The same value can be used across multiple runs of the
-            same job in order to generate the object refs in a consistent
-            manner. However, the same ID should not be used for different jobs.
         redirect_output: True if stdout and stderr for non-worker
             processes should be redirected to files and false otherwise.
         external_addresses: The address of external Redis server to
@@ -98,9 +92,6 @@ class RayParams:
             used by the raylet process.
         temp_dir: If provided, it will specify the root temporary
             directory for the Ray process. Must be an absolute path.
-        storage: Specify a URI for persistent cluster-wide storage. This storage path
-            must be accessible by all nodes of the cluster, otherwise an error will be
-            raised.
         runtime_env_dir_name: If provided, specifies the directory that
             will be created in the session dir to hold runtime_env files.
         include_log_monitor: If True, then start a log monitor to
@@ -121,7 +112,7 @@ class RayParams:
             worker available externally to the node it is running on. This will
             bind on 0.0.0.0 instead of localhost.
         env_vars: Override environment variables for the raylet.
-        session_name: The name of the session of the ray cluster.
+        session_name: The current Ray session name.
         webui: The url of the UI.
         cluster_id: The cluster ID in hex string.
         resource_isolation_config: settings for cgroupv2 based isolation of ray
@@ -145,12 +136,10 @@ class RayParams:
         gcs_server_port: Optional[int] = None,
         node_ip_address: Optional[str] = None,
         node_name: Optional[str] = None,
-        raylet_ip_address: Optional[str] = None,
         min_worker_port: Optional[int] = None,
         max_worker_port: Optional[int] = None,
         worker_port_list: Optional[List[int]] = None,
         ray_client_server_port: Optional[int] = None,
-        object_ref_seed: Optional[int] = None,
         driver_mode=None,
         redirect_output: Optional[bool] = None,
         external_addresses: Optional[List[str]] = None,
@@ -173,7 +162,6 @@ class RayParams:
         plasma_store_socket_name: Optional[str] = None,
         raylet_socket_name: Optional[str] = None,
         temp_dir: Optional[str] = None,
-        storage: Optional[str] = None,
         runtime_env_dir_name: Optional[str] = None,
         include_log_monitor: Optional[str] = None,
         autoscaling_config: Optional[str] = None,
@@ -205,7 +193,6 @@ class RayParams:
         self.gcs_server_port = gcs_server_port
         self.node_ip_address = node_ip_address
         self.node_name = node_name
-        self.raylet_ip_address = raylet_ip_address
         self.min_worker_port = min_worker_port
         self.max_worker_port = max_worker_port
         self.worker_port_list = worker_port_list
@@ -230,9 +217,6 @@ class RayParams:
         self.plasma_store_socket_name = plasma_store_socket_name
         self.raylet_socket_name = raylet_socket_name
         self.temp_dir = temp_dir
-        self.storage = storage or os.environ.get(
-            ray_constants.RAY_STORAGE_ENVIRONMENT_VARIABLE
-        )
         self.runtime_env_dir_name = (
             runtime_env_dir_name or ray_constants.DEFAULT_RUNTIME_ENV_DIR_NAME
         )
@@ -242,7 +226,6 @@ class RayParams:
         self.metrics_export_port = metrics_export_port
         self.tracing_startup_hook = tracing_startup_hook
         self.no_monitor = no_monitor
-        self.object_ref_seed = object_ref_seed
         self.ray_debugger_external = ray_debugger_external
         self.env_vars = env_vars
         self.session_name = session_name
@@ -404,7 +387,7 @@ class RayParams:
                         "max_worker_port must be higher than min_worker_port."
                     )
         if self.ray_client_server_port is not None:
-            if not check_ray_client_dependencies_installed():
+            if get_ray_client_dependency_error() is not None:
                 raise ValueError(
                     "Ray Client requires pip package `ray[client]`. "
                     "If you installed the minimal Ray (e.g. `pip install ray`), "

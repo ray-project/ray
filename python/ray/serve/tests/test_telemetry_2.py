@@ -1,14 +1,34 @@
 import sys
 import time
+from typing import List, Optional
 
 import pytest
 
 from ray import serve
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
+from ray.serve._private.request_router.common import (
+    PendingRequest,
+)
+from ray.serve._private.request_router.replica_wrapper import (
+    RunningReplica,
+)
+from ray.serve._private.request_router.request_router import (
+    RequestRouter,
+)
 from ray.serve._private.test_utils import check_apps_running, check_telemetry
 from ray.serve._private.usage import ServeUsageTag
+from ray.serve.config import RequestRouterConfig
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeDeploySchema
+
+
+class CustomRequestRouter(RequestRouter):
+    async def choose_replicas(
+        self,
+        candidate_replicas: List[RunningReplica],
+        pending_request: Optional[PendingRequest] = None,
+    ) -> List[List[RunningReplica]]:
+        return [candidate_replicas]
 
 
 @pytest.mark.parametrize("location", ["driver", "deployment", None])
@@ -131,6 +151,30 @@ def test_num_replicas_auto(manage_ray_with_telemetry, mode):
 
     wait_for_condition(
         check_telemetry, tag=ServeUsageTag.AUTO_NUM_REPLICAS_USED, expected="1"
+    )
+
+
+def test_custom_request_router_telemetry(manage_ray_with_telemetry):
+    """Check that the custom request router telemetry is recorded."""
+
+    check_telemetry(ServeUsageTag.CUSTOM_REQUEST_ROUTER_USED, expected=None)
+
+    @serve.deployment(
+        request_router_config=RequestRouterConfig(
+            request_router_class=CustomRequestRouter,
+        ),
+    )
+    class CustomRequestRouterApp:
+        async def __call__(self) -> str:
+            return "ok"
+
+    handle = serve.run(CustomRequestRouterApp.bind())
+    result = handle.remote().result()
+
+    assert result == "ok"
+
+    wait_for_condition(
+        check_telemetry, tag=ServeUsageTag.CUSTOM_REQUEST_ROUTER_USED, expected="1"
     )
 
 

@@ -37,11 +37,11 @@ namespace std {
 template <>
 struct hash<ray::rpc::Address> {
   size_t operator()(const ray::rpc::Address &addr) const {
-    size_t hash = std::hash<int32_t>()(addr.port());
-    hash ^= std::hash<std::string>()(addr.ip_address());
-    hash ^= std::hash<std::string>()(addr.worker_id());
-    hash ^= std::hash<std::string>()(addr.raylet_id());
-    return hash;
+    size_t hash_value = std::hash<int32_t>()(addr.port());
+    hash_value ^= std::hash<std::string>()(addr.ip_address());
+    hash_value ^= std::hash<std::string>()(addr.worker_id());
+    hash_value ^= std::hash<std::string>()(addr.node_id());
+    return hash_value;
   }
 };
 }  // namespace std
@@ -109,7 +109,7 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
       const ClientCallback<ActorCallArgWaitCompleteReply> &callback) {}
 
   /// Ask the owner of an object about the object's current status.
-  virtual void GetObjectStatus(const GetObjectStatusRequest &request,
+  virtual void GetObjectStatus(GetObjectStatusRequest &&request,
                                const ClientCallback<GetObjectStatusReply> &callback) {}
 
   /// Ask the actor's owner to reply when the actor has no references.
@@ -128,7 +128,7 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
       const ClientCallback<PubsubCommandBatchReply> &callback) {}
 
   virtual void UpdateObjectLocationBatch(
-      const UpdateObjectLocationBatchRequest &request,
+      UpdateObjectLocationBatchRequest &&request,
       const ClientCallback<UpdateObjectLocationBatchReply> &callback) {}
 
   virtual void GetObjectLocationsOwner(
@@ -136,7 +136,7 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
       const ClientCallback<GetObjectLocationsOwnerReply> &callback) {}
 
   virtual void ReportGeneratorItemReturns(
-      const ReportGeneratorItemReturnsRequest &request,
+      ReportGeneratorItemReturnsRequest &&request,
       const ClientCallback<ReportGeneratorItemReturnsReply> &callback) {}
 
   /// Tell this actor to exit immediately.
@@ -189,6 +189,11 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
       const RayletNotifyGCSRestartRequest &request,
       const ClientCallback<RayletNotifyGCSRestartReply> &callback) {}
 
+  virtual void FreeActorObject(const FreeActorObjectRequest &request,
+                               const ClientCallback<FreeActorObjectReply> &callback) {}
+
+  virtual std::string DebugString() const { return ""; }
+
   virtual ~CoreWorkerClientInterface() = default;
 };
 
@@ -200,6 +205,9 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   ///
   /// \param[in] address Address of the worker server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
+  /// \param[in] core_worker_unavailable_timeout_callback The callback function that is
+  /// used by the retryable grpc to remove unresponsive core worker connections from the
+  /// pool once its been unavailable for more than server_unavailable_timeout_seconds.
   CoreWorkerClient(rpc::Address address,
                    ClientCallManager &client_call_manager,
                    std::function<void()> core_worker_unavailable_timeout_callback);
@@ -217,11 +225,12 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                          /*method_timeout_ms*/ -1,
                          override)
 
-  VOID_RPC_CLIENT_METHOD(CoreWorkerService,
-                         GetObjectStatus,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1,
-                         override)
+  VOID_RETRYABLE_RPC_CLIENT_METHOD(retryable_grpc_client_,
+                                   CoreWorkerService,
+                                   GetObjectStatus,
+                                   grpc_client_,
+                                   /*method_timeout_ms*/ -1,
+                                   override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
                          KillActor,
@@ -342,6 +351,12 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                          /*method_timeout_ms*/ -1,
                          override)
 
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService,
+                         FreeActorObject,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1,
+                         override)
+
   void PushActorTask(std::unique_ptr<PushTaskRequest> request,
                      bool skip_queue,
                      ClientCallback<PushTaskReply> &&callback) override;
@@ -355,6 +370,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
     INVOKE_RPC_CALL(
         CoreWorkerService, NumPendingTasks, *request, callback, grpc_client_, timeout_ms);
   }
+
+  std::string DebugString() const override { return ""; }
 
   /// Send as many pending tasks as possible. This method is thread-safe.
   ///

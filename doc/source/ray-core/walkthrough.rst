@@ -11,6 +11,7 @@ What's Ray Core?
     User Guides <user-guide>
     Examples <examples/overview>
     api/index
+    Internals <internals>
 
 
 Ray Core is a powerful distributed computing framework that provides a small set of essential primitives (tasks, actors, and objects) for building and scaling distributed applications.
@@ -37,7 +38,7 @@ The first step is to import and initialize Ray:
 
 .. note::
 
-  In recent versions of Ray (>=1.5), ``ray.init()`` is automatically called on the first use of a Ray remote API.
+  Unless you explicitly call ``ray.init()``, the first use of a Ray remote API call will implicitly call `ray.init()` with no arguments.
 
 Running a Task
 --------------
@@ -58,7 +59,7 @@ Here's a simple example:
 Calling an Actor
 ----------------
 
-While tasks are stateless, Ray actors allow you to create stateful workers that maintain their internal state between method calls. 
+While tasks are stateless, Ray actors allow you to create stateful workers that maintain their internal state between method calls.
 When you instantiate a Ray actor:
 
 1. Ray starts a dedicated worker process somewhere in your cluster

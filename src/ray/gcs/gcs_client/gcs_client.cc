@@ -26,6 +26,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/pubsub/subscriber.h"
+#include "ray/util/network_util.h"
 
 namespace ray {
 namespace gcs {
@@ -36,8 +37,6 @@ class GcsSubscriberClient final : public pubsub::SubscriberClientInterface {
  public:
   explicit GcsSubscriberClient(const std::shared_ptr<rpc::GcsRpcClient> &rpc_client)
       : rpc_client_(rpc_client) {}
-
-  ~GcsSubscriberClient() final = default;
 
   void PubsubLongPolling(
       const rpc::PubsubLongPollingRequest &request,
@@ -59,7 +58,8 @@ void GcsSubscriberClient::PubsubLongPolling(
   req.set_max_processed_sequence_id(request.max_processed_sequence_id());
   req.set_publisher_id(request.publisher_id());
   rpc_client_->GcsSubscriberPoll(
-      req, [callback](const Status &status, rpc::GcsSubscriberPollReply &&poll_reply) {
+      std::move(req),
+      [callback](const Status &status, rpc::GcsSubscriberPollReply &&poll_reply) {
         rpc::PubsubLongPollingReply reply;
         reply.mutable_pub_messages()->Swap(poll_reply.mutable_pub_messages());
         *reply.mutable_publisher_id() = std::move(*poll_reply.mutable_publisher_id());
@@ -74,7 +74,7 @@ void GcsSubscriberClient::PubsubCommandBatch(
   req.set_subscriber_id(request.subscriber_id());
   *req.mutable_commands() = request.commands();
   rpc_client_->GcsSubscriberCommandBatch(
-      req,
+      std::move(req),
       [callback](const Status &status,
                  rpc::GcsSubscriberCommandBatchReply &&batch_reply) {
         rpc::PubsubCommandBatchReply reply;
@@ -146,7 +146,8 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
       /*callback_service*/ &io_service);
 
   // Init GCS subscriber instance.
-  gcs_subscriber_ = std::make_unique<GcsSubscriber>(gcs_address, std::move(subscriber));
+  gcs_subscriber_ =
+      std::make_unique<pubsub::GcsSubscriber>(gcs_address, std::move(subscriber));
 
   job_accessor_ = std::make_unique<JobInfoAccessor>(this);
   actor_accessor_ = std::make_unique<ActorInfoAccessor>(this);
@@ -161,8 +162,8 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
   autoscaler_state_accessor_ = std::make_unique<AutoscalerStateAccessor>(this);
   publisher_accessor_ = std::make_unique<PublisherAccessor>(this);
 
-  RAY_LOG(DEBUG) << "GcsClient connected " << options_.gcs_address_ << ":"
-                 << options_.gcs_port_;
+  RAY_LOG(DEBUG) << "GcsClient connected "
+                 << BuildAddress(options_.gcs_address_, options_.gcs_port_);
 
   if (options_.should_fetch_cluster_id_) {
     RAY_RETURN_NOT_OK(FetchClusterId(timeout_ms));
@@ -178,7 +179,7 @@ Status GcsClient::FetchClusterId(int64_t timeout_ms) {
   rpc::GetClusterIdReply reply;
   RAY_LOG(DEBUG) << "Cluster ID is nil, getting cluster ID from GCS server.";
 
-  Status s = gcs_rpc_client_->SyncGetClusterId(request, &reply, timeout_ms);
+  Status s = gcs_rpc_client_->SyncGetClusterId(std::move(request), &reply, timeout_ms);
   if (!s.ok()) {
     RAY_LOG(WARNING) << "Failed to get cluster ID from GCS server: " << s;
     gcs_rpc_client_.reset();

@@ -4,9 +4,10 @@
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "# Entity Recognition with LLMs\n",
-    "<a href=\"https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=entity-recognition-with-llms&redirectTo=/v2/template-preview/entity-recognition-with-llms\">\n",
-    "    <img src=\"https://raw.githubusercontent.com/ray-project/ray/c34b74c22a9390aa89baf80815ede59397786d2e/doc/source/_static/img/run-on-anyscale.svg\" alt=\"Run on Anyscale\">\n",
+    "# LLM training and inference\n",
+    "\n",
+    "<a href=\"https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=entity-recognition-with-llms&redirectTo=/v2/template-preview/entity-recognition-with-llms\\\">\n",
+    "<img src=\"https://raw.githubusercontent.com/ray-project/ray/c34b74c22a9390aa89baf80815ede59397786d2e/doc/source/_static/img/run-on-anyscale.svg\" alt=\\\"Run on Anyscale\\\">\n",
     "</a>\n",
     "<br></br>\n",
     "<div align=\"left\">\n",
@@ -1500,7 +1501,9 @@
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "Define an [LLM config](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.llm.LLMConfig.html#ray.serve.llm.LLMConfig) where you can define where the model comes from, it's [autoscaling behavior](https://docs.ray.io/en/latest/serve/autoscaling-guide.html#serve-autoscaling), what hardware to use and [engine arguments](https://docs.vllm.ai/en/stable/serving/engine_args.html)."
+    "Define an [LLM config](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.llm.LLMConfig.html#ray.serve.llm.LLMConfig) where you can define where the model comes from, its [autoscaling behavior](https://docs.ray.io/en/latest/serve/autoscaling-guide.html#serve-autoscaling), what hardware to use and [engine arguments](https://docs.vllm.ai/en/stable/serving/engine_args.html).\n",
+    "\n",
+    "**Note**: If you're using AWS S3, replace `AWS_REGION` in the `runtime_env`'s `env_vars` below with the cloud storage and respective region you saved your model artifacts to. Do the same if using other cloud storage options as well."
    ]
   },
   {
@@ -1519,6 +1522,7 @@
     "        \"dynamic_lora_loading_path\": dynamic_lora_path,\n",
     "        \"max_num_adapters_per_replica\": 16,  # You only have 1.\n",
     "    },\n",
+    "    runtime_env={\"env_vars\": {\"AWS_REGION\": \"us-west-2\"}},\n",
     "    # runtime_env={\"env_vars\": {\"HF_TOKEN\": os.environ.get(\"HF_TOKEN\")}},\n",
     "    deployment_config={\n",
     "        \"autoscaling_config\": {\n",
@@ -1620,7 +1624,7 @@
    "source": [
     "<div class=\"alert alert-info\">\n",
     "\n",
-    "💡 See [more examples](https://docs.ray.io/en/latest/serve/llm/overview.html) and the [API reference](https://docs.ray.io/en/latest/serve/llm/api.html) for advanced guides on topics like structured outputs (like JSON), vision LMs, multi-LoRA on shared base models, using other inference engines (like `sglang`), fast model loading, etc.\n",
+    "💡 See [more examples](https://docs.ray.io/en/latest/serve/llm/serving-llms.html) and the [API reference](https://docs.ray.io/en/latest/serve/llm/api.html) for advanced guides on topics like structured outputs (like JSON), vision LMs, multi-LoRA on shared base models, using other inference engines (like `sglang`), fast model loading, etc.\n",
     "\n",
     "</div>"
    ]

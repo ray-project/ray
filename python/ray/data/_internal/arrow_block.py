@@ -18,6 +18,7 @@ import numpy as np
 from packaging.version import parse as parse_version
 
 from ray._private.arrow_utils import get_pyarrow_version
+from ray._private.ray_constants import env_integer
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import (
     convert_to_pyarrow_array,
@@ -33,11 +34,11 @@ from ray.data.block import (
     BlockColumn,
     BlockColumnAccessor,
     BlockExecStats,
-    BlockMetadata,
+    BlockMetadataWithSchema,
     BlockType,
     U,
 )
-from ray.data.context import DataContext
+from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext
 
 try:
     import pyarrow
@@ -58,16 +59,25 @@ logger = logging.getLogger(__name__)
 _MIN_PYARROW_VERSION_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
 
 
+# Set the max chunk size in bytes for Arrow to Batches conversion in
+# ArrowBlockAccessor.iter_rows(). Default to 4MB, to optimize for image
+# datasets in parquet format.
+ARROW_MAX_CHUNK_SIZE_BYTES = env_integer(
+    "RAY_DATA_ARROW_MAX_CHUNK_SIZE_BYTES",
+    int(DEFAULT_TARGET_MAX_BLOCK_SIZE / 32),
+)
+
+
 # We offload some transformations to polars for performance.
 def get_sort_transform(context: DataContext) -> Callable:
-    if context.use_polars:
+    if context.use_polars or context.use_polars_sort:
         return transform_polars.sort
     else:
         return transform_pyarrow.sort
 
 
 def get_concat_and_sort_transform(context: DataContext) -> Callable:
-    if context.use_polars:
+    if context.use_polars or context.use_polars_sort:
         return transform_polars.concat_and_sort
     else:
         return transform_pyarrow.concat_and_sort
@@ -127,6 +137,9 @@ class ArrowRow(TableRow):
     def __len__(self):
         return self._row.num_columns
 
+    def as_pydict(self) -> Dict[str, Any]:
+        return dict(self.items())
+
 
 class ArrowBlockBuilder(TableBlockBuilder):
     def __init__(self):
@@ -157,6 +170,25 @@ class ArrowBlockBuilder(TableBlockBuilder):
 
     def block_type(self) -> BlockType:
         return BlockType.ARROW
+
+
+def _get_max_chunk_size(
+    table: "pyarrow.Table", max_chunk_size_bytes: int
+) -> Optional[int]:
+    """
+    Calculate the max chunk size in rows for Arrow to Batches conversion in
+    ArrowBlockAccessor.iter_rows().
+    Args:
+        table: The pyarrow table to calculate the max chunk size for.
+        max_chunk_size_bytes: The max chunk size in bytes.
+    Returns:
+        The max chunk size in rows, or None if the table is empty.
+    """
+    if table.nbytes == 0:
+        return None
+    else:
+        avg_row_size = table.nbytes / table.num_rows
+        return max(1, int(max_chunk_size_bytes / avg_row_size))
 
 
 class ArrowBlockAccessor(TableBlockAccessor):
@@ -303,6 +335,19 @@ class ArrowBlockAccessor(TableBlockAccessor):
             r = r.append_column(col_name, col)
         return r
 
+    def upsert_column(
+        self, column_name: str, column_data: BlockColumn
+    ) -> "pyarrow.Table":
+        assert isinstance(
+            column_data, (pyarrow.Array, pyarrow.ChunkedArray)
+        ), f"Expected either a pyarrow.Array or pyarrow.ChunkedArray, got: {type(column_data)}"
+
+        column_idx = self._table.schema.get_field_index(column_name)
+        if column_idx == -1:
+            return self._table.append_column(column_name, column_data)
+        else:
+            return self._table.set_column(column_idx, column_name, column_data)
+
     @staticmethod
     def builder() -> ArrowBlockBuilder:
         return ArrowBlockBuilder()
@@ -370,7 +415,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
     @staticmethod
     def merge_sorted_blocks(
         blocks: List[Block], sort_key: "SortKey"
-    ) -> Tuple[Block, BlockMetadata]:
+    ) -> Tuple[Block, BlockMetadataWithSchema]:
         stats = BlockExecStats.builder()
         blocks = [b for b in blocks if b.num_rows > 0]
         if len(blocks) == 0:
@@ -380,7 +425,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
             blocks = TableBlockAccessor.normalize_block_types(blocks, BlockType.ARROW)
             concat_and_sort = get_concat_and_sort_transform(DataContext.get_current())
             ret = concat_and_sort(blocks, sort_key, promote_types=True)
-        return ret, ArrowBlockAccessor(ret).get_metadata(exec_stats=stats.build())
+        return ret, BlockMetadataWithSchema.from_block(ret, stats=stats.build())
 
     def block_type(self) -> BlockType:
         return BlockType.ARROW
@@ -390,7 +435,13 @@ class ArrowBlockAccessor(TableBlockAccessor):
     ) -> Iterator[Union[Mapping, np.ndarray]]:
         table = self._table
         if public_row_format:
-            for batch in table.to_batches():
+            if not hasattr(self, "_max_chunk_size"):
+                # Calling _get_max_chunk_size in constructor makes it slow, so we
+                # are calling it here only when needed.
+                self._max_chunk_size = _get_max_chunk_size(
+                    self._table, ARROW_MAX_CHUNK_SIZE_BYTES
+                )
+            for batch in table.to_batches(max_chunksize=self._max_chunk_size):
                 yield from batch.to_pylist()
         else:
             for i in range(self.num_rows()):

@@ -23,11 +23,11 @@
 
 #include "absl/strings/match.h"
 #include "ray/common/buffer.h"
-#include "ray/common/common_protocol.h"
+#include "ray/common/protobuf_utils.h"
 #include "ray/core_worker/actor_manager.h"
-#include "ray/gcs/pb_util.h"
 #include "ray/util/exponential_backoff.h"
-#include "ray/util/util.h"
+#include "ray/util/time.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 namespace core {
@@ -224,8 +224,8 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   std::vector<ObjectID> task_deps;
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
-      task_deps.push_back(spec.ArgId(i));
-      RAY_LOG(DEBUG) << "Adding arg ID " << spec.ArgId(i);
+      task_deps.push_back(spec.ArgObjectId(i));
+      RAY_LOG(DEBUG) << "Adding arg ID " << spec.ArgObjectId(i);
     } else {
       const auto &inlined_refs = spec.ArgInlinedRefs(i);
       for (const auto &inlined_ref : inlined_refs) {
@@ -265,14 +265,41 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
                                         call_site,
                                         -1,
                                         is_reconstructable,
-                                        /*add_local_ref=*/true);
+                                        /*add_local_ref=*/true,
+                                        /*pinned_at_node_id=*/std::optional<NodeID>(),
+                                        /*tensor_transport=*/spec.TensorTransport());
     }
 
     return_ids.push_back(return_id);
     rpc::ObjectReference ref;
-    ref.set_object_id(spec.ReturnId(i).Binary());
+    auto return_object_id = spec.ReturnId(i);
+    ref.set_object_id(return_object_id.Binary());
     ref.mutable_owner_address()->CopyFrom(caller_address);
     ref.set_call_site(call_site);
+    ref.set_tensor_transport(spec.TensorTransport());
+
+    // Register the callback to free the GPU object when it is out of scope.
+    auto tensor_transport = reference_counter_.GetTensorTransport(return_object_id);
+    if (tensor_transport.value_or(rpc::TensorTransport::OBJECT_STORE) !=
+        rpc::TensorTransport::OBJECT_STORE) {
+      reference_counter_.AddObjectOutOfScopeOrFreedCallback(
+          return_object_id, [this](const ObjectID &object_id) {
+            auto actor_id = ObjectID::ToActorID(object_id);
+            auto rpc_client = get_actor_rpc_client_callback_(actor_id);
+            auto request = rpc::FreeActorObjectRequest();
+            request.set_object_id(object_id.Binary());
+            rpc_client->FreeActorObject(
+                request,
+                [object_id, actor_id](Status status,
+                                      const rpc::FreeActorObjectReply &reply) {
+                  if (!status.ok()) {
+                    RAY_LOG(ERROR).WithField(object_id).WithField(actor_id)
+                        << "Failed to free actor object: " << status;
+                  }
+                });
+          });
+    }
+
     returned_refs.push_back(std::move(ref));
   }
 
@@ -310,48 +337,96 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   return returned_refs;
 }
 
-bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *task_deps) {
+std::optional<rpc::ErrorType> TaskManager::ResubmitTask(
+    const TaskID &task_id, std::vector<ObjectID> *task_deps) {
   RAY_CHECK(task_deps->empty());
-
   TaskSpecification spec;
-  bool resubmit = false;
+  bool should_queue_generator_resubmit = false;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
     if (it == submissible_tasks_.end()) {
       // This can happen when the task has already been
       // retried up to its max attempts.
-      return false;
+      return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED;
+    }
+    auto &task_entry = it->second;
+    if (task_entry.is_canceled_) {
+      return rpc::ErrorType::TASK_CANCELLED;
     }
 
-    if (!it->second.IsPending()) {
-      resubmit = true;
-      MarkTaskRetryOnResubmit(it->second);
-      num_pending_tasks_++;
-
-      // The task is pending again, so it's no longer counted as lineage. If
-      // the task finishes and we still need the spec, we'll add the task back
-      // to the footprint sum.
-      total_lineage_footprint_bytes_ -= it->second.lineage_footprint_bytes;
-      it->second.lineage_footprint_bytes = 0;
-
-      if (it->second.num_retries_left > 0) {
-        it->second.num_retries_left--;
-      } else {
-        RAY_CHECK(it->second.num_retries_left == -1);
+    if (task_entry.spec_.IsStreamingGenerator() &&
+        task_entry.GetStatus() == rpc::TaskStatus::SUBMITTED_TO_WORKER) {
+      if (task_entry.num_retries_left_ == 0) {
+        // If the last attempt is in progress.
+        return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED;
       }
-      spec = it->second.spec;
+      // If the task is a running streaming generator, the object may have been created,
+      // deleted, and then needed again for recovery. When the task is finished / failed,
+      // ResubmitTask will be called again.
+      should_queue_generator_resubmit = true;
+    } else if (task_entry.GetStatus() != rpc::TaskStatus::FINISHED &&
+               task_entry.GetStatus() != rpc::TaskStatus::FAILED) {
+      // Assuming the task retry is already submitted / running.
+      return std::nullopt;
+    } else {
+      // Going to resubmit the task now.
+      SetupTaskEntryForResubmit(task_entry);
     }
+
+    spec = task_entry.spec_;
   }
 
-  if (!resubmit) {
-    return true;
+  if (should_queue_generator_resubmit) {
+    // Needs to be called outside of the lock to avoid deadlock.
+    return queue_generator_resubmit_(spec)
+               ? std::nullopt
+               : std::make_optional(rpc::ErrorType::TASK_CANCELLED);
   }
 
+  UpdateReferencesForResubmit(spec, task_deps);
+
+  // TODO(can-anyscale): There is a race condition here where a task can still be
+  // retried after its retry count has reached zero. Additional information in github
+  // issue #54260.
+  RAY_LOG(INFO) << "Resubmitting task that produced lost plasma object, attempt #"
+                << spec.AttemptNumber() << ": " << spec.DebugString();
+  retry_task_callback_(spec, /*object_recovery*/ true, /*delay_ms*/ 0);
+
+  return std::nullopt;
+}
+
+void TaskManager::SetupTaskEntryForResubmit(TaskEntry &task_entry) {
+  task_entry.MarkRetry();
+  // NOTE(rickyx): We only increment the AttemptNumber on the task spec when
+  // `retry_task_callback_` is invoked. In order to record the correct status change for
+  // the new task attempt, we pass the attempt number explicitly.
+  SetTaskStatus(task_entry,
+                rpc::TaskStatus::PENDING_ARGS_AVAIL,
+                /* state_update */ std::nullopt,
+                /* include_task_info */ true,
+                task_entry.spec_.AttemptNumber() + 1);
+  num_pending_tasks_++;
+
+  // The task is pending again, so it's no longer counted as lineage. If
+  // the task finishes and we still need the spec, we'll add the task back
+  // to the footprint sum.
+  total_lineage_footprint_bytes_ -= task_entry.lineage_footprint_bytes_;
+  task_entry.lineage_footprint_bytes_ = 0;
+
+  if (task_entry.num_retries_left_ > 0) {
+    task_entry.num_retries_left_--;
+  } else {
+    RAY_CHECK(task_entry.num_retries_left_ == -1);
+  }
+}
+
+void TaskManager::UpdateReferencesForResubmit(const TaskSpecification &spec,
+                                              std::vector<ObjectID> *task_deps) {
   task_deps->reserve(spec.NumArgs());
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
-      task_deps->emplace_back(spec.ArgId(i));
+      task_deps->emplace_back(spec.ArgObjectId(i));
     } else {
       const auto &inlined_refs = spec.ArgInlinedRefs(i);
       for (const auto &inlined_ref : inlined_refs) {
@@ -365,7 +440,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
   for (const auto &task_dep : *task_deps) {
     bool was_freed = reference_counter_.TryMarkFreedObjectInUseAgain(task_dep);
     if (was_freed) {
-      RAY_LOG(DEBUG) << "Dependency " << task_dep << " of task " << task_id
+      RAY_LOG(DEBUG) << "Dependency " << task_dep << " of task " << spec.TaskId()
                      << " was freed";
       // We do not keep around copies for objects that were freed, but now that
       // they're needed for recovery, we need to generate and pin a new copy.
@@ -379,14 +454,31 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
     const auto actor_creation_return_id = spec.ActorCreationDummyObjectId();
     reference_counter_.UpdateResubmittedTaskReferences({actor_creation_return_id});
   }
+}
 
-  RAY_LOG(INFO) << "Resubmitting task that produced lost plasma object, attempt #"
-                << spec.AttemptNumber() << ": " << spec.DebugString();
-  // We should actually detect if the actor for this task is dead, but let's just assume
-  // it's not for now.
+void TaskManager::MarkGeneratorFailedAndResubmit(const TaskID &task_id) {
+  TaskSpecification spec;
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = submissible_tasks_.find(task_id);
+    RAY_CHECK(it != submissible_tasks_.end());
+    auto &task_entry = it->second;
+
+    rpc::RayErrorInfo error_info;
+    error_info.set_error_type(
+        rpc::ErrorType::GENERATOR_TASK_FAILED_FOR_OBJECT_RECONSTRUCTION);
+    SetTaskStatus(task_entry,
+                  rpc::TaskStatus::FAILED,
+                  worker::TaskStatusEvent::TaskStateUpdate(error_info));
+
+    SetupTaskEntryForResubmit(task_entry);
+    spec = task_entry.spec_;
+  }
+
+  // Note: Don't need to call UpdateReferencesForResubmit because CompletePendingTask or
+  // FailPendingTask are not called when this is. Therefore, RemoveFinishedTaskReferences
+  // never happened for this task.
   retry_task_callback_(spec, /*object_recovery*/ true, /*delay_ms*/ 0);
-
-  return true;
 }
 
 void TaskManager::DrainAndShutdown(std::function<void()> shutdown) {
@@ -441,10 +533,10 @@ size_t TaskManager::NumPendingTasks() const {
   return num_pending_tasks_;
 }
 
-bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
-                                   const rpc::ReturnObject &return_object,
-                                   const NodeID &worker_raylet_id,
-                                   bool store_in_plasma) {
+StatusOr<bool> TaskManager::HandleTaskReturn(const ObjectID &object_id,
+                                             const rpc::ReturnObject &return_object,
+                                             const NodeID &worker_node_id,
+                                             bool store_in_plasma) {
   bool direct_return = false;
   reference_counter_.UpdateObjectSize(object_id, return_object.size());
   RAY_LOG(DEBUG) << "Task return object " << object_id << " has size "
@@ -456,10 +548,9 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
     // NOTE(swang): We need to add the location of the object before marking
     // it as local in the in-memory store so that the data locality policy
     // will choose the right raylet for any queued dependent tasks.
-    reference_counter_.UpdateObjectPinnedAtRaylet(object_id, worker_raylet_id);
+    reference_counter_.UpdateObjectPinnedAtRaylet(object_id, worker_node_id);
     // Mark it as in plasma with a dummy object.
-    RAY_CHECK(
-        in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
+    in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id);
   } else {
     // NOTE(swang): If a direct object was promoted to plasma, then we do not
     // record the node ID that it was pinned at, which means that we will not
@@ -481,11 +572,25 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
           return_object.metadata().size());
     }
 
-    RayObject object(data_buffer, metadata_buffer, nested_refs);
+    auto tensor_transport = reference_counter_.GetTensorTransport(object_id);
+    RayObject object(data_buffer,
+                     metadata_buffer,
+                     nested_refs,
+                     /*copy_data=*/false,
+                     tensor_transport.value_or(rpc::TensorTransport::OBJECT_STORE));
     if (store_in_plasma) {
-      put_in_local_plasma_callback_(object, object_id);
+      Status s = put_in_local_plasma_callback_(object, object_id);
+      int retry_count = 0;
+      while (!s.ok() && s.IsTransientObjectStoreFull() && retry_count < 3) {
+        retry_count++;
+        s = put_in_local_plasma_callback_(object, object_id);
+      }
+      if (!s.ok()) {
+        return s;
+      }
     } else {
-      direct_return = in_memory_store_.Put(object, object_id);
+      in_memory_store_.Put(object, object_id);
+      direct_return = true;
     }
   }
 
@@ -522,7 +627,7 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(generator_id.TaskId());
     if (it != submissible_tasks_.end()) {
-      backpressure_threshold = it->second.spec.GeneratorBackpressureNumObjects();
+      backpressure_threshold = it->second.spec_.GeneratorBackpressureNumObjects();
     }
   }
 
@@ -673,8 +778,8 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
     if (it != submissible_tasks_.end()) {
-      backpressure_threshold = it->second.spec.GeneratorBackpressureNumObjects();
-      if (it->second.spec.AttemptNumber() > attempt_number) {
+      backpressure_threshold = it->second.spec_.GeneratorBackpressureNumObjects();
+      if (it->second.spec_.AttemptNumber() > attempt_number) {
         // Generator task reports can arrive at any time. If the first attempt
         // fails, we may receive a report from the first executor after the
         // second attempt has started. In this case, we should ignore the first
@@ -716,10 +821,15 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     }
     // When an object is reported, the object is ready to be fetched.
     reference_counter_.UpdateObjectPendingCreation(object_id, false);
-    HandleTaskReturn(object_id,
-                     return_object,
-                     NodeID::FromBinary(request.worker_addr().raylet_id()),
-                     /*store_in_plasma=*/store_in_plasma_ids.contains(object_id));
+    StatusOr<bool> put_res =
+        HandleTaskReturn(object_id,
+                         return_object,
+                         NodeID::FromBinary(request.worker_addr().node_id()),
+                         /*store_in_plasma=*/store_in_plasma_ids.contains(object_id));
+    if (!put_res.ok()) {
+      RAY_LOG(WARNING).WithField(object_id)
+          << "Failed to handle streaming dynamic return: " << put_res.status();
+    }
   }
 
   // Handle backpressure if needed.
@@ -803,23 +913,54 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
         reference_counter_.AddDynamicReturn(object_id, generator_id);
         dynamic_return_ids.push_back(object_id);
       }
-      if (!HandleTaskReturn(object_id,
-                            return_object,
-                            NodeID::FromBinary(worker_addr.raylet_id()),
-                            store_in_plasma_ids.contains(object_id))) {
-        if (first_execution) {
-          dynamic_returns_in_plasma.push_back(object_id);
+      StatusOr<bool> direct_or =
+          HandleTaskReturn(object_id,
+                           return_object,
+                           NodeID::FromBinary(worker_addr.node_id()),
+                           store_in_plasma_ids.contains(object_id));
+      if (!direct_or.ok()) {
+        RAY_LOG(WARNING).WithField(object_id)
+            << "Failed to handle dynamic task return: " << direct_or.status();
+        Status st = direct_or.status();
+        rpc::ErrorType err_type = rpc::ErrorType::WORKER_DIED;
+        if (st.IsObjectStoreFull() || st.IsTransientObjectStoreFull()) {
+          err_type = rpc::ErrorType::OUT_OF_MEMORY;
         }
+        rpc::RayErrorInfo err_info;
+        err_info.set_error_message(st.ToString());
+        FailOrRetryPendingTask(task_id,
+                               err_type,
+                               &st,
+                               /*ray_error_info=*/&err_info,
+                               /*mark_task_object_failed=*/true,
+                               /*fail_immediately=*/true);
+        return;
+      } else if (!direct_or.value() && first_execution) {
+        dynamic_returns_in_plasma.push_back(object_id);
       }
     }
   }
 
   for (const auto &return_object : reply.return_objects()) {
     const auto object_id = ObjectID::FromBinary(return_object.object_id());
-    if (HandleTaskReturn(object_id,
-                         return_object,
-                         NodeID::FromBinary(worker_addr.raylet_id()),
-                         store_in_plasma_ids.contains(object_id))) {
+    StatusOr<bool> direct_or = HandleTaskReturn(object_id,
+                                                return_object,
+                                                NodeID::FromBinary(worker_addr.node_id()),
+                                                store_in_plasma_ids.contains(object_id));
+    if (!direct_or.ok()) {
+      RAY_LOG(WARNING).WithField(object_id)
+          << "Failed to handle task return: " << direct_or.status();
+      // If storing return in plasma failed, treat as system failure for this attempt.
+      // Do not proceed with normal completion. Mark task failed immediately.
+      Status st = direct_or.status();
+      FailOrRetryPendingTask(task_id,
+                             rpc::ErrorType::WORKER_DIED,
+                             &st,
+                             /*ray_error_info=*/nullptr,
+                             /*mark_task_object_failed=*/true,
+                             /*fail_immediately=*/true);
+      return;
+    } else if (direct_or.value()) {
       direct_return_ids.push_back(object_id);
     }
   }
@@ -832,7 +973,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     auto it = submissible_tasks_.find(task_id);
     RAY_CHECK(it != submissible_tasks_.end())
         << "Tried to complete task that was not pending " << task_id;
-    spec = it->second.spec;
+    spec = it->second.spec_;
 
     // Record any dynamically returned objects. We need to store these with the
     // task spec so that the worker will recreate them if the task gets
@@ -845,7 +986,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
         spec.AddDynamicReturnId(dynamic_return_id);
       }
       for (const auto &dynamic_return_id : dynamic_returns_in_plasma) {
-        it->second.reconstructable_return_ids.insert(dynamic_return_id);
+        it->second.reconstructable_return_ids_.insert(dynamic_return_id);
       }
 
       if (spec.IsStreamingGenerator()) {
@@ -865,7 +1006,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
               // cause a memory leak of the task metadata, because we will
               // never receive a callback from the ReferenceCounter to erase
               // the task.
-              it->second.reconstructable_return_ids.insert(
+              it->second.reconstructable_return_ids_.insert(
                   ObjectID::FromBinary(return_id_info.object_id()));
             }
           }
@@ -878,14 +1019,14 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     for (const auto &direct_return_id : direct_return_ids) {
       RAY_LOG(DEBUG) << "Task " << it->first << " returned direct object "
                      << direct_return_id << ", now has "
-                     << it->second.reconstructable_return_ids.size()
+                     << it->second.reconstructable_return_ids_.size()
                      << " plasma returns in scope";
-      it->second.reconstructable_return_ids.erase(direct_return_id);
+      it->second.reconstructable_return_ids_.erase(direct_return_id);
     }
     RAY_LOG(DEBUG) << "Task " << it->first << " now has "
-                   << it->second.reconstructable_return_ids.size()
+                   << it->second.reconstructable_return_ids_.size()
                    << " plasma returns in scope";
-    it->second.num_successful_executions++;
+    it->second.num_successful_executions_++;
 
     if (is_application_error) {
       SetTaskStatus(
@@ -901,13 +1042,13 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     // A finished task can only be re-executed if it has some number of
     // retries left and returned at least one object that is still in use and
     // stored in plasma.
-    bool task_retryable = it->second.num_retries_left != 0 &&
-                          !it->second.reconstructable_return_ids.empty();
+    bool task_retryable = it->second.num_retries_left_ != 0 &&
+                          !it->second.reconstructable_return_ids_.empty();
     if (task_retryable) {
       // Pin the task spec if it may be retried again.
       release_lineage = false;
-      it->second.lineage_footprint_bytes = it->second.spec.GetMessage().ByteSizeLong();
-      total_lineage_footprint_bytes_ += it->second.lineage_footprint_bytes;
+      it->second.lineage_footprint_bytes_ = it->second.spec_.GetMessage().ByteSizeLong();
+      total_lineage_footprint_bytes_ += it->second.lineage_footprint_bytes_;
       if (total_lineage_footprint_bytes_ > max_lineage_bytes_) {
         RAY_LOG(INFO) << "Total lineage size is " << total_lineage_footprint_bytes_ / 1e6
                       << "MB, which exceeds the limit of " << max_lineage_bytes_ / 1e6
@@ -943,10 +1084,16 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
           const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
           RAY_CHECK_EQ(reply.return_objects_size(), 1);
           const auto &return_object = reply.return_objects(0);
-          HandleTaskReturn(generator_return_id,
-                           return_object,
-                           NodeID::FromBinary(worker_addr.raylet_id()),
-                           store_in_plasma_ids.contains(generator_return_id));
+          StatusOr<bool> res =
+              HandleTaskReturn(generator_return_id,
+                               return_object,
+                               NodeID::FromBinary(worker_addr.node_id()),
+                               store_in_plasma_ids.contains(generator_return_id));
+          if (!res.ok()) {
+            RAY_LOG(WARNING).WithField(generator_return_id)
+                << "Failed to handle generator return during app error propagation: "
+                << res.status();
+          }
         }
       }
     }
@@ -974,24 +1121,38 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
     auto it = submissible_tasks_.find(task_id);
     RAY_CHECK(it != submissible_tasks_.end())
         << "Tried to retry task that was not pending " << task_id;
-    RAY_CHECK(it->second.IsPending())
+    auto &task_entry = it->second;
+    RAY_CHECK(task_entry.IsPending())
         << "Tried to retry task that was not pending " << task_id;
-    spec = it->second.spec;
-    num_retries_left = it->second.num_retries_left;
-    num_oom_retries_left = it->second.num_oom_retries_left;
+    spec = task_entry.spec_;
+    num_retries_left = task_entry.num_retries_left_;
+    num_oom_retries_left = task_entry.num_oom_retries_left_;
     if (task_failed_due_to_oom) {
       if (num_oom_retries_left > 0) {
         will_retry = true;
-        it->second.num_oom_retries_left--;
+        task_entry.num_oom_retries_left_--;
       } else if (num_oom_retries_left == -1) {
         will_retry = true;
       } else {
         RAY_CHECK(num_oom_retries_left == 0);
       }
     } else {
-      if (num_retries_left > 0) {
+      auto is_preempted = false;
+      if (error_info.error_type() == rpc::ErrorType::NODE_DIED) {
+        const auto node_info = gcs_client_->Nodes().Get(task_entry.GetNodeId(),
+                                                        /*filter_dead_nodes=*/false);
+        is_preempted = node_info != nullptr && node_info->has_death_info() &&
+                       node_info->death_info().reason() ==
+                           rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED;
+      }
+      if (num_retries_left > 0 || (is_preempted && task_entry.spec_.IsRetriable())) {
         will_retry = true;
-        it->second.num_retries_left--;
+        if (is_preempted) {
+          RAY_LOG(INFO) << "Task " << task_id << " failed due to node preemption on node "
+                        << task_entry.GetNodeId() << ", not counting against retries";
+        } else {
+          task_entry.num_retries_left_--;
+        }
       } else if (num_retries_left == -1) {
         will_retry = true;
       } else {
@@ -999,11 +1160,22 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
       }
     }
     // Keep `num_retries_left` and `num_oom_retries_left` up to date
-    num_retries_left = it->second.num_retries_left;
-    num_oom_retries_left = it->second.num_oom_retries_left;
+    num_retries_left = task_entry.num_retries_left_;
+    num_oom_retries_left = task_entry.num_oom_retries_left_;
 
     if (will_retry) {
-      MarkTaskRetryOnFailed(it->second, error_info);
+      // Record the old attempt status as FAILED.
+      SetTaskStatus(task_entry,
+                    rpc::TaskStatus::FAILED,
+                    worker::TaskStatusEvent::TaskStateUpdate(error_info));
+      task_entry.MarkRetry();
+
+      // Mark the new status and also include task spec info for the new attempt.
+      SetTaskStatus(task_entry,
+                    rpc::TaskStatus::PENDING_ARGS_AVAIL,
+                    /* state_update */ std::nullopt,
+                    /* include_task_info */ true,
+                    task_entry.spec_.AttemptNumber() + 1);
     }
   }
 
@@ -1050,13 +1222,29 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
-    RAY_CHECK(it != submissible_tasks_.end())
-        << "Tried to fail task that was not pending " << task_id;
+    if (it == submissible_tasks_.end()) {
+      // Failing a pending task can happen through the normal task lifecycle or task
+      // cancellation. Since task cancellation runs concurrently with the normal task
+      // lifecycle, we do expect this state. It is safe to assume the task
+      // has been failed correctly by either the normal task lifecycle or task
+      // cancellation, and we can skip failing it again.
+      RAY_LOG(INFO).WithField("task_id", task_id)
+          << "Task is no longer in the submissible tasks map. It has either completed or "
+             "been cancelled. Skip failing";
+      return;
+    }
     RAY_CHECK(it->second.IsPending())
         << "Tried to fail task that was not pending " << task_id;
-    spec = it->second.spec;
+    spec = it->second.spec_;
+    if (it->second.is_canceled_ && error_type != rpc::ErrorType::TASK_CANCELLED) {
+      // If the task is marked as cancelled before reaching FailPendingTask (which is
+      // essentially the final state of the task lifecycle), that failure reason takes
+      // precedence.
+      error_type = rpc::ErrorType::TASK_CANCELLED;
+      ray_error_info = nullptr;
+    }
 
-    if ((status != nullptr) && status->IsIntentionalSystemExit()) {
+    if (status != nullptr && status->IsIntentionalSystemExit()) {
       // We don't mark intentional system exit as failures, such as tasks that
       // exit by exit_actor(), exit by ray.shutdown(), etc. These tasks are expected
       // to exit and not be marked as failure.
@@ -1170,21 +1358,7 @@ void TaskManager::RemoveFinishedTaskReferences(
     bool release_lineage,
     const rpc::Address &borrower_addr,
     const ReferenceCounter::ReferenceTableProto &borrowed_refs) {
-  std::vector<ObjectID> plasma_dependencies;
-  for (size_t i = 0; i < spec.NumArgs(); i++) {
-    if (spec.ArgByRef(i)) {
-      plasma_dependencies.push_back(spec.ArgId(i));
-    } else {
-      const auto &inlined_refs = spec.ArgInlinedRefs(i);
-      for (const auto &inlined_ref : inlined_refs) {
-        plasma_dependencies.push_back(ObjectID::FromBinary(inlined_ref.object_id()));
-      }
-    }
-  }
-  if (spec.IsActorTask()) {
-    const auto actor_creation_return_id = spec.ActorCreationDummyObjectId();
-    plasma_dependencies.push_back(actor_creation_return_id);
-  }
+  std::vector<ObjectID> plasma_dependencies = ExtractPlasmaDependencies(spec);
 
   std::vector<ObjectID> return_ids;
   size_t num_returns = spec.NumReturns();
@@ -1228,36 +1402,36 @@ int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
   }
 
   RAY_LOG(DEBUG) << "Plasma object " << object_id << " out of scope";
-  for (const auto &plasma_id : it->second.reconstructable_return_ids) {
+  for (const auto &plasma_id : it->second.reconstructable_return_ids_) {
     RAY_LOG(DEBUG) << "Task " << task_id << " has " << plasma_id << " in scope";
   }
-  it->second.reconstructable_return_ids.erase(object_id);
+  it->second.reconstructable_return_ids_.erase(object_id);
   RAY_LOG(DEBUG) << "Task " << task_id << " now has "
-                 << it->second.reconstructable_return_ids.size()
+                 << it->second.reconstructable_return_ids_.size()
                  << " plasma returns in scope";
 
-  if (it->second.reconstructable_return_ids.empty() && !it->second.IsPending()) {
+  if (it->second.reconstructable_return_ids_.empty() && !it->second.IsPending()) {
     // If the task can no longer be retried, decrement the lineage ref count
     // for each of the task's args.
-    for (size_t i = 0; i < it->second.spec.NumArgs(); i++) {
-      if (it->second.spec.ArgByRef(i)) {
-        released_objects->push_back(it->second.spec.ArgId(i));
+    for (size_t i = 0; i < it->second.spec_.NumArgs(); i++) {
+      if (it->second.spec_.ArgByRef(i)) {
+        released_objects->push_back(it->second.spec_.ArgObjectId(i));
       } else {
-        const auto &inlined_refs = it->second.spec.ArgInlinedRefs(i);
+        const auto &inlined_refs = it->second.spec_.ArgInlinedRefs(i);
         for (const auto &inlined_ref : inlined_refs) {
           released_objects->push_back(ObjectID::FromBinary(inlined_ref.object_id()));
         }
       }
     }
 
-    if (it->second.spec.IsActorTask()) {
+    if (it->second.spec_.IsActorTask()) {
       // We need to decrement the actor lineage ref count here
       // since it's incremented during TaskManager::AddPendingTask.
-      const auto actor_creation_return_id = it->second.spec.ActorCreationDummyObjectId();
+      const auto actor_creation_return_id = it->second.spec_.ActorCreationDummyObjectId();
       released_objects->push_back(actor_creation_return_id);
     }
 
-    total_lineage_footprint_bytes_ -= it->second.lineage_footprint_bytes;
+    total_lineage_footprint_bytes_ -= it->second.lineage_footprint_bytes_;
     // The task has finished and none of the return IDs are in scope anymore,
     // so it is safe to remove the task spec.
     submissible_tasks_.erase(it);
@@ -1266,13 +1440,13 @@ int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
   return total_lineage_footprint_bytes_ - total_lineage_footprint_bytes_prev;
 }
 
-bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
+void TaskManager::MarkTaskNoRetryInternal(const TaskID &task_id, bool canceled) {
   ObjectID generator_id = TaskGeneratorId(task_id);
   if (!generator_id.IsNil()) {
-    // Pass -1 because the task has been cancelled, so we should just end the
+    // Pass -1 because the task has been canceled, so we should just end the
     // stream at the caller's current index. This is needed because we may
     // receive generator reports out of order. If the task reports a later
-    // index then exits because it was cancelled, we will hang waiting for the
+    // index then exits because it was canceled, we will hang waiting for the
     // intermediate indices.
     MarkEndOfStream(generator_id, /*end_of_stream_index=*/-1);
   }
@@ -1280,10 +1454,20 @@ bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
   absl::MutexLock lock(&mu_);
   auto it = submissible_tasks_.find(task_id);
   if (it != submissible_tasks_.end()) {
-    it->second.num_retries_left = 0;
-    it->second.num_oom_retries_left = 0;
+    it->second.num_retries_left_ = 0;
+    it->second.num_oom_retries_left_ = 0;
+    if (canceled) {
+      it->second.is_canceled_ = true;
+    }
   }
-  return it != submissible_tasks_.end();
+}
+
+void TaskManager::MarkTaskCanceled(const TaskID &task_id) {
+  MarkTaskNoRetryInternal(task_id, /*canceled=*/true);
+}
+
+void TaskManager::MarkTaskNoRetry(const TaskID &task_id) {
+  MarkTaskNoRetryInternal(task_id, /*canceled=*/false);
 }
 
 absl::flat_hash_set<ObjectID> TaskManager::GetTaskReturnObjectsToStoreInPlasma(
@@ -1298,9 +1482,9 @@ absl::flat_hash_set<ObjectID> TaskManager::GetTaskReturnObjectsToStoreInPlasma(
     // from submissible_tasks_. Do nothing in this case.
     return {};
   }
-  first_execution = it->second.num_successful_executions == 0;
+  first_execution = it->second.num_successful_executions_ == 0;
   if (!first_execution) {
-    store_in_plasma_ids = it->second.reconstructable_return_ids;
+    store_in_plasma_ids = it->second.reconstructable_return_ids_;
   }
   if (first_execution_out != nullptr) {
     *first_execution_out = first_execution;
@@ -1320,18 +1504,26 @@ void TaskManager::MarkTaskReturnObjectsFailed(
   int64_t num_returns = spec.NumReturns();
   for (int i = 0; i < num_returns; i++) {
     const auto object_id = ObjectID::FromIndex(task_id, /*index=*/i + 1);
+    // Always place an error marker in local memory to unblock waiters quickly.
+    in_memory_store_.Put(error, object_id);
+    // Best-effort plasma put if the object was meant to be in plasma.
     if (store_in_plasma_ids.contains(object_id)) {
-      put_in_local_plasma_callback_(error, object_id);
-    } else {
-      in_memory_store_.Put(error, object_id);
+      Status s = put_in_local_plasma_callback_(error, object_id);
+      if (!s.ok()) {
+        RAY_LOG(WARNING).WithField(object_id)
+            << "Failed to put error object in plasma: " << s;
+      }
     }
   }
   if (spec.ReturnsDynamic()) {
     for (const auto &dynamic_return_id : spec.DynamicReturnIds()) {
+      in_memory_store_.Put(error, dynamic_return_id);
       if (store_in_plasma_ids.contains(dynamic_return_id)) {
-        put_in_local_plasma_callback_(error, dynamic_return_id);
-      } else {
-        in_memory_store_.Put(error, dynamic_return_id);
+        Status s = put_in_local_plasma_callback_(error, dynamic_return_id);
+        if (!s.ok()) {
+          RAY_LOG(WARNING).WithField(dynamic_return_id)
+              << "Failed to put error object in plasma: " << s;
+        }
       }
     }
   }
@@ -1354,7 +1546,11 @@ void TaskManager::MarkTaskReturnObjectsFailed(
     for (size_t i = 0; i < num_streaming_generator_returns; i++) {
       const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
       if (store_in_plasma_ids.contains(generator_return_id)) {
-        put_in_local_plasma_callback_(error, generator_return_id);
+        Status s = put_in_local_plasma_callback_(error, generator_return_id);
+        if (!s.ok()) {
+          RAY_LOG(WARNING).WithField(generator_return_id)
+              << "Failed to put error object in plasma: " << s;
+        }
       } else {
         in_memory_store_.Put(error, generator_return_id);
       }
@@ -1368,7 +1564,7 @@ std::optional<TaskSpecification> TaskManager::GetTaskSpec(const TaskID &task_id)
   if (it == submissible_tasks_.end()) {
     return std::optional<TaskSpecification>();
   }
-  return it->second.spec;
+  return it->second.spec_;
 }
 
 std::vector<TaskID> TaskManager::GetPendingChildrenTasks(
@@ -1376,7 +1572,7 @@ std::vector<TaskID> TaskManager::GetPendingChildrenTasks(
   std::vector<TaskID> ret_vec;
   absl::MutexLock lock(&mu_);
   for (const auto &it : submissible_tasks_) {
-    if (it.second.IsPending() && (it.second.spec.ParentTaskId() == parent_task_id)) {
+    if (it.second.IsPending() && (it.second.spec_.ParentTaskId() == parent_task_id)) {
       ret_vec.push_back(it.first);
     }
   }
@@ -1394,7 +1590,7 @@ void TaskManager::AddTaskStatusInfo(rpc::CoreWorkerStats *stats) const {
       continue;
     }
     ref->set_task_status(it->second.GetStatus());
-    ref->set_attempt_number(it->second.spec.AttemptNumber());
+    ref->set_attempt_number(it->second.spec_.AttemptNumber());
   }
 }
 
@@ -1406,7 +1602,8 @@ void TaskManager::MarkDependenciesResolved(const TaskID &task_id) {
   }
 
   RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::PENDING_ARGS_AVAIL)
-      << ", task ID = " << it->first << ", status = " << it->second.GetStatus();
+      << ", task ID = " << it->first
+      << ", status = " << rpc::TaskStatus_Name(it->second.GetStatus());
   SetTaskStatus(it->second, rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
 }
 
@@ -1419,47 +1616,12 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
     return;
   }
   RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::PENDING_NODE_ASSIGNMENT)
-      << ", task ID = " << it->first << ", status = " << it->second.GetStatus();
+      << ", task ID = " << it->first
+      << ", status = " << rpc::TaskStatus_Name(it->second.GetStatus());
   it->second.SetNodeId(node_id);
   SetTaskStatus(it->second,
                 rpc::TaskStatus::SUBMITTED_TO_WORKER,
                 worker::TaskStatusEvent::TaskStateUpdate(node_id, worker_id));
-}
-
-void TaskManager::MarkTaskRetryOnResubmit(TaskEntry &task_entry) {
-  RAY_CHECK(!task_entry.IsPending())
-      << "Only finished tasks can be resubmitted: " << task_entry.spec.TaskId();
-
-  task_entry.MarkRetry();
-
-  // Mark the new status and also include task spec info for the new attempt.
-  //
-  // NOTE(rickyx): We only increment the AttemptNumber on the task spec when
-  // `retry_task_callback_` is invoked. In order to record the correct status change for
-  // the new task attempt, we pass the attempt number explicitly.
-  SetTaskStatus(task_entry,
-                rpc::TaskStatus::PENDING_ARGS_AVAIL,
-                /* state_update */ std::nullopt,
-                /* include_task_info */ true,
-                task_entry.spec.AttemptNumber() + 1);
-}
-
-void TaskManager::MarkTaskRetryOnFailed(TaskEntry &task_entry,
-                                        const rpc::RayErrorInfo &error_info) {
-  RAY_CHECK(task_entry.IsPending());
-
-  // Record the old attempt status as FAILED.
-  SetTaskStatus(task_entry,
-                rpc::TaskStatus::FAILED,
-                worker::TaskStatusEvent::TaskStateUpdate(error_info));
-  task_entry.MarkRetry();
-
-  // Mark the new status and also include task spec info for the new attempt.
-  SetTaskStatus(task_entry,
-                rpc::TaskStatus::PENDING_ARGS_AVAIL,
-                /* state_update */ std::nullopt,
-                /* include_task_info */ true,
-                task_entry.spec.AttemptNumber() + 1);
 }
 
 void TaskManager::SetTaskStatus(
@@ -1468,18 +1630,19 @@ void TaskManager::SetTaskStatus(
     std::optional<worker::TaskStatusEvent::TaskStateUpdate> state_update,
     bool include_task_info,
     std::optional<int32_t> attempt_number) {
-  RAY_LOG(DEBUG).WithField(task_entry.spec.TaskId())
-      << "Setting task status from " << task_entry.GetStatus() << " to " << status;
+  RAY_LOG(DEBUG).WithField(task_entry.spec_.TaskId())
+      << "Setting task status from " << rpc::TaskStatus_Name(task_entry.GetStatus())
+      << " to " << rpc::TaskStatus_Name(status);
   task_entry.SetStatus(status);
 
   const int32_t attempt_number_to_record =
-      attempt_number.value_or(task_entry.spec.AttemptNumber());
+      attempt_number.value_or(task_entry.spec_.AttemptNumber());
   const auto state_update_to_record =
       state_update.value_or(worker::TaskStatusEvent::TaskStateUpdate());
-  RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(task_entry.spec.TaskId(),
-                                                              task_entry.spec.JobId(),
+  RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(task_entry.spec_.TaskId(),
+                                                              task_entry.spec_.JobId(),
                                                               attempt_number_to_record,
-                                                              task_entry.spec,
+                                                              task_entry.spec_,
                                                               status,
                                                               include_task_info,
                                                               state_update_to_record));
@@ -1496,19 +1659,19 @@ TaskManager::GetOngoingLineageReconstructionTasks(
       continue;
     }
 
-    if (task_entry.num_successful_executions == 0) {
+    if (task_entry.num_successful_executions_ == 0) {
       // Not lineage reconstruction task
       continue;
     }
 
     rpc::LineageReconstructionTask task;
-    task.set_name(task_entry.spec.GetName());
+    task.set_name(task_entry.spec_.GetName());
     task.set_status(task_entry.GetStatus());
-    if (task_entry.spec.IsNormalTask()) {
-      task.mutable_labels()->insert(task_entry.spec.GetMessage().labels().begin(),
-                                    task_entry.spec.GetMessage().labels().end());
-    } else if (task_entry.spec.IsActorTask()) {
-      auto actor_handle = actor_manager.GetActorHandle(task_entry.spec.ActorId());
+    if (task_entry.spec_.IsNormalTask()) {
+      task.mutable_labels()->insert(task_entry.spec_.GetMessage().labels().begin(),
+                                    task_entry.spec_.GetMessage().labels().end());
+    } else if (task_entry.spec_.IsActorTask()) {
+      auto actor_handle = actor_manager.GetActorHandle(task_entry.spec_.ActorId());
       RAY_CHECK(actor_handle) << "Actor task must be submitted via actor handle";
       const auto &labels = actor_handle->GetLabels();
       task.mutable_labels()->insert(labels.begin(), labels.end());
@@ -1537,7 +1700,7 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
 
     const auto &task_entry = task_it.second;
     auto entry = reply->add_owned_task_info_entries();
-    const auto &task_spec = task_entry.spec;
+    const auto &task_spec = task_entry.spec_;
     const auto &task_state = task_entry.GetStatus();
     const auto &node_id = task_entry.GetNodeId();
     rpc::TaskType type;
@@ -1560,8 +1723,8 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
     if (!node_id.IsNil()) {
       entry->set_node_id(node_id.Binary());
     }
-    entry->set_task_id(task_spec.TaskId().Binary());
-    entry->set_parent_task_id(task_spec.ParentTaskId().Binary());
+    entry->set_task_id(task_spec.TaskIdBinary());
+    entry->set_parent_task_id(task_spec.ParentTaskIdBinary());
     const auto &resources_map = task_spec.GetRequiredResources().GetResourceMap();
     entry->mutable_required_resources()->insert(resources_map.begin(),
                                                 resources_map.end());
@@ -1582,10 +1745,34 @@ ObjectID TaskManager::TaskGeneratorId(const TaskID &task_id) const {
   if (it == submissible_tasks_.end()) {
     return ObjectID::Nil();
   }
-  if (!it->second.spec.ReturnsDynamic()) {
+  if (!it->second.spec_.ReturnsDynamic()) {
     return ObjectID::Nil();
   }
-  return it->second.spec.ReturnId(0);
+  return it->second.spec_.ReturnId(0);
+}
+
+std::vector<ObjectID> ExtractPlasmaDependencies(const TaskSpecification &spec) {
+  std::vector<ObjectID> plasma_dependencies;
+  for (size_t i = 0; i < spec.NumArgs(); i++) {
+    if (spec.ArgByRef(i)) {
+      plasma_dependencies.push_back(spec.ArgObjectId(i));
+    } else if (spec.ArgTensorTransport(i) != rpc::TensorTransport::OBJECT_STORE) {
+      // GPU objects are inlined but the actual data lives on the remote actor.
+      // Therefore, we apply the reference counting protocol used for plasma objects
+      // instead of decrementing the ref count upon inlining.
+      plasma_dependencies.push_back(spec.ArgObjectId(i));
+    } else {
+      const auto &inlined_refs = spec.ArgInlinedRefs(i);
+      for (const auto &inlined_ref : inlined_refs) {
+        plasma_dependencies.push_back(ObjectID::FromBinary(inlined_ref.object_id()));
+      }
+    }
+  }
+  if (spec.IsActorTask()) {
+    const auto actor_creation_return_id = spec.ActorCreationDummyObjectId();
+    plasma_dependencies.push_back(actor_creation_return_id);
+  }
+  return plasma_dependencies;
 }
 
 }  // namespace core

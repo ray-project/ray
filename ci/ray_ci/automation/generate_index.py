@@ -1,11 +1,11 @@
 import click
 
-from ci.ray_ci.automation.docker_tags_lib import list_image_tags, generate_index
+from ci.ray_ci.automation.docker_tags_lib import generate_index, list_image_tags
 from ci.ray_ci.docker_container import (
-    RayType,
+    ARCHITECTURES_RAY,
     PLATFORMS_RAY,
     PYTHON_VERSIONS_RAY,
-    ARCHITECTURES_RAY,
+    RayType,
 )
 
 
@@ -15,9 +15,10 @@ def main(prefix):
     tags = list_image_tags(
         prefix, RayType.RAY, PYTHON_VERSIONS_RAY, PLATFORMS_RAY, ARCHITECTURES_RAY
     )
+    tags = [f"rayproject/ray:{tag}" for tag in tags]
     indexes_to_publish = []
     for tag in tags:
-        if "-aarch64" not in tag and tag + "-aarch64" in tags:
+        if not tag.endswith("-aarch64") and tag + "-aarch64" in tags:
             indexes_to_publish.append((tag, tag + "-aarch64"))
 
     for tags in indexes_to_publish:

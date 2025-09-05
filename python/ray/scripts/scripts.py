@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import platform
+import shutil
 import signal
 import subprocess
 import sys
@@ -10,33 +11,32 @@ import time
 import urllib
 import urllib.parse
 import warnings
-import shutil
 from datetime import datetime
-from typing import Optional, Set, List, Tuple
-from ray.dashboard.modules.metrics import install_and_start_prometheus
-from ray.util.check_open_ports import check_open_ports
-import requests
+from typing import List, Optional, Set, Tuple
 
 import click
 import colorama
-import psutil
+import requests
 import yaml
 
 import ray
+import ray._common.usage.usage_constants as usage_constant
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
+from ray._common.network_utils import build_address, parse_address
+from ray._common.usage import usage_lib
+from ray._common.utils import load_class
+from ray._private.internal_api import memory_summary
 from ray._private.label_utils import (
-    parse_node_labels_json,
     parse_node_labels_from_yaml_file,
+    parse_node_labels_json,
     parse_node_labels_string,
 )
+from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.utils import (
-    check_ray_client_dependencies_installed,
-    load_class,
+    get_ray_client_dependency_error,
     parse_resources_json,
 )
-from ray._private.internal_api import memory_summary
-from ray._private.usage import usage_lib
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cli_logger
 from ray.autoscaler._private.commands import (
     RUN_ENV_TYPES,
@@ -55,16 +55,18 @@ from ray.autoscaler._private.commands import (
 )
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
-from ray.util.annotations import PublicAPI
 from ray.core.generated import autoscaler_pb2
-from ray._private.resource_isolation_config import ResourceIsolationConfig
+from ray.dashboard.modules.metrics import install_and_start_prometheus
+from ray.util.annotations import PublicAPI
+from ray.util.check_open_ports import check_open_ports
 
+import psutil
 
 logger = logging.getLogger(__name__)
 
 
 def _check_ray_version(gcs_client):
-    import ray._private.usage.usage_lib as ray_usage_lib
+    import ray._common.usage.usage_lib as ray_usage_lib
 
     cluster_metadata = ray_usage_lib.get_cluster_metadata(gcs_client)
     if cluster_metadata and cluster_metadata["ray_version"] != ray.__version__:
@@ -195,7 +197,7 @@ def continue_debug_session(live_jobs: Set[str]):
                             key, namespace=ray_constants.KV_NAMESPACE_PDB
                         )
                         return
-                    host, port = session["pdb_address"].split(":")
+                    host, port = parse_address(session["pdb_address"])
                     ray.util.rpdb._connect_pdb_client(host, int(port))
                     ray.experimental.internal_kv._internal_kv_del(
                         key, namespace=ray_constants.KV_NAMESPACE_PDB
@@ -336,7 +338,7 @@ def debug(address: str, verbose: bool):
                     active_sessions[index], namespace=ray_constants.KV_NAMESPACE_PDB
                 )
             )
-            host, port = session["pdb_address"].split(":")
+            host, port = parse_address(session["pdb_address"])
             ray.util.rpdb._connect_pdb_client(host, int(port))
 
 
@@ -396,12 +398,6 @@ def debug(address: str, verbose: bool):
     type=int,
     default=0,
     help="the port to use for starting the node manager",
-)
-@click.option(
-    "--gcs-server-port",
-    required=False,
-    type=int,
-    help="Port number for the GCS server.",
 )
 @click.option(
     "--min-worker-port",
@@ -520,12 +516,6 @@ Windows powershell users need additional escaping:
     help="the port for dashboard agents to listen for grpc on.",
 )
 @click.option(
-    "--dashboard-grpc-port",
-    type=int,
-    default=None,
-    help="(Deprecated) No longer used and will be removed in a future version of Ray.",
-)
-@click.option(
     "--runtime-env-agent-port",
     type=int,
     default=None,
@@ -562,28 +552,10 @@ Windows powershell users need additional escaping:
     help="do not redirect non-worker stdout and stderr to files",
 )
 @click.option(
-    "--plasma-store-socket-name",
-    default=None,
-    help="manually specify the socket name of the plasma store",
-)
-@click.option(
-    "--raylet-socket-name",
-    default=None,
-    help="manually specify the socket path of the raylet process",
-)
-@click.option(
     "--temp-dir",
     default=None,
     help="manually specify the root temporary dir of the Ray process, only "
     "works when --head is specified",
-)
-@click.option(
-    "--storage",
-    default=None,
-    help=(
-        "[DEPRECATED] Cluster-wide storage is deprecated and will be removed in a "
-        "future version of Ray."
-    ),
 )
 @click.option(
     "--system-config",
@@ -713,7 +685,6 @@ def start(
     redis_shard_ports,
     object_manager_port,
     node_manager_port,
-    gcs_server_port,
     min_worker_port,
     max_worker_port,
     worker_port_list,
@@ -728,7 +699,6 @@ def start(
     dashboard_host,
     dashboard_port,
     dashboard_agent_listen_port,
-    dashboard_grpc_port,
     dashboard_agent_grpc_port,
     runtime_env_agent_port,
     block,
@@ -736,10 +706,7 @@ def start(
     object_spilling_directory,
     autoscaling_config,
     no_redirect_output,
-    plasma_store_socket_name,
-    raylet_socket_name,
     temp_dir,
-    storage,
     system_config,
     enable_object_reconstruction,
     metrics_export_port,
@@ -757,13 +724,6 @@ def start(
 ):
     """Start Ray processes manually on the local machine."""
 
-    if gcs_server_port is not None:
-        cli_logger.error(
-            "`{}` is deprecated and ignored. Use {} to specify "
-            "GCS server port on head node.",
-            cf.bold("--gcs-server-port"),
-            cf.bold("--port"),
-        )
     # Whether the original arguments include node_ip_address.
     include_node_ip_address = False
     if node_ip_address is not None:
@@ -807,21 +767,6 @@ def start(
                 cf.bold('--labels="key1=val1,key2=val2"'),
             )
     labels_dict = {**labels_from_file, **labels_from_string}
-
-    if plasma_store_socket_name is not None:
-        warnings.warn(
-            "plasma_store_socket_name is deprecated and will be removed. You are not "
-            "supposed to specify this parameter as it's internal.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-    if raylet_socket_name is not None:
-        warnings.warn(
-            "raylet_socket_name is deprecated and will be removed. You are not "
-            "supposed to specify this parameter as it's internal.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
     if temp_dir and not head:
         cli_logger.warning(
             f"`--temp-dir={temp_dir}` option will be ignored. "
@@ -844,19 +789,10 @@ def start(
     # no  port, has client -> default to 10001
     # has port, no  client -> value error
     # has port, has client -> ok, check port validity
-    has_ray_client = check_ray_client_dependencies_installed()
+    has_ray_client = get_ray_client_dependency_error() is None
     if has_ray_client and ray_client_server_port is None:
         ray_client_server_port = 10001
 
-    if storage is not None:
-        warnings.warn(
-            "--storage is deprecated and will be removed in a future version of Ray.",
-        )
-
-    if dashboard_grpc_port is not None:
-        warnings.warn(
-            "--dashboard-grpc-port is deprecated and will be removed in a future version of Ray.",
-        )
     ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
         node_name=node_name if node_name else node_ip_address,
@@ -879,10 +815,7 @@ def start(
         plasma_directory=plasma_directory,
         object_spilling_directory=object_spilling_directory,
         huge_pages=False,
-        plasma_store_socket_name=plasma_store_socket_name,
-        raylet_socket_name=raylet_socket_name,
         temp_dir=temp_dir,
-        storage=storage,
         include_dashboard=include_dashboard,
         dashboard_host=dashboard_host,
         dashboard_port=dashboard_port,
@@ -922,6 +855,15 @@ def start(
             ray_params.env_vars = {
                 "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID
             }
+
+        if (
+            usage_constant.KUBERAY_ENV in os.environ  # KubeRay exclusive.
+            and "RAY_CLOUD_INSTANCE_ID" in os.environ  # required by autoscaler v2.
+            and "RAY_NODE_TYPE_NAME" in os.environ  # required by autoscaler v2.
+        ):
+            # If this Ray cluster is managed by KubeRay and RAY_CLOUD_INSTANCE_ID and RAY_NODE_TYPE_NAME are set,
+            # we enable the v2 autoscaler by default if RAY_enable_autoscaler_v2 is not set.
+            os.environ.setdefault("RAY_enable_autoscaler_v2", "1")
 
         num_redis_shards = None
         # Start Ray on the head node.
@@ -979,7 +921,7 @@ def start(
 
         # Fail early when starting a new cluster when one is already running
         if address is None:
-            default_address = f"{ray_params.node_ip_address}:{port}"
+            default_address = build_address(ray_params.node_ip_address, port)
             bootstrap_address = services.find_bootstrap_address(temp_dir)
             if (
                 default_address == bootstrap_address
@@ -1041,7 +983,7 @@ def start(
                 cli_logger.print("To submit a Ray job using the Ray Jobs CLI:")
                 cli_logger.print(
                     cf.bold(
-                        "  RAY_ADDRESS='http://{}' ray job submit "
+                        "  RAY_API_SERVER_ADDRESS='http://{}' ray job submit "
                         "--working-dir . "
                         "-- python my_script.py"
                     ),
@@ -1410,7 +1352,7 @@ def stop(force: bool, grace_period: int):
     # NOTE(swang): This will not reset the cluster address for a user-defined
     # temp_dir. This is fine since it will get overwritten the next time we
     # call `ray start`.
-    ray._private.utils.reset_ray_address()
+    ray._common.utils.reset_ray_address()
 
 
 @cli.command()
@@ -2089,7 +2031,7 @@ def timeline(address):
     ray.init(address=address)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     filename = os.path.join(
-        ray._private.utils.get_user_temp_dir(), f"ray-timeline-{time}.json"
+        ray._common.utils.get_user_temp_dir(), f"ray-timeline-{time}.json"
     )
     ray.timeline(filename=filename)
     size = os.path.getsize(filename)
@@ -2706,6 +2648,22 @@ def cpp(show_library_path, generate_bazel_project_template_to):
         )
 
 
+@cli.command(hidden=True)
+def sanity_check():
+    """Run a sanity check to check that the Ray installation works.
+
+    This is not a public API and is intended to be used by Ray developers only.
+    """
+
+    @ray.remote
+    def get_version() -> str:
+        return ray.__version__
+
+    v = ray.get(get_version.remote())
+    assert v == ray.__version__
+    cli_logger.success(f"Success! Ray version: {v}")
+
+
 @click.group(name="metrics")
 def metrics_group():
     pass
@@ -2763,12 +2721,13 @@ cli.add_command(enable_usage_stats)
 cli.add_command(metrics_group)
 cli.add_command(drain_node)
 cli.add_command(check_open_ports)
+cli.add_command(sanity_check)
 
 try:
     from ray.util.state.state_cli import (
+        logs_state_cli_group,
         ray_get,
         ray_list,
-        logs_state_cli_group,
         summary_state_cli_group,
     )
 

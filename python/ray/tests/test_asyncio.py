@@ -8,11 +8,10 @@ import time
 import pytest
 
 import ray
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.client_mode_hook import client_mode_should_convert
 from ray._private.test_utils import (
-    SignalActor,
     kill_actor_and_wait_for_failure,
-    wait_for_condition,
     wait_for_pid_to_exit,
 )
 

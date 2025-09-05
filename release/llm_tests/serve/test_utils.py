@@ -14,7 +14,7 @@ import yaml
 from anyscale import service
 from anyscale.compute_config.models import ComputeConfig
 from anyscale.service.models import ServiceState
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.serve._private.utils import get_random_string
 
 logger = logging.getLogger(__file__)

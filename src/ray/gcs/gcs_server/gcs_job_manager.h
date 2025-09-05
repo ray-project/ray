@@ -21,13 +21,13 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
+#include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/rpc/gcs_server/gcs_rpc_server.h"
+#include "ray/gcs/gcs_server/grpc_service_interfaces.h"
+#include "ray/pubsub/gcs_publisher.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/event.h"
@@ -46,27 +46,26 @@ inline std::string JobDataKey(const std::string &submission_id) {
   return kJobDataKeyPrefix + submission_id;
 }
 
-using JobFinishListenerCallback = rpc::JobInfoHandler::JobFinishListenerCallback;
+using JobFinishListenerCallback =
+    rpc::JobInfoGcsServiceHandler::JobFinishListenerCallback;
 
-/// This implementation class of `JobInfoHandler`.
-class GcsJobManager : public rpc::JobInfoHandler {
+class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
  public:
   explicit GcsJobManager(GcsTableStorage &gcs_table_storage,
-                         GcsPublisher &gcs_publisher,
+                         pubsub::GcsPublisher &gcs_publisher,
                          RuntimeEnvManager &runtime_env_manager,
-                         GcsFunctionManager &function_manager,
+                         GCSFunctionManager &function_manager,
                          InternalKVInterface &internal_kv,
                          instrumented_io_context &io_context,
-                         rpc::CoreWorkerClientFactoryFn client_factory = nullptr)
+                         rpc::CoreWorkerClientPool &worker_client_pool)
       : gcs_table_storage_(gcs_table_storage),
         gcs_publisher_(gcs_publisher),
         runtime_env_manager_(runtime_env_manager),
         function_manager_(function_manager),
         internal_kv_(internal_kv),
         io_context_(io_context),
-        core_worker_clients_(client_factory) {
-    export_event_write_enabled_ = IsExportAPIEnabledDriverJob();
-  }
+        worker_client_pool_(worker_client_pool),
+        export_event_write_enabled_(IsExportAPIEnabledDriverJob()) {}
 
   void Initialize(const GcsInitData &gcs_init_data);
 
@@ -133,7 +132,7 @@ class GcsJobManager : public rpc::JobInfoHandler {
   int64_t finished_jobs_count_ = 0;
 
   GcsTableStorage &gcs_table_storage_;
-  GcsPublisher &gcs_publisher_;
+  pubsub::GcsPublisher &gcs_publisher_;
 
   /// Listeners which monitors the finish of jobs.
   std::vector<JobFinishListenerCallback> job_finished_listeners_;
@@ -142,11 +141,10 @@ class GcsJobManager : public rpc::JobInfoHandler {
   absl::flat_hash_map<JobID, std::shared_ptr<rpc::JobConfig>> cached_job_configs_;
 
   ray::RuntimeEnvManager &runtime_env_manager_;
-  GcsFunctionManager &function_manager_;
+  GCSFunctionManager &function_manager_;
   InternalKVInterface &internal_kv_;
   instrumented_io_context &io_context_;
-  /// The cached core worker clients which are used to communicate with workers.
-  rpc::CoreWorkerClientPool core_worker_clients_;
+  rpc::CoreWorkerClientPool &worker_client_pool_;
 
   /// If true, driver job events are exported for Export API
   bool export_event_write_enabled_ = false;

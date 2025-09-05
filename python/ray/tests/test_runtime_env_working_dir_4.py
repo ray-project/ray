@@ -1,13 +1,13 @@
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import pytest
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
-    wait_for_condition,
     check_local_files_gced,
     run_string_as_driver_nonblocking,
 )

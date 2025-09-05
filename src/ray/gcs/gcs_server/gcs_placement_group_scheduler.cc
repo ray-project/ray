@@ -21,8 +21,6 @@
 #include <vector>
 
 #include "ray/common/asio/asio_util.h"
-#include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
-#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace gcs {
@@ -32,7 +30,7 @@ GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
     gcs::GcsTableStorage &gcs_table_storage,
     const gcs::GcsNodeManager &gcs_node_manager,
     ClusterResourceScheduler &cluster_resource_scheduler,
-    rpc::NodeManagerClientPool &raylet_client_pool)
+    rpc::RayletClientPool &raylet_client_pool)
     : io_context_(io_context),
       return_timer_(io_context),
       gcs_table_storage_(gcs_table_storage),
@@ -72,7 +70,6 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   auto scheduling_options =
       CreateSchedulingOptions(placement_group->GetPlacementGroupID(),
                               strategy,
-                              placement_group->GetMaxCpuFractionPerNode(),
                               placement_group->GetSoftTargetNodeID());
   auto scheduling_result =
       cluster_resource_scheduler_.Schedule(resource_request_list, scheduling_options);
@@ -187,12 +184,12 @@ void GcsPlacementGroupScheduler::PrepareResources(
     return;
   }
 
-  const auto lease_client = GetLeaseClientFromNode(node.value());
+  const auto raylet_client = GetRayletClientFromNode(node.value());
   const auto node_id = NodeID::FromBinary(node.value()->node_id());
   RAY_LOG(INFO) << "Preparing resource from node " << node_id
                 << " for bundles: " << GetDebugStringForBundles(bundles);
 
-  lease_client->PrepareBundleResources(
+  raylet_client->PrepareBundleResources(
       bundles,
       [node_id, bundles, callback](const Status &status,
                                    const rpc::PrepareBundleResourcesReply &reply) {
@@ -214,12 +211,12 @@ void GcsPlacementGroupScheduler::CommitResources(
     const std::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
     const StatusCallback callback) {
   RAY_CHECK(node.has_value());
-  const auto lease_client = GetLeaseClientFromNode(node.value());
+  const auto raylet_client = GetRayletClientFromNode(node.value());
   const auto node_id = NodeID::FromBinary(node.value()->node_id());
 
   RAY_LOG(INFO) << "Committing resource to a node " << node_id
                 << " for bundles: " << GetDebugStringForBundles(bundles);
-  lease_client->CommitBundleResources(
+  raylet_client->CommitBundleResources(
       bundles,
       [bundles, node_id, callback](const Status &status,
                                    const rpc::CommitBundleResourcesReply &reply) {
@@ -258,9 +255,9 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
 
   RAY_LOG(DEBUG) << "Cancelling the resource reserved for bundle: "
                  << bundle_spec->DebugString() << " at node " << node_id;
-  const auto return_client = GetLeaseClientFromNode(node.value());
+  const auto raylet_client = GetRayletClientFromNode(node.value());
 
-  return_client->CancelResourceReserve(
+  raylet_client->CancelResourceReserve(
       *bundle_spec,
       [this, bundle_spec, node_id, node, max_retry, current_retry_cnt](
           const Status &status, const rpc::CancelResourceReserveReply &reply) {
@@ -283,19 +280,19 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
       });
 }
 
-std::shared_ptr<ResourceReserveInterface>
-GcsPlacementGroupScheduler::GetOrConnectLeaseClient(const rpc::Address &raylet_address) {
+std::shared_ptr<RayletClientInterface>
+GcsPlacementGroupScheduler::GetOrConnectRayletClient(const rpc::Address &raylet_address) {
   return raylet_client_pool_.GetOrConnectByAddress(raylet_address);
 }
 
-std::shared_ptr<ResourceReserveInterface>
-GcsPlacementGroupScheduler::GetLeaseClientFromNode(
+std::shared_ptr<RayletClientInterface>
+GcsPlacementGroupScheduler::GetRayletClientFromNode(
     const std::shared_ptr<ray::rpc::GcsNodeInfo> &node) {
   rpc::Address remote_address;
-  remote_address.set_raylet_id(node->node_id());
+  remote_address.set_node_id(node->node_id());
   remote_address.set_ip_address(node->node_manager_address());
   remote_address.set_port(node->node_manager_port());
-  return GetOrConnectLeaseClient(remote_address);
+  return GetOrConnectRayletClient(remote_address);
 }
 
 void GcsPlacementGroupScheduler::CommitAllBundles(
@@ -401,16 +398,16 @@ void GcsPlacementGroupScheduler::OnAllBundlePrepareRequestReturned(
 
   placement_group->UpdateState(rpc::PlacementGroupTableData::PREPARED);
 
-  RAY_CHECK_OK(gcs_table_storage_.PlacementGroupTable().Put(
+  gcs_table_storage_.PlacementGroupTable().Put(
       placement_group_id,
       placement_group->GetPlacementGroupTableData(),
       {[this, lease_status_tracker, schedule_failure_handler, schedule_success_handler](
-           Status status) {
+           const ray::Status &status) {
          RAY_CHECK_OK(status);
          CommitAllBundles(
              lease_status_tracker, schedule_failure_handler, schedule_success_handler);
        },
-       io_context_}));
+       io_context_});
 }
 
 void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
@@ -475,22 +472,20 @@ GcsPlacementGroupScheduler::CreateSchedulingContext(
 SchedulingOptions GcsPlacementGroupScheduler::CreateSchedulingOptions(
     const PlacementGroupID &placement_group_id,
     rpc::PlacementStrategy strategy,
-    double max_cpu_fraction_per_node,
     NodeID soft_target_node_id) {
   switch (strategy) {
   case rpc::PlacementStrategy::PACK:
-    return SchedulingOptions::BundlePack(max_cpu_fraction_per_node);
+    return SchedulingOptions::BundlePack();
   case rpc::PlacementStrategy::SPREAD:
-    return SchedulingOptions::BundleSpread(max_cpu_fraction_per_node);
+    return SchedulingOptions::BundleSpread();
   case rpc::PlacementStrategy::STRICT_PACK:
     return SchedulingOptions::BundleStrictPack(
-        max_cpu_fraction_per_node,
         soft_target_node_id.IsNil() ? scheduling::NodeID::Nil()
                                     : scheduling::NodeID(soft_target_node_id.Binary()));
 
   case rpc::PlacementStrategy::STRICT_SPREAD:
     return SchedulingOptions::BundleStrictSpread(
-        max_cpu_fraction_per_node, CreateSchedulingContext(placement_group_id));
+        CreateSchedulingContext(placement_group_id));
   default:
     RAY_LOG(FATAL) << "Unsupported scheduling type: "
                    << rpc::PlacementStrategy_Name(strategy);
@@ -536,7 +531,7 @@ void GcsPlacementGroupScheduler::ReleaseUnusedBundles(
     const auto &node_id = alive_node.first;
     nodes_of_releasing_unused_bundles_.insert(node_id);
 
-    auto lease_client = GetLeaseClientFromNode(alive_node.second);
+    auto raylet_client = GetRayletClientFromNode(alive_node.second);
     auto release_unused_bundles_callback =
         [this, node_id](const Status &status,
                         const rpc::ReleaseUnusedBundlesReply &reply) {
@@ -548,7 +543,7 @@ void GcsPlacementGroupScheduler::ReleaseUnusedBundles(
     // In this case, GCS will send an empty list.
     auto bundles_in_use =
         iter != node_to_bundles.end() ? iter->second : std::vector<rpc::Bundle>{};
-    lease_client->ReleaseUnusedBundles(bundles_in_use, release_unused_bundles_callback);
+    raylet_client->ReleaseUnusedBundles(bundles_in_use, release_unused_bundles_callback);
   }
 }
 

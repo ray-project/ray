@@ -5,6 +5,7 @@ import time
 import pytest
 
 import ray
+from ray._private.state import state as ray_state
 from ray.exceptions import RayActorError
 from ray.runtime_env import RuntimeEnv
 from ray.train.v2._internal.constants import (
@@ -13,22 +14,26 @@ from ray.train.v2._internal.constants import (
     WORKER_HEALTH_CHECK_TIMEOUT_S_ENV_VAR,
 )
 from ray.train.v2._internal.exceptions import (
+    InsufficientClusterResourcesError,
     WorkerGroupStartupFailedError,
     WorkerGroupStartupTimeoutError,
     WorkerHealthCheckFailedError,
     WorkerHealthCheckTimeoutError,
 )
 from ray.train.v2._internal.execution.callback import WorkerGroupCallback
-from ray.train.v2._internal.execution.context import TrainRunContext, get_train_context
+from ray.train.v2._internal.execution.context import get_train_context
 from ray.train.v2._internal.execution.worker_group import (
     ActorMetadata,
     RayTrainWorker,
     Worker,
     WorkerGroup,
     WorkerGroupContext,
+    WorkerGroupState,
 )
 from ray.train.v2.api.config import RunConfig
-from ray.train.v2.tests.util import DummyObjectRefWrapper
+from ray.train.v2.tests.util import DummyObjectRefWrapper, create_dummy_run_context
+
+pytestmark = pytest.mark.usefixtures("mock_runtime_context")
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -40,7 +45,7 @@ def ray_start_4_cpus():
 
 def _default_inactive_worker_group(**kwargs):
     default_config = {
-        "train_run_context": TrainRunContext(RunConfig()),
+        "train_run_context": create_dummy_run_context(),
         "worker_group_context": _default_worker_group_context(),
     }
     default_config.update(kwargs)
@@ -61,10 +66,9 @@ def _default_worker_group_context(**kwargs):
 
 def test_worker_group_create():
     """Test WorkerGroup.create() factory method."""
-    train_run_context = TrainRunContext(run_config=RunConfig())
 
     worker_group = WorkerGroup.create(
-        train_run_context=train_run_context,
+        train_run_context=create_dummy_run_context(),
         worker_group_context=_default_worker_group_context(),
     )
 
@@ -85,9 +89,9 @@ def test_worker_group_create():
 )
 def test_worker_group_create_with_runtime_env(runtime_env):
     """Test WorkerGroup.create() factory method with a custom runtime environment."""
-    train_run_context = TrainRunContext(
-        run_config=RunConfig(worker_runtime_env=runtime_env)
-    )
+
+    run_config = RunConfig(worker_runtime_env=runtime_env)
+    train_run_context = create_dummy_run_context(run_config=run_config)
 
     worker_group_context = _default_worker_group_context()
 
@@ -161,6 +165,32 @@ def test_start_timeout(monkeypatch):
 
     with pytest.raises(WorkerGroupStartupTimeoutError):
         # Not enough CPU resources are available, so the workers will not start.
+        wg._start()
+
+
+def test_insufficient_cluster_resources_startup_failure(monkeypatch):
+    """Test that WorkerGroup startup fails when cluster has insufficient resources.
+
+    This test mocks the cluster resources to match the test environment and
+    verifies that the resource check properly catches insufficient resources.
+    """
+    # Mock the cluster resources to return the test cluster configuration (4 CPUs)
+    monkeypatch.setattr(
+        ray_state, "get_max_resources_from_cluster_config", lambda: {"CPU": 4.0}
+    )
+
+    # The test cluster has 4 CPUs, so requesting 8 workers with 1 CPU each should fail
+    worker_group_context = _default_worker_group_context(
+        num_workers=8,  # More workers than available CPUs
+        resources_per_worker={"CPU": 1.0},
+    )
+
+    wg = _default_inactive_worker_group(worker_group_context=worker_group_context)
+
+    # This should fail during startup due to insufficient resources
+    with pytest.raises(
+        InsufficientClusterResourcesError, match="Insufficient cluster resources"
+    ):
         wg._start()
 
 
@@ -384,8 +414,8 @@ def test_local_rank_assignment():
 def test_setup_worker_group(tmp_path):
     num_workers = 4
     worker_group = WorkerGroup(
-        train_run_context=TrainRunContext(
-            RunConfig(name="test", storage_path=str(tmp_path))
+        train_run_context=create_dummy_run_context(
+            run_config=RunConfig(name="test", storage_path=str(tmp_path))
         ),
         worker_group_context=_default_worker_group_context(num_workers=num_workers),
     )
@@ -441,6 +471,7 @@ def test_worker_group_callback():
             self.training_start_hook_called = False
             self.shutdown_hook_called = False
             self.poll_status_hook_called = False
+            self.abort_hook_called = False
 
         def after_worker_group_start(self, worker_group):
             self.start_hook_called = True
@@ -481,6 +512,42 @@ def test_worker_log_file_paths():
     wg.shutdown()
 
 
+def test_worker_group_abort(monkeypatch):
+    class AssertCallback(WorkerGroupCallback):
+        def __init__(self):
+            self.abort_hook_called = False
+
+        def before_worker_group_abort(self, worker_group_context):
+            self.abort_hook_called = True
+
+    hooks = AssertCallback()
+    wg = _default_inactive_worker_group(callbacks=[hooks])
+
+    wg._start()
+
+    # Track shutdown calls without preventing actual cleanup
+    shutdown_call_count = 0
+    original_shutdown = WorkerGroupState.shutdown
+
+    def track_shutdown_calls(self):
+        nonlocal shutdown_call_count
+        shutdown_call_count += 1
+        return original_shutdown(self)
+
+    monkeypatch.setattr(WorkerGroupState, "shutdown", track_shutdown_calls)
+
+    wg.abort()
+    assert (
+        shutdown_call_count == 1
+    ), f"Expected shutdown to be called once, but was called {shutdown_call_count} times"
+    assert hooks.abort_hook_called
+
+    # Bypass _assert_active method, allowing for shutdown
+    monkeypatch.setattr(wg, "_assert_active", lambda: None)
+
+    wg.shutdown()
+
+
 def test_shutdown_hook_with_dead_actors():
     """Check that the shutdown hook raises correctly if run
     on a mix of alive and dead actors."""
@@ -517,6 +584,106 @@ def test_shutdown_hook_with_dead_actors():
 
     # TODO: This test leaves the WorkerGroup in a bad state.
     # If more tests are added below this, they may not be able to run.
+
+
+def test_check_cluster_resources_and_raise_if_insufficient(monkeypatch):
+    """Test _check_cluster_resources_and_raise_if_insufficient static method."""
+
+    def _assert_resource_check(
+        available_resources, resources_per_worker, num_workers, should_raise
+    ):
+        """Helper to test resource checking with different scenarios."""
+        monkeypatch.setattr(
+            ray_state,
+            "get_max_resources_from_cluster_config",
+            lambda: available_resources,
+        )
+
+        if should_raise:
+            with pytest.raises(
+                InsufficientClusterResourcesError,
+                match="Insufficient cluster resources",
+            ):
+                WorkerGroup._check_cluster_resources_and_raise_if_insufficient(
+                    resources_per_worker=resources_per_worker, num_workers=num_workers
+                )
+        else:
+            # Should not raise
+            WorkerGroup._check_cluster_resources_and_raise_if_insufficient(
+                resources_per_worker=resources_per_worker, num_workers=num_workers
+            )
+
+    # Test case 1: Sufficient resources - should not raise
+    _assert_resource_check(
+        available_resources={"CPU": 8.0, "GPU": 4.0},
+        resources_per_worker={"CPU": 1.0, "GPU": 0.5},
+        num_workers=4,
+        should_raise=False,
+    )
+
+    # Test case 2: Insufficient CPU resources - should raise
+    _assert_resource_check(
+        available_resources={"CPU": 8.0, "GPU": 4.0},
+        resources_per_worker={"CPU": 3.0},
+        num_workers=4,  # Requires 12 CPU but only 8 available
+        should_raise=True,
+    )
+
+    # Test case 3: Insufficient GPU resources - should raise
+    _assert_resource_check(
+        available_resources={"CPU": 8.0, "GPU": 4.0},
+        resources_per_worker={"GPU": 2.0},
+        num_workers=3,  # Requires 6 GPU but only 4 available
+        should_raise=True,
+    )
+
+    # Test case 4: Missing resource type in cluster - should raise
+    _assert_resource_check(
+        available_resources={"CPU": 8.0, "GPU": 4.0},
+        resources_per_worker={"TPU": 1.0},
+        num_workers=1,  # TPU not available in cluster
+        should_raise=True,
+    )
+
+    # Test case 5: Resource available but zero - should raise
+    _assert_resource_check(
+        available_resources={"CPU": 8.0, "GPU": 0},
+        resources_per_worker={"GPU": 1.0},
+        num_workers=1,
+        should_raise=True,
+    )
+
+    # Test case 6: Empty cluster resources - should not raise
+    _assert_resource_check(
+        available_resources={},
+        resources_per_worker={"CPU": 1.0},
+        num_workers=2,
+        should_raise=False,
+    )
+
+    # Test case 7: None cluster resources - should not raise
+    _assert_resource_check(
+        available_resources=None,
+        resources_per_worker={"CPU": 1.0},
+        num_workers=2,
+        should_raise=False,
+    )
+
+    # Test case 8: Edge case with zero resources - should not raise
+    _assert_resource_check(
+        available_resources={"CPU": 4.0},
+        resources_per_worker={"CPU": 0.0},
+        num_workers=10,
+        should_raise=False,
+    )
+
+    # Test case 9: Exact resource match - should not raise
+    _assert_resource_check(
+        available_resources={"CPU": 4.0},
+        resources_per_worker={"CPU": 1.0},
+        num_workers=4,  # Exactly matches 4.0 CPU available
+        should_raise=False,
+    )
 
 
 if __name__ == "__main__":

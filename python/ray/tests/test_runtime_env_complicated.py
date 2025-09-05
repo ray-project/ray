@@ -4,38 +4,37 @@ import subprocess
 import sys
 import tempfile
 import time
-import yaml
 from pathlib import Path
 from typing import List
 from unittest import mock
 
 import pytest
+import yaml
 
 import ray
-from ray.runtime_env import RuntimeEnv
+from ray._common.test_utils import wait_for_condition
+from ray._common.utils import try_to_create_directory
 from ray._private.runtime_env.conda import (
-    inject_dependencies,
+    _current_py_version,
     _inject_ray_to_conda_site,
     _resolve_install_from_source_ray_dependencies,
-    _current_py_version,
+    inject_dependencies,
 )
-
 from ray._private.runtime_env.conda_utils import (
     get_conda_env_list,
-    get_conda_info_json,
     get_conda_envs,
+    get_conda_info_json,
 )
 from ray._private.test_utils import (
+    chdir,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
-    wait_for_condition,
-    chdir,
 )
 from ray._private.utils import (
-    get_conda_env_dir,
     get_conda_bin_executable,
-    try_to_create_directory,
+    get_conda_env_dir,
 )
+from ray.runtime_env import RuntimeEnv
 
 if not os.environ.get("CI"):
     # This flags turns on the local development that link against current ray
@@ -646,52 +645,6 @@ def test_pip_job_config(shutdown_only, pip_as_str, tmp_path):
         # Ensure pip-install-test is not installed on the test machine
         import pip_install_test  # noqa
     assert ray.get(f.remote())
-
-
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform == "win32",
-    reason="dirname(__file__) returns an invalid path",
-)
-def test_experimental_package(shutdown_only):
-    ray.init(num_cpus=2)
-    pkg = ray.experimental.load_package(
-        os.path.join(
-            os.path.dirname(__file__),
-            "../experimental/packaging/example_pkg/ray_pkg.yaml",
-        )
-    )
-    a = pkg.MyActor.remote()
-    assert ray.get(a.f.remote()) == "hello world"
-    assert ray.get(pkg.my_func.remote()) == "hello world"
-
-
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform == "win32",
-    reason="dirname(__file__) returns an invalid path",
-)
-def test_experimental_package_lazy(shutdown_only):
-    pkg = ray.experimental.load_package(
-        os.path.join(
-            os.path.dirname(__file__),
-            "../experimental/packaging/example_pkg/ray_pkg.yaml",
-        )
-    )
-    ray.init(num_cpus=2)
-    a = pkg.MyActor.remote()
-    assert ray.get(a.f.remote()) == "hello world"
-    assert ray.get(pkg.my_func.remote()) == "hello world"
-
-
-@pytest.mark.skipif(_WIN32, reason="requires tar cli command")
-def test_experimental_package_github(shutdown_only):
-    ray.init(num_cpus=2)
-    pkg = ray.experimental.load_package(
-        "http://raw.githubusercontent.com/ray-project/ray/master/"
-        "python/ray/experimental/packaging/example_pkg/ray_pkg.yaml"
-    )
-    a = pkg.MyActor.remote()
-    assert ray.get(a.f.remote()) == "hello world"
-    assert ray.get(pkg.my_func.remote()) == "hello world"
 
 
 @pytest.mark.skipif(_WIN32, reason="Fails on windows")

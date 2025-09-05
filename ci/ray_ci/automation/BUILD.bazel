@@ -1,5 +1,5 @@
-load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 
 py_library(
     name = "automation",
@@ -233,5 +233,16 @@ py_test(
     deps = [
         ci_require("pytest"),
         ":automation",
+    ],
+)
+
+py_binary(
+    name = "get_contributors",
+    srcs = ["get_contributors.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ci_require("click"),
+        ci_require("pygithub"),
+        ci_require("tqdm"),
     ],
 )

@@ -2,11 +2,6 @@
 
 set -e
 
-# Install uv and set up Python
-pip install uv
-uv python install 3.11
-uv python pin 3.11
-
 # Create a temporary directory for backup files and setup cleanup trap
 TEMP_DIR=$(mktemp -d)
 cleanup() {
@@ -18,24 +13,33 @@ trap cleanup EXIT
 echo "Created temporary directory: $TEMP_DIR"
 
 # Create backup copies of req files to reference to
-cp ./python/requirements_compiled_rayllm_py311_cpu.txt "$TEMP_DIR/requirements_compiled_rayllm_py311_cpu_backup.txt"
-cp ./python/requirements_compiled_rayllm_py311_cu121.txt "$TEMP_DIR/requirements_compiled_rayllm_py311_cu121_backup.txt"
-cp ./python/requirements_compiled_rayllm_py311_cu124.txt "$TEMP_DIR/requirements_compiled_rayllm_py311_cu124_backup.txt"
+LOCK_TYPES=(rayllm_test ray_test ray rayllm)
+VARIANTS=(cpu cu121 cu128)
 
-./ci/compile_llm_requirements.sh
+for LOCK_TYPE in "${LOCK_TYPES[@]}"; do
+    for VARIANT in "${VARIANTS[@]}"; do
+        cp ./python/deplocks/llm/"${LOCK_TYPE}"_py311_"${VARIANT}".lock "$TEMP_DIR/${LOCK_TYPE}_py311_${VARIANT}_backup.lock"
+    done
+done
+
+./ci/compile_llm_requirements.sh ci/raydepsets/rayllm.depsets.yaml
 
 # Copy files to artifact mount on Buildkite
-cp ./python/requirements_compiled_rayllm_py311_cpu.txt /artifact-mount/
-cp ./python/requirements_compiled_rayllm_py311_cu121.txt /artifact-mount/
-cp ./python/requirements_compiled_rayllm_py311_cu124.txt /artifact-mount/
+for LOCK_TYPE in "${LOCK_TYPES[@]}"; do
+    for VARIANT in "${VARIANTS[@]}"; do
+        cp ./python/deplocks/llm/"${LOCK_TYPE}"_py311_"${VARIANT}".lock /artifact-mount/
+    done
+done
 
 # Check all files and print if files are not up to date
 FAILED=0
-for VARIANT in cpu cu121 cu124; do
-    diff --color -u ./python/requirements_compiled_rayllm_py311_${VARIANT}.txt "$TEMP_DIR/requirements_compiled_rayllm_py311_${VARIANT}_backup.txt" || {
-        echo "requirements_compiled_rayllm_py311_${VARIANT}.txt is not up to date. Please download it from Artifacts tab and git push the changes."
-        FAILED=1
-    }
+for LOCK_TYPE in "${LOCK_TYPES[@]}"; do
+    for VARIANT in "${VARIANTS[@]}"; do
+        diff --color -u ./python/deplocks/llm/"${LOCK_TYPE}"_py311_"${VARIANT}".lock "$TEMP_DIR/${LOCK_TYPE}_py311_${VARIANT}_backup.lock" || {
+            echo "${LOCK_TYPE}_py311_${VARIANT}.lock is not up to date. Please download it from Artifacts tab and git push the changes."
+            FAILED=1
+        }
+    done
 done
 if [[ $FAILED -eq 1 ]]; then
     exit 1

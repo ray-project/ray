@@ -357,62 +357,6 @@ memory your function uses, and prevents Ray from scheduling too many tasks on a 
     ds.map_batches(uses_lots_of_memory, memory=1 * 1024 * 1024)
 
 
-.. _aggregations:
-
-Aggregations
-============
-
-Ray Data offers out-of-the-box methods for performing aggregations on your data.
-
-These methods include :meth:`~ray.data.Dataset.sum`, :meth:`~ray.data.Dataset.min`, :meth:`~ray.data.Dataset.max`, :meth:`~ray.data.Dataset.mean`, and more
-(see :ref:`API Reference <dataset-api>` for the full list).
-
-You can use these methods as follows:
-
-.. testcode::
-
-    import ray
-
-    ds = ray.data.range(10)
-    # Schema: {"id": int64}
-    ds.sum(on="id")
-    # 45
-
-
-You can also perform aggregations on grouped data.
-
-.. testcode::
-
-    import ray
-
-    ds = ray.data.range(10)
-    # Schema: {"id": int64}
-    ds = ds.add_column("label", lambda x: x % 3)
-    # Schema: {"id": int64, "label": int64}
-    ds.groupby("label").sum(on="id").take_all()
-    # [{'label': 0, 'sum(id)': 18},
-    #  {'label': 1, 'sum(id)': 12},
-    #  {'label': 2, 'sum(id)': 15}]
-
-Each of the preceding methods also has a corresponding :ref:`AggregateFnV2 <aggregations_api_ref>` object. These objects can be used in
-:meth:`~ray.data.Dataset.aggregate()` or :meth:`Dataset.groupby().aggregate() <ray.data.grouped_data.GroupedData.aggregate>` to compute multiple aggregations at once.
-
-
-.. testcode::
-
-    import ray
-
-    ds = ray.data.range(10)
-    # Schema: {"id": int64}
-    ds = ds.add_column("label", lambda x: x % 3)
-    # Schema: {"id": int64, "label": int64}
-    ds.aggregate(
-        ray.data.aggregate.Sum(on="id"), 
-        ray.data.aggregate.Count(on="label")
-    )
-    # {'sum(id)': 45, 'count(label)': 10}
-
-
 .. _transforming_groupby:
 
 Group-by and transforming groups

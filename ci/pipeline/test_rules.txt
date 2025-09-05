@@ -3,12 +3,22 @@
 # Comment content, after '#', will be ignored.
 # Empty lines will be ignored too.
 #
+#   ! tag1 tag2 tag3  # Declares a tag. A tag must be declared first to be used.
+#   # Tags must be declared at the beginning.
+#
 #   dir/  # Directory to match
 #   file  # File to match
 #   dir/*.py  # Pattern to match, using fnmatch, matches dir/a.py dir/dir/b.py or dir/.py
-#   @ tag1 tag2 tag3 # Tags to emit for a rule. A rule without tags is a skipping rule.
+#   @ tag1 tag2 tag3  # Tags to emit for a rule. A rule without tags is a skipping rule.
 #
 #   ;  # Semicolon to separate rules
+
+! always lint
+! python cpp core_cpp java workflow cgraphs_direct_transport dashboard
+! ray_client runtime_env_container
+! data dask serve ml tune train llm rllib rllib_gpu rllib_directly
+! linux_wheels macos_wheels docker doc python_dependencies tools
+! release_tests spark_on_ray
 
 python/ray/air/
 @ ml train tune data linux_wheels
@@ -18,7 +28,7 @@ python/ray/llm/
 doc/source/llm/
 .buildkite/llm.rayci.yml
 ci/docker/llm.build.Dockerfile
-python/requirements_compiled_*.txt
+python/deplocks/llm/*.lock
 @ llm
 ;
 
@@ -84,7 +94,10 @@ python/requirements/
 
 python/ray/dag/
 python/ray/experimental/channel/
-@ python compiled_graphs
+python/ray/experimental/gpu_object_manager/
+python/ray/experimental/collective/
+python/ray/tests/gpu_objects/
+@ python cgraphs_direct_transport
 ;
 
 python/ray/util/client/
@@ -97,6 +110,10 @@ python/ray/util/dask/
 
 python/ray/util/spark/
 @ python spark_on_ray
+;
+
+python/ray/runtime_env/
+@ python runtime_env_container
 ;
 
 python/
@@ -125,11 +142,6 @@ docker/
 @ docker linux_wheels
 ;
 
-doc/source/cluster/kubernetes/
-ci/k8s/
-@ k8s_doc
-;
-
 .readthedocs.yaml
 @ doc
 ;
@@ -139,6 +151,8 @@ doc/*.ipynb
 doc/BUILD
 doc/*/BUILD
 doc/*.rst
+.vale.ini
+.vale/
 @ doc
 ;
 
@@ -149,12 +163,9 @@ ci/docker/doctest.build.wanda.yaml
 
 release/ray_release/
 release/requirements_buildkite.*
-@ tools
-;
-
 release/*.md
 release/*.yaml
-# Do not run on config changes
+@ tools
 ;
 
 release/
@@ -174,6 +185,7 @@ ci/lint/
 ci/fossa/
 ci/docker/fossa.Dockerfile
 ci/docker/fossa.wanda.yaml
+ci/raydepsets/
 bazel/tests/
 @ tools
 ;
@@ -204,10 +216,6 @@ ci/docker/forge.aarch64.wanda.yaml
 ci/docker/manylinux.Dockerfile
 ci/docker/manylinux.wanda.yaml
 ci/docker/manylinux.aarch64.wanda.yaml
-ci/docker/ray.cpu.base.wanda.yaml
-ci/docker/ray.cpu.base.aarch64.wanda.yaml
-ci/docker/ray.cuda.base.wanda.yaml
-ci/docker/ray.cuda.base.aarch64.wanda.yaml
 ci/docker/windows.build.Dockerfile
 ci/docker/windows.build.wanda.yaml
 build-docker.sh
@@ -227,7 +235,7 @@ src/
 
 src/ray/core_worker/experimental*.h
 src/ray/core_worker/experimental*.cc
-@ compiled_graphs
+@ cgraphs_direct_transport
 ;
 
 .github/

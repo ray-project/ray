@@ -6,7 +6,7 @@ from typing import List
 import pytest
 
 import ray
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
 
 
 @pytest.mark.skipif(

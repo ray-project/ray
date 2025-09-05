@@ -2,7 +2,7 @@
 
 It should be deleted once we fully move to the new executor backend.
 """
-
+import logging
 from typing import Iterator, Optional, Tuple
 
 from ray.data._internal.block_list import BlockList
@@ -12,29 +12,31 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
 from ray.data._internal.execution.interfaces.executor import OutputIterator
+from ray.data._internal.execution.streaming_executor_state import Topology
 from ray.data._internal.logical.util import record_operators_usage
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
-from ray.data._internal.util import unify_block_metadata_schema
-from ray.data.block import BlockMetadata
+from ray.data.block import (
+    BlockMetadata,
+    BlockMetadataWithSchema,
+    _take_first_non_empty_schema,
+)
 
 # Warn about tasks larger than this.
 TASK_SIZE_WARN_THRESHOLD_BYTES = 100000
+
+logger = logging.getLogger(__name__)
 
 
 def execute_to_legacy_bundle_iterator(
     executor: Executor,
     plan: ExecutionPlan,
-    dag_rewrite=None,
 ) -> Iterator[RefBundle]:
     """Execute a plan with the new executor and return a bundle iterator.
 
     Args:
         executor: The executor to use.
         plan: The legacy plan to execute.
-        dag_rewrite: Callback that can be used to mutate the DAG prior to execution.
-            This is currently used as a legacy hack to inject the OutputSplit operator
-            for `Dataset.streaming_split()`.
 
     Returns:
         The output as a bundle iterator.
@@ -44,10 +46,10 @@ def execute_to_legacy_bundle_iterator(
         plan,
         preserve_order=False,
     )
-    if dag_rewrite:
-        dag = dag_rewrite(dag)
 
     bundle_iter = executor.execute(dag, initial_stats=stats)
+
+    topology: "Topology" = executor._topology
 
     class CacheMetadataIterator(OutputIterator):
         """Wrapper for `bundle_iterator` above.
@@ -65,7 +67,6 @@ def execute_to_legacy_bundle_iterator(
             self._collected_metadata = BlockMetadata(
                 num_rows=0,
                 size_bytes=0,
-                schema=None,
                 input_files=None,
                 exec_stats=None,
             )
@@ -78,7 +79,15 @@ def execute_to_legacy_bundle_iterator(
             except StopIteration:
                 # Once the iterator is completely exhausted, we are done
                 # collecting metadata. We can add this cached metadata to the plan.
-                plan._snapshot_metadata = self._collected_metadata
+
+                # Traverse the topology backwards and find the first available schema
+                schema = next(reversed(topology.values()))._schema
+
+                meta_with_schema = BlockMetadataWithSchema(
+                    metadata=self._collected_metadata,
+                    schema=schema,
+                )
+                plan._snapshot_metadata_schema = meta_with_schema
                 raise
 
         def _collect_metadata(self, bundle: RefBundle) -> RefBundle:
@@ -87,9 +96,6 @@ def execute_to_legacy_bundle_iterator(
             row count, schema, etc., after iteration completes."""
             self._collected_metadata.num_rows += bundle.num_rows()
             self._collected_metadata.size_bytes += bundle.size_bytes()
-            self._collected_metadata.schema = unify_block_metadata_schema(
-                [self._collected_metadata, *bundle.metadata]
-            )
             return bundle
 
     return CacheMetadataIterator(bundle_iter)
@@ -166,12 +172,18 @@ def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:
 def _bundles_to_block_list(bundles: Iterator[RefBundle]) -> BlockList:
     blocks, metadata = [], []
     owns_blocks = True
-    for ref_bundle in bundles:
+    bundle_list = list(bundles)
+    schema = _take_first_non_empty_schema(
+        ref_bundle.schema for ref_bundle in bundle_list
+    )
+
+    for ref_bundle in bundle_list:
         if not ref_bundle.owns_blocks:
             owns_blocks = False
         blocks.extend(ref_bundle.block_refs)
         metadata.extend(ref_bundle.metadata)
-    return BlockList(blocks, metadata, owned_by_consumer=owns_blocks)
+
+    return BlockList(blocks, metadata, owned_by_consumer=owns_blocks, schema=schema)
 
 
 def _set_stats_uuid_recursive(stats: DatasetStats, dataset_uuid: str) -> None:

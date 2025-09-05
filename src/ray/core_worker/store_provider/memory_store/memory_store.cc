@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "ray/common/ray_config.h"
+#include "ray/ipc/raylet_ipc_client_interface.h"
 
 namespace ray {
 namespace core {
@@ -135,38 +136,31 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
 CoreWorkerMemoryStore::CoreWorkerMemoryStore(
     instrumented_io_context &io_context,
     ReferenceCounter *counter,
-    std::shared_ptr<raylet::RayletClient> raylet_client,
+    std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
     std::function<Status()> check_signals,
     std::function<void(const RayObject &)> unhandled_exception_handler,
     std::function<std::shared_ptr<ray::RayObject>(
         const ray::RayObject &object, const ObjectID &object_id)> object_allocator)
     : io_context_(io_context),
       ref_counter_(counter),
-      raylet_client_(std::move(raylet_client)),
+      raylet_ipc_client_(std::move(raylet_ipc_client)),
       check_signals_(std::move(check_signals)),
       unhandled_exception_handler_(std::move(unhandled_exception_handler)),
       object_allocator_(std::move(object_allocator)) {}
 
 void CoreWorkerMemoryStore::GetAsync(
     const ObjectID &object_id, std::function<void(std::shared_ptr<RayObject>)> callback) {
-  std::shared_ptr<RayObject> ptr;
-  {
-    absl::MutexLock lock(&mu_);
-    auto iter = objects_.find(object_id);
-    if (iter != objects_.end()) {
-      ptr = iter->second;
-    } else {
-      object_async_get_requests_[object_id].push_back(callback);
-    }
-    if (ptr != nullptr) {
-      ptr->SetAccessed();
-    }
+  absl::MutexLock lock(&mu_);
+  auto iter = objects_.find(object_id);
+  if (iter == objects_.end()) {
+    object_async_get_requests_[object_id].push_back(std::move(callback));
+    return;
   }
-  // It's important for performance to run the callback outside the lock.
-  if (ptr != nullptr) {
-    io_context_.post([callback = std::move(callback), ptr]() { callback(ptr); },
-                     "CoreWorkerMemoryStore.GetAsync.Callback");
-  }
+  auto &object_ptr = iter->second;
+  object_ptr->SetAccessed();
+  io_context_.post(
+      [callback = std::move(callback), object_ptr]() { callback(object_ptr); },
+      "CoreWorkerMemoryStore.GetAsync.Callback");
 }
 
 std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetIfExists(const ObjectID &object_id) {
@@ -184,15 +178,18 @@ std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetIfExists(const ObjectID &ob
   return ptr;
 }
 
-bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_id) {
+void CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_id) {
   std::vector<std::function<void(std::shared_ptr<RayObject>)>> async_callbacks;
   RAY_LOG(DEBUG).WithField(object_id) << "Putting object into memory store.";
   std::shared_ptr<RayObject> object_entry = nullptr;
   if (object_allocator_ != nullptr) {
     object_entry = object_allocator_(object, object_id);
   } else {
-    object_entry = std::make_shared<RayObject>(
-        object.GetData(), object.GetMetadata(), object.GetNestedRefs(), true);
+    object_entry = std::make_shared<RayObject>(object.GetData(),
+                                               object.GetMetadata(),
+                                               object.GetNestedRefs(),
+                                               true,
+                                               object.GetTensorTransport());
   }
 
   // TODO(edoakes): we should instead return a flag to the caller to put the object in
@@ -202,7 +199,7 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
 
     auto iter = objects_.find(object_id);
     if (iter != objects_.end()) {
-      return true;  // Object already exists in the store, which is fine.
+      return;  // Object already exists in the store, which is fine.
     }
 
     auto async_callback_it = object_async_get_requests_.find(object_id);
@@ -240,6 +237,8 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
 
     if (!async_callbacks.empty()) {
       object_entry->SetAccessed();
+    } else {
+      return;
     }
   }
 
@@ -254,8 +253,6 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
         }
       },
       "CoreWorkerMemoryStore.Put.get_async_callbacks");
-
-  return true;
 }
 
 Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
@@ -347,10 +344,10 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
 
   // Only send block/unblock IPCs for non-actor tasks on the main thread.
   bool should_notify_raylet =
-      (raylet_client_ != nullptr && ctx.ShouldReleaseResourcesOnBlockingCalls());
+      (raylet_ipc_client_ != nullptr && ctx.ShouldReleaseResourcesOnBlockingCalls());
   // Wait for remaining objects (or timeout).
   if (should_notify_raylet) {
-    RAY_CHECK_OK(raylet_client_->NotifyDirectCallTaskBlocked());
+    RAY_CHECK_OK(raylet_ipc_client_->NotifyDirectCallTaskBlocked());
   }
 
   bool done = false;
@@ -381,7 +378,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
   }
 
   if (should_notify_raylet) {
-    RAY_CHECK_OK(raylet_client_->NotifyDirectCallTaskUnblocked());
+    RAY_CHECK_OK(raylet_ipc_client_->NotifyDirectCallTaskUnblocked());
   }
 
   {

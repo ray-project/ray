@@ -9,15 +9,16 @@ import pytest
 import redis
 
 import ray
-from ray._raylet import GcsClient
 import ray._private.gcs_utils as gcs_utils
+import ray._private.ray_constants as ray_constants
+from ray._common.network_utils import parse_address
+from ray._common.test_utils import async_wait_for_condition
 from ray._private.test_utils import (
     external_redis_test_enabled,
     find_free_port,
     generate_system_config_map,
-    async_wait_for_condition,
 )
-import ray._private.ray_constants as ray_constants
+from ray._raylet import GcsClient, NodeID
 
 # Import asyncio timeout depends on python version
 if sys.version_info >= (3, 11):
@@ -235,17 +236,15 @@ async def test_check_liveness(monkeypatch, ray_start_cluster):
     n1 = cluster.add_node(node_manager_port=find_free_port())
     n2 = cluster.add_node(node_manager_port=find_free_port())
     gcs_client = GcsClient(address=cluster.address)
-    node_manager_addresses = [
-        f"{n.raylet_ip_address}:{n.node_manager_port}" for n in [h, n1, n2]
-    ]
+    node_ids = [NodeID.from_hex(n.node_id) for n in [h, n1, n2]]
 
-    ret = await gcs_client.async_check_alive(node_manager_addresses)
+    ret = await gcs_client.async_check_alive(node_ids)
     assert ret == [True, True, True]
 
     cluster.remove_node(n1)
 
     async def check(expect_liveness):
-        ret = await gcs_client.async_check_alive(node_manager_addresses)
+        ret = await gcs_client.async_check_alive(node_ids)
         return ret == expect_liveness
 
     await async_wait_for_condition(check, expect_liveness=[True, False, True])
@@ -254,7 +253,7 @@ async def test_check_liveness(monkeypatch, ray_start_cluster):
     n2_raylet_process.kill()
 
     # GCS hasn't marked it as dead yet.
-    ret = await gcs_client.async_check_alive(node_manager_addresses)
+    ret = await gcs_client.async_check_alive(node_ids)
     assert ret == [True, False, True]
 
     # GCS will notice node dead soon
@@ -303,7 +302,7 @@ def test_redis_cleanup(redis_replicas, shutdown_only):
     gcs_client.internal_kv_put(b"ABC", b"XYZ", True, None)
     ray.shutdown()
     redis_addr = os.environ["RAY_REDIS_ADDRESS"]
-    host, port = redis_addr.split(":")
+    host, port = parse_address(redis_addr)
     if os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS", "1") != "1":
         cli = redis.RedisCluster(host, int(port))
     else:

@@ -28,7 +28,6 @@ from ray.serve._private.http_util import (
 )
 from ray.serve._private.local_testing_mode import make_local_deployment_handle
 from ray.serve._private.logging_utils import configure_component_logger
-from ray.serve._private.request_router.request_router import RequestRouter
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
@@ -43,6 +42,7 @@ from ray.serve.config import (
     DeploymentMode,
     HTTPOptions,
     ProxyLocation,
+    RequestRouterConfig,
     gRPCOptions,
 )
 from ray.serve.context import (
@@ -135,6 +135,26 @@ def shutdown():
         return
 
     client.shutdown()
+    _set_global_client(None)
+
+
+@PublicAPI(stability="alpha")
+async def shutdown_async():
+    """Completely shut down Serve on the cluster asynchronously.
+
+    Deletes all applications and shuts down Serve system actors.
+    """
+
+    try:
+        client = _get_global_client()
+    except RayServeException:
+        logger.info(
+            "Nothing to shut down. There's no Serve application "
+            "running on this Ray cluster."
+        )
+        return
+
+    await client.shutdown_async()
     _set_global_client(None)
 
 
@@ -303,11 +323,6 @@ def ingress(app: Union[ASGIApp, Callable]) -> Callable:
                         cls.__del__(self)
 
         ASGIIngressWrapper.__name__ = cls.__name__
-        if hasattr(frozen_app_or_func, "docs_url"):
-            # TODO (abrar): fastapi apps instantiated by builder function will set
-            # the docs path on application state via the replica.
-            # This split in logic is not desirable, we should consolidate the two.
-            ASGIIngressWrapper.__fastapi_docs_path__ = frozen_app_or_func.docs_url
 
         return ASGIIngressWrapper
 
@@ -334,7 +349,9 @@ def deployment(
     health_check_period_s: Default[float] = DEFAULT.VALUE,
     health_check_timeout_s: Default[float] = DEFAULT.VALUE,
     logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
-    request_router_class: Default[Union[str, RequestRouter, None]] = DEFAULT.VALUE,
+    request_router_config: Default[
+        Union[Dict, RequestRouterConfig, None]
+    ] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Decorator that converts a Python class to a `Deployment`.
 
@@ -399,12 +416,7 @@ def deployment(
             check method to return before considering it as failed. Defaults to 30s.
         logging_config: Logging config options for the deployment. If provided,
             the config will be used to set up the Serve logger on the deployment.
-        request_router_class: The class of the request router used for this
-            deployment. This can be a string or a class. All the deployment
-            handle created for this deployment will use the routing policy
-            defined by the request router. Default to Serve's
-            PowerOfTwoChoicesRequestRouter.
-
+        request_router_config: Config for the request router used for this deployment.
     Returns:
         `Deployment`
     """
@@ -469,11 +481,9 @@ def deployment(
         health_check_period_s=health_check_period_s,
         health_check_timeout_s=health_check_timeout_s,
         logging_config=logging_config,
+        request_router_config=request_router_config,
     )
     deployment_config.user_configured_option_names = set(user_configured_option_names)
-
-    if request_router_class is not DEFAULT.VALUE:
-        deployment_config.request_router_class = request_router_class
 
     def decorator(_func_or_class):
         replica_config = ReplicaConfig.create(

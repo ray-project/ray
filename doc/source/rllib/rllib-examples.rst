@@ -39,7 +39,7 @@ directory and run the script as-is with python:
 .. code-block:: bash
 
     $ cd ray/rllib/examples/multi_agent
-    $ python multi_agent_pendulum.py --enable-new-api-stack --num-agents=2
+    $ python multi_agent_pendulum.py --num-agents=2
 
 
 Use the `--help` command line argument to have each script print out its supported command line options.
@@ -134,12 +134,20 @@ Connectors
    This type of filtering can improve learning stability in environments with highly variable state magnitudes
    by scaling observations to a normalized range.
 
-- `Multi-agent connector mapping global observations to different per-agent/policy observations <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/multi_agent_with_different_observation_spaces.py>`__:
-   A connector example showing how to map from a global, multi-agent observation space to n individual, per-agent, per-module observation spaces.
+- `Multi-agent observation preprocessor enhancing non-Markovian observations to Markovian ones <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/multi_agent_observation_preprocessor.py>`__:
+   A multi-agent preprocessor enhances the per-agent observations of a multi-agent env, which by themselves are non-Markovian,
+   partial observations and converts them into Markovian observations by adding information from
+   the respective other agent. A policy can only be trained optimally through this additional information.
 
 - `Prev-actions, prev-rewards connector <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/prev_actions_prev_rewards.py>`__:
    Augments observations with previous actions and rewards, giving the agent a short-term memory of past events, which can improve
    decision-making in partially observable or sequentially dependent tasks.
+
+- `Single-agent observation preprocessor <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/single_agent_observation_preprocessor.py>`__:
+   A connector alters the CartPole-v1 environment observations from the Markovian 4-tuple (x-pos,
+   angular-pos, x-velocity, angular-velocity) to a non-Markovian, simpler 2-tuple (only
+   x-pos and angular-pos). The resulting problem can only be solved through a
+   memory/stateful model, for example an LSTM.
 
 
 Curiosity
@@ -150,7 +158,7 @@ Curiosity
    Using curiosity is beneficial in sparse-reward environments where agents may struggle to find rewarding paths.
    However, count-based methods are only feasible for environments with small observation spaces.
 
-- `Euclidian distance-based curiosity <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/euclidian_distance_based_curiosity.py>`__:
+- `Euclidean distance-based curiosity <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/euclidian_distance_based_curiosity.py>`__:
    Uses Euclidean distance between states and the initial state to measure novelty, encouraging exploration by rewarding the agent for reaching "far away"
    regions of the environment.
    Suitable for sparse-reward tasks, where diverse exploration is key to success.
@@ -169,13 +177,28 @@ Curriculum learning
    This approach enables gradual learning, allowing agents to master simpler tasks before progressing to more challenging ones,
    ideal for environments with hierarchical or staged difficulties. Also see the :doc:`curriculum learning how-to </rllib/rllib-advanced-api>` from the documentation.
 
+- `Curriculum learning for Atari Pong <https://github.com/ray-project/ray/blob/master/rllib/examples/curriculum/pong_curriculum_learning.py>`__:
+   Demonstrates curriculum learning for Atari Pong using the `frameskip` to increase difficulty of the task.
+   This approach enables gradual learning, allowing agents to master slower reactions (lower `frameskip`) before progressing to more faster ones (higher `frameskip`).
+   Also see the :doc:`curriculum learning how-to </rllib/rllib-advanced-api>` from the documentation.
+
+
+Debugging
++++++++++
+
+- `Deterministic sampling and training <https://github.com/ray-project/ray/blob/master/rllib/examples/debugging/deterministic_training.py>`__:
+   Demonstrates the possibility to seed an experiment through the algorithm config. RLlib passes the seed through to all components that have a copy of the
+   :ref:`RL environment <rllib-environments-doc>` and the :ref:`RLModule <rlmodule-guide>` and thus makes sure these components behave deterministically.
+   When using a seed, train results should become repeatable. Note that some algorithms, such as :ref:`APPO <appo>` which rely on asynchronous sampling
+   in combination with Ray network communication always behave stochastically, no matter whether you set a seed or not.
+
 
 Environments
 ++++++++++++
 
 - `Async gym vectorization, parallelizing sub-environments <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/async_gym_env_vectorization.py>`__:
    Shows how the `gym_env_vectorize_mode` config setting can significantly speed up your
-   :py:class`~ray.rllib.env.env_runner.EnvRunner` actors, if your RL environment is slow and you are
+   :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors, if your RL environment is slow and you're
    using `num_envs_per_env_runner > 1`. The reason for the performance gain is that each sub-environment runs in its own process.
 
 - `Custom env rendering method <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/custom_env_render_method.py>`__:
@@ -298,8 +321,10 @@ Multi-agent RL
    a hand-coded random policy while another agent trains with PPO. This example highlights integrating static and dynamic policies,
    suitable for environments with a mix of fixed-strategy and adaptive agents.
 
-- `Different spaces for agents <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/different_spaces_for_agents.py>`__:
+- `Different observation- and action spaces for different agents <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/different_spaces_for_agents.py>`__:
    Configures agents with differing observation and action spaces within the same environment, showcasing RLlib's support for heterogeneous agents with varying space requirements in a single multi-agent environment.
+   Another example, which also makes use of connectors, and that covers the same topic, agents having different spaces, can be found
+   `here <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/multi_agent_observation_preprocessor.py>`__.
 
 - `Grouped agents, two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/two_step_game_with_grouped_agents.py>`__:
    Implements a multi-agent, grouped setup within a two-step game environment from the `QMIX paper <https://arxiv.org/pdf/1803.11485.pdf>`__.
@@ -337,6 +362,11 @@ Multi-agent RL
 - `Self-play, league-based, with OpenSpiel <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/self_play_league_based_with_open_spiel.py>`__:
    Uses OpenSpiel to demonstrate league-based self-play, where agents play against various
    versions of themselves, frozen or in-training, to improve through competitive interaction.
+
+- `Self-play with Footsies and PPO algorithm <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ppo/multi_agent_footsies_ppo.py>`__:
+    Implements self-play with the Footsies environment (two player zero-sum game).
+    This example highlights RLlib's capabilities in connecting to the external binaries running the game engine, as well as
+    setting up a multi-agent self-play training scenario.
 
 - `Self-play with OpenSpiel <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/self_play_with_open_spiel.py>`__:
    Similar to the league-based self-play, but simpler. This script leverages OpenSpiel for two-player games, allowing agents to improve

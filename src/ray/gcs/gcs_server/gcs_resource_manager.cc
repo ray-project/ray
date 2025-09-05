@@ -19,7 +19,8 @@
 #include <utility>
 
 #include "ray/common/ray_config.h"
-#include "ray/stats/metric_defs.h"
+#include "ray/gcs/gcs_server/state_util.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 namespace gcs {
@@ -28,15 +29,15 @@ GcsResourceManager::GcsResourceManager(instrumented_io_context &io_context,
                                        ClusterResourceManager &cluster_resource_manager,
                                        GcsNodeManager &gcs_node_manager,
                                        NodeID local_node_id,
-                                       ClusterTaskManager *cluster_task_manager)
+                                       raylet::ClusterLeaseManager *cluster_lease_manager)
     : io_context_(io_context),
       cluster_resource_manager_(cluster_resource_manager),
       gcs_node_manager_(gcs_node_manager),
       local_node_id_(std::move(local_node_id)),
-      cluster_task_manager_(cluster_task_manager) {}
+      cluster_lease_manager_(cluster_lease_manager) {}
 
 void GcsResourceManager::ConsumeSyncMessage(
-    std::shared_ptr<const syncer::RaySyncMessage> message) {
+    std::shared_ptr<const rpc::syncer::RaySyncMessage> message) {
   // ConsumeSyncMessage is called by ray_syncer which might not run
   // in a dedicated thread for performance.
   // GcsResourceManager is a module always run in the main thread, so we just
@@ -191,8 +192,7 @@ void GcsResourceManager::HandleGetAllResourceUsage(
     rpc::SendReplyCallback send_reply_callback) {
   if (!node_resource_usages_.empty()) {
     rpc::ResourceUsageBatchData batch;
-    absl::flat_hash_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
-        aggregate_load;
+    absl::flat_hash_map<ResourceDemandKey, rpc::ResourceDemand> aggregate_load;
 
     for (const auto &usage : node_resource_usages_) {
       // Aggregate the load reported by each raylet.
@@ -200,10 +200,10 @@ void GcsResourceManager::HandleGetAllResourceUsage(
       batch.add_batch()->CopyFrom(usage.second);
     }
 
-    if (cluster_task_manager_ != nullptr) {
+    if (cluster_lease_manager_ != nullptr) {
       // Fill the gcs info when gcs actor scheduler is enabled.
       rpc::ResourcesData gcs_resources_data;
-      cluster_task_manager_->FillPendingActorInfo(gcs_resources_data);
+      cluster_lease_manager_->FillPendingActorInfo(gcs_resources_data);
       // Aggregate the load (pending actor info) of gcs.
       FillAggregateLoad(gcs_resources_data, &aggregate_load);
       // We only export gcs's pending info without adding the corresponding
@@ -217,8 +217,11 @@ void GcsResourceManager::HandleGetAllResourceUsage(
     for (const auto &demand : aggregate_load) {
       auto demand_proto = batch.mutable_resource_load_by_shape()->add_resource_demands();
       demand_proto->CopyFrom(demand.second);
-      for (const auto &resource_pair : demand.first) {
+      for (const auto &resource_pair : demand.first.shape) {
         (*demand_proto->mutable_shape())[resource_pair.first] = resource_pair.second;
+      }
+      for (auto &selector : demand.first.label_selectors) {
+        *demand_proto->add_label_selectors() = std::move(selector);
       }
     }
     // Update placement group load to heartbeat batch.
@@ -258,22 +261,7 @@ void GcsResourceManager::UpdateNodeResourceUsage(
     const syncer::ResourceViewSyncMessage &resource_view_sync_message) {
   // Note: This may be inconsistent with autoscaler state, which is
   // not reported as often as a Ray Syncer message.
-  if (auto maybe_node_info = gcs_node_manager_.GetAliveNode(node_id);
-      maybe_node_info != absl::nullopt) {
-    auto snapshot = maybe_node_info.value()->mutable_state_snapshot();
-
-    if (resource_view_sync_message.idle_duration_ms() > 0) {
-      snapshot->set_state(rpc::NodeSnapshot::IDLE);
-      snapshot->set_idle_duration_ms(resource_view_sync_message.idle_duration_ms());
-    } else {
-      snapshot->set_state(rpc::NodeSnapshot::ACTIVE);
-      snapshot->mutable_node_activity()->CopyFrom(
-          resource_view_sync_message.node_activity());
-    }
-    if (resource_view_sync_message.is_draining()) {
-      snapshot->set_state(rpc::NodeSnapshot::DRAINING);
-    }
-  }
+  gcs_node_manager_.UpdateAliveNode(node_id, resource_view_sync_message);
 
   auto iter = node_resource_usages_.find(node_id);
   if (iter == node_resource_usages_.end()) {
@@ -314,7 +302,7 @@ void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
 
   absl::flat_hash_map<std::string, std::string> labels(node.labels().begin(),
                                                        node.labels().end());
-  cluster_resource_manager_.SetNodeLabels(scheduling_node_id, labels);
+  cluster_resource_manager_.SetNodeLabels(scheduling_node_id, std::move(labels));
 
   rpc::ResourcesData data;
   data.set_node_id(node_id.Binary());

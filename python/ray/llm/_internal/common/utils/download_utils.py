@@ -12,7 +12,7 @@ from ray.llm._internal.common.utils.cloud_utils import (
     CloudModelAccessor,
     is_remote_path,
 )
-from ray.llm._internal.utils import try_import
+from ray.llm._internal.common.utils.import_utils import try_import
 
 torch = try_import("torch")
 
@@ -24,6 +24,7 @@ class NodeModelDownloadable(enum.Enum):
 
     MODEL_AND_TOKENIZER = enum.auto()
     TOKENIZER_ONLY = enum.auto()
+    EXCLUDE_SAFETENSORS = enum.auto()
     NONE = enum.auto()
 
     def __bool__(self):
@@ -36,7 +37,11 @@ class NodeModelDownloadable(enum.Enum):
             or other == NodeModelDownloadable.MODEL_AND_TOKENIZER
         ):
             return NodeModelDownloadable.MODEL_AND_TOKENIZER
-
+        if (
+            self == NodeModelDownloadable.EXCLUDE_SAFETENSORS
+            or other == NodeModelDownloadable.EXCLUDE_SAFETENSORS
+        ):
+            return NodeModelDownloadable.EXCLUDE_SAFETENSORS
         if (
             self == NodeModelDownloadable.TOKENIZER_ONLY
             or other == NodeModelDownloadable.TOKENIZER_ONLY
@@ -111,11 +116,13 @@ class CloudModelDownloader(CloudModelAccessor):
     def get_model(
         self,
         tokenizer_only: bool,
+        exclude_safetensors: bool = False,
     ) -> str:
         """Gets a model from cloud storage and stores it locally.
 
         Args:
             tokenizer_only: whether to download only the tokenizer files.
+            exclude_safetensors: whether to download safetensors files to disk.
 
         Returns: file path of model if downloaded, else the model id.
         """
@@ -135,10 +142,13 @@ class CloudModelDownloader(CloudModelAccessor):
             # This ensures that subsequent processes don't duplicate work.
             with FileLock(lock_path, timeout=0):
                 try:
+                    if exclude_safetensors:
+                        logger.info("Skipping download of safetensors files.")
                     CloudFileSystem.download_model(
                         destination_path=path,
                         bucket_uri=bucket_uri,
                         tokenizer_only=tokenizer_only,
+                        exclude_safetensors=exclude_safetensors,
                     )
                     logger.info(
                         "Finished downloading %s for %s from %s storage",
@@ -282,41 +292,12 @@ def download_model_files(
 
     if download_model != NodeModelDownloadable.NONE:
         model_path_or_id = downloader.get_model(
-            tokenizer_only=download_model == NodeModelDownloadable.TOKENIZER_ONLY
+            tokenizer_only=download_model == NodeModelDownloadable.TOKENIZER_ONLY,
+            exclude_safetensors=download_model
+            == NodeModelDownloadable.EXCLUDE_SAFETENSORS,
         )
 
     if download_extra_files:
         downloader.get_extra_files()
 
     return model_path_or_id
-
-
-def download_lora_adapter(
-    lora_name: str,
-    remote_path: Optional[str] = None,
-) -> str:
-    """If remote_path is specified, pull the lora to the local
-    directory and return the local path.
-
-    TODO: Refactor lora_model_loader in llm/_intenral/serve/deployments/llm/multiplex
-    and move them here to unify with this function.
-
-    Args:
-        lora_name: The lora name.
-        remote_path: The remote path to the lora. If specified, the remote_path will be
-            used as the base path to load the lora.
-
-    Returns:
-        The local path to the lora if remote_path is specified, otherwise the lora name.
-    """
-    assert not is_remote_path(
-        lora_name
-    ), "lora_name cannot be a remote path (s3:// or gs://)"
-
-    if remote_path is None:
-        return lora_name
-
-    lora_path = os.path.join(remote_path, lora_name)
-    mirror_config = CloudMirrorConfig(bucket_uri=lora_path)
-    downloader = CloudModelDownloader(lora_name, mirror_config)
-    return downloader.get_model(tokenizer_only=False)

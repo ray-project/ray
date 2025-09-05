@@ -2,8 +2,8 @@ name: Mark and Close Stale Pull Requests
 
 on:
   schedule:
-    # Runs daily at midnight UTC.
-    - cron: '0 0 * * *'
+    # Runs twice a day at 15 minutes past midnight and noon UTC
+    - cron: '15 */12 * * *'
 
 jobs:
   stale:
@@ -20,7 +20,7 @@ jobs:
           # --- Ignore Issues ---
           # Set to -1 so we never mark issues as stale or closed.
           days-before-issue-stale: -1
-          day-before-issue-closed: -1
+          days-before-issue-close: -1
 
           # --- Pull Request Specific Settings ---
           # Number of days of inactivity before a Pull Request becomes stale (currently 2 weeks)
@@ -56,16 +56,20 @@ jobs:
           # Pull Requests with these labels will never be considered stale
           exempt-pr-labels: >
             weekly-release-blocker,
-            release-blocker
+            release-blocker,
+            unstale
 
           # Set to true to ignore PRs in a milestone (defaults to false)
           exempt-all-pr-milestones: true
 
           # --- Shared Settings & Other Options ---
-          # Limit the number of actions per run
-          operations-per-run: 30
+          # Limit the number of actions per run.
+          operations-per-run: 500
 
           # Remove stale label from PRs on update (default is true)
           remove-pr-stale-when-updated: true
+
+          # Add unstale label. Whenever a PR is marked as 'unstale' it will not be marked stale again.
+          labels-to-add-when-unstale: unstale
 
           ascending: true

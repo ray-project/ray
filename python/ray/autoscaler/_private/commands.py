@@ -18,7 +18,7 @@ import click
 import yaml
 
 import ray
-from ray._private.usage import usage_lib
+from ray._common.usage import usage_lib
 from ray.autoscaler._private import subprocess_output_util as cmd_output_util
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
 from ray.autoscaler._private.cli_logger import cf, cli_logger
@@ -57,6 +57,7 @@ from ray.autoscaler._private.util import (
     hash_runtime_conf,
     prepare_config,
     validate_config,
+    with_envs,
 )
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (
@@ -821,6 +822,27 @@ def get_or_create_head_node(
         if not no_restart:
             warn_about_bad_start_command(ray_start_commands, no_monitor_on_head)
 
+        # Use RAY_UP_enable_autoscaler_v2 instead of RAY_enable_autoscaler_v2
+        # to avoid accidentally enabling autoscaler v2 for ray up
+        # due to env inheritance. The default value is 1 since Ray 2.50.0.
+        if os.getenv("RAY_UP_enable_autoscaler_v2", "1") == "1":
+            if "RAY_UP_enable_autoscaler_v2" not in os.environ:
+                # TODO (rueian): Remove this notice after Ray 2.52.0.
+                cli_logger.print(
+                    "Autoscaler v2 is now enabled by default (since Ray 2.50.0). "
+                    "To switch back to v1, set {}=0. This message can be suppressed by setting {} explicitly.",
+                    cf.bold("RAY_UP_enable_autoscaler_v2"),
+                    cf.bold("RAY_UP_enable_autoscaler_v2"),
+                )
+            ray_start_commands = with_envs(
+                ray_start_commands,
+                {
+                    "RAY_enable_autoscaler_v2": "1",
+                    "RAY_CLOUD_INSTANCE_ID": head_node,
+                    "RAY_NODE_TYPE_NAME": head_node_type,
+                },
+            )
+
         updater = NodeUpdaterThread(
             node_id=head_node,
             provider_config=config["provider"],
@@ -911,6 +933,18 @@ def get_or_create_head_node(
             )
         )
         cli_logger.newline()
+
+    # Clean up temporary config file if it was created
+    # Clean up temporary config file if it was created on Windows
+    if (
+        sys.platform == "win32"
+        and not no_monitor_on_head
+        and "remote_config_file" in locals()
+    ):
+        try:
+            os.remove(remote_config_file.name)
+        except OSError:
+            pass  # Ignore cleanup errors
 
 
 def _should_create_new_head(
@@ -1011,9 +1045,14 @@ def _set_up_config_for_head_node(
     remote_config = provider.prepare_for_head_node(remote_config)
 
     # Now inject the rewritten config and SSH key into the head node
-    remote_config_file = tempfile.NamedTemporaryFile("w", prefix="ray-bootstrap-")
+    is_windows = sys.platform == "win32"
+    remote_config_file = tempfile.NamedTemporaryFile(
+        "w", prefix="ray-bootstrap-", delete=not is_windows
+    )
     remote_config_file.write(json.dumps(remote_config))
     remote_config_file.flush()
+    if is_windows:
+        remote_config_file.close()  # Close the file handle to ensure it's accessible
     config["file_mounts"].update(
         {"~/ray_bootstrap_config.yaml": remote_config_file.name}
     )

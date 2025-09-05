@@ -107,11 +107,6 @@ DEFAULT_CGROUP_PATH = "/sys/fs/cgroup"
 OBJECT_STORE_MINIMUM_MEMORY_BYTES = 75 * 1024 * 1024
 # Each ObjectRef currently uses about 3KB of caller memory.
 CALLER_MEMORY_USAGE_PER_OBJECT_REF = 3000
-# Match max_direct_call_object_size in
-# src/ray/common/ray_config_def.h.
-# TODO(swang): Ideally this should be pulled directly from the
-# config in case the user overrides it.
-DEFAULT_MAX_DIRECT_CALL_OBJECT_SIZE = 100 * 1024
 # Above this number of bytes, raise an error by default unless the user sets
 # RAY_ALLOW_SLOW_STORAGE=1. This avoids swapping with large object stores.
 REQUIRE_SHM_SIZE_THRESHOLD = 10**10
@@ -126,6 +121,7 @@ MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT = (2) * (2**30)
 DEFAULT_PORT = 6379
 
 RAY_ADDRESS_ENVIRONMENT_VARIABLE = "RAY_ADDRESS"
+RAY_API_SERVER_ADDRESS_ENVIRONMENT_VARIABLE = "RAY_API_SERVER_ADDRESS"
 RAY_NAMESPACE_ENVIRONMENT_VARIABLE = "RAY_NAMESPACE"
 RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE = "RAY_RUNTIME_ENV"
 RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR = (
@@ -142,7 +138,6 @@ RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT = 10 * 60
 # If set to 1, then `.gitignore` files will not be parsed and loaded into "excludes"
 # when using a local working_dir or py_modules.
 RAY_RUNTIME_ENV_IGNORE_GITIGNORE = "RAY_RUNTIME_ENV_IGNORE_GITIGNORE"
-RAY_STORAGE_ENVIRONMENT_VARIABLE = "RAY_STORAGE"
 # Hook for running a user-specified runtime-env hook. This hook will be called
 # unconditionally given the runtime_env dict passed for ray.init. It must return
 # a rewritten runtime_env dict. Example: "your.module.runtime_env_hook".
@@ -223,9 +218,6 @@ RAYLET_DIED_ERROR = "raylet_died"
 DETACHED_ACTOR_ANONYMOUS_NAMESPACE_ERROR = "detached_actor_anonymous_namespace"
 EXCESS_QUEUEING_WARNING = "excess_queueing_warning"
 
-# Used in gpu detection
-RESOURCE_CONSTRAINT_PREFIX = "accelerator_type:"
-
 # Used by autoscaler to set the node custom resources and labels
 # from cluster.yaml.
 RESOURCES_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_RESOURCES"
@@ -249,9 +241,6 @@ LOGGER_LEVEL_HELP = (
     "The logging level threshold, choices=['debug', 'info',"
     " 'warning', 'error', 'critical'], default='info'"
 )
-
-LOGGING_ROTATE_BYTES = 512 * 1024 * 1024  # 512MB.
-LOGGING_ROTATE_BACKUP_COUNT = 5  # 5 Backup files at max.
 
 LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE = "RAY_LOG_TO_STDERR"
 # Logging format when logging stderr. This should be formatted with the
@@ -440,7 +429,6 @@ KV_HEAD_NODE_ID_KEY = b"head_node_id"
 # We need to update ray client for this since runtime env use ray client
 # This might introduce some compatibility issues so leave it here for now.
 KV_NAMESPACE_PACKAGE = None
-KV_NAMESPACE_SERVE = b"serve"
 KV_NAMESPACE_FUNCTION_TABLE = b"fun"
 
 LANGUAGE_WORKER_TYPES = ["python", "java", "cpp"]
@@ -460,9 +448,6 @@ DEFAULT_TASK_MAX_RETRIES = 3
 
 # Default max_concurrency option in @ray.remote for threaded actors.
 DEFAULT_MAX_CONCURRENCY_THREADED = 1
-
-# Default max_concurrency option in @ray.remote for async actors.
-DEFAULT_MAX_CONCURRENCY_ASYNC = 1000
 
 # Prefix for namespaces which are used internally by ray.
 # Jobs within these namespaces should be hidden from users
@@ -534,8 +519,6 @@ RAY_TPU_MAX_CONCURRENT_CONNECTIONS_ENV_VAR = "RAY_TPU_MAX_CONCURRENT_ACTIVE_CONN
 
 RAY_NODE_IP_FILENAME = "node_ip_address.json"
 
-PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME = "bundle"
-
 RAY_LOGGING_CONFIG_ENCODING = os.environ.get("RAY_LOGGING_CONFIG_ENCODING")
 
 RAY_BACKEND_LOG_JSON_ENV_VAR = "RAY_BACKEND_LOG_JSON"
@@ -585,17 +568,19 @@ RAY_ENABLE_UV_RUN_RUNTIME_ENV = env_bool("RAY_ENABLE_UV_RUN_RUNTIME_ENV", True)
 #   WorkerId will be removed from all metrics.
 RAY_METRIC_CARDINALITY_LEVEL = os.environ.get("RAY_metric_cardinality_level", "legacy")
 
-# Whether enable OpenTelemetry as the metrics collection backend on the driver
-# component. This flag is only used during the migration of the  metric collection
-# backend from OpenCensus to OpenTelemetry. It will be removed in the future.
-RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_AGENT = env_bool(
-    "RAY_experimental_enable_open_telemetry_on_agent", False
-)
+# Whether GPU metrics collection via `nvidia-smi` is enabled.
+# Controlled by the environment variable `RAY_metric_enable_gpu_nvsmi`.
+# Defaults to False to use pynvml to collect usage.
+RAY_METRIC_ENABLE_GPU_NVSMI = env_bool("RAY_metric_enable_gpu_nvsmi", False)
 
-# Whether enable OpenTelemetry as the metrics collection backend on the core
-# components (core workers, gcs server, raylet, etc.). This flag is only used during
-# the migration of the  metric collection backend from OpenCensus to OpenTelemetry.
-# It will be removed in the future.
-RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE = env_bool(
-    "RAY_experimental_enable_open_telemetry_on_core", False
+# Whether enable OpenTelemetry as the metrics collection backend. The default is
+# using OpenCensus.
+RAY_ENABLE_OPEN_TELEMETRY = env_bool("RAY_enable_open_telemetry", False)
+
+# How long to wait for a fetch to complete during ray.get before timing out and raising an exception to the user.
+#
+# NOTE: This must be kept in sync with the C++ definition of
+# `RayConfig::fetch_fail_timeout_milliseconds`.
+FETCH_FAIL_TIMEOUT_SECONDS = (
+    env_integer("RAY_fetch_fail_timeout_milliseconds", 60000) / 1000
 )

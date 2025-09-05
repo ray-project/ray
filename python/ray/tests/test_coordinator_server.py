@@ -7,27 +7,28 @@ import unittest
 
 import pytest
 
-from ray.autoscaler.local.coordinator_server import OnPremCoordinatorServer
-from ray.autoscaler._private.providers import _NODE_PROVIDERS, _get_node_provider
+from ray._common.network_utils import build_address
+from ray._common.utils import get_ray_temp_dir
 from ray.autoscaler._private.local import config as local_config
-from ray.autoscaler._private.local.node_provider import LocalNodeProvider
-from ray.autoscaler._private.local.node_provider import (
-    record_local_head_state_if_needed,
-)
 from ray.autoscaler._private.local.coordinator_node_provider import (
     CoordinatorSenderNodeProvider,
 )
-from ray.autoscaler.tags import (
-    TAG_RAY_NODE_KIND,
-    TAG_RAY_CLUSTER_NAME,
-    TAG_RAY_NODE_NAME,
-    NODE_KIND_WORKER,
-    NODE_KIND_HEAD,
-    TAG_RAY_USER_NODE_TYPE,
-    TAG_RAY_NODE_STATUS,
-    STATUS_UP_TO_DATE,
+from ray.autoscaler._private.local.node_provider import (
+    LocalNodeProvider,
+    record_local_head_state_if_needed,
 )
-from ray._private.utils import get_ray_temp_dir
+from ray.autoscaler._private.providers import _NODE_PROVIDERS, _get_node_provider
+from ray.autoscaler.local.coordinator_server import OnPremCoordinatorServer
+from ray.autoscaler.tags import (
+    NODE_KIND_HEAD,
+    NODE_KIND_WORKER,
+    STATUS_UP_TO_DATE,
+    TAG_RAY_CLUSTER_NAME,
+    TAG_RAY_NODE_KIND,
+    TAG_RAY_NODE_NAME,
+    TAG_RAY_NODE_STATUS,
+    TAG_RAY_USER_NODE_TYPE,
+)
 
 
 class OnPremCoordinatorServerTest(unittest.TestCase):
@@ -39,7 +40,7 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
             host=self.host,
             port=self.port,
         )
-        self.coordinator_address = self.host + ":" + str(self.port)
+        self.coordinator_address = build_address(self.host, self.port)
 
     def tearDown(self):
         self.server.shutdown()

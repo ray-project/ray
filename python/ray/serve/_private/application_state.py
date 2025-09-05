@@ -1,3 +1,4 @@
+import inspect
 import json
 import logging
 import os
@@ -40,6 +41,7 @@ from ray.serve._private.utils import (
     override_runtime_envs_except_env_vars,
     validate_route_prefix,
 )
+from ray.serve.api import ASGIAppReplicaWrapper
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
@@ -236,7 +238,6 @@ class ApplicationState:
         self._deployment_state_manager = deployment_state_manager
         self._endpoint_state = endpoint_state
         self._route_prefix: Optional[str] = None
-        self._docs_path: Optional[str] = None
         self._ingress_deployment_name: Optional[str] = None
 
         self._status: ApplicationStatus = ApplicationStatus.DEPLOYING
@@ -262,14 +263,7 @@ class ApplicationState:
 
     @property
     def docs_path(self) -> Optional[str]:
-        # if the docs path is set during the deploy app task, use that
-        # TODO (abrar): this can be dropped completely in favor of the
-        # deployment state manager once we have migrated all the tests
-        # to the new API.
-        if self._docs_path is not None:
-            return self._docs_path
-
-        # else get the docs path from the running deployments
+        # get the docs path from the running deployments
         # we are making an assumption that the docs path can only be set
         # on ingress deployments with fastapi.
         ingress_deployment = DeploymentID(self._ingress_deployment_name, self._name)
@@ -326,6 +320,11 @@ class ApplicationState:
             target_capacity_direction=checkpoint_data.target_capacity_direction,
             deleting=checkpoint_data.deleting,
         )
+
+        # Restore route prefix and docs path from checkpointed deployments when
+        # the imperatively started application is restarting with controller.
+        if checkpoint_data.deployment_infos is not None:
+            self._route_prefix = self._check_routes(checkpoint_data.deployment_infos)
 
     def _set_target_state(
         self,
@@ -401,10 +400,18 @@ class ApplicationState:
             deleting=False,
         )
 
-    def _delete_deployment(self, name):
+    def _delete_deployment(self, name: str) -> bool:
+        """Delete a deployment in the application.
+
+        Args:
+            name: The name of the deployment to delete.
+
+        Returns:
+            Whether the target state has changed.
+        """
         id = DeploymentID(name=name, app_name=self._name)
         self._endpoint_state.delete_endpoint(id)
-        self._deployment_state_manager.delete_deployment(id)
+        return self._deployment_state_manager.delete_deployment(id)
 
     def delete(self):
         """Delete the application"""
@@ -427,8 +434,16 @@ class ApplicationState:
         self,
         deployment_name: str,
         deployment_info: DeploymentInfo,
-    ) -> None:
-        """Deploys a deployment in the application."""
+    ) -> bool:
+        """Deploys a deployment in the application.
+
+        Args:
+            deployment_name: The name of the deployment to apply.
+            deployment_info: The deployment info to apply.
+
+        Returns:
+            Whether the target state has changed.
+        """
         route_prefix = deployment_info.route_prefix
         if route_prefix is not None and not route_prefix.startswith("/"):
             raise RayServeException(
@@ -437,7 +452,9 @@ class ApplicationState:
 
         deployment_id = DeploymentID(name=deployment_name, app_name=self._name)
 
-        self._deployment_state_manager.deploy(deployment_id, deployment_info)
+        target_state_changed = self._deployment_state_manager.deploy(
+            deployment_id, deployment_info
+        )
 
         if deployment_info.route_prefix is not None:
             config = deployment_info.deployment_config
@@ -458,6 +475,8 @@ class ApplicationState:
         else:
             self._endpoint_state.delete_endpoint(deployment_id)
 
+        return target_state_changed
+
     def deploy_app(self, deployment_infos: Dict[str, DeploymentInfo]):
         """(Re-)deploy the application from list of deployment infos.
 
@@ -468,8 +487,9 @@ class ApplicationState:
             or docs path.
         """
 
+        self._check_ingress_deployments(deployment_infos)
         # Check routes are unique in deployment infos
-        self._route_prefix, self._docs_path = self._check_routes(deployment_infos)
+        self._route_prefix = self._check_routes(deployment_infos)
 
         self._set_target_state(
             deployment_infos=deployment_infos,
@@ -507,7 +527,7 @@ class ApplicationState:
                     self._target_state.deployment_infos,
                     config,
                 )
-                self._check_routes(overrided_infos)
+                self._route_prefix = self._check_routes(overrided_infos)
                 self._set_target_state(
                     # Code version doesn't change.
                     code_version=self._target_state.code_version,
@@ -691,7 +711,7 @@ class ApplicationState:
             overrided_infos = override_deployment_info(
                 deployment_infos, self._build_app_task_info.config
             )
-            self._route_prefix, self._docs_path = self._check_routes(overrided_infos)
+            self._route_prefix = self._check_routes(overrided_infos)
             return overrided_infos, BuildAppStatus.SUCCEEDED, ""
         except (TypeError, ValueError, RayServeException):
             return None, BuildAppStatus.FAILED, traceback.format_exc()
@@ -702,33 +722,49 @@ class ApplicationState:
             )
             return None, BuildAppStatus.FAILED, error_msg
 
+    def _check_ingress_deployments(
+        self, deployment_infos: Dict[str, DeploymentInfo]
+    ) -> None:
+        """Check @serve.ingress of deployments in app.
+
+        Raises: RayServeException if more than one @serve.ingress
+            is found among deployments.
+        """
+        num_ingress_deployments = 0
+        for info in deployment_infos.values():
+            if inspect.isclass(info.replica_config.deployment_def) and issubclass(
+                info.replica_config.deployment_def, ASGIAppReplicaWrapper
+            ):
+                num_ingress_deployments += 1
+
+        if num_ingress_deployments > 1:
+            raise RayServeException(
+                f'Found multiple FastAPI deployments in application "{self._name}".'
+                "Please only include one deployment with @serve.ingress"
+                "in your application to avoid this issue."
+            )
+
     def _check_routes(
         self, deployment_infos: Dict[str, DeploymentInfo]
     ) -> Tuple[str, str]:
-        """Check route prefixes and docs paths of deployments in app.
+        """Check route prefixes of deployments in app.
 
         There should only be one non-null route prefix. If there is one,
         set it as the application route prefix. This function must be
         run every control loop iteration because the target config could
         be updated without kicking off a new task.
 
-        Returns: tuple of route prefix, docs path.
-        Raises: RayServeException if more than one route prefix or docs
-            path is found among deployments.
+        Returns: route prefix.
+        Raises: RayServeException if more than one route prefix is found among deployments.
         """
         num_route_prefixes = 0
-        num_docs_paths = 0
         route_prefix = None
-        docs_path = None
         for info in deployment_infos.values():
             # Update route prefix of application, which may be updated
             # through a redeployed config.
             if info.route_prefix is not None:
                 route_prefix = info.route_prefix
                 num_route_prefixes += 1
-            if info.docs_path is not None:
-                docs_path = info.docs_path
-                num_docs_paths += 1
 
         if num_route_prefixes > 1:
             raise RayServeException(
@@ -736,17 +772,8 @@ class ApplicationState:
                 " Please specify only one route prefix for the application "
                 "to avoid this issue."
             )
-        # NOTE(zcin) This will not catch multiple FastAPI deployments in the application
-        # if user sets the docs path to None in their FastAPI app.
-        if num_docs_paths > 1:
-            raise RayServeException(
-                f'Found multiple deployments in application "{self._name}" that have '
-                "a docs path. This may be due to using multiple FastAPI deployments "
-                "in your application. Please only include one deployment with a docs "
-                "path in your application to avoid this issue."
-            )
 
-        return route_prefix, docs_path
+        return route_prefix
 
     def _reconcile_target_deployments(self) -> None:
         """Reconcile target deployments in application target state.
@@ -754,6 +781,7 @@ class ApplicationState:
         Ensure each deployment is running on up-to-date info, and
         remove outdated deployments from the application.
         """
+        target_state_changed = False
 
         # Set target state for each deployment
         for deployment_name, info in self._target_state.deployment_infos.items():
@@ -777,26 +805,34 @@ class ApplicationState:
                 deploy_info.deployment_config.logging_config = (
                     self._target_state.config.logging_config
                 )
-            self.apply_deployment_info(deployment_name, deploy_info)
+            target_state_changed = (
+                self.apply_deployment_info(deployment_name, deploy_info)
+                or target_state_changed
+            )
 
         # Delete outdated deployments
         for deployment_name in self._get_live_deployments():
             if deployment_name not in self.target_deployments:
-                self._delete_deployment(deployment_name)
+                target_state_changed = (
+                    self._delete_deployment(deployment_name) or target_state_changed
+                )
 
-    def update(self) -> bool:
+        return target_state_changed
+
+    def update(self) -> Tuple[bool, bool]:
         """Attempts to reconcile this application to match its target state.
 
         Updates the application status and status message based on the
         current state of the system.
 
         Returns:
-            A boolean indicating whether the application is ready to be
-            deleted.
+            Whether the target state has changed.
         """
 
         infos, task_status, msg = self._reconcile_build_app_task()
+        target_state_changed = False
         if task_status == BuildAppStatus.SUCCEEDED:
+            target_state_changed = True
             self._set_target_state(
                 deployment_infos=infos,
                 code_version=self._build_app_task_info.code_version,
@@ -814,14 +850,16 @@ class ApplicationState:
         # it's not finished, we don't know what the target list of deployments
         # is, so we don't perform any reconciliation.
         if self._target_state.deployment_infos is not None:
-            self._reconcile_target_deployments()
+            target_state_changed = (
+                self._reconcile_target_deployments() or target_state_changed
+            )
             status, status_msg = self._determine_app_status()
             self._update_status(status, status_msg)
 
         # Check if app is ready to be deleted
         if self._target_state.deleting:
-            return self.is_deleted()
-        return False
+            return self.is_deleted(), target_state_changed
+        return False, target_state_changed
 
     def get_checkpoint_data(self) -> ApplicationTargetState:
         return self._target_state
@@ -1080,10 +1118,14 @@ class ApplicationStateManager:
         return self._application_states[name].list_deployment_details()
 
     def update(self):
-        """Update each application state"""
+        """Update each application state."""
         apps_to_be_deleted = []
+        any_target_state_changed = False
         for name, app in self._application_states.items():
-            ready_to_be_deleted = app.update()
+            ready_to_be_deleted, app_target_state_changed = app.update()
+            any_target_state_changed = (
+                any_target_state_changed or app_target_state_changed
+            )
             if ready_to_be_deleted:
                 apps_to_be_deleted.append(name)
                 logger.debug(f"Application '{name}' deleted successfully.")
@@ -1092,6 +1134,10 @@ class ApplicationStateManager:
             for app_name in apps_to_be_deleted:
                 del self._application_states[app_name]
             ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
+
+        if any_target_state_changed:
+            self.save_checkpoint()
+            self._deployment_state_manager.save_checkpoint()
 
     def shutdown(self) -> None:
         self._shutting_down = True
@@ -1175,7 +1221,12 @@ def build_serve_application(
             name=name,
             default_runtime_env=ray.get_runtime_context().runtime_env,
         )
+        num_ingress_deployments = 0
         for deployment in built_app.deployments:
+            if inspect.isclass(deployment.func_or_class) and issubclass(
+                deployment.func_or_class, ASGIAppReplicaWrapper
+            ):
+                num_ingress_deployments += 1
             is_ingress = deployment.name == built_app.ingress_deployment_name
             deploy_args_list.append(
                 get_deploy_args(
@@ -1185,8 +1236,13 @@ def build_serve_application(
                     deployment_config=deployment._deployment_config,
                     version=code_version,
                     route_prefix="/" if is_ingress else None,
-                    docs_path=deployment._docs_path,
                 )
+            )
+        if num_ingress_deployments > 1:
+            return None, (
+                f'Found multiple FastAPI deployments in application "{built_app.name}". '
+                "Please only include one deployment with @serve.ingress "
+                "in your application to avoid this issue."
             )
         return deploy_args_list, None
     except KeyboardInterrupt:

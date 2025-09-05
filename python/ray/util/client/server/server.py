@@ -27,6 +27,7 @@ from ray._private.ray_constants import env_integer
 from ray._private.ray_logging import setup_logger
 from ray._private.services import canonicalize_bootstrap_address_or_die
 from ray._private.tls_utils import add_port_to_grpc_server
+from ray._common.network_utils import build_address, is_localhost
 from ray.job_config import JobConfig
 from ray.util.client.common import (
     CLIENT_SERVER_MAX_THREADS,
@@ -262,8 +263,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             ctx = ray_client_pb2.ClusterInfoResponse.RuntimeContext()
             with disable_client_hook():
                 rtc = ray.get_runtime_context()
-                ctx.job_id = ray._private.utils.hex_to_binary(rtc.get_job_id())
-                ctx.node_id = ray._private.utils.hex_to_binary(rtc.get_node_id())
+                ctx.job_id = ray._common.utils.hex_to_binary(rtc.get_job_id())
+                ctx.node_id = ray._common.utils.hex_to_binary(rtc.get_node_id())
                 ctx.namespace = rtc.namespace
                 ctx.capture_client_tasks = (
                     rtc.should_capture_child_tasks_in_placement_group
@@ -764,7 +765,7 @@ def decode_options(options: ray_client_pb2.TaskOptions) -> Optional[Dict[str, An
     return opts
 
 
-def serve(connection_str, ray_connect_handler=None):
+def serve(host: str, port: int, ray_connect_handler=None):
     def default_connect_handler(
         job_config: JobConfig = None, **ray_init_kwargs: Dict[str, Any]
     ):
@@ -786,7 +787,9 @@ def serve(connection_str, ray_connect_handler=None):
     ray_client_pb2_grpc.add_RayletDriverServicer_to_server(task_servicer, server)
     ray_client_pb2_grpc.add_RayletDataStreamerServicer_to_server(data_servicer, server)
     ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(logs_servicer, server)
-    add_port_to_grpc_server(server, connection_str)
+    if not is_localhost(host):
+        add_port_to_grpc_server(server, f"127.0.0.1:{port}")
+    add_port_to_grpc_server(server, f"{host}:{port}")
     current_handle = ClientServerHandle(
         task_servicer=task_servicer,
         data_servicer=data_servicer,
@@ -797,7 +800,7 @@ def serve(connection_str, ray_connect_handler=None):
     return current_handle
 
 
-def init_and_serve(connection_str, *args, **kwargs):
+def init_and_serve(host: str, port: int, *args, **kwargs):
     with disable_client_hook():
         # Disable client mode inside the worker's environment
         info = ray.init(*args, **kwargs)
@@ -810,7 +813,7 @@ def init_and_serve(connection_str, *args, **kwargs):
         else:
             return ray.init(job_config=job_config, *args, **kwargs)
 
-    server_handle = serve(connection_str, ray_connect_handler=ray_connect_handler)
+    server_handle = serve(host, port, ray_connect_handler=ray_connect_handler)
     return (server_handle, info)
 
 
@@ -891,21 +894,22 @@ def main():
         args.address, args.redis_password, args.redis_username
     )
 
-    hostport = "%s:%d" % (args.host, args.port)
+    hostport = build_address(args.host, args.port)
     args_str = str(args)
     if args.redis_password:
         args_str = args_str.replace(args.redis_password, "****")
     logger.info(f"Starting Ray Client server on {hostport}, args {args_str}")
     if args.mode == "proxy":
         server = serve_proxier(
-            hostport,
+            args.host,
+            args.port,
             args.address,
             redis_username=args.redis_username,
             redis_password=args.redis_password,
             runtime_env_agent_address=args.runtime_env_agent_address,
         )
     else:
-        server = serve(hostport, ray_connect_handler)
+        server = serve(args.host, args.port, ray_connect_handler)
 
     try:
         idle_checks_remaining = TIMEOUT_FOR_SPECIFIC_SERVER_S

@@ -16,8 +16,8 @@
 
 #include <spdlog/sinks/base_sink.h>
 
+#include "ray/common/status.h"
 #include "ray/util/compat.h"
-#include "ray/util/util.h"
 
 namespace ray {
 
@@ -27,7 +27,7 @@ class non_owned_fd_sink final : public spdlog::sinks::base_sink<Mutex> {
  public:
   // [fd] is not owned by [FdSink], which means the file descriptor should be closed by
   // caller.
-  explicit non_owned_fd_sink(MEMFD_TYPE_NON_UNIQUE fd) : fd_(fd) {}
+  explicit non_owned_fd_sink(int fd) : fd_(fd) {}
 
  protected:
   void sink_it_(const spdlog::details::log_msg &msg) override {
@@ -38,7 +38,7 @@ class non_owned_fd_sink final : public spdlog::sinks::base_sink<Mutex> {
   void flush_() override { RAY_CHECK_OK(Flush(fd_)); }
 
  private:
-  MEMFD_TYPE_NON_UNIQUE fd_;
+  int fd_;
 };
 
 using non_owned_fd_sink_mt = non_owned_fd_sink<std::mutex>;

@@ -29,9 +29,10 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/gcs_client/accessor.h"
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/rpc/gcs_server/gcs_rpc_client.h"
+#include "ray/pubsub/gcs_subscriber.h"
+#include "ray/rpc/gcs/gcs_rpc_client.h"
 #include "ray/util/logging.h"
+#include "ray/util/network_util.h"
 #include "src/ray/protobuf/autoscaler.grpc.pb.h"
 
 namespace ray {
@@ -65,11 +66,11 @@ class GcsClientOptions {
       : cluster_id_(cluster_id),
         should_fetch_cluster_id_(ShouldFetchClusterId(
             cluster_id, allow_cluster_id_nil, fetch_cluster_id_if_nil)) {
-    std::vector<std::string> address = absl::StrSplit(gcs_address, ':');
+    auto address = ParseAddress(gcs_address);
     RAY_LOG(DEBUG) << "Connect to gcs server via address: " << gcs_address;
-    RAY_CHECK(address.size() == 2);
-    gcs_address_ = address[0];
-    gcs_port_ = std::stoi(address[1]);
+    RAY_CHECK(address.has_value());
+    gcs_address_ = (*address)[0];
+    gcs_port_ = std::stoi((*address)[1]);
   }
 
   GcsClientOptions() {}
@@ -86,7 +87,7 @@ class GcsClientOptions {
   std::string gcs_address_;
   int gcs_port_ = 0;
   ClusterID cluster_id_;
-  bool should_fetch_cluster_id_;
+  bool should_fetch_cluster_id_ = false;
 };
 
 /// \class GcsClient
@@ -222,7 +223,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// This function is thread safe.
   virtual InternalKVAccessor &InternalKV() { return *internal_kv_accessor_; }
 
-  virtual GcsSubscriber &GetGcsSubscriber() { return *gcs_subscriber_; }
+  virtual pubsub::GcsSubscriber &GetGcsSubscriber() { return *gcs_subscriber_; }
 
   virtual rpc::GcsRpcClient &GetGcsRpcClient() { return *gcs_rpc_client_; }
 
@@ -249,7 +250,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   const UniqueID gcs_client_id_ = UniqueID::FromRandom();
 
-  std::unique_ptr<GcsSubscriber> gcs_subscriber_;
+  std::unique_ptr<pubsub::GcsSubscriber> gcs_subscriber_;
 
   // Gcs rpc client
   std::shared_ptr<rpc::GcsRpcClient> gcs_rpc_client_;

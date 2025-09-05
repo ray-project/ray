@@ -3,6 +3,7 @@
 # (BSD 2-Clause "Simplified" License)
 
 import errno
+from ray._common.network_utils import build_address
 import inspect
 import json
 import logging
@@ -16,8 +17,6 @@ import traceback
 import uuid
 from pdb import Pdb
 from typing import Callable
-
-import setproctitle
 
 import ray
 from ray._private import ray_constants
@@ -112,9 +111,9 @@ class _RemotePdb(Pdb):
     def listen(self):
         if not self._quiet:
             _cry(
-                "RemotePdb session open at %s:%s, "
+                "RemotePdb session open at %s, "
                 "use 'ray debug' to connect..."
-                % (self._ip_address, self._listen_socket.getsockname()[1])
+                % build_address(self._ip_address, self._listen_socket.getsockname()[1])
             )
         self._listen_socket.listen(1)
         connection, address = self._listen_socket.accept()
@@ -254,7 +253,7 @@ def _connect_ray_pdb(
     pdb_address = "{}:{}".format(ip_address, sockname[1])
     parentframeinfo = inspect.getouterframes(inspect.currentframe())[2]
     data = {
-        "proctitle": setproctitle.getproctitle(),
+        "proctitle": ray._raylet.getproctitle(),
         "pdb_address": pdb_address,
         "filename": parentframeinfo.filename,
         "lineno": parentframeinfo.lineno,

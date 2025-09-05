@@ -9,6 +9,8 @@ from ray.util.collective.types import (
     AllGatherOptions,
     BroadcastOptions,
     ReduceScatterOptions,
+    SendOptions,
+    RecvOptions,
 )
 
 
@@ -76,9 +78,9 @@ class BaseGroup(metaclass=ABCMeta):
         raise NotImplementedError()
 
     @abstractmethod
-    def send(self, tensor, dst_rank):
+    def send(self, tensor, send_options: SendOptions):
         raise NotImplementedError()
 
     @abstractmethod
-    def recv(self, tensor, src_rank):
+    def recv(self, tensor, recv_options: RecvOptions):
         raise NotImplementedError()
