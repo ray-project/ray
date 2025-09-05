@@ -14,9 +14,9 @@ absl-py==1.4.0 \
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   tensorboard
     #   tensorflow
-aiobotocore==2.5.0 \
-    --hash=sha256:6a5b397cddd4f81026aa91a14c7dd2650727425740a5af8ba75127ff663faf67 \
-    --hash=sha256:9a2a022d7b78ec9a2af0de589916d2721cddbf96264401b78d7a73c1a1435f3b
+aiobotocore==2.6.0 \
+    --hash=sha256:0186e6a843364748cdbbf76ee98e9337c44f71a4e694ad1b110d5c516fbce909 \
+    --hash=sha256:4805d0140bdfa17bfc2d0ba1243c8cc4273e927201fca5cf2e497c0004a9fab7
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   s3fs
@@ -204,15 +204,15 @@ boto==2.49.0 \
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   gcs-oauth2-boto-plugin
-boto3==1.26.76 \
-    --hash=sha256:30c7d967ed1c6b5a05643e42cae9d4d36c3f1cb6782637ddc7007a104cfd9027 \
-    --hash=sha256:b4c2969b7677762914394b8273cc1905dfe5b71f250741c1a575487ae357e729
+boto3==1.28.17 \
+    --hash=sha256:90f7cfb5e1821af95b1fc084bc50e6c47fa3edc99f32de1a2591faa0c546bea7 \
+    --hash=sha256:bca0526f819e0f19c0f1e6eba3e2d1d6b6a92a45129f98c0d716e5aab6d9444b
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_byod_3.9.in
-botocore==1.29.76 \
-    --hash=sha256:70735b00cd529f152992231ca6757e458e5ec25db43767b3526e9a35b2f143b7 \
-    --hash=sha256:c2f67b6b3f8acf2968eafca06526f07b9fb0d27bac4c68a635d51abb675134a7
+botocore==1.31.17 \
+    --hash=sha256:396459065dba4339eb4da4ec8b4e6599728eb89b7caaceea199e26f7d824a41c \
+    --hash=sha256:6ac34a1d34aa3750e78b77b8596617e2bab938964694d651939dba2cbde2c12b
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   aiobotocore
@@ -814,11 +814,10 @@ frozenlist==1.4.1 \
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   aiohttp
     #   aiosignal
-fsspec==2023.5.0 \
-    --hash=sha256:51a4ad01a5bb66fcc58036e288c0d53d3975a0df2a5dc59a93b59bade0391f2a \
-    --hash=sha256:b3b56e00fb93ea321bc9e5d9cf6f8522a0198b20eb24e02774d329e9c6fb84ce
+fsspec==2023.12.1 \
+    --hash=sha256:6271f1d3075a378bfe432f6f42bf7e1d2a6ba74f78dd9b512385474c579146a0 \
+    --hash=sha256:c4da01a35ac65c853f833e43f67802c25213f560820d54ddf248f92eddd5e990
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   gcsfs
     #   petastorm
     #   s3fs
@@ -839,9 +838,9 @@ gcs-oauth2-boto-plugin==3.0 \
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   gsutil
-gcsfs==2023.5.0 \
-    --hash=sha256:02a815e1cf28197ab4f57335e89dc5df8744a065c7c956d42692b50a9e8f1625 \
-    --hash=sha256:4f2ebc41814de3f566f85dec208704cf19823b9d04a55fd12b3142aef9046525
+gcsfs==2023.12.1 \
+    --hash=sha256:c1ccfa9f84dca019cd334aaf7eb03cc1dc13c296717346927a9fd40255348f9c \
+    --hash=sha256:e86cc583fdf879e5ea2f87bab61738d26ec7e8972762a1e6c6ab758b1e1af99c
     # via -r release/ray_release/byod/requirements_byod_3.9.in
 gevent==24.2.1 \
     --hash=sha256:03aa5879acd6b7076f6a2a307410fb1e0d288b84b03cdfd8c74db8b4bc882fc5 \
@@ -2637,9 +2636,9 @@ rsa==4.7.2 \
     #   gcs-oauth2-boto-plugin
     #   google-auth
     #   oauth2client
-s3fs==2023.5.0 \
-    --hash=sha256:0d82c4fa43d1214117f56b239c3e03c9a2886f41c31000c1c967ac6030d20362 \
-    --hash=sha256:106b5d9a1000e6af413f918156ba4b96789ac832b7e08c99d186eb08164e6981
+s3fs==2023.12.1 \
+    --hash=sha256:63e429bb6b5e814568cacd3f2a8551fc35493e8c418ddfcb44e6f86aa8696ccd \
+    --hash=sha256:ed0b7df8cc20a2b5cefe607b1cf4e860d37c5ca4ac2d68f55464805d75d18710
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_byod_3.9.in

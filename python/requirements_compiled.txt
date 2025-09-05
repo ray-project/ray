@@ -573,25 +573,6 @@ frozenlist==1.4.1
     #   aiosignal
 fs==2.4.16
     # via triad
-fsspec==2023.12.1
-    # via
-    #   -r python/requirements.txt
-    #   adlfs
-    #   dask
-    #   datasets
-    #   delta-sharing
-    #   etils
-    #   evaluate
-    #   getdaft
-    #   gradio-client
-    #   huggingface-hub
-    #   modin
-    #   pyiceberg
-    #   pytorch-lightning
-    #   s3fs
-    #   torch
-    #   torch-geometric
-    #   triad
 fugue==0.8.7
     # via statsforecast
 fugue-sql-antlr==0.2.0
