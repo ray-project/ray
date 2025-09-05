@@ -828,7 +828,8 @@ class Dataset:
             A new dataset with the added column evaluated via the expression.
         """
         # TODO: update schema based on the expression AST.
-        from ray.data._internal.logical.operators.map_operator import Download, Project
+        from ray.data._internal.logical.operators.map_operator import Project
+        from ray.data._internal.logical.operators.one_to_one_operator import Download
 
         # TODO: Once the expression API supports UDFs, we can clean up the code here.
         from ray.data.expressions import DownloadExpr
