@@ -1,25 +1,26 @@
 import os
-import psutil
 import subprocess
 import sys
 
 import pytest
 
 import ray
-import ray.util.state
 import ray._private.ray_constants as ray_constants
-from ray._private.test_utils import (
-    external_redis_test_enabled,
-    client_test_enabled,
-    run_string_as_driver,
-    get_gcs_memory_used,
-    run_string_as_driver_nonblocking,
-)
+import ray.util.state
 from ray._common.network_utils import parse_address
 from ray._common.test_utils import Semaphore, wait_for_condition
+from ray._private.test_utils import (
+    client_test_enabled,
+    external_redis_test_enabled,
+    get_gcs_memory_used,
+    run_string_as_driver,
+    run_string_as_driver_nonblocking,
+)
+from ray._raylet import GCS_PID_KEY, GcsClient
 from ray.experimental.internal_kv import _internal_kv_list
 from ray.tests.conftest import call_ray_start
-from ray._raylet import GcsClient, GCS_PID_KEY
+
+import psutil
 
 
 @pytest.fixture

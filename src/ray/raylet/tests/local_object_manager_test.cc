@@ -107,7 +107,7 @@ class MockSubscriber : public pubsub::SubscriberInterface {
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
   void UpdateObjectLocationBatch(
-      const rpc::UpdateObjectLocationBatchRequest &request,
+      rpc::UpdateObjectLocationBatchRequest &&request,
       const rpc::ClientCallback<rpc::UpdateObjectLocationBatchReply> &callback) override {
     for (const auto &object_location_update : request.object_location_updates()) {
       ASSERT_TRUE(object_location_update.has_spilled_location_update());
@@ -229,11 +229,12 @@ class MockIOWorker : public MockWorker {
   MockIOWorker(WorkerID worker_id,
                int port,
                std::shared_ptr<rpc::CoreWorkerClientInterface> io_worker)
-      : MockWorker(worker_id, port), io_worker(io_worker) {}
+      : MockWorker(worker_id, port), io_worker_(io_worker) {}
 
-  rpc::CoreWorkerClientInterface *rpc_client() { return io_worker.get(); }
+  rpc::CoreWorkerClientInterface *rpc_client() { return io_worker_.get(); }
 
-  std::shared_ptr<rpc::CoreWorkerClientInterface> io_worker;
+ private:
+  std::shared_ptr<rpc::CoreWorkerClientInterface> io_worker_;
 };
 
 class MockIOWorkerPool : public IOWorkerPoolInterface {
