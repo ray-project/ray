@@ -9,20 +9,15 @@ RUN mkdir -p /home/forge/app && chown -R forge /home/forge
 
 WORKDIR /home/forge/app
 
-ENV UV_UNMANAGED_INSTALL=/home/forge/.local/bin
-
-RUN mkdir -p "$UV_UNMANAGED_INSTALL" \
- && curl -LsSf https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="$UV_UNMANAGED_INSTALL" sh
-
-ENV PATH="/home/forge/.local/bin:${PATH}"
-
-
 SHELL ["/bin/bash", "-ice"]
 
 RUN <<EOF
 #!/bin/bash
 
 set -euo pipefail
+
+# Install uv
+curl -sSL -o- https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
 
 # Install Python versions
 uv python install 3.9 3.10 3.11 3.12 3.13
