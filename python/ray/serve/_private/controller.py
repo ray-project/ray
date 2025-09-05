@@ -25,6 +25,7 @@ from ray.serve._private.common import (
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     AUTOSCALER_SUMMARIZER_DECISION_HISTORY_MAX,
+    AUTOSCALER_SUMMARIZER_DECISION_LIMIT,
     CONTROL_LOOP_INTERVAL_S,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
     RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
@@ -451,7 +452,7 @@ class ServeController:
                 recent_decisions = self._scaling_decisions.get(dep_id, [])
                 decisions_summary = (
                     self._serve_event_summarizer.summarize_recent_decisions(
-                        recent_decisions, limit=2
+                        recent_decisions, limit=AUTOSCALER_SUMMARIZER_DECISION_LIMIT
                     )
                 )
                 scaling_status = self._serve_event_summarizer.format_scaling_status(
