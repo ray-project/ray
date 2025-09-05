@@ -31,6 +31,8 @@ steps:
     key: raydepsets_compile_llm_dependencies
     tags: always
     instance_type: small
-    command: ./ci/test_compile_llm_requirements.sh
+    commands:
+      - uv python pin 3.11
+      - ./ci/compile_llm_requirements.sh
     job_env: min-allpython
     depends_on: min-allpython
