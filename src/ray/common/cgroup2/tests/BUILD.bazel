@@ -20,3 +20,22 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+ray_cc_test(
+    name = "cgroup_manager_test",
+    srcs = ["cgroup_manager_test.cc"],
+    tags = [
+        "cgroup",
+        "no_windows",
+        "team:core",
+    ],
+    deps = [
+        "//src/ray/common:status",
+        "//src/ray/common:status_or",
+        "//src/ray/common/cgroup2:cgroup_driver_interface",
+        "//src/ray/common/cgroup2:cgroup_manager",
+        "//src/ray/common/cgroup2:fake_cgroup_driver",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
