@@ -19,6 +19,7 @@ from ray.serve.schema import ApplicationStatus, ProxyStatus, ServeInstanceDetail
 from ray.serve.tests.conftest import *  # noqa: F401 F403
 from ray.tests.conftest import *  # noqa: F401 F403
 from ray.util.state import list_actors
+from ray import serve
 
 # For local testing on a Macbook, set `export TEST_ON_DARWIN=1`.
 TEST_ON_DARWIN = os.environ.get("TEST_ON_DARWIN", "0") == "1"
@@ -570,6 +571,90 @@ def test_get_serve_instance_details_for_imperative_apps(ray_start_stop):
                 assert os.path.exists(file_path)
 
     print("Finished checking application details.")
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
+def test_scale_deployment_endpoint(ray_start_stop):
+    """Test the new scale deployment endpoint."""
+
+    # Helper functions to reduce duplication
+    def get_deployment_details(app_name="test_app", deployment_name="hello_world"):
+        """Get deployment details from serve instance."""
+        serve_details = ServeInstanceDetails(**requests.get(SERVE_HEAD_URL).json())
+        app_details = serve_details.applications[app_name]
+        return app_details.deployments[deployment_name]
+
+    # Setup test deployment
+    @serve.deployment(name="hello_world", num_replicas=1)
+    class DeploymentClass:
+        def __init__(self):
+            pass
+
+        def __call__(self):
+            return "test"
+
+    serve.run(DeploymentClass.bind(), name="test_app")
+
+    # Wait for deployment to be healthy
+    wait_for_condition(
+        lambda: get_deployment_details().status == DeploymentStatus.HEALTHY
+    )
+
+    def scale_and_verify_deployment(
+        num_replicas, app_name="test_app", deployment_name="hello_world"
+    ):
+        """Scale a deployment and verify the target number of replicas."""
+        scale_url = f"http://localhost:8265/api/v1/applications/{app_name}/deployments/{deployment_name}/scale"
+        response = requests.post(
+            scale_url, json={"num_replicas": num_replicas}, timeout=30
+        )
+
+        assert response.status_code == 200
+        response_data = response.json()
+        assert "message" in response_data
+        assert "Deployment scaled successfully" in response_data["message"]
+
+        wait_for_condition(
+            lambda: get_deployment_details(
+                app_name, deployment_name
+            ).target_num_replicas
+            == num_replicas
+        )
+
+    # Test scaling up to 3 replicas
+    scale_and_verify_deployment(3)
+
+    # Test scaling down to 1 replica
+    scale_and_verify_deployment(1)
+
+    def test_error_case(url, expected_status=400, expected_error_contains=None):
+        """Test an error case for the scale endpoint."""
+        error_response = requests.post(url, json={"num_replicas": 2}, timeout=30)
+        assert error_response.status_code == expected_status
+        if expected_error_contains:
+            assert expected_error_contains in error_response.json()["error"].lower()
+
+    # Invalid application name
+    test_error_case(
+        "http://localhost:8265/api/v1/applications/nonexistent/deployments/hello_world/scale",
+        expected_error_contains="not found",
+    )
+
+    # Invalid deployment name
+    test_error_case(
+        "http://localhost:8265/api/v1/applications/test_app/deployments/nonexistent/scale",
+        expected_error_contains="not found",
+    )
+
+    # Invalid request body
+    error_response = requests.post(
+        "http://localhost:8265/api/v1/applications/test_app/deployments/hello_world/scale",
+        json={"invalid_field": 2},
+        timeout=30,
+    )
+    assert error_response.status_code == 400
 
 
 if __name__ == "__main__":

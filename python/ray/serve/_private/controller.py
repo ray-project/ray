@@ -912,6 +912,27 @@ class ServeController:
         """Gets the current list of all deployments' identifiers."""
         return self.deployment_state_manager._deployment_states.keys()
 
+    def update_deployment_replicas(
+        self, deployment_id: DeploymentID, num_replicas: int
+    ) -> None:
+        """Update the target number of replicas for a deployment.
+
+        Args:
+            deployment_id: The deployment to update.
+            num_replicas: The new target number of replicas.
+        """
+        deployment_state = self.deployment_state_manager._deployment_states.get(
+            deployment_id
+        )
+        if deployment_state is None:
+            raise ValueError(f"Deployment {deployment_id} not found")
+
+        # Get the current deployment info
+        deployment_info = deployment_state._target_state.info
+
+        # Update the target state
+        deployment_state._set_target_state(deployment_info, num_replicas)
+
     def get_serve_instance_details(self) -> Dict:
         """Gets details on all applications on the cluster and system-level info.
 
