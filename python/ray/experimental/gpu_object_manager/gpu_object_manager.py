@@ -59,9 +59,6 @@ class GPUObjectManager:
         # store and send/receive GPU objects.
         self.managed_gpu_object_metadata: Dict[str, GPUObjectMeta] = {}
 
-        # Store the pending receive GPU object metadata.
-        self.pending_gpu_object_metadata: Dict[str, GPUObjectMeta] = {}
-
         # Per-actor local storage for GPU objects. We create the GPU object
         # store lazily, if a user specifies a non-default tensor_transport, to
         # avoid circular import and because it imports third-party dependencies
@@ -94,57 +91,99 @@ class GPUObjectManager:
         """
         return obj_id in self.managed_gpu_object_metadata
 
-    def add_pending_gpu_object(
+    def add_gpu_object_metadata(
         self, obj_ref: ObjectRef, gpu_object_meta: GPUObjectMeta
     ):
         """
-        Add the pending receive GPU object to the GPU object manager.
+        Add the GPU object metadata to the GPU object manager.
 
         Args:
             obj_ref: The ObjectRef of the GPU object.
             gpu_object_meta: The GPU object metadata.
         """
         obj_id = obj_ref.hex()
-        self.pending_gpu_object_metadata[obj_id] = gpu_object_meta
+        self.managed_gpu_object_metadata[obj_id] = gpu_object_meta
 
-    def is_pending_gpu_object(self, obj_ref: ObjectRef) -> bool:
-        """
-        Check if the GPU object is pending.
+    def add_gpu_object_ref(
+        self,
+        obj_ref: ObjectRef,
+        src_actor: "ray.actor.ActorHandle",
+        tensor_transport: TensorTransportEnum,
+        tensor_transport_meta: Optional["TensorTransportMetadata"] = None,
+    ):
+        """Add a GPU object reference to the GPU object manager. This should be
+        called whenever the current process calls a task that is annotated with
+        `@ray.method(tensor_transport=...)`.
 
         Args:
-            obj_ref: The ObjectRef of the GPU object.
-
-        Returns:
-            True if the GPU object is pending, False otherwise.
+            obj_ref: The ObjectRef of the task output.
+            src_actor: The actor that executes the task and that creates the GPU object.
+            tensor_transport: The tensor transport protocol to use for the GPU object.
+            tensor_transport_meta: The tensor transport metadata that is pre-computed.
         """
+        from ray.experimental.gpu_object_manager.gpu_object_store import (
+            _tensor_transport_to_collective_backend,
+        )
+        from ray.experimental.collective import get_tensor_transport_manager
+
+        tensor_transport_backend = _tensor_transport_to_collective_backend(
+            tensor_transport
+        )
         obj_id = obj_ref.hex()
-        return obj_id in self.pending_gpu_object_metadata
+        tensor_transport_manager = get_tensor_transport_manager(
+            tensor_transport_backend
+        )
+        if not tensor_transport_meta:
+            tensor_meta = tensor_transport_manager.get_tensor_transport_metadata(
+                src_actor, obj_id
+            )
+        else:
+            tensor_meta = tensor_transport_meta
+        self.managed_gpu_object_metadata[obj_id] = GPUObjectMeta(
+            src_actor=src_actor,
+            tensor_transport_backend=tensor_transport_backend,
+            tensor_transport_meta=tensor_meta,
+        )
 
-    def receive_pending_gpu_object(self, obj_ref: ObjectRef, use_object_store: bool):
+    def _get_gpu_object_metadata(self, obj_ref: ObjectRef) -> GPUObjectMeta:
+        obj_id = obj_ref.hex()
+        return self.managed_gpu_object_metadata[obj_id]
+
+    def fetch_object(self, obj_id: str, use_object_store: bool = True):
         """
-        Receive the pending GPU objects.
+        Fetches the GPU object from the source actor's GPU object store via the object store
+        instead of out-of-band tensor transfer and stores the tensors in the local GPU object store.
+
+        This is useful when the current process does not support the designated out-of-band tensor transport.
+        For example, if the tensor transport is NCCL but the driver does not have a GPU, we use this call to
+        fulfill a `ray.get` call.
 
         Args:
-            obj_ref: The ObjectRef of the GPU object.
-            use_object_store: Whether to use the object store to receive the GPU object.
+            obj_id: The object ID of the GPU object.
+            use_object_store: Whether to use the object store to fetch the GPU object.
 
         Returns:
             None
         """
-        from ray.experimental.collective import get_tensor_transport_manager
-        import torch
+        from ray.experimental.gpu_object_manager.gpu_object_store import (
+            __ray_fetch_gpu_object__,
+        )
 
-        obj_id = obj_ref.hex()
-        gpu_object_meta = self.pending_gpu_object_metadata.pop(obj_id)
-        if use_object_store:
-            # Put the GPU object metadata in the managed GPU object metadata dictionary.
-            # Later `fetch_object` will use this metadata to fetch the GPU object from
-            # the source actor using object store.
-            self.managed_gpu_object_metadata[obj_id] = gpu_object_meta
+        if self.gpu_object_store.has_object(obj_id):
             return
+        gpu_object_meta = self.managed_gpu_object_metadata[obj_id]
+        src_actor = gpu_object_meta.src_actor
+        if use_object_store:
+            tensors = ray.get(
+                src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
+                    __ray_fetch_gpu_object__, obj_id
+                )
+            )
         else:
-            tensor_transport_backend = gpu_object_meta.tensor_transport_backend
+            from ray.experimental.collective import get_tensor_transport_manager
+            import torch
 
+            tensor_transport_backend = gpu_object_meta.tensor_transport_backend
             tensor_transport_manager = get_tensor_transport_manager(
                 tensor_transport_backend
             )
@@ -166,101 +205,6 @@ class GPUObjectManager:
             tensor_transport_manager.recv_multiple_tensors(
                 tensors, tensor_transport_meta, communicator_meta
             )
-        tensor_transport = TensorTransportEnum.from_str(
-            gpu_object_meta.tensor_transport_backend
-        )
-        src_actor = ray.get_runtime_context().current_actor
-        self.add_gpu_object_ref(
-            obj_ref,
-            src_actor,
-            tensor_transport,
-            pre_computed_tensor_transport_meta=tensor_transport_meta,
-        )
-        self.gpu_object_store.add_object(obj_id, tensors, is_primary=False)
-
-    def remove_pending_gpu_object(self, obj_ref: ObjectRef):
-        """
-        Remove the pending GPU object from the GPU object manager.
-
-        Args:
-            obj_ref: The ObjectRef of the GPU object.
-        """
-        obj_id = obj_ref.hex()
-        self.pending_gpu_object_metadata.pop(obj_id)
-
-    def add_gpu_object_ref(
-        self,
-        obj_ref: ObjectRef,
-        src_actor: "ray.actor.ActorHandle",
-        tensor_transport: TensorTransportEnum,
-        pre_computed_tensor_transport_meta: Optional["TensorTransportMetadata"] = None,
-    ):
-        """Add a GPU object reference to the GPU object manager. This should be
-        called whenever the current process calls a task that is annotated with
-        `@ray.method(tensor_transport=...)`.
-
-        Args:
-            obj_ref: The ObjectRef of the task output.
-            src_actor: The actor that executes the task and that creates the GPU object.
-            tensor_transport: The tensor transport protocol to use for the GPU object.
-            pre_computed_tensor_transport_meta: The tensor transport metadata that is pre-computed.
-        """
-        from ray.experimental.gpu_object_manager.gpu_object_store import (
-            _tensor_transport_to_collective_backend,
-        )
-        from ray.experimental.collective import get_tensor_transport_manager
-
-        tensor_transport_backend = _tensor_transport_to_collective_backend(
-            tensor_transport
-        )
-        obj_id = obj_ref.hex()
-        tensor_transport_manager = get_tensor_transport_manager(
-            tensor_transport_backend
-        )
-        if not pre_computed_tensor_transport_meta:
-            tensor_meta = tensor_transport_manager.get_tensor_transport_metadata(
-                src_actor, obj_id
-            )
-        else:
-            tensor_meta = pre_computed_tensor_transport_meta
-        self.managed_gpu_object_metadata[obj_id] = GPUObjectMeta(
-            src_actor=src_actor,
-            tensor_transport_backend=tensor_transport_backend,
-            tensor_transport_meta=tensor_meta,
-        )
-
-    def _get_gpu_object_metadata(self, obj_ref: ObjectRef) -> GPUObjectMeta:
-        obj_id = obj_ref.hex()
-        return self.managed_gpu_object_metadata[obj_id]
-
-    def fetch_object(self, obj_id: str):
-        """
-        Fetches the GPU object from the source actor's GPU object store via the object store
-        instead of out-of-band tensor transfer and stores the tensors in the local GPU object store.
-
-        This is useful when the current process does not support the designated out-of-band tensor transport.
-        For example, if the tensor transport is NCCL but the driver does not have a GPU, we use this call to
-        fulfill a `ray.get` call.
-
-        Args:
-            obj_id: The object ID of the GPU object.
-
-        Returns:
-            None
-        """
-        from ray.experimental.gpu_object_manager.gpu_object_store import (
-            __ray_fetch_gpu_object__,
-        )
-
-        if self.gpu_object_store.has_object(obj_id):
-            return
-        gpu_object_meta = self.managed_gpu_object_metadata[obj_id]
-        src_actor = gpu_object_meta.src_actor
-        tensors = ray.get(
-            src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
-                __ray_fetch_gpu_object__, obj_id
-            )
-        )
         self.gpu_object_store.add_object(obj_id, tensors)
 
     def trigger_out_of_band_tensor_transfer(
@@ -334,13 +278,22 @@ class GPUObjectManager:
                 communicator_meta,
             )
 
-    def get_gpu_object(self, object_id: str) -> List["torch.Tensor"]:
+    def get_gpu_object(
+        self, object_id: str, use_object_store: bool = True
+    ) -> List["torch.Tensor"]:
         """
         Get the GPU object for a given object ID.
+
+        Args:
+            object_id: The object ID of the GPU object.
+            use_object_store: Whether to use the object store to fetch the GPU object.
+
+        Returns:
+            The GPU object.
         """
         gpu_object_store = self.gpu_object_store
         if self.is_managed_object(object_id):
-            self.fetch_object(object_id)
+            self.fetch_object(object_id, use_object_store)
 
         # If the GPU object is the primary copy, it means the transfer is intra-actor.
         # In this case, we should not remove the GPU object after it is consumed once,
@@ -415,5 +368,5 @@ class GPUObjectManager:
             obj_ref,
             src_actor,
             tensor_transport,
-            pre_computed_tensor_transport_meta=tensor_transport_meta,
+            tensor_transport_meta=tensor_transport_meta,
         )

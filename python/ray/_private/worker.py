@@ -886,17 +886,28 @@ class Worker:
             _unhandled_error_handler(e)
 
     def deserialize_objects(
-        self, serialized_objects, object_refs, tensor_transport_hint=None
+        self,
+        serialized_objects,
+        object_refs,
+        tensor_transport_hint: Optional[TensorTransportEnum] = None,
     ):
         gpu_objects: Dict[str, List["torch.Tensor"]] = {}
         for obj_ref, (_, _, tensor_transport) in zip(object_refs, serialized_objects):
-            # If using a non-object store transport, then tensors will be sent
-            # out-of-band. Get them before deserializing the object store data.
+            # The `tensor_transport_hint` has the highest priority, so if it's `OBJECT_STORE`,
+            # we will use the object store to fetch the GPU object. If it's None, we will decide
+            # based on the `tensor_transport` in the serialized objects, which is set by the
+            # `put_object` function.
             tensor_transport_hint_val = (
                 tensor_transport_hint.value
                 if tensor_transport_hint is not None
                 else obj_ref.tensor_transport()
             )
+            # 1. If it's a ray.put/get pattern, tensor_transport will be None, then we
+            # will use the `tensor_transport_hint_val` to decide whether to use the
+            # object store to fetch the GPU object.
+            # 2. If it's not a ray.put/get pattern, tensor_transport_hint_val will be
+            # 'object_store', then we will use `tensor_transport` to decide whether to use the
+            # object store to fetch the GPU object.
             use_object_store = (
                 tensor_transport_hint_val == TensorTransportEnum.OBJECT_STORE.value
                 and (
@@ -905,17 +916,15 @@ class Worker:
                 )
             )
 
-            if self.gpu_object_manager.is_pending_gpu_object(obj_ref):
-                self.gpu_object_manager.receive_pending_gpu_object(
-                    obj_ref, use_object_store
-                )
             object_id = obj_ref.hex()
             if (
                 self.gpu_object_manager.is_managed_object(object_id)
                 or not use_object_store
             ) and object_id not in gpu_objects:
+                # If using a non-object store transport, then tensors will be sent
+                # out-of-band. Get them before deserializing the object store data.
                 gpu_objects[object_id] = self.gpu_object_manager.get_gpu_object(
-                    object_id
+                    object_id, use_object_store
                 )
 
         # Function actor manager or the import thread may call pickle.loads

@@ -144,7 +144,7 @@ def _gpu_object_ref_deserializer(
         binary, call_site, owner_address, object_status, tensor_transport_val
     )
     gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-    gpu_object_manager.add_pending_gpu_object(obj_ref, gpu_object_meta)
+    gpu_object_manager.add_gpu_object_metadata(obj_ref, gpu_object_meta)
 
     return obj_ref
 
