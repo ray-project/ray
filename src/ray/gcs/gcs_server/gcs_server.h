@@ -33,10 +33,10 @@
 #include "ray/gcs/gcs_server/pubsub_handler.h"
 #include "ray/gcs/gcs_server/runtime_env_handler.h"
 #include "ray/gcs/gcs_server/usage_stats_client.h"
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/observable_store_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
+#include "ray/pubsub/gcs_publisher.h"
 #include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet_client/raylet_client_pool.h"
@@ -247,7 +247,7 @@ class GcsServer {
   /// The autoscaler state manager.
   std::unique_ptr<GcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
   /// A publisher for publishing gcs messages.
-  std::unique_ptr<GcsPublisher> gcs_publisher_;
+  std::unique_ptr<pubsub::GcsPublisher> gcs_publisher_;
   /// The gcs node manager.
   std::unique_ptr<GcsNodeManager> gcs_node_manager_;
   /// The health check manager.
