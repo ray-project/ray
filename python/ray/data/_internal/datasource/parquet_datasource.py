@@ -95,9 +95,9 @@ PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS = 1024
 
 
 class _ParquetFragment:
-    """This is a workaround to avoid utilizing `ParquetFileFragment` original
+    """This wrapper class is created to avoid utilizing `ParquetFileFragment` original
     serialization protocol that actually does network RPCs during serialization
-    (to fetch metadata)"""
+    (to fetch actual parquet metadata)"""
 
     def __init__(self, f: "ParquetFileFragment", file_size: int):
         self._fragment = f
@@ -108,7 +108,7 @@ class _ParquetFragment:
         return self._file_size
 
     @property
-    def fragment(self):
+    def original(self):
         return self._fragment
 
     def __reduce__(self):
@@ -477,7 +477,7 @@ def read_fragments(
 
 
 def _fetch_parquet_file_info(
-    fragment: "ParquetFileFragment",
+    fragment: _ParquetFragment,
     *,
     to_batches_kwargs: Optional[Dict[str, Any]],
     columns: Optional[List[str]],
@@ -488,7 +488,7 @@ def _fetch_parquet_file_info(
     #
     # NOTE: Accessing `ParquetFileFragment.metadata` does fetch a parquet footer
     #       from storage
-    metadata = fragment.metadata
+    metadata = fragment.original.metadata
 
     if metadata.num_row_groups == 0:
         return None
