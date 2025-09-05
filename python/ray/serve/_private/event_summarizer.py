@@ -105,47 +105,6 @@ class ServeAutoscalingEventSummarizer:
             return "unknown"
         return f"{int(last_metrics_age_s)}s"
 
-    def build_deployment_snapshot(
-        self,
-        *,
-        app_name: str,
-        deployment_name: str,
-        current_replicas: int,
-        target_replicas: int,
-        min_replicas: Optional[int],
-        max_replicas: Optional[int],
-        scaling_status: str,
-        policy_name: str,
-        look_back_period_s: Optional[float],
-        queued_requests: Optional[float],
-        total_requests: float,
-        last_metrics_age_s: Optional[float],
-        errors: List[str],
-        recent_decisions: List[AutoscalingDecisionSummary],
-    ) -> DeploymentSnapshot:
-        """Build the typed snapshot object we log as a one-liner."""
-        timestamp_s = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        health_text = self.format_metrics_health_text(
-            last_metrics_age_s=last_metrics_age_s, look_back_period_s=look_back_period_s
-        )
-        return DeploymentSnapshot(
-            timestamp_s=timestamp_s,
-            app=app_name,
-            deployment=deployment_name,
-            current_replicas=current_replicas,
-            target_replicas=target_replicas,
-            min_replicas=min_replicas,
-            max_replicas=max_replicas,
-            scaling_status=scaling_status,
-            policy=policy_name,
-            look_back_period_s=look_back_period_s,
-            queued_requests=queued_requests,
-            total_requests=total_requests,
-            metrics_health=health_text,
-            errors=errors or [],
-            decisions=recent_decisions,
-        )
-
     def log_snapshot(self, snapshot: DeploymentSnapshot) -> None:
         """Emit the canonical one-line JSON snapshot from typed object."""
         payload = snapshot.to_log_dict()
@@ -174,20 +133,25 @@ class ServeAutoscalingEventSummarizer:
         """Build and immediately log a deployment snapshot."""
 
         scaling_status = self.format_scaling_status(scaling_status)
-        snapshot = self.build_deployment_snapshot(
-            app_name=app_name,
-            deployment_name=deployment_name,
+        timestamp_s = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        health_text = self.format_metrics_health_text(
+            last_metrics_age_s=last_metrics_age_s, look_back_period_s=look_back_period_s
+        )
+        snapshot = DeploymentSnapshot(
+            timestamp_s=timestamp_s,
+            app=app_name,
+            deployment=deployment_name,
             current_replicas=current_replicas,
             target_replicas=target_replicas,
             min_replicas=min_replicas,
             max_replicas=max_replicas,
             scaling_status=scaling_status,
-            policy_name=policy_name,
+            policy=policy_name,
             look_back_period_s=look_back_period_s,
             queued_requests=queued_requests,
             total_requests=total_requests,
-            last_metrics_age_s=last_metrics_age_s,
-            errors=errors,
-            recent_decisions=recent_decisions,
+            metrics_health=health_text,
+            errors=errors or [],
+            decisions=recent_decisions,
         )
         self.log_snapshot(snapshot)
