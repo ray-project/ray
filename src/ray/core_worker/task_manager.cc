@@ -605,11 +605,6 @@ StatusOr<bool> TaskManager::HandleTaskReturn(const ObjectID &object_id,
                      tensor_transport.value_or(rpc::TensorTransport::OBJECT_STORE));
     if (store_in_plasma) {
       Status s = put_in_local_plasma_callback_(object, object_id);
-      int retry_count = 0;
-      while (!s.ok() && s.IsTransientObjectStoreFull() && retry_count < 3) {
-        retry_count++;
-        s = put_in_local_plasma_callback_(object, object_id);
-      }
       if (!s.ok()) {
         return s;
       }
@@ -1541,26 +1536,29 @@ void TaskManager::MarkTaskReturnObjectsFailed(
   for (int i = 0; i < num_returns; i++) {
     const auto object_id = ObjectID::FromIndex(task_id, /*index=*/i + 1);
     if (store_in_plasma_ids.contains(object_id)) {
-      in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id);
       Status s = put_in_local_plasma_callback_(error, object_id);
-      if (!s.ok()) {
+      if (s.ok()) {
+        in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id);
+      } else {
         RAY_LOG(WARNING).WithField(object_id)
             << "Failed to put error object in plasma: " << s;
+        in_memory_store_.Put(error, object_id);
       }
     } else {
-      // Not intended for plasma; place the actual error in memory to unblock waiters.
       in_memory_store_.Put(error, object_id);
     }
   }
   if (spec.ReturnsDynamic()) {
     for (const auto &dynamic_return_id : spec.DynamicReturnIds()) {
       if (store_in_plasma_ids.contains(dynamic_return_id)) {
-        in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                             dynamic_return_id);
         Status s = put_in_local_plasma_callback_(error, dynamic_return_id);
-        if (!s.ok()) {
+        if (s.ok()) {
+          in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                               dynamic_return_id);
+        } else {
           RAY_LOG(WARNING).WithField(dynamic_return_id)
               << "Failed to put error object in plasma: " << s;
+          in_memory_store_.Put(error, dynamic_return_id);
         }
       } else {
         in_memory_store_.Put(error, dynamic_return_id);
@@ -1586,12 +1584,14 @@ void TaskManager::MarkTaskReturnObjectsFailed(
     for (size_t i = 0; i < num_streaming_generator_returns; i++) {
       const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
       if (store_in_plasma_ids.contains(generator_return_id)) {
-        in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                             generator_return_id);
         Status s = put_in_local_plasma_callback_(error, generator_return_id);
-        if (!s.ok()) {
+        if (s.ok()) {
+          in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                               generator_return_id);
+        } else {
           RAY_LOG(WARNING).WithField(generator_return_id)
               << "Failed to put error object in plasma: " << s;
+          in_memory_store_.Put(error, generator_return_id);
         }
       } else {
         in_memory_store_.Put(error, generator_return_id);
