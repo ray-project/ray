@@ -76,13 +76,11 @@ StatusOr<std::unique_ptr<CgroupManager>> CgroupManager::Create(
       return Status::Invalid(absl::StrFormat(
           "Failed to initialize resource isolation "
           "because required controllers are not available in the cgroup %s. "
-          "To make controllers available in %s, you need to enable for its ancestor "
-          "cgroups."
-          "\nSee "
+          "To make controllers available in %s, you need to enable controllers for its "
+          "ancestor cgroups. See "
           "https://docs.kernel.org/admin-guide/cgroup-v2.html#controlling-controllers "
-          "for more details."
-          "\nAvailable controllers: %s."
-          "\nRequired controllers: %s.",
+          "for more details. Available controllers: %s. Required controllers: "
+          "%s.",
           base_cgroup_path,
           base_cgroup_path,
           available_controllers_str,
