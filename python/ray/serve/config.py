@@ -236,7 +236,10 @@ class AutoscalingConfig(BaseModel):
         default=30.0, description="How long to wait before scaling up replicas."
     )
 
-    aggregation_function: Union[str, AggregationFunction] = AggregationFunction.MEAN
+    aggregation_function: Union[str, AggregationFunction] = Field(
+        default=AggregationFunction.MEAN,
+        description="Function used to aggregate metrics across replicas.",
+    )
 
     # Cloudpickled policy definition.
     _serialized_policy_def: bytes = PrivateAttr(default=b"")

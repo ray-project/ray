@@ -83,6 +83,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.config.ProxyLocation
    serve.config.gRPCOptions
    serve.config.HTTPOptions
+   serve.config.AggregationFunction
    serve.config.AutoscalingConfig
    serve.config.AutoscalingPolicy
    serve.config.RequestRouterConfig
