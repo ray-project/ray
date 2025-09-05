@@ -576,9 +576,10 @@ def test_arrow_tensor_array_getitem(chunked, restore_data_context, tensor_format
                 # Returns native FixedShapeTensorScalar
                 np.testing.assert_array_equal(item.to_numpy(), arr[idx])
             else:
-                # Returns an ExtensionScalar
-                # type: FixedShapeTensorType
-                np.testing.assert_array_equal(_fixed_shape_extension_scalar_to_ndarray(item), arr[idx])
+                # Returns an ExtensionScalar, item.type: FixedShapeTensorType
+                np.testing.assert_array_equal(
+                    _fixed_shape_extension_scalar_to_ndarray(item), arr[idx]
+                )
 
             # NOTE: In addition we verify that for existing ``ArrowTensorScalar``
             #       implements `__array__` method therefore implementing Numpy
@@ -593,7 +594,9 @@ def test_arrow_tensor_array_getitem(chunked, restore_data_context, tensor_format
             np.testing.assert_array_equal(t_subarr.to_numpy(), subarr)
         else:
             # Returns an ExtensionScalar
-            np.testing.assert_array_equal(_fixed_shape_extension_scalar_to_ndarray(t_subarr), subarr)
+            np.testing.assert_array_equal(
+                _fixed_shape_extension_scalar_to_ndarray(t_subarr), subarr
+            )
 
     # Test to_pylist.
     if tensor_format == "arrow_native":
@@ -635,7 +638,9 @@ def test_arrow_tensor_array_getitem(chunked, restore_data_context, tensor_format
                 np.testing.assert_array_equal(item.to_numpy(), arr[idx])
             else:
                 # Returns an ExtensionScalar
-                np.testing.assert_array_equal(_fixed_shape_extension_scalar_to_ndarray(item), arr[idx])
+                np.testing.assert_array_equal(
+                    _fixed_shape_extension_scalar_to_ndarray(item), arr[idx]
+                )
 
 
 @pytest.mark.parametrize("tensor_format", ["arrow_native", "v1", "v2"])

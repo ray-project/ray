@@ -410,6 +410,7 @@ def _backfill_missing_fields(
 
     from ray.air.util.tensor_extensions.arrow import (
         ArrowTensorType,
+        ArrowVariableShapedTensorArray,
         ArrowVariableShapedTensorType,
         get_arrow_extension_tensor_types,
     )
@@ -462,7 +463,9 @@ def _backfill_missing_fields(
                     [current_array.type, field_type]
                 ) and not isinstance(current_array.type, ArrowVariableShapedTensorType):
                     # Only convert if it's not already a variable-shaped tensor array
-                    current_array = current_array.to_variable_shaped_tensor_array()
+                    current_array = ArrowVariableShapedTensorArray.from_numpy(
+                        current_array.to_numpy_ndarray()
+                    )
 
             # The schema should already be unified by unify_schemas, so types
             # should be compatible. If not, let the error propagate up.
