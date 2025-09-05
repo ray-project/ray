@@ -103,7 +103,7 @@ class _SampleInfo:
     estimated_bytes_per_row: Optional[int]
 
 
-class _NoIOSerializableFragmentWrapper:
+class _NoIOSerializableParquetFragment:
     """This is a workaround to avoid utilizing `ParquetFileFragment` original
     serialization protocol that actually does network RPCs during serialization
     (to fetch metadata)"""
@@ -300,7 +300,7 @@ class ParquetDatasource(Datasource):
         # network calls when `_ParquetDatasourceReader` is serialized. See
         # `_SerializedFragment()` implementation for more details.
         self._pq_fragments = [
-            _NoIOSerializableFragmentWrapper(p) for p in pq_ds.fragments
+            _NoIOSerializableParquetFragment(p) for p in pq_ds.fragments
         ]
         self._pq_paths = [p.path for p in pq_ds.fragments]
         self._meta_provider = meta_provider

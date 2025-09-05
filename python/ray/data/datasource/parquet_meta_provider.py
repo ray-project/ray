@@ -133,13 +133,13 @@ class ParquetMetadataProvider(FileMetadataProvider):
             that `metadata[i]` always contains the metadata for `fragments[i]`.
         """
         from ray.data._internal.datasource.parquet_datasource import (
-            _NoIOSerializableFragmentWrapper,
+            _NoIOSerializableParquetFragment,
         )
 
         if len(fragments) > PARALLELIZE_META_FETCH_THRESHOLD:
             # Wrap Parquet fragments in serialization workaround.
             fragments = [
-                _NoIOSerializableFragmentWrapper(fragment) for fragment in fragments
+                _NoIOSerializableParquetFragment(fragment) for fragment in fragments
             ]
             # Fetch Parquet metadata in parallel using Ray tasks.
             def _remote_fetch(fragments: List["ParquetFileFragment"]):
