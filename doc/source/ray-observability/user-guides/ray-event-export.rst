@@ -34,7 +34,7 @@ Task events
 
 For each task, Ray exports two types of events: Task Definition Event and Task Execution Event.
 
-* Task Definition Event generated once per task attempt. It contains the metadata of the task. 
+* Each task attempt generates one Task Definition Event which contains the metadata of the task. 
   See `src/ray/protobuf/public/events_task_definition_event.proto <https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_task_definition_event.proto>`_ 
   and `src/ray/protobuf/public/events_actor_task_definition_event.proto <https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_actor_task_definition_event.proto>`_ for the event format for normal tasks 
   and actor tasks respectively.
