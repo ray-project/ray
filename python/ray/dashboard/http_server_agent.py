@@ -51,7 +51,7 @@ class HttpServerAgent:
                 if not is_localhost(self.ip):
                     local_site = aiohttp.web.TCPSite(
                         self.runner,
-                        "127.0.0.1",
+                        "localhost",
                         self.listen_port,
                     )
                     await local_site.start()
