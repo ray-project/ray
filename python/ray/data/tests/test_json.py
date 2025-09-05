@@ -32,6 +32,10 @@ from ray.data.tests.test_partitioning import PathPartitionEncoder
 from ray.tests.conftest import *  # noqa
 
 
+# Set the test timeout to 6 minutes
+pytestmark = pytest.mark.timeout(360)
+
+
 def test_json_read_partitioning(
     ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
 ):
