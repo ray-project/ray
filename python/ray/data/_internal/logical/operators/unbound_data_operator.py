@@ -264,6 +264,130 @@ class StreamingTrigger:
             checkpoint_location=checkpoint_location,
         )
 
+    # Spark Streaming compatibility methods
+    @classmethod
+    def processing_time(cls, interval: Union[str, timedelta]) -> "StreamingTrigger":
+        """Create a processing time trigger (Spark Streaming compatibility).
+
+        This is equivalent to fixed_interval but uses Spark Streaming terminology.
+
+        Args:
+            interval: Processing interval (e.g., "30 seconds", "15m", "1h")
+        """
+        return cls.fixed_interval(interval)
+
+    @classmethod
+    def event_time(
+        cls,
+        interval: Union[str, timedelta],
+        watermark_column: str,
+        late_data_threshold: Optional[Union[str, timedelta]] = None,
+    ) -> "StreamingTrigger":
+        """Create an event time trigger (Spark Streaming compatibility).
+
+        Args:
+            interval: Processing interval
+            watermark_column: Column containing event timestamps
+            late_data_threshold: Maximum allowed lateness for data
+        """
+        return cls.with_watermark(
+            trigger_type="fixed_interval",
+            watermark_column=watermark_column,
+            interval=interval,
+            late_data_threshold=late_data_threshold,
+        )
+
+    @classmethod
+    def micro_batch(cls, interval: Union[str, timedelta]) -> "StreamingTrigger":
+        """Create a micro-batch trigger (Spark Streaming compatibility).
+
+        Args:
+            interval: Micro-batch interval
+        """
+        return cls.fixed_interval(interval)
+
+    @classmethod
+    def foreach_batch(
+        cls, interval: Union[str, timedelta] = "0s"
+    ) -> "StreamingTrigger":
+        """Create a foreach batch trigger.
+
+        Args:
+            interval: Batch interval (default 0s for immediate processing)
+        """
+        if interval == "0s":
+            return cls.continuous()
+        else:
+            return cls.fixed_interval(interval)
+
+    @classmethod
+    def available_now_with_limit(cls, max_files_per_trigger: int) -> "StreamingTrigger":
+        """Create an available-now trigger with file limit.
+
+        Args:
+            max_files_per_trigger: Maximum number of files to process per trigger
+        """
+        return cls(
+            trigger_type="available_now",
+            max_files_per_trigger=max_files_per_trigger,
+        )
+
+    def with_checkpoint_location(self, checkpoint_location: str) -> "StreamingTrigger":
+        """Add checkpoint location to existing trigger.
+
+        Args:
+            checkpoint_location: Path for checkpointing
+
+        Returns:
+            New trigger with checkpoint location set
+        """
+        new_trigger = StreamingTrigger(
+            trigger_type=self.trigger_type,
+            interval=self.interval,
+            cron_expression=self.cron_expression,
+            max_batches=self.max_batches,
+            max_files_per_trigger=self.max_files_per_trigger,
+            processing_time=self.processing_time,
+            watermark_column=self.watermark_column,
+            allow_late_data=self.allow_late_data,
+            late_data_threshold=self.late_data_threshold,
+            output_mode=self.output_mode,
+            checkpoint_location=checkpoint_location,
+            checkpoint_interval=self.checkpoint_interval,
+        )
+        return new_trigger
+
+    def to_spark_format(self) -> str:
+        """Convert trigger to Spark Streaming format string.
+
+        Returns:
+            Spark-compatible trigger string
+        """
+        if self.trigger_type == "once":
+            return "once"
+        elif self.trigger_type == "continuous":
+            return "continuous"
+        elif self.trigger_type == "available_now":
+            return "availableNow"  # Spark format
+        elif self.trigger_type == "fixed_interval" and self.interval:
+            # Convert timedelta to Spark format
+            if isinstance(self.interval, timedelta):
+                total_seconds = int(self.interval.total_seconds())
+                if total_seconds >= 86400:  # Days
+                    return f"{total_seconds // 86400}d"
+                elif total_seconds >= 3600:  # Hours
+                    return f"{total_seconds // 3600}h"
+                elif total_seconds >= 60:  # Minutes
+                    return f"{total_seconds // 60}m"
+                else:  # Seconds
+                    return f"{total_seconds}s"
+            else:
+                return str(self.interval)
+        elif self.trigger_type == "cron":
+            return self.cron_expression or "0 * * * *"
+        else:
+            return "continuous"  # Fallback
+
 
 class UnboundedQueueStreamingData(LogicalOperator, SourceOperator):
     """Logical operator for unbounded streaming data sources.

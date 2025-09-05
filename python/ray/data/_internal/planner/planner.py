@@ -33,7 +33,7 @@ from ray.data._internal.logical.operators.map_operator import (
 from ray.data._internal.logical.operators.n_ary_operator import Union, Zip
 from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.logical.operators.streaming_data_operator import (
+from ray.data._internal.logical.operators.unbound_data_operator import (
     UnboundedQueueStreamingData,
 )
 from ray.data._internal.logical.operators.streaming_split_operator import StreamingSplit

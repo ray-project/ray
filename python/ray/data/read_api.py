@@ -31,7 +31,7 @@ from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data._internal.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
 )
-from ray.data._internal.datasource.flink_datasource import FlinkDatasource
+from ray.data._internal.datasource.unbound.flink_datasource import FlinkDatasource
 from ray.data._internal.datasource.hudi_datasource import HudiDatasource
 from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
 from ray.data._internal.datasource.image_datasource import (
@@ -43,7 +43,7 @@ from ray.data._internal.datasource.json_datasource import (
     ArrowJSONDatasource,
     PandasJSONDatasource,
 )
-from ray.data._internal.datasource.kafka_datasource import KafkaDatasource
+from ray.data._internal.datasource.unbound.kafka_datasource import KafkaDatasource
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
@@ -67,7 +67,7 @@ from ray.data._internal.logical.operators.from_operators import (
     FromPandas,
 )
 from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.logical.operators.streaming_data_operator import (
+from ray.data._internal.logical.operators.unbound_data_operator import (
     StreamingTrigger,
     UnboundedQueueStreamingData,
 )
@@ -4091,8 +4091,12 @@ def _emit_meta_provider_deprecation_warning(
 def _parse_streaming_trigger(trigger: Union[str, StreamingTrigger]) -> StreamingTrigger:
     """Parse trigger parameter into StreamingTrigger object.
 
+    Supports both Ray Data native format and Spark Streaming compatibility format.
+
     Args:
-        trigger: Either a string trigger type or StreamingTrigger object.
+        trigger: Either a string trigger type or StreamingTrigger object. Supports:
+            - Ray Data native: "once", "continuous", "available_now", "interval:30s", "cron:0 * * * *"
+            - Spark Streaming style: "once", "continuous", "15m", "30s", "1h", "processingTime='30 seconds'"
 
     Returns:
         StreamingTrigger object.
@@ -4101,6 +4105,7 @@ def _parse_streaming_trigger(trigger: Union[str, StreamingTrigger]) -> Streaming
         ValueError: If trigger type is invalid.
     """
     if isinstance(trigger, str):
+        # Handle Ray Data native format
         if trigger in ["once", "continuous", "available_now"]:
             return StreamingTrigger(trigger_type=trigger)
         elif "interval:" in trigger:
@@ -4109,8 +4114,26 @@ def _parse_streaming_trigger(trigger: Union[str, StreamingTrigger]) -> Streaming
         elif trigger.startswith("cron:"):
             cron_expr = trigger.split(":", 1)[1]
             return StreamingTrigger.cron(cron_expr)
+
+        # Handle Spark Streaming compatibility format
+        elif _is_spark_interval_format(trigger):
+            # Spark-style interval: "30s", "15m", "1h", "2d"
+            return StreamingTrigger.fixed_interval(trigger)
+        elif trigger.startswith("processingTime="):
+            # Spark-style: processingTime='30 seconds'
+            interval_part = trigger.split("=", 1)[1].strip("'\"")
+            spark_interval = _parse_spark_interval(interval_part)
+            return StreamingTrigger.fixed_interval(spark_interval)
+        elif _is_cron_expression(trigger):
+            # Direct cron expression without prefix
+            return StreamingTrigger.cron(trigger)
         else:
-            raise ValueError(f"Invalid string trigger: {trigger}")
+            raise ValueError(
+                f"Invalid string trigger: {trigger}. "
+                f"Supported formats: 'once', 'continuous', 'available_now', "
+                f"'interval:30s', 'cron:0 * * * *', '30s', '15m', '1h', "
+                f"'processingTime=\"30 seconds\"', or direct cron expressions"
+            )
     elif isinstance(trigger, StreamingTrigger):
         return trigger
     else:
@@ -4119,20 +4142,112 @@ def _parse_streaming_trigger(trigger: Union[str, StreamingTrigger]) -> Streaming
         )
 
 
+def _is_spark_interval_format(trigger: str) -> bool:
+    """Check if trigger string is in Spark interval format (e.g., '30s', '15m')."""
+    import re
+
+    # Spark intervals: number followed by time unit (s, m, h, d)
+    pattern = r"^\d+[smhd]$"
+    return bool(re.match(pattern, trigger.lower()))
+
+
+def _is_cron_expression(trigger: str) -> bool:
+    """Check if trigger string is a cron expression."""
+    # Basic cron validation: 5 or 6 space-separated fields
+    parts = trigger.strip().split()
+    return len(parts) in [5, 6] and all(
+        part.replace("*", "")
+        .replace("/", "")
+        .replace("-", "")
+        .replace(",", "")
+        .isdigit()
+        or part in ["*", "?"]
+        for part in parts
+    )
+
+
+def _parse_spark_interval(interval_str: str) -> str:
+    """Parse Spark-style interval strings to Ray Data format.
+
+    Args:
+        interval_str: Spark interval like "30 seconds", "15 minutes", "1 hour"
+
+    Returns:
+        Ray Data interval format like "30s", "15m", "1h"
+    """
+    # Handle Spark's verbose format: "30 seconds", "15 minutes"
+    interval_str = interval_str.lower().strip()
+
+    # Mapping from Spark units to Ray Data units
+    unit_mapping = {
+        "second": "s",
+        "seconds": "s",
+        "sec": "s",
+        "minute": "m",
+        "minutes": "m",
+        "min": "m",
+        "hour": "h",
+        "hours": "h",
+        "hr": "h",
+        "day": "d",
+        "days": "d",
+    }
+
+    # Try to parse "number unit" format
+    parts = interval_str.split()
+    if len(parts) == 2:
+        try:
+            number = int(parts[0])
+            unit_name = parts[1]
+
+            if unit_name in unit_mapping:
+                return f"{number}{unit_mapping[unit_name]}"
+        except ValueError:
+            pass
+
+    # Try to parse already compact format "30s", "15m"
+    if _is_spark_interval_format(interval_str):
+        return interval_str
+
+    # Fallback - assume it's already in correct format
+    return interval_str
+
+
 @PublicAPI(stability="alpha")
 @wrap_auto_init
 def read_kafka(
     topics: Union[str, List[str]],
     *,
-    kafka_config: Dict[str, Any],
+    bootstrap_servers: str,
     trigger: Union[str, StreamingTrigger] = "once",
     max_records_per_task: int = 1000,
     start_offset: Optional[str] = None,
     end_offset: Optional[str] = None,
+    group_id: Optional[str] = None,
+    security_protocol: str = "PLAINTEXT",
+    sasl_mechanism: Optional[str] = None,
+    sasl_username: Optional[str] = None,
+    sasl_password: Optional[str] = None,
+    sasl_kerberos_service_name: Optional[str] = None,
+    sasl_kerberos_domain_name: Optional[str] = None,
+    sasl_oauth_token_provider: Optional[str] = None,
+    ssl_ca_location: Optional[str] = None,
+    ssl_certificate_location: Optional[str] = None,
+    ssl_key_location: Optional[str] = None,
+    ssl_keystore_location: Optional[str] = None,
+    ssl_keystore_password: Optional[str] = None,
+    ssl_truststore_location: Optional[str] = None,
+    ssl_truststore_password: Optional[str] = None,
+    ssl_check_hostname: bool = True,
+    ssl_ciphers: Optional[str] = None,
+    ssl_protocol: Optional[str] = None,
+    auto_offset_reset: str = "latest",
+    session_timeout_ms: int = 30000,
     parallelism: int = -1,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    **kafka_kwargs,
 ) -> Dataset:
     """Read from Apache Kafka topics as a streaming or batch dataset.
 
@@ -4141,7 +4256,7 @@ def read_kafka(
         Requires ``kafka-python`` to be installed.
 
     This function creates a dataset that can read from one or more Kafka topics.
-    It supports both batch reading (with ``trigger="once"``) and streaming modes
+    It supports both batch reading (with ``trigger="once"``) and continuous reading
     with various trigger patterns.
 
     Examples:
@@ -4155,32 +4270,29 @@ def read_kafka(
             # Read all available data from topic once
             ds = ray.data.read_kafka(
                 topics=["my-topic"],
-                kafka_config={"bootstrap_servers": "localhost:9092"},
+                bootstrap_servers="localhost:9092",
                 trigger="once"
             )
 
             for batch in ds.iter_batches():
                 print(f"Read {len(batch)} records")
 
-        Streaming with continuous trigger:
+        Continuous streaming:
 
         .. testcode::
             :skipif: True
 
             import ray
-            from ray.data._internal.logical.operators.streaming_data_operator import StreamingTrigger
 
             # Continuous streaming
             ds = ray.data.read_kafka(
                 topics=["events"],
-                kafka_config={
-                    "bootstrap_servers": "localhost:9092",
-                    "group.id": "my-consumer-group"
-                },
+                bootstrap_servers="localhost:9092",
+                group_id="my-consumer-group",
                 trigger="continuous"
             )
 
-        Fixed interval streaming:
+        Fixed interval processing:
 
         .. testcode::
             :skipif: True
@@ -4190,11 +4302,11 @@ def read_kafka(
             # Process every 30 seconds
             ds = ray.data.read_kafka(
                 topics=["metrics"],
-                kafka_config={"bootstrap_servers": "localhost:9092"},
+                bootstrap_servers="localhost:9092",
                 trigger="interval:30s"
             )
 
-        Cron-based streaming:
+        Cron-based processing:
 
         .. testcode::
             :skipif: True
@@ -4204,8 +4316,36 @@ def read_kafka(
             # Process every hour at minute 30
             ds = ray.data.read_kafka(
                 topics=["hourly-reports"],
-                kafka_config={"bootstrap_servers": "localhost:9092"},
+                bootstrap_servers="localhost:9092",
                 trigger="cron:30 * * * *"
+            )
+
+        Alternative trigger formats:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+
+            # Direct interval specification
+            ds = ray.data.read_kafka(
+                topics=["events"],
+                bootstrap_servers="localhost:9092",
+                trigger="30s"  # Process every 30 seconds
+            )
+
+            # Processing time format
+            ds = ray.data.read_kafka(
+                topics=["metrics"],
+                bootstrap_servers="localhost:9092",
+                trigger="processingTime='15 minutes'"
+            )
+
+            # Direct cron expression
+            ds = ray.data.read_kafka(
+                topics=["reports"],
+                bootstrap_servers="localhost:9092",
+                trigger="0 */2 * * *"  # Every 2 hours
             )
 
         Historical data reading:
@@ -4218,32 +4358,51 @@ def read_kafka(
             # Read specific offset range
             ds = ray.data.read_kafka(
                 topics=["historical-data"],
-                kafka_config={"bootstrap_servers": "localhost:9092"},
+                bootstrap_servers="localhost:9092",
                 start_offset="1000000",
                 end_offset="2000000",
                 trigger="once"
             )
 
+        Secure connection:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+
+            # SSL connection
+            ds = ray.data.read_kafka(
+                topics=["secure-topic"],
+                bootstrap_servers="kafka.example.com:9093",
+                security_protocol="SSL",
+                ssl_ca_location="/path/to/ca.pem",
+            )
+
+            # SASL authentication
+            ds = ray.data.read_kafka(
+                topics=["auth-topic"],
+                bootstrap_servers="kafka.example.com:9092",
+                security_protocol="SASL_PLAINTEXT",
+                sasl_mechanism="PLAIN",
+                sasl_username="username",
+                sasl_password="password",
+            )
+
     Args:
         topics: Kafka topic name(s) to read from. Can be a single topic string
             or list of topic strings.
-        kafka_config: Kafka consumer configuration dictionary. Must include
-            "bootstrap_servers". Supports all kafka-python consumer options including:
-            - bootstrap_servers: Kafka broker addresses (required)
-            - group_id: Consumer group ID
-            - security_protocol: Security protocol (PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL)
-            - sasl_mechanism: SASL mechanism (PLAIN, SCRAM-SHA-256, SCRAM-SHA-512, GSSAPI)
-            - sasl_username: SASL username for authentication
-            - sasl_password: SASL password for authentication
-            - ssl_ca_location: Path to CA certificate file
-            - ssl_certificate_location: Path to client certificate file
-            - ssl_key_location: Path to client private key file
-        trigger: Streaming trigger configuration. Can be:
+        bootstrap_servers: Kafka broker addresses (required). Can be a single server
+            "localhost:9092" or comma-separated list "broker1:9092,broker2:9092".
+        trigger: Processing trigger configuration. Supports:
             - "once": Read all available data once (batch mode)
-            - "continuous": Continuous streaming processing
+            - "continuous": Continuous processing as data arrives
             - "available_now": Process all currently available data then stop
             - "interval:30s": Fixed interval triggers (supports s, m, h, d units)
             - "cron:0 * * * *": Cron expression for scheduled processing
+            - "30s", "15m", "1h": Direct interval specification
+            - "processingTime='30 seconds'": Alternative processing time format
+            - "0 */5 * * *": Direct cron expressions
             - StreamingTrigger object for advanced configuration
         max_records_per_task: Maximum number of records per partition per task per batch.
         start_offset: Starting offset for reading. Can be:
@@ -4254,11 +4413,22 @@ def read_kafka(
             - "456": Absolute offset number
             - "offset:456": Explicit offset syntax
             - None: Read indefinitely (default)
+        group_id: Consumer group ID for coordinated consumption.
+        security_protocol: Security protocol (PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL).
+        sasl_mechanism: SASL mechanism (PLAIN, SCRAM-SHA-256, SCRAM-SHA-512, GSSAPI).
+        sasl_username: SASL username for authentication.
+        sasl_password: SASL password for authentication.
+        ssl_ca_location: Path to CA certificate file for SSL.
+        ssl_certificate_location: Path to client certificate file for SSL.
+        ssl_key_location: Path to client private key file for SSL.
+        auto_offset_reset: What to do when there is no initial offset (earliest, latest).
+        session_timeout_ms: Session timeout in milliseconds.
         parallelism: Number of parallel tasks to use for reading. -1 means
             auto-detection based on number of partitions.
         ray_remote_args: Additional Ray remote arguments for read tasks.
         concurrency: **Deprecated**. Use parallelism instead.
         override_num_blocks: **Deprecated**. Use parallelism instead.
+        **kafka_kwargs: Additional Kafka consumer configuration options.
 
     Returns:
         Dataset containing Kafka records. Each record contains:
@@ -4279,12 +4449,64 @@ def read_kafka(
         ImportError: If kafka-python is not installed.
     """
     from ray.data._internal.logical.interfaces import LogicalPlan
-    from ray.data._internal.logical.operators.streaming_data_operator import (
+    from ray.data._internal.logical.operators.unbound_data_operator import (
         UnboundedQueueStreamingData,
     )
     from ray.data._internal.plan import ExecutionPlan
     from ray.data._internal.stats import DatasetStats
     from ray.data.context import DataContext
+
+    # Build kafka_config from flat parameters
+    kafka_config = {
+        "bootstrap_servers": bootstrap_servers,
+        "auto_offset_reset": auto_offset_reset,
+        "session_timeout_ms": session_timeout_ms,
+        "security_protocol": security_protocol,
+    }
+
+    # Add optional parameters if provided
+    if group_id is not None:
+        kafka_config["group_id"] = group_id
+
+    # SASL authentication parameters
+    if sasl_mechanism is not None:
+        kafka_config["sasl_mechanism"] = sasl_mechanism
+    if sasl_username is not None:
+        kafka_config["sasl_username"] = sasl_username
+    if sasl_password is not None:
+        kafka_config["sasl_password"] = sasl_password
+    if sasl_kerberos_service_name is not None:
+        kafka_config["sasl_kerberos_service_name"] = sasl_kerberos_service_name
+    if sasl_kerberos_domain_name is not None:
+        kafka_config["sasl_kerberos_domain_name"] = sasl_kerberos_domain_name
+    if sasl_oauth_token_provider is not None:
+        kafka_config["sasl_oauth_token_provider"] = sasl_oauth_token_provider
+
+    # SSL/TLS parameters
+    if ssl_ca_location is not None:
+        kafka_config["ssl_ca_location"] = ssl_ca_location
+    if ssl_certificate_location is not None:
+        kafka_config["ssl_certificate_location"] = ssl_certificate_location
+    if ssl_key_location is not None:
+        kafka_config["ssl_key_location"] = ssl_key_location
+    if ssl_keystore_location is not None:
+        kafka_config["ssl_keystore_location"] = ssl_keystore_location
+    if ssl_keystore_password is not None:
+        kafka_config["ssl_keystore_password"] = ssl_keystore_password
+    if ssl_truststore_location is not None:
+        kafka_config["ssl_truststore_location"] = ssl_truststore_location
+    if ssl_truststore_password is not None:
+        kafka_config["ssl_truststore_password"] = ssl_truststore_password
+    if ssl_ciphers is not None:
+        kafka_config["ssl_ciphers"] = ssl_ciphers
+    if ssl_protocol is not None:
+        kafka_config["ssl_protocol"] = ssl_protocol
+
+    # SSL configuration
+    kafka_config["ssl_check_hostname"] = ssl_check_hostname
+
+    # Add any additional kafka kwargs
+    kafka_config.update(kafka_kwargs)
 
     # Create datasource
     datasource = KafkaDatasource(
@@ -4301,7 +4523,7 @@ def read_kafka(
     # For streaming triggers, use the new streaming operator
     if streaming_trigger.trigger_type != "once":
         # Create streaming logical operator
-        streaming_op = UnboundedQueueStreamingData(
+        streaming_logical_op = UnboundedQueueStreamingData(
             datasource=datasource,
             trigger=streaming_trigger,
             parallelism=parallelism,
@@ -4309,13 +4531,30 @@ def read_kafka(
 
         # Create logical plan
         ctx = DataContext.get_current()
-        logical_plan = LogicalPlan(streaming_op, ctx)
+        logical_plan = LogicalPlan(streaming_logical_op, ctx)
 
-        # Create execution plan - this will be handled by the planner
+        # Create physical operator for streaming execution
+        from ray.data._internal.execution.operators.unbounded_queue_streaming_data import (
+            UnboundedQueueStreamingDataOperator,
+        )
+
+        streaming_physical_op = UnboundedQueueStreamingDataOperator(
+            data_context=ctx,
+            datasource=datasource,
+            trigger=streaming_trigger,
+            parallelism=parallelism,
+            ray_remote_args=ray_remote_args,
+        )
+
+        # Create execution plan with the physical operator
         execution_plan = ExecutionPlan(
             DatasetStats(metadata={}, parent=None),
             ctx.copy(),
         )
+
+        # Set the physical operator in the execution plan
+        execution_plan._logical_plan = logical_plan
+        execution_plan._physical_plan = streaming_physical_op
 
         return Dataset(
             plan=execution_plan,
@@ -4337,15 +4576,34 @@ def read_kafka(
 def read_kinesis(
     stream_name: str,
     *,
-    kinesis_config: Dict[str, Any],
+    region_name: str,
     trigger: Union[str, StreamingTrigger] = "once",
     max_records_per_task: int = 1000,
     start_sequence: Optional[str] = None,
     end_sequence: Optional[str] = None,
+    aws_access_key_id: Optional[str] = None,
+    aws_secret_access_key: Optional[str] = None,
+    aws_session_token: Optional[str] = None,
+    aws_profile: Optional[str] = None,
+    role_arn: Optional[str] = None,
+    role_session_name: Optional[str] = None,
+    external_id: Optional[str] = None,
+    mfa_serial: Optional[str] = None,
+    mfa_token: Optional[str] = None,
+    use_ssl: bool = True,
+    endpoint_url: Optional[str] = None,
+    kms_key_id: Optional[str] = None,
+    enhanced_fan_out: bool = False,
+    consumer_name: Optional[str] = None,
+    retry_mode: str = "adaptive",
+    max_attempts: int = 3,
+    connect_timeout: int = 60,
+    read_timeout: int = 60,
     parallelism: int = -1,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    **kinesis_kwargs,
 ) -> Dataset:
     """Read from Amazon Kinesis streams as a streaming or batch dataset.
 
@@ -4368,27 +4626,39 @@ def read_kinesis(
             # Read all available data from stream once
             ds = ray.data.read_kinesis(
                 stream_name="my-stream",
-                kinesis_config={
-                    "region_name": "us-west-2"
-                },
+                region_name="us-west-2",
                 trigger="once"
             )
 
-        Streaming with authentication:
+        Continuous processing with authentication:
 
         .. testcode::
             :skipif: True
 
             import ray
 
-            # Continuous streaming with credentials
+            # Continuous processing with credentials
             ds = ray.data.read_kinesis(
                 stream_name="user-events",
-                kinesis_config={
-                    "region_name": "us-west-2",
-                    "aws_access_key_id": "your-key",
-                    "aws_secret_access_key": "your-secret"
-                },
+                region_name="us-west-2",
+                aws_access_key_id="your-key",
+                aws_secret_access_key="your-secret",
+                trigger="continuous"
+            )
+
+        Enhanced Fan-Out for dedicated throughput:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+
+            # Use Enhanced Fan-Out for better performance
+            ds = ray.data.read_kinesis(
+                stream_name="high-throughput-stream",
+                region_name="us-west-2",
+                enhanced_fan_out=True,
+                consumer_name="ray-data-consumer",
                 trigger="continuous"
             )
 
@@ -4402,31 +4672,84 @@ def read_kinesis(
             # Process every 5 minutes
             ds = ray.data.read_kinesis(
                 stream_name="metrics",
-                kinesis_config={"region_name": "us-west-2"},
+                region_name="us-west-2",
                 trigger="interval:5m"
             )
 
     Args:
         stream_name: Name of the Kinesis stream to read from.
-        kinesis_config: Kinesis client configuration dictionary. Must include
-            "region_name". Supports all boto3 Kinesis client options.
-        trigger: Streaming trigger configuration. Same options as read_kafka.
+        region_name: AWS region name (e.g., "us-west-2").
+        trigger: Processing trigger configuration. Same options as read_kafka.
         max_records_per_task: Maximum number of records per shard per task per batch.
         start_sequence: Starting sequence number for reading.
         end_sequence: Ending sequence number for reading.
+        aws_access_key_id: AWS access key ID for authentication.
+        aws_secret_access_key: AWS secret access key for authentication.
+        aws_session_token: AWS session token for temporary credentials.
+        enhanced_fan_out: Use Kinesis Enhanced Fan-Out for dedicated throughput.
+        consumer_name: Consumer name for Enhanced Fan-Out (auto-generated if not provided).
+        retry_mode: AWS retry mode (legacy, standard, adaptive).
+        max_attempts: Maximum retry attempts for failed requests.
+        connect_timeout: Connection timeout in seconds.
+        read_timeout: Read timeout in seconds.
         parallelism: Number of parallel tasks to use for reading.
         ray_remote_args: Additional Ray remote arguments for read tasks.
         concurrency: **Deprecated**. Use parallelism instead.
         override_num_blocks: **Deprecated**. Use parallelism instead.
+        **kinesis_kwargs: Additional Kinesis client configuration options.
 
     Returns:
         Dataset containing Kinesis records.
     """
-    from ray.data._internal.datasource.kinesis_datasource import KinesisDatasource
+    from ray.data._internal.datasource.unbound.kinesis_datasource import (
+        KinesisDatasource,
+    )
     from ray.data._internal.logical.interfaces import LogicalPlan
     from ray.data._internal.plan import ExecutionPlan
     from ray.data._internal.stats import DatasetStats
     from ray.data.context import DataContext
+
+    # Build kinesis_config from flat parameters
+    kinesis_config = {
+        "region_name": region_name,
+        "retry_mode": retry_mode,
+        "max_attempts": max_attempts,
+        "connect_timeout": connect_timeout,
+        "read_timeout": read_timeout,
+    }
+
+    # Add optional AWS authentication parameters
+    if aws_access_key_id is not None:
+        kinesis_config["aws_access_key_id"] = aws_access_key_id
+    if aws_secret_access_key is not None:
+        kinesis_config["aws_secret_access_key"] = aws_secret_access_key
+    if aws_session_token is not None:
+        kinesis_config["aws_session_token"] = aws_session_token
+    if aws_profile is not None:
+        kinesis_config["profile_name"] = aws_profile
+    if endpoint_url is not None:
+        kinesis_config["endpoint_url"] = endpoint_url
+    if use_ssl is not None:
+        kinesis_config["use_ssl"] = use_ssl
+
+    # STS assume role parameters
+    if role_arn is not None:
+        kinesis_config["role_arn"] = role_arn
+    if role_session_name is not None:
+        kinesis_config["role_session_name"] = role_session_name
+    if external_id is not None:
+        kinesis_config["external_id"] = external_id
+    if mfa_serial is not None:
+        kinesis_config["mfa_serial"] = mfa_serial
+    if mfa_token is not None:
+        kinesis_config["mfa_token"] = mfa_token
+
+    # Encryption parameters
+    if kms_key_id is not None:
+        kinesis_config["kms_key_id"] = kms_key_id
+
+    # Add any additional kinesis kwargs
+    kinesis_config.update(kinesis_kwargs)
 
     # Create datasource
     datasource = KinesisDatasource(
@@ -4435,6 +4758,8 @@ def read_kinesis(
         max_records_per_task=max_records_per_task,
         start_sequence=start_sequence,
         end_sequence=end_sequence,
+        enhanced_fan_out=enhanced_fan_out,
+        consumer_name=consumer_name,
     )
 
     # Parse trigger configuration
@@ -4479,15 +4804,34 @@ def read_kinesis(
 def read_flink(
     source_type: str,
     *,
-    flink_config: Dict[str, Any],
     trigger: Union[str, StreamingTrigger] = "once",
     max_records_per_task: int = 1000,
     start_position: Optional[str] = None,
     end_position: Optional[str] = None,
+    # REST API source parameters
+    rest_api_url: Optional[str] = None,
+    job_id: Optional[str] = None,
+    auth_token: Optional[str] = None,
+    auth_type: str = "bearer",
+    username: Optional[str] = None,
+    password: Optional[str] = None,
+    kerberos_service_name: Optional[str] = None,
+    kerberos_keytab: Optional[str] = None,
+    verify_ssl: bool = True,
+    ssl_cert: Optional[str] = None,
+    ssl_key: Optional[str] = None,
+    ssl_ca_cert: Optional[str] = None,
+    timeout: int = 30,
+    # SQL Gateway source parameters
+    sql_gateway_url: Optional[str] = None,
+    sql_query: Optional[str] = None,
+    # Checkpoint source parameters
+    checkpoint_path: Optional[str] = None,
     parallelism: int = -1,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    **flink_kwargs,
 ) -> Dataset:
     """Read from Apache Flink sources as a streaming or batch dataset.
 
@@ -4554,16 +4898,23 @@ def read_flink(
             - "sql_query": Execute Flink SQL queries
             - "checkpoint": Read from Flink checkpoints
             - "table": Read from Flink tables
-        flink_config: Flink source configuration dictionary. Required keys
-            vary by source_type.
-        trigger: Streaming trigger configuration. Same options as read_kafka.
+        trigger: Processing trigger configuration. Same options as read_kafka.
         max_records_per_task: Maximum number of records per task per batch.
         start_position: Starting position for reading (source-specific format).
         end_position: Ending position for reading (source-specific format).
+        rest_api_url: Flink REST API URL (required for rest_api source_type).
+        job_id: Flink job ID (required for rest_api source_type).
+        auth_token: Authentication token for secured Flink clusters.
+        verify_ssl: Whether to verify SSL certificates for HTTPS connections.
+        timeout: Request timeout in seconds for REST API calls.
+        sql_gateway_url: Flink SQL Gateway URL (required for sql_query source_type).
+        sql_query: SQL query to execute (required for sql_query source_type).
+        checkpoint_path: Path to checkpoint directory (required for checkpoint source_type).
         parallelism: Number of parallel tasks to use for reading.
         ray_remote_args: Additional Ray remote arguments for read tasks.
         concurrency: **Deprecated**. Use parallelism instead.
         override_num_blocks: **Deprecated**. Use parallelism instead.
+        **flink_kwargs: Additional Flink configuration options.
 
     Returns:
         Dataset containing Flink source records.
@@ -4572,6 +4923,68 @@ def read_flink(
     from ray.data._internal.plan import ExecutionPlan
     from ray.data._internal.stats import DatasetStats
     from ray.data.context import DataContext
+
+    # Build flink_config from flat parameters based on source_type
+    flink_config = {}
+
+    if source_type == "rest_api":
+        if rest_api_url is None or job_id is None:
+            raise ValueError("rest_api_url and job_id are required for REST API source")
+        flink_config.update(
+            {
+                "rest_api_url": rest_api_url,
+                "job_id": job_id,
+                "verify_ssl": verify_ssl,
+                "timeout": timeout,
+            }
+        )
+        # Authentication parameters
+        if auth_token is not None:
+            flink_config["auth_token"] = auth_token
+        if auth_type != "bearer":
+            flink_config["auth_type"] = auth_type
+        if username is not None:
+            flink_config["username"] = username
+        if password is not None:
+            flink_config["password"] = password
+        if kerberos_service_name is not None:
+            flink_config["kerberos_service_name"] = kerberos_service_name
+        if kerberos_keytab is not None:
+            flink_config["kerberos_keytab"] = kerberos_keytab
+
+        # SSL parameters
+        if ssl_cert is not None:
+            flink_config["ssl_cert"] = ssl_cert
+        if ssl_key is not None:
+            flink_config["ssl_key"] = ssl_key
+        if ssl_ca_cert is not None:
+            flink_config["ssl_ca_cert"] = ssl_ca_cert
+
+    elif source_type == "sql_query":
+        if sql_gateway_url is None or sql_query is None:
+            raise ValueError(
+                "sql_gateway_url and sql_query are required for SQL query source"
+            )
+        flink_config.update(
+            {
+                "sql_gateway_url": sql_gateway_url,
+                "sql_query": sql_query,
+            }
+        )
+
+    elif source_type == "checkpoint":
+        if checkpoint_path is None:
+            raise ValueError("checkpoint_path is required for checkpoint source")
+        flink_config.update(
+            {
+                "checkpoint_path": checkpoint_path,
+            }
+        )
+    else:
+        raise ValueError(f"Unsupported source_type: {source_type}")
+
+    # Add any additional flink kwargs
+    flink_config.update(flink_kwargs)
 
     # Create datasource
     datasource = FlinkDatasource(

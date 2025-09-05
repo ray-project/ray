@@ -9,7 +9,7 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
 )
-from ray.data._internal.logical.operators.streaming_data_operator import (
+from ray.data._internal.logical.operators.unbound_data_operator import (
     StreamingTrigger,
 )
 from ray.data._internal.stats import StatsDict
@@ -20,12 +20,15 @@ logger = logging.getLogger(__name__)
 
 
 class UnboundedQueueStreamingDataOperator(PhysicalOperator):
-    """Physical operator for unbounded streaming data sources.
+    """Physical operator for unbounded online data sources.
 
-    This operator reads from streaming sources like Kafka using the standard
-    Ray Data ReadTask pattern. Instead of using threading, it leverages Ray's
-    distributed task execution to handle continuous data reading based on
-    trigger patterns.
+    This operator reads from unbounded online data sources like Kafka, Kinesis, etc.
+    using the standard Ray Data ReadTask pattern. It leverages Ray's distributed
+    task execution to handle continuous data reading based on trigger patterns.
+
+    Note: This is for online/unbounded data sources, not Ray Data's "streaming execution"
+    which refers to Ray's execution engine. This operator handles data that continuously
+    arrives from external systems.
     """
 
     def __init__(
@@ -36,17 +39,17 @@ class UnboundedQueueStreamingDataOperator(PhysicalOperator):
         parallelism: int = -1,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
-        """Initialize the unbounded streaming operator.
+        """Initialize the unbounded online data operator.
 
         Args:
             data_context: Ray Data context
-            datasource: The streaming datasource (e.g., KafkaDatasource)
+            datasource: The online data source (e.g., KafkaDatasource)
             trigger: Trigger configuration for microbatch processing
             parallelism: Number of parallel read tasks
             ray_remote_args: Arguments passed to ray.remote for read tasks
         """
         super().__init__(
-            "UnboundedQueueStreamingData", [], data_context, target_max_block_size=None
+            "UnboundedOnlineData", [], data_context, target_max_block_size=None
         )
 
         self.datasource = datasource
@@ -54,10 +57,10 @@ class UnboundedQueueStreamingDataOperator(PhysicalOperator):
         self.parallelism = parallelism if parallelism > 0 else 1
         self.ray_remote_args = ray_remote_args or {}
 
-        # Add streaming-specific remote args for better performance
-        self._apply_streaming_remote_args()
+        # Add online data source specific remote args for better performance
+        self._apply_online_data_remote_args()
 
-        # Streaming state
+        # Online data reading state
         self._current_read_tasks: List[ray.ObjectRef] = []
         self._last_trigger_time = datetime.now()
         self._current_batch_id = 0
@@ -301,7 +304,7 @@ class UnboundedQueueStreamingDataOperator(PhysicalOperator):
         except Exception as e:
             logger.debug(f"Error checking task timeouts: {e}")
 
-    def get_next(self) -> RefBundle:
+    def _get_next_inner(self) -> RefBundle:
         """Get the next result from completed read tasks."""
         if not self._current_read_tasks:
             raise StopIteration("No read tasks available")
@@ -369,14 +372,45 @@ class UnboundedQueueStreamingDataOperator(PhysicalOperator):
         # Continuous streams run indefinitely unless explicitly stopped
         return self._completed
 
-    def shutdown(self) -> None:
-        """Shutdown the streaming operator."""
-        # Cancel any remaining tasks
-        for task_ref in self._current_read_tasks:
-            ray.cancel(task_ref, force=True)
-        self._current_read_tasks = []
-        self._completed = True
-        super().shutdown()
+    def can_add_input(self, bundle: RefBundle) -> bool:
+        """Streaming operators don't accept external input."""
+        return False
+
+    def throttling_disabled(self) -> bool:
+        """Streaming operators handle their own throttling via triggers."""
+        return True
+
+    def get_active_tasks(self) -> List[Any]:
+        """Get list of active streaming tasks."""
+        # Return task references as OpTask-like objects for monitoring
+        return [
+            _StreamingTaskWrapper(ref, i)
+            for i, ref in enumerate(self._current_read_tasks)
+        ]
+
+    def num_active_tasks(self) -> int:
+        """Return number of active streaming tasks."""
+        return len(self._current_read_tasks)
+
+
+class _StreamingTaskWrapper:
+    """Wrapper to make streaming task refs compatible with OpTask interface."""
+
+    def __init__(self, task_ref: ray.ObjectRef, task_index: int):
+        self._task_ref = task_ref
+        self._task_index = task_index
+
+    def task_index(self) -> int:
+        return self._task_index
+
+    def get_waitable(self) -> ray.ObjectRef:
+        return self._task_ref
+
+    def get_requested_resource_bundle(self) -> Optional[Any]:
+        return None  # Not tracked for streaming tasks
+
+    def cancel(self, force: bool = False) -> None:
+        ray.cancel(self._task_ref, force=force)
 
     def progress_str(self) -> str:
         """Get progress string for monitoring."""
@@ -473,19 +507,20 @@ class UnboundedQueueStreamingDataOperator(PhysicalOperator):
             # Fallback to conservative estimate
             return 1024 * 1024  # 1MB default
 
-    def _apply_streaming_remote_args(self) -> None:
-        """Apply streaming-specific Ray remote args for optimal performance."""
-        # Set up streaming generator backpressure if not already configured
+    def _apply_online_data_remote_args(self) -> None:
+        """Apply online data source specific Ray remote args for optimal performance."""
+        # Set up Ray Data streaming execution generator backpressure if not already configured
+        # Note: This is Ray Data's streaming execution, not the online data source
         if (
             "_generator_backpressure_num_objects" not in self.ray_remote_args
             and self.data_context._max_num_blocks_in_streaming_gen_buffer is not None
         ):
-            # For streaming operators, we yield block + metadata per record batch
+            # For online data operators, we yield block + metadata per record batch
             self.ray_remote_args["_generator_backpressure_num_objects"] = (
                 2 * self.data_context._max_num_blocks_in_streaming_gen_buffer
             )
 
-        # Enable streaming returns for better memory management
+        # Enable Ray Data streaming execution returns for better memory management
         if "num_returns" not in self.ray_remote_args:
             self.ray_remote_args["num_returns"] = "streaming"
 

@@ -4,7 +4,7 @@ from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.unbounded_queue_streaming_data import (
     UnboundedQueueStreamingDataOperator,
 )
-from ray.data._internal.logical.operators.streaming_data_operator import (
+from ray.data._internal.logical.operators.unbound_data_operator import (
     UnboundedQueueStreamingData,
 )
 from ray.data.context import DataContext

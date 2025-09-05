@@ -192,17 +192,25 @@ LEGACY_DEFAULT_BATCH_SIZE = 1024
 # streaming generator backpressure.
 DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER = 2
 
-# Default configuration for streaming datasources
-DEFAULT_STREAMING_BATCH_SIZE = 1000
-DEFAULT_STREAMING_TRIGGER_INTERVAL = "30s"
-DEFAULT_STREAMING_MAX_RETRIES = 3
-DEFAULT_STREAMING_RETRY_DELAY = 1.0
+# Default configuration for online data sources (Kafka, Kinesis, etc.)
+# These are for unbounded data ingestion, not Ray Data's streaming execution engine
+DEFAULT_STREAMING_BATCH_SIZE = 1000  # Records per batch for online data sources
+DEFAULT_STREAMING_TRIGGER_INTERVAL = "30s"  # Default trigger interval for microbatching
+DEFAULT_STREAMING_MAX_RETRIES = 3  # Retry attempts for network failures
+DEFAULT_STREAMING_RETRY_DELAY = 1.0  # Base delay between retries in seconds
 
-# Advanced streaming configuration for production workloads
-DEFAULT_STREAMING_MAX_CONCURRENT_TASKS = 4
-DEFAULT_STREAMING_TASK_TIMEOUT = 300  # 5 minutes
-DEFAULT_STREAMING_HEARTBEAT_INTERVAL = 30  # 30 seconds
-DEFAULT_STREAMING_BACKPRESSURE_THRESHOLD = 0.8  # 80% memory usage
+# Advanced configuration for production online data workloads
+# See: https://docs.ray.io/en/latest/data/performance-tips.html#streaming-performance
+DEFAULT_STREAMING_MAX_CONCURRENT_TASKS = (
+    4  # Max concurrent read tasks per online data source
+)
+DEFAULT_STREAMING_TASK_TIMEOUT = 300  # 5 minutes - timeout for individual read tasks
+DEFAULT_STREAMING_HEARTBEAT_INTERVAL = (
+    30  # 30 seconds - heartbeat for connection health
+)
+DEFAULT_STREAMING_BACKPRESSURE_THRESHOLD = (
+    0.8  # 80% memory usage threshold for backpressure
+)
 
 # Default value for whether or not to try to create directories for write
 # calls if the URI is an S3 URI.
