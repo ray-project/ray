@@ -580,8 +580,8 @@ def _estimate_files_encoding_ratio(
 
     estimated_ratio = np.mean(estimated_encoding_ratios)
 
-    logger.debug(
-        f"Estimated parquet encoding ratio from sampling is {estimated_ratio:.5f}."
+    logger.info(
+        f"Estimated parquet encoding ratio is {estimated_ratio:.3f}."
     )
 
     return max(
