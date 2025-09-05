@@ -39,30 +39,82 @@ struct FakeCgroup {
            enabled_controllers_ == other.enabled_controllers_;
   }
 };
+
+struct FakeConstraint {
+  std::string cgroup_;
+  std::string name_;
+};
+
+struct FakeController {
+  std::string cgroup_;
+  std::string name_;
+};
+
+struct FakeMoveProcesses {
+  std::string from_;
+  std::string to_;
+};
+
+/**
+  NOT thread-safe.
+*/
 class FakeCgroupDriver : public CgroupDriverInterface {
  public:
-  explicit FakeCgroupDriver(
-      std::shared_ptr<std::unordered_map<std::string, FakeCgroup>> cgroups)
-      : cgroups_(cgroups) {}
+  static std::unique_ptr<FakeCgroupDriver> Create(
+      std::shared_ptr<std::unordered_map<std::string, FakeCgroup>> cgroups = nullptr,
+      std::shared_ptr<std::vector<std::pair<int, std::string>>> deleted_cgroups = nullptr,
+      std::shared_ptr<std::vector<std::pair<int, FakeConstraint>>> constraints_disabled =
+          nullptr,
+      std::shared_ptr<std::vector<std::pair<int, FakeController>>> controllers_disabled =
+          nullptr,
+      std::shared_ptr<std::vector<std::pair<int, FakeMoveProcesses>>> processes_moved =
+          nullptr) {
+    if (!cgroups) {
+      cgroups = std::make_shared<std::unordered_map<std::string, FakeCgroup>>();
+    }
+    if (!deleted_cgroups) {
+      deleted_cgroups = std::make_shared<std::vector<std::pair<int, std::string>>>();
+    }
+    if (!constraints_disabled) {
+      constraints_disabled =
+          std::make_shared<std::vector<std::pair<int, FakeConstraint>>>();
+    }
+    if (!controllers_disabled) {
+      controllers_disabled =
+          std::make_shared<std::vector<std::pair<int, FakeController>>>();
+    }
+    if (!processes_moved) {
+      processes_moved =
+          std::make_shared<std::vector<std::pair<int, FakeMoveProcesses>>>();
+    }
+    return std::unique_ptr<FakeCgroupDriver>(new FakeCgroupDriver(cgroups,
+                                                                  deleted_cgroups,
+                                                                  constraints_disabled,
+                                                                  controllers_disabled,
+                                                                  processes_moved));
+  }
 
-  explicit FakeCgroupDriver(std::string base_cgroup)
-      : cgroups_(std::make_shared<std::unordered_map<std::string, FakeCgroup>>()) {
-    RAY_LOG(INFO) << "FakeCgroupDriver(std::string base_cgroup)";
-    cgroups_->emplace(base_cgroup, FakeCgroup{base_cgroup});
-  }
-  FakeCgroupDriver(std::string base_cgroup,
-                   std::vector<int> processes_in_base_cgroup,
-                   std::unordered_set<std::string> available_controllers)
-      : cgroups_(std::make_shared<std::unordered_map<std::string, FakeCgroup>>()) {
-    cgroups_->emplace(base_cgroup,
-                      FakeCgroup{base_cgroup,
-                                 std::move(processes_in_base_cgroup),
-                                 {},
-                                 std::move(available_controllers),
-                                 {}});
-  }
+  FakeCgroupDriver(
+      std::shared_ptr<std::unordered_map<std::string, FakeCgroup>> cgroups,
+      std::shared_ptr<std::vector<std::pair<int, std::string>>> deleted_cgroups,
+      std::shared_ptr<std::vector<std::pair<int, FakeConstraint>>> constraints_disabled,
+      std::shared_ptr<std::vector<std::pair<int, FakeController>>> controllers_disabled,
+      std::shared_ptr<std::vector<std::pair<int, FakeMoveProcesses>>> processes_moved)
+      : cgroups_(cgroups),
+        deleted_cgroups_(deleted_cgroups),
+        constraints_disabled_(constraints_disabled),
+        controllers_disabled_(controllers_disabled),
+        processes_moved_(processes_moved) {}
 
   std::shared_ptr<std::unordered_map<std::string, FakeCgroup>> cgroups_;
+
+  // Cgroup cleanup is stateful
+  bool cleanup_mode_ = false;
+  int cleanup_counter_ = 0;
+  std::shared_ptr<std::vector<std::pair<int, std::string>>> deleted_cgroups_;
+  std::shared_ptr<std::vector<std::pair<int, FakeConstraint>>> constraints_disabled_;
+  std::shared_ptr<std::vector<std::pair<int, FakeController>>> controllers_disabled_;
+  std::shared_ptr<std::vector<std::pair<int, FakeMoveProcesses>>> processes_moved_;
 
   Status check_cgroup_enabled_s_ = Status::OK();
   Status check_cgroup_s_ = Status::OK();
@@ -95,6 +147,9 @@ class FakeCgroupDriver : public CgroupDriverInterface {
       return delete_cgroup_s_;
     }
     cgroups_->erase(cgroup);
+    if (cleanup_mode_) {
+      deleted_cgroups_->emplace_back(std::make_pair(++cleanup_counter_, cgroup));
+    }
     return delete_cgroup_s_;
   }
 
@@ -107,6 +162,10 @@ class FakeCgroupDriver : public CgroupDriverInterface {
     while (!from_cgroup.processes_.empty()) {
       to_cgroup.processes_.emplace_back(from_cgroup.processes_.back());
       from_cgroup.processes_.pop_back();
+    }
+    if (cleanup_mode_) {
+      processes_moved_->emplace_back(
+          std::make_pair(++cleanup_counter_, FakeMoveProcesses{from, to}));
     }
     return move_all_processes_s_;
   }
@@ -125,6 +184,10 @@ class FakeCgroupDriver : public CgroupDriverInterface {
     if (!disable_controller_s_.ok()) {
       return disable_controller_s_;
     }
+    if (cleanup_mode_) {
+      controllers_disabled_->emplace_back(
+          std::make_pair(++cleanup_counter_, FakeController{cgroup, controller}));
+    }
     (*cgroups_)[cgroup].enabled_controllers_.erase(controller);
     return disable_controller_s_;
   }
@@ -137,6 +200,10 @@ class FakeCgroupDriver : public CgroupDriverInterface {
       return add_constraint_s_;
     }
     (*cgroups_)[cgroup].constraints_.emplace(constraint, value);
+    if (cleanup_mode_) {
+      constraints_disabled_->emplace_back(
+          std::make_pair(++cleanup_counter_, FakeConstraint{cgroup, constraint}));
+    }
     return add_constraint_s_;
   }
 
