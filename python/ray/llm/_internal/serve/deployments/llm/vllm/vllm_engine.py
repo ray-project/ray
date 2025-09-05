@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, AsyncGenerator, Optional, Tuple, Union
 
 from starlette.datastructures import State
 from starlette.requests import Request
-from transformers.dynamic_module_utils import init_hf_modules
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.entrypoints.openai.cli_args import FrontendArgs
 from vllm.entrypoints.openai.protocol import ErrorResponse as VLLMErrorResponse
@@ -19,6 +18,8 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     EmbeddingRequest,
     EmbeddingResponse,
     ErrorResponse,
+    ScoreRequest,
+    ScoreResponse,
 )
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
@@ -43,6 +44,7 @@ if TYPE_CHECKING:
     from vllm.entrypoints.openai.serving_completion import OpenAIServingCompletion
     from vllm.entrypoints.openai.serving_embedding import OpenAIServingEmbedding
     from vllm.entrypoints.openai.serving_models import OpenAIServingModels
+    from vllm.entrypoints.openai.serving_score import ServingScores
 
 vllm = try_import("vllm")
 logger = get_logger(__name__)
@@ -107,10 +109,6 @@ class VLLMEngine(LLMEngine):
         """
         super().__init__(llm_config)
 
-        # Ensure transformers_modules is initialized early in worker processes.
-        # This is critical for models with trust_remote_code=True to avoid pickle errors.
-        init_hf_modules()
-
         self.llm_config = llm_config
 
         if vllm is None:
@@ -134,6 +132,7 @@ class VLLMEngine(LLMEngine):
         self._oai_serving_chat: Optional["OpenAIServingChat"] = None
         self._oai_serving_completion: Optional["OpenAIServingCompletion"] = None
         self._oai_serving_embedding: Optional["OpenAIServingEmbedding"] = None
+        self._oai_serving_scores: Optional["ServingScores"] = None
 
     async def start(self) -> None:
         """Start the vLLM engine.
@@ -189,6 +188,7 @@ class VLLMEngine(LLMEngine):
         self._oai_serving_chat = state.openai_serving_chat
         self._oai_serving_completion = state.openai_serving_completion
         self._oai_serving_embedding = state.openai_serving_embedding
+        self._oai_serving_scores = state.openai_serving_scores
 
         self._validate_openai_serving_models()
         self._validate_engine_client()
@@ -220,6 +220,11 @@ class VLLMEngine(LLMEngine):
         assert hasattr(
             self._oai_serving_embedding, "create_embedding"
         ), "oai_serving_embedding must have a create_embedding attribute"
+
+    def _validate_openai_serving_scores(self):
+        assert hasattr(
+            self._oai_serving_scores, "create_score"
+        ), "oai_serving_scores must have a create_score attribute"
 
     def _validate_engine_client(self):
         assert hasattr(
@@ -354,7 +359,9 @@ class VLLMEngine(LLMEngine):
 
     def _create_raw_request(
         self,
-        request: Union[CompletionRequest, ChatCompletionRequest, EmbeddingRequest],
+        request: Union[
+            CompletionRequest, ChatCompletionRequest, EmbeddingRequest, ScoreRequest
+        ],
         path: str,
     ) -> Request:
         scope = {
@@ -441,6 +448,22 @@ class VLLMEngine(LLMEngine):
             yield ErrorResponse(**embedding_response.model_dump())
         else:
             yield EmbeddingResponse(**embedding_response.model_dump())
+
+    async def score(
+        self, request: ScoreRequest
+    ) -> AsyncGenerator[Union[ScoreResponse, ErrorResponse], None]:
+        self._validate_openai_serving_scores()
+
+        raw_request = self._create_raw_request(request, "/score")
+
+        score_response = await self._oai_serving_scores.create_score(
+            request, raw_request=raw_request
+        )
+
+        if isinstance(score_response, VLLMErrorResponse):
+            yield ErrorResponse(**score_response.model_dump())
+        else:
+            yield ScoreResponse(**score_response.model_dump())
 
     async def check_health(self) -> None:
         assert self._engine_client is not None, "engine_client is not initialized"
