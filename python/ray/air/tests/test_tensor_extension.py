@@ -5,7 +5,6 @@ import pandas as pd
 import pyarrow as pa
 import pytest
 from packaging.version import parse as parse_version
-from pyarrow.lib import FixedShapeTensorType
 
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.util.tensor_extensions.arrow import (
@@ -16,6 +15,7 @@ from ray.air.util.tensor_extensions.arrow import (
     ArrowVariableShapedTensorArray,
     ArrowVariableShapedTensorType,
     _fixed_shape_extension_scalar_to_ndarray,
+    FixedShapeTensorType,
 )
 from ray.air.util.tensor_extensions.pandas import TensorArray, TensorDtype
 from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
@@ -600,7 +600,10 @@ def test_arrow_tensor_array_getitem(chunked, restore_data_context, tensor_format
 
     # Test to_pylist.
     if tensor_format == "arrow_native":
-        np.testing.assert_array_equal(t_arr.to_pylist(), arr.reshape(outer_dim, -1))
+        if FixedShapeTensorType is None:
+            np.testing.assert_array_equal(t_arr.to_pylist(), list(arr))
+        else:
+            np.testing.assert_array_equal(t_arr.to_pylist(), arr.reshape(outer_dim, -1))
     else:
         np.testing.assert_array_equal(t_arr.to_pylist(), list(arr))
 

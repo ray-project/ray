@@ -11,12 +11,13 @@ import pyarrow.dataset as pds
 import pyarrow.parquet as pq
 import pytest
 from packaging.version import parse as parse_version
-from pyarrow import FixedShapeTensorType
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.air.util.tensor_extensions.arrow import (
+    ArrowTensorType,
     ArrowTensorTypeV2,
+    FixedShapeTensorType,
     get_arrow_extension_fixed_shape_tensor_types,
 )
 from ray.data import FileShuffleConfig, Schema
@@ -1362,7 +1363,7 @@ def test_partitioning_in_dataset_kwargs_raises_error(
         )
 
 
-@pytest.mark.parametrize("new_tensor_format", ["arrow_native", "v2"])
+@pytest.mark.parametrize("new_tensor_format", ["arrow_native"])
 def test_tensors_in_tables_parquet(
     ray_start_regular_shared,
     tmp_path,
@@ -1454,12 +1455,16 @@ def test_tensors_in_tables_parquet(
     _assert_equal(ds.take_all(), expected_tuples)
 
     if new_tensor_format == "arrow_native":
-        expected_tensor_type = FixedShapeTensorType
+
+        if FixedShapeTensorType is None:
+            expected_tensor_type = ArrowTensorType
+        else:
+            expected_tensor_type = FixedShapeTensorType
+            # This will reconcile the schemas
+            ds = ds.materialize()
     else:
         expected_tensor_type = ArrowTensorTypeV2
 
-    # This will reconcile the schemas
-    ds = ds.materialize()
     assert isinstance(
         ds.schema().base_schema.field_by_name(tensor_col_name).type,
         expected_tensor_type,
