@@ -574,7 +574,6 @@ class JobManager:
                 num_gpus=entrypoint_num_gpus,
                 memory=entrypoint_memory,
                 resources=entrypoint_resources,
-                scheduling_strategy="DEFAULT",
                 label_selector=label_selector,
                 runtime_env=self._get_supervisor_runtime_env(
                     runtime_env, submission_id, resources_specified
