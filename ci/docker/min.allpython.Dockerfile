@@ -12,9 +12,9 @@ RUN <<EOF
 set -euo pipefail
 
 # Install Python versions
-uv python install 3.9 3.10 3.11 3.12 3.13
+sudo uv python install 3.9 3.10 3.11 3.12 3.13
 
 # Set default Python version
-uv python pin ${DEFAULT_PYTHON_VERSION}
+uv python pin "${DEFAULT_PYTHON_VERSION}"
 
 EOF
