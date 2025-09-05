@@ -95,10 +95,7 @@ class Download(AbstractOneToOne):
         output_bytes_column_name: str,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
-        super().__init__(
-            "Download",
-            input_op,
-        )
+        super().__init__("Download", input_op)
         self._uri_column_name = uri_column_name
         self._output_bytes_column_name = output_bytes_column_name
         self._ray_remote_args = ray_remote_args or {}
