@@ -352,6 +352,7 @@ class ParquetDatasource(Datasource):
                 num_rows=None,
                 size_bytes=self._estimate_in_mem_size(fragments),
                 input_files=paths,
+                exec_stats=None,
             )
 
             (
@@ -420,7 +421,7 @@ def read_fragments(
     data_columns,
     partition_columns,
     schema,
-    fragments: List["ParquetFileFragment"],
+    fragments: List[_ParquetFragment],
     include_paths: bool,
     partitioning: Partitioning,
 ) -> Iterator["pyarrow.Table"]:
@@ -433,13 +434,14 @@ def read_fragments(
     import pyarrow as pa
 
     logger.debug(f"Reading {len(fragments)} parquet fragments")
+
     use_threads = to_batches_kwargs.pop("use_threads", False)
     batch_size = to_batches_kwargs.pop("batch_size", default_read_batch_size_rows)
     for fragment in fragments:
         partitions = {}
         if partitioning is not None:
             parse = PathPartitionParser(partitioning)
-            partitions = parse(fragment.path)
+            partitions = parse(fragment.original.path)
 
         # Filter out partitions that aren't in the user-specified columns list.
         if partition_columns is not None:
@@ -453,7 +455,7 @@ def read_fragments(
             if batch_size is not None:
                 to_batches_kwargs["batch_size"] = batch_size
 
-            return fragment.to_batches(
+            return fragment.original.to_batches(
                 use_threads=use_threads,
                 columns=data_columns,
                 schema=schema,
@@ -469,7 +471,7 @@ def read_fragments(
             table = pa.Table.from_batches([batch], schema=schema)
             if include_paths:
                 table = BlockAccessor.for_block(table).fill_column(
-                    "path", fragment.path
+                    "path", fragment.original.path
                 )
             if partitions:
                 table = _add_partitions_to_table(partitions, table)
