@@ -94,7 +94,7 @@ Deployment typically takes a few minutes as the cluster is provisioned, the vLLM
 
 Your endpoint is available locally at `http://localhost:8000`. You can use a placeholder authentication token for the OpenAI client, for example `"FAKE_KEY"`.
 
-**Example curl:**
+Example curl:
 
 
 ```bash
@@ -105,7 +105,7 @@ curl -X POST http://localhost:8000/v1/chat/completions \
   -d '{ "model": "my-llama-3.1-8b", "messages": [{"role": "user", "content": "What is 2 + 2?"}] }'
 ```
 
-**Example Python:**
+Example Python:
 
 
 ```python

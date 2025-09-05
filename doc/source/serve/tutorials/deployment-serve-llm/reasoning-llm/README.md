@@ -173,7 +173,7 @@ curl -X POST http://localhost:8000/v1/chat/completions \
   -d '{ "model": "my-qwq-32B", "messages": [{"role": "user", "content": "Pick three random words with 3 syllables each and count the number of R'\''s in each of them"}] }'
 ```
 
-Example python:
+Example Python:
 
 
 ```python

@@ -191,7 +191,7 @@ Use the `model_id` defined in your config (here, `my-qwen-3-32b`) to query your 
 
 You can disable thinking in Qwen-3 by either adding a `/no_think` tag in the prompt or by forwarding `enable_thinking: False` to the vLLM inference engine.  
 
-Example curl with `/no_think`
+Example curl with `/no_think`:
 
 
 ```bash
@@ -237,7 +237,7 @@ Notice the `reasoning_content` is empty here.
  
 You can enable thinking in Qwen-3 by either adding a `/think` tag in the prompt or by forwarding `enable_thinking: True` to the vLLM inference engine.  
 
-Example curl with `/think`
+Example curl with `/think`:
 
 
 ```bash

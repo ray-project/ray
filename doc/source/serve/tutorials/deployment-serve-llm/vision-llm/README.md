@@ -89,7 +89,7 @@ Deployment typically takes a few minutes as the cluster is provisioned, the vLLM
 
 Your endpoint is available locally at `http://localhost:8000` and you can use a placeholder authentication token for the OpenAI client, for example `"FAKE_KEY"`.
 
-Example cURL with image URL
+Example curl with image URL:
 
 
 ```bash
