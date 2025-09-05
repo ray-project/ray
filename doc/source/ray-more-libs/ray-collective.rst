@@ -185,19 +185,19 @@ remote actors. Refer to `APIs <#api-reference>`_ for the detailed descriptions o
    results = ray.get([w.compute.remote() for w in workers])
 
 Note that for the same set of actors/task processes, multiple collective groups can be constructed, with ``group_name`` as their unique identifier.
-This enables to specify complex communication patterns between different (sub)set of processes.
+This enables specifying complex communication patterns between different (sub)set of processes.
 
 Collective Communication
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
 Check `the support matrix <#collective-primitives-support-matrix>`_ for the current status of supported collective calls and backends.
 
-Note that the current set of collective communication API are imperative, and exhibit the following behaviours:
+Note that the current set of collective communication APIs are imperative, and exhibit the following behaviours:
 
 
 * All the collective APIs are synchronous blocking calls
 * Since each API only specifies a part of the collective communication, the API is expected to be called by each participating process of the (pre-declared) collective group.
-  Upon all the processes have made the call and rendezvous with each other, the collective communication happens and proceeds.
+  Once all the processes have made the call and rendezvous with each other, the collective communication happens and proceeds.
 * The APIs are imperative and the communication happens out-of-band --- they need to be used inside the collective process (actor/task) code.
 
 An example of using ``ray.util.collective.allreduce`` is below:
@@ -351,7 +351,7 @@ The following links provide helpful resources on how to efficiently leverage the
 
 
 * `More running examples <https://github.com/ray-project/ray/tree/master/python/ray/util/collective/examples>`_ under ``ray.util.collective.examples``.
-* `Scaling up the Spacy Name Entity Recognition (NER) pipeline <https://github.com/explosion/spacy-ray>`_ using Ray collective library.
+* `Scaling up the spaCy Named Entity Recognition (NER) pipeline <https://github.com/explosion/spacy-ray>`_ using Ray collective library.
 * `Implementing the AllReduce strategy <https://github.com/ray-project/distml/blob/master/distml/strategy/allreduce_strategy.py>`_ for data-parallel distributed ML training.
 
 API References
