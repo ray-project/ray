@@ -24,6 +24,7 @@ import ray
 import ray._private.ray_constants as ray_constants
 from ray._common.network_utils import build_address, create_socket
 from ray._common.test_utils import wait_for_condition
+from ray._private.conftest_utils import set_override_dashboard_url  # noqa: F401
 from ray._private.runtime_env import virtualenv_utils
 from ray._private.test_utils import (
     RayletKiller,
