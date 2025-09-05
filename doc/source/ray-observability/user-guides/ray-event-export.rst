@@ -18,8 +18,8 @@ Enable event reporting
 To enable event reporting, you need to set the ``RAY_enable_core_worker_ray_event_to_aggregator`` environment 
 variable to ``1`` when starting each Ray worker node.
 
-To set the target HTTP endpoint, you need to set the ``RAY_events_export_addr`` 
-environment variable. The value should be a valid HTTP URL with the scheme of ``http``.
+To set the target HTTP endpoint, set the ``RAY_events_export_addr`` 
+environment variable to a valid HTTP URL with the scheme of ``http``.
 
 Event format
 ------------
