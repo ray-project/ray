@@ -319,9 +319,8 @@ class ParquetDatasource(Datasource):
                     emit_file_extensions_future_warning(self._FUTURE_FILE_EXTENSIONS)
                     break
 
-    @staticmethod
-    def estimate_inmemory_data_size(self, fragments: List[_ParquetFragment]) -> int:
-        return sum([f.file_size for f in self._pq_fragments]) * self._encoding_ratio
+    def estimate_inmemory_data_size(self) -> int:
+        return self._estimate_in_mem_size(self._pq_fragments)
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         # NOTE: We override the base class FileBasedDatasource.get_read_tasks()
@@ -351,7 +350,7 @@ class ParquetDatasource(Datasource):
 
             meta = BlockMetadata(
                 num_rows=None,
-                size_bytes=self.estimate_inmemory_data_size(fragments),
+                size_bytes=self._estimate_in_mem_size(fragments),
                 input_files=paths,
             )
 
@@ -405,6 +404,13 @@ class ParquetDatasource(Datasource):
     @property
     def supports_distributed_reads(self) -> bool:
         return self._supports_distributed_reads
+
+    def _estimate_in_mem_size(self, fragments: List[_ParquetFragment]) -> int:
+        in_mem_size = (
+            sum([f.file_size for f in fragments]) * self._encoding_ratio
+        )
+
+        return round(in_mem_size)
 
 
 def read_fragments(
