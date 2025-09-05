@@ -13,11 +13,7 @@ from ray.dashboard.modules.aggregator.publisher.ray_event_publisher import (
     RayEventPublisher,
 )
 
-try:
-    import prometheus_client
-    from prometheus_client import Counter
-except ImportError:
-    prometheus_client = None
+from ray.util.metrics import Counter
 
 import ray
 from ray._private import ray_constants
@@ -69,22 +65,6 @@ PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SVC = ray_constants.env_bool(
     f"{env_var_prefix}_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SVC", True
 )
 
-# Metrics
-if prometheus_client:
-    metrics_prefix = "event_aggregator_agent"
-    events_received = Counter(
-        f"{metrics_prefix}_events_received_total",
-        "Total number of events received via AddEvents gRPC.",
-        tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
-        namespace="ray",
-    )
-    events_failed_to_add_to_aggregator = Counter(
-        f"{metrics_prefix}_events_buffer_add_failures_total",
-        "Total number of events that failed to be added to the event buffer.",
-        tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
-        namespace="ray",
-    )
-
 
 class AggregatorAgent(
     dashboard_utils.DashboardAgentModule,
@@ -102,9 +82,9 @@ class AggregatorAgent(
         self._pid = os.getpid()
 
         # common prometheus labels for aggregator-owned metrics
-        self._common_labels = {
+        self._common_tags = {
             "ip": self._ip,
-            "pid": self._pid,
+            "pid": str(self._pid),
             "Version": ray.__version__,
             "Component": "event_aggregator_agent",
             "SessionName": self.session_name,
@@ -113,7 +93,7 @@ class AggregatorAgent(
         self._event_buffer = MultiConsumerEventBuffer(
             max_size=MAX_EVENT_BUFFER_SIZE,
             max_batch_size=MAX_EVENT_SEND_BATCH_SIZE,
-            common_metric_labels=self._common_labels,
+            common_metric_tags=self._common_tags,
         )
         self._executor = ThreadPoolExecutor(
             max_workers=THREAD_POOL_EXECUTOR_MAX_WORKERS,
@@ -145,12 +125,28 @@ class AggregatorAgent(
                     events_filter_fn=self._can_expose_event,
                 ),
                 event_buffer=self._event_buffer,
+                common_metric_tags=self._common_tags,
             )
         else:
             logger.info(
                 f"Event HTTP target is not enabled or publishing events to external HTTP service is disabled. Skipping sending events to external HTTP service. events_export_addr: {self._events_export_addr}"
             )
             self._http_endpoint_publisher = NoopPublisher()
+
+        # Metrics
+        _metrics_prefix = "event_aggregator_agent"
+        self._events_received = Counter(
+            f"{_metrics_prefix}_events_received_total",
+            "Total number of events received via AddEvents gRPC.",
+            tag_keys=tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
+        )
+        self._events_received.set_default_tags(self._common_tags)
+        self._events_failed_to_add_to_aggregator = Counter(
+            f"{_metrics_prefix}_events_buffer_add_failures_total",
+            "Total number of events that failed to be added to the event buffer.",
+            tag_keys=tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
+        )
+        self._events_failed_to_add_to_aggregator.set_default_tags(self._common_tags)
 
     async def AddEvents(self, request, context) -> None:
         """
@@ -165,8 +161,7 @@ class AggregatorAgent(
         # downstream
         events_data = request.events_data
         for event in events_data.events:
-            if prometheus_client:
-                events_received.labels(**self._common_labels).inc()
+            self._events_received.inc(value=1)
             try:
                 await self._event_buffer.add_event(event)
             except Exception as e:
@@ -175,10 +170,7 @@ class AggregatorAgent(
                     "Error: %s",
                     e,
                 )
-                if prometheus_client:
-                    events_failed_to_add_to_aggregator.labels(
-                        **self._common_labels
-                    ).inc()
+                self._events_failed_to_add_to_aggregator.inc(value=1)
 
         return events_event_aggregator_service_pb2.AddEventsReply()
 

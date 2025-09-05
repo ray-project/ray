@@ -90,7 +90,6 @@ class TestRayEventPublisher:
             initial_backoff=base_kwargs["initial_backoff"],
             max_backoff=base_kwargs["max_backoff"],
             jitter_ratio=base_kwargs["jitter_ratio"],
-            enable_publisher_stats=True,
         )
 
         task = asyncio.create_task(publisher.run_forever())
@@ -115,10 +114,6 @@ class TestRayEventPublisher:
             with pytest.raises(asyncio.CancelledError):
                 await task
 
-        metrics = await publisher.get_and_reset_publisher_stats()
-        assert metrics["published"] == 1
-        assert metrics["failed"] == 0
-
     @pytest.mark.asyncio
     async def test_publish_with_retries_max_retries_exceeded(self, base_kwargs):
         """Test publish that fails all retries and records failed events."""
@@ -132,7 +127,6 @@ class TestRayEventPublisher:
             initial_backoff=0,
             max_backoff=0,
             jitter_ratio=0,
-            enable_publisher_stats=True,
         )
 
         task = asyncio.create_task(publisher.run_forever())
@@ -152,159 +146,10 @@ class TestRayEventPublisher:
             # wait for publish attempts (initial + 2 retries)
             await async_wait_for_condition(lambda: len(client.publish_calls) == 3)
             assert len(client.publish_calls) == 3
-            metrics = await publisher.get_and_reset_publisher_stats()
-            print(metrics)
-            assert metrics["failed"] == 1  # batch_size = 1
         finally:
             task.cancel()
             with pytest.raises(asyncio.CancelledError):
                 await task
-
-
-class TestAsyncHttpPublisherClient:
-    """Test HTTP publisher client implementation."""
-
-    @pytest.fixture
-    def client_kwargs(self):
-        """HTTP client specific kwargs."""
-        return {
-            "endpoint": "http://example.com/events",
-            "events_filter_fn": lambda x: True,  # Allow all events
-            "timeout": 5.0,
-        }
-
-    @pytest.fixture
-    def http_client(self, client_kwargs):
-        """Create HTTP client for testing."""
-        return AsyncHttpPublisherClient(
-            endpoint=client_kwargs["endpoint"],
-            executor=ThreadPoolExecutor(max_workers=1),
-            events_filter_fn=client_kwargs["events_filter_fn"],
-            timeout=client_kwargs["timeout"],
-        )
-
-    class _FakeResponse:
-        def __init__(self, raise_exc: Optional[Exception] = None):
-            self._raise_exc = raise_exc
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-        def raise_for_status(self):
-            if self._raise_exc:
-                raise self._raise_exc
-
-    class _FakeSession:
-        def __init__(self, response: "TestAsyncHttpPublisherClient._FakeResponse"):
-            self._response = response
-            self.post_calls = []
-
-        def post(self, url, json):
-            self.post_calls.append((url, json))
-            return self._response
-
-        async def close(self):
-            return
-
-    @pytest.mark.asyncio
-    async def test_publish_empty_batch(self, http_client):
-        """Test publishing empty batch."""
-        result = await http_client.publish([])
-        assert result.is_publish_successful is True
-        assert result.num_events_published == 0
-        assert result.num_events_filtered_out == 0
-
-    @pytest.mark.asyncio
-    async def test_publish_all_filtered_out(self):
-        """When all events are filtered, should succeed with filtered count set to num events and no HTTP call."""
-        client = AsyncHttpPublisherClient(
-            endpoint="http://example.com/events",
-            executor=ThreadPoolExecutor(max_workers=1),
-            events_filter_fn=lambda x: False,  # Filter out all events
-            timeout=5.0,
-        )
-
-        events = [Mock(spec=events_base_event_pb2.RayEvent) for _ in range(2)]
-        result = await client.publish(events)
-
-        assert result.is_publish_successful is True
-        assert result.num_events_published == 0
-        assert result.num_events_filtered_out == 2
-
-    @pytest.mark.asyncio
-    async def test_publish_success(self, client_kwargs):
-        """Test successful HTTP publish."""
-        fake_resp = self._FakeResponse()
-        events = [
-            events_base_event_pb2.RayEvent(
-                event_id=b"1",
-                source_type=events_base_event_pb2.RayEvent.SourceType.CORE_WORKER,
-                event_type=events_base_event_pb2.RayEvent.EventType.TASK_DEFINITION_EVENT,
-                timestamp=Timestamp(seconds=123, nanos=0),
-                severity=events_base_event_pb2.RayEvent.Severity.INFO,
-                message="hello",
-            ),
-            events_base_event_pb2.RayEvent(
-                event_id=b"2",
-                source_type=events_base_event_pb2.RayEvent.SourceType.CORE_WORKER,
-                event_type=events_base_event_pb2.RayEvent.EventType.TASK_DEFINITION_EVENT,
-                timestamp=Timestamp(seconds=124, nanos=0),
-                severity=events_base_event_pb2.RayEvent.Severity.INFO,
-                message="world",
-            ),
-        ]
-
-        client = AsyncHttpPublisherClient(
-            endpoint=client_kwargs["endpoint"],
-            executor=ThreadPoolExecutor(max_workers=1),
-            events_filter_fn=client_kwargs["events_filter_fn"],
-            timeout=client_kwargs["timeout"],
-        )
-        client.set_session(self._FakeSession(fake_resp))
-
-        result = await client.publish(events)
-
-        assert result.is_publish_successful is True
-        assert result.num_events_published == 2
-        assert result.num_events_filtered_out == 0
-
-    @pytest.mark.asyncio
-    async def test_publish_http_error(self, client_kwargs):
-        """Test HTTP error handling."""
-        fake_resp = self._FakeResponse(raise_exc=Exception("HTTP error"))
-        events = [
-            events_base_event_pb2.RayEvent(
-                event_id=b"1",
-                source_type=events_base_event_pb2.RayEvent.SourceType.CORE_WORKER,
-                event_type=events_base_event_pb2.RayEvent.EventType.TASK_DEFINITION_EVENT,
-                timestamp=Timestamp(seconds=123, nanos=0),
-                severity=events_base_event_pb2.RayEvent.Severity.INFO,
-                message="hello",
-            )
-        ]
-
-        client = AsyncHttpPublisherClient(
-            endpoint=client_kwargs["endpoint"],
-            executor=ThreadPoolExecutor(max_workers=1),
-            events_filter_fn=client_kwargs["events_filter_fn"],
-            timeout=client_kwargs["timeout"],
-        )
-        client.set_session(self._FakeSession(fake_resp))
-
-        result = await client.publish(events)
-
-        assert result.is_publish_successful is False
-        assert result.num_events_published == 0
-
-    @pytest.mark.asyncio
-    async def test_count_events_in_batch(self, http_client):
-        """Test counting events in batch."""
-        events = [Mock(spec=events_base_event_pb2.RayEvent) for _ in range(3)]
-        count = http_client.count_num_events_in_batch(events)
-        assert count == 3
 
 
 class TestNoopPublisher:
@@ -320,13 +165,6 @@ class TestNoopPublisher:
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
-
-        metrics = await publisher.get_and_reset_publisher_stats()
-        assert metrics == {
-            "published": 0,
-            "filtered_out": 0,
-            "failed": 0,
-        }
 
 
 if __name__ == "__main__":

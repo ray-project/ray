@@ -1,4 +1,4 @@
-from collections import defaultdict, deque
+from collections import deque
 import asyncio
 import time
 from typing import Dict, List, Optional
@@ -10,11 +10,7 @@ from ray.core.generated import (
 )
 from ray.core.generated.events_base_event_pb2 import RayEvent
 
-try:
-    import prometheus_client
-    from prometheus_client import Counter
-except ImportError:
-    prometheus_client = None
+from ray.util.metrics import Counter
 
 
 @dataclass
@@ -25,7 +21,7 @@ class _ConsumerState:
     consumer_name: str
     # Counter for evicted events for this consumer (lazily created per consumer)
     evicted_events_counter: Optional[Counter]
-    # Condition variable to signal that there are new events to consume
+    # Event to signal that there are new events to consume
     has_new_events_to_consume: asyncio.Event
 
 
@@ -44,7 +40,7 @@ class MultiConsumerEventBuffer:
         self,
         max_size: int,
         max_batch_size: int,
-        common_metric_labels: Dict[str, str] = {"Component": "event_aggregator_agent"},
+        common_metric_tags: Dict[str, str] = {},
     ):
         self._buffer = deque(maxlen=max_size)
         self._max_size = max_size
@@ -53,7 +49,7 @@ class MultiConsumerEventBuffer:
 
         self._max_batch_size = max_batch_size
 
-        self._common_metrics_labels = common_metric_labels
+        self._common_metrics_tags = common_metric_tags
 
     async def add_event(self, event: events_base_event_pb2.RayEvent) -> None:
         """Add an event to the buffer.
@@ -76,13 +72,14 @@ class MultiConsumerEventBuffer:
                 # Update consumer cursor index and evicted events metric if an event was dropped
                 if consumer_state.cursor_index == 0:
                     # The dropped event was the next event this consumer would have consumed, publish eviction metric
-                    if prometheus_client is not None:
-                        consumer_state.evicted_events_counter.labels(
-                            **self._common_metrics_labels,
-                            event_type=RayEvent.EventType.Name(
+                    consumer_state.evicted_events_counter.inc(
+                        value=1,
+                        tags={
+                            "event_type": RayEvent.EventType.Name(
                                 dropped_event.event_type
                             ),
-                        ).inc(1)
+                        },
+                    )
                 else:
                     # The dropped event was already consumed by the consumer, so we need to adjust the cursor
                     consumer_state.cursor_index -= 1
@@ -127,7 +124,7 @@ class MultiConsumerEventBuffer:
                     batch = [event]
                     break
 
-                # There are no new events to consume, clear the condition variable and wait for it to be set again
+                # There are no new events to consume, clear the event and wait for it to be set again
                 has_events_to_consume.clear()
 
         # Phase 2: add items to the batch up to timeout or until full
@@ -148,7 +145,7 @@ class MultiConsumerEventBuffer:
                 if len(batch) >= max_batch:
                     break
 
-                # There is still room in the batch, but no new events to consume, clear the condition variable and wait for it to be set again
+                # There is still room in the batch, but no new events to consume, clear the event and wait for it to be set again
                 has_events_to_consume.clear()
             try:
                 await asyncio.wait_for(has_events_to_consume.wait(), remaining)
@@ -167,19 +164,18 @@ class MultiConsumerEventBuffer:
         async with self._lock:
             consumer_id = str(uuid.uuid4())
             counter = None
-            supported_labels = (
-                tuple(self._common_metrics_labels.keys()) + ("event_type",)
-                if self._common_metrics_labels is not None
+            supported_tags = (
+                tuple(self._common_metrics_tags.keys()) + ("event_type",)
+                if self._common_metrics_tags is not None
                 else ("event_type",)
             )
-            if prometheus_client:
-                metrics_prefix = "event_aggregator_agent"
-                counter = Counter(
-                    f"{metrics_prefix}_{consumer_name}_queue_dropped_events_total",
-                    "Total number of events dropped because the publish/buffer queue was full.",
-                    supported_labels,
-                    namespace="ray",
-                )
+            metrics_prefix = "event_aggregator_agent"
+            counter = Counter(
+                f"{metrics_prefix}_{consumer_name}_queue_dropped_events_total",
+                "Total number of events dropped because the publish/buffer queue was full.",
+                tag_keys=supported_tags,
+            )
+            counter.set_default_tags(self._common_metrics_tags)
             self._consumers[consumer_id] = _ConsumerState(
                 cursor_index=0,
                 consumer_name=consumer_name,

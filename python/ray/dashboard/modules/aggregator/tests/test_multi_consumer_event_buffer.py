@@ -56,9 +56,7 @@ class TestMultiConsumerEventBuffer:
     async def test_add_event_buffer_overflow(self):
         """Test buffer overflow behavior and eviction logic."""
         buffer = MultiConsumerEventBuffer(max_size=3, max_batch_size=2)
-        consumer_id = await buffer.register_consumer(
-            "test_consumer" + str(uuid.uuid4())
-        )
+        _ = await buffer.register_consumer("test_consumer" + str(uuid.uuid4()))
 
         # Add events to fill buffer
         events = []

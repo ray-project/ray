@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 import asyncio
 import logging
 import random
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 from ray.dashboard.modules.aggregator.multi_consumer_event_buffer import (
     MultiConsumerEventBuffer,
@@ -18,11 +18,7 @@ from ray.dashboard.modules.aggregator.publisher.async_publisher_client import (
     PublisherClientInterface,
 )
 
-try:
-    import prometheus_client
-    from prometheus_client import Counter, Gauge, Histogram
-except ImportError:
-    prometheus_client = None
+from ray.util.metrics import Counter, Gauge, Histogram
 
 logger = logging.getLogger(__name__)
 
@@ -33,11 +29,6 @@ class RayEventPublisherInterface(ABC):
     @abstractmethod
     async def run_forever(self) -> None:
         """Run the publisher forever until cancellation or process death."""
-        pass
-
-    @abstractmethod
-    async def get_and_reset_publisher_stats(self) -> Dict[str, int]:
-        """Return a snapshot of publisher stats since last call and reset them."""
         pass
 
     @abstractmethod
@@ -57,12 +48,11 @@ class RayEventPublisher(RayEventPublisherInterface):
         name: str,
         publish_client: PublisherClientInterface,
         event_buffer: MultiConsumerEventBuffer,
-        common_metric_labels: Dict[str, str] = {"Component": "event_aggregator_agent"},
+        common_metric_tags: Dict[str, str] = {},
         max_retries: int = PUBLISHER_MAX_RETRIES,
         initial_backoff: float = PUBLISHER_INITIAL_BACKOFF_SECONDS,
         max_backoff: float = PUBLISHER_MAX_BACKOFF_SECONDS,
         jitter_ratio: float = PUBLISHER_JITTER_RATIO,
-        enable_publisher_stats: bool = False,
     ) -> None:
         """Initialize a RayEventsPublisher.
 
@@ -75,10 +65,9 @@ class RayEventPublisher(RayEventPublisherInterface):
             initial_backoff: Initial backoff time between retries in seconds
             max_backoff: Maximum backoff time between retries in seconds
             jitter_ratio: Random jitter ratio to add to backoff times
-            enable_publisher_stats: If True, maintain in-memory publisher stats.
         """
         self._name = name
-        self._common_metric_labels = common_metric_labels
+        self._common_metric_tags = common_metric_tags
         self._max_retries = int(max_retries)
         self._initial_backoff = float(initial_backoff)
         self._max_backoff = float(max_backoff)
@@ -86,63 +75,63 @@ class RayEventPublisher(RayEventPublisherInterface):
         self._publish_client = publish_client
         self._event_buffer = event_buffer
         self._event_buffer_consumer_id = None
-        self._stats_enabled = bool(enable_publisher_stats)
 
-        # Internal stats (since last get_and_reset_publisher_stats call)
-        self._events_published_since_last: int = 0
-        self._events_filtered_out_since_last: int = 0
-        self._events_publish_failures_since_last: int = 0
-        self._stats_lock: Optional[asyncio.Lock] = (
-            asyncio.Lock() if self._stats_enabled else None
-        )
         # Event set once the publisher has registered as a consumer and is ready to publish events
         self._started_event: asyncio.Event = asyncio.Event()
 
         # Prometheus metrics (defined per-publisher instance using provided name)
-        self._prom_metrics_enabled = bool(prometheus_client)
-        if self._prom_metrics_enabled:
-            metrics_prefix = "event_aggregator_agent"
-            supported_labels = (
-                tuple(self._common_metric_labels.keys())
-                if self._common_metric_labels is not None
-                else ()
-            )
-            self._published_counter = Counter(
-                f"{metrics_prefix}_{self._name}_published_events_total",
-                "Total number of events successfully published to the destination.",
-                supported_labels,
-                namespace="ray",
-            )
-            self._filtered_counter = Counter(
-                f"{metrics_prefix}_{self._name}_filtered_events_total",
-                "Total number of events filtered out before publishing to the destination.",
-                supported_labels,
-                namespace="ray",
-            )
-            self._failed_counter = Counter(
-                f"{metrics_prefix}_{self._name}_failures_total",
-                "Total number of events that failed to publish after retries.",
-                supported_labels,
-                namespace="ray",
-            )
-            self._publish_latency_hist = Histogram(
-                f"{metrics_prefix}_{self._name}_publish_duration_seconds",
-                "Duration of publish calls in seconds.",
-                supported_labels + ("Outcome",),
-                namespace="ray",
-            )
-            self._consecutive_failures_gauge = Gauge(
-                f"{metrics_prefix}_{self._name}_consecutive_failures_since_last_success",
-                "Number of consecutive failed publish attempts since the last success.",
-                supported_labels,
-                namespace="ray",
-            )
-            self._time_since_last_success_gauge = Gauge(
-                f"{metrics_prefix}_{self._name}_time_since_last_success_seconds",
-                "Seconds since the last successful publish to the destination.",
-                supported_labels,
-                namespace="ray",
-            )
+        metrics_prefix = "event_aggregator_agent"
+        supported_tags = (
+            tuple(self._common_metric_tags.keys())
+            if self._common_metric_tags is not None
+            else ()
+        )
+
+        self._published_counter = Counter(
+            f"{metrics_prefix}_{self._name}_published_events_total",
+            "Total number of events successfully published to the destination.",
+            tag_keys=supported_tags,
+        )
+        self._published_counter.set_default_tags(self._common_metric_tags)
+
+        self._filtered_counter = Counter(
+            f"{metrics_prefix}_{self._name}_filtered_events_total",
+            "Total number of events filtered out before publishing to the destination.",
+            tag_keys=supported_tags,
+        )
+        self._filtered_counter.set_default_tags(self._common_metric_tags)
+
+        self._failed_counter = Counter(
+            f"{metrics_prefix}_{self._name}_failures_total",
+            "Total number of events that failed to publish after retries.",
+            tag_keys=supported_tags,
+        )
+        self._failed_counter.set_default_tags(self._common_metric_tags)
+
+        # Latency histogram buckets (s), fine-grained <100ms, moderate up to 2s,
+        # and a final 5s bucket to capture slower outliers.
+        buckets = [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5]
+        self._publish_latency_hist = Histogram(
+            f"{metrics_prefix}_{self._name}_publish_duration_seconds",
+            "Duration of publish calls in seconds.",
+            boundaries=buckets,
+            tag_keys=supported_tags + ("Outcome",),
+        )
+        self._publish_latency_hist.set_default_tags(self._common_metric_tags)
+
+        self._consecutive_failures_gauge = Gauge(
+            f"{metrics_prefix}_{self._name}_consecutive_failures_since_last_success",
+            "Number of consecutive failed publish attempts since the last success.",
+            tag_keys=supported_tags,
+        )
+        self._consecutive_failures_gauge.set_default_tags(self._common_metric_tags)
+
+        self._time_since_last_success_gauge = Gauge(
+            f"{metrics_prefix}_{self._name}_time_since_last_success_seconds",
+            "Seconds since the last successful publish to the destination.",
+            tag_keys=supported_tags,
+        )
+        self._time_since_last_success_gauge.set_default_tags(self._common_metric_tags)
 
     async def run_forever(self) -> None:
         """Run the publisher forever until cancellation or process death.
@@ -174,31 +163,6 @@ class RayEventPublisher(RayEventPublisherInterface):
             self._started_event.clear()
             await self._publish_client.close()
             raise
-
-    async def get_and_reset_publisher_stats(self) -> Dict[str, int]:
-        """Return a snapshot of publisher stats since last call and reset them.
-
-        Returns a dict with the following keys:
-            published: Number of events successfully published since last call
-            filtered_out: Number of events filtered out before publishing since last call
-            failed: Number of events that failed to publish since last call
-        """
-        if not self._stats_enabled:
-            raise RuntimeError(
-                "Publisher stats are disabled. Enable with enable_publisher_stats=True."
-            )
-        async with self._stats_lock:
-            publisher_metrics = {
-                "published": self._events_published_since_last,
-                "filtered_out": self._events_filtered_out_since_last,
-                "failed": self._events_publish_failures_since_last,
-            }
-
-            # Reset counters
-            self._events_published_since_last = 0
-            self._events_filtered_out_since_last = 0
-            self._events_publish_failures_since_last = 0
-            return publisher_metrics
 
     async def wait_until_running(self, timeout: Optional[float] = None) -> bool:
         """Wait until the publisher has started.
@@ -280,52 +244,29 @@ class RayEventPublisher(RayEventPublisherInterface):
         self, num_published: int, num_filtered: int, duration: float
     ) -> None:
         """Update in-memory stats and Prometheus metrics for a successful publish."""
-        if self._stats_enabled and self._stats_lock is not None:
-            async with self._stats_lock:
-                self._events_published_since_last += int(num_published)
-                self._events_filtered_out_since_last += int(num_filtered)
-        if self._prom_metrics_enabled:
-            self._published_counter.labels(**self._common_metric_labels).inc(
-                int(num_published)
-            )
-            self._filtered_counter.labels(**self._common_metric_labels).inc(
-                int(num_filtered)
-            )
-            self._consecutive_failures_gauge.labels(**self._common_metric_labels).set(0)
-            self._time_since_last_success_gauge.labels(
-                **self._common_metric_labels
-            ).set(0)
-            self._publish_latency_hist.labels(
-                **self._common_metric_labels, Outcome="success"
-            ).observe(float(duration))
+        if num_published > 0:
+            self._published_counter.inc(int(num_published))
+        if num_filtered > 0:
+            self._filtered_counter.inc(int(num_filtered))
+        self._consecutive_failures_gauge.set(0)
+        self._time_since_last_success_gauge.set(0)
+        self._publish_latency_hist.observe(float(duration), tags={"Outcome": "success"})
 
     async def _record_retry_failure(
         self, duration: float, failed_attempts: int
     ) -> None:
         """Update Prometheus metrics for a retryable failure attempt."""
-        if self._prom_metrics_enabled:
-            self._consecutive_failures_gauge.labels(**self._common_metric_labels).set(
-                int(failed_attempts)
-            )
-            self._publish_latency_hist.labels(
-                **self._common_metric_labels, Outcome="failure"
-            ).observe(float(duration))
+        self._consecutive_failures_gauge.set(int(failed_attempts))
+        self._publish_latency_hist.observe(float(duration), tags={"Outcome": "failure"})
 
     async def _record_final_failure(
         self, num_failed_events: int, duration: float
     ) -> None:
         """Update in-memory stats and Prometheus metrics for a final (non-retryable) failure."""
-        if self._stats_enabled and self._stats_lock is not None:
-            async with self._stats_lock:
-                self._events_publish_failures_since_last += int(num_failed_events)
-        if self._prom_metrics_enabled:
-            self._failed_counter.labels(**self._common_metric_labels).inc(
-                int(num_failed_events)
-            )
-            self._consecutive_failures_gauge.labels(**self._common_metric_labels).set(0)
-            self._publish_latency_hist.labels(
-                **self._common_metric_labels, Outcome="failure"
-            ).observe(float(duration))
+        if num_failed_events > 0:
+            self._failed_counter.inc(int(num_failed_events))
+        self._consecutive_failures_gauge.set(0)
+        self._publish_latency_hist.observe(float(duration), tags={"Outcome": "failure"})
 
 
 class NoopPublisher(RayEventPublisherInterface):
@@ -341,9 +282,6 @@ class NoopPublisher(RayEventPublisherInterface):
         except asyncio.CancelledError:
             logger.info("NoopPublisher cancelled")
             raise
-
-    async def get_and_reset_publisher_stats(self) -> Dict[str, int]:
-        return {"published": 0, "filtered_out": 0, "failed": 0}
 
     async def wait_until_running(self, timeout: Optional[float] = None) -> bool:
         return True
