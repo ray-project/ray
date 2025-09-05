@@ -296,7 +296,7 @@ class ParquetDatasource(Datasource):
 
         sampled_file_infos = _fetch_file_infos(
             sampled_fragments,
-            columns=columns,
+            columns=self._data_columns,
             schema=schema,
             local_scheduling=self._local_scheduling,
         )
