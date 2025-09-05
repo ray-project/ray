@@ -37,7 +37,6 @@ from ray.data.datasource.file_meta_provider import (
 )
 from ray.data.datasource.parquet_meta_provider import (
     ParquetFileMetadata,
-    ParquetMetadataProvider,
 )
 from ray.data.datasource.partitioning import (
     PartitionDataType,
