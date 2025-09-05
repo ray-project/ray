@@ -36,20 +36,10 @@ message ActorDefinitionEvent {
   string class_name = 7;
   // Quantities of the different resources required by this actor.
   map<string, double> required_resources = 8;
-  // The node id of the actor once it is created.
-  // address field can contain an address although actor is not created
-  // so we have a separate field to track this.
-  // If the actor is restarting, the node id could be incorrect.
-  bytes node_id = 9;
   // Placement group ID if the actor requires a placement group.
-  bytes placement_group_id = 10;
-  // The repr name of the actor if specified with a customized repr method, e.g. __repr__
-  // This field is only available after the actor creation task has been run since it
-  // might depend on actor fields to be initialized in __init__.
-  // Default to empty string if no customized repr is defined.
-  string repr_name = 11;
+  bytes placement_group_id = 9;
   // The key-value labels for task and actor.
-  map<string, string> labels = 12;
+  map<string, string> labels = 10;
   // The label selector for the actor.
-  map<string, string> label_selector = 13;
+  map<string, string> label_selector = 11;
 }

@@ -17,6 +17,7 @@ syntax = "proto3";
 package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
+import "google/protobuf/timestamp.proto";
 
 message ActorExecutionEvent {
   enum State{
@@ -33,14 +34,26 @@ message ActorExecutionEvent {
     DEAD = 4;
   }
 
+  message StateTransition {
+    State state = 1;
+    google.protobuf.Timestamp timestamp = 2;
+    // Contains metadata about why the actor is dead. available when state is DEAD.
+    ActorDeathCause death_cause = 3;
+    // The node id of the actor once it is created.
+    // available when state is ALIVE updated when the actor is restarted.
+    bytes node_id = 9;
+    // The process id of this actor. available when state is ALIVE. 
+    // The Pid changes when the actor is restarted.
+    uint32 pid = 4;
+    // The repr name of the actor if specified with a customized repr method, e.g. __repr__
+    // This field is only available after the actor creation task has been run since it
+    // might depend on actor fields to be initialized in __init__.
+    // Default to empty string if no customized repr is defined.
+    string repr_name = 5;
+  }
+
   // The ID of the actor that was created.
   bytes actor_id = 1;
-  // The ID of the job that created the actor.
-  bytes job_id = 2;
   // Current state of this actor.
-  State state = 3;
-  // The process id of this actor.
-  uint32 pid = 4;
-  // Contains metadata about why the actor is dead.
-  ActorDeathCause death_cause = 5;
+  StateTransition states = 2;
 }
