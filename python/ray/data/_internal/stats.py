@@ -1036,23 +1036,23 @@ class DatasetStats:
                 parent_total_output += op_output
 
         # Create temporary operator stats objects from block metadata
-        temp_ops = [
+        op_stats = [
             OperatorStatsSummary.from_block_metadata(
                 name, stats, is_sub_operator=is_sub_operator
             )
             for name, stats in self.metadata.items()
         ]
 
-        for i, op in enumerate(temp_ops):
+        for i, op_stat in enumerate(op_stats):
             # For sub-operators: inherit input based on the order in the current list
             if is_sub_operator:
                 if i == 0:
                     # Input of the first sub-operator is the total output from parent nodes
-                    op.total_input_num_rows = parent_total_output
+                    op_stat.total_input_num_rows = parent_total_output
                 else:
                     # Input of subsequent sub-operators is the output of the previous sub-operator
-                    prev_op = temp_ops[i - 1]
-                    op.total_input_num_rows = (
+                    prev_op = op_stats[i - 1]
+                    op_stat.total_input_num_rows = (
                         prev_op.output_num_rows["sum"]
                         if (
                             prev_op.output_num_rows and "sum" in prev_op.output_num_rows
@@ -1061,8 +1061,8 @@ class DatasetStats:
                     )
             else:
                 # Single operator scenario: input rows = total output from all parent nodes
-                op.total_input_num_rows = parent_total_output
-            operators_stats.append(op)
+                op_stat.total_input_num_rows = parent_total_output
+            operators_stats.append(op_stat)
         streaming_exec_schedule_s = (
             self.streaming_exec_schedule_s.get()
             if self.streaming_exec_schedule_s
