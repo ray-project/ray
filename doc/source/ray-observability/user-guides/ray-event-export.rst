@@ -26,7 +26,7 @@ Event format
 
 Events are JSON objects in the POST request body.
 
-All events contains the same base fields and different event specific fields. 
+All events contain the same base fields and different event specific fields. 
 See `src/ray/protobuf/public/events_base_event.proto <https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_base_event.proto>`_ for the base fields.
 
 Task events
