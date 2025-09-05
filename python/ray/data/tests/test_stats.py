@@ -1706,6 +1706,69 @@ def test_dataset_throughput(shutdown_only):
     assert float(dataset_match[1]) >= float(dataset_match[2])
 
 
+def test_individual_operator_num_rows(shutdown_only):
+    # The input num rows of an individual operator should be the same as the output num rows of its parent operator.
+    ray.shutdown()
+    ray.init(num_cpus=2)
+
+    data = [{"id": i, "value": i * 1.5, "category": i % 5} for i in range(500)]
+    ds = (
+        ray.data.from_items(data)
+        .map(lambda x: {**x, "value_squared": x["value"] ** 2})
+        .filter(lambda x: x["value_squared"] > 300)
+    )
+
+    stats_output = ds.materialize().stats()
+    op0_output_pattern = r"Operator 0.*?Total output num rows: (\d+)"
+    op1_input_pattern = r"Operator 1.*?Total input num rows: (\d+)"
+
+    re_op0_output = re.compile(op0_output_pattern, re.DOTALL)
+    re_op1_input = re.compile(op1_input_pattern, re.DOTALL)
+    assert re_op1_input.search(stats_output) == re_op0_output.search(stats_output)
+
+
+def test_sub_operator_num_rows(shutdown_only):
+    # The input num rows of sub operator:
+    # The first sub-operator: total output from all parent nodes
+    # Subsequent sub-operators: output of the previous sub-operator
+    ray.shutdown()
+    ray.init(num_cpus=2)
+
+    data1 = [{"id": i, "value1": i * 1.5, "category1": i % 5} for i in range(500)]
+    ds1 = ray.data.from_items(data1)
+    data2 = [{"id": i, "value2": i * 1.5, "category2": i % 5} for i in range(300)]
+    ds2 = ray.data.from_items(data2)
+    ds = ds1.join(ds2, join_type="left_outer", num_partitions=10)
+
+    stats_output = ds.materialize().stats()
+
+    patterns = {
+        "operator0_output": re.compile(
+            r"Operator 0.*?Total output num rows: (\d+)", re.DOTALL
+        ),
+        "subop0_input": re.compile(
+            r"Suboperator 0.*?Total input num rows: (\d+)", re.DOTALL
+        ),
+        "subop0_output": re.compile(
+            r"Suboperator 0.*?Total output num rows: (\d+)", re.DOTALL
+        ),
+        "subop1_input": re.compile(
+            r"Suboperator 1.*?Total input num rows: (\d+)", re.DOTALL
+        ),
+    }
+
+    extracted_data = {}
+    for key, pattern in patterns.items():
+        match = pattern.search(stats_output)
+        if match:
+            extracted_data[key] = int(match.group(1))
+        else:
+            extracted_data[key] = None
+
+    assert extracted_data["operator0_output"] == extracted_data["subop0_input"]
+    assert extracted_data["subop0_output"] == extracted_data["subop1_input"]
+
+
 @pytest.mark.parametrize("verbose_stats_logs", [True, False])
 def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
     context = DataContext.get_current()
