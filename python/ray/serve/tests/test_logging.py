@@ -1377,7 +1377,7 @@ def test_request_id_uniqueness_with_buffering(buffer_size, monkeypatch):
 
     serve.run(TestApp.bind())
 
-    for _ in range(150 if buffer_size > 1 else 20):
+    for _ in range(150):
         httpx.get("http://127.0.0.1:8000/")
     logs_dir = get_serve_logs_dir()
 
