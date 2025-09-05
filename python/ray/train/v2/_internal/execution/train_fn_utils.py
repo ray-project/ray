@@ -40,7 +40,7 @@ class TrainFnUtils(ABC):
         checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
         delete_local_checkpoint_after_upload: Optional[bool] = None,
         checkpoint_upload_function: Optional[
-            Callable[["Checkpoint", str], None]
+            Callable[["Checkpoint", str], "Checkpoint"]
         ] = None,
     ) -> None:
         """Upload checkpoint to remote storage and put a training result on the result queue.
