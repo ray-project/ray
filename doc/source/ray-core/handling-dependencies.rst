@@ -847,7 +847,7 @@ Your ``runtime_env`` dictionary should contain:
   Check for hidden files and metadata directories in zipped dependencies.
   You can inspect a zip file's contents by running the ``zipinfo -1 zip_file_name.zip`` command in the Terminal.
   Some zipping methods can cause hidden files or metadata directories to appear in the zip file at the top level.
-  To avoid this, use the ``zip -r`` command directly on the directory you want to compress from its parent's directory. For example, if you have a directory structure such as: ``a/b`` and you what to compress ``b``, issue the ``zip -r b`` command from the directory ``a.``
+  To avoid this, use the ``zip -r`` command directly on the directory you want to compress from its parent's directory. For example, if you have a directory structure such as: ``a/b`` and you want to compress ``b``, issue the ``zip -r b`` command from the directory ``a.``
   If Ray detects more than a single directory at the top level, it will use the entire zip file instead of the top-level directory, which may lead to unexpected behavior.
 
 Currently, four types of remote URIs are supported for hosting ``working_dir`` and ``py_modules`` packages:
@@ -859,7 +859,7 @@ Currently, four types of remote URIs are supported for hosting ``working_dir`` a
 
   - Example:
 
-    - ``runtime_env = {"working_dir": "https://github.com/example_username/example_respository/archive/HEAD.zip"}``
+    - ``runtime_env = {"working_dir": "https://github.com/example_username/example_repository/archive/HEAD.zip"}``
 
 - ``S3``: ``S3`` refers to URIs starting with ``s3://`` that point to compressed packages stored in `AWS S3 <https://aws.amazon.com/s3/>`_.
   To use packages via ``S3`` URIs, you must have the ``smart_open`` and ``boto3`` libraries (you can install them using ``pip install smart_open`` and ``pip install boto3``).
