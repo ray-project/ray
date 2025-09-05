@@ -8,7 +8,6 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-import ray
 from ray._common.test_utils import wait_for_condition
 import ray.experimental.internal_kv as kv
 from ray._private.ray_constants import (
