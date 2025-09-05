@@ -1,10 +1,12 @@
-import time
-import pytest
-from pytest_docker_tools import container, fetch, network, volume
-from pytest_docker_tools import wrappers
 import subprocess
-import docker
+import time
 from typing import List
+
+import pytest
+from pytest_docker_tools import container, fetch, network, volume, wrappers
+
+import docker
+
 from ray._common.network_utils import build_address
 
 # If you need to debug tests using fixtures in this file,

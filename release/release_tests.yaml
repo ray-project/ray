@@ -77,6 +77,26 @@
 #  alert: default
 
 #######################
+# Baseline test
+#######################
+- name: hello_world
+  team: reef
+  group: hello_world
+  frequency: nightly
+  working_dir: hello_world_tests
+
+  cluster:
+    byod: {}
+    cluster_compute: hello_world_compute_config.yaml
+
+  run:
+    timeout: 1800
+    script: python hello_world.py
+
+  variations:
+    - __suffix__: aws
+
+#######################
 # Cluster scaling tests
 #######################
 - name: cluster_tune_scale_up_down
@@ -4578,7 +4598,7 @@
     script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1_2p6d.yaml --skip-hf-token true
 
 - name: llm_serve_llama_3dot1_8B_quantized_tp1_2p6d_lmcache
-  frequency: nightly
+  frequency: manual # todo(ray-llm): fix this test with new/old lmcache version and new vllm version and re-enable it.
   python: "3.11"
   group: llm-serve
   team: llm
@@ -4770,6 +4790,33 @@
       frequency: manual
       cluster:
         cluster_compute: ci/gce.yaml  # relative to working_dir
+
+
+- name: deployment_serve_llm  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.11"
+  group: ray-examples
+  team: ml
+  working_dir: //doc/source/serve/tutorials/deployment-serve-llm  # use // to access from repo's root
+
+  cluster:
+    byod:
+      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      post_build_script: byod_deployment_serve_llm.sh  # release/ray_release/byod/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws  # uses default specs above
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
 
 - name: distributing_pytorch  # do not use dashes (regex sensitive)
   frequency: weekly

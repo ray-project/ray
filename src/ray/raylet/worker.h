@@ -244,10 +244,10 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   bool IsRegistered() { return rpc_client_ != nullptr; }
 
   bool IsAvailableForScheduling() const {
-    return !IsDead()                       // Not dead
-           && GetGrantedLeaseId().IsNil()  // No assigned lease
-           && !IsBlocked()                 // Not blocked
-           && GetActorId().IsNil();        // No assigned actor
+    return !IsDead()                        // Not dead
+           && !GetGrantedLeaseId().IsNil()  // Has assigned lease
+           && !IsBlocked()                  // Not blocked
+           && GetActorId().IsNil();         // No assigned actor
   }
 
   rpc::CoreWorkerClientInterface *rpc_client() {
@@ -284,6 +284,7 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   /// Connection state of a worker.
   std::shared_ptr<ClientConnection> connection_;
   /// The lease id of the worker's currently assigned lease.
+  /// It is always Nil for the driver.
   LeaseID lease_id_;
   /// Job ID for the worker's current assigned lease.
   JobID assigned_job_id_;
