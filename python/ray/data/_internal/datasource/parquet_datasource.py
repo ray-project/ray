@@ -494,15 +494,16 @@ def _fetch_parquet_file_info(
         return None
 
     # Only sample the first row group.
-    fragment = fragment.subset(row_group_ids=[0])
+    row_group_fragment = fragment.original.subset(row_group_ids=[0])
     batch_size = max(
-        min(fragment.metadata.num_rows, PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS), 1
+        min(row_group_fragment.metadata.num_rows, PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS), 1
     )
+
     # Use the batch_size calculated above, and ignore the one specified by user if set.
     # This is to avoid sampling too few or too many rows.
     to_batches_kwargs.pop("batch_size", None)
 
-    batches_iter = fragment.to_batches(
+    batches_iter = row_group_fragment.to_batches(
         columns=columns,
         schema=schema,
         batch_size=batch_size,
