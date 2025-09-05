@@ -633,6 +633,49 @@ class TestParseUri:
         assert package_name == gcs_uri.split("/")[-1]
 
 
+class TestAbfssProtocol:
+    """Test ABFSS protocol implementation."""
+
+    def test_abfss_protocol_handler_with_invalid_uris(self, tmp_path):
+        """Test that ABFSS protocol handler raises ValueError for invalid URIs."""
+        import unittest.mock as mock
+
+        invalid_uris = [
+            "abfss://@account.dfs.core.windows.net/file.zip",  # Empty container name
+            "abfss://container@.dfs.core.windows.net/file.zip",  # Empty account name
+            "abfss://container@account.blob.core.windows.net/file.zip",  # Wrong endpoint
+            "abfss://container@account.core.windows.net/file.zip",  # Missing .dfs
+            "abfss://account.dfs.core.windows.net/file.zip",  # Missing container@
+            "abfss://container",  # Missing @ and hostname
+            "abfss://",  # Empty netloc
+        ]
+
+        dest_file = tmp_path / "test_download.zip"
+
+        # Mock adlfs and azure.identity modules in sys.modules to avoid import errors in CI
+        import sys
+
+        mock_adlfs_module = mock.MagicMock()
+        mock_azure_identity_module = mock.MagicMock()
+
+        with mock.patch.dict(
+            sys.modules,
+            {
+                "adlfs": mock_adlfs_module,
+                "azure": mock.MagicMock(),
+                "azure.identity": mock_azure_identity_module,
+            },
+        ):
+            # Setup the mocks (though they won't be called due to validation failures)
+            mock_filesystem = mock.Mock()
+            mock_adlfs_module.AzureBlobFileSystem.return_value = mock_filesystem
+            mock_filesystem.open.return_value = mock.Mock()
+
+            for invalid_uri in invalid_uris:
+                with pytest.raises(ValueError, match="Invalid ABFSS URI format"):
+                    Protocol.ABFSS.download_remote_uri(invalid_uri, str(dest_file))
+
+
 @pytest.mark.asyncio
 class TestDownloadAndUnpackPackage:
     async def test_download_and_unpack_package_with_gcs_uri_without_gcs_client(
