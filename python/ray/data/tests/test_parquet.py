@@ -1451,17 +1451,19 @@ def test_tensors_in_tables_parquet(
         override_num_blocks=10,
     )
 
+    _assert_equal(ds.take_all(), expected_tuples)
+
     if new_tensor_format == "arrow_native":
         expected_tensor_type = FixedShapeTensorType
     else:
         expected_tensor_type = ArrowTensorTypeV2
 
+    # This will reconcile the schemas
+    ds = ds.materialize()
     assert isinstance(
         ds.schema().base_schema.field_by_name(tensor_col_name).type,
         expected_tensor_type,
     )
-
-    _assert_equal(ds.take_all(), expected_tuples)
 
 
 def test_multiple_files_with_ragged_arrays(

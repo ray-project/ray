@@ -441,8 +441,38 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 self._max_chunk_size = _get_max_chunk_size(
                     self._table, ARROW_MAX_CHUNK_SIZE_BYTES
                 )
-            for batch in table.to_batches(max_chunksize=self._max_chunk_size):
-                yield from batch.to_pylist()
+            from ray.air.util.transform_pyarrow import _is_native_tensor_type
+            from ray.data._internal.arrow_ops import transform_pyarrow
+
+            # HACK: This is so dumb. Currently, pyarrow native FixedShapeTensorArrays
+            # are viewed contiguously in every setting, regardless of shape/ndim,
+            # EXCEPT when you call .to_numpy_ndarray(). This is not the best place
+            # to add it, flagging for someone to see
+            contains_native_tensor_columns = any(
+                _is_native_tensor_type(column.type) for column in table.itercolumns()
+            )
+
+            if contains_native_tensor_columns:
+                col_values = []
+                for column in table.itercolumns():
+                    if _is_native_tensor_type(column.type):
+                        combined_array = transform_pyarrow.combine_chunked_array(column)
+                        column = transform_pyarrow.to_numpy(
+                            combined_array, zero_copy_only=False
+                        )
+                        col_values.append(column.tolist())
+                    else:
+                        col_values.append(column.to_pylist())
+                for i in range(len(table)):
+                    res = {
+                        name: col[i]
+                        for name, col in zip(table.column_names, col_values)
+                    }
+                    yield res
+
+            else:
+                for batch in table.to_batches(max_chunksize=self._max_chunk_size):
+                    yield from batch.to_pylist()
         else:
             for i in range(self.num_rows()):
                 yield self._get_row(i)

@@ -754,9 +754,14 @@ def to_numpy(
 
     import pyarrow as pa
 
+    from ray.air.util.transform_pyarrow import _is_native_tensor_type
+
     if isinstance(array, pa.Array):
         if pa.types.is_null(array.type):
             return np.full(len(array), np.nan, dtype=np.float32)
+        if _is_native_tensor_type(array.type):
+            # This is zero-copy
+            return array.to_numpy_ndarray()
         return array.to_numpy(zero_copy_only=zero_copy_only)
     elif isinstance(array, pa.ChunkedArray):
         if pa.types.is_null(array.type):
@@ -843,13 +848,14 @@ def combine_chunked_array(
     from ray.air.util.transform_pyarrow import (
         _concatenate_extension_column,
         _is_column_extension_type,
+        _is_native_tensor_type,
     )
 
     assert isinstance(
         array, pa.ChunkedArray
     ), f"Expected `ChunkedArray`, got {type(array)}"
 
-    if _is_column_extension_type(array):
+    if _is_column_extension_type(array) or _is_native_tensor_type(array.type):
         # Arrow `ExtensionArray`s can't be concatenated via `combine_chunks`,
         # hence require manual concatenation
         return _concatenate_extension_column(array, ensure_copy)
