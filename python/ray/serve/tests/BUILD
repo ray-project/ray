@@ -47,7 +47,6 @@ py_test_module_list(
         "test_persistence.py",
         "test_proxy_actor_wrapper.py",
         "test_replica_request_context.py",
-        "test_task_processor.py",
         "test_util.py",
         "test_websockets.py",
     ],
@@ -94,6 +93,7 @@ py_test_module_list(
         "test_request_timeout.py",
         "test_streaming_response.py",
         "test_target_capacity.py",
+        "test_task_processor.py",
         "test_telemetry.py",
     ],
     tags = [
