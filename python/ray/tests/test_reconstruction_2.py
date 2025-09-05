@@ -25,6 +25,8 @@ def config(request):
         "health_check_period_ms": 100,
         "health_check_failure_threshold": 20,
         "object_timeout_milliseconds": 200,
+        # Required for reducing the retry time of ReturnWorkerLease
+        "raylet_rpc_server_reconnect_timeout_s": 1,
     }
     yield config
 
