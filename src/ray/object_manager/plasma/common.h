@@ -58,19 +58,19 @@ inline constexpr std::string_view kCorruptedRequestErrorMessage =
 // Represents a chunk of allocated memory.
 struct Allocation {
   /// Pointer to the allocated memory.
-  void *address;
+  void *address_;
   /// Num bytes of the allocated memory.
-  int64_t size;
+  int64_t size_;
   /// The file descriptor of the memory mapped file where the memory allocated.
-  MEMFD_TYPE fd;
+  MEMFD_TYPE fd_;
   /// The offset in bytes in the memory mapped file of the allocated memory.
-  ptrdiff_t offset;
+  ptrdiff_t offset_;
   /// Device number of the allocated memory.
-  int device_num;
+  int device_num_;
   /// the total size of this mapped memory.
-  int64_t mmap_size;
+  int64_t mmap_size_;
   /// if it was fallback allocated.
-  bool fallback_allocated;
+  bool fallback_allocated_;
 
   // only allow moves.
   RAY_DISALLOW_COPY_AND_ASSIGN(Allocation);
@@ -86,23 +86,23 @@ struct Allocation {
              int device_num,
              int64_t mmap_size,
              bool fallback_allocated)
-      : address(address),
-        size(size),
-        fd(std::move(fd)),
-        offset(offset),
-        device_num(device_num),
-        mmap_size(mmap_size),
-        fallback_allocated(fallback_allocated) {}
+      : address_(address),
+        size_(size),
+        fd_(std::move(fd)),
+        offset_(offset),
+        device_num_(device_num),
+        mmap_size_(mmap_size),
+        fallback_allocated_(fallback_allocated) {}
 
   // Test only
   Allocation()
-      : address(nullptr),
-        size(0),
-        fd(),
-        offset(0),
-        device_num(0),
-        mmap_size(0),
-        fallback_allocated(false) {}
+      : address_(nullptr),
+        size_(0),
+        fd_(),
+        offset_(0),
+        device_num_(0),
+        mmap_size_(0),
+        fallback_allocated_(false) {}
 
   friend class PlasmaAllocator;
   friend class DummyAllocator;
@@ -120,21 +120,21 @@ class LocalObject {
 
   RAY_DISALLOW_COPY_AND_ASSIGN(LocalObject);
 
-  int64_t GetObjectSize() const { return object_info.GetObjectSize(); }
+  int64_t GetObjectSize() const { return object_info_.GetObjectSize(); }
 
-  bool Sealed() const { return state == ObjectState::PLASMA_SEALED; }
+  bool Sealed() const { return state_ == ObjectState::PLASMA_SEALED; }
 
-  int32_t GetRefCount() const { return ref_count; }
+  int32_t GetRefCount() const { return ref_count_; }
 
-  const ray::ObjectInfo &GetObjectInfo() const { return object_info; }
+  const ray::ObjectInfo &GetObjectInfo() const { return object_info_; }
 
-  const Allocation &GetAllocation() const { return allocation; }
+  const Allocation &GetAllocation() const { return allocation_; }
 
-  const plasma::flatbuf::ObjectSource &GetSource() const { return source; }
+  const plasma::flatbuf::ObjectSource &GetSource() const { return source_; }
 
   ray::PlasmaObjectHeader *GetPlasmaObjectHeader() const {
-    RAY_CHECK(object_info.is_mutable) << "Object is not mutable";
-    auto header_ptr = static_cast<uint8_t *>(allocation.address);
+    RAY_CHECK(object_info_.is_mutable) << "Object is not mutable";
+    auto header_ptr = static_cast<uint8_t *>(allocation_.address_);
     return reinterpret_cast<ray::PlasmaObjectHeader *>(header_ptr);
   }
 
@@ -143,11 +143,11 @@ class LocalObject {
     if (check_sealed) {
       RAY_DCHECK(Sealed());
     }
-    object->store_fd = GetAllocation().fd;
-    object->header_offset = GetAllocation().offset;
-    object->data_offset = GetAllocation().offset;
-    object->metadata_offset = GetAllocation().offset + GetObjectInfo().data_size;
-    if (object_info.is_mutable) {
+    object->store_fd = GetAllocation().fd_;
+    object->header_offset = GetAllocation().offset_;
+    object->data_offset = GetAllocation().offset_;
+    object->metadata_offset = GetAllocation().offset_ + GetObjectInfo().data_size;
+    if (object_info_.is_mutable) {
       object->data_offset += sizeof(ray::PlasmaObjectHeader);
       object->metadata_offset += sizeof(ray::PlasmaObjectHeader);
     };
@@ -157,10 +157,10 @@ class LocalObject {
     // sizes locally depending on what data is written to the channel, but the
     // plasma store keeps the original data and metadata size.
     object->allocated_size = object->data_size + object->metadata_size;
-    object->device_num = GetAllocation().device_num;
-    object->mmap_size = GetAllocation().mmap_size;
-    object->fallback_allocated = GetAllocation().fallback_allocated;
-    object->is_experimental_mutable_object = object_info.is_mutable;
+    object->device_num = GetAllocation().device_num_;
+    object->mmap_size = GetAllocation().mmap_size_;
+    object->fallback_allocated = GetAllocation().fallback_allocated_;
+    object->is_experimental_mutable_object = object_info_.is_mutable;
   }
 
  private:
@@ -174,19 +174,19 @@ class LocalObject {
   friend struct GetRequestQueueTest;
 
   /// Allocation Info;
-  Allocation allocation;
+  Allocation allocation_;
   /// Ray object info;
-  ray::ObjectInfo object_info;
+  ray::ObjectInfo object_info_;
   /// Number of clients currently using this object.
   /// TODO: ref_count probably shouldn't belong to LocalObject.
-  mutable int32_t ref_count;
+  mutable int32_t ref_count_;
   /// Unix epoch of when this object was created.
-  int64_t create_time;
+  int64_t create_time_;
   /// How long creation of this object took.
-  int64_t construct_duration;
+  int64_t construct_duration_;
   /// The state of the object, e.g., whether it is open or sealed.
-  ObjectState state;
+  ObjectState state_;
   /// The source of the object. Used for debugging purposes.
-  plasma::flatbuf::ObjectSource source;
+  plasma::flatbuf::ObjectSource source_;
 };
 }  // namespace plasma

@@ -14,29 +14,31 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
+#include "ray/gcs/gcs_server/gcs_node_manager.h"
+#include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
+#include "ray/gcs/gcs_server/grpc_service_interfaces.h"
 #include "ray/gcs/gcs_server/state_util.h"
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/rpc/gcs/gcs_rpc_server.h"
-#include "ray/rpc/node_manager/raylet_client_pool.h"
+#include "ray/pubsub/gcs_publisher.h"
+#include "ray/raylet_client/raylet_client_pool.h"
 #include "ray/util/thread_checker.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace gcs {
 
-class GcsActorManager;
-class GcsNodeManager;
-class GcsPlacementGroupManager;
-class GcsResourceManager;
-
-class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler {
+class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateServiceHandler {
  public:
   GcsAutoscalerStateManager(std::string session_name,
                             GcsNodeManager &gcs_node_manager,
@@ -45,7 +47,7 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
                             rpc::RayletClientPool &raylet_client_pool,
                             InternalKVInterface &kv,
                             instrumented_io_context &io_context,
-                            GcsPublisher *gcs_publisher);
+                            pubsub::GcsPublisher *gcs_publisher);
 
   void HandleGetClusterResourceState(
       rpc::autoscaler::GetClusterResourceStateRequest request,
@@ -192,7 +194,7 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
   instrumented_io_context &io_context_;
 
   // A publisher for publishing gcs messages.
-  GcsPublisher *gcs_publisher_;
+  pubsub::GcsPublisher *gcs_publisher_;
 
   // The default value of the last seen version for the request is 0, which indicates
   // no version has been reported. So the first reported version should be 1.

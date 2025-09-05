@@ -32,7 +32,7 @@ class TrainLoopRunner:
         # Training progress state.
         self._train_batch_idx: int = 0
         self._train_epoch_idx: int = 0
-        self._restored_train_batch_idx: Optional[int] = None
+        self._global_rows_processed_this_epoch: int = 0
 
         # Performance metrics
         self._metrics = collections.defaultdict(lambda: Timer())
@@ -121,6 +121,17 @@ class TrainLoopRunner:
 
         return dataloader_with_timers()
 
+    @property
+    def _num_batches_to_skip(self) -> int:
+        """Calculate the number of batches to skip based on the number of rows already processed in this epoch."""
+
+        global_batch_size = (
+            self.benchmark_config.dataloader_config.train_batch_size
+            * ray.train.get_context().get_world_size()
+        )
+
+        return self._global_rows_processed_this_epoch // global_batch_size
+
     def _train_epoch(self):
         """Subclasses can override the entrire `_train_epoch` method for more training
         logic customization."""
@@ -132,11 +143,11 @@ class TrainLoopRunner:
 
         # Skip through batches if we restored to a middle of the epoch.
         # TODO: Compare this baseline to the data checkpointing approach once we have it.
-        if self._restored_train_batch_idx is not None:
+        if self._num_batches_to_skip:
             if ray.train.get_context().get_world_rank() == 0:
-                logger.info(f"Skipping {self._restored_train_batch_idx + 1} batches...")
+                logger.info(f"Skipping {self._num_batches_to_skip} batches...")
 
-            for _ in range(self._restored_train_batch_idx + 1):
+            for _ in range(self._num_batches_to_skip):
                 with self._metrics["train/iter_skip_batch"].timer():
                     next(train_dataloader)
 
@@ -146,18 +157,27 @@ class TrainLoopRunner:
                     self._train_step(batch)
 
             # TODO: This is slightly off if the last batch is a partial batch (if drop_last=False)
-            self._metrics["train/rows_processed"].add(
+            global_batch_size = (
                 self.benchmark_config.dataloader_config.train_batch_size
+                * ray.train.get_context().get_world_size()
             )
+            self._metrics["train/rows_processed"].add(global_batch_size)
+
+            self._global_rows_processed_this_epoch += global_batch_size
+
+            if self._should_checkpoint_during_epoch():
+                self._checkpoint()
 
             if self._should_validate_during_epoch():
-                self._validate_and_checkpoint()
+                validation_metrics = self._validate()
+                self._checkpoint(validation_metrics)
 
             if self._should_log_metrics():
                 logger.info(pprint.pformat(self.get_metrics(), indent=2))
 
         self._train_epoch_idx += 1
         self._train_batch_idx = 0
+        self._global_rows_processed_this_epoch = 0
 
     def _validate_epoch(self) -> Dict[str, float]:
         if ray.train.get_context().get_world_rank() == 0:
@@ -184,6 +204,14 @@ class TrainLoopRunner:
 
         return {"validation/loss": total_loss.item() / num_rows}
 
+    def _should_checkpoint_during_epoch(self) -> bool:
+        """Handles the checkpoint_every_n_steps logic."""
+        return (
+            self.benchmark_config.checkpoint_every_n_steps > 0
+            and self._train_batch_idx % self.benchmark_config.checkpoint_every_n_steps
+            == 0
+        )
+
     def _should_validate_during_epoch(self) -> bool:
         """Handles the validate_every_n_steps logic."""
         return (
@@ -200,10 +228,12 @@ class TrainLoopRunner:
             == 0
         )
 
-    def _validate_and_checkpoint(self):
+    def _validate(self) -> Dict[str, float]:
         with self._metrics["validation/epoch"].timer():
             validation_metrics = self._validate_epoch()
+            return validation_metrics
 
+    def _checkpoint(self, metrics: Optional[Dict[str, float]] = None):
         with tempfile.TemporaryDirectory(
             dir="/mnt/local_storage"
         ) as temp_checkpoint_dir:
@@ -212,7 +242,7 @@ class TrainLoopRunner:
 
             with self._metrics["checkpoint/report"].timer():
                 self._report_checkpoint(
-                    metrics=validation_metrics,
+                    metrics=metrics or {},
                     checkpoint=ray.train.Checkpoint.from_directory(temp_checkpoint_dir),
                 )
 
@@ -221,7 +251,10 @@ class TrainLoopRunner:
 
         run_state = torch.load(os.path.join(local_dir, "run_state.pt"))
         self._train_epoch_idx = run_state["epoch"]
-        self._restored_train_batch_idx = run_state["batch_idx"]
+        self._train_batch_idx = run_state["batch_idx"]
+        self._global_rows_processed_this_epoch = run_state[
+            "global_rows_processed_this_epoch"
+        ]
 
         with open(os.path.join(local_dir, "metrics.json"), "r") as f:
             metrics_json = json.load(f)
@@ -232,7 +265,7 @@ class TrainLoopRunner:
         if ray.train.get_context().get_world_rank() == 0:
             logger.info(
                 f"Restored to epoch={self._train_epoch_idx}, "
-                f"train_batch_idx={self._restored_train_batch_idx} from checkpoint: "
+                f"train_batch_idx={self._train_batch_idx} from checkpoint: "
                 f"{ray.train.get_checkpoint()}"
             )
 
@@ -248,6 +281,7 @@ class TrainLoopRunner:
             run_state = {
                 "epoch": self._train_epoch_idx,
                 "batch_idx": self._train_batch_idx,
+                "global_rows_processed_this_epoch": self._global_rows_processed_this_epoch,
             }
             torch.save(run_state, os.path.join(local_dir, "run_state.pt"))
 
@@ -279,7 +313,8 @@ class TrainLoopRunner:
                 self._train_epoch()
 
             if not self.benchmark_config.skip_validation_at_epoch_end:
-                self._validate_and_checkpoint()
+                validation_metrics = self._validate()
+                self._checkpoint(validation_metrics)
 
             if ray.train.get_context().get_world_rank() == 0:
                 logger.info(pprint.pformat(self.get_metrics(), indent=2))
@@ -304,7 +339,6 @@ class TrainLoopRunner:
 
         # Throughput
         # TODO: Ray Data can provide these throughput metrics automatically.
-        num_workers = ray.train.get_context().get_world_size()
         train_time = (
             metrics["train/dataset_creation_time"]
             + self._metrics["train/step"].get()
@@ -313,11 +347,8 @@ class TrainLoopRunner:
             + self._metrics["train/iter_batch"].get()
         )
         if train_time > 0:
-            metrics["train/local_throughput"] = (
-                self._metrics["train/rows_processed"].get() / train_time
-            )
             metrics["train/global_throughput"] = (
-                metrics["train/local_throughput"] * num_workers
+                self._metrics["train/rows_processed"].get() / train_time
             )
 
         validation_time = (
@@ -328,11 +359,8 @@ class TrainLoopRunner:
             + self._metrics["validation/iter_batch"].get()
         )
         if validation_time > 0:
-            metrics["validation/local_throughput"] = (
-                self._metrics["validation/rows_processed"].get() / validation_time
-            )
             metrics["validation/global_throughput"] = (
-                metrics["validation/local_throughput"] * num_workers
+                self._metrics["validation/rows_processed"].get() / validation_time
             )
 
         # Extra time that each worker spends to restore from checkpoint,

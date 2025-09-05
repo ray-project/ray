@@ -22,6 +22,7 @@ from ray.data._internal.execution.backpressure_policy import (
 from ray.data._internal.execution.backpressure_policy.backpressure_policy import (
     BackpressurePolicy,
 )
+from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.interfaces.op_runtime_metrics import TaskDurationStats
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
 from ray.data._internal.stats import (
@@ -29,6 +30,7 @@ from ray.data._internal.stats import (
     NodeMetrics,
     StatsManager,
     _get_or_create_stats_actor,
+    _StatsActor,
 )
 from ray.data._internal.util import MemoryProfiler
 from ray.data.context import DataContext
@@ -395,6 +397,7 @@ Dataset iterator time breakdown:
 * Total time overall: T
     * Total time in Ray Data iterator initialization code: T
     * Total time user thread is blocked by Ray Data iter_batches: T
+    * Total time spent waiting for the first batch after starting iteration: T
     * Total execution time for user thread: T
 * Batch iteration time breakdown (summed across prefetch threads):
     * In ray.get(): T min, T max, T avg, T total
@@ -577,6 +580,7 @@ def test_dataset_stats_basic(
         f"* Total time overall: T\n"
         f"    * Total time in Ray Data iterator initialization code: T\n"
         f"    * Total time user thread is blocked by Ray Data iter_batches: T\n"
+        f"    * Total time spent waiting for the first batch after starting iteration: T\n"
         f"    * Total execution time for user thread: T\n"
         f"* Batch iteration time breakdown (summed across prefetch threads):\n"
         f"    * In ray.get(): T min, T max, T avg, T total\n"
@@ -618,6 +622,7 @@ def test_block_location_nums(ray_start_regular_shared, restore_data_context):
         f"* Total time overall: T\n"
         f"    * Total time in Ray Data iterator initialization code: T\n"
         f"    * Total time user thread is blocked by Ray Data iter_batches: T\n"
+        f"    * Total time spent waiting for the first batch after starting iteration: T\n"
         f"    * Total execution time for user thread: T\n"
         f"* Batch iteration time breakdown (summed across prefetch threads):\n"
         f"    * In ray.get(): T min, T max, T avg, T total\n"
@@ -1363,6 +1368,7 @@ Dataset iterator time breakdown:
 * Total time overall: T
     * Total time in Ray Data iterator initialization code: T
     * Total time user thread is blocked by Ray Data iter_batches: T
+    * Total time spent waiting for the first batch after starting iteration: T
     * Total execution time for user thread: T
 * Batch iteration time breakdown (summed across prefetch threads):
     * In ray.get(): T min, T max, T avg, T total
@@ -1909,6 +1915,79 @@ def test_stats_actor_datasets(ray_start_cluster):
         assert value["progress"] == 20
         assert value["total"] == 20
         assert value["state"] == "FINISHED"
+
+
+def test_stats_actor_datasets_eviction(ray_start_cluster):
+    """
+    Tests that finished datasets are evicted from the _StatsActor when
+    the number of datasets exceeds the configured `max_stats` limit.
+    """
+    # Set a low max_stats limit to easily trigger eviction.
+    max_stats = 2
+    # Create a dedicated _StatsActor for this test to avoid interfering
+    # with the global actor.
+    stats_actor = _StatsActor.remote(max_stats=max_stats)
+
+    # Patch the function that retrieves the stats actor to return our
+    # test-specific actor instance.
+    with patch(
+        "ray.data._internal.stats._get_or_create_stats_actor",
+        return_value=stats_actor,
+    ):
+
+        def check_ds_finished(ds_name):
+            """Helper to check if a dataset is marked as FINISHED in the actor."""
+            datasets = ray.get(stats_actor.get_datasets.remote())
+            ds_tag = next((tag for tag in datasets if tag.startswith(ds_name)), None)
+            if not ds_tag:
+                return False
+            return datasets[ds_tag]["state"] == DatasetState.FINISHED.name
+
+        # --- DS1 ---
+        # Create and materialize the first dataset.
+        ds1 = ray.data.range(1, override_num_blocks=1)
+        ds1.set_name("ds1")
+        ds1.materialize()
+        # Wait until the actor has been updated with the FINISHED state.
+        wait_for_condition(lambda: check_ds_finished("ds1"))
+
+        # --- DS2 ---
+        # Create and materialize the second dataset.
+        # This brings the total number of datasets to the `max_stats` limit.
+        ds2 = ray.data.range(1, override_num_blocks=1)
+        ds2.set_name("ds2")
+        ds2.materialize()
+        wait_for_condition(lambda: check_ds_finished("ds2"))
+
+        # --- Verify state before eviction ---
+        # At this point, both ds1 and ds2 should be in the actor.
+        datasets = ray.get(stats_actor.get_datasets.remote())
+        names_in_actor = {k.split("_")[0] for k in datasets.keys()}
+        assert names_in_actor == {"ds1", "ds2"}
+
+        # --- DS3 ---
+        # Create and materialize the third dataset. This should trigger the
+        # eviction of the oldest finished dataset (ds1).
+        ds3 = ray.data.range(1, override_num_blocks=1)
+        ds3.set_name("ds3")
+        ds3.materialize()
+
+        def check_eviction():
+            """
+            Helper to check that the actor state reflects the eviction.
+            The actor should now contain ds2 and ds3, but not ds1.
+            """
+            datasets = ray.get(stats_actor.get_datasets.remote())
+            # The eviction happens asynchronously, so we might briefly see 3 datasets.
+            # We wait until the count is back to 2.
+            if len(datasets) == max_stats + 1:
+                return False
+            names = {k.split("_")[0] for k in datasets.keys()}
+            assert names == {"ds2", "ds3"}
+            return True
+
+        # Wait until the eviction has occurred and the actor state is correct.
+        wait_for_condition(check_eviction)
 
 
 @patch.object(StatsManager, "STATS_ACTOR_UPDATE_INTERVAL_SECONDS", new=0.5)

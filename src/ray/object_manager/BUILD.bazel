@@ -110,6 +110,7 @@ ray_cc_library(
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
     ],
 )
 

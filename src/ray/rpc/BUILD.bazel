@@ -51,6 +51,7 @@ ray_cc_library(
 
 ray_cc_library(
     name = "metrics_agent_client",
+    srcs = ["metrics_agent_client.cc"],
     hdrs = ["metrics_agent_client.h"],
     visibility = ["//visibility:public"],
     deps = [
@@ -123,34 +124,6 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "node_manager_client",
-    srcs = ["node_manager/raylet_client_pool.cc"],
-    hdrs = [
-        "node_manager/node_manager_client.h",
-        "node_manager/node_manager_server.h",
-        "node_manager/raylet_client_pool.h",
-    ] + [
-        # TODO(eoakes): these are needed due to a circular dependency:
-        # raylet_client_pool.cc -> raylet_client.h -> node_manager_client.h
-        "//src/ray/raylet_client:raylet_client.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":client_call",
-        ":grpc_client",
-        "//src/ray/common:id",
-        "//src/ray/gcs/gcs_client:gcs_client_lib",
-        "//src/ray/protobuf:node_manager_cc_grpc",
-        "//src/ray/util:network_util",
-    ] + [
-        # TODO(eoakes): these three come from raylet_client.h, remove after breaking the circular dependency.
-        "//src/ray/ipc:client_connection",
-        "//src/ray/common:ray_object",
-        "//src/ray/common:task_common",
-    ],
-)
-
-ray_cc_library(
     name = "node_manager_server",
     hdrs = [
         "node_manager/node_manager_server.h",
@@ -178,26 +151,6 @@ ray_cc_library(
         "//src/ray/protobuf:gcs_service_cc_grpc",
         "//src/ray/util:network_util",
         "@com_google_absl//absl/container:btree",
-    ],
-)
-
-ray_cc_library(
-    name = "gcs_server",
-    hdrs = [
-        "gcs/gcs_rpc_server.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":grpc_server",
-        ":server_call",
-        "//src/ray/common:asio",
-        "//src/ray/common:id",
-        "//src/ray/common:ray_config",
-        "//src/ray/protobuf:autoscaler_cc_grpc",
-        "//src/ray/protobuf:events_event_aggregator_service_cc_grpc",
-        "//src/ray/protobuf:gcs_service_cc_grpc",
-        "@boost//:asio",
-        "@com_github_grpc_grpc//:grpc++",
     ],
 )
 
@@ -241,7 +194,6 @@ ray_cc_library(
     hdrs = [
         "worker/core_worker_client.h",
         "worker/core_worker_client_pool.h",
-        "worker/core_worker_server.h",
     ],
     deps = [
         "//src/ray/common:id",
@@ -249,23 +201,11 @@ ray_cc_library(
         "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//src/ray/protobuf:core_worker_cc_grpc",
         "//src/ray/pubsub:subscriber",
-        "//src/ray/raylet_client:raylet_client_lib",
+        "//src/ray/raylet_client:raylet_client_interface",
+        "//src/ray/raylet_client:raylet_client_pool",
         "//src/ray/util:logging",
         "//src/ray/util:network_util",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/synchronization",
-    ],
-)
-
-ray_cc_library(
-    name = "core_worker_server",
-    hdrs = [
-        "worker/core_worker_server.h",
-    ],
-    deps = [
-        ":grpc_server",
-        ":server_call",
-        "//src/ray/common:asio",
-        "//src/ray/protobuf:core_worker_cc_grpc",
     ],
 )

@@ -48,19 +48,16 @@ class RayError(Exception):
         if ray_exception.language == PYTHON:
             try:
                 return pickle.loads(ray_exception.serialized_exception)
-            except Exception as e:
-                msg = "Failed to unpickle serialized exception"
-                # Include a fallback string/stacktrace to aid debugging.
-                #  formatted_exception_string is set in to_bytes() above by calling
+            except Exception:
+                # formatted_exception_string is set in to_bytes() above by calling
                 # traceback.format_exception() on the original exception. It contains
                 # the string representation and stack trace of the original error.
-                formatted = getattr(
+                original_stacktrace = getattr(
                     ray_exception,
                     "formatted_exception_string",
                     "No formatted exception string available.",
                 )
-                msg += f"\nOriginal exception (string repr):\n{formatted}"
-                raise RuntimeError(msg) from e
+                return UnserializableException(original_stacktrace)
         else:
             return CrossLanguageError(ray_exception)
 
@@ -910,6 +907,33 @@ class RayCgraphCapacityExceeded(RaySystemError):
     pass
 
 
+@PublicAPI(stability="alpha")
+class UnserializableException(RayError):
+    """Raised when there is an error deserializing a serialized exception.
+
+    This occurs when deserializing (unpickling) a previously serialized exception
+    fails. In this case, we fall back to raising the string representation of
+    the original exception along with its stack trace that was captured at the
+    time of serialization.
+
+    reference for more details: https://docs.ray.io/en/latest/ray-core/objects/serialization.html
+
+    Args:
+        original_stack_trace: The string representation and stack trace of the
+            original exception that was captured during serialization.
+    """
+
+    def __init__(self, original_stack_trace: str):
+        self._original_stack_trace = original_stack_trace
+
+    def __str__(self):
+        return (
+            "Failed to deserialize exception. Refer to https://docs.ray.io/en/latest/ray-core/objects/serialization.html#troubleshooting to troubleshoot.\n"
+            "Original exception:\n"
+            f"{self._original_stack_trace}"
+        )
+
+
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,
@@ -939,4 +963,5 @@ RAY_EXCEPTION_TYPES = [
     RayChannelTimeoutError,
     OufOfBandObjectRefSerializationException,
     RayCgraphCapacityExceeded,
+    UnserializableException,
 ]
