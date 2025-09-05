@@ -38,7 +38,6 @@ namespace ray {
       |           |
     system     application
 */
-class CgroupManagerInterface {
  public:
   // TODO(#54703): These will be implemented in a later PR to move processes
   // into a cgroup.
@@ -85,5 +84,6 @@ class CgroupManagerInterface {
   // See https://docs.kernel.org/admin-guide/cgroup-v2.html#memory-interface-files
   inline static const Constraint<int64_t> memory_min_constraint_{
       "memory.min", "memory", {0, std::numeric_limits<int64_t>::max()}, 0};
+  
 };
 }  // namespace ray
