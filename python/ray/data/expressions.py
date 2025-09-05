@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import functools
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, Callable, Dict, List
 
+from ray.data.block import BatchColumn
+from ray.data.datatype import DataType
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
@@ -66,6 +69,8 @@ class Expr(ABC):
         This class should not be instantiated directly. Use the concrete
         subclasses like ColumnExpr, LiteralExpr, etc.
     """
+
+    data_type: DataType
 
     @abstractmethod
     def structurally_equals(self, other: Any) -> bool:
@@ -172,6 +177,7 @@ class ColumnExpr(Expr):
     """
 
     name: str
+    data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
 
     def structurally_equals(self, other: Any) -> bool:
         return isinstance(other, ColumnExpr) and self.name == other.name
@@ -190,12 +196,22 @@ class LiteralExpr(Expr):
 
     Example:
         >>> from ray.data.expressions import lit
+        >>> import numpy as np
         >>> # Create a literal value
         >>> five = lit(5) # Creates LiteralExpr(value=5)
         >>> name = lit("John") # Creates LiteralExpr(value="John")
+        >>> numpy_val = lit(np.int32(42)) # Creates LiteralExpr with numpy type
     """
 
     value: Any
+    data_type: DataType = field(init=False)
+
+    def __post_init__(self):
+        # Infer the type from the value using DataType.infer_dtype
+        inferred_dtype = DataType.infer_dtype(self.value)
+
+        # Use object.__setattr__ since the dataclass is frozen
+        object.__setattr__(self, "data_type", inferred_dtype)
 
     def structurally_equals(self, other: Any) -> bool:
         return (
@@ -230,12 +246,171 @@ class BinaryExpr(Expr):
     left: Expr
     right: Expr
 
+    data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
+
     def structurally_equals(self, other: Any) -> bool:
         return (
             isinstance(other, BinaryExpr)
             and self.op is other.op
             and self.left.structurally_equals(other.left)
             and self.right.structurally_equals(other.right)
+        )
+
+
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False)
+class UDFExpr(Expr):
+    """Expression that represents a user-defined function call.
+
+    This expression type wraps a UDF with schema inference capabilities,
+    allowing UDFs to be used seamlessly within the expression system.
+
+    UDFs operate on batches of data, where each column argument is passed
+    as a PyArrow Array containing multiple values from that column across the batch.
+
+    Args:
+        fn: The user-defined function to call
+        args: List of argument expressions (positional arguments)
+        kwargs: Dictionary of keyword argument expressions
+        function_name: Optional name for the function (for debugging)
+
+    Example:
+        >>> from ray.data.expressions import col, udf
+        >>> import pyarrow as pa
+        >>> import pyarrow.compute as pc
+        >>>
+        >>> @udf(return_dtype=DataType.int32())
+        ... def add_one(x: pa.Array) -> pa.Array:
+        ...     return pc.add(x, 1)
+        >>>
+        >>> # Use in expressions
+        >>> expr = add_one(col("value"))
+    """
+
+    fn: Callable[..., BatchColumn]
+    args: List[Expr]
+    kwargs: Dict[str, Expr]
+
+    def structurally_equals(self, other: Any) -> bool:
+        return (
+            isinstance(other, UDFExpr)
+            and self.fn == other.fn
+            and len(self.args) == len(other.args)
+            and all(a.structurally_equals(b) for a, b in zip(self.args, other.args))
+            and self.kwargs.keys() == other.kwargs.keys()
+            and all(
+                self.kwargs[k].structurally_equals(other.kwargs[k])
+                for k in self.kwargs.keys()
+            )
+        )
+
+
+def _create_udf_callable(
+    fn: Callable[..., BatchColumn], return_dtype: DataType
+) -> Callable[..., UDFExpr]:
+    """Create a callable that generates UDFExpr when called with expressions."""
+
+    def udf_callable(*args, **kwargs) -> UDFExpr:
+        # Convert arguments to expressions if they aren't already
+        expr_args = []
+        for arg in args:
+            if isinstance(arg, Expr):
+                expr_args.append(arg)
+            else:
+                expr_args.append(LiteralExpr(arg))
+
+        expr_kwargs = {}
+        for k, v in kwargs.items():
+            if isinstance(v, Expr):
+                expr_kwargs[k] = v
+            else:
+                expr_kwargs[k] = LiteralExpr(v)
+
+        return UDFExpr(
+            fn=fn,
+            args=expr_args,
+            kwargs=expr_kwargs,
+            data_type=return_dtype,
+        )
+
+    # Preserve original function metadata
+    functools.update_wrapper(udf_callable, fn)
+
+    # Store the original function for access if needed
+    udf_callable._original_fn = fn
+
+    return udf_callable
+
+
+@PublicAPI(stability="alpha")
+def udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
+    """
+    Decorator to convert a UDF into an expression-compatible function.
+
+    This decorator allows UDFs to be used seamlessly within the expression system,
+    enabling schema inference and integration with other expressions.
+
+    IMPORTANT: UDFs operate on batches of data, not individual rows. When your UDF
+    is called, each column argument will be passed as a PyArrow Array containing
+    multiple values from that column across the batch. Under the hood, when working
+    with multiple columns, they get translated to PyArrow arrays (one array per column).
+
+    Args:
+        return_dtype: The data type of the return value of the UDF
+
+    Returns:
+        A callable that creates UDFExpr instances when called with expressions
+
+    Example:
+        >>> from ray.data.expressions import col, udf
+        >>> import pyarrow as pa
+        >>> import pyarrow.compute as pc
+        >>> import ray
+        >>>
+        >>> # UDF that operates on a batch of values (PyArrow Array)
+        >>> @udf(return_dtype=DataType.int32())
+        ... def add_one(x: pa.Array) -> pa.Array:
+        ...     return pc.add(x, 1)  # Vectorized operation on the entire Array
+        >>>
+        >>> # UDF that combines multiple columns (each as a PyArrow Array)
+        >>> @udf(return_dtype=DataType.string())
+        ... def format_name(first: pa.Array, last: pa.Array) -> pa.Array:
+        ...     return pc.binary_join_element_wise(first, last, " ")  # Vectorized string concatenation
+        >>>
+        >>> # Use in dataset operations
+        >>> ds = ray.data.from_items([
+        ...     {"value": 5, "first": "John", "last": "Doe"},
+        ...     {"value": 10, "first": "Jane", "last": "Smith"}
+        ... ])
+        >>>
+        >>> # Single column transformation (operates on batches)
+        >>> ds_incremented = ds.with_column("value_plus_one", add_one(col("value")))
+        >>>
+        >>> # Multi-column transformation (each column becomes a PyArrow Array)
+        >>> ds_formatted = ds.with_column("full_name", format_name(col("first"), col("last")))
+        >>>
+        >>> # Can also be used in complex expressions
+        >>> ds_complex = ds.with_column("doubled_plus_one", add_one(col("value")) * 2)
+    """
+
+    def decorator(func: Callable[..., BatchColumn]) -> Callable[..., UDFExpr]:
+        return _create_udf_callable(func, return_dtype)
+
+    return decorator
+
+
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False)
+class DownloadExpr(Expr):
+    """Expression that represents a download operation."""
+
+    uri_column_name: str
+    data_type: DataType = field(default_factory=lambda: DataType.binary(), init=False)
+
+    def structurally_equals(self, other: Any) -> bool:
+        return (
+            isinstance(other, DownloadExpr)
+            and self.uri_column_name == other.uri_column_name
         )
 
 
@@ -301,6 +476,34 @@ def lit(value: Any) -> LiteralExpr:
     return LiteralExpr(value)
 
 
+@DeveloperAPI(stability="alpha")
+def download(uri_column_name: str) -> DownloadExpr:
+    """
+    Create a download expression that downloads content from URIs.
+
+    This creates an expression that will download bytes from URIs stored in
+    a specified column. When evaluated, it will fetch the content from each URI
+    and return the downloaded bytes.
+
+    Args:
+        uri_column_name: The name of the column containing URIs to download from
+    Returns:
+        A DownloadExpr that will download content from the specified URI column
+
+    Example:
+        >>> from ray.data.expressions import download
+        >>> import ray
+        >>> # Create dataset with URIs
+        >>> ds = ray.data.from_items([
+        ...     {"uri": "s3://bucket/file1.jpg", "id": "1"},
+        ...     {"uri": "s3://bucket/file2.jpg", "id": "2"}
+        ... ])
+        >>> # Add downloaded bytes column
+        >>> ds_with_bytes = ds.with_column("bytes", download("uri"))
+    """
+    return DownloadExpr(uri_column_name=uri_column_name)
+
+
 # ──────────────────────────────────────
 # Public API for evaluation
 # ──────────────────────────────────────
@@ -314,6 +517,10 @@ __all__ = [
     "ColumnExpr",
     "LiteralExpr",
     "BinaryExpr",
+    "UDFExpr",
+    "udf",
+    "DownloadExpr",
     "col",
     "lit",
+    "download",
 ]
