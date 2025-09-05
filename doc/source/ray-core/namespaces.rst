@@ -169,7 +169,7 @@ the specified namespace, no matter what namespace of the current job is.
             // Create an actor with specified namespace.
             ray::Actor(RAY_FUNC(Counter::FactoryCreate)).SetName("my_actor", "actor_namespace").Remote();
             // It is accessible in its namespace.
-            ray::GetActor<Counter>("orange");
+            ray::GetActor<Counter>("my_actor", "actor_namespace");
             ray::Shutdown();
 
 
