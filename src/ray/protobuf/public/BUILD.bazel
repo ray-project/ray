@@ -88,6 +88,7 @@ proto_library(
     srcs = ["events_actor_execution_event.proto"],
     deps = [
        "//src/ray/protobuf:common_proto",
+       "@com_google_protobuf//:timestamp_proto",
     ],
 )
 
