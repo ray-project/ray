@@ -1387,6 +1387,7 @@ def test_request_id_uniqueness_with_buffering(ray_instance):
 
     logs_dir = get_serve_logs_dir()
 
+def check_logs():
     for log_file in os.listdir(logs_dir):
         if log_file.startswith("replica"):
             with open(os.path.join(logs_dir, log_file)) as f:
@@ -1402,6 +1403,10 @@ def test_request_id_uniqueness_with_buffering(ray_instance):
                 request_id_counts = Counter(log_request_ids)
                 for _, count in request_id_counts.items():
                     assert count == 1, "Request ID duplicates when buffering"
+  return True
+
+wait_for_condition(check_logs)
+
 
 
 if __name__ == "__main__":
