@@ -1,6 +1,7 @@
 import asyncio
 import json
 import sys
+from contextlib import asynccontextmanager
 from typing import (
     Any,
     AsyncGenerator,
@@ -218,6 +219,19 @@ async def _openai_json_wrapper(
     yield "data: [DONE]\n\n"
 
 
+@asynccontextmanager
+async def router_request_timeout(timeout_duration: float):
+    try:
+        async with timeout(timeout_duration):
+            yield
+    except asyncio.TimeoutError as e:
+        raise OpenAIHTTPException(
+            status_code=status.HTTP_408_REQUEST_TIMEOUT,
+            message="Request server side timeout",
+            internal_message=str(e),
+        )
+
+
 class LLMRouter:
     def __init__(
         self,
@@ -418,7 +432,7 @@ class LLMRouter:
         )
         call_method = "chat" if is_chat else "completions"
 
-        async with timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
+        async with router_request_timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
 
             gen = self._get_response(body=body, call_method=call_method)
 
@@ -476,7 +490,7 @@ class LLMRouter:
         Returns:
             A response object with embeddings.
         """
-        async with timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
+        async with router_request_timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
             results = self._get_response(body=body, call_method="embeddings")
             result = await results.__anext__()
             if isinstance(result, ErrorResponse):
@@ -502,7 +516,7 @@ class LLMRouter:
             A response object with scores.
         """
 
-        async with timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
+        async with router_request_timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
             results = self._get_response(body=body, call_method="score")
             result = await results.__anext__()
             if isinstance(result, ErrorResponse):
