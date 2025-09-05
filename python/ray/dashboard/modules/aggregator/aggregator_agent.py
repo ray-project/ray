@@ -74,7 +74,7 @@ METRICS_UPDATE_INTERVAL_SECONDS = ray_constants.env_float(
 # Event filtering configurations
 # Comma-separated list of event types that are allowed to be exposed to external services
 # Valid values: TASK_DEFINITION_EVENT, TASK_EXECUTION_EVENT, ACTOR_TASK_DEFINITION_EVENT, ACTOR_TASK_EXECUTION_EVENT
-# The list of all supported event types can be found in src/ray/protobuf/events_base_event.proto (EventType enum)
+# The list of all supported event types can be found in src/ray/protobuf/public/events_base_event.proto (EventType enum)
 # By default TASK_PROFILE_EVENT is not exposed to external services
 DEFAULT_EXPOSABLE_EVENT_TYPES = (
     "TASK_DEFINITION_EVENT,TASK_EXECUTION_EVENT,"
