@@ -498,10 +498,12 @@ def read_fragments(
 
 
 def _sample_fragment(
-    to_batches_kwargs,
-    columns,
-    schema,
     fragment: "ParquetFileFragment",
+    metadata: ParquetFileMetadata,
+    *,
+    to_batches_kwargs: Optional[Dict[str, Any]],
+    columns: Optional[List[str]],
+    schema: Optional["pyarrow.Schema"],
 ) -> _SampleInfo:
     # If the fragment has no row groups, it's an empty or metadata-only file.
     # Skip it by returning empty sample info.
@@ -618,18 +620,19 @@ def get_parquet_dataset(paths, filesystem, dataset_kwargs):
 
 
 def sample_fragments(
-    serialized_fragments,
+    fragments: List[_NoIOSerializableParquetFragment],
+    metadata: List[ParquetFileMetadata],
     *,
-    to_batches_kwargs,
-    columns,
-    schema,
-    local_scheduling=None,
+    to_batches_kwargs: Optional[Dict[str, Any]],
+    columns: Optional[List[str]],
+    schema: Optional["pyarrow.Schema"],
+    local_scheduling: Optional[bool] = None,
 ) -> List[_SampleInfo]:
     # Sample a few rows from Parquet files to estimate the encoding ratio.
     # Launch tasks to sample multiple files remotely in parallel.
     # Evenly distributed to sample N rows in i-th row group in i-th file.
     # TODO(ekl/cheng) take into account column pruning.
-    num_files = len(serialized_fragments)
+    num_files = len(fragments)
     num_samples = int(num_files * PARQUET_ENCODING_RATIO_ESTIMATE_SAMPLING_RATIO)
     min_num_samples = min(PARQUET_ENCODING_RATIO_ESTIMATE_MIN_NUM_SAMPLES, num_files)
     max_num_samples = min(PARQUET_ENCODING_RATIO_ESTIMATE_MAX_NUM_SAMPLES, num_files)
@@ -637,15 +640,16 @@ def sample_fragments(
 
     # Evenly distributed to choose which file to sample, to avoid biased prediction
     # if data is skewed.
-    file_samples = [
-        serialized_fragments[idx]
+    sampled_fragments: Tuple[_NoIOSerializableParquetFragment, ParquetFileMetadata] = [
+        (fragments[idx], metadata[idx])
         for idx in np.linspace(0, num_files - 1, num_samples).astype(int).tolist()
     ]
 
     sample_fragment = cached_remote_fn(_sample_fragment)
     futures = []
     scheduling = local_scheduling or DataContext.get_current().scheduling_strategy
-    for sample in file_samples:
+
+    for fragment, metadata in sampled_fragments:
         # Sample the first rows batch in i-th file.
         # Use SPREAD scheduling strategy to avoid packing many sampling tasks on
         # same machine to cause OOM issue, as sampling can be memory-intensive.
@@ -655,12 +659,14 @@ def sample_fragments(
                 # Retry in case of transient errors during sampling.
                 retry_exceptions=[OSError],
             ).remote(
-                to_batches_kwargs,
-                columns,
-                schema,
-                sample,
+                fragment,
+                metadata,
+                to_batches_kwargs=to_batches_kwargs,
+                columns=columns,
+                schema=schema,
             )
         )
+
     sample_bar = ProgressBar("Parquet Files Sample", len(futures), unit="file")
     sample_infos = sample_bar.fetch_until_complete(futures)
     sample_bar.close()
