@@ -24,12 +24,10 @@ def test_request_worker_lease_idempotent(
     def simple_task_2():
         return 1
 
-    # Spin up a two-node cluster where only the second node has a custom resource.
-    # By requesting that resource on the task, the worker lease must target the
-    # remote node's raylet (different from the driver's local node).
+    # Spin up a two-node cluster where we're targeting scheduling on the
+    # remote node via NodeAffinitySchedulingStrategy to test remote RequestWorkerLease
+    # calls.
     cluster = ray_start_cluster
-    # Remote node with a unique resource so scheduling targets this node.
-
     remote_node = cluster.add_node(num_cpus=1)
 
     remote_id = remote_node.node_id
