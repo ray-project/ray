@@ -48,16 +48,11 @@ class ClusterLeaseManager : public ClusterLeaseManagerInterface {
   /// \param announce_infeasible_lease: Callback that informs the user if a lease
   ///                                  is infeasible.
   /// \param local_lease_manager: Manages local leases.
-  /// \param get_time_ms: A callback which returns the current time in milliseconds.
-  ClusterLeaseManager(
-      const NodeID &self_node_id,
-      ClusterResourceScheduler &cluster_resource_scheduler,
-      internal::NodeInfoGetter get_node_info,
-      std::function<void(const RayLease &)> announce_infeasible_lease,
-      LocalLeaseManagerInterface &local_lease_manager,
-      std::function<int64_t(void)> get_time_ms = []() {
-        return static_cast<int64_t>(absl::GetCurrentTimeNanos() / 1e6);
-      });
+  ClusterLeaseManager(const NodeID &self_node_id,
+                      ClusterResourceScheduler &cluster_resource_scheduler,
+                      internal::NodeInfoGetter get_node_info,
+                      std::function<void(const RayLease &)> announce_infeasible_lease,
+                      LocalLeaseManagerInterface &local_lease_manager);
 
   /// Queue lease and schedule. This happens when processing the worker lease request.
   ///
@@ -212,9 +207,6 @@ class ClusterLeaseManager : public ClusterLeaseManagerInterface {
 
   const SchedulerResourceReporter scheduler_resource_reporter_;
   mutable SchedulerStats internal_stats_;
-
-  /// Returns the current time in milliseconds.
-  std::function<int64_t()> get_time_ms_;
 
   friend class SchedulerStats;
   friend class ClusterLeaseManagerTest;

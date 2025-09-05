@@ -33,8 +33,7 @@ ClusterLeaseManager::ClusterLeaseManager(
     ClusterResourceScheduler &cluster_resource_scheduler,
     internal::NodeInfoGetter get_node_info,
     std::function<void(const RayLease &)> announce_infeasible_lease,
-    LocalLeaseManagerInterface &local_lease_manager,
-    std::function<int64_t(void)> get_time_ms)
+    LocalLeaseManagerInterface &local_lease_manager)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       get_node_info_(std::move(get_node_info)),
@@ -42,8 +41,7 @@ ClusterLeaseManager::ClusterLeaseManager(
       local_lease_manager_(local_lease_manager),
       scheduler_resource_reporter_(
           leases_to_schedule_, infeasible_leases_, local_lease_manager_),
-      internal_stats_(*this, local_lease_manager_),
-      get_time_ms_(std::move(get_time_ms)) {}
+      internal_stats_(*this, local_lease_manager_) {}
 
 void ClusterLeaseManager::QueueAndScheduleLease(
     RayLease lease,
