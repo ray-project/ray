@@ -57,9 +57,6 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
                 f"aws ecr get-login-password --region {config['byod_ecr_region']} | docker login --username AWS --password-stdin {config['byod_ecr']}",
                 f"bazelisk run //release:custom_byod_build -- --image-name {image} --base-image {base_image} --post-build-script {post_build_script}",
             ],
-            "env": {
-                "RAYCI_BUILD_ID": "$RAYCI_BUILD_ID"
-            }
         }
         if "ray-ml" in image:
             step["depends_on"] = config["image_build_step_ml"]
