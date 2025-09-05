@@ -1120,8 +1120,8 @@ class ProxyActorInterface(ABC):
         pass
 
     @abstractmethod
-    def _get_logging_config(self) -> Tuple:
-        """Get the logging configuration."""
+    def _get_logging_config(self) -> Optional[str]:
+        """Get the file path for the logger (for testing purposes)."""
         pass
 
     @abstractmethod
