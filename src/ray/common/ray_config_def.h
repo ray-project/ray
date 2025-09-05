@@ -945,3 +945,6 @@ RAY_CONFIG(int32_t, raylet_rpc_server_reconnect_timeout_s, 60)
 // process getting spawned.  Setting to zero or less maintains the default
 // number of threads grpc will spawn.
 RAY_CONFIG(int64_t, worker_num_grpc_internal_threads, 0)
+
+// Whether to start a background thread to manage Python GC in workers.
+RAY_CONFIG(bool, start_python_gc_manager_thread, true)

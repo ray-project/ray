@@ -584,3 +584,5 @@ RAY_ENABLE_OPEN_TELEMETRY = env_bool("RAY_enable_open_telemetry", False)
 FETCH_FAIL_TIMEOUT_SECONDS = (
     env_integer("RAY_fetch_fail_timeout_milliseconds", 60000) / 1000
 )
+
+RAY_GC_MIN_COLLECT_INTERVAL = env_float("RAY_GC_MIN_COLLECT_INTERVAL_S", 5)
