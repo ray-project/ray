@@ -558,8 +558,7 @@ def _estimate_files_encoding_ratio(
 
     # Estimate size of the rows in a file in memory
     estimated_in_mem_size_arr = [
-        fi.estimate_in_memory_bytes() if fi is not None else None
-        for fi in file_infos
+        fi.estimate_in_memory_bytes() if fi is not None else None for fi in file_infos
     ]
 
     file_size_arr = [f.file_size for f in fragments]
