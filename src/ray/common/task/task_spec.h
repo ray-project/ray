@@ -229,6 +229,12 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return The labels that are required for the execution of this task on a node.
   const LabelSelector &GetLabelSelector() const;
 
+  /// Return the list of label selectors for fallback strategy scheduling.
+  /// this task on.
+  ///
+  /// \return Label selectors to fall back on when scheduling a task on a node.
+  const std::vector<LabelSelector> &GetFallbackStrategy() const;
+
   const rpc::SchedulingStrategy &GetSchedulingStrategy() const;
 
   bool IsNodeAffinitySchedulingStrategy() const;
@@ -382,6 +388,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   // Field storing label selector for scheduling Task on a node. Initialized in constuctor
   // in ComputeResources() call.
   std::shared_ptr<LabelSelector> label_selector_;
+  // Field storing the fallback scheduling strategy. This is a list of
+  // LabelSelectors to try in-order.
+  std::shared_ptr<std::vector<LabelSelector>> fallback_strategy_;
 };
 
 }  // namespace ray
