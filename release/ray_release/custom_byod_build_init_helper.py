@@ -21,12 +21,13 @@ def _generate_custom_build_step_key(image: str) -> str:
 def get_images_from_tests(tests: List[Test]) -> List[Tuple[str, str, str]]:
     """Get a list of custom BYOD images to build from a list of tests."""
     custom_byod_images = set()
+    build_id = os.environ.get("RAYCI_BUILD_ID", "") or "$RAYCI_BUILD_ID"
     for test in tests:
         if not test.require_custom_byod_image():
             continue
         custom_byod_image_build = (
-            test.get_anyscale_byod_image(),
-            test.get_anyscale_base_byod_image(),
+            test.get_anyscale_byod_image(build_id),
+            test.get_anyscale_base_byod_image(build_id),
             test.get_byod_post_build_script(),
         )
         logger.info(f"To be built: {custom_byod_image_build[0]}")
