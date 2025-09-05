@@ -118,23 +118,6 @@ class _NoIOSerializableParquetFragment:
             self._fragment.partition_expression,
         )
 
-    def deserialize(self) -> "ParquetFileFragment":
-        # Implicitly trigger S3 subsystem initialization by importing
-        # pyarrow.fs.
-        import pyarrow.fs  # noqa: F401
-
-        (file_format, path, filesystem, partition_expression) = cloudpickle.loads(
-            self._data
-        )
-        return file_format.make_fragment(path, filesystem, partition_expression)
-
-
-# Visible for test mocking.
-def _deserialize_fragments(
-    serialized_fragments: List[_NoIOSerializableFragmentWrapper],
-) -> List["pyarrow._dataset.ParquetFileFragment"]:
-    return [p.deserialize() for p in serialized_fragments]
-
 
 def check_for_legacy_tensor_type(schema):
     """Check for the legacy tensor extension type and raise an error if found.
