@@ -31,7 +31,6 @@ from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_partitioning import PathPartitionEncoder
 from ray.tests.conftest import *  # noqa
 
-
 # Set the test timeout to 6 minutes
 pytestmark = pytest.mark.timeout(360)
 
