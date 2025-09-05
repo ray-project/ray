@@ -1,8 +1,6 @@
 import enum
 import os
 
-from ray._private.runtime_env.default_impl import get_protocols_provider
-
 
 class ProtocolsProvider:
     _MISSING_DEPENDENCIES_WARNING = (
@@ -210,11 +208,9 @@ class ProtocolsProvider:
                 fout.write(fin.read())
 
 
-_protocols_provider = get_protocols_provider()
-
 Protocol = enum.Enum(
     "Protocol",
-    {protocol.upper(): protocol for protocol in _protocols_provider.get_protocols()},
+    {protocol.upper(): protocol for protocol in ProtocolsProvider.get_protocols()},
 )
 
 
@@ -223,7 +219,7 @@ def _remote_protocols(cls):
     # Returns a list of protocols that support remote storage
     # These protocols should only be used with paths that end in ".zip" or ".whl"
     return [
-        cls[protocol.upper()] for protocol in _protocols_provider.get_remote_protocols()
+        cls[protocol.upper()] for protocol in ProtocolsProvider.get_remote_protocols()
     ]
 
 
@@ -231,7 +227,7 @@ Protocol.remote_protocols = _remote_protocols
 
 
 def _download_remote_uri(self, source_uri, dest_file):
-    return _protocols_provider.download_remote_uri(self.value, source_uri, dest_file)
+    return ProtocolsProvider.download_remote_uri(self.value, source_uri, dest_file)
 
 
 Protocol.download_remote_uri = _download_remote_uri
