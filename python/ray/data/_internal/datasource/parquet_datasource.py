@@ -482,7 +482,7 @@ def _fetch_parquet_file_info(
     to_batches_kwargs: Optional[Dict[str, Any]],
     columns: Optional[List[str]],
     schema: Optional["pyarrow.Schema"],
-) -> Optional[int]:
+) -> "_ParquetFileInfo":
     # If the fragment has no row groups, it's an empty or metadata-only file.
     # Skip it by returning empty sample info.
     #
@@ -496,7 +496,8 @@ def _fetch_parquet_file_info(
     # Only sample the first row group.
     row_group_fragment = fragment.original.subset(row_group_ids=[0])
     batch_size = max(
-        min(row_group_fragment.metadata.num_rows, PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS), 1
+        min(row_group_fragment.metadata.num_rows, PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS),
+        1
     )
 
     # Use the batch_size calculated above, and ignore the one specified by user if set.
@@ -549,7 +550,7 @@ def _estimate_files_encoding_ratio(
     if not DataContext.get_current().decoding_size_estimation:
         return PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
 
-    assert len(sampled_file_infos) == len(sampled_fragments)
+    assert len(file_infos) == len(fragments)
 
     # Estimate size of the rows in a file in memory
     estimated_in_mem_size_arr = [
