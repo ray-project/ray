@@ -1,7 +1,7 @@
 import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
 
 from starlette.types import Scope
 
@@ -812,6 +812,44 @@ class DeploymentSnapshot:
                 for d in self.decisions
             ],
         }
+
+
+@dataclass(frozen=True)
+class InternalAutoscalingConfig:
+    """Normalized, typed view for autoscaling config used by the controller.
+
+    This removes the need for dual dict vs. object access patterns.
+    Only the fields needed by the controller are exposed here.
+    """
+
+    name: str = "default"
+    look_back_period_s: Optional[float] = None
+
+
+def normalize_autoscaling_config(
+    cfg: Union[dict, Any, None]
+) -> Optional[InternalAutoscalingConfig]:
+    """Normalize a user autoscaling config (dict or object) into a typed view.
+
+    Returns None if cfg is falsy.
+    - dict: expects keys like {"policy": str, "look_back_period_s": float}
+    - object: reads attributes `.name` and `.look_back_period_s` if present
+    """
+    if not cfg:
+        return None
+
+    # Dict-style configs (legacy/tests)
+    if isinstance(cfg, dict):
+        name = cfg.get("policy") or cfg.get("name") or "default"
+        look_back_period_s = cfg.get("look_back_period_s")
+        return InternalAutoscalingConfig(
+            name=name, look_back_period_s=look_back_period_s
+        )
+
+    # Object / pydantic-like
+    name = getattr(cfg, "name", None) or "default"
+    look_back_period_s = getattr(cfg, "look_back_period_s", None)
+    return InternalAutoscalingConfig(name=name, look_back_period_s=look_back_period_s)
 
 
 SnapshotSignature = Tuple[int, int, Optional[int], Optional[int], str, float]

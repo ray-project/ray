@@ -20,6 +20,7 @@ from ray.serve._private.common import (
     RequestRoutingInfo,
     RunningReplicaInfo,
     TargetCapacityDirection,
+    normalize_autoscaling_config,
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
@@ -398,11 +399,9 @@ class ServeController:
                 autoscaling_config = details.deployment_config.autoscaling_config
                 if not autoscaling_config:
                     continue
-                current_replicas = len(getattr(details, "replicas", []) or [])
-                raw_target = getattr(details, "target_num_replicas", None)
-                current_target = (
-                    int(raw_target) if raw_target is not None else current_replicas
-                )
+                norm_cfg = normalize_autoscaling_config(autoscaling_config)
+                current_replicas = len(details.replicas)
+                current_target = int(details.target_num_replicas)
                 dep_id = DeploymentID(name=dep_name, app_name=app_name)
                 snapshot = self.autoscaling_state_manager.get_observability_snapshot(
                     dep_id, current_target
@@ -413,14 +412,8 @@ class ServeController:
                 max_repl_adj = snapshot["max_replicas"]
                 total_requests = snapshot["total_requests"]
 
-                if isinstance(autoscaling_config, dict):
-                    policy_name = autoscaling_config.get("policy", "default")
-                    look_back_period_s = autoscaling_config.get("look_back_period_s")
-                else:
-                    policy_name = getattr(autoscaling_config, "name", "default")
-                    look_back_period_s = getattr(
-                        autoscaling_config, "look_back_period_s", None
-                    )
+                policy_name = norm_cfg.name
+                look_back_period_s = norm_cfg.look_back_period_s
 
                 if proposed_replicas > current_replicas:
                     scaling_status = "UPSCALING"
