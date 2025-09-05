@@ -21,7 +21,7 @@ class MockTaskProcessorAdapter(TaskProcessorAdapter):
         self._config = config
         self.register_task_handle_mock = MagicMock()
 
-    def initialize(self, config: TaskProcessorConfig):
+    def initialize(self):
         pass
 
     def register_task_handle(self, func, name=None):
