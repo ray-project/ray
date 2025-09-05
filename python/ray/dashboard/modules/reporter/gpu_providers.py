@@ -327,7 +327,9 @@ class NvidiaGpuProvider(GpuProvider):
                         gpu_utilization=int(nv_process.smUtil),
                     )
             except self._pynvml.NVMLError as e:
-                logger.debug(f"Failed to retrieve GPU processes using `nvmlDeviceGetProcessesUtilizationInfo`, fallback to `nvmlDeviceGetComputeRunningProcesses` and `nvmlDeviceGetGraphicsRunningProcesses`: {e}")
+                logger.debug(
+                    f"Failed to retrieve GPU processes using `nvmlDeviceGetProcessesUtilizationInfo`, fallback to `nvmlDeviceGetComputeRunningProcesses` and `nvmlDeviceGetGraphicsRunningProcesses`: {e}"
+                )
                 # Fallback to older API for compatibility with older drivers
                 try:
                     nv_comp_processes = (
