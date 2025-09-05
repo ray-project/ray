@@ -291,14 +291,14 @@ class ParquetDatasource(Datasource):
         #     used to limit amount of memory pressure
         sampled_fragments = _sample_fragments(
             self._pq_fragments,
-            to_batches_kwargs=to_batch_kwargs,
-            columns=data_columns,
-            schema=self._read_schema,
-            local_scheduling=self._local_scheduling,
         )
 
         sampled_file_infos = _fetch_file_infos(
-            sampled_fragments, to_batch_kwargs, columns, schema, self._local_scheduling
+            sampled_fragments,
+            to_batches_kwargs=to_batch_kwargs,
+            columns=columns,
+            schema=schema,
+            local_scheduling=self._local_scheduling
         )
 
         self._encoding_ratio = _estimate_files_encoding_ratio(
@@ -558,6 +558,7 @@ def _estimate_files_encoding_ratio(
 
 def _fetch_file_infos(
     sampled_fragments: List[_ParquetFragment],
+    *,
     to_batches_kwargs: Optional[Dict[str, Any]],
     columns: Optional[List[str]],
     schema: Optional["pyarrow.Schema"],
