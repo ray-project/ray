@@ -110,12 +110,19 @@ class _NoIOSerializableParquetFragment:
         return self._fragment
 
     def __reduce__(self):
-        return self._fragment.format.make_fragment, (
+        return _NoIOSerializableParquetFragment.make_fragment, (
             self._fragment.path,
             self._fragment.filesystem,
             self._fragment.partition_expression,
-            file_size
+            self._file_size
         )
+
+    @staticmethod
+    def make_fragment(
+        format, path, filesystem, partition_expression, file_size
+    ):
+        fragment = format.make_fragment(path, filesystem, partition_expression)
+        return _NoIOSerializableParquetFragment(fragment, file_size)
 
 
 def check_for_legacy_tensor_type(schema):
