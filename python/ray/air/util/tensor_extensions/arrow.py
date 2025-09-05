@@ -36,6 +36,10 @@ PYARROW_VERSION = get_pyarrow_version()
 MIN_PYARROW_VERSION_SCALAR_SUBCLASS = parse_version("9.0.0")
 # Minimum version supporting `zero_copy_only` flag in `ChunkedArray.to_numpy`
 MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
+# Minimum version supporting Arrow's native FixedShapeTensorArray
+MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY = parse_version("12.0.0")
+# Minimum version supporting FixedShapeTensorScalar and FixedShapeTensorType
+MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALARS = parse_version("18.0.0")
 
 NUM_BYTES_PER_UNICODE_CHAR = 4
 
@@ -52,6 +56,27 @@ ARROW_EXTENSION_SERIALIZATION_FORMAT = _SerializationFormat(
     if env_integer("RAY_DATA_ARROW_EXTENSION_SERIALIZATION_LEGACY_JSON_FORMAT", 0) == 1
     else _SerializationFormat.CLOUDPICKLE  # default
 )
+
+# Conditional imports for PyArrow features that are only available in newer versions
+# FixedShapeTensorArray was introduced in PyArrow 12.0.0
+if (
+    PYARROW_VERSION is None
+    or PYARROW_VERSION >= MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY
+):
+    from pyarrow import FixedShapeTensorArray, FixedShapeTensorType
+else:
+    FixedShapeTensorArray = None
+    FixedShapeTensorType = None
+
+# FixedShapeTensorScalar and FixedShapeTensorType were introduced in PyArrow 18.0.0
+if (
+    PYARROW_VERSION is None
+    or PYARROW_VERSION >= MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALARS
+):
+    from pyarrow import FixedShapeTensorScalar
+else:
+    FixedShapeTensorScalar = None
+
 
 # List of scalar types supported by Arrow's FixedShapeTensorArray
 _FIXED_SHAPE_TENSOR_ARRAY_SUPPORTED_SCALAR_TYPES = (
@@ -439,7 +464,10 @@ def get_arrow_extension_fixed_shape_tensor_types():
     """Returns list of Arrow extension types holding multidimensional
     tensors of *fixed* shape
     """
-    return ArrowTensorType, ArrowTensorTypeV2, FixedShapeTensorType
+    types = (ArrowTensorType, ArrowTensorTypeV2)
+    if FixedShapeTensorType is not None:
+        types = types + (FixedShapeTensorType,)
+    return types
 
 
 @DeveloperAPI
@@ -529,12 +557,7 @@ class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
         """
         Convert an ExtensionScalar to a tensor element.
         """
-        raw_values = scalar.value.values
-        shape = scalar.type.shape
-        value_type = raw_values.type
-        offset = raw_values.offset
-        data_buffer = raw_values.buffers()[1]
-        return _to_ndarray_helper(shape, value_type, offset, data_buffer)
+        return _fixed_shape_extension_scalar_to_ndarray(scalar)
 
     def __str__(self) -> str:
         return (
@@ -590,6 +613,20 @@ class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
 
     def __hash__(self) -> int:
         return hash((type(self), self.extension_name, self.storage_type, self._shape))
+
+
+def _fixed_shape_extension_scalar_to_ndarray(
+    scalar: "pa.ExtensionScalar",
+) -> np.ndarray:
+    """
+    Convert an ExtensionScalar to a tensor element.
+    """
+    raw_values = scalar.value.values
+    shape = scalar.type.shape
+    value_type = raw_values.type
+    offset = raw_values.offset
+    data_buffer = raw_values.buffers()[1]
+    return _to_ndarray_helper(shape, value_type, offset, data_buffer)
 
 
 @PublicAPI(stability="beta")
@@ -831,12 +868,12 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
         from ray.data import DataContext
 
         ctx = DataContext.get_current()
-
         if (
             ctx.use_arrow_native_fixed_shape_tensor_type
             and scalar_dtype in _FIXED_SHAPE_TENSOR_ARRAY_SUPPORTED_SCALAR_TYPES
+            and FixedShapeTensorArray is not None
         ):
-            return pa.FixedShapeTensorArray.from_numpy_ndarray(arr)
+            return FixedShapeTensorArray.from_numpy_ndarray(arr)
         else:
             if ctx.use_arrow_tensor_v2:
                 tensor_type = ArrowTensorTypeV2(element_shape, scalar_dtype)
@@ -1227,7 +1264,9 @@ class ArrowVariableShapedTensorArray(
             # NOTE: While `ArrowTensorScalar` implements ndarray protocol,
             #       `FixedShapeTensorScalar` is not and hence have to be handled
             #       explicitly
-            if isinstance(a, FixedShapeTensorScalar):
+            if FixedShapeTensorScalar is not None and isinstance(
+                a, FixedShapeTensorScalar
+            ):
                 a = a.to_numpy()
             else:
                 a = np.asarray(a)

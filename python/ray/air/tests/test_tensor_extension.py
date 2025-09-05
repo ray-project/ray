@@ -15,6 +15,7 @@ from ray.air.util.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     ArrowVariableShapedTensorArray,
     ArrowVariableShapedTensorType,
+    _fixed_shape_extension_scalar_to_ndarray,
 )
 from ray.air.util.tensor_extensions.pandas import TensorArray, TensorDtype
 from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
@@ -557,6 +558,7 @@ def test_arrow_tensor_array_getitem(chunked, restore_data_context, tensor_format
         t_arr = pa.chunked_array(t_arr)
 
     pyarrow_version = get_pyarrow_version()
+
     if (
         chunked
         and pyarrow_version >= parse_version("8.0.0")
@@ -569,17 +571,29 @@ def test_arrow_tensor_array_getitem(chunked, restore_data_context, tensor_format
             np.testing.assert_array_equal(item, arr[idx])
     else:
         for idx in range(outer_dim):
-            np.testing.assert_array_equal(t_arr[idx].to_numpy(), arr[idx])
+            item = t_arr[idx]
+            if pyarrow_version >= parse_version("16.0.0"):
+                # Returns native FixedShapeTensorScalar
+                np.testing.assert_array_equal(item.to_numpy(), arr[idx])
+            else:
+                # Returns an ExtensionScalar
+                # type: FixedShapeTensorType
+                np.testing.assert_array_equal(_fixed_shape_extension_scalar_to_ndarray(item), arr[idx])
 
             # NOTE: In addition we verify that for existing ``ArrowTensorScalar``
             #       implements `__array__` method therefore implementing Numpy
             #       array protocol
             if tensor_format != "arrow_native":
-                np.testing.assert_array_equal(t_arr[idx], arr[idx])
+                np.testing.assert_array_equal(item, arr[idx])
 
     # Test __iter__.
     for t_subarr, subarr in zip(t_arr, arr):
-        np.testing.assert_array_equal(t_subarr.to_numpy(), subarr)
+        if pyarrow_version >= parse_version("16.0.0"):
+            # Returns native FixedShapeTensorScalar
+            np.testing.assert_array_equal(t_subarr.to_numpy(), subarr)
+        else:
+            # Returns an ExtensionScalar
+            np.testing.assert_array_equal(_fixed_shape_extension_scalar_to_ndarray(t_subarr), subarr)
 
     # Test to_pylist.
     if tensor_format == "arrow_native":
@@ -615,7 +629,13 @@ def test_arrow_tensor_array_getitem(chunked, restore_data_context, tensor_format
             np.testing.assert_array_equal(item, arr[idx])
     else:
         for idx in range(1, outer_dim):
-            np.testing.assert_array_equal(t_arr2[idx - 1].to_numpy(), arr[idx])
+            item = t_arr2[idx - 1]
+            if pyarrow_version >= parse_version("16.0.0"):
+                # Returns native FixedShapeTensorScalar
+                np.testing.assert_array_equal(item.to_numpy(), arr[idx])
+            else:
+                # Returns an ExtensionScalar
+                np.testing.assert_array_equal(_fixed_shape_extension_scalar_to_ndarray(item), arr[idx])
 
 
 @pytest.mark.parametrize("tensor_format", ["arrow_native", "v1", "v2"])
