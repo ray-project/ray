@@ -30,14 +30,6 @@ if [[ "${RAYCI_DISABLE_JAVA:-false}" != "true" && "${RAY_INSTALL_JAVA:-1}" == "1
   export JAVA_HOME="${JAVA_BIN%jre/bin/java}"
 fi
 
-# Install ray dashboard dependencies.
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash
-source "$HOME"/.nvm/nvm.sh
-
-NODE_VERSION="14"
-nvm install "$NODE_VERSION"
-nvm use "$NODE_VERSION"
-
 # Install bazel
 mkdir -p "$HOME"/bin
 if [[ "${HOSTTYPE}" == "aarch64" || "${HOSTTYPE}" = "arm64" ]]; then
