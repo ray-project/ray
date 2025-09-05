@@ -137,7 +137,7 @@ RLlib is an open-source library for reinforcement learning (RL), offering suppor
 
 .. figure:: /images/rllib_use_case.png
 
-   Decentralized distributed proximal polixy optimiation (DD-PPO) architecture.
+   Decentralized distributed proximal policy optimization (DD-PPO) architecture.
 
 Learn more about reinforcement learning with the following resources.
 

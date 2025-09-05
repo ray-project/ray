@@ -54,6 +54,7 @@ steps:
     tags:
       - serve
       - python
+      - skip-on-premerge
     instance_type: large
     soft_fail: true
     commands:
@@ -68,6 +69,7 @@ steps:
     tags:
       - serve
       - python
+      - skip-on-premerge
     instance_type: large
     soft_fail: true
     commands:

@@ -7,7 +7,7 @@ from packaging.version import Version
 
 import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray._common.utils import get_or_create_event_loop
-from ray._common.network_utils import build_address
+from ray._common.network_utils import build_address, is_localhost
 from ray.dashboard.optional_deps import aiohttp, aiohttp_cors, hdrs
 
 logger = logging.getLogger(__name__)
@@ -44,10 +44,17 @@ class HttpServerAgent:
             try:
                 site = aiohttp.web.TCPSite(
                     self.runner,
-                    "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0",
+                    self.ip,
                     self.listen_port,
                 )
                 await site.start()
+                if not is_localhost(self.ip):
+                    local_site = aiohttp.web.TCPSite(
+                        self.runner,
+                        "127.0.0.1",
+                        self.listen_port,
+                    )
+                    await local_site.start()
                 if attempt > 0:
                     logger.info(
                         f"Successfully started agent on port {self.listen_port} "

@@ -28,9 +28,9 @@
 #include "ray/common/asio/io_service_pool.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
+#include "ray/observability/open_telemetry_metric_recorder.h"
 #include "ray/stats/metric.h"
 #include "ray/stats/metric_exporter.h"
-#include "ray/telemetry/open_telemetry_metric_recorder.h"
 #include "ray/util/logging.h"
 #include "ray/util/network_util.h"
 
@@ -40,7 +40,7 @@ namespace stats {
 
 #include <boost/asio.hpp>
 
-using OpenTelemetryMetricRecorder = ray::telemetry::OpenTelemetryMetricRecorder;
+using OpenTelemetryMetricRecorder = ray::observability::OpenTelemetryMetricRecorder;
 
 // TODO(sang) Put all states and logic into a singleton class Stats.
 static std::shared_ptr<IOServicePool> metrics_io_service_pool;
@@ -90,14 +90,6 @@ static inline void Init(
       absl::Milliseconds(std::max(RayConfig::instance().metrics_report_interval_ms() / 2,
                                   static_cast<uint64_t>(500))));
   // Register the metric recorder.
-  if (RayConfig::instance().enable_open_telemetry()) {
-    OpenTelemetryMetricRecorder::GetInstance().RegisterGrpcExporter(
-        BuildAddress("127.0.0.1", metrics_agent_port),
-        std::chrono::milliseconds(
-            absl::ToInt64Milliseconds(StatsConfig::instance().GetReportInterval())),
-        std::chrono::milliseconds(
-            absl::ToInt64Milliseconds(StatsConfig::instance().GetHarvestInterval())));
-  }
   if (should_enable_open_census()) {
     metrics_io_service_pool = std::make_shared<IOServicePool>(1);
     metrics_io_service_pool->Run();
@@ -120,6 +112,27 @@ static inline void Init(
     f();
   }
   StatsConfig::instance().SetIsInitialized(true);
+}
+
+static inline void InitOpenTelemetryExporter(const int metrics_agent_port,
+                                             const Status &metrics_agent_server_status) {
+  if (!RayConfig::instance().enable_open_telemetry()) {
+    return;
+  }
+  if (!metrics_agent_server_status.ok()) {
+    RAY_LOG(ERROR) << "Failed to initialize OpenTelemetry exporter. Data will not be "
+                      "exported to the "
+                   << "metrics agent. Server status: " << metrics_agent_server_status;
+    return;
+  }
+  OpenTelemetryMetricRecorder::GetInstance().RegisterGrpcExporter(
+      /*endpoint=*/std::string("127.0.0.1:") + std::to_string(metrics_agent_port),
+      /*interval=*/
+      std::chrono::milliseconds(
+          absl::ToInt64Milliseconds(StatsConfig::instance().GetReportInterval())),
+      /*timeout=*/
+      std::chrono::milliseconds(
+          absl::ToInt64Milliseconds(StatsConfig::instance().GetHarvestInterval())));
 }
 
 /// Shutdown the initialized stats library.

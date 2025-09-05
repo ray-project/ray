@@ -34,7 +34,7 @@
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
-#include "ray/common/test_util.h"
+#include "ray/common/test_utils.h"
 #include "ray/util/event.h"
 
 using ::testing::_;
@@ -437,12 +437,12 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFlushEvents) {
     task_event->ToRpcRayEvents(ray_events_pair);
     auto [task_definition_event, task_execution_event] = ray_events_pair;
     if (task_definition_event) {
-      auto event = expected_ray_events_data.add_events();
-      *event = std::move(task_definition_event.value());
+      auto new_event = expected_ray_events_data.add_events();
+      *new_event = std::move(task_definition_event.value());
     }
     if (task_execution_event) {
-      auto event = expected_ray_events_data.add_events();
-      *event = std::move(task_execution_event.value());
+      auto new_event = expected_ray_events_data.add_events();
+      *new_event = std::move(task_execution_event.value());
     }
   }
 
@@ -752,12 +752,12 @@ TEST_P(TaskEventBufferTestLimitBufferDifferentDestination,
     event->ToRpcRayEvents(ray_events_pair);
     auto [task_definition_event, task_execution_event] = ray_events_pair;
     if (task_definition_event) {
-      auto event = expected_ray_events_data.add_events();
-      *event = std::move(task_definition_event.value());
+      auto new_event = expected_ray_events_data.add_events();
+      *new_event = std::move(task_definition_event.value());
     }
     if (task_execution_event) {
-      auto event = expected_ray_events_data.add_events();
-      *event = std::move(task_execution_event.value());
+      auto new_event = expected_ray_events_data.add_events();
+      *new_event = std::move(task_execution_event.value());
     }
   }
 

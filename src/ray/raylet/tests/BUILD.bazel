@@ -33,6 +33,7 @@ ray_cc_test(
         "//:ray_mock",
         "//src/ray/raylet:worker_pool",
         "//src/ray/util:path_utils",
+        "//src/ray/util:raii",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -69,8 +70,6 @@ ray_cc_test(
     deps = [
         "//:ray_mock",
         "//src/ray/common:id",
-        "//src/ray/common:task_common",
-        "//src/ray/gcs/tests:gcs_test_util_lib",
         "//src/ray/raylet:placement_group_resource_manager",
         "@com_google_googletest//:gtest_main",
     ],
@@ -95,31 +94,32 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "dependency_manager_test",
+    name = "lease_dependency_manager_test",
     size = "small",
-    srcs = ["dependency_manager_test.cc"],
+    srcs = ["lease_dependency_manager_test.cc"],
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
-        "//src/ray/common:task_common",
-        "//src/ray/common:test_util",
-        "//src/ray/raylet:dependency_manager",
+        "//src/ray/common:lease",
+        "//src/ray/common:test_utils",
+        "//src/ray/raylet:lease_dependency_manager",
         "@com_google_googletest//:gtest_main",
     ],
 )
 
 ray_cc_test(
-    name = "local_task_manager_test",
+    name = "local_lease_manager_test",
     size = "small",
-    srcs = ["local_task_manager_test.cc"],
+    srcs = ["local_lease_manager_test.cc"],
     tags = ["team:core"],
     deps = [
         ":util",
         "//:ray_mock",
         "//src/ray/common:id",
+        "//src/ray/common:lease",
         "//src/ray/common:task_common",
-        "//src/ray/common:test_util",
-        "//src/ray/raylet:local_task_manager",
+        "//src/ray/common:test_utils",
+        "//src/ray/raylet:local_lease_manager",
         "//src/ray/raylet/scheduling:cluster_resource_scheduler",
         "@com_google_googletest//:gtest_main",
     ],
@@ -134,7 +134,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":util",
-        "//src/ray/common:task_common",
+        "//src/ray/common:lease",
         "//src/ray/raylet:worker_killing_policy",
         "@com_google_googletest//:gtest_main",
     ],
@@ -149,7 +149,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":util",
-        "//src/ray/common:task_common",
+        "//src/ray/common:lease",
         "//src/ray/raylet:worker_killing_policy",
         "@com_google_googletest//:gtest_main",
     ],
@@ -164,7 +164,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":util",
-        "//src/ray/common:task_common",
+        "//src/ray/common:lease",
         "//src/ray/raylet:worker_killing_policy",
         "@com_google_googletest//:gtest_main",
     ],
@@ -179,11 +179,14 @@ ray_cc_test(
         ":util",
         "//:ray_fakes",
         "//:ray_mock",
+        "//src/fakes/ray/rpc/raylet:fake_raylet_client",
+        "//src/ray/common:lease",
         "//src/ray/common:ray_object",
+        "//src/ray/common:task_common",
         "//src/ray/object_manager/plasma:plasma_client",
         "//src/ray/raylet:local_object_manager_interface",
         "//src/ray/raylet:node_manager",
-        "//src/ray/raylet/scheduling:cluster_task_manager",
+        "//src/ray/raylet/scheduling:cluster_lease_manager",
         "//src/ray/util:macros",
         "@com_google_googletest//:gtest_main",
     ],

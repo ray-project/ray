@@ -1,0 +1,10 @@
+name: "ray-llm-py$PYTHON_VERSION-cu$CUDA_VERSION-base"
+froms: ["cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cu$CUDA_VERSION-base"]
+dockerfile: docker/ray-llm/Dockerfile
+srcs:
+  - python/requirements.txt
+  - python/deplocks/llm/rayllm_py311_cu128.lock
+build_args:
+  - BASE_IMAGE=cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cu$CUDA_VERSION-base
+tags:
+  - cr.ray.io/rayproject/ray-llm-py$PYTHON_VERSION-cu$CUDA_VERSION-base

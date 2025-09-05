@@ -24,9 +24,9 @@
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
+#include "ray/util/raii.h"
 #include "ray/util/stream_redirection.h"
 #include "ray/util/stream_redirection_options.h"
-#include "ray/util/util.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 DEFINE_string(redis_address, "", "The ip address of redis.");
@@ -37,7 +37,7 @@ DEFINE_string(stdout_filepath, "", "The filepath to dump gcs server stdout.");
 DEFINE_string(stderr_filepath, "", "The filepath to dump gcs server stderr.");
 DEFINE_int32(gcs_server_port, 0, "The port of gcs server.");
 DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
-DEFINE_string(config_list, "", "The config list of raylet.");
+DEFINE_string(config_list, "", "The config list of gcs.");
 DEFINE_string(redis_username, "", "The username of Redis.");
 DEFINE_string(redis_password, "", "The password of Redis.");
 DEFINE_bool(retry_redis, false, "Whether to retry to connect to Redis.");
@@ -109,8 +109,10 @@ int main(int argc, char *argv[]) {
 
   // IO Service for main loop.
   SetThreadName("gcs_server");
-  instrumented_io_context main_service(/*enable_lag_probe=*/true,
-                                       /*running_on_single_thread=*/true);
+  instrumented_io_context main_service(
+      /*enable_metrics=*/RayConfig::instance().emit_main_service_metrics(),
+      /*running_on_single_thread=*/true,
+      "gcs_server_main_io_context");
   // Ensure that the IO service keeps running. Without this, the main_service will exit
   // as soon as there is no more work to be processed.
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
@@ -123,7 +125,7 @@ int main(int argc, char *argv[]) {
                                             {ray::stats::VersionKey, kRayVersion},
                                             {ray::stats::NodeAddressKey, node_ip_address},
                                             {ray::stats::SessionNameKey, session_name}};
-  ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
+  ray::stats::Init(global_tags, metrics_agent_port, ray::WorkerID::Nil());
 
   // Initialize event framework.
   if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
@@ -155,6 +157,7 @@ int main(int argc, char *argv[]) {
   gcs_server_config.redis_username = redis_username;
   gcs_server_config.retry_redis = retry_redis;
   gcs_server_config.node_ip_address = node_ip_address;
+  gcs_server_config.metrics_agent_port = metrics_agent_port;
   gcs_server_config.log_dir = log_dir;
   gcs_server_config.raylet_config_list = config_list;
   gcs_server_config.session_name = session_name;

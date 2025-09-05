@@ -31,7 +31,7 @@ This section presents example Ray workloads to try out on your Kubernetes cluste
 - {ref}`kuberay-batch-inference-example`
 - {ref}`kuberay-kueue-priority-scheduling-example`
 - {ref}`kuberay-kueue-gang-scheduling-example`
-- {ref}`kuberay-distributed-checkpointing-gcsefuse`
+- {ref}`kuberay-distributed-checkpointing-gcsfuse`
 - {ref}`kuberay-modin-example`
 - {ref}`kuberay-rayservice-llm-example`
 - {ref}`kuberay-rayservice-deepseek-example`

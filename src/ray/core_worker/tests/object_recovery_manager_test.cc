@@ -20,17 +20,17 @@
 #include <utility>
 #include <vector>
 
+#include "fakes/ray/pubsub/subscriber.h"
 #include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
 #include "mock/ray/pubsub/publisher.h"
-#include "mock/ray/pubsub/subscriber.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
-#include "ray/common/test_util.h"
+#include "ray/common/test_utils.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/raylet_client/raylet_client.h"
+#include "ray/raylet_client/raylet_client_interface.h"
 
 namespace ray {
 namespace core {
@@ -124,7 +124,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
       : local_node_id_(NodeID::FromRandom()),
         io_context_("TestOnly.ObjectRecoveryManagerTestBase"),
         publisher_(std::make_shared<pubsub::MockPublisher>()),
-        subscriber_(std::make_shared<pubsub::MockSubscriber>()),
+        subscriber_(std::make_shared<pubsub::FakeSubscriber>()),
         object_directory_(std::make_shared<MockObjectDirectory>()),
         memory_store_(
             std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService())),
@@ -177,7 +177,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
   // Used by memory_store_.
   InstrumentedIOContextWithThread io_context_;
   std::shared_ptr<pubsub::MockPublisher> publisher_;
-  std::shared_ptr<pubsub::MockSubscriber> subscriber_;
+  std::shared_ptr<pubsub::FakeSubscriber> subscriber_;
   std::shared_ptr<MockObjectDirectory> object_directory_;
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;

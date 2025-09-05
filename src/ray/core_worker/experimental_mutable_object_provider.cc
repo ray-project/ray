@@ -242,9 +242,9 @@ void MutableObjectProvider::PollWriterClosure(
         object->GetData()->Data(),
         object->GetMetadata()->Data(),
         [this, &io_context, writer_object_id, remote_readers, num_replied](
-            const Status &status, const rpc::PushMutableObjectReply &reply) {
+            const Status &push_object_status, const rpc::PushMutableObjectReply &reply) {
           *num_replied += 1;
-          if (!status.ok()) {
+          if (!push_object_status.ok()) {
             RAY_LOG(ERROR)
                 << "Failed to transfer object to a remote node for an object id "
                 << writer_object_id << ". It can cause hang.";

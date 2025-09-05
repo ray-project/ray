@@ -30,26 +30,31 @@ OpenCensusProtoExporter::OpenCensusProtoExporter(const int port,
                                                  const WorkerID &worker_id,
                                                  size_t report_batch_size,
                                                  size_t max_grpc_payload_size)
-    : OpenCensusProtoExporter(
-          std::make_shared<rpc::MetricsAgentClientImpl>(address, port, io_service),
-          worker_id,
-          report_batch_size,
-          max_grpc_payload_size) {}
-
-OpenCensusProtoExporter::OpenCensusProtoExporter(
-    std::shared_ptr<rpc::MetricsAgentClient> agent_client,
-    const WorkerID &worker_id,
-    size_t report_batch_size,
-    size_t max_grpc_payload_size)
-    : worker_id_(worker_id),
+    : client_call_manager_(
+          std::make_unique<rpc::ClientCallManager>(io_service, /*record_stats=*/true)),
+      worker_id_(worker_id),
       report_batch_size_(report_batch_size),
       // To make sure we're not overflowing Agent's set gRPC max message size, we will be
       // tracking target payload binary size and make sure it stays w/in 95% of the
       // threshold
       proto_payload_size_threshold_bytes_((size_t)(max_grpc_payload_size * .95f)) {
   absl::MutexLock l(&mu_);
+  client_ = std::make_shared<rpc::MetricsAgentClientImpl>(
+      address, port, io_service, *client_call_manager_);
+}
+
+OpenCensusProtoExporter::OpenCensusProtoExporter(
+    std::shared_ptr<rpc::MetricsAgentClient> agent_client,
+    const WorkerID &worker_id,
+    size_t report_batch_size,
+    size_t max_grpc_payload_size)
+
+    : worker_id_(worker_id),
+      report_batch_size_(report_batch_size),
+      proto_payload_size_threshold_bytes_((size_t)(max_grpc_payload_size * .95f)) {
+  absl::MutexLock l(&mu_);
   client_ = std::move(agent_client);
-};
+}
 
 /// Hack. We want to add GlobalTags to all our metrics, but gRPC OpenCencus plugin is not
 /// configurable at all so we don't have chance to add our own tags. We use this hack to

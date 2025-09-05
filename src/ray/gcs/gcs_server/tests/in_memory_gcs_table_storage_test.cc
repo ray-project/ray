@@ -16,7 +16,7 @@
 
 #include <memory>
 
-#include "ray/common/test_util.h"
+#include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/tests/gcs_table_storage_test_base.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
@@ -26,7 +26,8 @@ namespace ray {
 class InMemoryGcsTableStorageTest : public gcs::GcsTableStorageTestBase {
  public:
   void SetUp() override {
-    gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>();
+    gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(
+        std::make_unique<gcs::InMemoryStoreClient>());
   }
 };
 

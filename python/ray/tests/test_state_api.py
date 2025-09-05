@@ -1,91 +1,94 @@
-import os
-import time
 import json
-import sys
+import os
 import signal
+import sys
+import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from typing import List
-from unittest.mock import MagicMock, AsyncMock, patch
-import yaml
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from click.testing import CliRunner
 import pytest
 import pytest_asyncio
-from ray._private.state_api_test_utils import (
-    get_state_api_manager,
-    create_api_options,
-    verify_schema,
-)
-from ray.util.state import get_job
-from ray.dashboard.modules.job.pydantic_models import JobDetails
-from ray.util.state.common import Humanify
+import yaml
+from click.testing import CliRunner
 
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 import ray
-import ray.dashboard.consts as dashboard_consts
-import ray._private.state as global_state
 import ray._private.ray_constants as ray_constants
-from ray._raylet import GcsClient, ActorID, JobID, TaskID
+import ray._private.state as global_state
+import ray.dashboard.consts as dashboard_consts
 from ray._common.network_utils import parse_address
-from ray._private.test_utils import (
-    run_string_as_driver,
-    find_free_port,
-)
 from ray._common.test_utils import (
     SignalActor,
     async_wait_for_condition,
     wait_for_condition,
 )
+from ray._private.state_api_test_utils import (
+    create_api_options,
+    get_state_api_manager,
+    verify_schema,
+)
+from ray._private.test_utils import (
+    find_free_port,
+    run_string_as_driver,
+)
+from ray._raylet import ActorID, GcsClient, JobID, NodeID, TaskID
 from ray.cluster_utils import cluster_not_supported
-from ray._raylet import NodeID
 from ray.core.generated.common_pb2 import (
     Address,
     CoreWorkerStats,
     ObjectRefInfo,
     TaskInfoEntry,
     TaskStatus,
-    WorkerType,
     TaskType,
+    WorkerType,
 )
-from ray.core.generated.gcs_service_pb2_grpc import TaskInfoGcsServiceStub
 from ray.core.generated.gcs_pb2 import (
-    TaskEvents,
-    TaskStateUpdate,
     ActorTableData,
     GcsNodeInfo,
     PlacementGroupTableData,
+    TaskEvents,
+    TaskStateUpdate,
     WorkerTableData,
 )
 from ray.core.generated.gcs_service_pb2 import (
     FilterPredicate,
     GcsStatus,
-    GetTaskEventsReply,
     GetAllActorInfoReply,
     GetAllNodeInfoReply,
     GetAllPlacementGroupReply,
     GetAllWorkerInfoReply,
+    GetTaskEventsReply,
 )
+from ray.core.generated.gcs_service_pb2_grpc import TaskInfoGcsServiceStub
 from ray.core.generated.node_manager_pb2 import GetObjectsInfoReply
 from ray.core.generated.reporter_pb2 import ListLogsReply, StreamLogReply
 from ray.core.generated.runtime_env_agent_pb2 import GetRuntimeEnvsInfoReply
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvState as RuntimeEnvStateProto,
 )
+from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.dashboard.state_aggregator import (
     GCS_QUERY_FAILURE_WARNING,
     NODE_QUERY_FAILURE_WARNING,
     StateAPIManager,
 )
 from ray.dashboard.state_api_utils import convert_filters_type
+from ray.dashboard.utils import ray_address_to_api_server_url
+from ray.job_submission import JobSubmissionClient
+from ray.runtime_env import RuntimeEnv
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.state import (
+    StateApiClient,
     get_actor,
+    get_job,
     get_node,
     get_objects,
     get_placement_group,
     get_task,
     get_worker,
     list_actors,
+    list_cluster_events,
     list_jobs,
     list_nodes,
     list_objects,
@@ -96,37 +99,33 @@ from ray.util.state import (
     summarize_actors,
     summarize_objects,
     summarize_tasks,
-    list_cluster_events,
-    StateApiClient,
 )
 from ray.util.state.common import (
     DEFAULT_RPC_TIMEOUT,
     ActorState,
+    GetApiOptions,
+    Humanify,
     ListApiOptions,
-    SummaryApiOptions,
     NodeState,
     ObjectState,
     PlacementGroupState,
     RuntimeEnvState,
+    StateSchema,
+    SummaryApiOptions,
     TaskState,
     WorkerState,
-    StateSchema,
     state_column,
-    GetApiOptions,
 )
-from ray.dashboard.utils import ray_address_to_api_server_url
 from ray.util.state.exception import DataSourceUnavailable, RayStateApiException
 from ray.util.state.state_cli import (
     AvailableFormat,
-    format_list_api_output,
     _parse_filter,
+    format_list_api_output,
+    ray_get,
+    ray_list,
     summary_state_cli_group,
 )
-from ray.util.state.state_cli import ray_get
-from ray.util.state.state_cli import ray_list
 from ray.util.state.state_manager import StateDataSourceClient
-from ray.job_submission import JobSubmissionClient
-from ray.runtime_env import RuntimeEnv
 
 """
 Unit tests
@@ -3460,9 +3459,9 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
 def test_state_api_server_enforce_concurrent_http_requests(
     api_func, monkeypatch, shutdown_only
 ):
-    import time
-    import threading
     import queue
+    import threading
+    import time
 
     # Set environment
     with monkeypatch.context() as m:

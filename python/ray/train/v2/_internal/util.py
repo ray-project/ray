@@ -1,6 +1,8 @@
 import contextlib
 import functools
+import logging
 import time
+import traceback
 from datetime import datetime
 from typing import (
     Any,
@@ -17,7 +19,11 @@ from typing import (
 
 import ray
 from ray.train._internal.utils import count_required_parameters
+from ray.train.v2._internal.exceptions import UserExceptionWithTraceback
 from ray.types import ObjectRef
+
+logger = logging.getLogger(__name__)
+
 
 T = TypeVar("T")
 
@@ -210,3 +216,25 @@ def get_callable_name(fn: Callable) -> str:
 
     # Fallback to the class name for objects that implement __call__
     return fn.__class__.__name__
+
+
+def construct_user_exception_with_traceback(
+    e: BaseException, exclude_frames: int = 0
+) -> UserExceptionWithTraceback:
+    """Construct a UserExceptionWithTraceback from a base exception.
+
+    Args:
+        e: The base exception to construct a UserExceptionWithTraceback from.
+        exclude_frames: The number of frames to exclude from the beginnning of
+            the traceback.
+
+    Returns:
+        A UserExceptionWithTraceback object.
+    """
+    # TODO(justinvyu): This is brittle and may break if the call stack
+    # changes. Figure out a more robust way to exclude these frames.
+    exc_traceback_str = traceback.format_exc(
+        limit=-(len(traceback.extract_tb(e.__traceback__)) - exclude_frames)
+    )
+    logger.error(f"Error in training function:\n{exc_traceback_str}")
+    return UserExceptionWithTraceback(e, traceback_str=exc_traceback_str)

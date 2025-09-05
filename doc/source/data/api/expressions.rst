@@ -1,7 +1,7 @@
 .. _expressions-api:
 
 Expressions API
-===============
+================
 
 .. currentmodule:: ray.data.expressions
 
@@ -19,6 +19,8 @@ Public API
 
     col
     lit
+    udf
+    download
 
 Expression Classes
 ------------------

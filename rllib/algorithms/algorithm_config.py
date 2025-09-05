@@ -143,6 +143,7 @@ class AlgorithmConfig(_Config):
         # Map any agent ID to "default_policy".
         return DEFAULT_MODULE_ID
 
+    # @OldAPIStack
     # TODO (sven): Deprecate in new API stack.
     @staticmethod
     def DEFAULT_POLICY_MAPPING_FN(aid, episode, worker, **kwargs):
@@ -3794,9 +3795,11 @@ class AlgorithmConfig(_Config):
                 True).
             restart_failed_sub_environments: If True and any sub-environment (within
                 a vectorized env) throws any error during env stepping, the
-                Sampler tries to restart the faulty sub-environment. This is done
+                EnvRunner tries to restart the faulty sub-environment. This is done
                 without disturbing the other (still intact) sub-environment and without
-                the EnvRunner crashing.
+                the EnvRunner crashing. You can raise
+                `ray.rllib.env.env_runner.StepFailedRecreateEnvError` from your
+                environment's `step` method to not log the error.
             num_consecutive_env_runner_failures_tolerance: The number of consecutive
                 times an EnvRunner failure (also for evaluation) is tolerated before
                 finally crashing the Algorithm. Only useful if either

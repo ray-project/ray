@@ -8,9 +8,14 @@ Ray Data provides a flexible and performant API for performing aggregations on :
 Basic Aggregations
 ------------------
 
-Ray Data provides several built-in aggregation functions like 
-* :class:`~ray.data.aggregate.Count`, * :class:`~ray.data.aggregate.Sum`, * :class:`~ray.data.aggregate.Mean`,
-* :class:`~ray.data.aggregate.Min`, * :class:`~ray.data.aggregate.Max`, * :class:`~ray.data.aggregate.Std`,
+Ray Data provides several built-in aggregation functions like:
+
+* :class:`~ray.data.aggregate.Count`
+* :class:`~ray.data.aggregate.Sum`
+* :class:`~ray.data.aggregate.Mean`
+* :class:`~ray.data.aggregate.Min`
+* :class:`~ray.data.aggregate.Max`
+* :class:`~ray.data.aggregate.Std`
 * :class:`~ray.data.aggregate.Quantile`
  
 These can be used directly with datasets like shown below:
@@ -145,7 +150,7 @@ Here's an example of creating a custom aggregator that calculates the Mean of va
 .. note::
     Internally, aggregations support both the :ref:`hash-shuffle backend <hash-shuffle>` and the :ref:`range based backend <range-partitioning-shuffle>`.
 
-    Hash-shuffling can provide better performance for aggregations in certain cases. For more information see `comparision between hash based shuffling and Range Based shuffling approach <https://www.anyscale.com/blog/ray-data-joins-hash-shuffle#performance-benchmarks/>`_ .
+    Hash-shuffling can provide better performance for aggregations in certain cases. For more information see `comparison between hash based shuffling and Range Based shuffling approach <https://www.anyscale.com/blog/ray-data-joins-hash-shuffle#performance-benchmarks/>`_ .
 
     To use the hash-shuffle algorithm for aggregations, you need to set the shuffle strategy explicitly:    
     ``ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE`` before creating a ``Dataset``

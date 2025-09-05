@@ -29,17 +29,13 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
+#include "ray/pubsub/publisher_interface.h"
 #include "ray/rpc/server_call.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
 namespace ray {
 
 namespace pubsub {
-
-using SubscriberID = UniqueID;
-using PublisherID = UniqueID;
-
-namespace pub_internal {
 
 class SubscriberState;
 
@@ -56,18 +52,18 @@ class EntityState {
   bool Publish(const std::shared_ptr<rpc::PubMessage> &pub_message, size_t msg_size);
 
   /// Manages the set of subscribers of this entity.
-  bool AddSubscriber(SubscriberState *subscriber);
-  bool RemoveSubscriber(const SubscriberID &id);
+  void AddSubscriber(SubscriberState *subscriber);
+  void RemoveSubscriber(const UniqueID &subscriber_id);
 
   /// Gets the current set of subscribers, keyed by subscriber IDs.
-  const absl::flat_hash_map<SubscriberID, SubscriberState *> &Subscribers() const;
+  const absl::flat_hash_map<UniqueID, SubscriberState *> &Subscribers() const;
 
   size_t GetNumBufferedBytes() const { return total_size_; }
 
  protected:
   // Subscribers of this entity.
   // The underlying SubscriberState is owned by Publisher.
-  absl::flat_hash_map<SubscriberID, SubscriberState *> subscribers_;
+  absl::flat_hash_map<UniqueID, SubscriberState *> subscribers_;
 
  private:
   // Tracks inflight messages. The messages have shared ownership by
@@ -103,16 +99,15 @@ class SubscriptionIndex {
 
   /// Adds a new subscriber and the key it subscribes to.
   /// When `key_id` is empty, the subscriber subscribes to all keys.
-  /// NOTE: The method is idempotent. If it adds a duplicated entry, it will be no-op.
-  bool AddEntry(const std::string &key_id, SubscriberState *subscriber);
+  void AddEntry(const std::string &key_id, SubscriberState *subscriber);
 
   /// Erases the subscriber from this index.
   /// Returns whether the subscriber exists before the call.
-  bool EraseSubscriber(const SubscriberID &subscriber_id);
+  void EraseSubscriber(const UniqueID &subscriber_id);
 
   /// Erases the subscriber from the particular key.
   /// When `key_id` is empty, the subscriber subscribes to all keys.
-  bool EraseEntry(const std::string &key_id, const SubscriberID &subscriber_id);
+  void EraseEntry(const std::string &key_id, const UniqueID &subscriber_id);
 
   /// Test only.
   /// Returns true if the entity id exists in the index.
@@ -122,11 +117,11 @@ class SubscriptionIndex {
   /// Test only.
   /// Returns true if the subscriber id exists in the index, including both per-entity
   /// and all-entity subscribers.
-  bool HasSubscriber(const SubscriberID &subscriber_id) const;
+  bool HasSubscriber(const UniqueID &subscriber_id) const;
 
   /// Returns a vector of subscriber ids that are subscribing to the given object ids.
   /// Test only.
-  std::vector<SubscriberID> GetSubscriberIdsByKeyId(const std::string &key_id) const;
+  std::vector<UniqueID> GetSubscriberIdsByKeyId(const std::string &key_id) const;
 
   int64_t GetNumBufferedBytes() const;
 
@@ -144,31 +139,30 @@ class SubscriptionIndex {
   absl::flat_hash_map<std::string, std::unique_ptr<EntityState>> entities_;
   // Mapping from subscriber IDs -> subscribed key ids.
   // Reverse index of key_id_to_subscribers_.
-  absl::flat_hash_map<SubscriberID, absl::flat_hash_set<std::string>>
-      subscribers_to_key_id_;
+  absl::flat_hash_map<UniqueID, absl::flat_hash_set<std::string>> subscribers_to_key_id_;
 };
 
 struct LongPollConnection {
   LongPollConnection(std::string *publisher_id,
                      google::protobuf::RepeatedPtrField<rpc::PubMessage> *pub_messages,
                      rpc::SendReplyCallback send_reply_callback)
-      : publisher_id(publisher_id),
-        pub_messages(pub_messages),
-        send_reply_callback(std::move(send_reply_callback)) {}
+      : publisher_id_(publisher_id),
+        pub_messages_(pub_messages),
+        send_reply_callback_(std::move(send_reply_callback)) {}
 
-  std::string *publisher_id;
-  google::protobuf::RepeatedPtrField<rpc::PubMessage> *pub_messages;
-  rpc::SendReplyCallback send_reply_callback;
+  std::string *publisher_id_;
+  google::protobuf::RepeatedPtrField<rpc::PubMessage> *pub_messages_;
+  rpc::SendReplyCallback send_reply_callback_;
 };
 
 /// Keeps the state of each connected subscriber.
 class SubscriberState {
  public:
-  SubscriberState(SubscriberID subscriber_id,
+  SubscriberState(UniqueID subscriber_id,
                   std::function<double()> get_time_ms,
                   uint64_t connection_timeout_ms,
                   int64_t publish_batch_size,
-                  PublisherID publisher_id)
+                  UniqueID publisher_id)
       : subscriber_id_(subscriber_id),
         get_time_ms_(std::move(get_time_ms)),
         connection_timeout_ms_(connection_timeout_ms),
@@ -214,11 +208,11 @@ class SubscriberState {
   bool IsActive() const;
 
   /// Returns the ID of this subscriber.
-  const SubscriberID &id() const { return subscriber_id_; }
+  const UniqueID &id() const { return subscriber_id_; }
 
  private:
   /// Subscriber ID, for logging and debugging.
-  const SubscriberID subscriber_id_;
+  const UniqueID subscriber_id_;
   /// Inflight long polling reply callback, for replying to the subscriber.
   std::unique_ptr<LongPollConnection> long_polling_connection_;
   /// Queued messages to publish.
@@ -232,62 +226,6 @@ class SubscriberState {
   /// The last time long polling was connected in milliseconds.
   double last_connection_update_time_ms_;
   std::string publisher_id_binary_;
-};
-
-}  // namespace pub_internal
-
-/// Publisher interface. Note that message ids are passed as a string to avoid templated
-/// definition which doesn't go well with virtual methods.
-class PublisherInterface {
- public:
-  virtual ~PublisherInterface() = default;
-
-  /// Handle a long poll request from `subscriber_id`.
-  ///
-  /// TODO(sang): Currently, we need to pass the callback for connection because we are
-  /// using long polling internally. This should be changed once the bidirectional grpc
-  /// streaming is supported.
-  virtual void ConnectToSubscriber(
-      const rpc::PubsubLongPollingRequest &request,
-      std::string *publisher_id,
-      google::protobuf::RepeatedPtrField<rpc::PubMessage> *pub_messages,
-      rpc::SendReplyCallback send_reply_callback) = 0;
-
-  /// Register the subscription.
-  ///
-  /// \param channel_type The type of the channel.
-  /// \param subscriber_id The node id of the subscriber.
-  /// \param key_id The key_id that the subscriber is subscribing to. std::nullopt if
-  /// subscribing to all.
-  /// \return True if registration is new. False otherwise.
-  virtual bool RegisterSubscription(const rpc::ChannelType channel_type,
-                                    const SubscriberID &subscriber_id,
-                                    const std::optional<std::string> &key_id) = 0;
-
-  /// Publish the given object id to subscribers.
-  ///
-  /// \param pub_message The message to publish.
-  /// Required to contain channel_type and key_id fields.
-  virtual void Publish(rpc::PubMessage pub_message) = 0;
-
-  /// Publish to the subscriber that the given key id is not available anymore.
-  /// It will invoke the failure callback on the subscriber side.
-  ///
-  /// \param channel_type The type of the channel.
-  /// \param key_id The message id to publish.
-  virtual void PublishFailure(const rpc::ChannelType channel_type,
-                              const std::string &key_id) = 0;
-
-  /// Unregister subscription. It means the given object id won't be published to the
-  /// subscriber anymore.
-  ///
-  /// \param channel_type The type of the channel.
-  /// \param subscriber_id The node id of the subscriber.
-  /// \param key_id The key_id of the subscriber. std::nullopt if subscribing to all.
-  /// \return True if erased. False otherwise.
-  virtual bool UnregisterSubscription(const rpc::ChannelType channel_type,
-                                      const SubscriberID &subscriber_id,
-                                      const std::optional<std::string> &key_id) = 0;
 };
 
 /// Protocol detail
@@ -321,7 +259,7 @@ class Publisher : public PublisherInterface {
             std::function<double()> get_time_ms,
             const uint64_t subscriber_timeout_ms,
             int64_t publish_batch_size,
-            PublisherID publisher_id = NodeID::FromRandom())
+            UniqueID publisher_id = NodeID::FromRandom())
       : periodical_runner_(&periodical_runner),
         get_time_ms_(std::move(get_time_ms)),
         subscriber_timeout_ms_(subscriber_timeout_ms),
@@ -329,7 +267,7 @@ class Publisher : public PublisherInterface {
         publisher_id_(publisher_id) {
     // Insert index map for each channel.
     for (auto type : channels) {
-      subscription_index_map_.emplace(type, pub_internal::SubscriptionIndex(type));
+      subscription_index_map_.emplace(type, SubscriptionIndex(type));
     }
 
     periodical_runner_->RunFnPeriodically([this] { CheckDeadSubscribers(); },
@@ -343,8 +281,8 @@ class Publisher : public PublisherInterface {
       google::protobuf::RepeatedPtrField<rpc::PubMessage> *pub_messages,
       rpc::SendReplyCallback send_reply_callback) override;
 
-  bool RegisterSubscription(const rpc::ChannelType channel_type,
-                            const SubscriberID &subscriber_id,
+  void RegisterSubscription(const rpc::ChannelType channel_type,
+                            const UniqueID &subscriber_id,
                             const std::optional<std::string> &key_id) override;
 
   void Publish(rpc::PubMessage pub_message) override;
@@ -352,18 +290,13 @@ class Publisher : public PublisherInterface {
   void PublishFailure(const rpc::ChannelType channel_type,
                       const std::string &key_id) override;
 
-  bool UnregisterSubscription(const rpc::ChannelType channel_type,
-                              const SubscriberID &subscriber_id,
+  void UnregisterSubscription(const rpc::ChannelType channel_type,
+                              const UniqueID &subscriber_id,
                               const std::optional<std::string> &key_id) override;
 
-  /// Remove the subscriber. Once the subscriber is removed, messages won't be published
-  /// to it anymore.
-  ///
-  /// \param subscriber_id The node id of the subscriber to unsubscribe.
-  void UnregisterSubscriber(const SubscriberID &subscriber_id);
+  void UnregisterSubscriber(const UniqueID &subscriber_id) override;
 
-  /// Flushes all inflight pollings and unregisters all subscribers.
-  void UnregisterAll();
+  std::string DebugString() const override;
 
   /// Check all subscribers, detect which subscribers are dead or its connection is timed
   /// out, and clean up their metadata. This uses the goal-oriented logic to clean up all
@@ -383,8 +316,6 @@ class Publisher : public PublisherInterface {
   /// happen due to reference counting). We might want to optimize this by
   /// having a timer per subscriber.
   void CheckDeadSubscribers();
-
-  std::string DebugString() const;
 
  private:
   ///
@@ -415,7 +346,7 @@ class Publisher : public PublisherInterface {
   /// Private fields
   ///
 
-  void UnregisterSubscriberInternal(const SubscriberID &subscriber_id)
+  void UnregisterSubscriberInternal(const UniqueID &subscriber_id)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Periodic runner to invoke CheckDeadSubscribers.
@@ -434,12 +365,12 @@ class Publisher : public PublisherInterface {
   mutable absl::Mutex mutex_;
 
   /// Mapping of node id -> subscribers.
-  absl::flat_hash_map<SubscriberID, std::unique_ptr<pub_internal::SubscriberState>>
-      subscribers_ ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<UniqueID, std::unique_ptr<SubscriberState>> subscribers_
+      ABSL_GUARDED_BY(mutex_);
 
   /// Index that stores the mapping of messages <-> subscribers.
-  absl::flat_hash_map<rpc::ChannelType, pub_internal::SubscriptionIndex>
-      subscription_index_map_ ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<rpc::ChannelType, SubscriptionIndex> subscription_index_map_
+      ABSL_GUARDED_BY(mutex_);
 
   /// The maximum number of objects to publish for each publish calls.
   const int64_t publish_batch_size_;
@@ -463,8 +394,7 @@ class Publisher : public PublisherInterface {
   ///    of a channel.
   int64_t next_sequence_id_ ABSL_GUARDED_BY(mutex_) = 0;
 
-  /// A unique identifier identifies the publisher_id.
-  const PublisherID publisher_id_;
+  const UniqueID publisher_id_;
 };
 
 }  // namespace pubsub

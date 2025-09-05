@@ -4,24 +4,22 @@ import time
 
 import grpc
 import numpy as np
-import psutil
 import pytest
 from grpc._channel import _InactiveRpcError
-from ray.util.state import list_tasks
-from ray._private.state_api_test_utils import verify_failed_task
 
 import ray
 import ray._private.ray_constants as ray_constants
 import ray.experimental.internal_kv as internal_kv
 from ray import NodeID
+from ray._common.network_utils import build_address
 from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._private.state_api_test_utils import verify_failed_task
 from ray._private.test_utils import (
     get_error_message,
     init_error_pubsub,
-    run_string_as_driver,
     kill_raylet,
+    run_string_as_driver,
 )
-from ray._common.network_utils import build_address
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.core.generated import (
     gcs_service_pb2,
@@ -30,6 +28,9 @@ from ray.core.generated import (
     node_manager_pb2_grpc,
 )
 from ray.exceptions import LocalRayletDiedError
+from ray.util.state import list_tasks
+
+import psutil
 
 
 def search_raylet(cluster):

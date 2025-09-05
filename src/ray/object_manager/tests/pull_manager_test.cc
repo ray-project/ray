@@ -22,7 +22,6 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "ray/common/common_protocol.h"
 
 namespace ray {
 

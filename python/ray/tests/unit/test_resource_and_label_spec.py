@@ -1,9 +1,11 @@
-import sys
 import json
-import pytest
+import sys
 from unittest.mock import patch
-from ray._common.constants import HEAD_NODE_RESOURCE_NAME, NODE_ID_PREFIX
+
+import pytest
+
 import ray._private.ray_constants as ray_constants
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME, NODE_ID_PREFIX
 from ray._private.accelerators import AcceleratorManager
 from ray._private.resource_and_label_spec import ResourceAndLabelSpec
 

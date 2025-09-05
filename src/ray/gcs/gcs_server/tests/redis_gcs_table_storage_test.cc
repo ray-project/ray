@@ -15,7 +15,7 @@
 #include <memory>
 
 #include "gtest/gtest.h"
-#include "ray/common/test_util.h"
+#include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/tests/gcs_table_storage_test_base.h"
 #include "ray/gcs/store_client/redis_store_client.h"
@@ -29,17 +29,13 @@ class RedisGcsTableStorageTest : public gcs::GcsTableStorageTestBase {
   static void TearDownTestCase() { TestSetupUtil::ShutDownRedisServers(); }
 
   void SetUp() override {
-    gcs::RedisClientOptions options("127.0.0.1", TEST_REDIS_SERVER_PORTS.front(), "", "");
-    redis_client_ = std::make_shared<gcs::RedisClient>(options);
-    RAY_CHECK_OK(redis_client_->Connect(*io_service_pool_->Get()));
-
-    gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
+    auto &io_service = *io_service_pool_->Get();
+    gcs::RedisClientOptions options{"127.0.0.1", TEST_REDIS_SERVER_PORTS.front()};
+    gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(
+        std::make_unique<gcs::RedisStoreClient>(io_service, options));
   }
 
-  void TearDown() override { redis_client_->Disconnect(); }
-
- protected:
-  std::shared_ptr<gcs::RedisClient> redis_client_;
+  void TearDown() override {}
 };
 
 TEST_F(RedisGcsTableStorageTest, TestGcsTableApi) { TestGcsTableApi(); }

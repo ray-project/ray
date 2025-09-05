@@ -30,7 +30,6 @@ from ray.train.v2._internal.callbacks import (
     TPUReservationCallback,
     WorkingDirectorySetupCallback,
 )
-from ray.train.v2._internal.callbacks.datasets import GenDataset
 from ray.train.v2._internal.callbacks.env_callback import _initialize_env_callbacks
 from ray.train.v2._internal.callbacks.metrics import (
     ControllerMetricsCallback,
@@ -42,10 +41,12 @@ from ray.train.v2._internal.constants import (
     METRICS_ENABLED_ENV_VAR,
     get_env_vars_to_propagate,
 )
+from ray.train.v2._internal.data_integration.interfaces import GenDataset
 from ray.train.v2._internal.execution.callback import RayTrainCallback
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.controller import TrainController
 from ray.train.v2._internal.execution.failure_handling import create_failure_policy
+from ray.train.v2._internal.execution.local_mode_utils import LocalController
 from ray.train.v2._internal.execution.scaling_policy import create_scaling_policy
 from ray.train.v2._internal.util import ObjectRefWrapper, construct_train_func
 from ray.train.v2.api.callback import UserCallback
@@ -86,6 +87,8 @@ class DataParallelTrainer:
         self.datasets = datasets or {}
         self.data_config = dataset_config or DataConfig()
 
+        self.running_in_local_mode = self.scaling_config.num_workers == 0
+
         self.train_run_context = TrainRunContext(
             run_config=self.run_config,
             train_loop_config=self.train_loop_config,
@@ -104,6 +107,14 @@ class DataParallelTrainer:
         usage_lib.record_library_usage("train")
         tag_train_v2_trainer(self)
 
+    def _get_train_func(self) -> Callable[[], None]:
+        return construct_train_func(
+            self.train_loop_per_worker,
+            config=self.train_loop_config,
+            train_func_context=self.backend_config.train_func_context,
+            fn_arg_name="train_loop_per_worker",
+        )
+
     def fit(self) -> Result:
         """Launches the Ray Train controller to run training on workers.
 
@@ -114,31 +125,35 @@ class DataParallelTrainer:
             ray.train.v2.api.exceptions.ControllerError: If a non-retryable error occurs in the Ray Train controller itself, or if the number of retries configured in `FailureConfig` is exhausted.
             ray.train.v2.api.exceptions.WorkerGroupError: If one or more workers fail during training and the number of retries configured in `FailureConfig` is exhausted.
         """
-        train_fn = construct_train_func(
-            self.train_loop_per_worker,
-            config=self.train_loop_config,
-            train_func_context=self.backend_config.train_func_context,
-            fn_arg_name="train_loop_per_worker",
+        train_fn = self._get_train_func()
+        if self.running_in_local_mode:
+            return self._initialize_and_run_local_controller(train_fn)
+        else:
+            train_fn_ref = ObjectRefWrapper(train_fn)
+
+            result = self._initialize_and_run_controller(
+                train_fn_ref=train_fn_ref,
+                scaling_policy=create_scaling_policy(self.scaling_config),
+                failure_policy=create_failure_policy(self.run_config.failure_config),
+                train_run_context=self.train_run_context,
+                callbacks=self._create_default_callbacks(),
+            )
+
+            if result.error:
+                # NOTE: If the training run errored out, raise an error back to the
+                # user's driver script.
+                # For example, if the Train `FailurePolicy` runs out of retries,
+                # and one of the workers errors. The controller will exit, and
+                # the error will be raised here.
+                raise result.error
+
+            return result
+
+    def _get_local_controller(self) -> LocalController:
+        return LocalController(
+            experiment_name=self.run_config.name,
+            datasets=self.datasets,
         )
-        train_fn_ref = ObjectRefWrapper(train_fn)
-
-        result = self._initialize_and_run_controller(
-            train_fn_ref=train_fn_ref,
-            scaling_policy=create_scaling_policy(self.scaling_config),
-            failure_policy=create_failure_policy(self.run_config.failure_config),
-            train_run_context=self.train_run_context,
-            callbacks=self._create_default_callbacks(),
-        )
-
-        if result.error:
-            # NOTE: If the training run errored out, raise an error back to the
-            # user's driver script.
-            # For example, if the Train `FailurePolicy` runs out of retries,
-            # and one of the workers errors. The controller will exit, and
-            # the error will be raised here.
-            raise result.error
-
-        return result
 
     def _create_default_callbacks(self) -> List[RayTrainCallback]:
         # Initialize callbacks from environment variable
@@ -149,9 +164,7 @@ class DataParallelTrainer:
         )
         backend_setup_callback = BackendSetupCallback(self.backend_config)
         datasets_setup_callback = DatasetsSetupCallback(
-            datasets=self.datasets,
-            data_config=self.data_config,
-            scaling_config=self.scaling_config,
+            train_run_context=self.train_run_context
         )
         tpu_reservation_setup_callback = TPUReservationCallback()
         callbacks.extend(
@@ -193,6 +206,11 @@ class DataParallelTrainer:
             [cb for cb in run_config_callbacks if not isinstance(cb, UserCallback)]
         )
         return callbacks
+
+    def _initialize_and_run_local_controller(
+        self, train_func: Callable[[], None]
+    ) -> Result:
+        return self._get_local_controller().run(train_func)
 
     def _initialize_and_run_controller(self, **controller_init_kwargs) -> Result:
         # Attach the controller to the node running the driver script.

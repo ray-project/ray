@@ -3,8 +3,6 @@ from collections import defaultdict
 from typing import Dict, List, Optional
 
 from ray._private.event.event_logger import EventLoggerAdapter
-from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig
-from ray.autoscaler.v2.schema import NodeType
 from ray.autoscaler.v2.utils import ResourceRequestUtil
 from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceConstraint,
@@ -31,8 +29,7 @@ class AutoscalerEventLogger:
 
     def log_cluster_scheduling_update(
         self,
-        node_type_configs: Dict[NodeType, NodeTypeConfig],
-        cluster_shape: Dict[NodeType, int],
+        cluster_resources: Dict[str, float],
         launch_requests: Optional[List[LaunchRequest]] = None,
         terminate_requests: Optional[List[TerminationRequest]] = None,
         infeasible_requests: Optional[List[ResourceRequest]] = None,
@@ -42,7 +39,29 @@ class AutoscalerEventLogger:
         ] = None,
     ) -> None:
         """
-        Log any update of the cluster scheduling state.
+        Log updates to the autoscaler scheduling state.
+
+        Emits:
+        - info logs for node launches and terminations (counts grouped by node type).
+        - an info log summarizing the cluster size after a resize (CPUs/GPUs/TPUs).
+        - warnings describing infeasible single resource requests, infeasible gang
+          (placement group) requests, and infeasible cluster resource constraints.
+
+        Args:
+            cluster_resources: Mapping of resource name to total resources for the
+                current cluster state.
+            launch_requests: Node launch requests issued in this scheduling step.
+            terminate_requests: Node termination requests issued in this scheduling
+                step.
+            infeasible_requests: Resource requests that could not be satisfied by
+                any available node type.
+            infeasible_gang_requests: Gang/placement group requests that could not
+                be scheduled.
+            infeasible_cluster_resource_constraints: Cluster-level resource
+                constraints that could not be satisfied.
+
+        Returns:
+            None
         """
 
         # Log any launch events.
@@ -78,23 +97,16 @@ class AutoscalerEventLogger:
 
         # Cluster shape changes.
         if launch_requests or terminate_requests:
-            total_resources = defaultdict(float)
-
-            for node_type, count in cluster_shape.items():
-                node_config = node_type_configs[node_type]
-                for resource_name, resource_quantity in node_config.resources.items():
-                    total_resources[resource_name] += resource_quantity * count
-
-            num_cpus = total_resources.get("CPU", 0)
+            num_cpus = cluster_resources.get("CPU", 0)
             log_str = f"Resized to {int(num_cpus)} CPUs"
 
-            if "GPU" in total_resources:
-                log_str += f", {int(total_resources['GPU'])} GPUs"
-            if "TPU" in total_resources:
-                log_str += f", {int(total_resources['TPU'])} TPUs"
+            if "GPU" in cluster_resources:
+                log_str += f", {int(cluster_resources['GPU'])} GPUs"
+            if "TPU" in cluster_resources:
+                log_str += f", {int(cluster_resources['TPU'])} TPUs"
 
             self._logger.info(f"{log_str}.")
-            self._logger.debug(f"Current cluster shape: {dict(cluster_shape)}.")
+            self._logger.debug(f"Current cluster resources: {dict(cluster_resources)}.")
 
         # Log any infeasible requests.
         if infeasible_requests:

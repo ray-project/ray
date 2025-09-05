@@ -96,7 +96,7 @@ images), then Ray Data can’t bound the block size.
 Shuffle Algorithms
 ------------------
 
-In data processing shuffling refers to the process of redistributing individual dataset's partitions (that in Ray Data are
+In data processing, shuffling refers to the process of redistributing individual dataset's partitions (that in Ray Data are
 called :ref:`blocks <data_key_concepts>`).
 
 Ray Data implements two main shuffle algorithms:
@@ -179,12 +179,19 @@ To add custom optimization rules, implement a class that extends ``Rule`` and co
 
     import ray
     from ray.data._internal.logical.interfaces import Rule
+    from ray.data._internal.logical.optimizers import get_logical_ruleset
 
     class CustomRule(Rule):
         def apply(self, plan):
             ...
 
-    ray.data._internal.logical.optimizers.DEFAULT_LOGICAL_RULES.append(CustomRule)
+    logical_ruleset = get_logical_ruleset()
+    logical_ruleset.add(CustomRule)
+
+.. testcode::
+    :hide:
+
+    logical_ruleset.remove(CustomRule)
 
 Types of physical operators
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~

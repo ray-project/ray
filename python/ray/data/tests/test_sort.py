@@ -558,9 +558,9 @@ def patch_ray_remote(condition, callback):
 def patch_ray_get(callback):
     original_ray_get = ray.get
 
-    def ray_get_override(object_refs):
+    def ray_get_override(object_refs, *args, **kwargs):
         callback(object_refs)
-        return original_ray_get(object_refs)
+        return original_ray_get(object_refs, *args, **kwargs)
 
     ray.get = ray_get_override
     return original_ray_get

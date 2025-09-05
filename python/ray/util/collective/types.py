@@ -1,11 +1,18 @@
 """Types conversion between different backends."""
+
 from enum import Enum
 from dataclasses import dataclass
 from datetime import timedelta
+from typing import List, Tuple, TYPE_CHECKING, Optional
+
+from numpy import int32
 
 _NUMPY_AVAILABLE = True
 _TORCH_AVAILABLE = True
 _CUPY_AVAILABLE = True
+
+if TYPE_CHECKING:
+    import torch
 
 try:
     import torch as th  # noqa: F401
@@ -34,6 +41,7 @@ class Backend(object):
     GLOO = "gloo"
     # Use gloo through torch.distributed.
     TORCH_GLOO = "torch_gloo"
+    NIXL = "nixl"
     UNRECOGNIZED = "unrecognized"
 
     def __new__(cls, name: str):
@@ -47,6 +55,67 @@ class Backend(object):
         return backend
 
 
+@dataclass
+class TensorTransportMetadata:
+    """Metadata for tensors stored in the GPU object store.
+
+    Args:
+        tensor_meta: A list of tuples, each containing the shape and dtype of a tensor.
+        tensor_device: The device of the tensor. Currently, we require all tensors in the
+        list have the same device type.
+    """
+
+    tensor_meta: List[Tuple["torch.Size", "torch.dtype"]]
+    tensor_device: Optional["torch.device"] = None
+
+
+@dataclass
+class NixlTransportMetadata(TensorTransportMetadata):
+    """Metadata for tensors stored in the GPU object store for NIXL transport.
+
+    Args:
+        nixl_serialized_descs: Serialized tensor descriptors for NIXL transport.
+        nixl_agent_meta: The additional metadata of the remote NIXL agent.
+    """
+
+    nixl_serialized_descs: Optional[bytes] = None
+    nixl_agent_meta: Optional[bytes] = None
+
+
+@dataclass
+class CollectiveTransportMetadata(TensorTransportMetadata):
+    """Metadata for tensors stored in the GPU object store for collective transport."""
+
+
+@dataclass
+class CommunicatorMetadata:
+    """Metadata for the communicator.
+
+    Args:
+        communicator_name: The name of the communicator.
+    """
+
+    communicator_name: str = ""
+
+
+@dataclass
+class CollectiveCommunicatorMetadata(CommunicatorMetadata):
+    """Metadata for the collective communicator (e.g. NCCL, GLOO).
+
+    Args:
+        src_rank: The rank of the source actor.
+        dst_rank: The rank of the destination actor.
+    """
+
+    src_rank: Optional[int32] = None
+    dst_rank: Optional[int32] = None
+
+
+@dataclass
+class NixlCommunicatorMetadata(CommunicatorMetadata):
+    """Metadata for the NIXL communicator."""
+
+
 class ReduceOp(Enum):
     SUM = 0
     PRODUCT = 1
@@ -55,6 +124,9 @@ class ReduceOp(Enum):
 
 
 unset_timeout_ms = timedelta(milliseconds=-1)
+
+# This is used to identify the collective group for NIXL.
+NIXL_GROUP_NAME = "ray_internal_nixl_group"
 
 
 @dataclass

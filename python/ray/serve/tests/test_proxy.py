@@ -9,6 +9,7 @@ from ray import serve
 from ray._common.network_utils import build_address
 from ray._common.test_utils import wait_for_condition
 from ray.actor import ActorHandle
+from ray.cluster_utils import Cluster
 from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_NAMESPACE,
@@ -16,10 +17,23 @@ from ray.serve._private.constants import (
 from ray.serve._private.test_utils import (
     ping_grpc_healthz,
     ping_grpc_list_applications,
+    request_with_retries,
 )
 from ray.serve.config import gRPCOptions
+from ray.serve.context import _get_global_client
 from ray.serve.generated import serve_pb2
+from ray.serve.schema import ProxyStatus, ServeInstanceDetails
+from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 from ray.util.state import list_actors
+
+
+@pytest.fixture
+def shutdown_ray():
+    if ray.is_initialized():
+        ray.shutdown()
+    yield
+    if ray.is_initialized():
+        ray.shutdown()
 
 
 class TestTimeoutKeepAliveConfig:
@@ -222,6 +236,124 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
 
     # Ensures Healthz method on the worker node is draining.
     ping_grpc_healthz(worker_node_channel, test_draining=True)
+
+
+def test_drain_and_undrain_http_proxy_actors(
+    monkeypatch, shutdown_ray, call_ray_stop_only  # noqa: F811
+):
+    """Test the state transtion of the proxy actor between
+    HEALTHY, DRAINING and DRAINED
+    """
+    monkeypatch.setenv("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "10")
+
+    cluster = Cluster()
+    head_node = cluster.add_node(num_cpus=0)
+    cluster.add_node(num_cpus=1)
+    cluster.add_node(num_cpus=1)
+    cluster.wait_for_nodes()
+    ray.init(address=head_node.address)
+    serve.start(http_options={"location": "EveryNode"})
+
+    @serve.deployment
+    class HelloModel:
+        def __call__(self):
+            return "hello"
+
+    serve.run(HelloModel.options(num_replicas=2).bind())
+
+    # 3 proxies, 1 controller, 2 replicas.
+    wait_for_condition(lambda: len(list_actors()) == 6)
+    assert len(ray.nodes()) == 3
+
+    client = _get_global_client()
+    serve_details = ServeInstanceDetails(
+        **ray.get(client._controller.get_serve_instance_details.remote())
+    )
+    proxy_actor_ids = {proxy.actor_id for _, proxy in serve_details.proxies.items()}
+
+    assert len(proxy_actor_ids) == 3
+
+    serve.run(HelloModel.options(num_replicas=1).bind())
+    # 1 proxy should be draining
+
+    def check_proxy_status(proxy_status_to_count):
+        serve_details = ServeInstanceDetails(
+            **ray.get(client._controller.get_serve_instance_details.remote())
+        )
+        proxy_status_list = [proxy.status for _, proxy in serve_details.proxies.items()]
+        print("all proxies!!!", [proxy for _, proxy in serve_details.proxies.items()])
+        current_status = {
+            status: proxy_status_list.count(status) for status in proxy_status_list
+        }
+        return current_status == proxy_status_to_count, current_status
+
+    wait_for_condition(
+        condition_predictor=check_proxy_status,
+        proxy_status_to_count={ProxyStatus.HEALTHY: 2, ProxyStatus.DRAINING: 1},
+    )
+
+    serve.run(HelloModel.options(num_replicas=2).bind())
+    # The draining proxy should become healthy.
+    wait_for_condition(
+        condition_predictor=check_proxy_status,
+        proxy_status_to_count={ProxyStatus.HEALTHY: 3},
+    )
+    serve_details = ServeInstanceDetails(
+        **ray.get(client._controller.get_serve_instance_details.remote())
+    )
+
+    assert {
+        proxy.actor_id for _, proxy in serve_details.proxies.items()
+    } == proxy_actor_ids
+
+    serve.run(HelloModel.options(num_replicas=1).bind())
+    # 1 proxy should be draining and eventually be drained.
+    wait_for_condition(
+        condition_predictor=check_proxy_status,
+        timeout=40,
+        proxy_status_to_count={ProxyStatus.HEALTHY: 2},
+    )
+
+    # Clean up serve.
+    serve.shutdown()
+
+
+def _kill_http_proxies():
+    http_proxies = ray.get(
+        serve.context._global_client._controller.get_proxies.remote()
+    )
+    for http_proxy in http_proxies.values():
+        ray.kill(http_proxy, no_restart=False)
+
+
+def test_http_proxy_failure(serve_instance):
+    @serve.deployment(name="proxy_failure")
+    def function(_):
+        return "hello1"
+
+    serve.run(function.bind())
+
+    assert request_with_retries(timeout=1.0).text == "hello1"
+
+    for _ in range(10):
+        response = request_with_retries(timeout=30)
+        assert response.text == "hello1"
+
+    _kill_http_proxies()
+
+    def function2(_):
+        return "hello2"
+
+    serve.run(function.options(func_or_class=function2).bind())
+
+    def check_new():
+        for _ in range(10):
+            response = request_with_retries(timeout=30)
+            if response.text != "hello2":
+                return False
+        return True
+
+    wait_for_condition(check_new)
 
 
 if __name__ == "__main__":

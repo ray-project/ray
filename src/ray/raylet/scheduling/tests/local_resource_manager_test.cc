@@ -371,4 +371,25 @@ TEST_F(LocalResourceManagerTest, CreateSyncMessageNegativeResourceAvailability) 
   ASSERT_EQ(resource_view_sync_messge.resources_available().at("CPU"), 0);
 }
 
+TEST_F(LocalResourceManagerTest, PopulateResourceViewSyncMessage) {
+  // Prepare node resources with labels.
+  NodeResources resources = CreateNodeResources({{ResourceID::CPU(), 2.0}});
+  resources.labels = {{"label1", "value1"}, {"label2", "value2"}};
+
+  manager = std::make_unique<LocalResourceManager>(
+      local_node_id, resources, nullptr, nullptr, nullptr, nullptr);
+
+  // Populate the sync message and verify labels are copied over.
+  syncer::ResourceViewSyncMessage msg;
+  manager->PopulateResourceViewSyncMessage(msg);
+
+  // Verify total resources are populated.
+  ASSERT_EQ(msg.resources_total_size(), 1);
+  ASSERT_EQ(msg.resources_total().at("CPU"), 2.0);
+  // Verify labels are populated.
+  ASSERT_EQ(msg.labels_size(), 2);
+  ASSERT_EQ(msg.labels().at("label1"), "value1");
+  ASSERT_EQ(msg.labels().at("label2"), "value2");
+}
+
 }  // namespace ray

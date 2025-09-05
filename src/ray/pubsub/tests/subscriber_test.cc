@@ -128,7 +128,7 @@ class MockWorkerClient : public pubsub::SubscriberClientInterface {
   std::queue<rpc::PubsubCommandBatchRequest> requests_;
   int64_t sequence_id_ = 0;
   int64_t max_processed_sequence_id_ = 0;
-  std::string publisher_id_ = pubsub::PublisherID::FromRandom().Binary();
+  std::string publisher_id_ = UniqueID::FromRandom().Binary();
 };
 
 namespace pubsub {
@@ -272,12 +272,13 @@ TEST_F(SubscriberTest, TestIgnoreOutofOrderMessage) {
   const auto owner_addr = GenerateOwnerAddress();
   const auto object_id = ObjectID::FromRandom();
   const auto object_id1 = ObjectID::FromRandom();
-  subscriber_->SubscribeChannel(std::make_unique<rpc::SubMessage>(),
-                                channel,
-                                owner_addr,
-                                /*subscribe_done_callback=*/nullptr,
-                                subscription_callback,
-                                failure_callback);
+  subscriber_->Subscribe(std::make_unique<rpc::SubMessage>(),
+                         channel,
+                         owner_addr,
+                         /*key_id=*/std::nullopt,
+                         /*subscribe_done_callback=*/nullptr,
+                         subscription_callback,
+                         failure_callback);
   ASSERT_TRUE(owner_client->ReplyCommandBatch());
 
   std::vector<ObjectID> objects_batched;
@@ -318,12 +319,13 @@ TEST_F(SubscriberTest, TestPublisherFailsOver) {
   const auto owner_addr = GenerateOwnerAddress();
   const auto object_id = ObjectID::FromRandom();
   const auto object_id1 = ObjectID::FromRandom();
-  subscriber_->SubscribeChannel(std::make_unique<rpc::SubMessage>(),
-                                channel,
-                                owner_addr,
-                                /*subscribe_done_callback=*/nullptr,
-                                subscription_callback,
-                                failure_callback);
+  subscriber_->Subscribe(std::make_unique<rpc::SubMessage>(),
+                         channel,
+                         owner_addr,
+                         /*key_id=*/std::nullopt,
+                         /*subscribe_done_callback=*/nullptr,
+                         subscription_callback,
+                         failure_callback);
   ASSERT_TRUE(owner_client->ReplyCommandBatch());
 
   std::vector<ObjectID> objects_batched;
@@ -456,9 +458,9 @@ TEST_F(SubscriberTest, TestCallbackNotInvokedForNonSubscribedObject) {
   ASSERT_EQ(object_subscribed_[object_id], 0);
 }
 
-TEST_F(SubscriberTest, TestSubscribeChannelEntities) {
+TEST_F(SubscriberTest, TestSubscribeAllEntities) {
   ///
-  /// Make sure SubscribeChannel() can receive all entities from a channel.
+  /// Make sure Subscribe() can receive all entities from a channel.
   ///
 
   auto subscription_callback = [this](const rpc::PubMessage &msg) {
@@ -467,12 +469,13 @@ TEST_F(SubscriberTest, TestSubscribeChannelEntities) {
   auto failure_callback = EMPTY_FAILURE_CALLBACK;
 
   const auto owner_addr = GenerateOwnerAddress();
-  subscriber_->SubscribeChannel(std::make_unique<rpc::SubMessage>(),
-                                channel,
-                                owner_addr,
-                                /*subscribe_done_callback=*/nullptr,
-                                subscription_callback,
-                                failure_callback);
+  subscriber_->Subscribe(std::make_unique<rpc::SubMessage>(),
+                         channel,
+                         owner_addr,
+                         /*key_id=*/std::nullopt,
+                         /*subscribe_done_callback=*/nullptr,
+                         subscription_callback,
+                         failure_callback);
   ASSERT_TRUE(owner_client->ReplyCommandBatch());
   ASSERT_EQ(owner_client->GetNumberOfInFlightLongPollingRequests(), 1);
 
@@ -501,7 +504,7 @@ TEST_F(SubscriberTest, TestSubscribeChannelEntities) {
   }
 
   // Unsubscribe from the channel.
-  ASSERT_TRUE(subscriber_->UnsubscribeChannel(channel, owner_addr));
+  ASSERT_TRUE(subscriber_->Unsubscribe(channel, owner_addr, /*key_id=*/std::nullopt));
 }
 
 TEST_F(SubscriberTest, TestIgnoreBatchAfterUnsubscription) {
@@ -549,14 +552,15 @@ TEST_F(SubscriberTest, TestIgnoreBatchAfterUnsubscribeFromAll) {
   auto failure_callback = EMPTY_FAILURE_CALLBACK;
 
   const auto owner_addr = GenerateOwnerAddress();
-  subscriber_->SubscribeChannel(std::make_unique<rpc::SubMessage>(),
-                                channel,
-                                owner_addr,
-                                /*subscribe_done_callback=*/nullptr,
-                                subscription_callback,
-                                failure_callback);
+  subscriber_->Subscribe(std::make_unique<rpc::SubMessage>(),
+                         channel,
+                         owner_addr,
+                         /*key_id=*/std::nullopt,
+                         /*subscribe_done_callback=*/nullptr,
+                         subscription_callback,
+                         failure_callback);
   ASSERT_TRUE(owner_client->ReplyCommandBatch());
-  ASSERT_TRUE(subscriber_->UnsubscribeChannel(channel, owner_addr));
+  ASSERT_TRUE(subscriber_->Unsubscribe(channel, owner_addr, /*key_id=*/std::nullopt));
   ASSERT_TRUE(owner_client->ReplyCommandBatch());
 
   const auto object_id = ObjectID::FromRandom();
@@ -978,9 +982,6 @@ TEST_F(SubscriberTest, TestIsSubscribed) {
   ASSERT_TRUE(subscriber_->Unsubscribe(channel, owner_addr, object_id.Binary()));
   ASSERT_FALSE(subscriber_->IsSubscribed(channel, owner_addr, object_id.Binary()));
 }
-
-// TODO(sang): Need to add a network failure test once we support network failure
-// properly.
 
 }  // namespace pubsub
 

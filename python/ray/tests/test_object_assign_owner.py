@@ -1,8 +1,8 @@
 import sys
 import time
 
-import pytest
 import numpy as np
+import pytest
 
 import ray
 from ray.exceptions import OwnerDiedError

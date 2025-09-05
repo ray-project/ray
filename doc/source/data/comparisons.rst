@@ -8,7 +8,7 @@ How does Ray Data compare to other solutions for offline inference?
 
     Cloud providers such as AWS, GCP, and Azure provide batch services to manage compute infrastructure for you. Each service uses the same process: you provide the code, and the service runs your code on each node in a cluster. However, while infrastructure management is necessary, it is often not enough. These services have limitations, such as a lack of software libraries to address optimized parallelization, efficient data transfer, and easy debugging. These solutions are suitable only for experienced users who can write their own optimized batch inference code.
 
-    Ray Data abstracts away not only the infrastructure management, but also the sharding your dataset, the parallelization of the inference over these shards, and the transfer of data from storage to CPU to GPU.
+    Ray Data abstracts away not only the infrastructure management, but also the sharding of your dataset, the parallelization of the inference over these shards, and the transfer of data from storage to CPU to GPU.
 
 
 .. dropdown:: Online inference solutions: Bento ML, Sagemaker Batch Transform

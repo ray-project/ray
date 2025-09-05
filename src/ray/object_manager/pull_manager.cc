@@ -20,7 +20,6 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/common_protocol.h"
 #include "ray/common/ray_config.h"
 #include "ray/stats/metric_defs.h"
 
@@ -70,7 +69,7 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
   BundlePullRequest bundle_pull_request(ObjectRefsToIds(deduplicated), task_key);
   const uint64_t req_id = next_req_id_++;
   RAY_LOG(DEBUG) << "Start pull request " << req_id
-                 << ". Bundle size: " << bundle_pull_request.objects.size();
+                 << ". Bundle size: " << bundle_pull_request.objects_.size();
 
   for (const auto &ref : deduplicated) {
     const auto obj_id = ObjectRefToId(ref);
@@ -127,7 +126,7 @@ bool PullManager::ActivateNextBundlePullRequest(BundlePullRequestQueue &bundles,
 
     // First calculate the bytes we need.
     int64_t bytes_to_pull = 0;
-    for (const auto &obj_id : next_request.objects) {
+    for (const auto &obj_id : next_request.objects_) {
       const bool needs_pull = active_object_pull_requests_.count(obj_id) == 0;
       if (needs_pull) {
         // This is the first bundle request in the queue to require this object.
@@ -158,7 +157,7 @@ bool PullManager::ActivateNextBundlePullRequest(BundlePullRequestQueue &bundles,
                    << " num bytes being pulled: " << num_bytes_being_pulled_
                    << " num bytes available: " << num_bytes_available_;
     num_bytes_being_pulled_ += bytes_to_pull;
-    for (const auto &obj_id : next_request.objects) {
+    for (const auto &obj_id : next_request.objects_) {
       const bool needs_pull = active_object_pull_requests_.count(obj_id) == 0;
       active_object_pull_requests_[obj_id].insert(next_request_id);
       if (needs_pull) {
@@ -184,7 +183,7 @@ void PullManager::DeactivateBundlePullRequest(
     uint64_t request_id,
     std::unordered_set<ObjectID> *objects_to_cancel) {
   const auto &request = map_find_or_die(bundles.requests, request_id);
-  for (const auto &obj_id : request.objects) {
+  for (const auto &obj_id : request.objects_) {
     absl::MutexLock lock(&active_objects_mu_);
     auto it = active_object_pull_requests_.find(obj_id);
     if (it == active_object_pull_requests_.end() || !it->second.erase(request_id)) {
@@ -337,7 +336,7 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
 
   // Erase this pull request.
   std::vector<ObjectID> object_ids_to_cancel_subscription;
-  for (const auto &obj_id : bundle_it->second.objects) {
+  for (const auto &obj_id : bundle_it->second.objects_) {
     auto it = object_pull_requests_.find(obj_id);
     if (it != object_pull_requests_.end()) {
       RAY_LOG(DEBUG) << "Removing an object pull request of id: " << obj_id;
@@ -680,12 +679,12 @@ std::string PullManager::BundleInfo(const BundlePullRequestQueue &bundles) const
   }
   const auto &bundle = it->second;
   std::stringstream result;
-  result << bundle.objects.size() << " objects";
+  result << bundle.objects_.size() << " objects";
   if (!bundle.IsPullable()) {
     result << " (inactive, waiting for object sizes or locations)";
   } else {
     size_t num_bytes_needed = 0;
-    for (const auto &obj_id : bundle.objects) {
+    for (const auto &obj_id : bundle.objects_) {
       num_bytes_needed += map_find_or_die(object_pull_requests_, obj_id).object_size;
     }
     result << ", " << num_bytes_needed << " bytes";
@@ -713,7 +712,7 @@ int64_t PullManager::NextRequestBundleSize(const BundlePullRequestQueue &bundles
 
   // Calculate the bytes we need.
   int64_t bytes_needed_calculated = 0;
-  for (const auto &obj_id : next_request.objects) {
+  for (const auto &obj_id : next_request.objects_) {
     bool needs_pull = active_object_pull_requests_.count(obj_id) == 0;
     if (needs_pull) {
       // This is the first bundle request in the queue to require this object.

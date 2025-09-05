@@ -24,8 +24,8 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
-#include "ray/raylet_client/raylet_client.h"
-#include "ray/rpc/node_manager/raylet_client_pool.h"
+#include "ray/raylet_client/raylet_client_interface.h"
+#include "ray/raylet_client/raylet_client_pool.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
@@ -90,13 +90,13 @@ class CoreWorkerClientPool {
     CoreWorkerClientEntry(WorkerID worker_id,
                           NodeID node_id,
                           std::shared_ptr<CoreWorkerClientInterface> core_worker_client)
-        : worker_id(std::move(worker_id)),
-          node_id(std::move(node_id)),
-          core_worker_client(std::move(core_worker_client)) {}
+        : worker_id_(std::move(worker_id)),
+          node_id_(std::move(node_id)),
+          core_worker_client_(std::move(core_worker_client)) {}
 
-    WorkerID worker_id;
-    NodeID node_id;
-    std::shared_ptr<CoreWorkerClientInterface> core_worker_client;
+    WorkerID worker_id_;
+    NodeID node_id_;
+    std::shared_ptr<CoreWorkerClientInterface> core_worker_client_;
   };
 
   /// A list of open connections from the most recent accessed to the least recent

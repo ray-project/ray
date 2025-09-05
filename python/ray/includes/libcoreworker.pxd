@@ -212,7 +212,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool ShouldCaptureChildTasksInPlacementGroup()
         CActorID GetActorId() const
         const c_string GetActorName()
-        void SetActorTitle(const c_string &title)
         void SetActorReprName(const c_string &repr_name)
         void SetWebuiDisplay(const c_string &key, const c_string &message)
         const ResourceMappingType &GetResourceIDs() const
@@ -422,6 +421,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[c_string]&) nogil) run_on_util_worker_handler
         (void(const CRayObject&) nogil) unhandled_exception_handler
         (c_bool(const CTaskID &c_task_id) nogil) cancel_async_actor_task
+        (void() noexcept nogil) actor_shutdown_callback
         (void(c_string *stack_out) nogil) get_lang_stack
         c_bool is_local_mode
         int num_workers

@@ -112,6 +112,16 @@ py_test(
 )
 
 py_test(
+    name = "test_datatype",
+    size = "small",
+    srcs = ["tests/test_datatype.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+)
+
+py_test(
     name = "test_sql",
     size = "small",
     srcs = ["tests/test_sql.py"],
@@ -373,6 +383,7 @@ py_test(
     size = "enormous",
     srcs = ["tests/test_groupby_e2e.py"],
     tags = [
+        "data_non_parallel",
         "exclusive",
         "team:data",
     ],
@@ -1240,6 +1251,20 @@ py_test(
 )
 
 py_test(
+    name = "test_unify_schemas_performance",
+    size = "small",
+    srcs = ["tests/test_unify_schemas_performance.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_util",
     size = "small",
     srcs = ["tests/test_util.py"],
@@ -1313,6 +1338,20 @@ py_test(
     name = "test_backpressure_policies",
     size = "medium",
     srcs = ["tests/test_backpressure_policies.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_downstream_capacity_backpressure_policy",
+    size = "medium",
+    srcs = ["tests/test_downstream_capacity_backpressure_policy.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1411,6 +1450,20 @@ py_test(
     name = "test_delta_sharing",
     size = "small",
     srcs = ["tests/test_delta_sharing.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_download_expression",
+    size = "small",
+    srcs = ["tests/test_download_expression.py"],
     tags = [
         "exclusive",
         "team:data",

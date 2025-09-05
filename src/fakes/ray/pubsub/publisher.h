@@ -21,22 +21,22 @@ namespace pubsub {
 
 class FakePublisher : public Publisher {
  public:
-  bool RegisterSubscription(const rpc::ChannelType channel_type,
-                            const SubscriberID &subscriber_id,
-                            const std::optional<std::string> &key_id) override {
-    return true;
-  }
+  void RegisterSubscription(const rpc::ChannelType channel_type,
+                            const UniqueID &subscriber_id,
+                            const std::optional<std::string> &key_id) override {}
 
   void Publish(rpc::PubMessage pub_message) override {}
 
   void PublishFailure(const rpc::ChannelType channel_type,
                       const std::string &key_id) override {}
 
-  bool UnregisterSubscription(const rpc::ChannelType channel_type,
-                              const SubscriberID &subscriber_id,
-                              const std::optional<std::string> &key_id) override {
-    return true;
-  }
+  void UnregisterSubscription(const rpc::ChannelType channel_type,
+                              const UniqueID &subscriber_id,
+                              const std::optional<std::string> &key_id) override {}
+
+  void UnregisterSubscriber(const UniqueID &subscriber_id) override {}
+
+  std::string DebugString() const override { return "FakePublisher"; }
 };
 
 }  // namespace pubsub

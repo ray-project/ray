@@ -16,7 +16,9 @@ def gen_extract(
 
     root_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY")
     if not root_dir:
-        raise ValueError("BUILD_WORKSPACE_DIRECTORY not set")
+        raise ValueError(
+            "BUILD_WORKSPACE_DIRECTORY not set; please run this script from 'bazelisk run'"
+        )
 
     if sub_dir:
         extract_dir = os.path.join(root_dir, sub_dir)

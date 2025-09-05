@@ -1,8 +1,7 @@
-from ray.dag import DAGNode
-
 import os
 import tempfile
 
+from ray.dag import DAGNode
 from ray.dag.utils import _DAGNodeNameGenerator
 from ray.util.annotations import DeveloperAPI
 

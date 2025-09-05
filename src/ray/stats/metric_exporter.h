@@ -24,7 +24,6 @@
 #include "ray/rpc/metrics_agent_client.h"
 #include "ray/stats/metric.h"
 #include "ray/util/logging.h"
-#include "ray/util/util.h"
 
 namespace ray {
 namespace stats {
@@ -106,6 +105,7 @@ class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::H
   /// Lock to protect the client
   mutable absl::Mutex mu_;
   /// Client to call a metrics agent gRPC server.
+  std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
   std::shared_ptr<rpc::MetricsAgentClient> client_ ABSL_GUARDED_BY(&mu_);
   /// The worker ID of the current component.
   WorkerID worker_id_;

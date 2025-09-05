@@ -54,6 +54,7 @@ ray_cc_test(
         "//src/ray/rpc:grpc_server",
         "//src/ray/util:network_util",
         "//src/ray/util:path_utils",
+        "//src/ray/util:raii",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_googletest//:gtest",
     ],
@@ -111,7 +112,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:id",
-        "//src/ray/common:task_common",
         "//src/ray/protobuf:common_cc_proto",
         "@com_google_googletest//:gtest_main",
     ],

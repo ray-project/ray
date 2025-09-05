@@ -26,7 +26,7 @@
 #include "mock/ray/core_worker/task_manager_interface.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
-#include "ray/common/test_util.h"
+#include "ray/common/test_utils.h"
 
 namespace ray {
 namespace core {

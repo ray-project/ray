@@ -51,7 +51,7 @@ For example, the following code batches multiple files into the same read task t
     ray.init(num_cpus=2)
 
     # Repeat the iris.csv file 16 times.
-    ds = ray.data.read_csv(["example://iris.csv"] * 16)
+    ds = ray.data.read_csv(["s3://anonymous@ray-example-data/iris.csv"] * 16)
     print(ds.materialize())
 
 .. testoutput::
@@ -81,7 +81,7 @@ Notice how the number of output blocks is equal to ``override_num_blocks`` in th
     ray.init(num_cpus=2)
 
     # Repeat the iris.csv file 16 times.
-    ds = ray.data.read_csv(["example://iris.csv"] * 16, override_num_blocks=16)
+    ds = ray.data.read_csv(["s3://anonymous@ray-example-data/iris.csv"] * 16, override_num_blocks=16)
     print(ds.materialize())
 
 .. testoutput::
@@ -143,7 +143,7 @@ For example, the following code executes :func:`~ray.data.read_csv` with only on
     # Pretend there are two CPUs.
     ray.init(num_cpus=2)
 
-    ds = ray.data.read_csv("example://iris.csv").map(lambda row: row)
+    ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv").map(lambda row: row)
     print(ds.materialize().stats())
 
 .. testoutput::
@@ -171,7 +171,7 @@ For example, this code sets the number of files equal to ``override_num_blocks``
     # Pretend there are two CPUs.
     ray.init(num_cpus=2)
 
-    ds = ray.data.read_csv("example://iris.csv", override_num_blocks=1).map(lambda row: row)
+    ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv", override_num_blocks=1).map(lambda row: row)
     print(ds.materialize().stats())
 
 .. testoutput::
@@ -205,15 +205,21 @@ calling :func:`~ray.data.Dataset.select_columns`, since column selection is push
 .. testcode::
 
     import ray
+
     # Read just two of the five columns of the Iris dataset.
-    ray.data.read_parquet(
+    ds = ray.data.read_parquet(
         "s3://anonymous@ray-example-data/iris.parquet",
         columns=["sepal.length", "variety"],
     )
+    
+    print(ds.schema())
 
 .. testoutput::
 
-    Dataset(num_rows=150, schema={sepal.length: double, variety: string})
+    Column        Type
+    ------        ----
+    sepal.length  double
+    variety       string
 
 
 .. _data_memory:
@@ -411,10 +417,12 @@ You can configure execution options with the global DataContext. The options are
 
 .. code-block::
 
-   ctx = ray.data.DataContext.get_current()
-   ctx.execution_options.resource_limits.cpu = 10
-   ctx.execution_options.resource_limits.gpu = 5
-   ctx.execution_options.resource_limits.object_store_memory = 10e9
+    ctx = ray.data.DataContext.get_current()
+    ctx.execution_options.resource_limits = ctx.execution_options.resource_limits.copy(
+        cpu=10,
+        gpu=5,
+        object_store_memory=10e9,
+    )
 
 .. note::
     It's **not** recommended to modify the Ray Core object store memory limit, as this can reduce available memory for task execution. The one exception to this is if you are using machines with a very large amount of RAM (1 TB or more each); then it's recommended to set the object store to ~30-40%.

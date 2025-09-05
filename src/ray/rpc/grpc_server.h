@@ -68,12 +68,6 @@ namespace rpc {
     SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE)                \
   _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, false)
 
-// Define a void RPC client method.
-#define DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(METHOD)            \
-  virtual void Handle##METHOD(::ray::rpc::METHOD##Request request, \
-                              ::ray::rpc::METHOD##Reply *reply,    \
-                              ::ray::rpc::SendReplyCallback send_reply_callback) = 0;
-
 class GrpcService;
 
 /// Class that represents an gRPC server.
@@ -96,13 +90,11 @@ class GrpcServer {
   GrpcServer(std::string name,
              const uint32_t port,
              bool listen_to_localhost_only,
-             const ClusterID &cluster_id = ClusterID::Nil(),
              int num_threads = 1,
              int64_t keepalive_time_ms = 7200000 /*2 hours, grpc default*/)
       : name_(std::move(name)),
         port_(port),
         listen_to_localhost_only_(listen_to_localhost_only),
-        cluster_id_(ClusterID::Nil()),
         is_shutdown_(true),
         num_threads_(num_threads),
         keepalive_time_ms_(keepalive_time_ms) {

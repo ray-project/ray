@@ -12,7 +12,6 @@ import ray
 from ray._common.test_utils import wait_for_condition
 import ray.experimental.internal_kv as kv
 from ray._private.ray_constants import (
-    DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
     KV_NAMESPACE_DASHBOARD,
 )
 from ray._private.test_utils import (
@@ -36,8 +35,6 @@ from ray.dashboard.tests.conftest import *  # noqa
 from ray.runtime_env.runtime_env import RuntimeEnv
 from ray.tests.conftest import _ray_start
 from ray.util.state import list_nodes
-
-import psutil
 
 
 def _check_job_succeeded(client: JobSubmissionClient, job_id: str) -> bool:
@@ -166,13 +163,6 @@ def test_temporary_uri_reference(monkeypatch, expiration_s):
                 print("Internal KV was GC'ed at time ", time.time() - start)
 
 
-@pytest.fixture
-def mock_candidate_number():
-    os.environ["CANDIDATE_AGENT_NUMBER"] = "2"
-    yield
-    os.environ.pop("CANDIDATE_AGENT_NUMBER", None)
-
-
 def get_register_agents_number(gcs_client):
     keys = gcs_client.internal_kv_keys(
         prefix=DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
@@ -188,124 +178,46 @@ def get_register_agents_number(gcs_client):
         {
             "include_dashboard": True,
             "env_vars": {
-                "CANDIDATE_AGENT_NUMBER": "2",
                 RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR: "1",
                 "RAY_health_check_initial_delay_ms": "0",
                 "RAY_health_check_period_ms": "1000",
-                "RAY_JOB_AGENT_USE_HEAD_NODE_ONLY": "0",
             },
         }
     ],
     indirect=True,
 )
-def test_job_head_choose_job_agent_E2E(ray_start_cluster_head_with_env_vars):
+def test_head_node_job_agent_always_used(ray_start_cluster_head_with_env_vars):
+    """Makes sure that job submission always uses the head node's job agent.
+
+    1. Create a cluster with a worker node and a head node.
+    2. Submit 10 jobs.
+    3. Make sure they all execute on the head node's job agent.
+    """
     cluster = ray_start_cluster_head_with_env_vars
     assert wait_until_server_available(cluster.webui_url) is True
     webui_url = cluster.webui_url
     webui_url = format_web_url(webui_url)
     client = JobSubmissionClient(webui_url)
-    gcs_client = GcsClient(address=cluster.gcs_address)
 
-    def submit_job_and_wait_finish():
-        submission_id = client.submit_job(entrypoint="echo hello")
+    cluster_nodes = cluster.list_all_nodes()
+    assert len(cluster_nodes) == 1 and cluster_nodes[0].is_head
+    head_node_id = cluster_nodes[0].node_id
 
+    # add a worker node.
+    cluster.add_node()
+
+    job_ids = [client.submit_job(entrypoint="echo hello")]
+
+    for job_id in job_ids:
         wait_for_condition(
-            _check_job_succeeded, client=client, job_id=submission_id, timeout=30
+            _check_job_succeeded, client=client, job_id=job_id, timeout=30
         )
 
-    head_http_port = DEFAULT_DASHBOARD_AGENT_LISTEN_PORT
-    worker_1_http_port = 52366
-    cluster.add_node(dashboard_agent_listen_port=worker_1_http_port)
-    wait_for_condition(lambda: get_register_agents_number(gcs_client) == 2, timeout=20)
-    assert len(cluster.worker_nodes) == 1
-    node_try_to_kill = list(cluster.worker_nodes)[0]
+    actors = ray.state.actors()
 
-    def make_sure_worker_node_run_job(port):
-        actors = ray.state.actors()
-
-        def _kill_all_driver():
-            for _, actor_info in actors.items():
-                if actor_info["State"] != "ALIVE":
-                    continue
-                if actor_info["Name"].startswith("_ray_internal_job_actor"):
-                    proc = psutil.Process(actor_info["Pid"])
-                    try:
-                        proc.kill()
-                    except Exception:
-                        pass
-
-        try:
-            for _, actor_info in actors.items():
-                if actor_info["State"] != "ALIVE":
-                    continue
-                if actor_info["Name"].startswith("_ray_internal_job_actor"):
-                    proc = psutil.Process(actor_info["Pid"])
-                    parent_proc = proc.parent()
-                    if f"--listen-port={port}" in " ".join(parent_proc.cmdline()):
-                        _kill_all_driver()
-                        return True
-        except Exception as ex:
-            print("Got exception:", ex)
-            raise
-        client.submit_job(entrypoint="sleep 3600")
-        return False
-
-    # Make `list(cluster.worker_nodes)[0]` and head node called at least once
-    wait_for_condition(
-        lambda: make_sure_worker_node_run_job(worker_1_http_port), timeout=60
-    )
-    wait_for_condition(
-        lambda: make_sure_worker_node_run_job(head_http_port), timeout=60
-    )
-
-    worker_2_http_port = 52367
-    cluster.add_node(dashboard_agent_listen_port=worker_2_http_port)
-    wait_for_condition(lambda: get_register_agents_number(gcs_client) == 3, timeout=20)
-
-    # The third `JobAgent` will not be called here.
-    submit_job_and_wait_finish()
-    submit_job_and_wait_finish()
-    submit_job_and_wait_finish()
-
-    def get_all_new_supervisor_actor_info(old_supervisor_actor_ids):
-        all_actors = ray.state.state.actor_table(None)
-        res = dict()
-        for actor_id, actor_info in all_actors.items():
-            if actor_id in old_supervisor_actor_ids:
-                continue
-            if not actor_info["Name"].startswith("_ray_internal_job_actor"):
-                continue
-            res[actor_id] = actor_info
-        return res
-
-    old_supervisor_actor_ids = set()
-    new_supervisor_actor = get_all_new_supervisor_actor_info(old_supervisor_actor_ids)
-    new_owner_port = set()
-    for actor_id, actor_info in new_supervisor_actor.items():
-        old_supervisor_actor_ids.add(actor_id)
-        new_owner_port.add(actor_info["OwnerAddress"]["Port"])
-
-    assert len(new_owner_port) == 2
-    old_owner_port = new_owner_port
-
-    node_try_to_kill.kill_raylet()
-
-    # make sure the head updates the info of the dead node.
-    wait_for_condition(lambda: get_register_agents_number(gcs_client) == 2, timeout=20)
-
-    # Make sure the third JobAgent will be called here.
-    wait_for_condition(
-        lambda: make_sure_worker_node_run_job(worker_2_http_port), timeout=60
-    )
-
-    new_supervisor_actor = get_all_new_supervisor_actor_info(old_supervisor_actor_ids)
-    new_owner_port = set()
-    for actor_id, actor_info in new_supervisor_actor.items():
-        old_supervisor_actor_ids.add(actor_id)
-        new_owner_port.add(actor_info["OwnerAddress"]["Port"])
-    assert len(new_owner_port) == 2
-    assert len(old_owner_port - new_owner_port) == 1
-    assert len(new_owner_port - old_owner_port) == 1
+    for _, actor_info in actors.items():
+        if actor_info["Name"].startswith("_ray_internal_job_actor"):
+            assert actor_info["Address"]["NodeID"] == head_node_id
 
 
 @pytest.mark.parametrize(

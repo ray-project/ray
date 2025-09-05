@@ -2,48 +2,46 @@ import asyncio
 import json
 import os
 import sys
+import urllib
 from pathlib import Path
 from typing import List
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import grpc
-from ray._common.test_utils import wait_for_condition
-import requests
 import pytest
-import urllib
+import requests
 from click.testing import CliRunner
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     format_web_url,
     wait_until_server_available,
 )
-from ray.util.state.state_cli import logs_state_cli_group
-from ray.util.state import list_jobs
-
 from ray._raylet import ActorID, NodeID, TaskID, WorkerID
 from ray.core.generated.common_pb2 import Address
-from ray.core.generated.gcs_service_pb2 import GetTaskEventsReply
-from ray.core.generated.reporter_pb2 import ListLogsReply, StreamLogReply
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
     TaskEvents,
-    TaskStateUpdate,
     TaskLogInfo,
+    TaskStateUpdate,
 )
+from ray.core.generated.gcs_service_pb2 import GetTaskEventsReply
+from ray.core.generated.reporter_pb2 import ListLogsReply, StreamLogReply
 from ray.dashboard.modules.log.log_agent import (
-    find_offset_of_content_in_file,
+    LogAgentV1Grpc,
+    _stream_log_in_chunk,
     find_end_offset_file,
     find_end_offset_next_n_lines_from_offset,
+    find_offset_of_content_in_file,
     find_start_offset_last_n_lines_from_offset,
-    LogAgentV1Grpc,
 )
-from ray.dashboard.modules.log.log_agent import _stream_log_in_chunk
 from ray.dashboard.modules.log.log_manager import LogsManager
 from ray.dashboard.tests.conftest import *  # noqa
-from ray.util.state import get_log, list_logs, list_nodes, list_workers
+from ray.util.state import get_log, list_jobs, list_logs, list_nodes, list_workers
 from ray.util.state.common import GetLogOptions
 from ray.util.state.exception import RayStateApiException
+from ray.util.state.state_cli import logs_state_cli_group
 from ray.util.state.state_manager import StateDataSourceClient
 
 

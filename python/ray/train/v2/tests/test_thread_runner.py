@@ -1,14 +1,32 @@
+import threading
 import time
 
 import pytest
 
 from ray.train.v2._internal.exceptions import UserExceptionWithTraceback
 from ray.train.v2._internal.execution.worker_group.thread_runner import ThreadRunner
+from ray.train.v2._internal.util import construct_user_exception_with_traceback
+
+
+class ThreadRunnerWithJoin(ThreadRunner):
+    def join(self):
+        """Join both the target thread and the monitor thread.
+
+        Do not include this with the main ThreadRunner class because:
+        * It is tricky to avoid hangs when nested threads raise errors
+        * We don't need to join in that case since the controller will see the
+          error and shut down the worker
+        """
+        if self._monitor_thread is None or self._thread is None:
+            raise RuntimeError("Must call `run` before trying to `join`.")
+        self._monitor_thread.join()
+        self._thread.join()
+        return self.get_return_value()
 
 
 @pytest.fixture()
 def thread_runner():
-    return ThreadRunner()
+    return ThreadRunnerWithJoin()
 
 
 def test_successful_return(thread_runner):
@@ -46,6 +64,34 @@ def test_error(thread_runner):
     assert isinstance(error._base_exc, ValueError)
     print(error._traceback_str)
     assert "_run_target" not in error._traceback_str
+
+
+def test_nested_thread_error(thread_runner):
+    """Checks that we capture exceptions from threads kicked off by target function."""
+
+    def target():
+        def nested():
+            try:
+                raise ValueError
+            except ValueError as e:
+                thread_runner.get_exception_queue().put(
+                    construct_user_exception_with_traceback(e)
+                )
+
+        thread = threading.Thread(target=nested)
+        thread.start()
+        thread.join()
+
+    thread_runner.run(target)
+    assert not thread_runner.join()
+
+    assert thread_runner.get_return_value() is None
+    assert not thread_runner.is_running()
+
+    error = thread_runner.get_error()
+
+    assert isinstance(error, UserExceptionWithTraceback)
+    assert isinstance(error._base_exc, ValueError)
 
 
 def test_running(thread_runner, tmp_path):

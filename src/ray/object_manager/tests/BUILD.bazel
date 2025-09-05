@@ -36,7 +36,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        "//:ray_mock",
+        "//:ray_fakes",
         "//src/ray/object_manager:ownership_object_directory",
         "@com_google_googletest//:gtest_main",
     ],
