@@ -271,6 +271,10 @@ const LabelSelector &LeaseSpecification::GetLabelSelector() const {
   return *label_selector_;
 }
 
+const std::vector<LabelSelector> &LeaseSpecification::GetFallbackStrategy() const {
+  return *fallback_strategy_;
+}
+
 ray::FunctionDescriptor LeaseSpecification::FunctionDescriptor() const {
   return ray::FunctionDescriptorBuilder::FromProto(message_->function_descriptor());
 }
@@ -317,9 +321,14 @@ void LeaseSpecification::ComputeResources() {
                                  : GetRequiredResources();
   auto depth = GetDepth();
   auto label_selector = GetLabelSelector();
+  auto fallback_strategy = GetFallbackStrategy();
   const auto &function_descriptor = FunctionDescriptor();
-  auto sched_cls_desc = SchedulingClassDescriptor(
-      resource_set, label_selector, function_descriptor, depth, GetSchedulingStrategy());
+  auto sched_cls_desc = SchedulingClassDescriptor(resource_set,
+                                                  label_selector,
+                                                  function_descriptor,
+                                                  depth,
+                                                  GetSchedulingStrategy(),
+                                                  fallback_strategy);
   // Map the scheduling class descriptor to an integer for performance.
   sched_cls_id_ = TaskSpecification::GetSchedulingClass(sched_cls_desc);
   RAY_CHECK_GT(sched_cls_id_, 0);

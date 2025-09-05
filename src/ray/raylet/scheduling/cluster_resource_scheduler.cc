@@ -302,16 +302,34 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
 
   // This argument is used to set violation, which is an unsupported feature now.
   int64_t _unused;
-  scheduling::NodeID best_node =
-      GetBestSchedulableNode(lease_spec.GetRequiredPlacementResources().GetResourceMap(),
-                             lease_spec.GetLabelSelector(),
-                             lease_spec.GetMessage().scheduling_strategy(),
-                             requires_object_store_memory,
-                             lease_spec.IsActorCreationTask(),
-                             exclude_local_node,
-                             preferred_node_id,
-                             &_unused,
-                             is_infeasible);
+
+  // Construct list of references to all LabelSelectors, from both the `label_selector`
+  // and `fallback_strategy` arguments.
+  std::vector<std::reference_wrapper<const LabelSelector>> selectors_to_try;
+  selectors_to_try.push_back(std::cref(lease_spec.GetLabelSelector()));
+  const auto &fallback_selectors = lease_spec.GetFallbackStrategy();
+  for (const auto &fallback : fallback_selectors) {
+    selectors_to_try.push_back(std::cref(fallback));
+  }
+
+  // Try each label selector in order (primary -> fallback).
+  scheduling::NodeID best_node = scheduling::NodeID::Nil();
+  for (const auto &selector_ref : selectors_to_try) {
+    best_node = GetBestSchedulableNode(
+        lease_spec.GetRequiredPlacementResources().GetResourceMap(),
+        selector_ref.get(),
+        lease_spec.GetMessage().scheduling_strategy(),
+        requires_object_store_memory,
+        lease_spec.IsActorCreationTask(),
+        exclude_local_node,
+        preferred_node_id,
+        &_unused,
+        is_infeasible);
+
+    if (!*is_infeasible) {
+      break;
+    }
+  }
 
   // There is no other available nodes.
   if (!best_node.IsNil() &&

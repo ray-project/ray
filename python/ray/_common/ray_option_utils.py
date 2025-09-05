@@ -7,6 +7,7 @@ import ray
 from ray._private import ray_constants
 from ray._private.label_utils import (
     validate_label_selector,
+    validate_fallback_strategy,
 )
 from ray._private.utils import get_ray_doc_version
 from ray.util.placement_group import PlacementGroup
@@ -127,6 +128,7 @@ def _validate_resources(resources: Optional[Dict[str, float]]) -> Optional[str]:
 
 _common_options = {
     "label_selector": Option((dict, type(None)), lambda x: validate_label_selector(x)),
+    "fallback_strategy": Option(list((dict)), lambda x: validate_fallback_strategy(x)),
     "accelerator_type": Option((str, type(None))),
     "memory": _resource_option("memory"),
     "name": Option((str, type(None))),
