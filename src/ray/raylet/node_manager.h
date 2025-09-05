@@ -283,6 +283,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                rpc::ReturnWorkerLeaseReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
+                               rpc::CancelWorkerLeaseReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
+
  private:
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
 
@@ -577,11 +581,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   void HandleIsLocalWorkerDead(rpc::IsLocalWorkerDeadRequest request,
                                rpc::IsLocalWorkerDeadReply *reply,
-                               rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Handle a `CancelWorkerLease` request.
-  void HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
-                               rpc::CancelWorkerLeaseReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `NodeStats` request.
