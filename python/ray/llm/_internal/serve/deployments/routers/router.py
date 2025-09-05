@@ -446,9 +446,9 @@ class LLMRouter:
 
             if isinstance(first_chunk, ErrorResponse):
                 raise OpenAIHTTPException(
-                    message=first_chunk.message,
-                    status_code=first_chunk.code,
-                    type=first_chunk.type,
+                    message=first_chunk.error.message,
+                    status_code=first_chunk.error.code,
+                    type=first_chunk.error.type,
                 )
 
             if isinstance(first_chunk, NoneStreamingResponseType):
@@ -495,9 +495,9 @@ class LLMRouter:
             result = await results.__anext__()
             if isinstance(result, ErrorResponse):
                 raise OpenAIHTTPException(
-                    message=result.message,
-                    status_code=result.code,
-                    type=result.type,
+                    message=result.error.message,
+                    status_code=result.error.code,
+                    type=result.error.type,
                 )
 
             if isinstance(result, EmbeddingResponse):
