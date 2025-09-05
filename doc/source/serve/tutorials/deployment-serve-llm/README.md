@@ -22,7 +22,7 @@ Deploy medium-sized models using tensor parallelism across 4—8 GPUs on a singl
 
 ---
 
-**[Large-sized LLM deployment](https://docs.ray.io/en/master/serve/tutorials/deployment-serve-llmlarge-size-llm/README.html)**  
+**[Large-sized LLM deployment](https://docs.ray.io/en/master/serve/tutorials/deployment-serve-llm/large-size-llm/README.html)**  
 Deploy massive models using pipeline parallelism across a multi-node cluster, such as Deepseek-R1 or Llama-Nemotron-253&nbsp;B.  
 
 ---
