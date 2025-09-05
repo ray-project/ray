@@ -246,30 +246,6 @@ class ParquetDatasource(Datasource):
                 columns, pq_ds.fragments[0], partitioning
             )
 
-        try:
-            prefetch_remote_args = {}
-            prefetch_remote_args["num_cpus"] = NUM_CPUS_FOR_META_FETCH_TASK
-            if self._local_scheduling:
-                prefetch_remote_args["scheduling_strategy"] = self._local_scheduling
-            else:
-                # Use the scheduling strategy ("SPREAD" by default) provided in
-                # `DataContext``, to spread out prefetch tasks in cluster, avoid
-                # AWS S3 throttling error.
-                # Note: this is the same scheduling strategy used by read tasks.
-                prefetch_remote_args[
-                    "scheduling_strategy"
-                ] = DataContext.get_current().scheduling_strategy
-
-            self._metadata = [
-                ParquetFileMetadata(
-                    num_bytes=num_bytes,
-                )
-                for num_bytes in file_sizes
-            ]
-
-        except OSError as e:
-            _handle_read_os_error(e, paths)
-
         if to_batch_kwargs is None:
             to_batch_kwargs = {}
 
