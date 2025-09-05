@@ -82,6 +82,13 @@ void TaskSpecification::ComputeResources() {
   // from proto to LabelSelector data type.
   label_selector_ = std::make_shared<LabelSelector>(message_->label_selector());
 
+  // Parse FallbackStrategy from proto to list of LabelSelectors if specified.
+  auto strategy_list = std::make_shared<std::vector<LabelSelector>>();
+  for (const auto &proto_selector : message_->fallback_strategy()) {
+    strategy_list->emplace_back(proto_selector.label_selector());
+  }
+  fallback_strategy_ = std::move(strategy_list);
+
   if (!IsActorTask()) {
     // There is no need to compute `SchedulingClass` for actor tasks since
     // the actor tasks need not be scheduled.
@@ -95,11 +102,13 @@ void TaskSpecification::ComputeResources() {
     const auto &function_descriptor = FunctionDescriptor();
     auto depth = GetDepth();
     auto label_selector = GetLabelSelector();
+    auto fallback_strategy = GetFallbackStrategy();
     auto sched_cls_desc = SchedulingClassDescriptor(resource_set,
                                                     label_selector,
                                                     function_descriptor,
                                                     depth,
-                                                    GetSchedulingStrategy());
+                                                    GetSchedulingStrategy(),
+                                                    fallback_strategy);
     // Map the scheduling class descriptor to an integer for performance.
     sched_cls_id_ = SchedulingClassToIds::GetSchedulingClass(sched_cls_desc);
   }
@@ -319,6 +328,10 @@ const ResourceSet &TaskSpecification::GetRequiredResources() const {
 
 const LabelSelector &TaskSpecification::GetLabelSelector() const {
   return *label_selector_;
+}
+
+const std::vector<LabelSelector> &TaskSpecification::GetFallbackStrategy() const {
+  return *fallback_strategy_;
 }
 
 const rpc::SchedulingStrategy &TaskSpecification::GetSchedulingStrategy() const {
