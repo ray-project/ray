@@ -230,11 +230,11 @@ class ServeController:
         self._proxy_nodes = set()
         self._update_proxy_nodes()
 
-        # Serve-side summarizer to throttle repetitive notes and build payloads.
+        # Serve-side summarizer to throttle repetitive logs and build payloads.
         self._serve_event_summarizer = ServeAutoscalingEventSummarizer()
 
         # Caches for autoscaling observability
-        self._last_autoscaling_snapshots: Dict[Tuple[str, str], SnapshotSignature] = {}
+        self._last_autoscaling_snapshots: Dict[DeploymentID, SnapshotSignature] = {}
         self._scaling_decisions = {}
 
     def reconfigure_global_logging_config(self, global_logging_config: LoggingConfig):
@@ -402,47 +402,12 @@ class ServeController:
                     continue
                 yield app_name, dep_name, details, autoscaling_config
 
-    def _compute_snapshot_inputs(self, app_name, dep_name, details, autoscaling_config):
-        norm_cfg = normalize_autoscaling_config(autoscaling_config)
-        current_target = int(details.target_num_replicas)
-        dep_id = DeploymentID(name=dep_name, app_name=app_name)
-        snapshot = self.autoscaling_state_manager.get_observability_snapshot(
-            dep_id, current_target
-        )
-        current_replicas = snapshot["current_replicas"]
-        proposed_replicas = snapshot["proposed_replicas"]
-        min_repl_adj = snapshot["min_replicas"]
-        max_repl_adj = snapshot["max_replicas"]
-        total_requests = snapshot["total_requests"]
-        policy_name = norm_cfg.name
-        look_back_period_s = norm_cfg.look_back_period_s
-        if proposed_replicas > current_replicas:
-            scaling_status = "UPSCALING"
-        elif proposed_replicas < current_replicas:
-            scaling_status = "DOWNSCALING"
-        else:
-            scaling_status = "STABLE"
-        return (
-            dep_id,
-            current_replicas,
-            proposed_replicas,
-            min_repl_adj,
-            max_repl_adj,
-            total_requests,
-            policy_name,
-            look_back_period_s,
-            snapshot,
-            scaling_status,
-        )
-
-    def _record_decision(
-        self, dep_id, current_replicas, proposed_replicas, policy_name
-    ):
+    def _record_decision(self, dep_id, current_replicas, target_replicas, policy_name):
         decision = ScalingDecision(
             timestamp_s=time.time(),
-            reason=f"current={current_replicas}, proposed={proposed_replicas}",
+            reason=f"current={current_replicas}, target={target_replicas}",
             prev_num_replicas=int(current_replicas),
-            curr_num_replicas=int(proposed_replicas),
+            curr_num_replicas=int(target_replicas),
             policy=policy_name,
         )
         self._scaling_decisions.setdefault(dep_id, []).append(decision)
@@ -463,28 +428,33 @@ class ServeController:
             details,
             autoscaling_config,
         ) in self._iter_autoscaled_deployments():
-            (
-                dep_id,
-                current_replicas,
-                proposed_replicas,
-                min_repl_adj,
-                max_repl_adj,
-                total_requests,
-                policy_name,
-                look_back_period_s,
-                snapshot,
-                scaling_status,
-            ) = self._compute_snapshot_inputs(
-                app_name, dep_name, details, autoscaling_config
+            norm_cfg = normalize_autoscaling_config(autoscaling_config)
+            current_target = int(details.target_num_replicas)
+            dep_id = DeploymentID(name=dep_name, app_name=app_name)
+            snapshot = self.autoscaling_state_manager.get_snapshot(
+                dep_id, current_target
             )
+            current_replicas = snapshot["current_replicas"]
+            target_replicas = snapshot["target_replicas"]
+            min_repl_adj = snapshot["min_replicas"]
+            max_repl_adj = snapshot["max_replicas"]
+            total_requests = snapshot["total_requests"]
+            policy_name = norm_cfg.name
+            look_back_period_s = norm_cfg.look_back_period_s
+            if target_replicas > current_replicas:
+                scaling_status = "UPSCALING"
+            elif target_replicas < current_replicas:
+                scaling_status = "DOWNSCALING"
+            else:
+                scaling_status = "STABLE"
 
             self._record_decision(
-                dep_id, current_replicas, proposed_replicas, policy_name
+                dep_id, current_replicas, target_replicas, policy_name
             )
-            key = (app_name, dep_name)
+            key = dep_id
             signature = self._serve_event_summarizer.compute_signature(
                 current_replicas=current_replicas,
-                proposed_replicas=proposed_replicas,
+                target_replicas=target_replicas,
                 min_replicas=min_repl_adj,
                 max_replicas=max_repl_adj,
                 scaling_status=scaling_status,
@@ -496,17 +466,15 @@ class ServeController:
             decisions_summary = self._serve_event_summarizer.summarize_recent_decisions(
                 recent_decisions
             )
-            scaling_status_fmt = self._serve_event_summarizer.format_scaling_status(
-                scaling_status
-            )
-            self._serve_event_summarizer.emit_deployment_snapshot(
+
+            self._serve_event_summarizer.log_deployment_snapshot(
                 app_name=app_name,
                 deployment_name=dep_name,
                 current_replicas=current_replicas,
-                proposed_replicas=proposed_replicas,
+                target_replicas=target_replicas,
                 min_replicas=min_repl_adj,
                 max_replicas=max_repl_adj,
-                scaling_status=scaling_status_fmt,
+                scaling_status=scaling_status,
                 policy_name=policy_name,
                 look_back_period_s=look_back_period_s,
                 queued_requests=snapshot.get("queued_requests"),

@@ -1,7 +1,7 @@
 import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from starlette.types import Scope
 
@@ -757,7 +757,7 @@ OBJ_REF_NOT_SUPPORTED_ERROR = RuntimeError(
 
 
 @dataclass(frozen=True)
-class DecisionSummary:
+class AutoscalingDecisionSummary:
     timestamp_s: Optional[str]
     prev_num_replicas: Optional[int]
     curr_num_replicas: Optional[int]
@@ -780,7 +780,7 @@ class DeploymentSnapshot:
     total_requests: float
     metrics_health: str
     errors: List[str]
-    decisions: List[DecisionSummary]
+    decisions: List[AutoscalingDecisionSummary]
 
     def to_log_dict(self) -> Dict[str, object]:
         return {
@@ -789,14 +789,12 @@ class DeploymentSnapshot:
             "deployment": self.deployment,
             "current_replicas": self.current_replicas,
             "target_replicas": self.target_replicas,
-            "replicas_allowed": {
-                "min": self.min_replicas,
-                "max": self.max_replicas,
-            },
+            "min": self.min_replicas,
+            "max": self.max_replicas,
             "scaling_status": self.scaling_status,
             "policy": self.policy,
+            "look_back_period_s": self.look_back_period_s,
             "metrics": {
-                "look_back_period_s": self.look_back_period_s,
                 "queued_requests": self.queued_requests,
                 "total_requests": self.total_requests,
             },
@@ -839,4 +837,12 @@ def normalize_autoscaling_config(cfg: Any) -> Optional[InternalAutoscalingConfig
     return InternalAutoscalingConfig(name=name, look_back_period_s=look_back_period_s)
 
 
-SnapshotSignature = Tuple[int, int, Optional[int], Optional[int], str, float]
+# Signature for a snapshot of autoscaling state, used for deduplication.
+@dataclass(frozen=True)
+class SnapshotSignature:
+    current_replicas: int
+    target_replicas: int
+    min_replicas: Optional[int]
+    max_replicas: Optional[int]
+    scaling_status: str
+    total_requests: float

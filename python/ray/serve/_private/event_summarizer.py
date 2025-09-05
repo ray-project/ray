@@ -3,9 +3,8 @@ import logging
 import time
 from typing import Any, List, Optional, Sequence
 
-from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.serve._private.common import (
-    DecisionSummary,
+    AutoscalingDecisionSummary,
     DeploymentSnapshot,
     SnapshotSignature,
 )
@@ -25,14 +24,11 @@ class ServeAutoscalingEventSummarizer:
     remains small and consistent.
     """
 
-    def __init__(self):
-        self._summarizer = EventSummarizer()
-
     def compute_signature(
         self,
         *,
         current_replicas: int,
-        proposed_replicas: int,
+        target_replicas: int,
         min_replicas: Optional[int],
         max_replicas: Optional[int],
         scaling_status: str,
@@ -43,13 +39,13 @@ class ServeAutoscalingEventSummarizer:
         The controller uses this to avoid emitting duplicate logs when nothing
         material changed.
         """
-        return (
-            int(current_replicas),
-            int(proposed_replicas),
-            None if min_replicas is None else int(min_replicas),
-            None if max_replicas is None else int(max_replicas),
-            str(scaling_status),
-            float(total_requests or 0.0),
+        return SnapshotSignature(
+            current_replicas=int(current_replicas),
+            target_replicas=int(target_replicas),
+            min_replicas=None if min_replicas is None else int(min_replicas),
+            max_replicas=None if max_replicas is None else int(max_replicas),
+            scaling_status=str(scaling_status),
+            total_requests=float(total_requests or 0.0),
         )
 
     def summarize_recent_decisions(
@@ -57,9 +53,9 @@ class ServeAutoscalingEventSummarizer:
         decisions: Sequence[Any],
         *,
         limit: int = AUTOSCALER_SUMMARIZER_DECISION_LIMIT,
-    ) -> List[DecisionSummary]:
+    ) -> List[AutoscalingDecisionSummary]:
         """Convert recent ScalingDecision objects into typed DecisionSummary list for logs."""
-        out: List[DecisionSummary] = []
+        out: List[AutoscalingDecisionSummary] = []
         for d in list(decisions)[-limit:]:
             if hasattr(d, "dict"):
                 dd = d.dict()
@@ -81,7 +77,7 @@ class ServeAutoscalingEventSummarizer:
             if len(reason) > 80:
                 reason = reason[:77] + "..."
             out.append(
-                DecisionSummary(
+                AutoscalingDecisionSummary(
                     timestamp_s=timestamp_s,
                     prev_num_replicas=prev_num_replicas,
                     curr_num_replicas=curr_num_replicas,
@@ -106,7 +102,7 @@ class ServeAutoscalingEventSummarizer:
     ) -> str:
         """Return a short human-friendly health string based on freshness."""
         if last_metrics_age_s is None:
-            return "ok"
+            return "unknown"
         threshold = look_back_period_s or 30.0
         if last_metrics_age_s > threshold:
             return f"delayed (last update {int(last_metrics_age_s)}s ago)"
@@ -118,7 +114,7 @@ class ServeAutoscalingEventSummarizer:
         app_name: str,
         deployment_name: str,
         current_replicas: int,
-        proposed_replicas: int,
+        target_replicas: int,
         min_replicas: Optional[int],
         max_replicas: Optional[int],
         scaling_status: str,
@@ -127,8 +123,8 @@ class ServeAutoscalingEventSummarizer:
         queued_requests: Optional[float],
         total_requests: float,
         last_metrics_age_s: Optional[float],
-        errors: Optional[List[str]],
-        recent_decisions: List[DecisionSummary],
+        errors: List[str],
+        recent_decisions: List[AutoscalingDecisionSummary],
     ) -> DeploymentSnapshot:
         """Build the typed snapshot object we log as a one-liner."""
         timestamp_s = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -139,15 +135,15 @@ class ServeAutoscalingEventSummarizer:
             timestamp_s=timestamp_s,
             app=app_name,
             deployment=deployment_name,
-            current_replicas=int(current_replicas),
-            target_replicas=int(proposed_replicas),
-            min_replicas=None if min_replicas is None else int(min_replicas),
-            max_replicas=None if max_replicas is None else int(max_replicas),
+            current_replicas=current_replicas,
+            target_replicas=target_replicas,
+            min_replicas=min_replicas,
+            max_replicas=max_replicas,
             scaling_status=scaling_status,
             policy=policy_name,
             look_back_period_s=look_back_period_s,
-            queued_requests=None if queued_requests is None else float(queued_requests),
-            total_requests=float(total_requests or 0.0),
+            queued_requests=queued_requests,
+            total_requests=total_requests,
             metrics_health=health_text,
             errors=errors or [],
             decisions=recent_decisions,
@@ -160,13 +156,13 @@ class ServeAutoscalingEventSummarizer:
             "serve_autoscaling_snapshot " + json.dumps(payload, separators=(",", ":"))
         )
 
-    def emit_deployment_snapshot(
+    def log_deployment_snapshot(
         self,
         *,
         app_name: str,
         deployment_name: str,
         current_replicas: int,
-        proposed_replicas: int,
+        target_replicas: int,
         min_replicas: Optional[int],
         max_replicas: Optional[int],
         scaling_status: str,
@@ -175,15 +171,17 @@ class ServeAutoscalingEventSummarizer:
         queued_requests: Optional[float],
         total_requests: float,
         last_metrics_age_s: Optional[float],
-        errors: Optional[List[str]],
-        recent_decisions: List[DecisionSummary],
+        errors: List[str],
+        recent_decisions: List[AutoscalingDecisionSummary],
     ) -> None:
         """Build and immediately log a deployment snapshot."""
+
+        scaling_status = self.format_scaling_status(scaling_status)
         snapshot = self.build_deployment_snapshot(
             app_name=app_name,
             deployment_name=deployment_name,
             current_replicas=current_replicas,
-            proposed_replicas=proposed_replicas,
+            target_replicas=target_replicas,
             min_replicas=min_replicas,
             max_replicas=max_replicas,
             scaling_status=scaling_status,

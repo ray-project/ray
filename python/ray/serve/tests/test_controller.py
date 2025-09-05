@@ -360,7 +360,8 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
         "deployment",
         "current_replicas",
         "target_replicas",
-        "replicas_allowed",
+        "min",
+        "max",
         "metrics",
         "metrics_health",
         "decisions",
@@ -373,7 +374,8 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
     assert payload["deployment"] == DEPLOY_NAME
     assert isinstance(payload["current_replicas"], int)
     assert isinstance(payload["target_replicas"], int)
-    assert set(payload["replicas_allowed"].keys()) == {"min", "max"}
+    assert isinstance(payload["min"], int)
+    assert isinstance(payload["max"], int)
     assert isinstance(payload["metrics"], dict)
     assert "total_requests" in payload["metrics"]
     assert isinstance(payload["decisions"], list)
