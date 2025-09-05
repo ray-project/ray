@@ -1119,7 +1119,7 @@ def test_limit_pushdown_conservative(ray_start_regular_shared_2_cpus):
     ds = ray.data.range(100).sort("id").limit(5)
     _check_valid_plan_and_result(
         ds,
-        "Read[ReadRange] -> Sort[Sort] -> Limit[limit=5]",
+        "Read[ReadRange] -> Sort[Sort]",
         [{"id": i} for i in range(5)],
     )
 
@@ -1127,8 +1127,8 @@ def test_limit_pushdown_conservative(ray_start_regular_shared_2_cpus):
     ds = ray.data.range(100).sort("id").map(f1).limit(20).sort("id").map(f2).limit(5)
     _check_valid_plan_and_result(
         ds,
-        "Read[ReadRange] -> Sort[Sort] -> Limit[limit=20] -> MapRows[Map(f1)] -> "
-        "Sort[Sort] -> Limit[limit=5] -> MapRows[Map(f2)]",
+        "Read[ReadRange] -> Sort[Sort] -> MapRows[Map(f1)] -> "
+        "Sort[Sort] -> MapRows[Map(f2)]",
         [{"id": i} for i in range(5)],
     )
 
@@ -1337,7 +1337,7 @@ def test_limit_pushdown_union_with_sort(ray_start_regular_shared_2_cpus):
     expected_plan = (
         "Read[ReadRange], "
         "Read[ReadRange] -> MapRows[Map(<lambda>)] -> "
-        "Union[Union] -> Sort[Sort] -> Limit[limit=5]"
+        "Union[Union] -> Sort[Sort]"
     )
     _check_valid_plan_and_result(ds, expected_plan, [{"id": i} for i in range(5)])
 
@@ -1399,7 +1399,7 @@ def test_limit_pushdown_complex_chain(ray_start_regular_shared_2_cpus):
     expected_plan = (
         "Read[ReadRange] -> Limit[limit=10] -> Project[Project], "
         "Read[ReadRange] -> Limit[limit=10] -> MapRows[Map(<lambda>)] "
-        "-> Union[Union] -> Aggregate[Aggregate] -> Sort[Sort] -> Limit[limit=3]"
+        "-> Union[Union] -> Aggregate[Aggregate] -> Sort[Sort]"
     )
 
     # Top-3 ids are the three largest (1009, 1008, 1007) with count()==1.
@@ -1549,6 +1549,23 @@ def test_configure_map_task_memory_rule(
 
     remote_args = new_plan.dag._get_runtime_ray_remote_args()
     assert remote_args.get("memory") == expected_memory
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# New test: correctness + optimality for Sort followed by Limit (top-k).
+def test_sort_with_limit_topk(ray_start_regular_shared_2_cpus):
+    """Sort → Limit should return correct rows and fuse into a single Sort op."""
+    ds = ray.data.range(100, override_num_blocks=4).random_shuffle().sort("id").limit(7)
+    # Correctness.
+    assert extract_values("id", ds.take_all()) == list(range(7))
+
+    # Optimality: the logical plan should contain no standalone Limit
+    # immediately after the Sort – it has been fused.
+    plan_str = ds._plan._logical_plan.dag.dag_str
+    assert "Sort[Sort]" in plan_str and "Limit[" not in plan_str
+
+
+# ────────────────────────────────────────────────────────────────────────────
 
 
 if __name__ == "__main__":

@@ -120,10 +120,11 @@ class SortTaskSpec(ExchangeTaskSpec):
         boundaries: List[T],
         sort_key: SortKey,
         batch_format: str,
+        limit: Optional[int] = None,
     ):
         super().__init__(
-            map_args=[boundaries, sort_key],
-            reduce_args=[sort_key, batch_format],
+            map_args=[boundaries, sort_key, limit],
+            reduce_args=[sort_key, batch_format, limit],
         )
 
     @staticmethod
@@ -133,10 +134,19 @@ class SortTaskSpec(ExchangeTaskSpec):
         output_num_blocks: int,
         boundaries: List[T],
         sort_key: SortKey,
+        limit: Optional[int] = None,
     ) -> List[Union[Block, "BlockMetadataWithSchema"]]:
         stats = BlockExecStats.builder()
         accessor = BlockAccessor.for_block(block)
-        out = accessor.sort_and_partition(boundaries, sort_key)
+        if limit is not None and len(boundaries) == 0:
+            # Fast path – local top-k, no partitioning.
+            blk = accessor.sort(sort_key)
+            blk_accessor = BlockAccessor.for_block(blk)
+            if blk_accessor.num_rows() > limit:
+                blk = blk_accessor.slice(0, limit)
+            out = [blk]
+        else:
+            out = accessor.sort_and_partition(boundaries, sort_key)
         from ray.data.block import BlockMetadataWithSchema
 
         meta_with_schema = BlockMetadataWithSchema.from_block(
@@ -148,6 +158,7 @@ class SortTaskSpec(ExchangeTaskSpec):
     def reduce(
         sort_key: SortKey,
         batch_format: str,
+        limit: Optional[int],
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
     ) -> Tuple[Block, "BlockMetadataWithSchema"]:
@@ -158,6 +169,12 @@ class SortTaskSpec(ExchangeTaskSpec):
         blocks, meta_with_schema = BlockAccessor.for_block(
             normalized_blocks[0]
         ).merge_sorted_blocks(normalized_blocks, sort_key)
+
+        # Final trimming to global top-k.
+        if limit is not None:
+            blocks_accessor = BlockAccessor.for_block(blocks)
+            if blocks_accessor.num_rows() > limit:
+                blocks = blocks_accessor.slice(0, limit)
         return blocks, meta_with_schema
 
     @staticmethod
