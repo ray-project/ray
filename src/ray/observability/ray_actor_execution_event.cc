@@ -17,10 +17,9 @@
 namespace ray {
 namespace observability {
 
-RayActorExecutionEvent::RayActorExecutionEvent(
-    const rpc::ActorTableData &data,
-    rpc::ActorExecutionEvent::State state,
-    const std::string &session_name)
+RayActorExecutionEvent::RayActorExecutionEvent(const rpc::ActorTableData &data,
+                                               rpc::ActorExecutionEvent::State state,
+                                               const std::string &session_name)
     : RayEvent<rpc::ActorExecutionEvent>(session_name) {
   event_type_ = rpc::events::RayEvent::ACTOR_EXECUTION_EVENT;
   ray::rpc::ActorExecutionEvent::StateTransition state_transition;
@@ -49,8 +48,7 @@ RayActorExecutionEvent::RayActorExecutionEvent(
 
 std::string RayActorExecutionEvent::GetResourceId() const { return data_.actor_id(); }
 
-void RayActorExecutionEvent::Merge(
-    RayEvent<rpc::ActorExecutionEvent> &&other) {
+void RayActorExecutionEvent::Merge(RayEvent<rpc::ActorExecutionEvent> &&other) {
   auto &&other_event = static_cast<RayActorExecutionEvent &&>(other);
   for (auto &state : *other_event.data_.mutable_states()) {
     data_.mutable_states()->Add(std::move(state));

@@ -18,9 +18,9 @@
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
-#include "ray/observability/ray_driver_job_definition_event.h"
 #include "ray/observability/ray_actor_definition_event.h"
 #include "ray/observability/ray_actor_execution_event.h"
+#include "ray/observability/ray_driver_job_definition_event.h"
 #include "ray/observability/ray_driver_job_execution_event.h"
 #include "src/ray/protobuf/events_base_event.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -135,12 +135,14 @@ TEST_F(RayEventRecorderTest, TestRecordActorEvents) {
   actor_data2.set_pid(67890);
   actor_data2.set_state(rpc::ActorTableData::DEAD);
   actor_data2.set_ray_namespace("another_namespace");
-  actor_data2.mutable_death_cause()->mutable_actor_died_error_context()->set_error_message("test error message");
+  actor_data2.mutable_death_cause()
+      ->mutable_actor_died_error_context()
+      ->set_error_message("test error message");
 
   std::vector<std::unique_ptr<RayEventInterface>> events;
   std::map<std::string, std::string> empty_labels;
-  events.push_back(
-      std::make_unique<RayActorDefinitionEvent>(actor_data1, empty_labels, "test_session_name_1"));
+  events.push_back(std::make_unique<RayActorDefinitionEvent>(
+      actor_data1, empty_labels, "test_session_name_1"));
   events.push_back(std::make_unique<RayActorExecutionEvent>(
       actor_data2, rpc::ActorExecutionEvent::DEAD, "test_session_name_2"));
 
@@ -172,12 +174,19 @@ TEST_F(RayEventRecorderTest, TestRecordActorEvents) {
   ASSERT_TRUE(recorded_events_[1].has_actor_execution_event());
   ASSERT_EQ(recorded_events_[1].actor_execution_event().actor_id(), "test_actor_id_2");
   ASSERT_EQ(recorded_events_[1].actor_execution_event().states_size(), 1);
-  ASSERT_EQ(recorded_events_[1].actor_execution_event().states(0).state(), 
+  ASSERT_EQ(recorded_events_[1].actor_execution_event().states(0).state(),
             rpc::ActorExecutionEvent::DEAD);
   ASSERT_EQ(recorded_events_[1].actor_execution_event().states(0).node_id(), "");
-  ASSERT_EQ(recorded_events_[1].actor_execution_event().states(0).pid(), 0); // Pid is not set for DEAD state
+  ASSERT_EQ(recorded_events_[1].actor_execution_event().states(0).pid(),
+            0);  // Pid is not set for DEAD state
   ASSERT_EQ(recorded_events_[1].actor_execution_event().states(0).repr_name(), "");
-  ASSERT_EQ(recorded_events_[1].actor_execution_event().states(0).death_cause().actor_died_error_context().error_message(), "test error message");
+  ASSERT_EQ(recorded_events_[1]
+                .actor_execution_event()
+                .states(0)
+                .death_cause()
+                .actor_died_error_context()
+                .error_message(),
+            "test error message");
 }
 
 TEST_F(RayEventRecorderTest, TestMergeActorExecutionEvents) {
@@ -187,14 +196,15 @@ TEST_F(RayEventRecorderTest, TestMergeActorExecutionEvents) {
   actor_data.set_pid(11111);
   actor_data.set_node_id("test_node_id");
   actor_data.set_state(rpc::ActorTableData::ALIVE);
-  
+
   // Create first event with ALIVE state
   auto event1 = std::make_unique<RayActorExecutionEvent>(
       actor_data, rpc::ActorExecutionEvent::ALIVE, "test_session_name_merge");
 
-  // Create second event with DEAD state  
+  // Create second event with DEAD state
   actor_data.set_state(rpc::ActorTableData::DEAD);
-  actor_data.mutable_death_cause()->mutable_actor_died_error_context()->set_error_message("test error message");
+  actor_data.mutable_death_cause()->mutable_actor_died_error_context()->set_error_message(
+      "test error message");
   auto event2 = std::make_unique<RayActorExecutionEvent>(
       actor_data, rpc::ActorExecutionEvent::DEAD, "test_session_name_merge");
 
@@ -211,7 +221,7 @@ TEST_F(RayEventRecorderTest, TestMergeActorExecutionEvents) {
   ASSERT_EQ(recorded_events_.size(), 1);
   // Verify merged event contains both states
   ASSERT_TRUE(recorded_events_[0].has_actor_execution_event());
-  const auto& actor_event = recorded_events_[0].actor_execution_event();
+  const auto &actor_event = recorded_events_[0].actor_execution_event();
   ASSERT_EQ(actor_event.states_size(), 2);
   ASSERT_EQ(actor_event.states(0).state(), rpc::ActorExecutionEvent::ALIVE);
   ASSERT_EQ(actor_event.states(1).state(), rpc::ActorExecutionEvent::DEAD);
@@ -221,6 +231,9 @@ TEST_F(RayEventRecorderTest, TestMergeActorExecutionEvents) {
   ASSERT_EQ(actor_event.states(1).node_id(), "");
   ASSERT_EQ(actor_event.states(1).pid(), 0);
   ASSERT_EQ(actor_event.states(1).repr_name(), "");
-  ASSERT_EQ(actor_event.states(1).death_cause().actor_died_error_context().error_message(), "test error message");
+  ASSERT_EQ(
+      actor_event.states(1).death_cause().actor_died_error_context().error_message(),
+      "test error message");
 }
-}}
+}  // namespace observability
+}  // namespace ray

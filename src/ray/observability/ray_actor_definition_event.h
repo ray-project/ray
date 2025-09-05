@@ -13,9 +13,10 @@
 // limitations under the License.
 
 #include <map>
+
 #include "ray/observability/ray_event.h"
-#include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/events_base_event.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace observability {
