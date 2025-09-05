@@ -17,6 +17,7 @@
 #include <boost/circular_buffer.hpp>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -41,13 +42,16 @@ namespace core {
 namespace worker {
 
 using TaskAttempt = std::pair<TaskID, int32_t>;
-/// A pair of rpc::events::RayEvent.
-/// When converting the TaskStatusEvent, the pair will be populated with the
-/// rpc::events::TaskDefinitionEvent and rpc::events::TaskExecutionEvent respectively.
-/// When converting the TaskProfileEvent, only the first element of the pair will be
-/// populated with rpc::events::TaskProfileEvents
-using RayEventsPair =
-    std::pair<std::optional<rpc::events::RayEvent>, std::optional<rpc::events::RayEvent>>;
+/// A tuple of rpc::events::RayEvent.
+/// When converting the TaskStatusEvent, the first 2 elements of the tuple will be
+/// populated with rpc::events::TaskDefinitionEvent and rpc::events::TaskExecutionEvent
+/// respectively. When converting the TaskProfileEvent, the last element of the tuple will
+/// be populated with rpc::events::TaskProfileEvent. A tuple is needed because the
+/// TaskProfileEvent, TaskDefinitionEvent and TaskExecutionEvent all can share the same
+/// task_id and attempt_number.
+using RayEventsTuple = std::tuple<std::optional<rpc::events::RayEvent>,
+                                  std::optional<rpc::events::RayEvent>,
+                                  std::optional<rpc::events::RayEvent>>;
 
 /// A wrapper class that will be converted to protobuf task events representation.
 ///
@@ -84,7 +88,7 @@ class TaskEvent {
   /// Convert itself to a pair of RayEvent.
   ///
   /// \param[out] ray_events The pair of rpc::events::RayEvent
-  virtual void ToRpcRayEvents(RayEventsPair &ray_events) = 0;
+  virtual void ToRpcRayEvents(RayEventsTuple &ray_events_tuple) = 0;
 
   /// If it is a profile event.
   virtual bool IsProfileEvent() const = 0;
@@ -169,9 +173,9 @@ class TaskStatusEvent : public TaskEvent {
   /// NOTE: this method will modify internal states by moving fields of task_spec_ to
   /// the rpc::events::RayEvent.
   ///
-  /// \param[out] ray_events The pair of rpc::events::RayEvent protobuf messages to be
+  /// \param[out] ray_events The tuple of rpc::events::RayEvent protobuf messages to be
   /// filled.
-  void ToRpcRayEvents(RayEventsPair &ray_events) override;
+  void ToRpcRayEvents(RayEventsTuple &ray_events_tuple) override;
 
   bool IsProfileEvent() const override { return false; }
 
@@ -224,8 +228,8 @@ class TaskProfileEvent : public TaskEvent {
       std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) override;
 
   /// Note: The extra data will be moved when this is called and will no longer be usable.
-  /// Second element of the RayEventsPair will always be empty for TaskProfileEvent.
-  void ToRpcRayEvents(RayEventsPair &ray_events) override;
+  /// Second element of the RayEventsTuple will always be empty for TaskProfileEvent.
+  void ToRpcRayEvents(RayEventsTuple &ray_events_tuple) override;
 
   bool IsProfileEvent() const override { return true; }
 
@@ -464,7 +468,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   ///        status events being dropped.
   /// \return data The ray event data to be sent.
   std::unique_ptr<rpc::events::RayEventsData> CreateRayEventsDataToSend(
-      absl::flat_hash_map<TaskAttempt, RayEventsPair> &&agg_task_events,
+      absl::flat_hash_map<TaskAttempt, RayEventsTuple> &&agg_task_events,
       const absl::flat_hash_set<TaskAttempt> &dropped_task_attempts_to_send);
 
   /// Reset the metrics counters for flush.
@@ -607,7 +611,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   FRIEND_TEST(TaskEventBufferTestLimitProfileEvents, TestLimitProfileEventsPerTask);
   FRIEND_TEST(TaskEventTestWriteExport, TestWriteTaskExportEvents);
   FRIEND_TEST(TaskEventBufferTest, TestCreateRayEventsDataWithProfileEvents);
-  FRIEND_TEST(TaskEventBufferTest, TestMixedStatusAndProfileEventsToRayEvents);
+  FRIEND_TEST(TaskEventBufferTestDifferentDestination,
+              TestMixedStatusAndProfileEventsToRayEvents);
 };
 
 }  // namespace worker
