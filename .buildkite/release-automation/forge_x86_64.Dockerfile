@@ -32,6 +32,9 @@ chmod +x /usr/local/bin/bazelisk
 
 ln -s /usr/local/bin/bazelisk /usr/local/bin/bazel
 
+# Install uv
+wget -qO- https://astral.sh/uv/install.sh | sudo env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+
 # A non-root user. Use 2000, which is the same as our buildkite agent VM uses.
 adduser --home /home/forge --uid 2000 forge --gid 100
 usermod -a -G docker forge

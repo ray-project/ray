@@ -25,6 +25,9 @@ rm /tmp/miniforge3.sh
 curl -L https://github.com/bazelbuild/bazelisk/releases/download/v1.19.0/bazelisk-linux-arm64 --output /usr/local/bin/bazelisk
 chmod +x /usr/local/bin/bazelisk
 
+# Install uv
+wget -qO- https://astral.sh/uv/install.sh | sudo env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+
 ln -s /usr/local/bin/bazelisk /usr/local/bin/bazel
 
 EOF
