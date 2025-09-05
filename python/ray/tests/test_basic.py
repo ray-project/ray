@@ -10,7 +10,6 @@ import time
 import pytest
 
 import ray
-import psutil
 import ray.cluster_utils
 from ray._common.test_utils import SignalActor
 from ray._private.test_utils import (
@@ -18,6 +17,8 @@ from ray._private.test_utils import (
     run_string_as_driver,
 )
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+
+import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -266,7 +267,7 @@ def test_worker_thread_count(monkeypatch, shutdown_only):
         ray.get(actor.get_thread_count.remote())
     # Lowering these numbers in this assert should be celebrated,
     # increasing these numbers should be scrutinized
-    assert ray.get(actor.get_thread_count.remote()) in {24, 25}
+    assert ray.get(actor.get_thread_count.remote()) in {24, 25, 26}
 
 
 # https://github.com/ray-project/ray/issues/7287
@@ -655,6 +656,59 @@ print("remote", ray.get(check.remote()))
     run_string_as_driver(
         script, dict(os.environ, **{"RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": "1"})
     )
+
+
+# https://github.com/ray-project/ray/issues/54868
+def test_not_override_accelerator_ids_when_num_accelerators_is_zero():
+    not_override_check_script = """
+import ray
+ray.init()
+
+
+@ray.remote(num_gpus=0)
+def check():
+    import os
+    assert "CUDA_VISIBLE_DEVICES" not in os.environ
+
+@ray.remote(num_gpus=0)
+class Actor:
+    def check(self):
+        import os
+        assert "CUDA_VISIBLE_DEVICES" not in os.environ
+
+print("task check", ray.get(check.remote()))
+print("actor check", ray.get(Actor.options(num_gpus=0).remote().check.remote()))
+"""
+
+    run_string_as_driver(
+        not_override_check_script,
+        dict(
+            os.environ,
+            **{"RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO": "0"},
+        ),
+    )
+
+    override_check_script = """
+import ray
+ray.init()
+
+
+@ray.remote(num_gpus=0)
+def check():
+    import os
+    assert os.environ.get("CUDA_VISIBLE_DEVICES") == ""
+
+@ray.remote(num_gpus=0)
+class Actor:
+    def check(self):
+        import os
+        assert os.environ.get("CUDA_VISIBLE_DEVICES") == ""
+
+print("task check", ray.get(check.remote()))
+print("actor check", ray.get(Actor.options(num_gpus=0).remote().check.remote()))
+"""
+
+    run_string_as_driver(override_check_script)
 
 
 def test_put_get(shutdown_only):

@@ -360,3 +360,37 @@ class StreamingRepartition(AbstractMap):
 
     def can_modify_num_rows(self) -> bool:
         return False
+
+
+class Download(AbstractMap):
+    """Logical operator for download operation."""
+
+    def __init__(
+        self,
+        input_op: LogicalOperator,
+        uri_column_name: str,
+        output_bytes_column_name: str,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+    ):
+        from ray.data._internal.compute import ActorPoolStrategy
+
+        # Download operation uses CallableClass (PartitionActor) so needs ActorPoolStrategy
+        super().__init__(
+            "Download",
+            input_op,
+            ray_remote_args=ray_remote_args,
+            compute=ActorPoolStrategy(size=1),
+        )
+        self._uri_column_name = uri_column_name
+        self._output_bytes_column_name = output_bytes_column_name
+
+    def can_modify_num_rows(self) -> bool:
+        return False
+
+    @property
+    def uri_column_name(self) -> str:
+        return self._uri_column_name
+
+    @property
+    def output_bytes_column_name(self) -> str:
+        return self._output_bytes_column_name

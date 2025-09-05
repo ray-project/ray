@@ -45,6 +45,13 @@ Cleanup
     EnvRunner.stop
 
 
+rllib.env.env_errors.StepFailedRecreateEnvError
+------------------------------------------------
+
+.. currentmodule:: ray.rllib.env.env_errors
+
+.. autoclass:: StepFailedRecreateEnvError
+
 
 Single-agent and multi-agent EnvRunners
 ---------------------------------------

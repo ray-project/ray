@@ -15,11 +15,8 @@
 #pragma once
 
 #include <deque>
-#include <list>
 #include <memory>
 #include <optional>
-#include <queue>
-#include <set>
 #include <string>
 #include <utility>
 
@@ -27,7 +24,6 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
-#include "ray/common/asio/asio_util.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/actor_creator.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
@@ -63,7 +59,7 @@ class ActorTaskSubmitterInterface {
   /// If called, preempted = true will be set in the death cause upon actor death.
   virtual void SetPreempted(const ActorID &actor_id) = 0;
 
-  virtual ~ActorTaskSubmitterInterface() {}
+  virtual ~ActorTaskSubmitterInterface() = default;
 };
 
 // This class is thread-safe.
@@ -81,17 +77,16 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
         actor_creator_(actor_creator),
         resolver_(store, task_manager, actor_creator, tensor_transport_getter),
         task_manager_(task_manager),
-        warn_excess_queueing_(warn_excess_queueing),
+        warn_excess_queueing_(std::move(warn_excess_queueing)),
+        next_queueing_warn_threshold_(
+            ::RayConfig::instance().actor_excess_queueing_warn_threshold()),
         io_service_(io_service),
-        reference_counter_(reference_counter) {
-    next_queueing_warn_threshold_ =
-        ::RayConfig::instance().actor_excess_queueing_warn_threshold();
-  }
+        reference_counter_(std::move(reference_counter)) {}
 
-  void SetPreempted(const ActorID &actor_id) {
+  void SetPreempted(const ActorID &actor_id) override {
     absl::MutexLock lock(&mu_);
     if (auto iter = client_queues_.find(actor_id); iter != client_queues_.end()) {
-      iter->second.preempted = true;
+      iter->second.preempted_ = true;
     }
   }
 
@@ -110,17 +105,13 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
                                 int32_t max_pending_calls,
                                 bool allow_out_of_order_execution,
                                 bool fail_if_actor_unreachable,
-                                bool owned);
+                                bool owned) override;
 
   /// Submit a task to an actor for execution.
-  ///
-  /// \param[in] task_spec The task spec to submit.
-  ///
-  /// \return Status::Invalid if the task is not yet supported.
-  Status SubmitTask(TaskSpecification task_spec);
+  void SubmitTask(TaskSpecification task_spec);
 
   /// Submit an actor creation task to an actor via GCS.
-  Status SubmitActorCreationTask(TaskSpecification task_spec);
+  void SubmitActorCreationTask(TaskSpecification task_spec);
 
   /// Create connection to actor and send all pending tasks.
   ///
@@ -131,7 +122,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// ignore the command to connect.
   void ConnectActor(const ActorID &actor_id,
                     const rpc::Address &address,
-                    int64_t num_restarts);
+                    int64_t num_restarts) override;
 
   /// Disconnect from a failed actor.
   ///
@@ -147,13 +138,13 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
                        int64_t num_restarts,
                        bool dead,
                        const rpc::ActorDeathCause &death_cause,
-                       bool is_restartable);
+                       bool is_restartable) override;
 
   /// Set the timerstamp for the caller.
   void SetCallerCreationTimestamp(int64_t timestamp);
 
   /// Check timeout tasks that are waiting for Death info.
-  void CheckTimeoutTasks();
+  void CheckTimeoutTasks() override;
 
   /// If the number of tasks in requests is greater than or equal to
   /// max_pending_calls.
@@ -236,11 +227,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   ///
   /// \param task_spec The task spec of a task that will be canceled.
   /// \param recursive If true, it will cancel all child tasks.
-  /// \return True if cancel request is not needed or it will be
-  /// requested. False otherwise. Note that tasks could be "not"
-  /// canceled although the status is true because it is an
-  /// asynchronous API.
-  Status CancelTask(TaskSpecification task_spec, bool recursive);
+  void CancelTask(TaskSpecification task_spec, bool recursive);
 
   /// Retry the CancelTask in milliseconds.
   void RetryCancelTask(TaskSpecification task_spec, bool recursive, int64_t milliseconds);
@@ -252,20 +239,20 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
 
  private:
   struct PendingTaskWaitingForDeathInfo {
-    int64_t deadline_ms;
-    TaskSpecification task_spec;
-    ray::Status status;
-    rpc::RayErrorInfo timeout_error_info;
-    bool actor_preempted = false;
+    int64_t deadline_ms_;
+    TaskSpecification task_spec_;
+    ray::Status status_;
+    rpc::RayErrorInfo timeout_error_info_;
+    bool actor_preempted_ = false;
 
     PendingTaskWaitingForDeathInfo(int64_t deadline_ms,
                                    TaskSpecification task_spec,
                                    ray::Status status,
                                    rpc::RayErrorInfo timeout_error_info)
-        : deadline_ms(deadline_ms),
-          task_spec(std::move(task_spec)),
-          status(std::move(status)),
-          timeout_error_info(std::move(timeout_error_info)) {}
+        : deadline_ms_(deadline_ms),
+          task_spec_(std::move(task_spec)),
+          status_(std::move(status)),
+          timeout_error_info_(std::move(timeout_error_info)) {}
   };
   /// A helper function to get task manager without holding mu_
   /// We should use this function when access
@@ -277,50 +264,49 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   }
 
   struct ClientQueue {
-    ClientQueue(ActorID actor_id,
-                bool allow_out_of_order_execution,
+    ClientQueue(bool allow_out_of_order_execution,
                 int32_t max_pending_calls,
                 bool fail_if_actor_unreachable,
                 bool owned)
-        : max_pending_calls(max_pending_calls),
-          fail_if_actor_unreachable(fail_if_actor_unreachable),
-          owned(owned) {
+        : max_pending_calls_(max_pending_calls),
+          fail_if_actor_unreachable_(fail_if_actor_unreachable),
+          owned_(owned) {
       if (allow_out_of_order_execution) {
-        actor_submit_queue = std::make_unique<OutofOrderActorSubmitQueue>(actor_id);
+        actor_submit_queue_ = std::make_unique<OutofOrderActorSubmitQueue>();
       } else {
-        actor_submit_queue = std::make_unique<SequentialActorSubmitQueue>(actor_id);
+        actor_submit_queue_ = std::make_unique<SequentialActorSubmitQueue>();
       }
     }
 
     /// The current state of the actor. If this is ALIVE, then we should have
     /// an RPC client to the actor. If this is DEAD, then all tasks in the
     /// queue will be marked failed and all other ClientQueue state is ignored.
-    rpc::ActorTableData::ActorState state = rpc::ActorTableData::DEPENDENCIES_UNREADY;
+    rpc::ActorTableData::ActorState state_ = rpc::ActorTableData::DEPENDENCIES_UNREADY;
     /// The reason why this actor is dead.
     /// If the context is not set, it means the actor is not dead.
-    rpc::ActorDeathCause death_cause;
+    rpc::ActorDeathCause death_cause_;
     /// How many times this actor has been restarted before. Starts at -1 to
     /// indicate that the actor is not yet created. This is used to drop stale
     /// messages from the GCS.
-    int64_t num_restarts = -1;
+    int64_t num_restarts_ = -1;
     /// How many times this actor has been lineage reconstructured.
     /// This is used to drop stale messages.
-    int64_t num_restarts_due_to_lineage_reconstructions = 0;
+    int64_t num_restarts_due_to_lineage_reconstructions_ = 0;
     /// Whether this actor exits by spot preemption.
-    bool preempted = false;
+    bool preempted_ = false;
     /// The RPC client. We use shared_ptr to enable shared_from_this for
     /// pending client callbacks.
-    std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client = nullptr;
+    std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client_ = nullptr;
     /// The intended worker ID of the actor.
-    std::string worker_id = "";
+    std::string worker_id_;
     /// The actor is out of scope but the death info is not published
     /// to this worker yet.
-    bool pending_out_of_scope_death = false;
+    bool pending_out_of_scope_death_ = false;
     /// If the actor is dead, whether it can be restarted.
-    bool is_restartable = false;
+    bool is_restartable_ = false;
 
     /// The queue that orders actor requests.
-    std::unique_ptr<IActorSubmitQueue> actor_submit_queue;
+    std::unique_ptr<IActorSubmitQueue> actor_submit_queue_;
 
     /// Tasks that can't be sent because 1) the callee actor is dead. 2) network error.
     /// For 1) the task will wait for the DEAD state notification, then mark task as
@@ -336,37 +322,41 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
     /// `timeout_error_info`. One special case is when the actor is preempted, where
     /// the actor may not be dead *just yet* but we want to treat it as dead. In this
     /// case we hard code an error info.
-    std::deque<std::shared_ptr<PendingTaskWaitingForDeathInfo>> wait_for_death_info_tasks;
+    std::deque<std::shared_ptr<PendingTaskWaitingForDeathInfo>>
+        wait_for_death_info_tasks_;
 
     /// Stores all callbacks of inflight tasks. An actor task is inflight
     /// if the PushTask RPC is sent but the reply is not received yet.
     absl::flat_hash_map<TaskAttempt, rpc::ClientCallback<rpc::PushTaskReply>>
-        inflight_task_callbacks;
+        inflight_task_callbacks_;
 
     /// The max number limit of task capacity used for back pressure.
     /// If the number of tasks in requests >= max_pending_calls, it can't continue to
     /// push task to ClientQueue.
-    const int32_t max_pending_calls;
+    const int32_t max_pending_calls_;
 
     /// The current task number in this client queue.
-    int32_t cur_pending_calls = 0;
+    int32_t cur_pending_calls_ = 0;
 
     /// Whether to fail newly submitted tasks immediately when the actor is unreachable.
-    bool fail_if_actor_unreachable = true;
+    bool fail_if_actor_unreachable_ = true;
 
     /// Whether the current process is owner of the actor.
-    bool owned;
+    bool owned_;
 
     /// Returns debug string for class.
     ///
     /// \return string.
     std::string DebugString() const {
       std::ostringstream stream;
-      stream << "max_pending_calls=" << max_pending_calls
-             << " cur_pending_calls=" << cur_pending_calls;
+      stream << "max_pending_calls=" << max_pending_calls_
+             << " cur_pending_calls=" << cur_pending_calls_;
       return stream.str();
     }
   };
+
+  void CancelDependencyResolution(const TaskID &task_id)
+      ABSL_LOCKS_EXCLUDED(resolver_mu_);
 
   /// Fail the task with the timeout error, or the preempted error.
   void FailTaskWithError(const PendingTaskWaitingForDeathInfo &task);
@@ -426,6 +416,13 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   // Generators that are currently running and need to be resubmitted.
   absl::flat_hash_set<TaskID> generators_to_resubmit_ ABSL_GUARDED_BY(mu_);
 
+  // For when kicking off dependency resolution is still queued on the io_context.
+  // We need an extra mutex because the ResolveDependencies callback could be called
+  // immediately and it acquires mu_ and needs to call GetTaskManagerWithoutMu.
+  absl::Mutex resolver_mu_ ABSL_ACQUIRED_BEFORE(mu_);
+  absl::flat_hash_set<TaskID> pending_dependency_resolution_
+      ABSL_GUARDED_BY(resolver_mu_);
+
   /// Resolve object dependencies.
   LocalDependencyResolver resolver_;
 
@@ -443,8 +440,6 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   instrumented_io_context &io_service_;
 
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;
-
-  friend class CoreWorkerTest;
 };
 
 }  // namespace core

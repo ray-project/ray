@@ -1,6 +1,7 @@
 import asyncio
 import json
 import sys
+from contextlib import asynccontextmanager
 from typing import (
     Any,
     AsyncGenerator,
@@ -46,9 +47,12 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     LLMChatResponse,
     LLMCompletionsResponse,
     LLMEmbeddingsResponse,
+    LLMScoreResponse,
     ModelCard,
     ModelList,
     OpenAIHTTPException,
+    ScoreRequest,
+    ScoreResponse,
     to_model_metadata,
 )
 from ray.llm._internal.serve.configs.server_models import LLMConfig
@@ -215,6 +219,19 @@ async def _openai_json_wrapper(
     yield "data: [DONE]\n\n"
 
 
+@asynccontextmanager
+async def router_request_timeout(timeout_duration: float):
+    try:
+        async with timeout(timeout_duration):
+            yield
+    except asyncio.TimeoutError as e:
+        raise OpenAIHTTPException(
+            status_code=status.HTTP_408_REQUEST_TIMEOUT,
+            message="Request server side timeout",
+            internal_message=str(e),
+        )
+
+
 class LLMRouter:
     def __init__(
         self,
@@ -310,10 +327,18 @@ class LLMRouter:
     async def _get_response(
         self,
         *,
-        body: Union[CompletionRequest, ChatCompletionRequest, EmbeddingRequest],
+        body: Union[
+            CompletionRequest, ChatCompletionRequest, EmbeddingRequest, ScoreRequest
+        ],
         call_method: str,
     ) -> AsyncGenerator[
-        Union[LLMChatResponse, LLMCompletionsResponse, LLMEmbeddingsResponse], None
+        Union[
+            LLMChatResponse,
+            LLMCompletionsResponse,
+            LLMEmbeddingsResponse,
+            LLMScoreResponse,
+        ],
+        None,
     ]:
         """Calls the model deployment and returns the stream."""
         model: str = body.model
@@ -407,7 +432,7 @@ class LLMRouter:
         )
         call_method = "chat" if is_chat else "completions"
 
-        async with timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
+        async with router_request_timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
 
             gen = self._get_response(body=body, call_method=call_method)
 
@@ -421,9 +446,9 @@ class LLMRouter:
 
             if isinstance(first_chunk, ErrorResponse):
                 raise OpenAIHTTPException(
-                    message=first_chunk.message,
-                    status_code=first_chunk.code,
-                    type=first_chunk.type,
+                    message=first_chunk.error.message,
+                    status_code=first_chunk.error.code,
+                    type=first_chunk.error.type,
                 )
 
             if isinstance(first_chunk, NoneStreamingResponseType):
@@ -465,8 +490,34 @@ class LLMRouter:
         Returns:
             A response object with embeddings.
         """
-        async with timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
+        async with router_request_timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
             results = self._get_response(body=body, call_method="embeddings")
+            result = await results.__anext__()
+            if isinstance(result, ErrorResponse):
+                raise OpenAIHTTPException(
+                    message=result.error.message,
+                    status_code=result.error.code,
+                    type=result.error.type,
+                )
+
+            if isinstance(result, EmbeddingResponse):
+                return JSONResponse(content=result.model_dump())
+
+    @fastapi_router_app.post("/v1/score")
+    async def score(self, body: ScoreRequest) -> Response:
+        """Create scores for the provided text pairs.
+
+        Note: This is a vLLM specific endpoint.
+
+        Args:
+            body: The score request containing input text pairs to score.
+
+        Returns:
+            A response object with scores.
+        """
+
+        async with router_request_timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
+            results = self._get_response(body=body, call_method="score")
             result = await results.__anext__()
             if isinstance(result, ErrorResponse):
                 raise OpenAIHTTPException(
@@ -475,7 +526,7 @@ class LLMRouter:
                     type=result.type,
                 )
 
-            if isinstance(result, EmbeddingResponse):
+            if isinstance(result, ScoreResponse):
                 return JSONResponse(content=result.model_dump())
 
     @classmethod

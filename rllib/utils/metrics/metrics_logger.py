@@ -761,7 +761,6 @@ class MetricsLogger:
             key: Optional top-level key under which to log all keys/key sequences
                 found in the n `stats_dicts`.
         """
-        assert isinstance(stats_dicts, list), "stats_dicts must be a list"
         all_keys = set()
 
         def traverse_and_add_paths(d, path=()):
@@ -1168,6 +1167,8 @@ class MetricsLogger:
             state: The state to set `self` to.
         """
         with self._threading_lock:
+            # Reset all existing stats to ensure a clean state transition
+            self.stats = {}
             for flat_key, stats_state in state["stats"].items():
                 self._set_key(flat_key.split("--"), Stats.from_state(stats_state))
 

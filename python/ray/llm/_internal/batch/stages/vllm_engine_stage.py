@@ -11,6 +11,7 @@ from functools import partial
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Type
 
 import numpy as np
+import torch
 from pydantic import BaseModel, Field, root_validator
 
 import ray
@@ -109,6 +110,11 @@ class vLLMOutputData(BaseModel):
             data.num_generated_tokens = len(output.outputs[0].token_ids)
         elif isinstance(output, vllm.outputs.PoolingRequestOutput):
             data.embeddings = output.outputs.data.cpu()
+            if (
+                isinstance(data.embeddings, torch.Tensor)
+                and data.embeddings.dtype == torch.bfloat16
+            ):
+                data.embeddings = data.embeddings.to(torch.float32)
         else:
             raise ValueError(f"Unknown output type: {type(output)}")
 
@@ -302,22 +308,25 @@ class vLLMEngineWrapper:
 
     async def generate_async(
         self, row: Dict[str, Any]
-    ) -> Tuple[vLLMEngineRequest, Dict[str, Any]]:
+    ) -> Tuple[vLLMEngineRequest, Dict[str, Any], float]:
         """Process a single request.
 
         Args:
             request: The request.
 
         Returns:
-            A tuple of index in batch, request output and bypassed custom fields.
+            A tuple of index in batch, request output and bypassed custom fields, and time taken.
         """
         request = await self._prepare_llm_request(row)
+        t = time.perf_counter()
 
         async with self.semaphore:
             output = await self._generate_async(request)
 
+        time_taken = time.perf_counter() - t
+
         output_data = vLLMOutputData.from_vllm_engine_output(output)
-        return request, output_data.model_dump()
+        return request, output_data.model_dump(), time_taken
 
     async def generate_async_v0(self, request: vLLMEngineRequest) -> Any:
         """Process a single request.
@@ -462,11 +471,20 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         if self.max_pending_requests > 0:
             logger.info("Max pending requests is set to %d", self.max_pending_requests)
 
+        exclude_safetensors = self.engine_kwargs.get("load_format") in [
+            "runai_streamer",
+            "tensorizer",
+        ]
+        if exclude_safetensors:
+            download_model = NodeModelDownloadable.EXCLUDE_SAFETENSORS
+        else:
+            download_model = NodeModelDownloadable.MODEL_AND_TOKENIZER
+
         # Download the model if needed.
         model_source = download_model_files(
             model_id=self.model,
             mirror_config=None,
-            download_model=NodeModelDownloadable.MODEL_AND_TOKENIZER,
+            download_model=download_model,
             download_extra_files=False,
         )
 
@@ -475,7 +493,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             model=self.model,
             model_source=model_source,
             idx_in_batch_column=self.IDX_IN_BATCH_COLUMN,
-            disable_log_requests=True,
+            enable_log_requests=False,
             max_pending_requests=self.max_pending_requests,
             dynamic_lora_loading_path=dynamic_lora_loading_path,
             **self.engine_kwargs,
@@ -539,31 +557,30 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             The response of the vLLM engine.
         """
         batch_uuid = uuid.uuid4()
-        t = time.perf_counter()
+        batch_start_time = time.perf_counter()
 
         tasks = [asyncio.create_task(self.llm.generate_async(row)) for row in batch]
 
-        time_taken = -1.0
         for resp in asyncio.as_completed(tasks):
-            request, output = await resp
-            time_taken = time.perf_counter() - t
+            request, output, time_taken_llm = await resp
 
             yield {
                 **output,
                 "request_id": request.request_id,
                 self.IDX_IN_BATCH_COLUMN: request.idx_in_batch,
                 "batch_uuid": batch_uuid.hex,
-                "time_taken_llm": time_taken,
+                "time_taken_llm": time_taken_llm,
                 "params": str(request.params),
             }
 
+        batch_time_taken = time.perf_counter() - batch_start_time
         # TODO: Add metrics to the UDf wrapper so that we don't need
         # timer in UDFs anymore.
         logger.info(
             "[vLLM] Elapsed time for batch %s with size %d: %s",
             batch_uuid.hex,
             len(batch),
-            time_taken,
+            batch_time_taken,
         )
 
         # Log engine stats after each batch is done conditioned on the flag

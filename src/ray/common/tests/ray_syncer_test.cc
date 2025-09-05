@@ -40,6 +40,7 @@
 #include "ray/rpc/grpc_server.h"
 #include "ray/util/network_util.h"
 #include "ray/util/path_utils.h"
+#include "ray/util/raii.h"
 
 using ray::NodeID;
 using ::testing::_;

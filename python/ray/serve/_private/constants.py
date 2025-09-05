@@ -482,5 +482,18 @@ RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE = get_env_int(
     "RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE", 1
 )
 
+# Feature flag to fail the deployment if the rank is not set.
+# TODO (abrar): Remove this flag after the feature is stable.
+RAY_SERVE_FAIL_ON_RANK_ERROR = get_env_bool("RAY_SERVE_FAIL_ON_RANK_ERROR", "0")
+
 # The message to return when the replica is healthy.
 HEALTHY_MESSAGE = "success"
+
+# If throughput optimized Ray Serve is enabled, set the following constants.
+# This should be at the end.
+RAY_SERVE_THROUGHPUT_OPTIMIZED = get_env_bool("RAY_SERVE_THROUGHPUT_OPTIMIZED", "0")
+if RAY_SERVE_THROUGHPUT_OPTIMIZED:
+    RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD = False
+    RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE = 1000
+    RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP = False
+    RAY_SERVE_LOG_TO_STDERR = False

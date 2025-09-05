@@ -42,18 +42,12 @@ def cli():
     help="The name of the dependency set to load. If not specified, all dependency sets will be loaded.",
 )
 @click.option(
-    "--build-arg-set",
-    default=None,
-    help="The name of the build arg set to use. If not specified, a depset matching the name with no build arg set will be loaded.",
-)
-@click.option(
     "--uv-cache-dir", default=None, help="The directory to cache uv dependencies"
 )
 def build(
     config_path: str,
     workspace_dir: Optional[str],
     name: Optional[str],
-    build_arg_set: Optional[str],
     uv_cache_dir: Optional[str],
 ):
     """
@@ -111,10 +105,12 @@ class DependencySetManager:
             depset = self.build_graph.nodes[node]["depset"]
             self.execute_single(depset)
 
-    def exec_uv_cmd(self, cmd: str, args: List[str]) -> str:
+    def exec_uv_cmd(
+        self, cmd: str, args: List[str], stdin: Optional[bytes] = None
+    ) -> str:
         cmd = [self._uv_binary, "pip", cmd, *args]
         click.echo(f"Executing command: {cmd}")
-        status = subprocess.run(cmd, cwd=self.workspace.dir)
+        status = subprocess.run(cmd, cwd=self.workspace.dir, input=stdin)
         if status.returncode != 0:
             raise RuntimeError(f"Failed to execute command: {cmd}")
         return status.stdout
@@ -128,6 +124,7 @@ class DependencySetManager:
                 output=depset.output,
                 append_flags=depset.append_flags,
                 override_flags=depset.override_flags,
+                packages=depset.packages,
             )
         elif depset.operation == "subset":
             self.subset(
@@ -153,14 +150,16 @@ class DependencySetManager:
     def compile(
         self,
         constraints: List[str],
-        requirements: List[str],
         name: str,
         output: str,
         append_flags: Optional[List[str]] = None,
         override_flags: Optional[List[str]] = None,
+        packages: Optional[List[str]] = None,
+        requirements: Optional[List[str]] = None,
     ):
         """Compile a dependency set."""
         args = DEFAULT_UV_FLAGS.copy()
+        stdin = None
         if self._uv_cache_dir:
             args.extend(["--cache-dir", self._uv_cache_dir])
         if override_flags:
@@ -173,9 +172,13 @@ class DependencySetManager:
         if requirements:
             for requirement in requirements:
                 args.extend([requirement])
+        if packages:
+            # need to add a dash to process stdin
+            args.append("-")
+            stdin = _get_bytes(packages)
         if output:
             args.extend(["-o", output])
-        self.exec_uv_cmd("compile", args)
+        self.exec_uv_cmd("compile", args, stdin)
 
     def subset(
         self,
@@ -236,6 +239,10 @@ class DependencySetManager:
                 )
 
 
+def _get_bytes(packages: List[str]) -> bytes:
+    return ("\n".join(packages) + "\n").encode("utf-8")
+
+
 def _get_depset(depsets: List[Depset], name: str) -> Depset:
     for depset in depsets:
         if depset.name == name:
@@ -274,8 +281,11 @@ def _override_uv_flags(flags: List[str], args: List[str]) -> List[str]:
 def _uv_binary():
     r = runfiles.Create()
     system = platform.system()
-    if system != "Linux" or platform.processor() != "x86_64":
-        raise RuntimeError(
-            f"Unsupported platform/processor: {system}/{platform.processor()}"
-        )
-    return r.Rlocation("uv_x86_64/uv-x86_64-unknown-linux-gnu/uv")
+    processor = platform.processor()
+
+    if system == "Linux" and processor == "x86_64":
+        return r.Rlocation("uv_x86_64-linux/uv-x86_64-unknown-linux-gnu/uv")
+    elif system == "Darwin" and (processor == "arm" or processor == "aarch64"):
+        return r.Rlocation("uv_aarch64-darwin/uv-aarch64-apple-darwin/uv")
+    else:
+        raise RuntimeError(f"Unsupported platform/processor: {system}/{processor}")
