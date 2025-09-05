@@ -661,16 +661,20 @@ def sample_fragments(
     sample_fragment = cached_remote_fn(_sample_fragment)
     futures = []
     scheduling = local_scheduling or DataContext.get_current().scheduling_strategy
+    task_options = {
+        # Retry in case of transient errors during sampling.
+        "retry_exceptions": [OSError],
+    }
+    if isinstance(scheduling, dict):
+        task_options["label_selector"] = scheduling
+    else:
+        task_options["scheduling_strategy"] = scheduling
     for sample in file_samples:
         # Sample the first rows batch in i-th file.
         # Use SPREAD scheduling strategy to avoid packing many sampling tasks on
         # same machine to cause OOM issue, as sampling can be memory-intensive.
         futures.append(
-            sample_fragment.options(
-                scheduling_strategy=scheduling,
-                # Retry in case of transient errors during sampling.
-                retry_exceptions=[OSError],
-            ).remote(
+            sample_fragment.options(**task_options).remote(
                 to_batches_kwargs,
                 columns,
                 schema,
