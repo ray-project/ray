@@ -48,7 +48,7 @@ def parse_latency_buckets(bucket_str: str, default_buckets: List[float]) -> List
 T = TypeVar("T")
 
 # todo: remove for the '3.0.0' release.
-_wrong_names_white_set = {
+_wrong_names_white_list = {
     "MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT",
     "MAX_PER_REPLICA_RETRY_COUNT",
     "REQUEST_LATENCY_BUCKETS_MS",
@@ -64,7 +64,7 @@ def _validate_name(name: str) -> None:
     required_prefix = "RAY_SERVE_"
 
     if not name.startswith(required_prefix):
-        if name in _wrong_names_white_set:
+        if name in _wrong_names_white_list:
             return
 
         raise ValueError(
@@ -296,24 +296,26 @@ def _deprecation_warning(name: str) -> None:
 
     :param name: environment variable name
     """
+
+    def get_new_name(name: str) -> str:
+        if name == "RAY_SERVE_HANDLE_METRIC_PUSH_INTERVAL_S":
+            return "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S"
+        elif name == "SERVE_REQUEST_PROCESSING_TIMEOUT_S":
+            return "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S"
+        else:
+            return f"{required_prefix}{name}"
+
     change_version = "3.0.0"
     required_prefix = "RAY_SERVE_"
 
-    if name in _wrong_names_white_set:
+    if (
+        name in _wrong_names_white_list
+        or name == "RAY_SERVE_HANDLE_METRIC_PUSH_INTERVAL_S"
+    ):
+        new_name = get_new_name(name)
         warnings.warn(
-            f"Got unexpected environment variable name `{name}`! "
-            f"Starting from version `{change_version}`, all environments "
-            f"variables related to `Ray Serve` will require prefix `{required_prefix}`. "
-            f"Change the name to start with the `{required_prefix}` prefix.",
-            FutureWarning,
-            stacklevel=4,
-        )
-    elif name == "RAY_SERVE_HANDLE_METRIC_PUSH_INTERVAL_S":
-        warnings.warn(
-            f"Got unexpected environment variable name `{name}`! "
-            f"Starting from version `{change_version}` environment variables "
-            f"`{name}` will be deprecated. "
-            f"Please use `RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S` instead.",
+            f"Starting from version `{change_version}` environment variable "
+            f"`{name}` will be deprecated. Please use `{new_name}` instead.",
             FutureWarning,
             stacklevel=4,
         )
