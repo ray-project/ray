@@ -66,57 +66,6 @@ def test_file_metadata_providers_not_implemented():
 
 
 @pytest.mark.parametrize(
-    "fs,data_path",
-    [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
-        (
-            lazy_fixture("s3_fs_with_space"),
-            lazy_fixture("s3_path_with_space"),
-        ),  # Path contains space.
-        (
-            lazy_fixture("s3_fs_with_special_chars"),
-            lazy_fixture("s3_path_with_special_chars"),
-        ),
-    ],
-)
-def test_default_parquet_metadata_provider(fs, data_path):
-    path_module = os.path if urllib.parse.urlparse(data_path).scheme else posixpath
-    paths = [
-        path_module.join(data_path, "test1.parquet"),
-        path_module.join(data_path, "test2.parquet"),
-    ]
-    paths, fs = _resolve_paths_and_filesystem(paths, fs)
-
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    table = pa.Table.from_pandas(df1)
-    pq.write_table(table, paths[0], filesystem=fs)
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    table = pa.Table.from_pandas(df2)
-    pq.write_table(table, paths[1], filesystem=fs)
-
-    meta_provider = ParquetMetadataProvider()
-    pq_ds = pq.ParquetDataset(paths, filesystem=fs)
-    fragment_file_metas = meta_provider.prefetch_file_metadata(pq_ds.fragments)
-
-    meta = meta_provider(
-        [p.path for p in pq_ds.fragments],
-        num_fragments=len(pq_ds.fragments),
-        prefetched_metadata=fragment_file_metas,
-    )
-
-    expected_meta_size_bytes = sum(
-        [_get_total_bytes(f.metadata) for f in pq_ds.fragments]
-    )
-
-    assert meta.size_bytes == expected_meta_size_bytes
-    assert meta.num_rows == 6
-    assert len(paths) == 2
-    assert all(path in meta.input_files for path in paths)
-
-
-@pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
         (None, lazy_fixture("local_path"), None),
