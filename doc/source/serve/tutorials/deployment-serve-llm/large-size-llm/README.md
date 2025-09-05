@@ -8,7 +8,7 @@ Modify notebook.ipynb instead, then regenerate this file with:
 jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
 -->
 
-# Deploy a large size LLM
+# Deploy a large-sized LLM
 
 A large LLM typically runs on multiple nodes with multiple GPUs, prioritizing peak quality and capability: stronger reasoning, broader knowledge, longer context windows, more robust generalization. When higher latency, complexity, and cost are acceptable trade-offs because you require state-of-the-art results.
 
@@ -73,7 +73,7 @@ app = build_openai_app({"llm_configs": [llm_config]})
 **Prerequisites**
 
 * Access to GPU compute.
-* (Optional) A **Hugging Face token** if using gated models like Meta’s Llama. Store it in `export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>`.
+* (Optional) A **Hugging Face token** if using gated models. Store it in `export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>`.
 
 **Note:** Depending on the organization, you can usually request access on the model's Hugging Face page. For example, Meta’s Llama models approval can take anywhere from a few hours to several weeks.
 
@@ -191,7 +191,7 @@ Create your Anyscale service configuration in a new `service.yaml` file:
 ```yaml
 #service.yaml
 name: deploy-deepseek-r1
-image_uri: anyscale/ray-llm:2.49.0-py311-cu128
+image_uri: anyscale/ray-llm:2.49.0-py311-cu128 # Anyscale Ray Serve LLM image. Use `containerfile: ./Dockerfile` to use a custom Dockerfile.
 compute_config:
   auto_select_worker_config: true 
   # Change default disk size to 1000GB

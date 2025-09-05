@@ -8,7 +8,7 @@ Modify notebook.ipynb instead, then regenerate this file with:
 jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
 -->
 
-# Deploy a small size LLM
+# Deploy a small-sized LLM
 
 A small LLM runs on a single node with 1–2 GPUs, making it fast, inexpensive, and simple to use. It’s ideal for prototyping, lightweight applications, latency-critical use cases, cost-sensitive deployments, and environments with limited resources where efficiency matters more than peak accuracy.
 
@@ -42,7 +42,7 @@ llm_config = LLMConfig(
             max_replicas=2,
         )
     ),
-    ### If your model isn't gated, you can skip `hf_token`
+    ### If your model isn't gated, you can skip `HF_TOKEN`
     # Share your Hugging Face token with the vllm engine so it can access the gated Llama 3
     # Type `export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>` in a terminal
     runtime_env=dict(env_vars={"HF_TOKEN": os.environ.get("HF_TOKEN")}),
@@ -82,6 +82,7 @@ In a terminal, run:
 
 ```bash
 %%bash
+export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>
 serve run serve_llama_3_1_8b:app --non-blocking
 ```
 
@@ -163,7 +164,7 @@ Create your Anyscale Service configuration in a new `service.yaml` file:
 ```yaml
 # service.yaml
 name: deploy-llama-3-8b
-image_uri: anyscale/ray-llm:2.49.0-py311-cu128   # Anyscale Ray Serve LLM image
+image_uri: anyscale/ray-llm:2.49.0-py311-cu128 # Anyscale Ray Serve LLM image. Use `containerfile: ./Dockerfile` to use a custom Dockerfile.
 compute_config:
   auto_select_worker_config: true 
 working_dir: .
@@ -312,4 +313,4 @@ See this [Troubleshooting Guide](https://docs.anyscale.com/overview) for common 
 
 ## Summary
 
-In this tutorial, you deployed a small size LLM with Ray Serve LLM, from development to production. You learned how to configure Ray Serve LLM, deploy your service on your Ray cluster, and how to send requests. You also learned how to monitor your app and common troubleshooting issues.
+In this tutorial, you deployed a small-sized LLM with Ray Serve LLM, from development to production. You learned how to configure Ray Serve LLM, deploy your service on your Ray cluster, and how to send requests. You also learned how to monitor your app and common troubleshooting issues.

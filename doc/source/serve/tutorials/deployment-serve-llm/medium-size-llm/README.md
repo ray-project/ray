@@ -8,7 +8,7 @@ Modify notebook.ipynb instead, then regenerate this file with:
 jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
 -->
 
-# Deploying a medium size LLM
+# Deploying a medium-sized LLM
 
 A medium LLM typically runs on a single node with 4-8 GPUs. It offers a balance between performance and efficiency. These models provide stronger accuracy and reasoning than small models while remaining more affordable and resource-friendly than very large ones. This makes them a solid choice for production workloads that need good quality at lower cost. They're also ideal for scaling applications where large models would be too slow or expensive.
 
@@ -43,7 +43,7 @@ llm_config = LLMConfig(
             max_replicas=4,
         )
     ),
-    ### If your model is not gated, you can skip `hf_token`
+    ### If your model is not gated, you can skip `HF_TOKEN`
     # Share your Hugging Face token with the vllm engine so it can access the gated Llama 3.
     # Type `export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>` in a terminal
     runtime_env=dict(env_vars={"HF_TOKEN": os.environ.get("HF_TOKEN")}),
@@ -87,6 +87,7 @@ In a terminal, run:
 
 ```bash
 %%bash
+export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>
 serve run serve_llama_3_1_70b:app --non-blocking
 ```
 
@@ -165,16 +166,16 @@ Anyscale provides out-of-the-box images (`anyscale/ray-llm`), which come pre-loa
 
 Create your Anyscale service configuration in a new `service.yaml` file:
 ```yaml
-#service.yaml
+# service.yaml
 name: deploy-llama-3-70b
-image_uri: anyscale/ray-llm:2.49.0-py311-cu128
+image_uri: anyscale/ray-llm:2.49.0-py311-cu128 # Anyscale Ray Serve LLM image. Use `containerfile: ./Dockerfile` to use a custom Dockerfile.
 compute_config:
   auto_select_worker_config: true 
 working_dir: .
 cloud:
 applications:
-# Point to your app in your Python module
-- import_path: serve_llama_3_1_70b:app
+  # Point to your app in your Python module
+  - import_path: serve_llama_3_1_70b:app
 ```
 
 Deploy your service. Make sure you forward your Hugging Face token to the command.
