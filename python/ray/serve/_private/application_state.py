@@ -412,6 +412,22 @@ class ApplicationState:
                 f"Deleting app '{self._name}'.",
                 extra={"log_to_stderr": False},
             )
+        # If there is an in-progress build task, cancel it to prevent it from
+        # racing with deletion and re-applying a new target state.
+        if self._build_app_task_info and not self._build_app_task_info.finished:
+            try:
+                logger.info(
+                    f"Cancelling in-progress build for app '{self._name}' due to deletion.",
+                    extra={"log_to_stderr": False},
+                )
+                ray.cancel(self._build_app_task_info.obj_ref)
+            except Exception:
+                # Best-effort cancellation; if it fails, the update loop will
+                # still ignore build results while deleting.
+                logger.debug(
+                    f"Failed to cancel build task for app '{self._name}' during deletion.",
+                    exc_info=True,
+                )
         self._set_target_state_deleting()
 
     def is_deleted(self) -> bool:
@@ -802,20 +818,23 @@ class ApplicationState:
             deleted.
         """
 
-        infos, task_status, msg = self._reconcile_build_app_task()
-        if task_status == BuildAppStatus.SUCCEEDED:
-            self._set_target_state(
-                deployment_infos=infos,
-                code_version=self._build_app_task_info.code_version,
-                api_type=self._target_state.api_type,
-                target_config=self._build_app_task_info.config,
-                target_capacity=self._build_app_task_info.target_capacity,
-                target_capacity_direction=(
-                    self._build_app_task_info.target_capacity_direction
-                ),
-            )
-        elif task_status == BuildAppStatus.FAILED:
-            self._update_status(ApplicationStatus.DEPLOY_FAILED, msg)
+        # If the application is being deleted, ignore any build task results to
+        # avoid flipping the state back to DEPLOYING/RUNNING.
+        if not self._target_state.deleting:
+            infos, task_status, msg = self._reconcile_build_app_task()
+            if task_status == BuildAppStatus.SUCCEEDED:
+                self._set_target_state(
+                    deployment_infos=infos,
+                    code_version=self._build_app_task_info.code_version,
+                    api_type=self._target_state.api_type,
+                    target_config=self._build_app_task_info.config,
+                    target_capacity=self._build_app_task_info.target_capacity,
+                    target_capacity_direction=(
+                        self._build_app_task_info.target_capacity_direction
+                    ),
+                )
+            elif task_status == BuildAppStatus.FAILED:
+                self._update_status(ApplicationStatus.DEPLOY_FAILED, msg)
 
         # Only reconcile deployments when the build app task is finished. If
         # it's not finished, we don't know what the target list of deployments

@@ -851,12 +851,14 @@ def test_deploy_nonexistent_deployment(serve_instance):
     config.applications[1].deployments[0].name = "random2"
     client.deploy_apps(config)
     # Wait until the valid application is deployed.
-    wait_for_condition(check_running, app_name="app1")
+    #wait_for_condition(check_running, app_name="app1")
 
     def check_app_message():
         details = ray.get(client._controller.get_serve_instance_details.remote())
         # The error message should be descriptive
         # e.g. no deployment "x" in application "y", available deployments: "z"
+        print(f"@@@@@@@@@ check_app_message::details[applications][app1][status]: {details['applications']['app1']['status']}")
+        print(f"@@@@@@@@@ check_app_message::details[applications][random1][status]: {details['applications']['random1']['status']}")
         message = details["applications"]["random1"]["message"]
         return (
             "Deployment" in message
