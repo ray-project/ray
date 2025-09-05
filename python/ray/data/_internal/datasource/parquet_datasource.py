@@ -92,7 +92,7 @@ PARQUET_ENCODING_RATIO_ESTIMATE_MAX_NUM_SAMPLES = 10
 PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS = 1024
 
 
-class _NoIOSerializableParquetFragment:
+class _ParquetFragment:
     """This is a workaround to avoid utilizing `ParquetFileFragment` original
     serialization protocol that actually does network RPCs during serialization
     (to fetch metadata)"""
@@ -110,7 +110,7 @@ class _NoIOSerializableParquetFragment:
         return self._fragment
 
     def __reduce__(self):
-        return _NoIOSerializableParquetFragment.make_fragment, (
+        return _ParquetFragment.make_fragment, (
             self._fragment.path,
             self._fragment.filesystem,
             self._fragment.partition_expression,
@@ -122,7 +122,7 @@ class _NoIOSerializableParquetFragment:
         format, path, filesystem, partition_expression, file_size
     ):
         fragment = format.make_fragment(path, filesystem, partition_expression)
-        return _NoIOSerializableParquetFragment(fragment, file_size)
+        return _ParquetFragment(fragment, file_size)
 
 
 def check_for_legacy_tensor_type(schema):
@@ -265,7 +265,7 @@ class ParquetDatasource(Datasource):
         # network calls when `_ParquetDatasourceReader` is serialized. See
         # `_SerializedFragment()` implementation for more details.
         self._pq_fragments = [
-            _NoIOSerializableParquetFragment(fragment, file_size)
+            _ParquetFragment(fragment, file_size)
             for fragment, file_size in zip(pq_ds.fragments, file_sizes)
         ]
         self._pq_paths = [p.path for p in pq_ds.fragments]
@@ -326,7 +326,7 @@ class ParquetDatasource(Datasource):
                     break
 
     @staticmethod
-    def estimate_inmemory_data_size(self, fragments: List[_NoIOSerializableParquetFragment]) -> int:
+    def estimate_inmemory_data_size(self, fragments: List[_ParquetFragment]) -> int:
         return sum([f.file_size for f in self._pq_fragments]) * self._encoding_ratio
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
@@ -544,7 +544,7 @@ class _ParquetFileInfo:
 
 
 def _estimate_files_encoding_ratio(
-    fragments: List[_NoIOSerializableParquetFragment],
+    fragments: List[_ParquetFragment],
     file_infos: List[_ParquetFileInfo],
 ) -> float:
     """Return an estimate of the Parquet files encoding ratio.
@@ -565,7 +565,7 @@ def _estimate_files_encoding_ratio(
 
 
 def _fetch_file_infos(
-    sampled_fragments: List[_NoIOSerializableParquetFragment],
+    sampled_fragments: List[_ParquetFragment],
     to_batches_kwargs: Optional[Dict[str, Any]],
     columns: Optional[List[str]],
     schema: Optional["pyarrow.Schema"],
@@ -646,8 +646,8 @@ def get_parquet_dataset(paths, filesystem, dataset_kwargs):
 
 
 def _sample_fragments(
-    fragments: List[_NoIOSerializableParquetFragment],
-) -> List[_NoIOSerializableParquetFragment]:
+    fragments: List[_ParquetFragment],
+) -> List[_ParquetFragment]:
     num_files = len(fragments)
     num_samples = int(num_files * PARQUET_ENCODING_RATIO_ESTIMATE_SAMPLING_RATIO)
     min_num_samples = min(PARQUET_ENCODING_RATIO_ESTIMATE_MIN_NUM_SAMPLES, num_files)
