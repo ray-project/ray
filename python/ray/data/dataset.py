@@ -993,20 +993,6 @@ class Dataset:
         if keep not in ("first", "last", False):
             raise ValueError(f"keep must be 'first', 'last', or False, got {keep}")
 
-        def compute_dedup_key(table: pa.Table, cols):
-            arrays = [
-                table[col].combine_chunks().to_numpy(zero_copy_only=False)
-                for col in cols
-            ]
-            str_arrays = [np.array(arr, dtype=str) for arr in arrays]
-            sep = "\x1e"
-            dedup_key = np.char.add(str_arrays[0], "")
-            for arr in str_arrays[1:]:
-                dedup_key = np.char.add(dedup_key, sep)
-                dedup_key = np.char.add(dedup_key, arr)
-            key_series = pa.array(dedup_key)
-            return table.append_column("_dedup_key", key_series)
-
         def reducer_first(batch: pa.Table) -> pa.Table:
             return batch.slice(0, 1)
 
@@ -1025,18 +1011,8 @@ class Dataset:
         elif keep is False:
             reducer = reducer_unique
 
-        if keys is None:
-            ds_keyed = self.map_batches(
-                lambda t: compute_dedup_key(t, all_cols),
-                batch_format="pyarrow",
-                zero_copy_batch=False,
-            )
-            ds_dedup = ds_keyed.groupby(["_dedup_key"]).map_groups(
-                reducer,
-                batch_format="pyarrow",
-            )
-            return ds_dedup.drop_columns(["_dedup_key"])
-
+        # Use groupby approach for both all columns and subset columns
+        # This eliminates string concatenation issues and improves performance
         return self.groupby(subset_cols).map_groups(
             reducer,
             batch_format="pyarrow",
@@ -5727,9 +5703,9 @@ class Dataset:
         import pyarrow as pa
 
         ref_bundles: Iterator[RefBundle] = self.iter_internal_ref_bundles()
-        block_refs: List[
-            ObjectRef["pyarrow.Table"]
-        ] = _ref_bundles_iterator_to_block_refs_list(ref_bundles)
+        block_refs: List[ObjectRef["pyarrow.Table"]] = (
+            _ref_bundles_iterator_to_block_refs_list(ref_bundles)
+        )
         # Schema is safe to call since we have already triggered execution with
         # iter_internal_ref_bundles.
         schema = self.schema(fetch_if_missing=True)
