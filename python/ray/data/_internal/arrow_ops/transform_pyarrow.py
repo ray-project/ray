@@ -11,6 +11,7 @@ from ray._private.utils import INT32_MAX
 from ray.air.util.tensor_extensions.arrow import (
     MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY,
     PYARROW_VERSION,
+    ArrowConversionError,
 )
 
 try:
@@ -390,7 +391,7 @@ def unify_schemas(
     # Try PyArrow's unification first
     try:
         return _unify_schemas_pyarrow(schemas_to_unify, promote_types)
-    except pyarrow.lib.ArrowTypeError:
+    except (pyarrow.lib.ArrowTypeError, pyarrow.lib.ArrowInvalid, ArrowConversionError):
         pass
 
     # Find diverging fields
