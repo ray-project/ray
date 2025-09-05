@@ -20,7 +20,7 @@ For more information on MyST notebooks, see the
 If you want to learn more about the MyST parser, see the
 [MyST documentation](https://myst-parser.readthedocs.io/en/latest/).
 
-MyST is CommonMark compliant, so if you can use plain markdown here.
+MyST is CommonMark compliant, so you can use plain markdown here.
 In case you need to execute restructured text (rST) directives, you can use `{eval-rst}` to execute the code.
 For instance, here's a note written in rST:
 
