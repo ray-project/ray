@@ -55,9 +55,7 @@ struct FakeMoveProcesses {
   std::string to_;
 };
 
-/**
-  NOT thread-safe.
-*/
+// Intended to be used only in unit tests. This class is not thread-safe.
 class FakeCgroupDriver : public CgroupDriverInterface {
  public:
   static std::unique_ptr<FakeCgroupDriver> Create(
@@ -108,8 +106,10 @@ class FakeCgroupDriver : public CgroupDriverInterface {
 
   std::shared_ptr<std::unordered_map<std::string, FakeCgroup>> cgroups_;
 
-  // Cgroup cleanup is stateful
+  // Cgroup cleanup order can be recorded by setting cleanup_mode_ to true.
   bool cleanup_mode_ = false;
+  // cleanup_counter_ is incremented with each cleanup operation to capture
+  // the order of operations.
   int cleanup_counter_ = 0;
   std::shared_ptr<std::vector<std::pair<int, std::string>>> deleted_cgroups_;
   std::shared_ptr<std::vector<std::pair<int, FakeConstraint>>> constraints_disabled_;
