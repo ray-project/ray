@@ -609,9 +609,9 @@ py_test_module_list(
 )
 
 py_test_module_list(
-    size = "medium",
+    size = "large",
     files = [
-        "test_gpu_objects_gloo.py",
+        "gpu_objects/test_gpu_objects_gloo.py",
     ],
     tags = [
         "exclusive",
@@ -629,8 +629,8 @@ py_test_module_list(
     size = "medium",
     env = {"RAY_PYTEST_USE_GPU": "1"},
     files = [
-        "test_gpu_objects_nccl.py",
-        "test_gpu_objects_nixl.py",
+        "gpu_objects/test_gpu_objects_nccl.py",
+        "gpu_objects/test_gpu_objects_nixl.py",
     ],
     tags = [
         "exclusive",

@@ -179,13 +179,16 @@ def unify_schemas(
         ArrowVariableShapedTensorType,
     )
 
+    # The schema metadata might be unhashable.
+    # We need schemas to be hashable for unification
+    schemas = [schema.remove_metadata() for schema in schemas]
     try:
         if len(set(schemas)) == 1:
             # Early exit because unifying can be expensive
-            return schemas[0]
+            return schemas.pop()
     except Exception as e:
         # Unsure if there are cases where schemas are NOT hashable
-        logger.warning(f"Failed to hash the schemas (for deduplication): {e}")
+        logger.debug(f"Failed to hash the schemas (for deduplication): {e}")
 
     schemas_to_unify = []
     schema_field_overrides = {}

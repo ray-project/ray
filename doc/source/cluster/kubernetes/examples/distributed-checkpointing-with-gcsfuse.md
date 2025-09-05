@@ -1,4 +1,4 @@
-(kuberay-distributed-checkpointing-gcsefuse)=
+(kuberay-distributed-checkpointing-gcsfuse)=
 
 # Distributed checkpointing with KubeRay and GCSFuse
 

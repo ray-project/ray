@@ -26,6 +26,7 @@ COPTS_TESTS = select({
 })
 
 COPTS = COPTS_TESTS + select({
+    "@platforms//os:windows": [""],
     "//conditions:default": ["-Wshadow"],
 })
 

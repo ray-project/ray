@@ -28,9 +28,9 @@
 #include "mock/ray/core_worker/task_manager_interface.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
-#include "ray/common/test_util.h"
+#include "ray/common/test_utils.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/raylet_client/raylet_client.h"
+#include "ray/raylet_client/raylet_client_interface.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
@@ -223,11 +223,11 @@ class MockTaskManager : public MockTaskManagerInterface {
 
 class MockRayletClient : public FakeRayletClient {
  public:
-  Status ReturnWorker(int worker_port,
-                      const WorkerID &worker_id,
-                      bool disconnect_worker,
-                      const std::string &disconnect_worker_error_detail,
-                      bool worker_exiting) override {
+  void ReturnWorkerLease(int worker_port,
+                         const LeaseID &lease_id,
+                         bool disconnect_worker,
+                         const std::string &disconnect_worker_error_detail,
+                         bool worker_exiting) override {
     std::lock_guard<std::mutex> lock(mu_);
     if (disconnect_worker) {
       num_workers_disconnected++;
@@ -237,25 +237,24 @@ class MockRayletClient : public FakeRayletClient {
         num_workers_returned_exiting++;
       }
     }
-    return Status::OK();
   }
 
-  void GetTaskFailureCause(
-      const TaskID &task_id,
-      const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
+  void GetWorkerFailureCause(
+      const LeaseID &lease_id,
+      const ray::rpc::ClientCallback<ray::rpc::GetWorkerFailureCauseReply> &callback)
       override {
     std::lock_guard<std::mutex> lock(mu_);
     get_task_failure_cause_callbacks.push_back(callback);
     num_get_task_failure_causes += 1;
   }
 
-  bool ReplyGetTaskFailureCause() {
+  bool ReplyGetWorkerFailureCause() {
     if (get_task_failure_cause_callbacks.size() == 0) {
       return false;
     }
     auto callback = std::move(get_task_failure_cause_callbacks.front());
     get_task_failure_cause_callbacks.pop_front();
-    rpc::GetTaskFailureCauseReply reply;
+    rpc::GetWorkerFailureCauseReply reply;
     callback(Status::OK(), std::move(reply));
     return true;
   }
@@ -268,14 +267,14 @@ class MockRayletClient : public FakeRayletClient {
     reported_backlogs.clear();
     for (const auto &backlog_report : backlog_reports) {
       reported_backlog_size += backlog_report.backlog_size();
-      const TaskSpecification resource_spec(backlog_report.resource_spec());
-      const SchedulingClass scheduling_class = resource_spec.GetSchedulingClass();
+      const LeaseSpecification lease_spec(backlog_report.lease_spec());
+      const SchedulingClass scheduling_class = lease_spec.GetSchedulingClass();
       reported_backlogs[scheduling_class] = backlog_report.backlog_size();
     }
   }
 
   void RequestWorkerLease(
-      const rpc::TaskSpec &task_spec,
+      const rpc::LeaseSpec &lease_spec,
       bool grant_or_reject,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
       const int64_t backlog_size,
@@ -301,7 +300,7 @@ class MockRayletClient : public FakeRayletClient {
   }
 
   void CancelWorkerLease(
-      const TaskID &task_id,
+      const LeaseID &lease_id,
       const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override {
     std::lock_guard<std::mutex> lock(mu_);
     num_leases_canceled += 1;
@@ -400,7 +399,7 @@ class MockRayletClient : public FakeRayletClient {
   std::map<SchedulingClass, int64_t> reported_backlogs;
   std::list<rpc::ClientCallback<rpc::RequestWorkerLeaseReply>> callbacks = {};
   std::list<rpc::ClientCallback<rpc::CancelWorkerLeaseReply>> cancel_callbacks = {};
-  std::list<rpc::ClientCallback<rpc::GetTaskFailureCauseReply>>
+  std::list<rpc::ClientCallback<rpc::GetWorkerFailureCauseReply>>
       get_task_failure_cause_callbacks = {};
 };
 
@@ -447,7 +446,7 @@ class MockLeasePolicy : public LeasePolicyInterface {
  public:
   void SetNodeID(NodeID node_id) { fallback_rpc_address_.set_node_id(node_id.Binary()); }
 
-  std::pair<rpc::Address, bool> GetBestNodeForTask(const TaskSpecification &spec) {
+  std::pair<rpc::Address, bool> GetBestNodeForLease(const LeaseSpecification &spec) {
     num_lease_policy_consults++;
     return std::make_pair(fallback_rpc_address_, is_locality_aware);
   };
@@ -557,7 +556,7 @@ TEST_F(NormalTaskSubmitterTest, TestLocalityAwareSubmitOneTask) {
 
   TaskSpecification task = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  submitter.SubmitTask(task);
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 1);
   ASSERT_EQ(raylet_client->num_is_selected_based_on_locality_leases_requested, 1);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
@@ -588,7 +587,7 @@ TEST_F(NormalTaskSubmitterTest, TestSubmitOneTask) {
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
   TaskSpecification task = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  submitter.SubmitTask(task);
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 1);
   ASSERT_EQ(raylet_client->num_is_selected_based_on_locality_leases_requested, 0);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
@@ -620,7 +619,7 @@ TEST_F(NormalTaskSubmitterTest, TestRetryTaskApplicationLevelError) {
   TaskSpecification task = BuildEmptyTaskSpec();
   task.GetMutableMessage().set_retry_exceptions(true);
 
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  submitter.SubmitTask(task);
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
   // Simulate an application-level error.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::OK(), false, true));
@@ -634,7 +633,7 @@ TEST_F(NormalTaskSubmitterTest, TestRetryTaskApplicationLevelError) {
 
   task.GetMutableMessage().set_retry_exceptions(false);
 
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  submitter.SubmitTask(task);
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
   // Simulate an application-level error.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::OK(), false, true));
@@ -656,11 +655,11 @@ TEST_F(NormalTaskSubmitterTest, TestHandleTaskFailure) {
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
   TaskSpecification task = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  submitter.SubmitTask(task);
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
   // Simulate a system failure, i.e., worker died unexpectedly.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("oops")));
-  ASSERT_TRUE(raylet_client->ReplyGetTaskFailureCause());
+  ASSERT_TRUE(raylet_client->ReplyGetWorkerFailureCause());
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
@@ -677,23 +676,23 @@ TEST_F(NormalTaskSubmitterTest, TestHandleTaskFailure) {
 
 TEST_F(NormalTaskSubmitterTest, TestCancellationWhileHandlingTaskFailure) {
   // This test is a regression test for a bug where a crash happens when
-  // the task cancellation races between ReplyPushTask and ReplyGetTaskFailureCause.
+  // the task cancellation races between ReplyPushTask and ReplyGetWorkerFailureCause.
   // For an example of a python integration test, see
   // https://github.com/ray-project/ray/blob/2b6807f4d9c4572e6309f57bc404aa641bc4b185/python/ray/tests/test_cancel.py#L35
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
 
   TaskSpecification task = BuildEmptyTaskSpec();
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  submitter.SubmitTask(task);
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
   // Simulate a system failure, i.e., worker died unexpectedly so that
-  // GetTaskFailureCause is called.
+  // GetWorkerFailureCause is called.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("oops")));
-  // Cancel the task while GetTaskFailureCause has not been completed.
-  ASSERT_TRUE(submitter.CancelTask(task, true, false).ok());
-  // Completing the GetTaskFailureCause call. Check that the reply runs without error
+  // Cancel the task while GetWorkerFailureCause has not been completed.
+  submitter.CancelTask(task, true, false);
+  // Completing the GetWorkerFailureCause call. Check that the reply runs without error
   // and FailPendingTask is not called.
-  ASSERT_TRUE(raylet_client->ReplyGetTaskFailureCause());
+  ASSERT_TRUE(raylet_client->ReplyGetWorkerFailureCause());
   ASSERT_EQ(task_manager->num_fail_pending_task_calls, 0);
 }
 
@@ -704,9 +703,9 @@ TEST_F(NormalTaskSubmitterTest, TestHandleUnschedulableTask) {
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
+  submitter.SubmitTask(task1);
+  submitter.SubmitTask(task2);
+  submitter.SubmitTask(task3);
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 2);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
@@ -754,9 +753,9 @@ TEST_F(NormalTaskSubmitterTest, TestHandleRuntimeEnvSetupFailed) {
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
+  submitter.SubmitTask(task1);
+  submitter.SubmitTask(task2);
+  submitter.SubmitTask(task3);
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 2);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
@@ -801,7 +800,7 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerHandleLocalRayletDied) {
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(2));
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
-  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
+  submitter.SubmitTask(task1);
   ASSERT_DEATH(raylet_client->FailWorkerLeaseDueToGrpcUnavailable(), "");
 }
 
@@ -813,9 +812,9 @@ TEST_F(NormalTaskSubmitterTest, TestDriverHandleLocalRayletDied) {
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
+  submitter.SubmitTask(task1);
+  submitter.SubmitTask(task2);
+  submitter.SubmitTask(task3);
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 2);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
@@ -848,7 +847,7 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeases) {
   for (int i = 0; i < 2 * concurrency; i++) {
     auto task = BuildEmptyTaskSpec();
     tasks.push_back(task);
-    ASSERT_TRUE(submitter.SubmitTask(task).ok());
+    submitter.SubmitTask(task);
   }
 
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, concurrency);
@@ -904,7 +903,7 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamic) {
   for (int i = 0; i < 2 * concurrency; i++) {
     auto task = BuildEmptyTaskSpec();
     tasks.push_back(task);
-    ASSERT_TRUE(submitter.SubmitTask(task).ok());
+    submitter.SubmitTask(task);
   }
 
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 1);
@@ -989,7 +988,7 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamicWithSpillback) 
   for (int i = 0; i < 2 * concurrency; i++) {
     auto task = BuildEmptyTaskSpec();
     tasks.push_back(task);
-    ASSERT_TRUE(submitter.SubmitTask(task).ok());
+    submitter.SubmitTask(task);
   }
 
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 1);
@@ -1072,9 +1071,9 @@ TEST_F(NormalTaskSubmitterTest, TestSubmitMultipleTasks) {
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
+  submitter.SubmitTask(task1);
+  submitter.SubmitTask(task2);
+  submitter.SubmitTask(task3);
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 1);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
   ASSERT_EQ(raylet_client->reported_backlog_size, 0);
@@ -1123,9 +1122,9 @@ TEST_F(NormalTaskSubmitterTest, TestReuseWorkerLease) {
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
+  submitter.SubmitTask(task1);
+  submitter.SubmitTask(task2);
+  submitter.SubmitTask(task3);
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 1);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
 
@@ -1175,9 +1174,9 @@ TEST_F(NormalTaskSubmitterTest, TestRetryLeaseCancellation) {
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
+  submitter.SubmitTask(task1);
+  submitter.SubmitTask(task2);
+  submitter.SubmitTask(task3);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
 
   // Task 1 is pushed.
@@ -1223,8 +1222,8 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentCancellationAndSubmission) {
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
+  submitter.SubmitTask(task1);
+  submitter.SubmitTask(task2);
 
   // Task 1 is pushed.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil()));
@@ -1240,7 +1239,7 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentCancellationAndSubmission) {
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
 
   // Another task is submitted while task 2's lease request is being canceled.
-  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
+  submitter.SubmitTask(task3);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
 
   // Task 2's lease request is canceled, a new worker is requested for task 3.
@@ -1267,8 +1266,8 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerNotReusedOnError) {
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
+  submitter.SubmitTask(task1);
+  submitter.SubmitTask(task2);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
 
   // Task 1 is pushed.
@@ -1278,7 +1277,7 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerNotReusedOnError) {
 
   // Task 1 finishes with failure; the worker is returned.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("worker dead")));
-  ASSERT_TRUE(raylet_client->ReplyGetTaskFailureCause());
+  ASSERT_TRUE(raylet_client->ReplyGetWorkerFailureCause());
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
@@ -1303,7 +1302,7 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerNotReturnedOnExit) {
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
   TaskSpecification task1 = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
+  submitter.SubmitTask(task1);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
 
   // Task 1 is pushed.
@@ -1339,7 +1338,7 @@ TEST_F(NormalTaskSubmitterTest, TestSpillback) {
                                 raylet_client_factory);
   TaskSpecification task = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  submitter.SubmitTask(task);
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 1);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
@@ -1396,7 +1395,7 @@ TEST_F(NormalTaskSubmitterTest, TestSpillbackRoundTrip) {
                                 kLongTimeout);
   TaskSpecification task = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  submitter.SubmitTask(task);
   ASSERT_EQ(raylet_client->num_grant_or_reject_leases_requested, 0);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
@@ -1480,9 +1479,9 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
       [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
       boost::asio::steady_timer(io_context));
 
-  ASSERT_TRUE(submitter.SubmitTask(same1).ok());
-  ASSERT_TRUE(submitter.SubmitTask(same2).ok());
-  ASSERT_TRUE(submitter.SubmitTask(different).ok());
+  submitter.SubmitTask(same1);
+  submitter.SubmitTask(same2);
+  submitter.SubmitTask(different);
 
   WaitForCondition(
       [&raylet_client]() { return raylet_client->num_workers_returned == 2; },
@@ -1653,14 +1652,14 @@ TEST_F(NormalTaskSubmitterTest, TestBacklogReport) {
 
   TaskSpecification task4 = BuildTaskSpec(resources2, descriptor2);
 
-  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
+  submitter.SubmitTask(task1);
   // One is requested and one is in the backlog for each SchedulingKey
-  ASSERT_TRUE(submitter.SubmitTask(WithRandomTaskId(task2)).ok());
-  ASSERT_TRUE(submitter.SubmitTask(WithRandomTaskId(task2)).ok());
-  ASSERT_TRUE(submitter.SubmitTask(WithRandomTaskId(task3)).ok());
-  ASSERT_TRUE(submitter.SubmitTask(WithRandomTaskId(task3)).ok());
-  ASSERT_TRUE(submitter.SubmitTask(WithRandomTaskId(task4)).ok());
-  ASSERT_TRUE(submitter.SubmitTask(WithRandomTaskId(task4)).ok());
+  submitter.SubmitTask(WithRandomTaskId(task2));
+  submitter.SubmitTask(WithRandomTaskId(task2));
+  submitter.SubmitTask(WithRandomTaskId(task3));
+  submitter.SubmitTask(WithRandomTaskId(task3));
+  submitter.SubmitTask(WithRandomTaskId(task4));
+  submitter.SubmitTask(WithRandomTaskId(task4));
 
   // Waits for the async callbacks in submitter.SubmitTask to finish, before we call
   // ReportWorkerBacklog.
@@ -1689,9 +1688,9 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerLeaseTimeout) {
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
+  submitter.SubmitTask(task1);
+  submitter.SubmitTask(task2);
+  submitter.SubmitTask(task3);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
 
   // Task 1 is pushed.
@@ -1701,7 +1700,7 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerLeaseTimeout) {
   // Task 1 finishes with failure; the worker is returned due to the error even though
   // it hasn't timed out.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("worker dead")));
-  ASSERT_TRUE(raylet_client->ReplyGetTaskFailureCause());
+  ASSERT_TRUE(raylet_client->ReplyGetWorkerFailureCause());
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
 
@@ -1734,14 +1733,14 @@ TEST_F(NormalTaskSubmitterTest, TestKillExecutingTask) {
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
   TaskSpecification task = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  submitter.SubmitTask(task);
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
 
   // Try force kill, exiting the worker
-  ASSERT_TRUE(submitter.CancelTask(task, true, false).ok());
+  submitter.CancelTask(task, true, false);
   ASSERT_EQ(worker_client->kill_requests.front().intended_task_id(), task.TaskIdBinary());
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("workerdying"), true));
-  ASSERT_TRUE(raylet_client->ReplyGetTaskFailureCause());
+  ASSERT_TRUE(raylet_client->ReplyGetWorkerFailureCause());
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_returned_exiting, 0);
@@ -1751,11 +1750,11 @@ TEST_F(NormalTaskSubmitterTest, TestKillExecutingTask) {
 
   task.GetMutableMessage().set_task_id(
       TaskID::ForNormalTask(JobID::Nil(), TaskID::Nil(), 1).Binary());
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  submitter.SubmitTask(task);
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
 
   // Try non-force kill, worker returns normally
-  ASSERT_TRUE(submitter.CancelTask(task, false, false).ok());
+  submitter.CancelTask(task, false, false);
   ASSERT_TRUE(worker_client->ReplyPushTask());
   ASSERT_EQ(worker_client->kill_requests.front().intended_task_id(), task.TaskIdBinary());
   ASSERT_EQ(worker_client->callbacks.size(), 0);
@@ -1775,8 +1774,8 @@ TEST_F(NormalTaskSubmitterTest, TestKillPendingTask) {
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
   TaskSpecification task = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
-  ASSERT_TRUE(submitter.CancelTask(task, true, false).ok());
+  submitter.SubmitTask(task);
+  submitter.CancelTask(task, true, false);
   ASSERT_EQ(worker_client->kill_requests.size(), 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
@@ -1801,9 +1800,9 @@ TEST_F(NormalTaskSubmitterTest, TestKillResolvingTask) {
   TaskSpecification task = BuildEmptyTaskSpec();
   ObjectID obj1 = ObjectID::FromRandom();
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  submitter.SubmitTask(task);
   ASSERT_EQ(task_manager->num_inlined_dependencies, 0);
-  ASSERT_TRUE(submitter.CancelTask(task, true, false).ok());
+  submitter.CancelTask(task, true, false);
   auto data = GenerateRandomObject();
   store->Put(*data, obj1);
   WaitForObjectIdInMemoryStore(*store, obj1);
@@ -1824,7 +1823,7 @@ TEST_F(NormalTaskSubmitterTest, TestQueueGeneratorForResubmit) {
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
   TaskSpecification task = BuildEmptyTaskSpec();
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  submitter.SubmitTask(task);
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
   ASSERT_TRUE(submitter.QueueGeneratorForResubmit(task));
   ASSERT_TRUE(worker_client->ReplyPushTask());
@@ -1839,9 +1838,9 @@ TEST_F(NormalTaskSubmitterTest, TestCancelBeforeAfterQueueGeneratorForResubmit) 
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
   TaskSpecification task = BuildEmptyTaskSpec();
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  submitter.SubmitTask(task);
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
-  ASSERT_TRUE(submitter.CancelTask(task, /*force_kill=*/false, /*recursive=*/true).ok());
+  submitter.CancelTask(task, /*force_kill=*/false, /*recursive=*/true);
   ASSERT_FALSE(submitter.QueueGeneratorForResubmit(task));
   worker_client->ReplyCancelTask();
   ASSERT_TRUE(submitter.QueueGeneratorForResubmit(task));
@@ -1856,10 +1855,10 @@ TEST_F(NormalTaskSubmitterTest, TestCancelBeforeAfterQueueGeneratorForResubmit) 
   // Succesful queue generator for resubmit -> cancel -> successful execution -> no
   // resubmit.
   TaskSpecification task2 = BuildEmptyTaskSpec();
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
+  submitter.SubmitTask(task2);
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
   ASSERT_TRUE(submitter.QueueGeneratorForResubmit(task2));
-  ASSERT_TRUE(submitter.CancelTask(task2, /*force_kill=*/false, /*recursive=*/true).ok());
+  submitter.CancelTask(task2, /*force_kill=*/false, /*recursive=*/true);
   ASSERT_TRUE(worker_client->ReplyPushTask());
   worker_client->ReplyCancelTask(Status::OK(),
                                  /*attempt_succeeded=*/true,

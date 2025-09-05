@@ -77,6 +77,26 @@
 #  alert: default
 
 #######################
+# Baseline test
+#######################
+- name: hello_world
+  team: reef
+  group: hello_world
+  frequency: nightly
+  working_dir: hello_world_tests
+
+  cluster:
+    byod: {}
+    cluster_compute: hello_world_compute_config.yaml
+
+  run:
+    timeout: 1800
+    script: python hello_world.py
+
+  variations:
+    - __suffix__: aws
+
+#######################
 # Cluster scaling tests
 #######################
 - name: cluster_tune_scale_up_down
@@ -4102,6 +4122,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10
@@ -4122,6 +4144,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override nightly
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override nightly
@@ -4142,6 +4166,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override latest
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override latest
@@ -4162,6 +4188,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override commit
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override commit
@@ -4183,6 +4211,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py aws/example-minimal.yaml
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/example-minimal.yaml
@@ -4203,6 +4233,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py aws/example-full.yaml --num-expected-nodes 2 --retries 20 --docker-override latest
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/example-full.yaml --num-expected-nodes 2 --retries 20 --docker-override latest
@@ -4226,6 +4258,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py gcp/example-minimal-pinned.yaml
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-minimal-pinned.yaml
@@ -4249,6 +4283,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 30 --docker-override latest
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 30 --docker-override latest
@@ -4272,6 +4308,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override latest
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override latest
@@ -4295,6 +4333,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override nightly
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override nightly
@@ -4318,6 +4358,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override commit
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override commit
@@ -4341,6 +4383,8 @@
 
   variations:
     - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py gcp/example-gpu-docker.yaml
     - __suffix__: v2
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-gpu-docker.yaml
@@ -4746,6 +4790,33 @@
       frequency: manual
       cluster:
         cluster_compute: ci/gce.yaml  # relative to working_dir
+
+
+- name: deployment_serve_llm  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.11"
+  group: ray-examples
+  team: ml
+  working_dir: //doc/source/serve/tutorials/deployment-serve-llm  # use // to access from repo's root
+
+  cluster:
+    byod:
+      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      post_build_script: byod_deployment_serve_llm.sh  # release/ray_release/byod/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws  # uses default specs above
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
 
 - name: distributing_pytorch  # do not use dashes (regex sensitive)
   frequency: weekly
