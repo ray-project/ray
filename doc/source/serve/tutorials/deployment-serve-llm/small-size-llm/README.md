@@ -102,10 +102,7 @@ Your endpoint is available locally at `http://localhost:8000`. You can use a pla
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Authorization: Bearer FAKE_KEY" \
   -H "Content-Type: application/json" \
-  -d '{ \
-        "model": "my-llama-3.1-8b", \
-        "messages": [{"role": "user", "content": "What is 2 + 2?"}] \
-      }'
+  -d '{ "model": "my-llama-3.1-8b", "messages": [{"role": "user", "content": "What is 2 + 2?"}] }'
 ```
 
 **Example Python:**

@@ -170,10 +170,7 @@ Example curl:
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Authorization: Bearer FAKE_KEY" \
   -H "Content-Type: application/json" \
-  -d '{ \
-        "model": "my-qwq-32B", \
-        "messages": [{"role": "user", "content": "Pick three random words with 3 syllables each and count the number of R'\''s in each of them"}] \
-      }'
+  -d '{ "model": "my-qwq-32B", "messages": [{"role": "user", "content": "Pick three random words with 3 syllables each and count the number of R'\''s in each of them"}] }'
 ```
 
 Example python:

@@ -199,10 +199,7 @@ Example curl with `/no_think`
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer FAKE_KEY" \
-  -d '{ \
-        "model": "my-qwen-3-32b", \
-        "messages": [{"role": "user", "content": "What is greater between 7.8 and 7.11 ? /no_think"}] \
-      }'
+  -d '{ "model": "my-qwen-3-32b", "messages": [{"role": "user", "content": "What is greater between 7.8 and 7.11 ? /no_think"}] }'
 ```
 
 Example Python with `enable_thinking: False`:
@@ -248,10 +245,7 @@ Example curl with `/think`
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer FAKE_KEY" \
-  -d '{ \
-        "model": "my-qwen-3-32b", \
-        "messages": [{"role": "user", "content": "What is greater between 7.8 and 7.11 ? /think"}] \
-      }'
+  -d '{ "model": "my-qwen-3-32b", "messages": [{"role": "user", "content": "What is greater between 7.8 and 7.11 ? /think"}] }'
 ```
 
  Example Python with `enable_thinking: True`:

@@ -114,10 +114,7 @@ Example curl:
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Authorization: Bearer FAKE_KEY" \
   -H "Content-Type: application/json" \
-  -d '{ \
-        "model": "my-deepseek-r1", \
-        "messages": [{"role": "user", "content": "What is 2 + 2?"}] \
-      }'
+  -d '{ "model": "my-deepseek-r1", "messages": [{"role": "user", "content": "What is 2 + 2?"}] }'
 ```
 
 Example Python:
