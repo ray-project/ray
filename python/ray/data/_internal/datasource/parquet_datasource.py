@@ -16,8 +16,10 @@ from typing import (
 )
 
 import numpy as np
+from packaging.version import parse as parse_version
 
 import ray
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import (
@@ -54,6 +56,10 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+
+MIN_PYARROW_TO_BATCHES_READAHEAD = parse_version("10.0.0")
+
 
 # The `num_cpus` for each metadata prefetching task.
 # Default to 0.5 instead of 1 because it is cheaper than normal read task.
@@ -507,12 +513,17 @@ def _fetch_parquet_file_info(
         1,
     )
 
+    to_batches_kwargs = {}
+
+    if get_pyarrow_version() >= MIN_PYARROW_TO_BATCHES_READAHEAD:
+        # Limit prefetching to just 1 batch
+        to_batches_kwargs["batch_readahead"] = 1
+
     batches_iter = row_group_fragment.to_batches(
         columns=columns,
         schema=schema,
         batch_size=batch_size,
-        # Limit prefetching to just 1 batch
-        batch_readahead=1,
+        **to_batches_kwargs,
     )
 
     avg_row_size: Optional[int] = None
