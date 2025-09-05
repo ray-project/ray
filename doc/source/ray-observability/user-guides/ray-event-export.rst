@@ -124,6 +124,6 @@ The following diagram shows the high-level architecture of Ray event export.
 
 .. image:: ../images/ray-event-export.png
 
-Ray introduces a new aggregator agent on the head node and each worker nodes. All the 
-Ray components send events to the aggregator agent through gRPC. The aggregator agent 
-collects the events and sends them to the configured HTTP endpoint. 
+All Ray components send events to an aggregator agent through gRPC. There is an aggregator
+agent on each node. The aggregator agent collects all events on that node and sends the
+events to the configured HTTP endpoint. 
