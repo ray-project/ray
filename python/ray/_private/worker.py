@@ -814,7 +814,7 @@ class Worker:
                 objects. If True, then the returned object will not have a
                 valid value. The object must be written to using the
                 ray.experimental.channel API before readers can read.
-            tensor_transport: The tensor transport backend to use.
+            tensor_transport: The tensor transport backend to use. Currently, we only support "object_store" and "nixl".
 
         Returns:
             ObjectRef: The object ref the object was put under.
@@ -832,29 +832,19 @@ class Worker:
                 "ray.ObjectRef in a list and call 'put' on it."
             )
         tensors = None
-        tensor_transport = TensorTransportEnum.from_str(tensor_transport)
-        tensor_transport_meta = None
+        tensor_transport: TensorTransportEnum = TensorTransportEnum.from_str(
+            tensor_transport
+        )
+        assert tensor_transport in [
+            TensorTransportEnum.OBJECT_STORE,
+            TensorTransportEnum.NIXL,
+        ], "Currently, we only support 'object_store' and 'nixl' for tensor transport in ray.put()."
         try:
             if tensor_transport != TensorTransportEnum.OBJECT_STORE:
-                from ray.experimental.collective import get_tensor_transport_manager
-                from ray.experimental.gpu_object_manager.gpu_object_store import (
-                    _tensor_transport_to_collective_backend,
-                )
-
                 (
                     serialized_value,
                     tensors,
                 ) = self.get_serialization_context().serialize_gpu_objects(value)
-                tensor_transport_backend = _tensor_transport_to_collective_backend(
-                    tensor_transport
-                )
-                if tensors:
-                    transport_manager = get_tensor_transport_manager(
-                        tensor_transport_backend
-                    )
-                    tensor_transport_meta = (
-                        transport_manager.extract_tensor_transport_metadata(tensors)
-                    )
             else:
                 serialized_value = self.get_serialization_context().serialize(value)
         except TypeError as e:
@@ -885,16 +875,7 @@ class Worker:
             _is_experimental_channel=_is_experimental_channel,
             tensor_transport_val=tensor_transport.value,
         )
-        if tensors:
-            src_actor = ray.get_runtime_context().current_actor
-            self.get_serialization_context().store_gpu_objects(ret.hex(), tensors)
-            gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-            gpu_object_manager.add_gpu_object_ref(
-                ret,
-                src_actor,
-                tensor_transport,
-                pre_computed_tensor_transport_meta=tensor_transport_meta,
-            )
+        self.gpu_object_manager.put_object(ret, tensor_transport, tensors)
         return ret
 
     def raise_errors(self, serialized_objects, object_refs):
@@ -972,7 +953,7 @@ class Worker:
                 raised.
             skip_deserialization: If true, only the buffer will be released and
                 the object associated with the buffer will not be deserialized.
-            tensor_transport: The tensor transport to use for the GPU object.
+            tensor_transport: The tensor transport to use for the GPU object. Currently, we only support "object_store" and "nixl" for tensor transport in ray.get().
         Returns:
             list: List of deserialized objects or None if skip_deserialization is True.
             bytes: UUID of the debugger breakpoint we should drop
@@ -985,7 +966,16 @@ class Worker:
                     f"Attempting to call `get` on the value {object_ref}, "
                     "which is not an ray.ObjectRef."
                 )
-
+        tensor_transport: TensorTransportEnum = (
+            TensorTransportEnum.from_str(tensor_transport)
+            if tensor_transport is not None
+            else None
+        )
+        assert tensor_transport in [
+            TensorTransportEnum.OBJECT_STORE,
+            TensorTransportEnum.NIXL,
+            None,
+        ], "Currently, we only support 'object_store' and 'nixl' for tensor transport in ray.get()."
         timeout_ms = (
             int(timeout * 1000) if timeout is not None and timeout != -1 else -1
         )
@@ -1008,11 +998,7 @@ class Worker:
                     ]
         if skip_deserialization:
             return None, debugger_breakpoint
-        tensor_transport = (
-            TensorTransportEnum.from_str(tensor_transport)
-            if tensor_transport is not None
-            else None
-        )
+
         values = self.deserialize_objects(
             serialized_objects, object_refs, tensor_transport_hint=tensor_transport
         )
@@ -2894,7 +2880,7 @@ def get(
             corresponding object becomes available. Setting ``timeout=0`` will
             return the object immediately if it's available, else raise
             GetTimeoutError in accordance with the above docstring.
-        tensor_transport: The tensor transport to use for the GPU object.
+        tensor_transport: The tensor transport to use for the GPU object. Currently, we only support "object_store" and "nixl" for tensor transport in ray.get().
 
     Returns:
         A Python object or a list of Python objects.
@@ -3012,7 +2998,7 @@ def put(
             object prior to the object creator exiting, otherwise the reference
             will still be lost. *Note that this argument is an experimental API
             and should be avoided if possible.*
-        tensor_transport: The tensor transport to use for the GPU object.
+        tensor_transport: The tensor transport to use for the GPU object. Currently, we only support "object_store" and "nixl" for tensor transport in ray.put().
 
     Returns:
         The object ref assigned to this value.

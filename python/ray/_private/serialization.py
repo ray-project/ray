@@ -123,6 +123,23 @@ def _gpu_object_ref_deserializer(
     tensor_transport_val,
     gpu_object_meta,
 ):
+    """
+    Deserialize a GPU object ref. When the GPU object ref is deserialized,
+    it firstly deserialize the normal object ref, and then add metadata of
+    the GPU object to the GPU object manager, which will be used to fetch
+    the GPU object later.
+
+    Args:
+        binary: The binary data of the object ref.
+        call_site: The call site of the object ref.
+        owner_address: The owner address of the object ref.
+        object_status: The object status of the object ref.
+        tensor_transport_val: The tensor transport value of the GPU object ref.
+        gpu_object_meta: The GPU object metadata. This is used to fetch the GPU object later.
+
+    Returns:
+        The deserialized GPU object ref.
+    """
     obj_ref = _object_ref_deserializer(
         binary, call_site, owner_address, object_status, tensor_transport_val
     )

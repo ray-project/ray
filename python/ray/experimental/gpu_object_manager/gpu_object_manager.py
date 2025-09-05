@@ -384,3 +384,36 @@ class GPUObjectManager:
             tensor_transport_backend
         )
         return tensor_transport_manager.actor_has_tensor_transport(actor)
+
+    def put_object(
+        self,
+        obj_ref: ObjectRef,
+        tensor_transport: TensorTransportEnum,
+        tensors: Optional[List["torch.Tensor"]] = None,
+    ):
+        """
+        Put the GPU object into the GPU object manager.
+        """
+        from ray.experimental.gpu_object_manager.gpu_object_store import (
+            _tensor_transport_to_collective_backend,
+        )
+        from ray.experimental.collective import get_tensor_transport_manager
+
+        if not tensors:
+            return
+        tensor_transport_backend = _tensor_transport_to_collective_backend(
+            tensor_transport
+        )
+        transport_manager = get_tensor_transport_manager(tensor_transport_backend)
+        tensor_transport_meta = transport_manager.extract_tensor_transport_metadata(
+            tensors
+        )
+
+        src_actor = ray.get_runtime_context().current_actor
+        self.gpu_object_store.add_object(obj_ref.hex(), tensors, is_primary=True)
+        self.add_gpu_object_ref(
+            obj_ref,
+            src_actor,
+            tensor_transport,
+            pre_computed_tensor_transport_meta=tensor_transport_meta,
+        )
