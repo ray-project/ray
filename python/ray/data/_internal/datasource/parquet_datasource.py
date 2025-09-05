@@ -486,7 +486,7 @@ def _fetch_parquet_file_info(
     *,
     columns: Optional[List[str]],
     schema: Optional["pyarrow.Schema"],
-) -> "_ParquetFileInfo":
+) -> Optional["_ParquetFileInfo"]:
     # If the fragment has no row groups, it's an empty or metadata-only file.
     # Skip it by returning empty sample info.
     #
@@ -537,7 +537,7 @@ class _ParquetFileInfo:
     metadata: "pyarrow._parquet.FileMetaData"
 
     def estimate_in_memory_bytes(self) -> Optional[int]:
-        if not self.avg_row_in_mem_bytes:
+        if self.avg_row_in_mem_bytes is None:
             return None
 
         return self.avg_row_in_mem_bytes * self.metadata.num_rows
@@ -557,14 +557,17 @@ def _estimate_files_encoding_ratio(
     assert len(file_infos) == len(fragments)
 
     # Estimate size of the rows in a file in memory
-    estimated_in_mem_size_arr = [fi.estimate_in_memory_bytes() for fi in file_infos]
+    estimated_in_mem_size_arr = [
+        fi.estimate_in_memory_bytes() if fi is not None else None
+        for fi in file_infos
+    ]
 
     file_size_arr = [f.file_size for f in fragments]
 
     estimated_encoding_ratios = [
         float(in_mem_size) / file_size
         for in_mem_size, file_size in zip(estimated_in_mem_size_arr, file_size_arr)
-        if file_size > 0
+        if file_size > 0 and in_mem_size is not None
     ]
 
     # Return default estimate of 5 if all sampled files turned out to be empty
@@ -584,7 +587,7 @@ def _fetch_file_infos(
     columns: Optional[List[str]],
     schema: Optional["pyarrow.Schema"],
     local_scheduling: Optional[bool],
-) -> List[_ParquetFileInfo]:
+) -> List[Optional[_ParquetFileInfo]]:
     fetc_file_info = cached_remote_fn(_fetch_parquet_file_info)
     futures = []
 
@@ -613,16 +616,16 @@ def _fetch_file_infos(
 
 
 def _estimate_default_read_batch_size(
-    file_infos: List[_ParquetFileInfo],
+    file_infos: List[Optional[_ParquetFileInfo]],
 ) -> Optional[int]:
     ctx = DataContext.get_current()
     if ctx.target_max_block_size is None:
         return None
 
-    def compute_batch_size_rows(file_info: _ParquetFileInfo) -> int:
+    def compute_batch_size_rows(file_info: Optional[_ParquetFileInfo]) -> int:
         # 'avg_row_in_mem_bytes' is None if the sampled file was empty and 0 if the data
         # was all null.
-        if not file_info.avg_row_in_mem_bytes:
+        if not file_info or not file_info.avg_row_in_mem_bytes:
             return PARQUET_READER_ROW_BATCH_SIZE
         else:
             max_parquet_reader_row_batch_size_bytes = ctx.target_max_block_size // 10
