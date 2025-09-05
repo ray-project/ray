@@ -69,17 +69,8 @@ def get_localhost_address() -> str:
     """Get localhost loopback address with IPv4/IPv6 support.
 
     Returns:
-        The localhost loopback IP address (matching node IP family or auto-detected).
+        The localhost loopback IP address.
     """
-    import ray._private.worker
-
-    if (
-        ray._private.worker._global_node is not None
-        and ray._private.worker._global_node.node_ip_address
-    ):
-        node_ip = ray._private.worker._global_node.node_ip_address
-        return "::1" if is_ipv6_ip(node_ip) else "127.0.0.1"
-
     # Try IPv4 first, then IPv6 localhost resolution
     for family in [socket.AF_INET, socket.AF_INET6]:
         try:
