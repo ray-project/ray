@@ -17,7 +17,9 @@ def report(
     checkpoint: Optional["Checkpoint"] = None,
     checkpoint_dir_name: Optional[str] = None,
     checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
-    checkpoint_upload_function: Optional[Callable[["Checkpoint", str], None]] = None,
+    checkpoint_upload_function: Optional[
+        Callable[["Checkpoint", str], "Checkpoint"]
+    ] = None,
 ):
     """Report metrics and optionally save a checkpoint.
 

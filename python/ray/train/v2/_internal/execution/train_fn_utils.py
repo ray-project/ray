@@ -29,7 +29,7 @@ class TrainFnUtils:
         checkpoint_dir_name: Optional[str] = None,
         checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
         checkpoint_upload_function: Optional[
-            Callable[["Checkpoint", str], None]
+            Callable[["Checkpoint", str], "Checkpoint"]
         ] = None,
     ) -> None:
         """Upload checkpoint to remote storage and put a training result on the result queue.

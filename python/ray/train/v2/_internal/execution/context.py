@@ -218,7 +218,7 @@ class TrainContext:
         metrics: Dict[str, Any],
         checkpoint: Optional["Checkpoint"] = None,
         checkpoint_upload_function: Optional[
-            Callable[["Checkpoint", str], None]
+            Callable[["Checkpoint", str], "Checkpoint"]
         ] = None,
     ) -> _TrainingResult:
         """Save the checkpoint to remote storage.
@@ -279,7 +279,7 @@ class TrainContext:
         checkpoint_dir_name: Optional[str] = None,
         checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
         checkpoint_upload_function: Optional[
-            Callable[["Checkpoint", str], None]
+            Callable[["Checkpoint", str], "Checkpoint"]
         ] = None,
     ) -> None:
         """
