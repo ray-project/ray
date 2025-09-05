@@ -31,6 +31,7 @@ from ray.data.datasource import Datasource
 from ray.data.datasource.datasource import ReadTask
 from ray.data.datasource.file_based_datasource import FileShuffleConfig
 from ray.data.datasource.file_meta_provider import (
+    FileMetadataProvider,
     _handle_read_os_error,
     _list_files,
 )
@@ -290,7 +291,7 @@ class ParquetDatasource(Datasource):
         #   - Default batch-size: number of rows to be read from a file at a time,
         #     used to limit amount of memory pressure
         sampled_fragments = _sample_fragments(
-            fragments,
+            self._pq_fragments,
             to_batches_kwargs=to_batch_kwargs,
             columns=data_columns,
             schema=self._read_schema,
@@ -299,18 +300,14 @@ class ParquetDatasource(Datasource):
 
         sampled_file_infos = _fetch_file_infos(
             sampled_fragments,
-            to_batches_kwargs,
+            to_batch_kwargs,
             columns, schema,
-            local_scheduling
+            self._local_scheduling
         )
 
         self._encoding_ratio = _estimate_files_encoding_ratio(
             sampled_fragments,
             sampled_file_infos,
-            to_batches_kwargs=to_batch_kwargs,
-            columns=data_columns,
-            schema=self._read_schema,
-            local_scheduling=self._local_scheduling,
         )
 
         self._default_read_batch_size = _estimate_default_read_batch_size(
