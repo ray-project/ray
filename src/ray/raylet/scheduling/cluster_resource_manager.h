@@ -204,6 +204,8 @@ class ClusterResourceManager {
   FRIEND_TEST(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, LabelSelectorIsSchedulableOnNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, LabelSelectorHardNodeAffinityTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, ScheduleWithFallbackStrategyTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, FallbackStrategyWithUnavailableNodesTest);
 
   friend class raylet::SchedulingPolicyTest;
   friend class raylet_scheduling_policy::HybridSchedulingPolicyTest;

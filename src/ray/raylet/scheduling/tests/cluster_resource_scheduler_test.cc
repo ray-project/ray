@@ -1968,6 +1968,150 @@ TEST_F(ClusterResourceSchedulerTest, LabelSelectorHardNodeAffinityTest) {
   }
 }
 
+TEST_F(ClusterResourceSchedulerTest, ScheduleWithFallbackStrategyTest) {
+  // Setup scheduler with two nodes with resources and unique labels.
+  auto local_node_id = scheduling::NodeID(NodeID::FromRandom().Binary());
+  instrumented_io_context io_context;
+  ClusterResourceScheduler resource_scheduler(
+      io_context, local_node_id, {{"CPU", 1}}, is_node_available_fn_);
+
+  absl::flat_hash_map<std::string, double> resources({{"CPU", 1}});
+
+  auto node_0 = scheduling::NodeID(NodeID::FromRandom().Binary());
+  auto node_1 = scheduling::NodeID(NodeID::FromRandom().Binary());
+
+  resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
+      node_0, resources, resources);
+  resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
+      node_1, resources, resources);
+  resource_scheduler.GetClusterResourceManager().SetNodeLabels(
+      node_0, {{"ray.io/accelerator-type", "A100"}});
+  resource_scheduler.GetClusterResourceManager().SetNodeLabels(
+      node_1, {{"ray.io/accelerator-type", "TPU"}});
+
+  // Define label selector and fallback strategy.
+  std::unordered_map<std::string, std::string> label_selector = {
+      {"ray.io/accelerator-type", "B200"}};
+  std::vector<std::unordered_map<std::string, std::string>> fallback_strategy = {
+      {{"ray.io/accelerator-type", "A100"}}, {{"ray.io/accelerator-type", "TPU"}}};
+
+  // Create the task spec with the label selectors.
+  TaskSpecBuilder spec_builder;
+  rpc::SchedulingStrategy scheduling_strategy;
+  scheduling_strategy.mutable_default_scheduling_strategy();
+
+  spec_builder.SetCommonTaskSpec(RandomTaskId(),
+                                 "fallback_strategy_task",
+                                 Language::PYTHON,
+                                 FunctionDescriptorBuilder::BuildPython("", "", "", ""),
+                                 RandomJobId(),
+                                 rpc::JobConfig(),
+                                 TaskID::Nil(),
+                                 0,
+                                 TaskID::Nil(),
+                                 rpc::Address(),
+                                 0,
+                                 /*returns_dynamic=*/false,
+                                 /*is_streaming_generator*/ false,
+                                 /*generator_backpressure_num_objects*/ -1,
+                                 {{"CPU", 1}},
+                                 {},
+                                 "",
+                                 0,
+                                 TaskID::Nil(),
+                                 "",
+                                 nullptr,
+                                 "",
+                                 true,
+                                 {},
+                                 label_selector,
+                                 rpc::TensorTransport::OBJECT_STORE,
+                                 fallback_strategy);
+  spec_builder.SetNormalTaskSpec(0, false, "", scheduling_strategy, ActorID::Nil());
+  LeaseSpecification lease_spec(std::move(spec_builder).ConsumeAndBuild().GetMessage());
+
+  // Find the best schedulable node using the fallback strategy.
+  bool is_infeasible = false;
+  auto result_node = resource_scheduler.GetBestSchedulableNode(
+      lease_spec, "", false, false, &is_infeasible);
+
+  // Validate that the first satisfiable label selector schedules
+  // the Task on node_0.
+  ASSERT_FALSE(is_infeasible);
+  ASSERT_EQ(result_node, node_0);
+}
+
+TEST_F(ClusterResourceSchedulerTest, FallbackStrategyWithUnavailableNodesTest) {
+  // Setup 2 nodes, both of which are unavailable for scheduling.
+  auto local_node_id = scheduling::NodeID(NodeID::FromRandom().Binary());
+  instrumented_io_context io_context;
+  ClusterResourceScheduler resource_scheduler(
+      io_context, local_node_id, {{"CPU", 1}}, is_node_available_fn_);
+
+  auto node_A100 = scheduling::NodeID(NodeID::FromRandom().Binary());
+  auto node_TPU = scheduling::NodeID(NodeID::FromRandom().Binary());
+
+  // Add labelled node with unavailable CPU.
+  resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
+      node_A100, {{"CPU", 0}}, {{"CPU", 0}});
+  resource_scheduler.GetClusterResourceManager().SetNodeLabels(
+      node_A100, {{"ray.io/accelerator-type", "A100"}});
+
+  // Add node with TPU label and available CPU.
+  resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
+      node_TPU, {{"CPU", 1}}, {{"CPU", 1}});
+  resource_scheduler.GetClusterResourceManager().SetNodeLabels(
+      node_TPU, {{"ray.io/accelerator-type", "TPU"}});
+
+  // Scheduling request with infeasible `label_selector` and `fallback_strategy`.
+  std::unordered_map<std::string, std::string> label_selector = {
+      {"ray.io/accelerator-type", "B200"}};
+  std::vector<std::unordered_map<std::string, std::string>> infeasible_fallback = {
+      {{"ray.io/accelerator-type", "A100"}}};
+
+  TaskSpecBuilder spec_builder;
+  rpc::SchedulingStrategy scheduling_strategy;
+  scheduling_strategy.mutable_default_scheduling_strategy();
+  spec_builder.SetCommonTaskSpec(RandomTaskId(),
+                                 "infeasible_fallback_task",
+                                 Language::PYTHON,
+                                 FunctionDescriptorBuilder::BuildPython("", "", "", ""),
+                                 RandomJobId(),
+                                 rpc::JobConfig(),
+                                 TaskID::Nil(),
+                                 0,
+                                 TaskID::Nil(),
+                                 rpc::Address(),
+                                 0,
+                                 false,
+                                 false,
+                                 -1,
+                                 {{"CPU", 1}},
+                                 {},
+                                 "",
+                                 0,
+                                 TaskID::Nil(),
+                                 "",
+                                 nullptr,
+                                 "",
+                                 true,
+                                 {},
+                                 label_selector,
+                                 rpc::TensorTransport::OBJECT_STORE,
+                                 infeasible_fallback);
+  spec_builder.SetNormalTaskSpec(0, false, "", scheduling_strategy, ActorID::Nil());
+  LeaseSpecification infeasible_lease_spec(
+      std::move(spec_builder).ConsumeAndBuild().GetMessage());
+
+  bool is_infeasible = false;
+  auto result_node = resource_scheduler.GetBestSchedulableNode(
+      infeasible_lease_spec, "", false, false, &is_infeasible);
+
+  // Validate that neither node is schedulable.
+  ASSERT_TRUE(is_infeasible);
+  ASSERT_TRUE(result_node.IsNil());
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {

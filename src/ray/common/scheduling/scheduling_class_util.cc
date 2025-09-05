@@ -17,6 +17,7 @@
 #include <sstream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "google/protobuf/util/message_differencer.h"
 #include "ray/common/runtime_env_common.h"
@@ -29,12 +30,14 @@ SchedulingClassDescriptor::SchedulingClassDescriptor(
     LabelSelector ls,
     FunctionDescriptor fd,
     int64_t d,
-    rpc::SchedulingStrategy sched_strategy)
+    rpc::SchedulingStrategy sched_strategy,
+    std::vector<LabelSelector> fallback_strategy_p)
     : resource_set(std::move(rs)),
       label_selector(std::move(ls)),
       function_descriptor(std::move(fd)),
       depth(d),
-      scheduling_strategy(std::move(sched_strategy)) {}
+      scheduling_strategy(std::move(sched_strategy)),
+      fallback_strategy(std::move(fallback_strategy_p)) {}
 
 bool operator==(const ray::rpc::SchedulingStrategy &lhs,
                 const ray::rpc::SchedulingStrategy &rhs) {
@@ -77,7 +80,8 @@ bool SchedulingClassDescriptor::operator==(const SchedulingClassDescriptor &othe
   return depth == other.depth && resource_set == other.resource_set &&
          label_selector == other.label_selector &&
          function_descriptor == other.function_descriptor &&
-         scheduling_strategy == other.scheduling_strategy;
+         scheduling_strategy == other.scheduling_strategy &&
+         fallback_strategy == other.fallback_strategy;
 }
 
 std::string SchedulingClassDescriptor::DebugString() const {
@@ -105,6 +109,24 @@ std::string SchedulingClassDescriptor::DebugString() const {
     buffer << "), ";
   }
   buffer << "}}";
+
+  // Add fallback strategy LabelSelectors.
+  buffer << "fallback_strategy=[";
+  for (const auto &selector : fallback_strategy) {
+    buffer << "{";
+    for (const auto &constraint : selector.GetConstraints()) {
+      buffer << constraint.GetLabelKey() << " "
+             << (constraint.GetOperator() == ray::LabelSelectorOperator::LABEL_IN ? "in"
+                                                                                  : "!in")
+             << " (";
+      for (const auto &val : constraint.GetLabelValues()) {
+        buffer << val << ", ";
+      }
+      buffer << "), ";
+    }
+    buffer << "}, ";
+  }
+  buffer << "], ";
 
   return buffer.str();
 }

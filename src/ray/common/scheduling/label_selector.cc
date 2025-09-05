@@ -77,4 +77,42 @@ LabelSelector::ParseLabelSelectorValue(const std::string &key, const std::string
   return {op, values};
 }
 
+std::string LabelSelector::DebugString() const {
+  std::stringstream ss;
+  ss << "{";
+  for (size_t i = 0; i < constraints_.size(); ++i) {
+    const auto &constraint = constraints_[i];
+    ss << "'" << constraint.GetLabelKey() << "': ";
+
+    // Convert label selector operator to string
+    switch (constraint.GetOperator()) {
+    case LabelSelectorOperator::LABEL_IN:
+      ss << "in";
+      break;
+    case LabelSelectorOperator::LABEL_NOT_IN:
+      ss << "!in";
+      break;
+    default:
+      ss << "";
+    }
+
+    ss << " (";
+    bool first = true;
+    for (const auto &val : constraint.GetLabelValues()) {
+      if (!first) {
+        ss << ", ";
+      }
+      ss << "'" << val << "'";
+      first = false;
+    }
+    ss << ")";
+
+    if (i < constraints_.size() - 1) {
+      ss << ", ";
+    }
+  }
+  ss << "}";
+  return ss.str();
+}
+
 }  // namespace ray

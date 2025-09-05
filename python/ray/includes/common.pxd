@@ -347,7 +347,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
                      c_bool enable_task_events,
                      const unordered_map[c_string, c_string] &labels,
                      const unordered_map[c_string, c_string] &label_selector,
-                     CTensorTransport tensor_transport)
+                     CTensorTransport tensor_transport,
+                     const c_vector[unordered_map[c_string, c_string]] &fallback_strategy)
 
     cdef cppclass CActorCreationOptions "ray::core::ActorCreationOptions":
         CActorCreationOptions()
@@ -368,7 +369,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_bool enable_tensor_transport,
             c_bool enable_task_events,
             const unordered_map[c_string, c_string] &labels,
-            const unordered_map[c_string, c_string] &label_selector)
+            const unordered_map[c_string, c_string] &label_selector,
+            const c_vector[unordered_map[c_string, c_string]] &fallback_strategy)
 
     cdef cppclass CPlacementGroupCreationOptions \
             "ray::core::PlacementGroupCreationOptions":
