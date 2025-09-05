@@ -98,8 +98,8 @@ class DependencySetManager:
                 raise ValueError(f"Invalid operation: {depset.operation}")
 
     def subgraph_dependency_nodes(self, depset_name: str):
-        dependendecy_nodes = networkx_ancestors(self.build_graph, depset_name)
-        nodes = dependendecy_nodes | {depset_name}
+        dependency_nodes = networkx_ancestors(self.build_graph, depset_name)
+        nodes = dependency_nodes | {depset_name}
         self.build_graph = self.build_graph.subgraph(nodes).copy()
 
     def execute(self, single_depset_name: Optional[str] = None):
