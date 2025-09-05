@@ -17,6 +17,7 @@ from websockets.sync.client import connect
 import ray
 import ray.util.state as state_api
 from ray import serve
+from ray._common.network_utils import parse_address
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import (
     fetch_prometheus_metrics,
@@ -179,14 +180,14 @@ def test_serve_metrics_for_successful_connection(metrics_start_shutdown):
     app_name = "app1"
     handle = serve.run(target=f.bind(), name=app_name)
 
-    http_url = f'{get_application_url("HTTP", app_name)}/metrics'
-
+    http_url = get_application_url(app_name=app_name)
     # send 10 concurrent requests
     ray.get([block_until_http_ready.remote(http_url) for _ in range(10)])
     [handle.remote(http_url) for _ in range(10)]
 
     # Ping gPRC proxy
-    channel = grpc.insecure_channel("localhost:9000")
+    grpc_url = "localhost:9000"
+    channel = grpc.insecure_channel(grpc_url)
     wait_for_condition(
         ping_grpc_list_applications, channel=channel, app_names=[app_name]
     )
@@ -401,8 +402,9 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
 
     app_name = "app"
     serve.run(A.bind(), name=app_name)
-    httpx.get("http://127.0.0.1:8000/A/", timeout=None)
-    httpx.get("http://127.0.0.1:8000/A/", timeout=None)
+
+    httpx.get("http://localhost:8000", timeout=None)
+    httpx.get("http://localhost:8000", timeout=None)
     channel = grpc.insecure_channel("localhost:9000")
     with pytest.raises(grpc.RpcError):
         ping_grpc_call_method(channel=channel, app_name=app_name)
@@ -466,7 +468,7 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     print("Sent requests to broken URL.")
 
     # Ping gRPC proxy for not existing application.
-    channel = grpc.insecure_channel("localhost:9000")
+    channel = grpc.insecure_channel("127.0.0.1:9000")
     fake_app_name = "fake-app"
     ping_grpc_call_method(channel=channel, app_name=fake_app_name, test_not_found=True)
 
@@ -523,7 +525,7 @@ def test_proxy_timeout_metrics(metrics_start_shutdown):
         name="status_code_timeout",
     )
 
-    http_url = get_application_url("HTTP", "status_code_timeout")
+    http_url = get_application_url("HTTP", app_name="status_code_timeout")
 
     r = httpx.get(http_url)
     assert r.status_code == 408
@@ -550,8 +552,8 @@ def test_proxy_timeout_metrics(metrics_start_shutdown):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows")
-def test_proxy_disconnect_metrics(metrics_start_shutdown):
-    """Test that disconnect metrics are reported correctly."""
+def test_proxy_disconnect_http_metrics(metrics_start_shutdown):
+    """Test that HTTP disconnect metrics are reported correctly."""
 
     signal = SignalActor.remote()
 
@@ -568,9 +570,9 @@ def test_proxy_disconnect_metrics(metrics_start_shutdown):
     )
 
     # Simulate an HTTP disconnect
-    http_url = get_application_url("HTTP", "disconnect")
+    http_url = get_application_url("HTTP", app_name="disconnect")
     ip_port = http_url.replace("http://", "").split("/")[0]  # remove the route prefix
-    ip, port = ip_port.split(":")
+    ip, port = parse_address(ip_port)
     conn = http.client.HTTPConnection(ip, int(port))
     conn.request("GET", "/disconnect")
     wait_for_condition(
@@ -578,6 +580,31 @@ def test_proxy_disconnect_metrics(metrics_start_shutdown):
     )
     conn.close()  # Forcefully close the connection
     ray.get(signal.send.remote(clear=True))
+
+    num_errors = get_metric_dictionaries("serve_num_http_error_requests")
+    assert len(num_errors) == 1
+    assert num_errors[0]["route"] == "/disconnect"
+    assert num_errors[0]["error_code"] == "499"
+    assert num_errors[0]["method"] == "GET"
+    assert num_errors[0]["application"] == "disconnect"
+
+
+def test_proxy_disconnect_grpc_metrics(metrics_start_shutdown):
+    """Test that gRPC disconnect metrics are reported correctly."""
+
+    signal = SignalActor.remote()
+
+    @serve.deployment
+    class Disconnect:
+        async def __call__(self, request: Request):
+            await signal.wait.remote()
+            return
+
+    serve.run(
+        Disconnect.bind(),
+        route_prefix="/disconnect",
+        name="disconnect",
+    )
 
     # make grpc call
     channel = grpc.insecure_channel("localhost:9000")
@@ -604,13 +631,6 @@ def test_proxy_disconnect_metrics(metrics_start_shutdown):
     channel.close()  # Forcefully close the channel, simulating a client disconnect
     thread.join()
     ray.get(signal.send.remote(clear=True))
-
-    num_errors = get_metric_dictionaries("serve_num_http_error_requests")
-    assert len(num_errors) == 1
-    assert num_errors[0]["route"] == "/disconnect"
-    assert num_errors[0]["error_code"] == "499"
-    assert num_errors[0]["method"] == "GET"
-    assert num_errors[0]["application"] == "disconnect"
 
     num_errors = get_metric_dictionaries("serve_num_grpc_error_requests")
     assert len(num_errors) == 1
@@ -939,8 +959,10 @@ def test_replica_metrics_fields(metrics_start_shutdown):
         err_requests[0]["application"],
     ) == expected_output
 
+    wait_for_condition(
+        lambda: len(get_metric_dictionaries("serve_deployment_replica_healthy")) == 3,
+    )
     health_metrics = get_metric_dictionaries("serve_deployment_replica_healthy")
-    assert len(health_metrics) == 3, health_metrics
     expected_output = {
         ("f", "app1"),
         ("g", "app2"),

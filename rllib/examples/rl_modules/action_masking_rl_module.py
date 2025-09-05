@@ -21,7 +21,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --num-env-runners 2`
+`python [script file name].py --num-env-runners 2`
 
 Control the number of `EnvRunner`s with the `--num-env-runners` flag. This
 will increase the sampling speed.

@@ -141,11 +141,11 @@ class MutableObjectProviderInterface {
 
 class MutableObjectProvider : public MutableObjectProviderInterface {
  public:
-  using RayletFactory = std::function<std::shared_ptr<MutableObjectReaderInterface>(
-      const NodeID &, rpc::ClientCallManager &)>;
+  using RayletFactory =
+      std::function<std::shared_ptr<RayletClientInterface>(const NodeID &)>;
 
   MutableObjectProvider(plasma::PlasmaClientInterface &plasma,
-                        RayletFactory factory,
+                        RayletFactory raylet_client_factory,
                         std::function<Status(void)> check_signals);
 
   ~MutableObjectProvider() override;
@@ -197,7 +197,7 @@ class MutableObjectProvider : public MutableObjectProviderInterface {
   void PollWriterClosure(
       instrumented_io_context &io_context,
       const ObjectID &writer_object_id,
-      const std::shared_ptr<std::vector<std::shared_ptr<MutableObjectReaderInterface>>>
+      const std::shared_ptr<std::vector<std::shared_ptr<RayletClientInterface>>>
           &remote_readers);
 
   // Kicks off `io_context`.
@@ -220,9 +220,7 @@ class MutableObjectProvider : public MutableObjectProviderInterface {
   // Creates a Raylet client for each mutable object. When the polling thread detects a
   // write to the mutable object, this client sends the updated mutable object via RPC to
   // the Raylet on the remote node.
-  std::function<std::shared_ptr<MutableObjectReaderInterface>(
-      const NodeID &node_id, rpc::ClientCallManager &client_call_manager)>
-      raylet_client_factory_;
+  RayletFactory raylet_client_factory_;
 
   // Each mutable object that requires inter-node communication has its own thread and
   // event loop. Thus, all of the objects below are vectors, with each vector index

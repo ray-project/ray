@@ -21,6 +21,7 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/raylet/scheduling/internal.h"
 #include "ray/raylet/scheduling/local_task_manager_interface.h"
+#include "ray/stats/metric.h"
 
 namespace ray {
 namespace raylet {
@@ -34,7 +35,7 @@ class SchedulerStats {
                           const ILocalTaskManager &local_task_manager);
 
   // Report metrics doesn't recompute the stats.
-  void RecordMetrics() const;
+  void RecordMetrics();
 
   // Recompute the stats and report the result as string.
   std::string ComputeAndReportDebugStr();
@@ -78,6 +79,19 @@ class SchedulerStats {
   int64_t num_tasks_to_schedule_ = 0;
   /// Number of tasks to dispatch.
   int64_t num_tasks_to_dispatch_ = 0;
+
+  /// Ray metrics
+  ray::stats::Gauge ray_metric_num_spilled_tasks_{
+      /*name=*/"internal_num_spilled_tasks",
+      /*description=*/
+      "The cumulative number of lease requeusts that this raylet has spilled to other "
+      "raylets.",
+      /*unit=*/"tasks"};
+
+  ray::stats::Gauge ray_metric_num_infeasible_scheduling_classes_{
+      /*name=*/"internal_num_infeasible_scheduling_classes",
+      /*description=*/"The number of unique scheduling classes that are infeasible.",
+      /*unit=*/"tasks"};
 };
 
 }  // namespace raylet

@@ -8,7 +8,7 @@ from ray.llm._internal.common.utils.download_utils import (
     download_model_files,
 )
 from ray.llm._internal.common.utils.import_utils import try_import
-from ray.llm._internal.serve.configs.server_models import LLMConfig
+from ray.llm._internal.serve.configs.server_models import LLMConfig, LLMEngine
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import VLLMEngineConfig
 from ray.llm._internal.serve.deployments.utils.server_utils import make_async
 from ray.llm._internal.serve.observability.logging import get_logger
@@ -89,6 +89,7 @@ async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
     extra_init_kwargs = {}
 
     engine_config = llm_config.get_engine_config()
+    assert engine_config is not None
     pg = engine_config.get_or_create_pg()
     runtime_env = engine_config.get_runtime_env_with_local_env_vars()
 
@@ -103,7 +104,7 @@ async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
         )
 
         await _initialize_local_node(
-            engine_config,
+            llm_config,
             download_model=local_node_download_model,
             download_extra_files=True,
         )
@@ -116,11 +117,6 @@ async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
             download_extra_files=True,
         )
 
-    llm_config.apply_checkpoint_info(
-        engine_config.actual_hf_model_id,
-        trust_remote_code=engine_config.trust_remote_code,
-    )
-
     return InitializeNodeOutput(
         placement_group=pg, runtime_env=runtime_env, extra_init_kwargs=extra_init_kwargs
     )
@@ -128,11 +124,12 @@ async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
 
 @make_async
 def _initialize_local_node(
-    engine_config: VLLMEngineConfig,
+    llm_config: LLMConfig,
     *,
     download_model: NodeModelDownloadable,
     download_extra_files: bool,
 ):
+    engine_config = llm_config.get_engine_config()
     local_path = download_model_files(
         model_id=engine_config.actual_hf_model_id,
         mirror_config=engine_config.mirror_config,
@@ -148,7 +145,16 @@ def _initialize_local_node(
     if not isinstance(local_path, str) or not os.path.exists(local_path):
         logger.info(f"Downloading the tokenizer for {engine_config.actual_hf_model_id}")
 
-    _ = transformers.AutoTokenizer.from_pretrained(
-        engine_config.actual_hf_model_id,
-        trust_remote_code=engine_config.trust_remote_code,
-    )
+    if llm_config.llm_engine == LLMEngine.vLLM:
+        from vllm.transformers_utils.tokenizer import get_tokenizer
+
+        _ = get_tokenizer(
+            engine_config.actual_hf_model_id,
+            tokenizer_mode=engine_config.engine_kwargs.get("tokenizer_mode", None),
+            trust_remote_code=engine_config.trust_remote_code,
+        )
+    else:
+        _ = transformers.AutoTokenizer.from_pretrained(
+            engine_config.actual_hf_model_id,
+            trust_remote_code=engine_config.trust_remote_code,
+        )

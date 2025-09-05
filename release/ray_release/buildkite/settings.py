@@ -11,7 +11,6 @@ from ray_release.wheels import DEFAULT_BRANCH, get_buildkite_repo_branch
 class Frequency(enum.Enum):
     MANUAL = enum.auto()
     ANY = enum.auto()
-    MULTI = enum.auto()
     NIGHTLY = enum.auto()
     NIGHTLY_3x = enum.auto()
     WEEKLY = enum.auto()
@@ -22,7 +21,6 @@ frequency_str_to_enum = {
     "manual": Frequency.MANUAL,
     "any": Frequency.ANY,
     "any-smoke": Frequency.ANY,
-    "multi": Frequency.MULTI,
     "nightly": Frequency.NIGHTLY,
     "nightly-3x": Frequency.NIGHTLY_3x,
     "weekly": Frequency.WEEKLY,

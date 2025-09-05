@@ -64,11 +64,10 @@ inline std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
 }
 
 /// Helper function to produce error table data.
-std::shared_ptr<ray::rpc::ErrorTableData> CreateErrorTableData(
-    const std::string &error_type,
-    const std::string &error_msg,
-    absl::Time timestamp,
-    const JobID &job_id = JobID::Nil());
+rpc::ErrorTableData CreateErrorTableData(const std::string &error_type,
+                                         const std::string &error_msg,
+                                         absl::Time timestamp,
+                                         const JobID &job_id = JobID::Nil());
 
 /// Helper function to produce worker failure data.
 inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
@@ -84,7 +83,7 @@ inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
   // Only report the worker id + delta (new data upon worker failures).
   // GCS will merge the data with original worker data.
   worker_failure_info_ptr->mutable_worker_address()->set_worker_id(worker_id.Binary());
-  worker_failure_info_ptr->mutable_worker_address()->set_raylet_id(node_id.Binary());
+  worker_failure_info_ptr->mutable_worker_address()->set_node_id(node_id.Binary());
   worker_failure_info_ptr->mutable_worker_address()->set_ip_address(ip_address);
   worker_failure_info_ptr->set_timestamp(timestamp);
   worker_failure_info_ptr->set_exit_type(disconnect_type);
@@ -182,7 +181,11 @@ inline bool IsActorRestartable(const rpc::ActorTableData &actor) {
          actor.death_cause().actor_died_error_context().reason() ==
              rpc::ActorDiedErrorContext::OUT_OF_SCOPE &&
          ((actor.max_restarts() == -1) ||
-          (static_cast<int64_t>(actor.num_restarts()) < actor.max_restarts()));
+          (actor.max_restarts() > 0 && actor.preempted()) ||
+          // Restarts due to node preemption do not count towards max_restarts.
+          (static_cast<int64_t>(actor.num_restarts() -
+                                actor.num_restarts_due_to_node_preemption()) <
+           actor.max_restarts()));
 }
 
 inline std::string RayErrorInfoToString(const ray::rpc::RayErrorInfo &error_info) {

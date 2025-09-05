@@ -4,6 +4,7 @@ import datetime
 import threading
 import time
 import unittest
+from dataclasses import replace
 from typing import Any, Dict, Optional, Tuple
 from unittest.mock import MagicMock
 
@@ -13,9 +14,7 @@ from freezegun import freeze_time
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray.actor import ActorHandle
-from ray.data._internal.execution.autoscaler.default_autoscaler import (
-    ActorPoolScalingRequest,
-)
+from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.execution.bundle_queue import FIFOBundleQueue
 from ray.data._internal.execution.interfaces import ExecutionResources
 from ray.data._internal.execution.interfaces.physical_operator import _ActorPoolInfo
@@ -80,7 +79,9 @@ class TestActorPool(unittest.TestCase):
             return None
 
     def _create_actor_fn(
-        self, labels: Dict[str, Any]
+        self,
+        labels: Dict[str, Any],
+        logical_actor_id: str = "Actor1",
     ) -> Tuple[ActorHandle, ObjectRef[Any]]:
         actor = PoolWorker.options(_labels=labels).remote(self._actor_node_id)
         ready_ref = actor.get_location.remote()
@@ -159,7 +160,11 @@ class TestActorPool(unittest.TestCase):
             pool.scale(ActorPoolScalingRequest(delta=1, reason="scaling up"))
             # Assert we can't scale down immediately after scale up
             assert not pool._can_apply(downscaling_request)
-            assert pool._last_upscaling_ts == time.time()
+            assert pool._last_upscaled_at == time.time()
+
+            # Check that we can still scale down if downscaling request
+            # is a forced one
+            assert pool._can_apply(replace(downscaling_request, force=True))
 
             # Advance clock
             f.tick(

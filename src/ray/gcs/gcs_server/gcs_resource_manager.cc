@@ -191,8 +191,7 @@ void GcsResourceManager::HandleGetAllResourceUsage(
     rpc::SendReplyCallback send_reply_callback) {
   if (!node_resource_usages_.empty()) {
     rpc::ResourceUsageBatchData batch;
-    absl::flat_hash_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
-        aggregate_load;
+    absl::flat_hash_map<ResourceDemandKey, rpc::ResourceDemand> aggregate_load;
 
     for (const auto &usage : node_resource_usages_) {
       // Aggregate the load reported by each raylet.
@@ -217,8 +216,11 @@ void GcsResourceManager::HandleGetAllResourceUsage(
     for (const auto &demand : aggregate_load) {
       auto demand_proto = batch.mutable_resource_load_by_shape()->add_resource_demands();
       demand_proto->CopyFrom(demand.second);
-      for (const auto &resource_pair : demand.first) {
+      for (const auto &resource_pair : demand.first.shape) {
         (*demand_proto->mutable_shape())[resource_pair.first] = resource_pair.second;
+      }
+      for (auto &selector : demand.first.label_selectors) {
+        *demand_proto->add_label_selectors() = std::move(selector);
       }
     }
     // Update placement group load to heartbeat batch.
@@ -258,22 +260,7 @@ void GcsResourceManager::UpdateNodeResourceUsage(
     const syncer::ResourceViewSyncMessage &resource_view_sync_message) {
   // Note: This may be inconsistent with autoscaler state, which is
   // not reported as often as a Ray Syncer message.
-  if (auto maybe_node_info = gcs_node_manager_.GetAliveNode(node_id);
-      maybe_node_info != absl::nullopt) {
-    auto snapshot = maybe_node_info.value()->mutable_state_snapshot();
-
-    if (resource_view_sync_message.idle_duration_ms() > 0) {
-      snapshot->set_state(rpc::NodeSnapshot::IDLE);
-      snapshot->set_idle_duration_ms(resource_view_sync_message.idle_duration_ms());
-    } else {
-      snapshot->set_state(rpc::NodeSnapshot::ACTIVE);
-      snapshot->mutable_node_activity()->CopyFrom(
-          resource_view_sync_message.node_activity());
-    }
-    if (resource_view_sync_message.is_draining()) {
-      snapshot->set_state(rpc::NodeSnapshot::DRAINING);
-    }
-  }
+  gcs_node_manager_.UpdateAliveNode(node_id, resource_view_sync_message);
 
   auto iter = node_resource_usages_.find(node_id);
   if (iter == node_resource_usages_.end()) {

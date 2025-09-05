@@ -266,17 +266,45 @@ def set_omp_num_threads_if_unset() -> bool:
     return True
 
 
-def set_visible_accelerator_ids() -> None:
+def set_visible_accelerator_ids() -> Mapping[str, Optional[str]]:
     """Set (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, HIP_VISIBLE_DEVICES,
     NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS , HABANA_VISIBLE_MODULES ,...)
-    environment variables based on the accelerator runtime.
+    environment variables based on the accelerator runtime. Return the original
+    environment variables.
     """
+    from ray._private.ray_constants import env_bool
+
+    original_visible_accelerator_env_vars = {}
+    override_on_zero = env_bool(
+        ray._private.accelerators.RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO_ENV_VAR,
+        True,
+    )
     for resource_name, accelerator_ids in (
         ray.get_runtime_context().get_accelerator_ids().items()
     ):
+        # If no accelerator ids are set, skip overriding the environment variable.
+        if not override_on_zero and len(accelerator_ids) == 0:
+            continue
+        env_var = ray._private.accelerators.get_accelerator_manager_for_resource(
+            resource_name
+        ).get_visible_accelerator_ids_env_var()
+        original_visible_accelerator_env_vars[env_var] = os.environ.get(env_var, None)
         ray._private.accelerators.get_accelerator_manager_for_resource(
             resource_name
         ).set_current_process_visible_accelerator_ids(accelerator_ids)
+
+    return original_visible_accelerator_env_vars
+
+
+def reset_visible_accelerator_env_vars(
+    original_visible_accelerator_env_vars: Mapping[str, Optional[str]]
+) -> None:
+    """Reset the visible accelerator env vars to the original values."""
+    for env_var, env_value in original_visible_accelerator_env_vars.items():
+        if env_value is None:
+            os.environ.pop(env_var, None)
+        else:
+            os.environ[env_var] = env_value
 
 
 class Unbuffered(object):
@@ -302,6 +330,9 @@ class Unbuffered(object):
         self.stream.flush()
 
     def __getattr__(self, attr):
+        # Avoid endless loop when get `stream` attribute
+        if attr == "stream":
+            return super().__getattribute__("stream")
         return getattr(self.stream, attr)
 
 
@@ -339,9 +370,10 @@ def _get_docker_cpus(
     # See: https://bugs.openjdk.java.net/browse/JDK-8146115
     if os.path.exists(cpu_quota_file_name) and os.path.exists(cpu_period_file_name):
         try:
-            with open(cpu_quota_file_name, "r") as quota_file, open(
-                cpu_period_file_name, "r"
-            ) as period_file:
+            with (
+                open(cpu_quota_file_name, "r") as quota_file,
+                open(cpu_period_file_name, "r") as period_file,
+            ):
                 cpu_quota = float(quota_file.read()) / float(period_file.read())
         except Exception:
             logger.exception("Unexpected error calculating docker cpu quota.")
@@ -1022,34 +1054,33 @@ def init_grpc_channel(
     return channel
 
 
-def check_dashboard_dependencies_installed() -> bool:
-    """Returns True if Ray Dashboard dependencies are installed.
+def get_dashboard_dependency_error() -> Optional[ImportError]:
+    """Returns the exception error if Ray Dashboard dependencies are not installed.
+    None if they are installed.
 
     Checks to see if we should start the dashboard agent or not based on the
     Ray installation version the user has installed (ray vs. ray[default]).
     Unfortunately there doesn't seem to be a cleaner way to detect this other
     than just blindly importing the relevant packages.
-
     """
     try:
         import ray.dashboard.optional_deps  # noqa: F401
 
-        return True
-    except ImportError:
-        return False
+        return None
+    except ImportError as e:
+        return e
 
 
-def check_ray_client_dependencies_installed() -> bool:
-    """Returns True if Ray Client dependencies are installed.
-
-    See documents for check_dashboard_dependencies_installed.
+def get_ray_client_dependency_error() -> Optional[ImportError]:
+    """Returns the exception error if Ray Client dependencies are not installed.
+    None if they are installed.
     """
     try:
         import grpc  # noqa: F401
 
-        return True
-    except ImportError:
-        return False
+        return None
+    except ImportError as e:
+        return e
 
 
 connect_error = (

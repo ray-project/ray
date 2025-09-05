@@ -26,7 +26,6 @@
 #include "ray/gcs/gcs_server/gcs_health_check_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
-#include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_server_io_context_policy.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
@@ -35,12 +34,14 @@
 #include "ray/gcs/gcs_server/runtime_env_handler.h"
 #include "ray/gcs/gcs_server/usage_stats_client.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/gcs/redis_client.h"
+#include "ray/gcs/store_client/in_memory_store_client.h"
+#include "ray/gcs/store_client/observable_store_client.h"
+#include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/rpc/client_call.h"
-#include "ray/rpc/gcs_server/gcs_rpc_server.h"
-#include "ray/rpc/node_manager/node_manager_client_pool.h"
+#include "ray/rpc/gcs/gcs_rpc_server.h"
+#include "ray/rpc/node_manager/raylet_client_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/throttler.h"
 
@@ -129,9 +130,6 @@ class GcsServer {
   }
 
  protected:
-  /// Generate the redis client options
-  RedisClientOptions GetRedisClientOptions() const;
-
   void DoStart(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs node manager.
@@ -213,8 +211,8 @@ class GcsServer {
   /// Print the asio event loop stats for debugging.
   void PrintAsioStats();
 
-  /// Get or connect to a redis server
-  std::shared_ptr<RedisClient> CreateRedisClient(instrumented_io_context &io_service);
+  std::unique_ptr<RedisStoreClient> CreateRedisStoreClient(
+      instrumented_io_context &io_service);
 
   void TryGlobalGC();
 
@@ -228,10 +226,10 @@ class GcsServer {
   const StorageType storage_type_;
   /// The grpc server
   rpc::GrpcServer rpc_server_;
-  /// The `ClientCallManager` object that is shared by all `NodeManagerWorkerClient`s.
+  /// The `ClientCallManager` object that is shared by all `RayletClient`s.
   rpc::ClientCallManager client_call_manager_;
   /// Node manager client pool.
-  std::unique_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
+  rpc::RayletClientPool raylet_client_pool_;
   // Core worker client pool.
   rpc::CoreWorkerClientPool worker_client_pool_;
   /// The cluster resource scheduler.
@@ -253,8 +251,6 @@ class GcsServer {
   std::unique_ptr<GcsNodeManager> gcs_node_manager_;
   /// The health check manager.
   std::shared_ptr<GcsHealthCheckManager> gcs_healthcheck_manager_;
-  /// The gcs redis failure detector.
-  std::unique_ptr<GcsRedisFailureDetector> gcs_redis_failure_detector_;
   /// The gcs placement group manager.
   std::unique_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
   /// The gcs actor manager.

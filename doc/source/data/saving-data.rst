@@ -168,6 +168,81 @@ number of output files, configure ``min_rows_per_file``.
 
     ['0_000001_000000.csv', '0_000000_000000.csv', '0_000002_000000.csv']
 
+
+Writing into Partitioned Dataset
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When writing partitioned dataset (using Hive-style, folder-based partitioning) it's recommended to repartition the dataset by the partition columns prior to writing into it. 
+This allows you to *have the control over the file-sizes and their number*. When the dataset is repartitioned by the partition columns every block should contain all of the rows corresponding to particular partition, 
+meaning that the number of files created should be controlled based on the configuration provided to, 
+for example, `write_parquet` method (such as `min_rows_per_file`, `max_rows_per_file`). 
+Since every block is written out independently, when writing the dataset without prior 
+repartitioning you could potentially get an N number of files per partition 
+(where N is the number of blocks in your dataset) with very limited ability to control the 
+number of files & their sizes (since every block could potentially carry the rows corresponding to any partition).
+
+.. testcode::
+    import ray
+    import pandas as pd
+    from ray.data import DataContext
+    from ray.data.context import ShuffleStrategy
+
+    def print_directory_tree(start_path: str) -> None:
+        """
+        Prints the directory tree structure starting from the given path.
+        """
+        for root, dirs, files in os.walk(start_path):
+            level = root.replace(start_path, '').count(os.sep)
+            indent = ' ' * 4 * (level)
+            print(f'{indent}{os.path.basename(root)}/')
+            subindent = ' ' * 4 * (level + 1)
+            for f in files:
+                print(f'{subindent}{f}')
+
+    # Sample dataset that we’ll partition by ``city`` and ``year``.
+    df = pd.DataFrame(
+        {
+            "city": ["SF", "SF", "NYC", "NYC", "SF", "NYC", "SF", "NYC"],
+            "year": [2023, 2024, 2023, 2024, 2023, 2023, 2024, 2024],
+            "sales": [100, 120, 90, 115, 105, 95, 130, 110],
+        }
+    )
+
+    ds = ray.data.from_pandas(df)
+    DataContext.shuffle_strategy=ShuffleStrategy.HASH_SHUFFLE
+
+    # ── Partitioned write ──────────────────────────────────────────────────────
+    # 1. Repartition so all rows with the same (city, year) land in the same
+    #    block – this minimises shuffling during the write.
+    # 2. Pass the same columns to ``partition_cols`` so Ray creates a
+    #    Hive-style directory layout:  city=<value>/year=<value>/....
+    # 3. Use ``min_rows_per_file`` / ``max_rows_per_file`` to control how many
+    #    rows Ray puts in each Parquet file.
+    ds.repartition(keys=["city", "year"], num_blocks=4).write_parquet(
+        "/tmp/sales_partitioned",
+        partition_cols=["city", "year"],
+        min_rows_per_file=2,     # At least 2 rows in each file …
+        max_rows_per_file=3,     # … but never more than 3.
+    )
+
+    print_directory_tree("/tmp/sales_partitioned")
+
+.. testoutput::
+    :options: +NORMALIZE_WHITESPACE
+
+    sales_partitioned/
+        city=NYC/
+            year=2024/
+                1_a2b8b82cd2904a368ec39f42ae3cf830_000000_000000-0.parquet
+            year=2023/
+                1_a2b8b82cd2904a368ec39f42ae3cf830_000001_000000-0.parquet
+        city=SF/
+            year=2024/
+                1_a2b8b82cd2904a368ec39f42ae3cf830_000000_000000-0.parquet
+            year=2023/
+                1_a2b8b82cd2904a368ec39f42ae3cf830_000001_000000-0.parquet
+
+
 Converting Datasets to other Python libraries
 =============================================
 

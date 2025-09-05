@@ -50,6 +50,16 @@ class RayError(Exception):
                 return pickle.loads(ray_exception.serialized_exception)
             except Exception as e:
                 msg = "Failed to unpickle serialized exception"
+                # Include a fallback string/stacktrace to aid debugging.
+                #  formatted_exception_string is set in to_bytes() above by calling
+                # traceback.format_exception() on the original exception. It contains
+                # the string representation and stack trace of the original error.
+                formatted = getattr(
+                    ray_exception,
+                    "formatted_exception_string",
+                    "No formatted exception string available.",
+                )
+                msg += f"\nOriginal exception (string repr):\n{formatted}"
                 raise RuntimeError(msg) from e
         else:
             return CrossLanguageError(ray_exception)
@@ -168,10 +178,10 @@ class RayTaskError(RayError):
         class cls(RayTaskError, cause_cls):
             def __init__(self, cause):
                 self.cause = cause
-                # BaseException implements a __reduce__ method that returns
-                # a tuple with the type and the value of self.args.
-                # https://stackoverflow.com/a/49715949/2213289
                 self.args = (cause,)
+
+            def __reduce__(self):
+                return (cls, self.args)
 
             def __getattr__(self, name):
                 return getattr(self.cause, name)
@@ -196,10 +206,10 @@ class RayTaskError(RayError):
 
             def __init__(self, cause):
                 self.cause = cause
-                # BaseException implements a __reduce__ method that returns
-                # a tuple with the type and the value of self.args.
-                # https://stackoverflow.com/a/49715949/2213289
                 self.args = (cause,)
+
+            def __reduce__(self):
+                return (cls, self.args)
 
             def __getattr__(self, name):
                 return getattr(self.cause, name)

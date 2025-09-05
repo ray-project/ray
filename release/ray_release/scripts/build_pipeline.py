@@ -21,7 +21,6 @@ from ray_release.config import (
 from ray_release.configs.global_config import init_global_config
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
 from ray_release.logger import logger
-from ray_release.wheels import get_buildkite_repo_branch
 
 PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
 
@@ -127,7 +126,12 @@ def main(
     build_anyscale_base_byod_images(tests)
     logger.info("Build anyscale custom BYOD images")
     for test in tests:
-        build_anyscale_custom_byod_image(test)
+        if test.require_custom_byod_image():
+            build_anyscale_custom_byod_image(
+                test.get_anyscale_byod_image(),
+                test.get_anyscale_base_byod_image(),
+                test.get_byod_post_build_script(),
+            )
     grouped_tests = group_tests(filtered_tests)
 
     group_str = ""
@@ -145,9 +149,15 @@ def main(
     if no_concurrency_limit:
         logger.warning("Concurrency is not limited for this run!")
 
-    _, buildkite_branch = get_buildkite_repo_branch()
     if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
         env["REPORT_TO_RAY_TEST_DB"] = "1"
+
+    # Pipe through RAYCI_BUILD_ID from the forge step.
+    # TODO(khluu): convert the steps to rayci steps and stop passing through
+    # RAYCI_BUILD_ID.
+    build_id = os.environ.get("RAYCI_BUILD_ID")
+    if build_id:
+        env["RAYCI_BUILD_ID"] = build_id
 
     steps = get_step_for_test_group(
         grouped_tests,

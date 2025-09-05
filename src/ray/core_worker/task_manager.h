@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <memory>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -27,6 +28,7 @@
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/core_worker/task_manager_interface.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/counter_map.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -167,14 +169,18 @@ class ObjectRefStream {
 
 class TaskManager : public TaskManagerInterface {
  public:
-  TaskManager(CoreWorkerMemoryStore &in_memory_store,
-              ReferenceCounter &reference_counter,
-              PutInLocalPlasmaCallback put_in_local_plasma_callback,
-              RetryTaskCallback retry_task_callback,
-              std::function<bool(const TaskSpecification &spec)> queue_generator_resubmit,
-              PushErrorCallback push_error_callback,
-              int64_t max_lineage_bytes,
-              worker::TaskEventBuffer &task_event_buffer)
+  TaskManager(
+      CoreWorkerMemoryStore &in_memory_store,
+      ReferenceCounter &reference_counter,
+      PutInLocalPlasmaCallback put_in_local_plasma_callback,
+      RetryTaskCallback retry_task_callback,
+      std::function<bool(const TaskSpecification &spec)> queue_generator_resubmit,
+      PushErrorCallback push_error_callback,
+      int64_t max_lineage_bytes,
+      worker::TaskEventBuffer &task_event_buffer,
+      std::function<std::shared_ptr<ray::rpc::CoreWorkerClientInterface>(const ActorID &)>
+          client_factory,
+      std::shared_ptr<gcs::GcsClient> gcs_client)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         put_in_local_plasma_callback_(std::move(put_in_local_plasma_callback)),
@@ -182,7 +188,9 @@ class TaskManager : public TaskManagerInterface {
         queue_generator_resubmit_(std::move(queue_generator_resubmit)),
         push_error_callback_(std::move(push_error_callback)),
         max_lineage_bytes_(max_lineage_bytes),
-        task_event_buffer_(task_event_buffer) {
+        task_event_buffer_(task_event_buffer),
+        get_actor_rpc_client_callback_(std::move(client_factory)),
+        gcs_client_(std::move(gcs_client)) {
     task_counter_.SetOnChangeCallback(
         [this](const std::tuple<std::string, rpc::TaskStatus, bool> &key)
             ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
@@ -426,6 +434,8 @@ class TaskManager : public TaskManagerInterface {
   void OnTaskDependenciesInlined(const std::vector<ObjectID> &inlined_dependency_ids,
                                  const std::vector<ObjectID> &contained_ids) override;
 
+  void MarkTaskNoRetry(const TaskID &task_id) override;
+
   void MarkTaskCanceled(const TaskID &task_id) override;
 
   std::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override;
@@ -592,12 +602,17 @@ class TaskManager : public TaskManagerInterface {
     bool is_retry_ = false;
   };
 
+  /// Set the task retry number to 0. If canceled is true, mark the task as
+  // canceled.
+  void MarkTaskNoRetryInternal(const TaskID &task_id, bool canceled)
+      ABSL_LOCKS_EXCLUDED(mu_);
+
   /// Update nested ref count info and store the in-memory value for a task's
   /// return object. Returns true if the task's return object was returned
   /// directly by value.
   bool HandleTaskReturn(const ObjectID &object_id,
                         const rpc::ReturnObject &return_object,
-                        const NodeID &worker_raylet_id,
+                        const NodeID &worker_node_id,
                         bool store_in_plasma) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Remove a lineage reference to this object ID. This should be called
@@ -773,8 +788,23 @@ class TaskManager : public TaskManagerInterface {
   /// error).
   worker::TaskEventBuffer &task_event_buffer_;
 
+  /// Callback to get the actor RPC client.
+  std::function<std::shared_ptr<ray::rpc::CoreWorkerClientInterface>(
+      const ActorID &actor_id)>
+      get_actor_rpc_client_callback_;
+
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
+
   friend class TaskManagerTest;
 };
+
+/// Extract plasma dependencies from a task specification.
+/// This includes arguments passed by reference, inlined GPU objects,
+/// inlined references, and actor creation dummy object IDs.
+///
+/// \param[in] spec The task specification to extract dependencies from.
+/// \return Vector of ObjectIDs representing plasma dependencies.
+std::vector<ObjectID> ExtractPlasmaDependencies(const TaskSpecification &spec);
 
 }  // namespace core
 }  // namespace ray

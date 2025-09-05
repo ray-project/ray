@@ -104,6 +104,7 @@ LightGBM
     :toctree: doc/
 
     ~train.lightgbm.LightGBMTrainer
+    ~train.lightgbm.get_network_params
     ~train.lightgbm.RayTrainReportCallback
 
 
@@ -174,7 +175,8 @@ Ray Train Errors
     :template: autosummary/class_without_autosummary.rst
     :toctree: doc/
 
-    ~train.v2.api.exceptions.TrainingFailedError
+    ~train.v2.api.exceptions.ControllerError
+    ~train.v2.api.exceptions.WorkerGroupError
 
 Ray Tune Integration Utilities
 ------------------------------

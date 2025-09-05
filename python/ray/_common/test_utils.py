@@ -18,8 +18,9 @@ from enum import Enum
 
 
 import ray
+from ray._common.network_utils import build_address
 import ray._private.utils
-import ray._private.usage.usage_lib as ray_usage_lib
+import ray._common.usage.usage_lib as ray_usage_lib
 
 
 @ray.remote(num_cpus=0)
@@ -174,7 +175,7 @@ def simulate_s3_bucket(
     os.environ["AWS_SECURITY_TOKEN"] = "testing"
     os.environ["AWS_SESSION_TOKEN"] = "testing"
 
-    s3_server = f"http://localhost:{port}"
+    s3_server = f"http://{build_address('localhost', port)}"
     server = ThreadedMotoServer(port=port)
     server.start()
     url = f"s3://{uuid.uuid4().hex}?region={region}&endpoint_override={s3_server}"

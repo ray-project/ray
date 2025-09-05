@@ -4,13 +4,13 @@ import sys
 import tempfile
 from typing import List, Set
 
-import runfiles
 import pytest
+import runfiles
 import yaml
 
 from ci.pipeline.determine_tests_to_run import TagRule, TagRuleSet
 
-_REPO_NAME = "com_github_ray_project_ray"
+_REPO_NAME = "io_ray"
 _runfiles = runfiles.Create()
 
 
@@ -61,6 +61,7 @@ doc/tutorial.rst: lint doc
 ci/docker/doctest.build.Dockerfile: lint
 release/requirements.txt: lint release_tests
 release/requirements_buildkite.txt: lint tools
+release/release_tests.yaml: lint tools
 ci/lint/lint.sh: lint tools
 .buildkite/lint.rayci.yml: lint tools
 .buildkite/macos.rayci.yml: lint macos_wheels

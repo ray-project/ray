@@ -43,7 +43,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/client_connection.h"
+#include "ray/ipc/client_connection.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/get_request_queue.h"
 #include "ray/object_manager/plasma/malloc.h"
@@ -98,7 +98,6 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service,
             mutex_.AssertHeld();
             return GetDebugDump();
           }),
-      total_consumed_bytes_(0),
       get_request_queue_(
           io_context_,
           object_lifecycle_mgr_,
@@ -211,9 +210,6 @@ void PlasmaStore::ReturnFromGet(const std::shared_ptr<GetRequest> &get_request) 
       fds_to_send.insert(fd);
       store_fds.push_back(fd);
       mmap_sizes.push_back(object.mmap_size);
-      if (get_request->is_from_worker) {
-        total_consumed_bytes_ += object.data_size + object.metadata_size;
-      }
     }
   }
   // Send the get reply to the client.
@@ -241,12 +237,11 @@ void PlasmaStore::ReturnFromGet(const std::shared_ptr<GetRequest> &get_request) 
 
 void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
                                     const std::vector<ObjectID> &object_ids,
-                                    int64_t timeout_ms,
-                                    bool is_from_worker) {
+                                    int64_t timeout_ms) {
   for (const auto &object_id : object_ids) {
     RAY_LOG(DEBUG) << "Adding get request " << object_id;
   }
-  get_request_queue_.AddRequest(client, object_ids, timeout_ms, is_from_worker);
+  get_request_queue_.AddRequest(client, object_ids, timeout_ms);
 }
 
 bool PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,
@@ -431,10 +426,8 @@ Status PlasmaStore::ProcessClientMessage(std::shared_ptr<Client> client,
   case fb::MessageType::PlasmaGetRequest: {
     std::vector<ObjectID> object_ids_to_get;
     int64_t timeout_ms;
-    bool is_from_worker;
-    RAY_RETURN_NOT_OK(ReadGetRequest(
-        input, input_size, object_ids_to_get, &timeout_ms, &is_from_worker));
-    ProcessGetRequest(client, object_ids_to_get, timeout_ms, is_from_worker);
+    RAY_RETURN_NOT_OK(ReadGetRequest(input, input_size, object_ids_to_get, &timeout_ms));
+    ProcessGetRequest(client, object_ids_to_get, timeout_ms);
   } break;
   case fb::MessageType::PlasmaReleaseRequest: {
     // May unmap: client knows a fallback-allocated fd is involved.
@@ -489,8 +482,11 @@ Status PlasmaStore::ProcessClientMessage(std::shared_ptr<Client> client,
     return Status::Disconnected("The Plasma Store client is disconnected.");
     break;
   case fb::MessageType::PlasmaGetDebugStringRequest: {
-    RAY_RETURN_NOT_OK(SendGetDebugStringReply(
-        client, object_lifecycle_mgr_.EvictionPolicyDebugString()));
+    std::stringstream output_string_stream;
+    object_lifecycle_mgr_.GetDebugDump(output_string_stream);
+    output_string_stream << "\nEviction Stats:";
+    output_string_stream << object_lifecycle_mgr_.EvictionPolicyDebugString();
+    RAY_RETURN_NOT_OK(SendGetDebugStringReply(client, output_string_stream.str()));
   } break;
   default:
     // This code should be unreachable.
@@ -558,8 +554,6 @@ void PlasmaStore::ReplyToCreateClient(const std::shared_ptr<Client> &client,
     static_cast<void>(SendUnfinishedCreateReply(client, object_id, req_id));
   }
 }
-
-int64_t PlasmaStore::GetConsumedBytes() { return total_consumed_bytes_; }
 
 bool PlasmaStore::IsObjectSpillable(const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);

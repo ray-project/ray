@@ -1,11 +1,16 @@
-load("//bazel:ray.bzl", "define_java_module")
-load("//bazel:ray.bzl", "native_java_binary")
-load("//bazel:ray.bzl", "native_java_library")
-load("@rules_proto_grpc//java:defs.bzl", "java_proto_compile")
 load(
     "@com_github_johnynek_bazel_jar_jar//:jar_jar.bzl",
     "jar_jar",
 )
+load("@rules_java//java:java_binary.bzl", "java_binary")
+load("@rules_java//java:java_import.bzl", "java_import")
+load("@rules_java//java:java_library.bzl", "java_library")
+load("@rules_java//java:java_test.bzl", "java_test")
+load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
+load("@rules_pkg//pkg:zip.bzl", "pkg_zip")
+load("@rules_proto_grpc//java:defs.bzl", "java_proto_compile")
+load("@rules_python//python:defs.bzl", "py_binary")
+load("//bazel:ray.bzl", "define_java_module", "native_java_library")
 
 exports_files([
     "testng.xml",
@@ -190,6 +195,17 @@ java_library(
     ],
 )
 
+# This is a local java test rule. It needs generated files to be copied into
+# the source tree before running. To build and generate ray core (gcs and
+# raylet), run `bazelisk run //:gen_ray_pkg` first.
+#
+# This rule used to depend on local genrules, which are deprecated. Reason
+# being that local genrules are build rules and do not capture changes in
+# source tree, and hence cannot be cached by bazel remote cache. Using local
+# genrule forces bazel to effectively disable caching globally to have a
+# correct build.
+#
+# TODO(ray-ci): covert java tests to non-local, hermetic tests.
 java_test(
     name = "all_tests",
     testonly = True,
@@ -197,7 +213,7 @@ java_test(
     data = [
         "testng.xml",
         ":ray_java_pkg",
-        "//:ray_pkg",
+        "//:ray_pkg_zip",
     ],
     main_class = "org.testng.TestNG",
     resources = [
@@ -211,15 +227,16 @@ java_test(
 )
 
 # 0. `cp testng_custom_template.xml testng_custom.xml`
-# 1. Specify test class/method in `testng_custom.xml`
-# 2. `bazel test //java:custom_test --test_output=streamed`
+# 1. `bazel run //:gen_ray_pkg`
+# 2. Specify test class/method in `testng_custom.xml`
+# 3. `bazel test //java:custom_test --test_output=streamed`
 java_test(
     name = "custom_test",
     args = ["java/testng_custom.xml"],
     data = [
         "testng_custom.xml",
         ":ray_java_pkg",
-        "//:ray_pkg",
+        "//:ray_pkg_zip",
     ],
     main_class = "org.testng.TestNG",
     tags = ["local"],
@@ -232,22 +249,22 @@ java_test(
 # More detail please see https://github.com/ray-project/ray/pull/21641.
 java_proto_compile(
     name = "common_java_proto",
-    deps = ["@com_github_ray_project_ray//src/ray/protobuf:common_proto"],
+    deps = ["@io_ray//src/ray/protobuf:common_proto"],
 )
 
 java_proto_compile(
     name = "runtime_env_common_java_proto",
-    deps = ["@com_github_ray_project_ray//src/ray/protobuf:runtime_env_common_proto"],
+    deps = ["@io_ray//src/ray/protobuf:runtime_env_common_proto"],
 )
 
 java_proto_compile(
     name = "gcs_java_proto",
-    deps = ["@com_github_ray_project_ray//src/ray/protobuf:gcs_proto"],
+    deps = ["@io_ray//src/ray/protobuf:gcs_proto"],
 )
 
 java_proto_compile(
     name = "serve_java_proto",
-    deps = ["@com_github_ray_project_ray//src/ray/protobuf:serve_proto"],
+    deps = ["@io_ray//src/ray/protobuf:serve_proto"],
 )
 
 filegroup(
@@ -259,7 +276,11 @@ filegroup(
     ],
 )
 
-native_java_library("runtime", "core_worker_library_java", "//src/ray/core_worker/lib/java:libcore_worker_library_java.so")
+native_java_library(
+    name = "core_worker_library_java",
+    module_name = "runtime",
+    native_library_name = "//src/ray/core_worker/lib/java:libcore_worker_library_java.so",
+)
 
 filegroup(
     name = "java_native_deps",
@@ -268,39 +289,121 @@ filegroup(
     ],
 )
 
+pkg_files(
+    name = "api_pom_files",
+    srcs = ["io_ray_ray_api_pom"],
+    prefix = "api/",
+    renames = {
+        "io_ray_ray_api_pom.xml": "pom.xml",
+    },
+    visibility = ["//visibility:private"],
+)
+
+pkg_files(
+    name = "runtime_pom_files",
+    srcs = ["io_ray_ray_runtime_pom"],
+    prefix = "runtime/",
+    renames = {
+        "io_ray_ray_runtime_pom.xml": "pom.xml",
+    },
+    visibility = ["//visibility:private"],
+)
+
+pkg_files(
+    name = "test_pom_files",
+    srcs = ["io_ray_ray_test_pom"],
+    prefix = "test/",
+    renames = {
+        "io_ray_ray_test_pom.xml": "pom.xml",
+    },
+    visibility = ["//visibility:private"],
+)
+
+pkg_files(
+    name = "performance_test_pom_files",
+    srcs = ["io_ray_ray_performance_test_pom"],
+    prefix = "performance_test/",
+    renames = {
+        "io_ray_ray_performance_test_pom.xml": "pom.xml",
+    },
+    visibility = ["//visibility:private"],
+)
+
+pkg_files(
+    name = "serve_pom_files",
+    srcs = ["io_ray_ray_serve_pom"],
+    prefix = "serve/",
+    renames = {
+        "io_ray_ray_serve_pom.xml": "pom.xml",
+    },
+    visibility = ["//visibility:private"],
+)
+
+pkg_zip(
+    name = "pom_files",
+    srcs = [
+        ":api_pom_files",
+        ":performance_test_pom_files",
+        ":runtime_pom_files",
+        ":serve_pom_files",
+        ":test_pom_files",
+    ],
+    visibility = ["//visibility:private"],
+)
+
+py_binary(
+    name = "gen_pom_files",
+    srcs = ["gen_pom_files.py"],
+    data = [":pom_files.zip"],
+    visibility = ["//visibility:private"],
+    deps = ["//bazel:gen_extract"],
+)
+
 # Generates the dependencies needed by maven.
 genrule(
-    name = "cp_java_generated",
+    name = "proto_files",
     srcs = [
         ":all_java_proto",
-        ":copy_pom_file",
         ":serve_java_proto",
     ],
-    outs = ["cp_java_generated.out"],
+    outs = ["proto_files.zip"],
     cmd = """
-        WORK_DIR="$$(pwd)"
-        # Copy protobuf-generated files.
-        rm -rf "$$WORK_DIR/java/runtime/src/main/java/io/ray/runtime/generated"
-        echo "# cp_java_generated" > $@
-        for f in $(locations //java:all_java_proto); do
-            unzip "$$f" -x META-INF/MANIFEST.MF -d "$$WORK_DIR/java/runtime/src/main/java"
-            if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum "$$f" >> $@ ; else sha1sum "$$f" >> $@ ; fi
+        set -euo pipefail
+
+        tmpdir=$$(mktemp -d)
+
+        mkdir -p "$$tmpdir/java/runtime/src/main/java/io/ray/runtime/generated"
+        for f in $(locations :all_java_proto); do
+            unzip -q "$$f" -x META-INF/MANIFEST.MF -d "$$tmpdir/java/runtime/src/main/java"
         done
-        rm -rf "$$WORK_DIR/java/serve/src/main/java/io/ray/serve/generated"
-        for f in $(locations //java:serve_java_proto); do
-            unzip "$$f" -x META-INF/MANIFEST.MF -d "$$WORK_DIR/java/serve/src/main/java"
-            if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum "$$f" >> $@ ; else sha1sum "$$f" >> $@ ; fi
+
+        mkdir -p "$$tmpdir/java/serve/src/main/java/io/ray/serve/generated"
+        for f in $(locations :serve_java_proto); do
+            unzip -q "$$f" -x META-INF/MANIFEST.MF -d "$$tmpdir/java/serve/src/main/java"
         done
+
+        (cd "$$tmpdir/java"; zip -0 -q -r out.zip runtime serve)
+        mv "$$tmpdir/java/out.zip" $@
+
+        rm -rf "$$tmpdir"
     """,
-    local = 1,
-    tags = ["no-cache"],
+    visibility = ["//visibility:private"],
+)
+
+py_binary(
+    name = "gen_proto_files",
+    srcs = ["gen_proto_files.py"],
+    data = [":proto_files.zip"],
+    visibility = ["//visibility:private"],
+    deps = ["//bazel:gen_extract"],
 )
 
 # Generates the dependencies needed by maven.
 genrule(
     name = "gen_maven_deps",
     srcs = [
-        ":cp_java_generated",
+        ":pom_files.zip",
+        ":proto_files.zip",
         ":java_native_deps",
     ],
     outs = ["gen_maven_deps.out"],
@@ -325,35 +428,7 @@ genrule(
     """,
     local = 1,
     tags = ["no-cache"],
-)
-
-genrule(
-    name = "copy_pom_file",
-    srcs = [
-        "//java:io_ray_ray_" + module + "_pom"
-        for module in all_modules
-    ],
-    outs = ["copy_pom_file.out"],
-    cmd = """
-        WORK_DIR="$$(pwd)"
-        cp -f $(location //java:io_ray_ray_api_pom) "$$WORK_DIR/java/api/pom.xml"
-        cp -f $(location //java:io_ray_ray_runtime_pom) "$$WORK_DIR/java/runtime/pom.xml"
-        cp -f $(location //java:io_ray_ray_test_pom) "$$WORK_DIR/java/test/pom.xml"
-        cp -f $(location //java:io_ray_ray_performance_test_pom) "$$WORK_DIR/java/performance_test/pom.xml"
-        cp -f $(location //java:io_ray_ray_serve_pom) "$$WORK_DIR/java/serve/pom.xml"
-
-        FILES=(
-            $(location //java:io_ray_ray_api_pom)
-            $(location //java:io_ray_ray_runtime_pom)
-            $(location //java:io_ray_ray_test_pom)
-            $(location //java:io_ray_ray_performance_test_pom)
-            $(location //java:io_ray_ray_serve_pom)
-        )
-        echo "# copy_pom_file" > $@
-        if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum "$${FILES[@]}" > $@ ; else sha1sum "$${FILES[@]}" >> $@ ; fi
-    """,
-    local = 1,
-    tags = ["no-cache"],
+    visibility = ["//visibility:private"],
 )
 
 java_binary(
@@ -381,21 +456,52 @@ jar_jar(
     rules = "//java:shade_rule",
 )
 
+pkg_files(
+    name = "ray_java_pkg_files",
+    srcs = [
+        ":ray_dist_shaded.jar",
+    ],
+    prefix = "ray/jars/",
+    renames = {
+        "ray_dist_shaded.jar": "ray_dist.jar",
+    },
+)
+
+pkg_zip(
+    name = "ray_java_pkg_zip",
+    srcs = [
+        ":ray_java_pkg_files",
+    ],
+    out = "ray_java_pkg.zip",
+    visibility = ["//visibility:private"],
+)
+
 genrule(
     name = "ray_java_pkg",
     srcs = [
-        "//java:ray_dist_shaded.jar",
-        "//java:gen_maven_deps",
+        "ray_java_pkg.zip",
+        ":gen_maven_deps",
     ],
     outs = ["ray_java_pkg.out"],
     cmd = """
-        WORK_DIR="$$(pwd)"
-        rm -rf "$$WORK_DIR/python/ray/jars" && mkdir -p "$$WORK_DIR/python/ray/jars"
-        cp -f $(location //java:ray_dist_shaded.jar) "$$WORK_DIR/python/ray/jars/ray_dist.jar"
-        echo "# ray_java_pkg" > $@
-        OUTPUT_JAR="$(location //java:ray_dist_shaded.jar)"
-        if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum "$$OUTPUT_JAR" >> $@ ; else sha1sum "$$OUTPUT_JAR" >> $@ ; fi
+        WORK_DIR="$$(pwd)" &&
+        rm -rf "$$WORK_DIR/python/ray/jars" && mkdir -p "$$WORK_DIR/python/ray/jars" &&
+        unzip -q $(location ray_java_pkg.zip) -d "$$WORK_DIR/python" &&
+        if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum $(SRCS) > $@ ; else sha1sum $(SRCS) > $@ ; fi
     """,
     local = 1,
     tags = ["no-cache"],
+    visibility = ["//visibility:private"],
+)
+
+py_binary(
+    name = "gen_ray_java_pkg",
+    srcs = ["gen_ray_java_pkg.py"],
+    data = [
+        ":ray_java_pkg.zip",
+    ],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//bazel:gen_extract",
+    ],
 )

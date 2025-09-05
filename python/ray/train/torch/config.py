@@ -9,6 +9,7 @@ import torch.distributed as dist
 from packaging.version import Version
 
 import ray
+from ray._common.network_utils import build_address
 from ray.air._internal.device_manager import register_custom_torch_dist_backend
 from ray.train._internal.utils import get_address_and_port
 from ray.train._internal.worker_group import WorkerGroup
@@ -176,7 +177,7 @@ class _TorchBackend(Backend):
                 worker_group.execute(set_env_vars, addr=master_addr, port=master_port)
                 url = "env://"
             elif backend_config.init_method == "tcp":
-                url = f"tcp://{master_addr}:{master_port}"
+                url = f"tcp://{build_address(master_addr, master_port)}"
             else:
                 raise ValueError(
                     f"The provided init_method ("

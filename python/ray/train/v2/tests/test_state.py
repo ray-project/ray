@@ -1,3 +1,4 @@
+from collections import OrderedDict
 from unittest.mock import MagicMock
 
 import pytest
@@ -5,6 +6,7 @@ import pytest
 import ray
 from ray.actor import ActorHandle
 from ray.train.v2._internal.callbacks.state_manager import StateManagerCallback
+from ray.train.v2._internal.exceptions import WorkerGroupStartupTimeoutError
 from ray.train.v2._internal.execution.context import DistributedContext
 from ray.train.v2._internal.execution.controller.state import (
     ErroredState,
@@ -36,8 +38,27 @@ from ray.train.v2._internal.state.state_actor import (
     get_state_actor,
 )
 from ray.train.v2._internal.state.state_manager import TrainStateManager
-from ray.train.v2.api.exceptions import TrainingFailedError
-from ray.train.v2.tests.util import create_dummy_run_context
+from ray.train.v2._internal.state.util import _DEAD_CONTROLLER_ABORT_STATUS_DETAIL
+from ray.train.v2.api.exceptions import ControllerError, WorkerGroupError
+from ray.train.v2.tests.util import (
+    create_dummy_run_context,
+    create_mock_train_run,
+    create_mock_train_run_attempt,
+)
+from ray.util.state.common import ActorState
+
+
+def create_mock_actor_state(state: ActorStatus):
+    return ActorState(
+        state=state,
+        actor_id="mock_actor_id",
+        class_name="mock_class_name",
+        job_id="mock_job_id",
+        name="mock_name",
+        node_id="mock_node_id",
+        pid=1234,
+        ray_namespace="mock_ray_namespace",
+    )
 
 
 @pytest.fixture(scope="function")
@@ -189,6 +210,162 @@ def test_train_state_actor_create_and_get_run_attempt(ray_start_regular):
     assert attempts["test_run"]["attempt_1"].status == RunAttemptStatus.RUNNING
 
 
+def test_train_state_actor_abort_dead_controller_live_runs(monkeypatch):
+    # Monkeypatch get_actor to return correct actor state per controller actor ID.
+    def get_actor(actor_id: str, timeout: float):
+        if actor_id == "nonexistent_controller_no_attempts_id":
+            return None
+        if actor_id in [
+            "dead_controller_one_attempt_id",
+            "dead_controller_two_attempts_id",
+            "finished_controller_id",
+        ]:
+            return create_mock_actor_state(state="DEAD")
+        if actor_id == "live_controller_one_attempt_id":
+            return create_mock_actor_state(state="ALIVE")
+        raise ValueError(f"Unknown actor {actor_id}.")
+
+    monkeypatch.setattr("ray.train.v2._internal.state.util.get_actor", get_actor)
+    monkeypatch.setattr("uuid.uuid4", lambda: MagicMock(hex="mock_uuid"))
+    monkeypatch.setattr("time.time_ns", lambda: 1000)
+
+    # Create TrainStateActor with interesting runs and run attempts.
+    # NOTE: TrainStateActor will poll for real but its updates are idempotent.
+    actor = TrainStateActor(enable_state_actor_reconciliation=True)
+    finished_controller_run = create_mock_train_run(
+        status=RunStatus.FINISHED,
+        controller_actor_id="finished_controller_id",
+        id="finished_controller_run_id",
+    )
+    live_controller_one_attempt_run = create_mock_train_run(
+        status=RunStatus.RUNNING,
+        controller_actor_id="live_controller_one_attempt_id",
+        id="live_controller_one_attempt_run_id",
+    )
+    actor._runs = OrderedDict(
+        {
+            "nonexistent_controller_no_attempts_run_id": create_mock_train_run(
+                status=RunStatus.INITIALIZING,
+                controller_actor_id="nonexistent_controller_no_attempts_id",
+                id="nonexistent_controller_no_attempts_run_id",
+            ),
+            "dead_controller_one_attempt_run_id": create_mock_train_run(
+                status=RunStatus.INITIALIZING,
+                controller_actor_id="dead_controller_one_attempt_id",
+                id="dead_controller_one_attempt_run_id",
+            ),
+            "dead_controller_two_attempts_run_id": create_mock_train_run(
+                status=RunStatus.SCHEDULING,
+                controller_actor_id="dead_controller_two_attempts_id",
+                id="dead_controller_two_attempts_run_id",
+            ),
+            "finished_controller_run_id": finished_controller_run,
+            "live_controller_one_attempt_run_id": live_controller_one_attempt_run,
+        }
+    )
+    live_controller_one_attempt_run_attempt = create_mock_train_run_attempt(
+        status=RunAttemptStatus.RUNNING,
+        run_id="live_controller_one_attempt_run_id",
+        attempt_id="attempt_1",
+    )
+    dead_controller_two_attempts_first_attempt = (
+        create_mock_train_run_attempt(
+            attempt_id="attempt_1",
+            status=RunAttemptStatus.ERRORED,
+            run_id="dead_controller_two_attempts_run_id",
+        ),
+    )
+    actor._run_attempts = {
+        "nonexistent_controller_no_attempts_run_id": {},
+        "dead_controller_one_attempt_run_id": {
+            "attempt_1": create_mock_train_run_attempt(
+                attempt_id="attempt_1",
+                status=RunAttemptStatus.PENDING,
+                run_id="dead_controller_one_attempt_run_id",
+            ),
+        },
+        "dead_controller_two_attempts_run_id": OrderedDict(
+            {
+                "attempt_1": dead_controller_two_attempts_first_attempt,
+                "attempt_2": create_mock_train_run_attempt(
+                    status=RunAttemptStatus.RUNNING,
+                    attempt_id="attempt_2",
+                    run_id="dead_controller_two_attempts_run_id",
+                ),
+            }
+        ),
+        "finished_controller_run_id": {},
+        "live_controller_one_attempt_run_id": {
+            "attempt_1": live_controller_one_attempt_run_attempt,
+        },
+    }
+
+    # Assert correct runs and run attempts get aborted.
+    assert (
+        actor._abort_live_runs_with_dead_controllers(
+            "dead_controller_two_attempts_run_id"
+        )
+        == "dead_controller_two_attempts_run_id"
+    )
+    assert actor._runs == OrderedDict(
+        {
+            "nonexistent_controller_no_attempts_run_id": create_mock_train_run(
+                status=RunStatus.ABORTED,
+                controller_actor_id="nonexistent_controller_no_attempts_id",
+                end_time_ns=1000,
+                id="nonexistent_controller_no_attempts_run_id",
+                status_detail=_DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
+            ),
+            "dead_controller_one_attempt_run_id": create_mock_train_run(
+                status=RunStatus.ABORTED,
+                controller_actor_id="dead_controller_one_attempt_id",
+                end_time_ns=1000,
+                id="dead_controller_one_attempt_run_id",
+                status_detail=_DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
+            ),
+            "dead_controller_two_attempts_run_id": create_mock_train_run(
+                status=RunStatus.ABORTED,
+                controller_actor_id="dead_controller_two_attempts_id",
+                end_time_ns=1000,
+                id="dead_controller_two_attempts_run_id",
+                status_detail=_DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
+            ),
+            "finished_controller_run_id": finished_controller_run,
+            "live_controller_one_attempt_run_id": live_controller_one_attempt_run,
+        }
+    )
+    assert actor._run_attempts == {
+        "nonexistent_controller_no_attempts_run_id": {},
+        "dead_controller_one_attempt_run_id": {
+            "attempt_1": create_mock_train_run_attempt(
+                status=RunAttemptStatus.ABORTED,
+                run_id="dead_controller_one_attempt_run_id",
+                attempt_id="attempt_1",
+                end_time_ns=1000,
+                worker_status=ActorStatus.DEAD,
+                status_detail=_DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
+            )
+        },
+        "dead_controller_two_attempts_run_id": OrderedDict(
+            {
+                "attempt_1": dead_controller_two_attempts_first_attempt,
+                "attempt_2": create_mock_train_run_attempt(
+                    status=RunAttemptStatus.ABORTED,
+                    run_id="dead_controller_two_attempts_run_id",
+                    attempt_id="attempt_2",
+                    end_time_ns=1000,
+                    worker_status=ActorStatus.DEAD,
+                    status_detail=_DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
+                ),
+            }
+        ),
+        "finished_controller_run_id": {},
+        "live_controller_one_attempt_run_id": {
+            "attempt_1": live_controller_one_attempt_run_attempt,
+        },
+    }
+
+
 def test_train_state_manager_run_lifecycle(ray_start_regular):
     """Test the complete lifecycle of a training run through the state manager."""
     manager = TrainStateManager()
@@ -309,9 +486,7 @@ def test_callback_controller_state_transitions(ray_start_regular, callback):
         ),
         RunningState(),
         RestartingState(
-            training_failed_error=TrainingFailedError(
-                error_message="", worker_failures={}
-            )
+            training_failed_error=WorkerGroupError(error_message="", worker_failures={})
         ),
         SchedulingState(
             scaling_decision=ResizeDecision(num_workers=2, resources_per_worker={})
@@ -323,7 +498,9 @@ def test_callback_controller_state_transitions(ray_start_regular, callback):
         SchedulingState(
             scaling_decision=ResizeDecision(num_workers=4, resources_per_worker={})
         ),
-        ReschedulingState(),
+        ReschedulingState(
+            training_failed_error=ControllerError(WorkerGroupStartupTimeoutError(0))
+        ),
         SchedulingState(
             scaling_decision=ResizeDecision(num_workers=2, resources_per_worker={})
         ),
@@ -356,7 +533,9 @@ def test_callback_controller_state_transitions(ray_start_regular, callback):
 
 def test_callback_error_state_transition(ray_start_regular, callback):
     error_msg = "Test error"
-    error_state = ErroredState(Exception(error_msg))
+    error_state = ErroredState(
+        training_failed_error=ControllerError(Exception(error_msg))
+    )
     callback.after_controller_state_update(RunningState(), error_state)
 
     state_actor = get_state_actor()

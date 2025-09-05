@@ -1,11 +1,10 @@
 import os
-from typing import List
 from datetime import datetime
 from enum import Enum
+from typing import List
 
-from ci.ray_ci.linux_container import LinuxContainer
 from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VERSION
-
+from ci.ray_ci.linux_container import LinuxContainer
 
 PLATFORMS_RAY = [
     "cpu",
@@ -15,6 +14,7 @@ PLATFORMS_RAY = [
     "cu12.3.2-cudnn9",
     "cu12.4.1-cudnn",
     "cu12.5.1-cudnn",
+    "cu12.6.3-cudnn",
     "cu12.8.1-cudnn",
 ]
 PLATFORMS_RAY_ML = [
@@ -82,24 +82,29 @@ class DockerContainer(LinuxContainer):
             external: If True, return the external image tags. If False, return the
                 internal image tags.
         """
-        branch = os.environ.get("BUILDKITE_BRANCH")
+        branch = os.environ.get("BUILDKITE_BRANCH", "")
         sha_tag = os.environ["BUILDKITE_COMMIT"][:6]
+        rayci_build_id = os.environ["RAYCI_BUILD_ID"]
         pr = os.environ.get("BUILDKITE_PULL_REQUEST", "false")
         formatted_date = datetime.now().strftime("%y%m%d")
 
         if branch == "master":
             if external and os.environ.get("RAYCI_SCHEDULE") == "nightly":
                 return [f"nightly.{formatted_date}.{sha_tag}", "nightly"]
-            return [sha_tag]
+            return [sha_tag, rayci_build_id]
 
         if branch and branch.startswith("releases/"):
             release_name = branch[len("releases/") :]
-            return [f"{release_name}.{sha_tag}"]
+            release_tag = f"{release_name}.{sha_tag}"
+            if external:
+                # Avoid saving build ID ones when saving it on public registries.
+                return [release_tag]
+            return [release_tag, rayci_build_id]
 
         if pr != "false":
-            return [f"pr-{pr}.{sha_tag}"]
+            return [f"pr-{pr}.{sha_tag}", rayci_build_id]
 
-        return [sha_tag]
+        return [sha_tag, rayci_build_id]
 
     def _get_canonical_tag(self) -> str:
         # The canonical tag is the first tag in the list of tags. The list of tag is

@@ -1,6 +1,6 @@
-load("@rules_python//python:defs.bzl", "py_library", "py_test")
-load("@rules_python//python:pip.bzl", "compile_pip_requirements")
 load("@py_deps_buildkite//:requirements.bzl", bk_require = "requirement")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
+load("@rules_python//python:pip.bzl", "compile_pip_requirements")
 
 compile_pip_requirements(
     name = "requirements_buildkite",
@@ -120,7 +120,10 @@ py_test(
     name = "xgboost_train_batch_inference_benchmark_smoke_test",
     size = "small",
     srcs = test_srcs,
-    args = ["xgboost", "--smoke-test"],
+    args = [
+        "xgboost",
+        "--smoke-test",
+    ],
     main = "train_tests/xgboost_lightgbm/train_batch_inference_benchmark.py",
     tags = [
         "exclusive",
@@ -275,13 +278,12 @@ sh_binary(
     env = {
         "NO_INSTALL": "1",
         "RAY_TEST_SCRIPT": "./run_release_test",
-    }
+    },
 )
 
 py_binary(
     name = "run_release_test",
     srcs = ["ray_release/scripts/run_release_test.py"],
-    deps = [":ray_release"],
     data = glob(
         ["**/*.yaml"],
         exclude = ["ray_release/**/*.yaml"],
@@ -291,7 +293,8 @@ py_binary(
     ] + glob(
         ["**/*.py"],
         exclude = ["ray_release/tests/*.py"],
-    )
+    ),
+    deps = [":ray_release"],
 )
 
 py_library(
@@ -402,6 +405,9 @@ py_test(
     name = "test_buildkite",
     size = "small",
     srcs = ["ray_release/tests/test_buildkite.py"],
+    data = [
+        "ray_release/configs/oss_config.yaml",
+    ],
     exec_compatible_with = ["//:hermetic_python"],
     tags = [
         "release_unit",
@@ -418,6 +424,24 @@ py_test(
     name = "test_byod_build",
     size = "small",
     srcs = ["ray_release/tests/test_byod_build.py"],
+    data = [
+        "ray_release/configs/oss_config.yaml",
+    ],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_release",
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_custom_byod_build",
+    size = "small",
+    srcs = ["ray_release/tests/test_custom_byod_build.py"],
     data = [
         "ray_release/configs/oss_config.yaml",
     ],
@@ -591,7 +615,7 @@ py_test(
     exec_compatible_with = ["//:hermetic_python"],
     tags = [
         "release_unit",
-        "team:ci"
+        "team:ci",
     ],
     deps = [
         ":ray_release",
@@ -671,14 +695,23 @@ py_test(
 py_binary(
     name = "build_pipeline",
     srcs = ["ray_release/scripts/build_pipeline.py"],
+    data = glob(["**/*.yaml"]) + [
+        "ray_release/byod/byod.Dockerfile",
+        "ray_release/byod/byod.custom.Dockerfile",
+        "//python/ray/autoscaler/aws:test_configs",
+        "//python/ray/autoscaler/gcp:test_configs",
+    ],
     exec_compatible_with = ["//:hermetic_python"],
     deps = [
         ":ray_release",
     ],
-    data = glob(["**/*.yaml"]) + [
-        "//python/ray/autoscaler/aws:test_configs",
-        "//python/ray/autoscaler/gcp:test_configs",
-        "ray_release/byod/byod.custom.Dockerfile",
-        "ray_release/byod/byod.Dockerfile",
-    ]
+)
+
+py_binary(
+    name = "custom_byod_build",
+    srcs = ["ray_release/scripts/custom_byod_build.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ":ray_release",
+    ],
 )

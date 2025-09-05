@@ -204,9 +204,6 @@ class TestGC:
 
 
 def test_import_in_subprocess(shutdown_only):
-
-    ray.init()
-
     @ray.remote(runtime_env={"pip": ["pip-install-test==0.5"]})
     def f():
         return subprocess.run(["python", "-c", "import pip_install_test"]).returncode
@@ -371,6 +368,26 @@ def test_working_dir_applies_for_conda_creation(start_cluster, tmp_working_dir):
         return pip_install_test.__name__
 
     assert ray.get(test_import.remote()) == "pip_install_test"
+
+
+def test_pip_install_options(shutdown_only):
+    # Test that this successfully builds a ray runtime environment using pip_install_options
+    @ray.remote(
+        runtime_env={
+            "pip": {
+                "packages": ["pip-install-test==0.5"],
+                "pip_install_options": [
+                    "--no-cache-dir",
+                    "--no-build-isolation",
+                    "--disable-pip-version-check",
+                ],
+            }
+        }
+    )
+    def f():
+        return True
+
+    assert ray.get(f.remote())
 
 
 if __name__ == "__main__":

@@ -31,7 +31,7 @@
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/usage_stats_client.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/rpc/gcs_server/gcs_rpc_server.h"
+#include "ray/rpc/gcs/gcs_rpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/event.h"
@@ -54,9 +54,10 @@ class GcsActor {
       rpc::ActorTableData actor_table_data,
       std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
           counter)
-      : actor_table_data_(std::move(actor_table_data)), counter_(counter) {
+      : actor_table_data_(std::move(actor_table_data)),
+        counter_(std::move(counter)),
+        export_event_write_enabled_(IsExportAPIEnabledActor()) {
     RefreshMetrics();
-    export_event_write_enabled_ = IsExportAPIEnabledActor();
   }
 
   /// Create a GcsActor by actor_table_data and task_spec.
@@ -71,11 +72,11 @@ class GcsActor {
       std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
           counter)
       : actor_table_data_(std::move(actor_table_data)),
-        task_spec_(std::make_unique<rpc::TaskSpec>(task_spec)),
-        counter_(counter) {
+        task_spec_(std::make_unique<rpc::TaskSpec>(std::move(task_spec))),
+        counter_(std::move(counter)),
+        export_event_write_enabled_(IsExportAPIEnabledActor()) {
     RAY_CHECK(actor_table_data_.state() != rpc::ActorTableData::DEAD);
     RefreshMetrics();
-    export_event_write_enabled_ = IsExportAPIEnabledActor();
   }
 
   /// Create a GcsActor by TaskSpec.
@@ -84,36 +85,38 @@ class GcsActor {
   /// \param ray_namespace Namespace of the actor.
   /// \param counter The counter to report metrics to.
   explicit GcsActor(
-      const ray::rpc::TaskSpec &task_spec,
+      rpc::TaskSpec task_spec,
       std::string ray_namespace,
       std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
           counter)
-      : task_spec_(std::make_unique<rpc::TaskSpec>(task_spec)), counter_(counter) {
-    RAY_CHECK(task_spec.type() == TaskType::ACTOR_CREATION_TASK);
-    const auto &actor_creation_task_spec = task_spec.actor_creation_task_spec();
+      : task_spec_(std::make_unique<rpc::TaskSpec>(std::move(task_spec))),
+        counter_(std::move(counter)),
+        export_event_write_enabled_(IsExportAPIEnabledActor()) {
+    RAY_CHECK(task_spec_->type() == TaskType::ACTOR_CREATION_TASK);
+    const auto &actor_creation_task_spec = task_spec_->actor_creation_task_spec();
     actor_table_data_.set_actor_id(actor_creation_task_spec.actor_id());
-    actor_table_data_.set_job_id(task_spec.job_id());
+    actor_table_data_.set_job_id(task_spec_->job_id());
     actor_table_data_.set_max_restarts(actor_creation_task_spec.max_actor_restarts());
     actor_table_data_.set_num_restarts(0);
     actor_table_data_.set_num_restarts_due_to_lineage_reconstruction(0);
 
     actor_table_data_.mutable_function_descriptor()->CopyFrom(
-        task_spec.function_descriptor());
+        task_spec_->function_descriptor());
 
     actor_table_data_.set_is_detached(actor_creation_task_spec.is_detached());
     actor_table_data_.set_name(actor_creation_task_spec.name());
-    actor_table_data_.mutable_owner_address()->CopyFrom(task_spec.caller_address());
+    actor_table_data_.mutable_owner_address()->CopyFrom(task_spec_->caller_address());
 
     actor_table_data_.set_state(rpc::ActorTableData::DEPENDENCIES_UNREADY);
 
-    actor_table_data_.mutable_address()->set_raylet_id(NodeID::Nil().Binary());
+    actor_table_data_.mutable_address()->set_node_id(NodeID::Nil().Binary());
     actor_table_data_.mutable_address()->set_worker_id(WorkerID::Nil().Binary());
 
     actor_table_data_.set_ray_namespace(ray_namespace);
-    if (task_spec.scheduling_strategy().scheduling_strategy_case() ==
+    if (task_spec_->scheduling_strategy().scheduling_strategy_case() ==
         rpc::SchedulingStrategy::SchedulingStrategyCase::
             kPlacementGroupSchedulingStrategy) {
-      actor_table_data_.set_placement_group_id(task_spec.scheduling_strategy()
+      actor_table_data_.set_placement_group_id(task_spec_->scheduling_strategy()
                                                    .placement_group_scheduling_strategy()
                                                    .placement_group_id());
     }
@@ -124,7 +127,7 @@ class GcsActor {
     actor_table_data_.mutable_required_resources()->insert(resource_map.begin(),
                                                            resource_map.end());
 
-    const auto &function_descriptor = task_spec.function_descriptor();
+    const auto &function_descriptor = task_spec_->function_descriptor();
     switch (function_descriptor.function_descriptor_case()) {
     case rpc::FunctionDescriptor::FunctionDescriptorCase::kJavaFunctionDescriptor:
       actor_table_data_.set_class_name(
@@ -141,16 +144,15 @@ class GcsActor {
     }
 
     actor_table_data_.set_serialized_runtime_env(
-        task_spec.runtime_env_info().serialized_runtime_env());
-    if (task_spec.call_site().size() > 0) {
-      actor_table_data_.set_call_site(task_spec.call_site());
+        task_spec_->runtime_env_info().serialized_runtime_env());
+    if (task_spec_->call_site().size() > 0) {
+      actor_table_data_.set_call_site(task_spec_->call_site());
     }
-    if (task_spec.label_selector().size() > 0) {
+    if (task_spec_->label_selector().size() > 0) {
       actor_table_data_.mutable_label_selector()->insert(
-          task_spec.label_selector().begin(), task_spec.label_selector().end());
+          task_spec_->label_selector().begin(), task_spec_->label_selector().end());
     }
     RefreshMetrics();
-    export_event_write_enabled_ = IsExportAPIEnabledActor();
   }
 
   ~GcsActor() {
@@ -609,6 +611,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     actor_delta.mutable_death_cause()->CopyFrom(actor.death_cause());
     actor_delta.mutable_address()->CopyFrom(actor.address());
     actor_delta.set_num_restarts(actor.num_restarts());
+    actor_delta.set_num_restarts_due_to_node_preemption(
+        actor.num_restarts_due_to_node_preemption());
     actor_delta.set_max_restarts(actor.max_restarts());
     actor_delta.set_timestamp(actor.timestamp());
     actor_delta.set_pid(actor.pid());

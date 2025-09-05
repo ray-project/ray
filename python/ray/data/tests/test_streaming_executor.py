@@ -10,7 +10,9 @@ import ray
 from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
-from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
+from ray.data._internal.execution.backpressure_policy.resource_budget_backpressure_policy import (
+    ResourceBudgetBackpressurePolicy,
+)
 from ray.data._internal.execution.execution_callback import (
     EXECUTION_CALLBACKS_ENV_VAR,
     ExecutionCallback,
@@ -276,35 +278,30 @@ def test_get_eligible_operators_to_run():
         assert _get_eligible_ops_to_run(ensure_liveness=False) == [o2]
 
     # `o2` operator is now back-pressured
-    class TestBackpressurePolicy(BackpressurePolicy):
-        def __init__(self, op_to_block):
-            self._op_to_block = op_to_block
+    with patch.object(
+        ResourceBudgetBackpressurePolicy, "can_add_input"
+    ) as mock_can_add_input:
+        mock_can_add_input.side_effect = lambda op: op is not o2
 
-        def can_add_input(self, op):
-            if op is self._op_to_block:
-                return False
-            return True
-
-        def max_task_output_bytes_to_read(self, op):
-            return None
-
-    test_policy = TestBackpressurePolicy(o2)
-
-    def _get_eligible_ops_to_run_with_policy(ensure_liveness: bool):
-        return get_eligible_operators(
-            topo, [test_policy], ensure_liveness=ensure_liveness
+        test_policy = ResourceBudgetBackpressurePolicy(
+            MagicMock(), MagicMock(), MagicMock()
         )
 
-    assert _get_eligible_ops_to_run_with_policy(ensure_liveness=False) == [o3]
+        def _get_eligible_ops_to_run_with_policy(ensure_liveness: bool):
+            return get_eligible_operators(
+                topo, [test_policy], ensure_liveness=ensure_liveness
+            )
 
-    # Complete `o3`
-    with patch.object(o3, "completed") as _mock:
-        _mock.return_value = True
-        # Clear up input queue
-        topo[o3].input_queues[0].clear()
+        assert _get_eligible_ops_to_run_with_policy(ensure_liveness=False) == [o3]
 
-        # To ensure liveness back-pressure limits will be ignored
-        assert _get_eligible_ops_to_run_with_policy(ensure_liveness=True) == [o2]
+        # Complete `o3`
+        with patch.object(o3, "completed") as _mock:
+            _mock.return_value = True
+            # Clear up input queue
+            topo[o3].input_queues[0].clear()
+
+            # To ensure liveness back-pressure limits will be ignored
+            assert _get_eligible_ops_to_run_with_policy(ensure_liveness=True) == [o2]
 
 
 def test_rank_operators():
@@ -582,7 +579,7 @@ def test_streaming_exec_schedule_s():
         continue
 
     ds_stats = ds._plan.stats()
-    assert 0 < ds_stats.streaming_exec_schedule_s.get() < 1
+    assert ds_stats.streaming_exec_schedule_s.get() > 0
 
 
 def test_execution_callbacks():

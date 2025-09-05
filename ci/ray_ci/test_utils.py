@@ -1,16 +1,17 @@
 import base64
 import io
 import sys
-import pytest
-from unittest import mock
 from typing import List
+from unittest import mock
 
+import pytest
 from ray_release.test import Test
+
 from ci.ray_ci.utils import (
     chunk_into_n,
     docker_login,
-    get_flaky_test_names,
     filter_tests,
+    get_flaky_test_names,
 )
 
 

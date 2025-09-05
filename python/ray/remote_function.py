@@ -8,13 +8,13 @@ from typing import Optional
 
 import ray._common.signature
 from ray import Language, cross_language
-from ray._private import ray_option_utils
+from ray._common import ray_option_utils
 from ray._private.auto_init_hook import wrap_auto_init
 from ray._private.client_mode_hook import (
     client_mode_convert_function,
     client_mode_should_convert,
 )
-from ray._private.ray_option_utils import _warn_if_using_deprecated_placement_group
+from ray._common.ray_option_utils import _warn_if_using_deprecated_placement_group
 from ray._private.serialization import pickle_dumps
 from ray._private.utils import get_runtime_env_info, parse_runtime_env_for_task_or_actor
 from ray._raylet import (
@@ -105,11 +105,17 @@ class RemoteFunction:
         # When gpu is used, set the task non-recyclable by default.
         # https://github.com/ray-project/ray/issues/29624 for more context.
         # Note: Ray task worker process is not being reused when nsight
-        # profiler is running, as nsight generate report once the process exit.
+        # profiler is running, as nsight/rocprof-sys generate report
+        # once the process exit.
         num_gpus = self._default_options.get("num_gpus") or 0
         if (
             num_gpus > 0 and self._default_options.get("max_calls", None) is None
-        ) or "nsight" in (self._default_options.get("runtime_env") or {}):
+        ) or any(
+            [
+                s in (self._default_options.get(s) or {})
+                for s in ["nsight", "rocprof-sys"]
+            ]
+        ):
             self._default_options["max_calls"] = 1
 
         # TODO(suquark): This is a workaround for class attributes of options.
@@ -326,7 +332,7 @@ class RemoteFunction:
             # Only need to record on the driver side
             # since workers are created via tasks or actors
             # launched from the driver.
-            from ray._private.usage import usage_lib
+            from ray._common.usage import usage_lib
 
             usage_lib.record_library_usage("core")
 

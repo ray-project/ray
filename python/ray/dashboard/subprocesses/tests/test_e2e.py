@@ -8,6 +8,10 @@ import pytest
 
 from ray._common.test_utils import wait_for_condition
 import ray._private.ray_constants as ray_constants
+from ray._common.ray_constants import (
+    LOGGING_ROTATE_BYTES,
+    LOGGING_ROTATE_BACKUP_COUNT,
+)
 import ray.dashboard.consts as dashboard_consts
 from ray._common.test_utils import async_wait_for_condition
 from ray.dashboard.optional_deps import aiohttp
@@ -34,8 +38,8 @@ def default_module_config(tmp_path) -> SubprocessModuleConfig:
         logging_format=ray_constants.LOGGER_FORMAT,
         log_dir=str(tmp_path),
         logging_filename=dashboard_consts.DASHBOARD_LOG_FILENAME,
-        logging_rotate_bytes=ray_constants.LOGGING_ROTATE_BYTES,
-        logging_rotate_backup_count=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
+        logging_rotate_bytes=LOGGING_ROTATE_BYTES,
+        logging_rotate_backup_count=LOGGING_ROTATE_BACKUP_COUNT,
         socket_dir=str(tmp_path),
     )
 

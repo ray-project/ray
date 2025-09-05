@@ -46,9 +46,20 @@ def mock_vllm_wrapper():
                     "num_generated_tokens": 3,
                     "time_per_token": 0.1,
                 },
+                0.1,  # time_taken_llm
             )
 
         mock_instance.generate_async.side_effect = mock_generate
+
+        # Configure the scheduler config mock
+        mock_scheduler_config = MagicMock()
+        mock_scheduler_config.max_num_seqs = 128  # Current vLLM default
+        mock_instance.get_scheduler_config.return_value = mock_scheduler_config
+
+        # Configure the engine mock
+        mock_engine = MagicMock()
+        mock_engine.do_log_stats = AsyncMock()
+        mock_instance.engine = mock_engine
 
         # Make the wrapper class return our mock instance
         mock_wrapper.return_value = mock_instance
@@ -60,7 +71,7 @@ def test_vllm_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
         fn_constructor_kwargs=dict(
             model=model_llama_3_2_216M,
             engine_kwargs=dict(
-                tensor_parallel_size=4,
+                tensor_parallel_size=2,
                 pipeline_parallel_size=2,
                 distributed_executor_backend="ray",
             ),
@@ -80,7 +91,7 @@ def test_vllm_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
         "task_type": vLLMTaskType.GENERATE,
         "max_pending_requests": 10,
         "engine_kwargs": {
-            "tensor_parallel_size": 4,
+            "tensor_parallel_size": 2,
             "pipeline_parallel_size": 2,
             "distributed_executor_backend": "ray",
         },
@@ -97,7 +108,7 @@ def test_vllm_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
     assert isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy)
 
     bundle_specs = scheduling_strategy.placement_group.bundle_specs
-    assert len(bundle_specs) == 8
+    assert len(bundle_specs) == 4
     for bundle_spec in bundle_specs:
         assert bundle_spec[f"accelerator_type:{gpu_type}"] == 0.001
         assert bundle_spec["CPU"] == 1.0
@@ -112,12 +123,15 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
         expected_input_keys=["prompt", "sampling_params"],
         model=model_llama_3_2_216M,
         task_type=vLLMTaskType.GENERATE,
+        batch_size=32,
+        max_concurrent_batches=4,
         engine_kwargs={
             # Test that this should be overridden by the stage.
             "model": "random-model",
             # Test that this should be overridden by the stage.
             "task": vLLMTaskType.EMBED,
             "max_num_seqs": 100,
+            "disable_log_stats": False,
         },
     )
 
@@ -137,7 +151,7 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
 
     responses = []
     async for response in udf(batch):
-        responses.append(response["__data"][0])
+        responses.extend(response["__data"])
 
     assert len(responses) == 2
     assert all("batch_uuid" in r for r in responses)
@@ -157,6 +171,7 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
         task=vLLMTaskType.GENERATE,
         max_num_seqs=100,
         dynamic_lora_loading_path=None,
+        disable_log_requests=True,
     )
 
 
@@ -236,6 +251,9 @@ async def test_vllm_wrapper_semaphore(model_llama_3_2_216M):
             or mock_generate_async_v1.call_count == 10
         )
 
+        # Clean up GPU memory
+        wrapper.shutdown()
+
 
 @pytest.mark.asyncio
 async def test_vllm_wrapper_generate(model_llama_3_2_216M):
@@ -281,10 +299,14 @@ async def test_vllm_wrapper_generate(model_llama_3_2_216M):
     tasks = [asyncio.create_task(wrapper.generate_async(row)) for row in batch]
 
     for resp in asyncio.as_completed(tasks):
-        request, output = await resp
+        request, output, time_taken_llm = await resp
         params = request.params
         max_tokens = params.max_tokens
         assert max_tokens == output["num_generated_tokens"]
+        assert time_taken_llm > 0
+
+    # Clean up GPU memory
+    wrapper.shutdown()
 
 
 @pytest.mark.asyncio
@@ -312,8 +334,12 @@ async def test_vllm_wrapper_embed(model_opt_125m):
     tasks = [asyncio.create_task(wrapper.generate_async(row)) for row in batch]
 
     for resp in asyncio.as_completed(tasks):
-        _, output = await resp
+        _, output, time_taken_llm = await resp
         assert output["embeddings"].shape == (768,)
+        assert time_taken_llm > 0
+
+    # Clean up GPU memory
+    wrapper.shutdown()
 
 
 @pytest.mark.asyncio
@@ -326,11 +352,8 @@ async def test_vllm_wrapper_lora(model_llama_3_2_216M, model_llama_3_2_216M_lora
         max_pending_requests=10,
         # Skip CUDA graph capturing to reduce the start time.
         enforce_eager=True,
-        gpu_memory_utilization=0.8,
         task=vLLMTaskType.GENERATE,
         max_model_len=2048,
-        # Older GPUs (e.g. T4) don't support bfloat16.
-        dtype="half",
         enable_lora=True,
         max_lora_rank=16,
     )
@@ -360,10 +383,14 @@ async def test_vllm_wrapper_lora(model_llama_3_2_216M, model_llama_3_2_216M_lora
     tasks = [asyncio.create_task(wrapper.generate_async(row)) for row in batch]
 
     for resp in asyncio.as_completed(tasks):
-        request, output = await resp
+        request, output, time_taken_llm = await resp
         params = request.params
         max_tokens = params.max_tokens
         assert max_tokens == output["num_generated_tokens"]
+        assert time_taken_llm > 0
+
+    # Clean up GPU memory
+    wrapper.shutdown()
 
 
 @pytest.mark.asyncio
@@ -386,18 +413,16 @@ async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct):
         max_pending_requests=10,
         # Skip CUDA graph capturing to reduce the start time.
         enforce_eager=True,
-        gpu_memory_utilization=0.8,
         task=vLLMTaskType.GENERATE,
         max_model_len=2048,
         guided_decoding_backend="xgrammar",
-        # Older GPUs (e.g. T4) don't support bfloat16.
-        dtype="half",
+        seed=42,
     )
 
     batch = [
         {
             "__idx_in_batch": 0,
-            "prompt": "Answer 2 ** 3 + 5 with a detailed explanation in JSON.",
+            "prompt": "Answer 2 ** 3 + 5. Return the answer in JSON. Expected fields: 'answer', 'explain'.",
             "sampling_params": {
                 "max_tokens": 100,
                 "temperature": 0.7,
@@ -409,12 +434,16 @@ async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct):
     tasks = [asyncio.create_task(wrapper.generate_async(row)) for row in batch]
 
     for resp in asyncio.as_completed(tasks):
-        _, output = await resp
+        _, output, time_taken_llm = await resp
         json_obj = json.loads(output["generated_text"])
         assert "answer" in json_obj
         assert isinstance(json_obj["answer"], int)
         assert "explain" in json_obj
         assert isinstance(json_obj["explain"], str)
+        assert time_taken_llm > 0
+
+    # Clean up GPU memory
+    wrapper.shutdown()
 
 
 if __name__ == "__main__":

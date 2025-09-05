@@ -2438,6 +2438,70 @@ def read_sql(
 
 
 @PublicAPI(stability="alpha")
+def read_snowflake(
+    sql: str,
+    connection_parameters: Dict[str, Any],
+    *,
+    shard_keys: Optional[list[str]] = None,
+    ray_remote_args: Dict[str, Any] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """Read data from a Snowflake data set.
+
+    Example:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+
+            connection_parameters = dict(
+                user=...,
+                account="ABCDEFG-ABC12345",
+                password=...,
+                database="SNOWFLAKE_SAMPLE_DATA",
+                schema="TPCDS_SF100TCL"
+            )
+            ds = ray.data.read_snowflake("SELECT * FROM CUSTOMERS", connection_parameters)
+
+    Args:
+        sql: The SQL query to execute.
+        connection_parameters: Keyword arguments to pass to
+            ``snowflake.connector.connect``. To view supported parameters, read
+            https://docs.snowflake.com/developer-guide/python-connector/python-connector-api#functions.
+        shard_keys: The keys to shard the data by.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            This is used for sharding when shard_keys is provided.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+
+    Returns:
+        A ``Dataset`` containing the data from the Snowflake data set.
+    """  # noqa: E501
+    import snowflake.connector
+
+    def snowflake_connection_factory():
+        return snowflake.connector.connect(**connection_parameters)
+
+    return ray.data.read_sql(
+        sql,
+        connection_factory=snowflake_connection_factory,
+        shard_keys=shard_keys,
+        shard_hash_fn="hash",
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
+
+
+@PublicAPI(stability="alpha")
 def read_databricks_tables(
     *,
     warehouse_id: str,
@@ -2591,6 +2655,9 @@ def read_databricks_tables(
 def read_hudi(
     table_uri: str,
     *,
+    query_type: str = "snapshot",
+    filters: Optional[List[Tuple[str, str, str]]] = None,
+    hudi_options: Optional[Dict[str, str]] = None,
     storage_options: Optional[Dict[str, str]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
@@ -2604,11 +2671,28 @@ def read_hudi(
         >>> import ray
         >>> ds = ray.data.read_hudi( # doctest: +SKIP
         ...     table_uri="/hudi/trips",
+        ...     query_type="snapshot",
+        ...     filters=[("city", "=", "san_francisco")],
+        ... )
+
+        >>> ds = ray.data.read_hudi( # doctest: +SKIP
+        ...     table_uri="/hudi/trips",
+        ...     query_type="incremental",
+        ...     hudi_options={
+        ...         "hoodie.read.file_group.start_timestamp": "20230101123456789",
+        ...         "hoodie.read.file_group.end_timestamp": "20230201123456789",
+        ...     },
         ... )
 
     Args:
-        table_uri: The URI of the Hudi table to read from. Local file paths, S3, and GCS
-            are supported.
+        table_uri: The URI of the Hudi table to read from. Local file paths, S3, and GCS are supported.
+        query_type: The Hudi query type to use. Supported values are ``snapshot`` and ``incremental``.
+        filters: Optional list of filters to apply to the Hudi table when the
+            ``query_type`` is ``snapshot``. Each filter is a tuple of the form
+            ``(column_name, operator, value)``. The operator can be
+            one of ``"="``, ``"!="``, ``"<"``, ``"<="``, ``">"``, ``">="``.
+            Currently, only filters on partition columns will be effective.
+        hudi_options: A dictionary of Hudi options to pass to the Hudi reader.
         storage_options: Extra options that make sense for a particular storage
             connection. This is used to store connection parameters like credentials,
             endpoint, etc. See more explanation
@@ -2628,6 +2712,9 @@ def read_hudi(
     """  # noqa: E501
     datasource = HudiDatasource(
         table_uri=table_uri,
+        query_type=query_type,
+        filters=filters,
+        hudi_options=hudi_options,
         storage_options=storage_options,
     )
 
@@ -3571,7 +3658,7 @@ def read_lance(
 ) -> Dataset:
     """
     Create a :class:`~ray.data.Dataset` from a
-    `Lance Dataset <https://lancedb.github.io/lance/api/py_modules.html#lance.dataset.LanceDataset>`_.
+    `Lance Dataset <https://lancedb.github.io/lance-python-doc/all-modules.html#lance.LanceDataset>`_.
 
     Examples:
         >>> import ray
@@ -3590,11 +3677,11 @@ def read_lance(
         storage_options: Extra options that make sense for a particular storage
             connection. This is used to store connection parameters like credentials,
             endpoint, etc. For more information, see `Object Store Configuration <https\
-                ://lancedb.github.io/lance/object_store.html#object-store-configuration>`_.
+                ://lancedb.github.io/lance/guide/object_store/>`_.
         scanner_options: Additional options to configure the `LanceDataset.scanner()`
             method, such as `batch_size`. For more information,
-            see `LanceDB API doc <https://lancedb.github.io/\
-                lance/api/py_modules.html#lance.LanceDataset.scanner>`_
+            see `LanceDB API doc <https://lancedb.github.io\
+            /lance-python-doc/all-modules.html#lance.LanceDataset.scanner>`_
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the

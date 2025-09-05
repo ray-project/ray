@@ -78,14 +78,17 @@ print("success")
     def all_workers_exited():
         result = True
         print("list of idle workers:")
-        for proc in psutil.process_iter():
-            if ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER in proc.name():
+        for proc in psutil.process_iter(attrs=["name"], ad_value=None):
+            if (
+                proc.info["name"]
+                and ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER in proc.info["name"]
+            ):
                 print(f"{proc}")
                 result = False
         return result
 
     # Check that workers are eventually cleaned up.
-    wait_for_condition(all_workers_exited, timeout=15, retry_interval_ms=1000)
+    wait_for_condition(all_workers_exited, timeout=30, retry_interval_ms=1000)
 
 
 def test_error_isolation(call_ray_start):

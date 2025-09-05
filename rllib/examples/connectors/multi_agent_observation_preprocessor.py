@@ -32,7 +32,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack`
+`python [script file name].py`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -87,7 +87,6 @@ parser = add_rllib_example_script_args(
     default_reward=22.0,
 )
 parser.set_defaults(
-    enable_new_api_stack=True,
     num_agents=2,
 )
 
@@ -103,7 +102,9 @@ if __name__ == "__main__":
             num_envs_per_env_runner=20,
             # Define a list of two connector piece to be prepended to the env-to-module
             # connector pipeline:
-            # 1) The custom connector piece (a MultiAgentObservationPreprocessor).
+            # 1) The custom connector piece: A MultiAgentObservationPreprocessor, which
+            # enhances each agents' individual observations through adding the
+            # respective other agent's row index to the observation.
             # 2) A FlattenObservations connector to flatten the integer observations
             # for `agent_0`, which the AddOtherAgentsRowIndexToXYPos outputs.
             env_to_module_connector=lambda env, spaces, device: [

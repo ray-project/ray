@@ -1,12 +1,12 @@
-import asyncio
 import logging
 import signal
 import sys
+import threading
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import ray
+from ray._common.usage import usage_lib
 from ray._private.ray_constants import env_bool
-from ray._private.usage import usage_lib
 from ray.actor import ActorHandle
 from ray.air._internal.usage import tag_train_v2_trainer
 from ray.train import (
@@ -27,6 +27,7 @@ from ray.train.v2._internal.callbacks import (
     AcceleratorSetupCallback,
     BackendSetupCallback,
     DatasetsSetupCallback,
+    TPUReservationCallback,
     WorkingDirectorySetupCallback,
 )
 from ray.train.v2._internal.callbacks.datasets import GenDataset
@@ -38,9 +39,7 @@ from ray.train.v2._internal.callbacks.metrics import (
 from ray.train.v2._internal.callbacks.state_manager import StateManagerCallback
 from ray.train.v2._internal.callbacks.user_callback import UserCallbackHandler
 from ray.train.v2._internal.constants import (
-    DEFAULT_RUN_CONTROLLER_AS_ACTOR,
     METRICS_ENABLED_ENV_VAR,
-    RUN_CONTROLLER_AS_ACTOR_ENV_VAR,
     get_env_vars_to_propagate,
 )
 from ray.train.v2._internal.execution.callback import RayTrainCallback
@@ -112,9 +111,8 @@ class DataParallelTrainer:
             A Result object containing the training result.
 
         Raises:
-            ray.train.v2.api.exceptions.TrainingFailedError: If any failures occur
-                during training and the number of retries configured in
-                `FailureConfig` is exhausted.
+            ray.train.v2.api.exceptions.ControllerError: If a non-retryable error occurs in the Ray Train controller itself, or if the number of retries configured in `FailureConfig` is exhausted.
+            ray.train.v2.api.exceptions.WorkerGroupError: If one or more workers fail during training and the number of retries configured in `FailureConfig` is exhausted.
         """
         train_fn = construct_train_func(
             self.train_loop_per_worker,
@@ -155,9 +153,11 @@ class DataParallelTrainer:
             data_config=self.data_config,
             scaling_config=self.scaling_config,
         )
+        tpu_reservation_setup_callback = TPUReservationCallback()
         callbacks.extend(
             [
                 accelerator_setup_callback,
+                tpu_reservation_setup_callback,
                 backend_setup_callback,
                 datasets_setup_callback,
             ]
@@ -195,29 +195,26 @@ class DataParallelTrainer:
         return callbacks
 
     def _initialize_and_run_controller(self, **controller_init_kwargs) -> Result:
-        run_controller_as_actor = env_bool(
-            RUN_CONTROLLER_AS_ACTOR_ENV_VAR, DEFAULT_RUN_CONTROLLER_AS_ACTOR
-        )
-        if run_controller_as_actor:
-            # Attach the controller to the node running the driver script.
-            controller_actor_cls = ray.remote(
-                num_cpus=0,
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    node_id=ray.get_runtime_context().get_node_id(), soft=False
-                ),
-                runtime_env={"env_vars": get_env_vars_to_propagate()},
-            )(TrainController)
+        # Attach the controller to the node running the driver script.
+        controller_actor_cls = ray.remote(
+            num_cpus=0,
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                node_id=ray.get_runtime_context().get_node_id(), soft=False
+            ),
+            # TODO: Extract env variables that affect controller behavior
+            # and pass them as explicit args
+            runtime_env={"env_vars": get_env_vars_to_propagate()},
+        )(TrainController)
 
-            controller = controller_actor_cls.remote(**controller_init_kwargs)
+        controller = controller_actor_cls.remote(**controller_init_kwargs)
 
+        # If this is not the main thread - as is the case when running in Tune -
+        # registering the SIGINT handler raises an exception.
+        if threading.current_thread() is threading.main_thread():
             self._register_sigint_handler(controller)
 
-            ray.get(controller.run.remote())
-            return ray.get(controller.get_result.remote())
-        else:
-            controller = TrainController(**controller_init_kwargs)
-            asyncio.run(controller.run())
-            return controller.get_result()
+        ray.get(controller.run.remote())
+        return ray.get(controller.get_result.remote())
 
     def _register_sigint_handler(self, controller: ActorHandle[TrainController]):
         """Register SIGINT handler so user Ctrl C gracefully aborts run."""

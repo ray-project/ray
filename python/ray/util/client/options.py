@@ -2,7 +2,7 @@ from typing import Any
 from typing import Dict
 from typing import Optional
 
-from ray._private import ray_option_utils
+from ray._common import ray_option_utils
 from ray.util.placement_group import PlacementGroup, check_placement_group_index
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
