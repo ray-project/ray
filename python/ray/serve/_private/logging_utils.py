@@ -5,14 +5,18 @@ import os
 import sys
 import time
 import traceback
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, List, Optional, Sequence, Tuple
 
 import ray
 from ray._common.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
 from ray._private.ray_logging.filters import CoreContextFilter
 from ray._private.ray_logging.formatters import JSONFormatter, TextFormatter
 from ray.autoscaler._private.event_summarizer import EventSummarizer
-from ray.serve._private.common import ServeComponentType
+from ray.serve._private.common import (
+    DecisionSummary,
+    DeploymentSnapshot,
+    ServeComponentType,
+)
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_JSON_LOGGING,
     RAY_SERVE_ENABLE_MEMORY_PROFILING,
@@ -560,29 +564,37 @@ class ServeEventSummarizer:
 
     def summarize_recent_decisions(
         self, decisions: Sequence[Any], *, limit: int = 2
-    ) -> List[Dict[str, Any]]:
-        """Convert recent ScalingDecision objects into compact dicts for logs."""
-        out: List[Dict[str, Any]] = []
+    ) -> List[DecisionSummary]:
+        """Convert recent ScalingDecision objects into typed DecisionSummary list for logs."""
+        out: List[DecisionSummary] = []
         for d in list(decisions)[-limit:]:
             if hasattr(d, "dict"):
                 dd = d.dict()
                 ts = dd.get("timestamp_s")
-                from_rep = dd.get("prev_num_replicas")
-                to_rep = dd.get("curr_num_replicas")
+                prev_num_replicas = dd.get("prev_num_replicas")
+                curr_num_replicas = dd.get("curr_num_replicas")
                 reason = dd.get("reason") or ""
             else:
                 ts = getattr(d, "timestamp_s", None)
-                from_rep = getattr(d, "prev_num_replicas", None)
-                to_rep = getattr(d, "curr_num_replicas", None)
+                prev_num_replicas = getattr(d, "prev_num_replicas", None)
+                curr_num_replicas = getattr(d, "curr_num_replicas", None)
                 reason = getattr(d, "reason", "") or ""
-            ts_iso = (
+
+            timestamp_s = (
                 time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts))
                 if ts is not None
                 else None
             )
             if len(reason) > 80:
                 reason = reason[:77] + "..."
-            out.append({"ts": ts_iso, "from": from_rep, "to": to_rep, "reason": reason})
+            out.append(
+                DecisionSummary(
+                    timestamp_s=timestamp_s,
+                    prev_num_replicas=prev_num_replicas,
+                    curr_num_replicas=curr_num_replicas,
+                    reason=reason,
+                )
+            )
         return out
 
     def format_scaling_status(self, scaling_status: str) -> str:
@@ -607,7 +619,7 @@ class ServeEventSummarizer:
             return f"delayed (last update {int(last_metrics_age_s)}s ago)"
         return "ok"
 
-    def build_snapshot_payload(
+    def build_deployment_snapshot(
         self,
         *,
         app_name: str,
@@ -616,59 +628,72 @@ class ServeEventSummarizer:
         proposed_replicas: int,
         min_replicas: Optional[int],
         max_replicas: Optional[int],
-        scaling_status_h: str,
+        scaling_status: str,
         policy_name: str,
         look_back_period_s: Optional[float],
         queued_requests: Optional[float],
         total_requests: float,
         last_metrics_age_s: Optional[float],
         errors: Optional[List[str]],
-        recent_decisions: List[Dict[str, Any]],
-    ) -> Dict[str, Any]:
-        """Build the single JSON payload we log as a one-liner."""
-        ts_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        recent_decisions: List[DecisionSummary],
+    ) -> DeploymentSnapshot:
+        """Build the typed snapshot object we log as a one-liner."""
+        timestamp_s = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         health_text = self.format_metrics_health_text(
             last_metrics_age_s=last_metrics_age_s, look_back_period_s=look_back_period_s
         )
-        return {
-            "ts": ts_iso,
-            "app": app_name,
-            "deployment": deployment_name,
-            "current_replicas": int(current_replicas),
-            "target_replicas": int(proposed_replicas),
-            "replicas_allowed": {
-                "min": None if min_replicas is None else int(min_replicas),
-                "max": None if max_replicas is None else int(max_replicas),
-            },
-            "scaling_status": scaling_status_h,
-            "policy": policy_name,
-            "metrics": {
-                "look_back_period_s": look_back_period_s,
-                "queued_requests": None
-                if queued_requests is None
-                else float(queued_requests),
-                "total_requests": float(total_requests or 0.0),
-            },
-            "metrics_health": health_text,
-            "errors": errors or [],
-            "decisions": recent_decisions,
-        }
+        return DeploymentSnapshot(
+            timestamp_s=timestamp_s,
+            app=app_name,
+            deployment=deployment_name,
+            current_replicas=int(current_replicas),
+            target_replicas=int(proposed_replicas),
+            min_replicas=None if min_replicas is None else int(min_replicas),
+            max_replicas=None if max_replicas is None else int(max_replicas),
+            scaling_status=scaling_status,
+            policy=policy_name,
+            look_back_period_s=look_back_period_s,
+            queued_requests=None if queued_requests is None else float(queued_requests),
+            total_requests=float(total_requests or 0.0),
+            metrics_health=health_text,
+            errors=errors or [],
+            decisions=recent_decisions,
+        )
 
-    def log_snapshot(self, payload: Dict[str, Any]) -> None:
-        """Emit the canonical one-line JSON snapshot."""
+    def log_snapshot(self, snapshot: DeploymentSnapshot) -> None:
+        """Emit the canonical one-line JSON snapshot from typed object."""
+        # Build the final payload explicitly so field names in logs are uniform
+        # and independent from internal dataclass attribute names.
+        decisions = [
+            {
+                "timestamp_s": d.timestamp_s,
+                "from": d.prev_num_replicas,
+                "to": d.curr_num_replicas,
+                "reason": d.reason,
+            }
+            for d in snapshot.decisions
+        ]
+        payload = {
+            "timestamp_s": snapshot.timestamp_s,
+            "app": snapshot.app,
+            "deployment": snapshot.deployment,
+            "current_replicas": snapshot.current_replicas,
+            "target_replicas": snapshot.target_replicas,
+            "replicas_allowed": {
+                "min": snapshot.min_replicas,
+                "max": snapshot.max_replicas,
+            },
+            "scaling_status": snapshot.scaling_status,
+            "policy": snapshot.policy,
+            "metrics": {
+                "look_back_period_s": snapshot.look_back_period_s,
+                "queued_requests": snapshot.queued_requests,
+                "total_requests": snapshot.total_requests,
+            },
+            "metrics_health": snapshot.metrics_health,
+            "errors": snapshot.errors,
+            "decisions": decisions,
+        }
         self._logger.info(
             "serve_autoscaling_snapshot " + json.dumps(payload, separators=(",", ":"))
         )
-
-    def note_once_per_interval(
-        self, *, message: str, key: str, interval_s: int = 60
-    ) -> None:
-        """Emit a short note at most once per interval for the given key.
-
-        This is used to surface repeated, noisy conditions (e.g. delayed metrics)
-        without spamming logs.
-        """
-        self._summarizer.add_once_per_interval(message, key, interval_s)
-        for line in self._summarizer.summary():
-            self._logger.info("serve_autoscaling_note " + line)
-        self._summarizer.clear()

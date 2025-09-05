@@ -355,7 +355,7 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
 
     # Basic shape checks.
     for key in [
-        "ts",
+        "timestamp_s",
         "app",
         "deployment",
         "current_replicas",

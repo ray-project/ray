@@ -386,106 +386,96 @@ class ServeController:
 
     def _emit_deployment_autoscaling_snapshots(self) -> None:
         """Emit a structured snapshot log per autoscaling-enabled deployment."""
-        try:
-            app_statuses = self.application_state_manager.list_app_statuses()
-            for app_name in app_statuses.keys():
-                deployment_details = (
-                    self.application_state_manager.list_deployment_details(app_name)
+        app_statuses = self.application_state_manager.list_app_statuses()
+        for app_name in app_statuses.keys():
+            deployment_details = self.application_state_manager.list_deployment_details(
+                app_name
+            )
+            for dep_name, details in deployment_details.items():
+                autoscaling_config = details.deployment_config.autoscaling_config
+                if not autoscaling_config:
+                    continue
+                current_replicas = len(getattr(details, "replicas", []) or [])
+                raw_target = getattr(details, "target_num_replicas", None)
+                current_target = (
+                    int(raw_target) if raw_target is not None else current_replicas
                 )
-                for dep_name, details in deployment_details.items():
-                    autoscaling_config = details.deployment_config.autoscaling_config
-                    if not autoscaling_config:
-                        continue
-                    current_replicas = len(getattr(details, "replicas", []) or [])
-                    raw_target = getattr(details, "target_num_replicas", None)
-                    current_target = (
-                        int(raw_target) if raw_target is not None else current_replicas
-                    )
-                    dep_id = DeploymentID(name=dep_name, app_name=app_name)
-                    snapshot = (
-                        self.autoscaling_state_manager.get_observability_snapshot(
-                            dep_id, current_target
-                        )
-                    )
-                    current_replicas = snapshot["current_replicas"]
-                    proposed_replicas = snapshot["proposed_replicas"]
-                    min_repl_adj = snapshot["min_replicas"]
-                    max_repl_adj = snapshot["max_replicas"]
-                    total_requests = snapshot["total_requests"]
+                dep_id = DeploymentID(name=dep_name, app_name=app_name)
+                snapshot = self.autoscaling_state_manager.get_observability_snapshot(
+                    dep_id, current_target
+                )
+                current_replicas = snapshot["current_replicas"]
+                proposed_replicas = snapshot["proposed_replicas"]
+                min_repl_adj = snapshot["min_replicas"]
+                max_repl_adj = snapshot["max_replicas"]
+                total_requests = snapshot["total_requests"]
 
-                    if isinstance(autoscaling_config, dict):
-                        policy_name = autoscaling_config.get("policy", "default")
-                        look_back_period_s = autoscaling_config.get(
-                            "look_back_period_s"
-                        )
-                    else:
-                        policy_name = getattr(autoscaling_config, "name", "default")
-                        look_back_period_s = getattr(
-                            autoscaling_config, "look_back_period_s", None
-                        )
-
-                    if proposed_replicas > current_replicas:
-                        scaling_status = "UPSCALING"
-                    elif proposed_replicas < current_replicas:
-                        scaling_status = "DOWNSCALING"
-                    else:
-                        scaling_status = "STABLE"
-                    decision = ScalingDecision(
-                        timestamp_s=time.time(),
-                        reason=f"current={current_replicas}, proposed={proposed_replicas}",
-                        prev_num_replicas=int(current_replicas),
-                        curr_num_replicas=int(proposed_replicas),
-                        policy=policy_name,
+                if isinstance(autoscaling_config, dict):
+                    policy_name = autoscaling_config.get("policy", "default")
+                    look_back_period_s = autoscaling_config.get("look_back_period_s")
+                else:
+                    policy_name = getattr(autoscaling_config, "name", "default")
+                    look_back_period_s = getattr(
+                        autoscaling_config, "look_back_period_s", None
                     )
 
-                    self._scaling_decisions.setdefault(dep_id, []).append(decision)
-                    if len(self._scaling_decisions[dep_id]) > 50:
-                        self._scaling_decisions[dep_id] = self._scaling_decisions[
-                            dep_id
-                        ][-50:]
-                    key = (app_name, dep_name)
-                    signature = self._serve_event_summarizer.compute_signature(
-                        current_replicas=current_replicas,
-                        proposed_replicas=proposed_replicas,
-                        min_replicas=min_repl_adj,
-                        max_replicas=max_repl_adj,
-                        scaling_status=scaling_status,
-                        total_requests=total_requests,
+                if proposed_replicas > current_replicas:
+                    scaling_status = "UPSCALING"
+                elif proposed_replicas < current_replicas:
+                    scaling_status = "DOWNSCALING"
+                else:
+                    scaling_status = "STABLE"
+                decision = ScalingDecision(
+                    timestamp_s=time.time(),
+                    reason=f"current={current_replicas}, proposed={proposed_replicas}",
+                    prev_num_replicas=int(current_replicas),
+                    curr_num_replicas=int(proposed_replicas),
+                    policy=policy_name,
+                )
+
+                self._scaling_decisions.setdefault(dep_id, []).append(decision)
+                if len(self._scaling_decisions[dep_id]) > 50:
+                    self._scaling_decisions[dep_id] = self._scaling_decisions[dep_id][
+                        -50:
+                    ]
+                key = (app_name, dep_name)
+                signature = self._serve_event_summarizer.compute_signature(
+                    current_replicas=current_replicas,
+                    proposed_replicas=proposed_replicas,
+                    min_replicas=min_repl_adj,
+                    max_replicas=max_repl_adj,
+                    scaling_status=scaling_status,
+                    total_requests=total_requests,
+                )
+                if self._last_autoscaling_snapshots.get(key) == signature:
+                    continue
+                recent_decisions = self._scaling_decisions.get(dep_id, [])
+                decisions_summary = (
+                    self._serve_event_summarizer.summarize_recent_decisions(
+                        recent_decisions, limit=2
                     )
-                    if self._last_autoscaling_snapshots.get(key) == signature:
-                        continue
-                    recent_decisions = self._scaling_decisions.get(dep_id, [])
-                    decisions_summary = (
-                        self._serve_event_summarizer.summarize_recent_decisions(
-                            recent_decisions, limit=2
-                        )
-                    )
-                    scaling_status_h = (
-                        self._serve_event_summarizer.format_scaling_status(
-                            scaling_status
-                        )
-                    )
-                    payload = self._serve_event_summarizer.build_snapshot_payload(
-                        app_name=app_name,
-                        deployment_name=dep_name,
-                        current_replicas=current_replicas,
-                        proposed_replicas=proposed_replicas,
-                        min_replicas=min_repl_adj,
-                        max_replicas=max_repl_adj,
-                        scaling_status_h=scaling_status_h,
-                        policy_name=policy_name,
-                        look_back_period_s=look_back_period_s,
-                        queued_requests=snapshot.get("queued_requests"),
-                        total_requests=total_requests,
-                        last_metrics_age_s=snapshot.get("last_metrics_age_s"),
-                        errors=snapshot.get("errors", []),
-                        recent_decisions=decisions_summary,
-                    )
-                    self._serve_event_summarizer.log_snapshot(payload)
-                    self._last_autoscaling_snapshots[key] = signature
-        except Exception:
-            # Never let logging issues impact the control loop.
-            logger.exception("Failed emitting autoscaling snapshot.")
+                )
+                scaling_status = self._serve_event_summarizer.format_scaling_status(
+                    scaling_status
+                )
+                snapshot_obj = self._serve_event_summarizer.build_deployment_snapshot(
+                    app_name=app_name,
+                    deployment_name=dep_name,
+                    current_replicas=current_replicas,
+                    proposed_replicas=proposed_replicas,
+                    min_replicas=min_repl_adj,
+                    max_replicas=max_repl_adj,
+                    scaling_status=scaling_status,
+                    policy_name=policy_name,
+                    look_back_period_s=look_back_period_s,
+                    queued_requests=snapshot.get("queued_requests"),
+                    total_requests=total_requests,
+                    last_metrics_age_s=snapshot.get("last_metrics_age_s"),
+                    errors=snapshot.get("errors", []),
+                    recent_decisions=decisions_summary,
+                )
+                self._serve_event_summarizer.log_snapshot(snapshot_obj)
+                self._last_autoscaling_snapshots[key] = signature
 
     async def run_control_loop(self) -> None:
         # NOTE(edoakes): we catch all exceptions here and simply log them,

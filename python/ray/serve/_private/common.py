@@ -1,7 +1,7 @@
 import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from starlette.types import Scope
 
@@ -754,3 +754,64 @@ OBJ_REF_NOT_SUPPORTED_ERROR = RuntimeError(
     "Converting by-value DeploymentResponses to ObjectRefs is not supported. "
     "Use handle.options(_by_reference=True) to enable it."
 )
+
+
+@dataclass(frozen=True)
+class DecisionSummary:
+    timestamp_s: Optional[str]
+    prev_num_replicas: Optional[int]
+    curr_num_replicas: Optional[int]
+    reason: str
+
+
+@dataclass(frozen=True)
+class DeploymentSnapshot:
+    timestamp_s: str
+    app: str
+    deployment: str
+    current_replicas: int
+    target_replicas: int
+    min_replicas: Optional[int]
+    max_replicas: Optional[int]
+    scaling_status: str
+    policy: str
+    look_back_period_s: Optional[float]
+    queued_requests: Optional[float]
+    total_requests: float
+    metrics_health: str
+    errors: List[str]
+    decisions: List[DecisionSummary]
+
+    def to_log_dict(self) -> Dict[str, object]:
+        return {
+            "timestamp_s": self.timestamp_s,
+            "app": self.app,
+            "deployment": self.deployment,
+            "current_replicas": self.current_replicas,
+            "target_replicas": self.target_replicas,
+            "replicas_allowed": {
+                "min": self.min_replicas,
+                "max": self.max_replicas,
+            },
+            "scaling_status": self.scaling_status,
+            "policy": self.policy,
+            "metrics": {
+                "look_back_period_s": self.look_back_period_s,
+                "queued_requests": self.queued_requests,
+                "total_requests": self.total_requests,
+            },
+            "metrics_health": self.metrics_health,
+            "errors": self.errors,
+            "decisions": [
+                {
+                    "ts": d.ts,
+                    "from": d.prev_num_replicas,
+                    "to": d.curr_num_replicas,
+                    "reason": d.reason,
+                }
+                for d in self.decisions
+            ],
+        }
+
+
+SnapshotSignature = Tuple[int, int, Optional[int], Optional[int], str, float]
