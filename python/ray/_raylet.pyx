@@ -22,7 +22,6 @@ import threading
 import time
 import traceback
 import _thread
-import warnings
 import typing
 from typing import (
     Any,
@@ -261,6 +260,13 @@ GRPC_STATUS_CODE_RESOURCE_EXHAUSTED = CGrpcStatusCode.RESOURCE_EXHAUSTED
 GRPC_STATUS_CODE_UNIMPLEMENTED = CGrpcStatusCode.UNIMPLEMENTED
 
 logger = logging.getLogger(__name__)
+
+import warnings
+class NumReturnsWarning(UserWarning):
+    """Warning when num_returns=0 but the task returns a non-None value."""
+    pass
+
+warnings.filterwarnings("once", category=NumReturnsWarning)
 
 # The currently running task, if any. These are used to synchronize task
 # interruption for ray.cancel.
@@ -4405,7 +4411,7 @@ cdef class CoreWorker:
                 warnings.warn(
                     f"Task '{task_name}' has num_returns=0 but returned a non-None value '{obj_value}'. "
                     "The return value will be ignored.",
-                    UserWarning,
+                    NumReturnsWarning,
                     stacklevel=2
                 )
 
