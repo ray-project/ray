@@ -173,6 +173,8 @@ void ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   bool task_queued = false;
   uint64_t send_pos = 0;
   {
+    // We must release mu_ before resolving the task dependencies since the callback that
+    // reacquires mu_ may get called in the same call stack.
     absl::MutexLock lock(&mu_);
     auto queue = client_queues_.find(actor_id);
     RAY_CHECK(queue != client_queues_.end());
@@ -193,37 +195,45 @@ void ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   }
 
   if (task_queued) {
+    {
+      absl::MutexLock resolver_lock(&resolver_mu_);
+      pending_dependency_resolution_.insert(task_id);
+    }
     io_service_.post(
         [task_spec, task_id, actor_id, send_pos, this]() mutable {
-          // We must release the lock before resolving the task dependencies since
-          // the callback may get called in the same call stack.
-          resolver_.ResolveDependencies(
-              task_spec, [this, send_pos, actor_id, task_id](Status status) {
-                task_manager_.MarkDependenciesResolved(task_id);
-                bool fail_or_retry_task = false;
-                {
-                  absl::MutexLock lock(&mu_);
-                  auto queue = client_queues_.find(actor_id);
-                  RAY_CHECK(queue != client_queues_.end());
-                  auto &actor_submit_queue = queue->second.actor_submit_queue_;
-                  // Only dispatch tasks if the submitted task is still queued. The task
-                  // may have been dequeued if the actor has since failed.
-                  if (actor_submit_queue->Contains(send_pos)) {
-                    if (status.ok()) {
-                      actor_submit_queue->MarkDependencyResolved(send_pos);
-                      SendPendingTasks(actor_id);
-                    } else {
-                      fail_or_retry_task = true;
-                      actor_submit_queue->MarkDependencyFailed(send_pos);
+          {
+            absl::MutexLock resolver_lock(&resolver_mu_);
+            if (pending_dependency_resolution_.erase(task_id) == 0) {
+              return;
+            }
+            resolver_.ResolveDependencies(
+                task_spec, [this, send_pos, actor_id, task_id](Status status) {
+                  task_manager_.MarkDependenciesResolved(task_id);
+                  bool fail_or_retry_task = false;
+                  {
+                    absl::MutexLock lock(&mu_);
+                    auto queue = client_queues_.find(actor_id);
+                    RAY_CHECK(queue != client_queues_.end());
+                    auto &actor_submit_queue = queue->second.actor_submit_queue_;
+                    // Only dispatch tasks if the submitted task is still queued. The task
+                    // may have been dequeued if the actor has since failed.
+                    if (actor_submit_queue->Contains(send_pos)) {
+                      if (status.ok()) {
+                        actor_submit_queue->MarkDependencyResolved(send_pos);
+                        SendPendingTasks(actor_id);
+                      } else {
+                        fail_or_retry_task = true;
+                        actor_submit_queue->MarkDependencyFailed(send_pos);
+                      }
                     }
                   }
-                }
 
-                if (fail_or_retry_task) {
-                  GetTaskManagerWithoutMu().FailOrRetryPendingTask(
-                      task_id, rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status);
-                }
-              });
+                  if (fail_or_retry_task) {
+                    GetTaskManagerWithoutMu().FailOrRetryPendingTask(
+                        task_id, rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status);
+                  }
+                });
+          }
         },
         "ActorTaskSubmitter::SubmitTask");
   } else {
@@ -252,6 +262,12 @@ void ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
                                                      /*mark_task_object_failed*/ true,
                                                      fail_immediately);
   }
+}
+
+void ActorTaskSubmitter::CancelDependencyResolution(const TaskID &task_id) {
+  absl::MutexLock resolver_lock(&resolver_mu_);
+  pending_dependency_resolution_.erase(task_id);
+  RAY_UNUSED(resolver_.CancelDependencyResolution(task_id));
 }
 
 void ActorTaskSubmitter::DisconnectRpcClient(ClientQueue &queue) {
@@ -435,7 +451,7 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
       task_manager_.MarkTaskNoRetry(task_id);
       // This task may have been waiting for dependency resolution, so cancel
       // this first.
-      RAY_UNUSED(resolver_.CancelDependencyResolution(task_id));
+      CancelDependencyResolution(task_id);
       bool fail_immediatedly =
           error_info.has_actor_died_error() &&
           error_info.actor_died_error().has_oom_context() &&
@@ -707,7 +723,7 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
 
     // This task may have been waiting for dependency resolution, so cancel
     // this first.
-    RAY_UNUSED(resolver_.CancelDependencyResolution(task_id));
+    CancelDependencyResolution(task_id);
 
     will_retry = GetTaskManagerWithoutMu().FailOrRetryPendingTask(
         task_id,
@@ -886,13 +902,6 @@ void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive)
 
     task_queued = queue->second.actor_submit_queue_->Contains(send_pos);
     if (task_queued) {
-      auto dep_resolved =
-          queue->second.actor_submit_queue_->DependenciesResolved(send_pos);
-      if (!dep_resolved) {
-        RAY_LOG(DEBUG).WithField(task_id)
-            << "Task has been resolving dependencies. Cancel to resolve dependencies";
-        RAY_UNUSED(resolver_.CancelDependencyResolution(task_id));
-      }
       RAY_LOG(DEBUG).WithField(task_id)
           << "Task was queued. Mark a task is canceled from a queue.";
       queue->second.actor_submit_queue_->MarkTaskCanceled(send_pos);
@@ -903,6 +912,8 @@ void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive)
   // The task won't be sent to an actor in this case.
   // We cannot hold a lock when calling `FailOrRetryPendingTask`.
   if (task_queued) {
+    // Could be in dependency resolution or ResolveDependencies call may be queued up
+    CancelDependencyResolution(task_id);
     rpc::RayErrorInfo error_info;
     std::ostringstream stream;
     stream << "The task " << task_id << " is canceled from an actor " << actor_id
