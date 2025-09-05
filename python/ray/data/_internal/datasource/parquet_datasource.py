@@ -97,12 +97,6 @@ PARQUET_ENCODING_RATIO_ESTIMATE_MAX_NUM_SAMPLES = 10
 PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS = 1024
 
 
-@dataclass(frozen=True)
-class _SampleInfo:
-    actual_bytes_per_row: Optional[int]
-    estimated_bytes_per_row: Optional[int]
-
-
 class _NoIOSerializableParquetFragment:
     """This is a workaround to avoid utilizing `ParquetFileFragment` original
     serialization protocol that actually does network RPCs during serialization
@@ -301,14 +295,15 @@ class ParquetDatasource(Datasource):
         elif isinstance(shuffle, FileShuffleConfig):
             self._file_metadata_shuffler = np.random.default_rng(shuffle.seed)
 
-        sample_infos = sample_fragments(
+        self._encoding_ratio = _estimate_files_encoding_ratio(
             self._pq_fragments,
+            self._metadata,
             to_batches_kwargs=to_batch_kwargs,
             columns=data_columns,
             schema=self._read_schema,
             local_scheduling=self._local_scheduling,
         )
-        self._encoding_ratio = estimate_files_encoding_ratio(sample_infos)
+
         self._default_read_batch_size_rows = estimate_default_read_batch_size_rows(
             sample_infos
         )
@@ -497,14 +492,13 @@ def read_fragments(
                     yield table
 
 
-def _sample_fragment(
+def _estimate_memory_block_size(
     fragment: "ParquetFileFragment",
-    metadata: ParquetFileMetadata,
     *,
     to_batches_kwargs: Optional[Dict[str, Any]],
     columns: Optional[List[str]],
     schema: Optional["pyarrow.Schema"],
-) -> _SampleInfo:
+) -> Optional[int]:
     # If the fragment has no row groups, it's an empty or metadata-only file.
     # Skip it by returning empty sample info.
     if fragment.metadata.num_row_groups == 0:
@@ -518,37 +512,38 @@ def _sample_fragment(
     # Use the batch_size calculated above, and ignore the one specified by user if set.
     # This is to avoid sampling too few or too many rows.
     to_batches_kwargs.pop("batch_size", None)
-    batches = fragment.to_batches(
+
+    batches_iter = fragment.to_batches(
         columns=columns,
         schema=schema,
         batch_size=batch_size,
         **to_batches_kwargs,
     )
-    # Use first batch in-memory size for estimation.
+
     try:
-        batch = next(batches)
+        # Use first batch in-memory size for estimation.
+        batch = next(batches_iter)
     except StopIteration:
-        sample_data = _SampleInfo(
-            actual_bytes_per_row=None, estimated_bytes_per_row=None
-        )
+        pass
     else:
         if batch.num_rows > 0:
-            metadata = fragment.metadata
-            total_size = 0
-            for idx in range(metadata.num_row_groups):
-                total_size += metadata.row_group(idx).total_byte_size
-            sample_data = _SampleInfo(
-                actual_bytes_per_row=batch.nbytes / batch.num_rows,
-                estimated_bytes_per_row=total_size / metadata.num_rows,
-            )
-        else:
-            sample_data = _SampleInfo(
-                actual_bytes_per_row=None, estimated_bytes_per_row=None
-            )
-    return sample_data
+            avg_row_size = batch.nbytes / batch.num_rows
+            estimated_in_mem_bytes = round(metadata.num_rows * avg_row_size)
+
+            return estimated_in_mem_bytes
+
+    return None
 
 
-def estimate_files_encoding_ratio(sample_infos: List[_SampleInfo]) -> float:
+def _estimate_files_encoding_ratio(
+    fragments: List[_NoIOSerializableParquetFragment],
+    metadata: List[ParquetFileMetadata],
+    *,
+    to_batches_kwargs: Optional[Dict[str, Any]],
+    columns: Optional[List[str]],
+    schema: Optional["pyarrow.Schema"],
+    local_scheduling: Optional[bool] = None,
+) -> float:
     """Return an estimate of the Parquet files encoding ratio.
 
     To avoid OOMs, it is safer to return an over-estimate than an underestimate.
@@ -556,20 +551,63 @@ def estimate_files_encoding_ratio(sample_infos: List[_SampleInfo]) -> float:
     if not DataContext.get_current().decoding_size_estimation:
         return PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
 
-    def compute_encoding_ratio(sample_info: _SampleInfo) -> float:
-        if (
-            sample_info.actual_bytes_per_row is None
-            or sample_info.estimated_bytes_per_row is None
-        ):
-            return PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND
-        else:
-            return (
-                sample_info.actual_bytes_per_row / sample_info.estimated_bytes_per_row
-            )
+    sampled_fragments, sampled_metadata = zip(*_sample_fragments(
+        self._pq_fragments,
+        to_batches_kwargs=to_batch_kwargs,
+        columns=data_columns,
+        schema=self._read_schema,
+        local_scheduling=self._local_scheduling,
+    ))
 
-    ratio = np.mean(list(map(compute_encoding_ratio, sample_infos)))
-    logger.debug(f"Estimated Parquet encoding ratio from sampling is {ratio}.")
-    return max(ratio, PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND)
+    in_mem_block_sizes = _estimate_in_mem_block_sizes(
+        sampled_fragments,
+        to_batches_kwargs,
+        columns, schema,
+        local_scheduling
+    )
+
+    in_mem_block_sizes_arr = np.array(in_mem_block_sizes)
+    file_sizes_arr = np.array([m.num_bytes for m in sampled_metadata])
+
+    avg_expansion_ratio = np.mean(in_mem_block_sizes_arr / file_sizes_arr)
+
+    logger.debug(f"Estimated parquet encoding ratio from sampling is {avg_expansion_ratio:.5f}.")
+
+    return max(avg_expansion_ratio, PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND)
+
+
+def _estimate_in_mem_block_sizes(
+    sampled_fragments: List[_NoIOSerializableParquetFragment],
+    to_batches_kwargs: Optionla[Dict[str, Any]],
+    columns: Optional[List[str]],
+    schema: Optional[Schema],
+    local_scheduling: Optional[bool]
+) -> List[int]:
+    estimate_in_mem_block_size = cached_remote_fn(_estimate_memory_block_size)
+    futures = []
+
+    for fragment in sampled_fragments:
+        # Sample the first rows batch in i-th file.
+        # Use SPREAD scheduling strategy to avoid packing many sampling tasks on
+        # same machine to cause OOM issue, as sampling can be memory-intensive.
+        futures.append(
+            estimate_in_mem_block_size.options(
+                scheduling_strategy=local_scheduling or DataContext.get_current().scheduling_strategy,
+                # Retry in case of transient errors during sampling.
+                retry_exceptions=[OSError],
+            ).remote(
+                fragment,
+                to_batches_kwargs=to_batches_kwargs,
+                columns=columns,
+                schema=schema,
+            )
+        )
+
+    sample_bar = ProgressBar("Parquet Files Sample", len(futures), unit="file")
+    estimated_in_mem_sizes = sample_bar.fetch_until_complete(futures)
+    sample_bar.close()
+
+    return estimated_in_mem_sizes
 
 
 def estimate_default_read_batch_size_rows(
@@ -619,19 +657,10 @@ def get_parquet_dataset(paths, filesystem, dataset_kwargs):
     return dataset
 
 
-def sample_fragments(
+def _sample_fragments(
     fragments: List[_NoIOSerializableParquetFragment],
     metadata: List[ParquetFileMetadata],
-    *,
-    to_batches_kwargs: Optional[Dict[str, Any]],
-    columns: Optional[List[str]],
-    schema: Optional["pyarrow.Schema"],
-    local_scheduling: Optional[bool] = None,
-) -> List[_SampleInfo]:
-    # Sample a few rows from Parquet files to estimate the encoding ratio.
-    # Launch tasks to sample multiple files remotely in parallel.
-    # Evenly distributed to sample N rows in i-th row group in i-th file.
-    # TODO(ekl/cheng) take into account column pruning.
+) -> List[Tuple[_NoIOSerializableParquetFragment, ParquetFileMetadata]]:
     num_files = len(fragments)
     num_samples = int(num_files * PARQUET_ENCODING_RATIO_ESTIMATE_SAMPLING_RATIO)
     min_num_samples = min(PARQUET_ENCODING_RATIO_ESTIMATE_MIN_NUM_SAMPLES, num_files)
@@ -640,38 +669,10 @@ def sample_fragments(
 
     # Evenly distributed to choose which file to sample, to avoid biased prediction
     # if data is skewed.
-    sampled_fragments: Tuple[_NoIOSerializableParquetFragment, ParquetFileMetadata] = [
+    return [
         (fragments[idx], metadata[idx])
         for idx in np.linspace(0, num_files - 1, num_samples).astype(int).tolist()
     ]
-
-    sample_fragment = cached_remote_fn(_sample_fragment)
-    futures = []
-    scheduling = local_scheduling or DataContext.get_current().scheduling_strategy
-
-    for fragment, metadata in sampled_fragments:
-        # Sample the first rows batch in i-th file.
-        # Use SPREAD scheduling strategy to avoid packing many sampling tasks on
-        # same machine to cause OOM issue, as sampling can be memory-intensive.
-        futures.append(
-            sample_fragment.options(
-                scheduling_strategy=scheduling,
-                # Retry in case of transient errors during sampling.
-                retry_exceptions=[OSError],
-            ).remote(
-                fragment,
-                metadata,
-                to_batches_kwargs=to_batches_kwargs,
-                columns=columns,
-                schema=schema,
-            )
-        )
-
-    sample_bar = ProgressBar("Parquet Files Sample", len(futures), unit="file")
-    sample_infos = sample_bar.fetch_until_complete(futures)
-    sample_bar.close()
-
-    return sample_infos
 
 
 def _add_partitions_to_table(
