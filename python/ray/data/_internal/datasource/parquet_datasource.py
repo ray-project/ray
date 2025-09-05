@@ -527,9 +527,15 @@ def _fetch_parquet_file_info(
 @dataclass
 class _ParquetFileInfo:
     # Estimated avg byte size of a row (in-memory)
-    in_mem_row_size: int
+    avg_row_in_mem_bytes: Optional[int]
     # Corresponding file metadata
     metadata: "pyarrow._parquet.FileMetaData"
+
+    def estimate_in_memory_bytes(self) -> Optional[int]:
+        if not self.avg_row_in_mem_bytes:
+            return None
+
+        return self.avg_row_in_mem_bytes * self.metadata.num_rows
 
 
 def _estimate_files_encoding_ratio(
@@ -543,16 +549,36 @@ def _estimate_files_encoding_ratio(
     if not DataContext.get_current().decoding_size_estimation:
         return PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
 
-    in_mem_block_sizes_arr = np.array(file_infos)
-    file_sizes_arr = np.array([f.file_size for f in fragments])
+    assert len(sampled_file_infos) == len(sampled_fragments)
 
-    avg_expansion_ratio = np.mean(in_mem_block_sizes_arr / file_sizes_arr)
+    # Estimate size of the rows in a file in memory
+    estimated_in_mem_size_arr = [
+        fi.estimate_in_memory_bytes()
+        for fi in file_infos
+    ]
+
+    file_size_arr = [f.file_size for f in fragments]
+
+    estimated_encoding_ratios = [
+        float(in_mem_size) / file_size
+        for in_mem_size, file_size in zip(estimated_in_mem_size_arr, file_size_arr)
+        if file_size > 0
+    ]
+
+    # Return default estimate of 5 if all sampled files turned out to be empty
+    if not estimated_encoding_ratios:
+        return PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
+
+    estimated_ratio = np.mean(estimated_encoding_ratios)
 
     logger.debug(
-        f"Estimated parquet encoding ratio from sampling is {avg_expansion_ratio:.5f}."
+        f"Estimated parquet encoding ratio from sampling is {estimated_ratio:.5f}."
     )
 
-    return max(avg_expansion_ratio, PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND)
+    return max(
+        estimated_ratio,
+        PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND
+    )
 
 
 def _fetch_file_infos(
@@ -599,9 +625,9 @@ def _estimate_default_read_batch_size(
         return None
 
     def compute_batch_size_rows(file_info: _ParquetFileInfo) -> int:
-        # 'actual_bytes_per_row' is None if the sampled file was empty and 0 if the data
+        # 'avg_row_in_mem_bytes' is None if the sampled file was empty and 0 if the data
         # was all null.
-        if not file_info.actual_bytes_per_row:
+        if not file_info.avg_row_in_mem_bytes:
             return PARQUET_READER_ROW_BATCH_SIZE
         else:
             max_parquet_reader_row_batch_size_bytes = ctx.target_max_block_size // 10
@@ -610,7 +636,7 @@ def _estimate_default_read_batch_size(
                 min(
                     PARQUET_READER_ROW_BATCH_SIZE,
                     max_parquet_reader_row_batch_size_bytes
-                    // file_info.in_mem_row_size,
+                    // file_info.avg_row_in_mem_bytes,
                 ),
             )
 
