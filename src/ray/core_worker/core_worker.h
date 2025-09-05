@@ -1888,8 +1888,6 @@ class CoreWorker {
 
   int64_t max_direct_call_object_size_;
 
-  friend class CoreWorkerTest;
-
   TaskCounter task_counter_;
 
   /// Used to guarantee that submitting actor task is thread safe.

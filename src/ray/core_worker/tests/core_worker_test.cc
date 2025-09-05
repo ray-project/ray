@@ -50,9 +50,9 @@ using ::testing::_;
 using ::testing::InvokeWithoutArgs;
 using ::testing::Return;
 
-class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
+class CoreWorkerTest : public ::testing::Test {
  public:
-  CoreWorkerHandleGetObjectStatusTest()
+  CoreWorkerTest()
       : io_work_(io_service_.get_executor()),
         task_execution_service_work_(task_execution_service_.get_executor()) {
     CoreWorkerOptions options;
@@ -113,17 +113,16 @@ class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
         false /* token_auth */);
     core_worker_server->Run();
 
-    rpc::Address rpc_address;
-    rpc_address.set_ip_address(options.node_ip_address);
-    rpc_address.set_port(core_worker_server->GetPort());
-    rpc_address.set_node_id(NodeID::FromRandom().Binary());
-    rpc_address.set_worker_id(worker_context->GetWorkerID().Binary());
+    rpc_address_.set_ip_address(options.node_ip_address);
+    rpc_address_.set_port(core_worker_server->GetPort());
+    rpc_address_.set_node_id(NodeID::FromRandom().Binary());
+    rpc_address_.set_worker_id(worker_context->GetWorkerID().Binary());
 
     auto fake_object_info_publisher = std::make_unique<pubsub::FakePublisher>();
     auto fake_object_info_subscriber = std::make_unique<pubsub::FakeSubscriber>();
 
     reference_counter_ = std::make_shared<ReferenceCounter>(
-        rpc_address,
+        rpc_address_,
         fake_object_info_publisher.get(),
         fake_object_info_subscriber.get(),
         [](const NodeID &) { return false; },
@@ -139,14 +138,14 @@ class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
            const absl::flat_hash_set<NodeID> &locations,
            uint64_t object_size) {},
         core_worker_client_pool,
-        rpc_address);
+        rpc_address_);
 
     auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
         std::make_unique<gcs::MockGcsClient>(),
         std::make_unique<rpc::EventAggregatorClientImpl>(0, *client_call_manager),
         "test_session");
 
-    auto task_manager = std::make_shared<TaskManager>(
+    task_manager_ = std::make_shared<TaskManager>(
         *memory_store_,
         *reference_counter_,
         [](const RayObject &object, const ObjectID &object_id) { return Status::OK(); },
@@ -164,31 +163,31 @@ class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
         mock_gcs_client);
 
     auto object_recovery_manager = std::make_unique<ObjectRecoveryManager>(
-        rpc_address,
+        rpc_address_,
         raylet_client_pool,
         [](const ObjectID &object_id, const ObjectLookupCallback &callback) {
           return Status::OK();
         },
-        *task_manager,
+        *task_manager_,
         *reference_counter_,
         *memory_store_,
         [](const ObjectID &object_id, rpc::ErrorType reason, bool pin_object) {});
 
     auto lease_policy = std::unique_ptr<LeasePolicyInterface>(
-        std::make_unique<LocalLeasePolicy>(rpc_address));
+        std::make_unique<LocalLeasePolicy>(rpc_address_));
 
     auto lease_request_rate_limiter = std::make_shared<StaticLeaseRequestRateLimiter>(10);
 
     auto actor_creator = std::make_shared<DefaultActorCreator>(mock_gcs_client);
 
     auto normal_task_submitter = std::make_unique<NormalTaskSubmitter>(
-        rpc_address,
+        rpc_address_,
         fake_local_raylet_rpc_client,
         core_worker_client_pool,
         raylet_client_pool,
         std::move(lease_policy),
         memory_store_,
-        *task_manager,
+        *task_manager_,
         NodeID::Nil(),
         WorkerType::WORKER,
         10000,
@@ -201,13 +200,14 @@ class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
     auto actor_task_submitter = std::make_unique<ActorTaskSubmitter>(
         *core_worker_client_pool,
         *memory_store_,
-        *task_manager,
+        *task_manager_,
         *actor_creator,
         /*tensor_transport_getter=*/
         [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
         [](const ActorID &actor_id, uint64_t num_queued) { return Status::OK(); },
         io_service_,
         reference_counter_);
+    actor_task_submitter_ = actor_task_submitter.get();
 
     auto actor_manager = std::make_unique<ActorManager>(
         mock_gcs_client, *actor_task_submitter, *reference_counter_);
@@ -224,7 +224,7 @@ class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
                                                 std::move(raylet_client_pool),
                                                 std::move(periodical_runner),
                                                 std::move(core_worker_server),
-                                                std::move(rpc_address),
+                                                std::move(rpc_address_),
                                                 std::move(mock_gcs_client),
                                                 std::move(fake_raylet_ipc_client),
                                                 std::move(fake_local_raylet_rpc_client),
@@ -234,7 +234,7 @@ class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
                                                 nullptr,  // plasma_store_provider_
                                                 nullptr,  // mutable_object_provider_
                                                 std::move(future_resolver),
-                                                std::move(task_manager),
+                                                task_manager_,
                                                 std::move(actor_creator),
                                                 std::move(actor_task_submitter),
                                                 std::move(fake_object_info_publisher),
@@ -249,18 +249,19 @@ class CoreWorkerHandleGetObjectStatusTest : public ::testing::Test {
   }
 
  protected:
-  instrumented_io_context io_service_{/*enable_lag_probe=*/false,
-                                      /*running_on_single_thread=*/true};
-  instrumented_io_context task_execution_service_{/*enable_lag_probe=*/false,
-                                                  /*running_on_single_thread=*/true};
+  instrumented_io_context io_service_;
+  instrumented_io_context task_execution_service_;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
       task_execution_service_work_;
 
   boost::thread io_thread_;
 
+  rpc::Address rpc_address_;
   std::shared_ptr<ReferenceCounter> reference_counter_;
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
+  ActorTaskSubmitter *actor_task_submitter_;
+  std::shared_ptr<TaskManager> task_manager_;
   std::shared_ptr<CoreWorker> core_worker_;
 };
 
@@ -277,7 +278,7 @@ std::shared_ptr<RayObject> MakeRayObject(const std::string &data_str,
   return std::make_shared<RayObject>(data, metadata, std::vector<rpc::ObjectReference>());
 }
 
-TEST_F(CoreWorkerHandleGetObjectStatusTest, IdempotencyTest) {
+TEST_F(CoreWorkerTest, HandleGetObjectStatusIdempotency) {
   auto object_id = ObjectID::FromRandom();
   auto ray_object = MakeRayObject("test_data", "meta");
 
@@ -327,7 +328,7 @@ TEST_F(CoreWorkerHandleGetObjectStatusTest, IdempotencyTest) {
   EXPECT_EQ("meta", reply2.object().metadata());
 }
 
-TEST_F(CoreWorkerHandleGetObjectStatusTest, ObjectPutAfterFirstRequest) {
+TEST_F(CoreWorkerTest, HandleGetObjectStatusObjectPutAfterFirstRequest) {
   auto object_id = ObjectID::FromRandom();
   auto ray_object = MakeRayObject("test_data", "meta");
 
@@ -382,7 +383,7 @@ TEST_F(CoreWorkerHandleGetObjectStatusTest, ObjectPutAfterFirstRequest) {
   EXPECT_EQ("meta", reply2.object().metadata());
 }
 
-TEST_F(CoreWorkerHandleGetObjectStatusTest, ObjectFreedBetweenRequests) {
+TEST_F(CoreWorkerTest, HandleGetObjectStatusObjectFreedBetweenRequests) {
   auto object_id = ObjectID::FromRandom();
   auto ray_object = MakeRayObject("test_data", "meta");
 
@@ -432,7 +433,7 @@ TEST_F(CoreWorkerHandleGetObjectStatusTest, ObjectFreedBetweenRequests) {
   ASSERT_FALSE(io_service_.poll_one());
 }
 
-TEST_F(CoreWorkerHandleGetObjectStatusTest, ObjectOutOfScope) {
+TEST_F(CoreWorkerTest, HandleGetObjectStatusObjectOutOfScope) {
   auto object_id = ObjectID::FromRandom();
   auto ray_object = MakeRayObject("test_data", "meta");
 
@@ -481,6 +482,70 @@ TEST_F(CoreWorkerHandleGetObjectStatusTest, ObjectOutOfScope) {
   // Not calling io_service_.run_one() because the callback is called on the main thread
   ASSERT_TRUE(future2.get().ok());
   EXPECT_EQ(reply2.status(), rpc::GetObjectStatusReply::OUT_OF_SCOPE);
+}
+
+namespace {
+
+ObjectID CreateInlineObjectInMemoryStoreAndRefCounter(CoreWorkerMemoryStore &memory_store,
+                                                      ReferenceCounter &reference_counter,
+                                                      rpc::Address &rpc_address) {
+  auto inlined_dependency_id = ObjectID::FromRandom();
+  std::string data = "hello";
+  auto data_ptr = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(data.data()));
+  auto data_buffer =
+      std::make_shared<ray::LocalMemoryBuffer>(data_ptr, data.size(), /*copy_data=*/true);
+  RayObject memory_store_object(data_buffer,
+                                /*metadata=*/nullptr,
+                                std::vector<rpc::ObjectReference>(),
+                                /*copy_data=*/true);
+  reference_counter.AddOwnedObject(inlined_dependency_id,
+                                   /*contained_ids=*/{},
+                                   rpc_address,
+                                   "call_site",
+                                   /*object_size=*/100,
+                                   /*is_reconstructable=*/false,
+                                   /*add_local_ref=*/true);
+  memory_store.Put(memory_store_object, inlined_dependency_id);
+  return inlined_dependency_id;
+}
+
+}  // namespace
+
+TEST_F(CoreWorkerTest, ActorTaskCancelDuringDepResolution) {
+  /*
+  See https://github.com/ray-project/ray/pull/56123 for context.
+  1. Put an inline object in the memory store + ref counter.
+  2. Create an actor (just creating an actor queue in the submitter).
+  3. Submit an actor task with the inline objects as dependencies.
+  4. Cancel the actor task.
+  5. Run the io context to completion to run the actual submission + dependency
+     resolution logic.
+  */
+
+  auto inlined_dependency_id = CreateInlineObjectInMemoryStoreAndRefCounter(
+      *memory_store_, *reference_counter_, rpc_address_);
+
+  auto actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
+  actor_task_submitter_->AddActorQueueIfNotExists(actor_id,
+                                                  /*max_pending_calls=*/-1,
+                                                  /*allow_out_of_order_execution=*/false,
+                                                  /*fail_if_actor_unreachable=*/true,
+                                                  /*owned=*/false);
+
+  TaskSpecification task;
+  auto &task_message = task.GetMutableMessage();
+  task_message.set_task_id(TaskID::FromRandom(actor_id.JobId()).Binary());
+  task_message.set_type(TaskType::ACTOR_TASK);
+  task_message.mutable_actor_task_spec()->set_actor_id(actor_id.Binary());
+  task_message.add_args()->mutable_object_ref()->set_object_id(
+      inlined_dependency_id.Binary());
+  task_manager_->AddPendingTask(rpc_address_, task, "call_site");
+  actor_task_submitter_->SubmitTask(task);
+
+  actor_task_submitter_->CancelTask(task, /*recursive=*/false);
+
+  while (io_service_.poll_one() > 0) {
+  }
 }
 
 }  // namespace core

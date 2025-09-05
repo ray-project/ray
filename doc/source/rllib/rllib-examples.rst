@@ -363,6 +363,11 @@ Multi-agent RL
    Uses OpenSpiel to demonstrate league-based self-play, where agents play against various
    versions of themselves, frozen or in-training, to improve through competitive interaction.
 
+- `Self-play with Footsies and PPO algorithm <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ppo/multi_agent_footsies_ppo.py>`__:
+    Implements self-play with the Footsies environment (two player zero-sum game).
+    This example highlights RLlib's capabilities in connecting to the external binaries running the game engine, as well as
+    setting up a multi-agent self-play training scenario.
+
 - `Self-play with OpenSpiel <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/self_play_with_open_spiel.py>`__:
    Similar to the league-based self-play, but simpler. This script leverages OpenSpiel for two-player games, allowing agents to improve
    through direct self-play without building a complex, structured league.

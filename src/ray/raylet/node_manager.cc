@@ -2052,9 +2052,9 @@ void NodeManager::HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
                                           rpc::SendReplyCallback send_reply_callback) {
   const LeaseID lease_id = LeaseID::FromBinary(request.lease_id());
   bool canceled = cluster_lease_manager_.CancelLease(lease_id);
-  // The task cancellation failed if we did not have the task queued, since
-  // this means that we may not have received the task request yet. It is
-  // successful if we did have the task queued, since we have now replied to
+  // The lease cancellation failed if we did not have the lease queued, since
+  // this means that we may not have received the lease request yet. It is
+  // successful if we did have the lease queued, since we have now replied to
   // the client that requested the lease.
   reply->set_success(canceled);
   send_reply_callback(Status::OK(), nullptr, nullptr);
