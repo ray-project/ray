@@ -1719,12 +1719,13 @@ def test_individual_operator_num_rows(shutdown_only):
     )
 
     stats_output = ds.materialize().stats()
-    op0_output_pattern = r"Operator 0.*?Total output num rows: (\d+)"
-    op1_input_pattern = r"Operator 1.*?Total input num rows: (\d+)"
+    re_op0_output = re.compile(r"Operator 0.*?Total output num rows: (\d+)", re.DOTALL)
+    re_op1_input = re.compile(r"Operator 1.*?Total input num rows: (\d+)", re.DOTALL)
 
-    re_op0_output = re.compile(op0_output_pattern, re.DOTALL)
-    re_op1_input = re.compile(op1_input_pattern, re.DOTALL)
-    assert re_op1_input.search(stats_output) == re_op0_output.search(stats_output)
+    op0_output = re_op0_output.search(stats_output).group(1)
+    op1_input = re_op1_input.search(stats_output).group(1)
+
+    assert op0_output == op1_input
 
 
 def test_sub_operator_num_rows(shutdown_only):
