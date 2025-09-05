@@ -1,4 +1,5 @@
 from typing import List, Tuple
+import os
 import yaml
 from ray_release.configs.global_config import get_global_config
 from ray_release.logger import logger
@@ -38,6 +39,7 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
     if not config or not config.get("byod_ecr_region") or not config.get("byod_ecr"):
         raise ValueError("byod_ecr_region and byod_ecr must be set in the config")
     """Create a yaml file for building custom BYOD images"""
+    os.environ["RAYCI_BUILD_ID"] = "$RAYCI_BUILD_ID"
     custom_byod_images = get_images_from_tests(tests)
     if not custom_byod_images:
         return
