@@ -53,6 +53,9 @@ addgroup --gid 992 docker    # buildkite AMI as of 2025-06-07
 npm install -g @bazel/bazelisk
 ln -s /usr/local/bin/bazel /usr/local/bin/bazelisk
 
+# Install uv
+wget -qO- https://astral.sh/uv/install.sh | sudo env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+
 # A non-root user. Use 2000, which is the same as our buildkite agent VM uses.
 adduser --home /home/forge --uid 2000 forge --gid 100
 usermod -a -G docker0 forge
