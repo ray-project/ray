@@ -113,6 +113,7 @@ class _ParquetFragment:
 
     def __reduce__(self):
         return _ParquetFragment.make_fragment, (
+            self._fragment.format,
             self._fragment.path,
             self._fragment.filesystem,
             self._fragment.partition_expression,
