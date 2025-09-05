@@ -19,13 +19,13 @@ from ray.serve._private.common import (
     RequestProtocol,
     RequestRoutingInfo,
     RunningReplicaInfo,
+    SnapshotSignature,
     TargetCapacityDirection,
     normalize_autoscaling_config,
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     AUTOSCALER_SUMMARIZER_DECISION_HISTORY_MAX,
-    AUTOSCALER_SUMMARIZER_DECISION_LIMIT,
     CONTROL_LOOP_INTERVAL_S,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
     RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
@@ -234,7 +234,7 @@ class ServeController:
         self._serve_event_summarizer = ServeAutoscalingEventSummarizer()
 
         # Caches for autoscaling observability
-        self._last_autoscaling_snapshots = {}
+        self._last_autoscaling_snapshots: Dict[Tuple[str, str], SnapshotSignature] = {}
         self._scaling_decisions = {}
 
     def reconfigure_global_logging_config(self, global_logging_config: LoggingConfig):
@@ -494,7 +494,7 @@ class ServeController:
                 continue
             recent_decisions = self._scaling_decisions.get(dep_id, [])
             decisions_summary = self._serve_event_summarizer.summarize_recent_decisions(
-                recent_decisions, limit=AUTOSCALER_SUMMARIZER_DECISION_LIMIT
+                recent_decisions
             )
             scaling_status_fmt = self._serve_event_summarizer.format_scaling_status(
                 scaling_status

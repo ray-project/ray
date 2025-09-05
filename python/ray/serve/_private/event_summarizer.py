@@ -1,11 +1,18 @@
 import json
 import logging
 import time
-from typing import Any, List, Optional, Sequence, Tuple
+from typing import Any, List, Optional, Sequence
 
 from ray.autoscaler._private.event_summarizer import EventSummarizer
-from ray.serve._private.common import DecisionSummary, DeploymentSnapshot
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.common import (
+    DecisionSummary,
+    DeploymentSnapshot,
+    SnapshotSignature,
+)
+from ray.serve._private.constants import (
+    AUTOSCALER_SUMMARIZER_DECISION_LIMIT,
+    SERVE_LOGGER_NAME,
+)
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -30,7 +37,7 @@ class ServeAutoscalingEventSummarizer:
         max_replicas: Optional[int],
         scaling_status: str,
         total_requests: float,
-    ) -> Tuple[int, int, Optional[int], Optional[int], str, float]:
+    ) -> SnapshotSignature:
         """Return a hashable signature that represents the visible snapshot state.
 
         The controller uses this to avoid emitting duplicate logs when nothing
@@ -46,7 +53,10 @@ class ServeAutoscalingEventSummarizer:
         )
 
     def summarize_recent_decisions(
-        self, decisions: Sequence[Any], *, limit: int = 2
+        self,
+        decisions: Sequence[Any],
+        *,
+        limit: int = AUTOSCALER_SUMMARIZER_DECISION_LIMIT,
     ) -> List[DecisionSummary]:
         """Convert recent ScalingDecision objects into typed DecisionSummary list for logs."""
         out: List[DecisionSummary] = []
