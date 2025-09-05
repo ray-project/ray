@@ -299,7 +299,7 @@ class ParquetDatasource(Datasource):
             to_batches_kwargs=to_batch_kwargs,
             columns=columns,
             schema=schema,
-            local_scheduling=self._local_scheduling
+            local_scheduling=self._local_scheduling,
         )
 
         self._encoding_ratio = _estimate_files_encoding_ratio(
@@ -407,9 +407,7 @@ class ParquetDatasource(Datasource):
         return self._supports_distributed_reads
 
     def _estimate_in_mem_size(self, fragments: List[_ParquetFragment]) -> int:
-        in_mem_size = (
-            sum([f.file_size for f in fragments]) * self._encoding_ratio
-        )
+        in_mem_size = sum([f.file_size for f in fragments]) * self._encoding_ratio
 
         return round(in_mem_size)
 
@@ -504,8 +502,11 @@ def _fetch_parquet_file_info(
     # Only sample the first row group.
     row_group_fragment = fragment.original.subset(row_group_ids=[0])
     batch_size = max(
-        min(row_group_fragment.metadata.num_rows, PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS),
-        1
+        min(
+            row_group_fragment.metadata.num_rows,
+            PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS,
+        ),
+        1,
     )
 
     # Use the batch_size calculated above, and ignore the one specified by user if set.
@@ -561,10 +562,7 @@ def _estimate_files_encoding_ratio(
     assert len(file_infos) == len(fragments)
 
     # Estimate size of the rows in a file in memory
-    estimated_in_mem_size_arr = [
-        fi.estimate_in_memory_bytes()
-        for fi in file_infos
-    ]
+    estimated_in_mem_size_arr = [fi.estimate_in_memory_bytes() for fi in file_infos]
 
     file_size_arr = [f.file_size for f in fragments]
 
@@ -580,14 +578,9 @@ def _estimate_files_encoding_ratio(
 
     estimated_ratio = np.mean(estimated_encoding_ratios)
 
-    logger.info(
-        f"Estimated parquet encoding ratio is {estimated_ratio:.3f}."
-    )
+    logger.info(f"Estimated parquet encoding ratio is {estimated_ratio:.3f}.")
 
-    return max(
-        estimated_ratio,
-        PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND
-    )
+    return max(estimated_ratio, PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND)
 
 
 def _fetch_file_infos(
