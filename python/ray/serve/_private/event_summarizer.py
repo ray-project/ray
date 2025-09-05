@@ -100,13 +100,10 @@ class ServeAutoscalingEventSummarizer:
         last_metrics_age_s: Optional[float],
         look_back_period_s: Optional[float],
     ) -> str:
-        """Return a short human-friendly health string based on freshness."""
+        """Return the age of the last metrics update as a string, or 'unknown'."""
         if last_metrics_age_s is None:
             return "unknown"
-        threshold = look_back_period_s or 30.0
-        if last_metrics_age_s > threshold:
-            return f"delayed (last update {int(last_metrics_age_s)}s ago)"
-        return "ok"
+        return f"{int(last_metrics_age_s)}s"
 
     def build_deployment_snapshot(
         self,

@@ -394,19 +394,9 @@ class AutoscalingState:
         else:
             queued_requests = 0.0
 
-        latest_ts = None
-        if self._replica_requests:
-            latest_ts = max(
-                (r.timestamp for r in self._replica_requests.values()), default=None
-            )
-        if self._handle_requests:
-            handle_latest = max(
-                (h.timestamp for h in self._handle_requests.values()), default=None
-            )
-            if latest_ts is None or (
-                handle_latest is not None and handle_latest > latest_ts
-            ):
-                latest_ts = handle_latest
+        timestamps = [r.timestamp for r in self._replica_requests.values()]
+        timestamps.extend(h.timestamp for h in self._handle_requests.values())
+        latest_ts = max(timestamps) if timestamps else None
 
         if latest_ts is not None:
             last_metrics_age_s = max(0.0, time.time() - latest_ts)
