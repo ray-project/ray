@@ -145,38 +145,44 @@ class ServeAutoscalingEventSummarizer:
 
     def log_snapshot(self, snapshot: DeploymentSnapshot) -> None:
         """Emit the canonical one-line JSON snapshot from typed object."""
-        # Build the final payload explicitly so field names in logs are uniform
-        # and independent from internal dataclass attribute names.
-        decisions = [
-            {
-                "timestamp_s": d.timestamp_s,
-                "from": d.prev_num_replicas,
-                "to": d.curr_num_replicas,
-                "reason": d.reason,
-            }
-            for d in snapshot.decisions
-        ]
-        payload = {
-            "timestamp_s": snapshot.timestamp_s,
-            "app": snapshot.app,
-            "deployment": snapshot.deployment,
-            "current_replicas": snapshot.current_replicas,
-            "target_replicas": snapshot.target_replicas,
-            "replicas_allowed": {
-                "min": snapshot.min_replicas,
-                "max": snapshot.max_replicas,
-            },
-            "scaling_status": snapshot.scaling_status,
-            "policy": snapshot.policy,
-            "metrics": {
-                "look_back_period_s": snapshot.look_back_period_s,
-                "queued_requests": snapshot.queued_requests,
-                "total_requests": snapshot.total_requests,
-            },
-            "metrics_health": snapshot.metrics_health,
-            "errors": snapshot.errors,
-            "decisions": decisions,
-        }
+        payload = snapshot.to_log_dict()
         logger.info(
             "serve_autoscaling_snapshot " + json.dumps(payload, separators=(",", ":"))
         )
+
+    def emit_deployment_snapshot(
+        self,
+        *,
+        app_name: str,
+        deployment_name: str,
+        current_replicas: int,
+        proposed_replicas: int,
+        min_replicas: Optional[int],
+        max_replicas: Optional[int],
+        scaling_status: str,
+        policy_name: str,
+        look_back_period_s: Optional[float],
+        queued_requests: Optional[float],
+        total_requests: float,
+        last_metrics_age_s: Optional[float],
+        errors: Optional[List[str]],
+        recent_decisions: List[DecisionSummary],
+    ) -> None:
+        """Build and immediately log a deployment snapshot."""
+        snapshot = self.build_deployment_snapshot(
+            app_name=app_name,
+            deployment_name=deployment_name,
+            current_replicas=current_replicas,
+            proposed_replicas=proposed_replicas,
+            min_replicas=min_replicas,
+            max_replicas=max_replicas,
+            scaling_status=scaling_status,
+            policy_name=policy_name,
+            look_back_period_s=look_back_period_s,
+            queued_requests=queued_requests,
+            total_requests=total_requests,
+            last_metrics_age_s=last_metrics_age_s,
+            errors=errors,
+            recent_decisions=recent_decisions,
+        )
+        self.log_snapshot(snapshot)

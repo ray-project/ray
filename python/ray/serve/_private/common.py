@@ -804,7 +804,7 @@ class DeploymentSnapshot:
             "errors": self.errors,
             "decisions": [
                 {
-                    "ts": d.ts,
+                    "timestamp_s": d.timestamp_s,
                     "from": d.prev_num_replicas,
                     "to": d.curr_num_replicas,
                     "reason": d.reason,

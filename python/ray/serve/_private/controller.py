@@ -457,7 +457,7 @@ class ServeController:
                 scaling_status = self._serve_event_summarizer.format_scaling_status(
                     scaling_status
                 )
-                snapshot_obj = self._serve_event_summarizer.build_deployment_snapshot(
+                self._serve_event_summarizer.emit_deployment_snapshot(
                     app_name=app_name,
                     deployment_name=dep_name,
                     current_replicas=current_replicas,
@@ -473,7 +473,6 @@ class ServeController:
                     errors=snapshot.get("errors", []),
                     recent_decisions=decisions_summary,
                 )
-                self._serve_event_summarizer.log_snapshot(snapshot_obj)
                 self._last_autoscaling_snapshots[key] = signature
 
     async def run_control_loop(self) -> None:
