@@ -31,7 +31,7 @@ For advanced usage and customizations, reach out to the `Ray team <https://www.r
 Stats
 -----
 
-When spilling is happening, the following INFO level messages are printed to the Raylet logs--for example, ``/tmp/ray/session_latest/logs/raylet.out``::
+When spilling is happening, the following INFO level messages are printed to the Raylet logs. For example, ``/tmp/ray/session_latest/logs/raylet.out``::
 
   local_object_manager.cc:166: Spilled 50 MiB, 1 objects, write throughput 230 MiB/s
   local_object_manager.cc:334: Restored 50 MiB, 1 objects, read throughput 505 MiB/s
