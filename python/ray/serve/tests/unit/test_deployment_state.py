@@ -12,9 +12,11 @@ from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusTrigger,
+    HandleMetricReport,
     ReplicaID,
     ReplicaState,
     TargetCapacityDirection,
+    TimeStampedValue,
 )
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import (
@@ -2814,17 +2816,24 @@ class TestAutoscaling:
         req_per_replica = 2 if target_capacity_direction == "up" else 0
         replicas = ds._replicas.get()
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-            asm.record_request_metrics_for_handle(
+            handle_metric_report = HandleMetricReport(
                 deployment_id=TEST_DEPLOYMENT_ID,
                 handle_id="random",
-                actor_id=None,
+                actor_id="actor_id",
                 handle_source=DeploymentHandleSource.UNKNOWN,
                 queued_requests=0,
-                running_requests={
+                avg_running_requests={
                     replica._actor.replica_id: req_per_replica for replica in replicas
                 },
-                send_timestamp=timer.time(),
+                running_requests={
+                    replica._actor.replica_id: [
+                        TimeStampedValue(timer.time(), req_per_replica)
+                    ]
+                    for replica in replicas
+                },
+                timestamp=timer.time(),
             )
+            asm.record_request_metrics_for_handle(handle_metric_report)
         else:
             for replica in replicas:
                 asm.record_request_metrics_for_replica(
@@ -2972,15 +2981,22 @@ class TestAutoscaling:
         running_replicas = ds._replicas.get(states=[ReplicaState.RUNNING])
         replicas = ds._replicas.get()
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-            asm.record_request_metrics_for_handle(
+            handle_metric_report = HandleMetricReport(
                 deployment_id=TEST_DEPLOYMENT_ID,
                 handle_id="random",
-                actor_id=None,
+                actor_id="actor_id",
                 handle_source=DeploymentHandleSource.UNKNOWN,
                 queued_requests=0,
-                running_requests={replica._actor.replica_id: 2 for replica in replicas},
-                send_timestamp=timer.time(),
+                avg_running_requests={
+                    replica._actor.replica_id: 2 for replica in replicas
+                },
+                running_requests={
+                    replica._actor.replica_id: [TimeStampedValue(timer.time(), 2)]
+                    for replica in replicas
+                },
+                timestamp=timer.time(),
             )
+            asm.record_request_metrics_for_handle(handle_metric_report)
         else:
             for replica in replicas:
                 asm.record_request_metrics_for_replica(
@@ -3049,15 +3065,22 @@ class TestAutoscaling:
         # Now, trigger downscaling attempting to reclaim half (3) of the replicas
         replicas = ds._replicas.get(states=[ReplicaState.RUNNING])
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-            asm.record_request_metrics_for_handle(
+            handle_metric_report = HandleMetricReport(
                 deployment_id=TEST_DEPLOYMENT_ID,
                 handle_id="random",
-                actor_id=None,
+                actor_id="actor_id",
                 handle_source=DeploymentHandleSource.UNKNOWN,
                 queued_requests=0,
-                running_requests={replica._actor.replica_id: 1 for replica in replicas},
-                send_timestamp=timer.time(),
+                avg_running_requests={
+                    replica._actor.replica_id: 1 for replica in replicas
+                },
+                running_requests={
+                    replica._actor.replica_id: [TimeStampedValue(timer.time(), 1)]
+                    for replica in replicas
+                },
+                timestamp=timer.time(),
             )
+            asm.record_request_metrics_for_handle(handle_metric_report)
         else:
             for replica in replicas:
                 asm.record_request_metrics_for_replica(
@@ -3139,15 +3162,22 @@ class TestAutoscaling:
         # Num ongoing requests = 1, status should remain HEALTHY
         replicas = ds._replicas.get()
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-            asm.record_request_metrics_for_handle(
+            handle_metric_report = HandleMetricReport(
                 deployment_id=TEST_DEPLOYMENT_ID,
                 handle_id="random",
-                actor_id=None,
+                actor_id="actor_id",
                 handle_source=DeploymentHandleSource.UNKNOWN,
                 queued_requests=0,
-                running_requests={replica._actor.replica_id: 1 for replica in replicas},
-                send_timestamp=timer.time(),
+                avg_running_requests={
+                    replica._actor.replica_id: 1 for replica in replicas
+                },
+                running_requests={
+                    replica._actor.replica_id: [TimeStampedValue(timer.time(), 1)]
+                    for replica in replicas
+                },
+                timestamp=timer.time(),
             )
+            asm.record_request_metrics_for_handle(handle_metric_report)
         else:
             for replica in replicas:
                 asm.record_request_metrics_for_replica(
@@ -3237,15 +3267,17 @@ class TestAutoscaling:
         ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
 
         # Send request metrics to controller to make the deployment upscale
-        asm.record_request_metrics_for_handle(
+        handle_metric_report = HandleMetricReport(
             deployment_id=TEST_DEPLOYMENT_ID,
             handle_id="random",
-            actor_id=None,
+            actor_id="actor_id",
             handle_source=DeploymentHandleSource.UNKNOWN,
             queued_requests=1,
+            avg_running_requests={},
             running_requests={},
-            send_timestamp=timer.time(),
+            timestamp=timer.time(),
         )
+        asm.record_request_metrics_for_handle(handle_metric_report)
 
         # The controller should try to start a new replica. If that replica repeatedly
         # fails to start, the deployment should transition to UNHEALTHY and NOT retry
@@ -3351,15 +3383,17 @@ class TestAutoscaling:
         check_counts(ds, total=0)
 
         # Send request metrics to controller to make the deployment upscale
-        asm.record_request_metrics_for_handle(
+        handle_metric_report = HandleMetricReport(
             deployment_id=TEST_DEPLOYMENT_ID,
             handle_id="random",
-            actor_id=None,
+            actor_id="actor_id",
             handle_source=DeploymentHandleSource.UNKNOWN,
             queued_requests=1,
+            avg_running_requests={},
             running_requests={},
-            send_timestamp=timer.time(),
+            timestamp=timer.time(),
         )
+        asm.record_request_metrics_for_handle(handle_metric_report)
 
         # The controller should try to start a new replica. If that replica repeatedly
         # fails to start, the deployment should transition to UNHEALTHY. Meanwhile
@@ -3425,15 +3459,21 @@ class TestAutoscaling:
         check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
 
         # Record 2 requests/replica -> trigger upscale
-        asm.record_request_metrics_for_handle(
+        handle_metric_report = HandleMetricReport(
             deployment_id=TEST_DEPLOYMENT_ID,
             handle_id="random",
-            actor_id=None,
+            actor_id="actor_id",
             handle_source=DeploymentHandleSource.UNKNOWN,
             queued_requests=0,
-            running_requests={ds._replicas.get()[0]._actor.replica_id: 2},
-            send_timestamp=timer.time(),
+            avg_running_requests={ds._replicas.get()[0]._actor.replica_id: 2},
+            running_requests={
+                ds._replicas.get()[0]._actor.replica_id: [
+                    TimeStampedValue(timer.time(), 2)
+                ]
+            },
+            timestamp=timer.time(),
         )
+        asm.record_request_metrics_for_handle(handle_metric_report)
         asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
         dsm.update()
         check_counts(
@@ -3511,15 +3551,21 @@ class TestAutoscaling:
         check_counts(ds2, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
 
         # Record 2 requests/replica (sent from d2 replica) -> trigger upscale
-        asm.record_request_metrics_for_handle(
+        handle_metric_report = HandleMetricReport(
             deployment_id=d_id1,
             handle_id="random",
             actor_id="d2_replica_actor_id",
             handle_source=DeploymentHandleSource.REPLICA,
             queued_requests=0,
-            running_requests={ds1._replicas.get()[0]._actor.replica_id: 2},
-            send_timestamp=timer.time(),
+            avg_running_requests={ds1._replicas.get()[0]._actor.replica_id: 2},
+            running_requests={
+                ds1._replicas.get()[0]._actor.replica_id: [
+                    TimeStampedValue(timer.time(), 2)
+                ]
+            },
+            timestamp=timer.time(),
         )
+        asm.record_request_metrics_for_handle(handle_metric_report)
         asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
         dsm.update()
         check_counts(
