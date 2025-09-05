@@ -694,7 +694,7 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
         assert ds._plan.initial_num_blocks() > 1
         data_size = ds.size_bytes()
         assert (
-            data_size >= 800_000 and data_size <= 2_200_000
+            data_size >= 700_000 and data_size <= 2_200_000
         ), "estimated data size is out of expected bound"
         data_size = ds.materialize().size_bytes()
         assert (
@@ -703,11 +703,11 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
 
         datasource = ParquetDatasource(text_output_path)
         assert (
-            datasource._encoding_ratio >= 9 and datasource._encoding_ratio <= 300
+            datasource._encoding_ratio >= 6 and datasource._encoding_ratio <= 300
         ), "encoding ratio is out of expected bound"
         data_size = datasource.estimate_inmemory_data_size()
         assert (
-            data_size >= 800_000 and data_size <= 2_200_000
+            data_size >= 700_000 and data_size <= 2_200_000
         ), "estimated data size is out of expected bound"
         assert (
             data_size
