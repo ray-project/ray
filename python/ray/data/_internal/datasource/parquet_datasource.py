@@ -110,6 +110,10 @@ class _NoIOSerializableParquetFragment:
     def file_size(self) -> int:
         return self._file_size
 
+    @property
+    def fragment(self):
+        return self._fragment
+
     def __reduce__(self):
         return self._fragment.format.make_fragment, (
             self._fragment.path,
@@ -164,7 +168,7 @@ class ParquetDatasource(Datasource):
         _block_udf: Optional[Callable[[Block], Block]] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
-        meta_provider: ParquetMetadataProvider = ParquetMetadataProvider(),
+        meta_provider: Optional[FileMetadataProvider] = None,
         partition_filter: PathPartitionFilter = None,
         partitioning: Optional[Partitioning] = Partitioning("hive"),
         shuffle: Union[Literal["files"], None] = None,
@@ -263,7 +267,6 @@ class ParquetDatasource(Datasource):
             for fragment, file_size in zip(pq_ds.fragments, file_sizes)
         ]
         self._pq_paths = [p.path for p in pq_ds.fragments]
-        self._meta_provider = meta_provider
         self._block_udf = _block_udf
         self._to_batches_kwargs = to_batch_kwargs
         self._data_columns = data_columns
@@ -299,60 +302,43 @@ class ParquetDatasource(Datasource):
                     emit_file_extensions_future_warning(self._FUTURE_FILE_EXTENSIONS)
                     break
 
-    def estimate_inmemory_data_size(self) -> Optional[int]:
-        total_size = 0
-        for file_metadata in self._metadata:
-            total_size += file_metadata.num_bytes
-        return total_size * self._encoding_ratio
+    @staticmethod
+    def estimate_inmemory_data_size(self, fragments: List[_NoIOSerializableParquetFragment]) -> int:
+        return sum([f.file_size for f in self._pq_fragments]) * self._encoding_ratio
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         # NOTE: We override the base class FileBasedDatasource.get_read_tasks()
         # method in order to leverage pyarrow's ParquetDataset abstraction,
         # which simplifies partitioning logic. We still use
         # FileBasedDatasource's write side, however.
-        pq_metadata = self._metadata
-        if len(pq_metadata) < len(self._pq_fragments):
-            # Pad `pq_metadata` to be same length of `self._pq_fragments`.
-            # This can happen when no file metadata being prefetched.
-            pq_metadata += [None] * (len(self._pq_fragments) - len(pq_metadata))
-
         if self._file_metadata_shuffler is not None:
-            files_metadata = list(zip(self._pq_fragments, self._pq_paths, pq_metadata))
+            files_metadata = list(zip(self._pq_fragments, self._pq_paths))
             shuffled_files_metadata = [
                 files_metadata[i]
                 for i in self._file_metadata_shuffler.permutation(len(files_metadata))
             ]
-            pq_fragments, pq_paths, pq_metadata = list(
+            pq_fragments, pq_paths = list(
                 map(list, zip(*shuffled_files_metadata))
             )
         else:
-            pq_fragments, pq_paths, pq_metadata = (
+            pq_fragments, pq_paths = (
                 self._pq_fragments,
                 self._pq_paths,
-                pq_metadata,
             )
 
         read_tasks = []
-        for fragments, paths, metadata in zip(
+        for fragments, paths in zip(
             np.array_split(pq_fragments, parallelism),
             np.array_split(pq_paths, parallelism),
-            np.array_split(pq_metadata, parallelism),
         ):
             if len(fragments) <= 0:
                 continue
 
-            meta = self._meta_provider(
-                paths,
-                num_fragments=len(fragments),
-                prefetched_metadata=metadata,
+            meta = BlockMetadata(
+                num_rows=None,
+                size_bytes=self.estimate_inmemory_data_size(fragments),
+                input_files=paths,
             )
-            # If there is a filter operation, reset the calculated row count,
-            # since the resulting row count is unknown.
-            if self._to_batches_kwargs.get("filter") is not None:
-                meta.num_rows = None
-
-            if meta.size_bytes is not None:
-                meta.size_bytes = int(meta.size_bytes * self._encoding_ratio)
 
             (
                 block_udf,
