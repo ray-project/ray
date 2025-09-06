@@ -114,7 +114,7 @@ class DashboardAgent:
         try:
             add_port_to_grpc_server(self.server, build_address(self.ip, self.grpc_port))
             if not is_localhost(self.ip):
-                add_port_to_grpc_server(self.server, f"127.0.0.1:{self.grpc_port}")
+                add_port_to_grpc_server(self.server, f"localhost:{self.grpc_port}")
         except Exception:
             # TODO(SongGuyang): Catch the exception here because there is
             # port conflict issue which brought from static port. We should
