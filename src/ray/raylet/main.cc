@@ -113,15 +113,30 @@ DEFINE_bool(huge_pages, false, "Enable huge pages.");
 DEFINE_string(labels,
               "",
               "Define the key-value format of node labels, which is a serialized JSON.");
-
-// TODO(#54703): Link user-facing documentation from OSS if relevant.
-DEFINE_bool(enable_resource_isolation,
-            false,
-            "Enables resource isolation through cgroupv2. The raylet will create and "
-            "manage a cgroup hierarchy if this flag is enabled.");
-DEFINE_string(cgroup_path, "", "");
-DEFINE_int64(system_reserved_cpu_weight, -1, "");
-DEFINE_int64(system_reserved_memory_bytes, -1, "");
+DEFINE_bool(
+    enable_resource_isolation,
+    false,
+    "Enables resource isolation through cgroupv2. The raylet will create and "
+    "manage a cgroup hierarchy that separates system processes and worker processes "
+    "into separate cgroups.");
+DEFINE_string(
+    cgroup_path,
+    "",
+    "Path of the cgroup that the raylet will take ownership of to create its cgorup "
+    "hierarchy. The raylet process must have read, write, and execute permission for "
+    "this path. If enable_resource_isolation is true, then this cannot be empty.");
+DEFINE_int64(
+    system_reserved_cpu_weight,
+    -1,
+    "The amount of cores reserved for ray system processes. It will be applied "
+    "as a cpu.weight constraint to the system cgroup. 10000 - "
+    "system_reserved_cpu_weight will be applied as a constraint to the "
+    "application cgroup. If enable resource isolation is true, then this cannot be -1.");
+DEFINE_int64(system_reserved_memory_bytes,
+             -1,
+             "The amount of memory in bytes reserved for ray system processes. It will "
+             "be applied as a memory.min constraint to the sytem cgroup. If enable "
+             "resource isolation is true, then this cannot be -1");
 
 absl::flat_hash_map<std::string, std::string> parse_node_labels(
     const std::string &labels_json_str) {
@@ -239,15 +254,24 @@ int main(int argc, char *argv[]) {
   RAY_LOG(INFO) << "Setting cluster ID to: " << cluster_id;
   gflags::ShutDownCommandLineFlags();
 
+  // TODO(#54703): Link OSS documentation once it's available in the error messages.
   if (enable_resource_isolation) {
     // invariant checking
-    // TODO(#54703): Add useful error messages for any of these invariants failing.
-    RAY_CHECK(!cgroup_path.empty());
-    RAY_CHECK_NE(system_reserved_cpu_weight, -1);
-    RAY_CHECK_NE(system_reserved_memory_bytes, -1);
-    // Is it worth checking to see if the platform is not Linux? I think it's a
-    // misconfiguration/misunderstanding on the users part to pass these flags.
-    // Atleast a warning?
+    RAY_CHECK(!cgroup_path.empty())
+        << "Failed to start up raylet. If enable_resource_isolation is set to true, "
+           "cgroup_path cannot be empty.";
+    RAY_CHECK_NE(system_reserved_cpu_weight, -1)
+        << "Failed to start up raylet. If enable_resource_isolation is set to true, "
+           "system_reserved_cpu_weight must be set to a value between [1,10000]";
+    RAY_CHECK_NE(system_reserved_memory_bytes, -1)
+        << "Failed to start up raylet. If enable_resource_isolation is set to true, "
+           "system_reserved_memory_byres must be set to a value > 0";
+
+#ifndef __linux__
+    RAY_LOG(WARNING)
+        << "Resource isolation with cgroups is only supported in linux. Please set "
+           "enable_resource_isolation to false. This is likely a misconfiguration.";
+#endif
   }
 
   std::unique_ptr<ray::SysFsCgroupDriver> cgroup_driver;
@@ -258,9 +282,10 @@ int main(int argc, char *argv[]) {
                                  system_reserved_memory_bytes,
                                  std::move(cgroup_driver));
 
-  // TODO(#54703) - If you cannot create the CgroupManager, there's likely a real issue.
+  // TODO(#54703) - Link to OSS documentation once available.
   RAY_CHECK(cgroup_manager.ok())
-      << "An explanation and then throw up" << cgroup_manager.ToString();
+      << "Failed to start raylet. Could not create CgroupManager because of "
+      << cgroup_manager.ToString();
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
