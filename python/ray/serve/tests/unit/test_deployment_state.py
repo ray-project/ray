@@ -2827,9 +2827,9 @@ class TestAutoscaling:
             )
         else:
             for replica in replicas:
-                asm.record_request_metrics_for_replica(
+                asm.record_autoscaling_metrics_for_replica(
                     replica_id=replica._actor.replica_id,
-                    window_avg=req_per_replica,
+                    metrics={replica._actor.replica_id: req_per_replica},
                     send_timestamp=timer.time(),
                 )
 
@@ -2885,7 +2885,7 @@ class TestAutoscaling:
 
             dsm.update()
             astate = asm._autoscaling_states[TEST_DEPLOYMENT_ID]
-            assert len(astate._replica_requests) == 0
+            assert len(astate._replica_metrics) == 0
 
         # status=HEALTHY, status_trigger=UPSCALE/DOWNSCALE
         dsm.update()
@@ -2983,8 +2983,10 @@ class TestAutoscaling:
             )
         else:
             for replica in replicas:
-                asm.record_request_metrics_for_replica(
-                    replica._actor.replica_id, 2, timer.time()
+                asm.record_autoscaling_metrics_for_replica(
+                    replica_id=replica._actor.replica_id,
+                    metrics={replica._actor.replica_id: 2},
+                    send_timestamp=timer.time(),
                 )
 
         # status=UPSCALING, status_trigger=AUTOSCALE
@@ -3060,8 +3062,10 @@ class TestAutoscaling:
             )
         else:
             for replica in replicas:
-                asm.record_request_metrics_for_replica(
-                    replica._actor.replica_id, 1, timer.time()
+                asm.record_autoscaling_metrics_for_replica(
+                    replica_id=replica._actor.replica_id,
+                    metrics={replica._actor.replica_id: 1},
+                    send_timestamp=timer.time(),
                 )
 
         # status=DOWNSCALING, status_trigger=AUTOSCALE
@@ -3150,8 +3154,10 @@ class TestAutoscaling:
             )
         else:
             for replica in replicas:
-                asm.record_request_metrics_for_replica(
-                    replica._actor.replica_id, 1, timer.time()
+                asm.record_autoscaling_metrics_for_replica(
+                    replica_id=replica._actor.replica_id,
+                    metrics={replica._actor.replica_id: 1},
+                    send_timestamp=timer.time(),
                 )
 
         check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, None)])

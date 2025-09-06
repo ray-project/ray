@@ -3,7 +3,17 @@ import logging
 import os
 import pickle
 import time
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
+from typing import (
+    Any,
+    DefaultDict,
+    Dict,
+    Hashable,
+    Iterable,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import ray
 from ray._common.network_utils import build_address
@@ -260,13 +270,16 @@ class ServeController:
         return os.getpid()
 
     def record_autoscaling_metrics(
-        self, replica_id: str, window_avg: Optional[float], send_timestamp: float
+        self,
+        replica_id: str,
+        metrics: DefaultDict[Hashable, Any],
+        send_timestamp: float,
     ):
         logger.debug(
-            f"Received metrics from replica {replica_id}: {window_avg} running requests"
+            f"Received metrics from replica {replica_id}: {metrics.get('window_avg', None)} running requests"
         )
-        self.autoscaling_state_manager.record_request_metrics_for_replica(
-            replica_id, window_avg, send_timestamp
+        self.autoscaling_state_manager.record_autoscaling_metrics_for_replica(
+            replica_id, metrics, send_timestamp
         )
 
     def record_handle_metrics(
@@ -292,6 +305,9 @@ class ServeController:
             running_requests=running_requests,
             send_timestamp=send_timestamp,
         )
+
+    def _dump_all_autoscaling_metrics_for_testing(self):
+        return self.autoscaling_state_manager.get_all_metrics()
 
     def _dump_autoscaling_metrics_for_testing(self):
         return self.autoscaling_state_manager.get_metrics()
