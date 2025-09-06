@@ -313,8 +313,7 @@ class ParquetDatasource(Datasource):
         )
 
         self._default_batch_size = _estimate_reader_batch_size(
-            sampled_file_infos,
-            DataContext.get_current().target_max_block_size
+            sampled_file_infos, DataContext.get_current().target_max_block_size
         )
 
         if file_extensions is None:
@@ -627,8 +626,7 @@ def _fetch_file_infos(
 
 
 def _estimate_reader_batch_size(
-    file_infos: List[Optional[_ParquetFileInfo]],
-    target_block_size: Optional[int]
+    file_infos: List[Optional[_ParquetFileInfo]], target_block_size: Optional[int]
 ) -> Optional[int]:
     if target_block_size is None:
         return None
@@ -642,9 +640,7 @@ def _estimate_reader_batch_size(
     if not avg_num_rows_per_block:
         return DEFAULT_PARQUET_READER_ROW_BATCH_SIZE
 
-    estimated_batch_size: int = max(
-        math.ceil(np.mean(avg_num_rows_per_block)), 1
-    )
+    estimated_batch_size: int = max(math.ceil(np.mean(avg_num_rows_per_block)), 1)
 
     logger.info(f"Estimated parquet reader batch size at {estimated_batch_size} rows")
 
