@@ -200,11 +200,9 @@ class ParquetDatasource(Datasource):
 
         self._local_scheduling = None
         if not self._supports_distributed_reads:
-            from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-
-            self._local_scheduling = NodeAffinitySchedulingStrategy(
-                ray.get_runtime_context().get_node_id(), soft=False
-            )
+            self._local_scheduling = {
+                "ray.io/node-id": ray.get_runtime_context().get_node_id()
+            }
 
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         filesystem = RetryingPyFileSystem.wrap(
@@ -273,7 +271,7 @@ class ParquetDatasource(Datasource):
             prefetch_remote_args = {}
             prefetch_remote_args["num_cpus"] = NUM_CPUS_FOR_META_FETCH_TASK
             if self._local_scheduling:
-                prefetch_remote_args["scheduling_strategy"] = self._local_scheduling
+                prefetch_remote_args["label_selector"] = self._local_scheduling
             else:
                 # Use the scheduling strategy ("SPREAD" by default) provided in
                 # `DataContext``, to spread out prefetch tasks in cluster, avoid
@@ -662,16 +660,20 @@ def sample_fragments(
     sample_fragment = cached_remote_fn(_sample_fragment)
     futures = []
     scheduling = local_scheduling or DataContext.get_current().scheduling_strategy
+    task_options = {
+        # Retry in case of transient errors during sampling.
+        "retry_exceptions": [OSError],
+    }
+    if isinstance(scheduling, dict):
+        task_options["label_selector"] = scheduling
+    else:
+        task_options["scheduling_strategy"] = scheduling
     for sample in file_samples:
         # Sample the first rows batch in i-th file.
         # Use SPREAD scheduling strategy to avoid packing many sampling tasks on
         # same machine to cause OOM issue, as sampling can be memory-intensive.
         futures.append(
-            sample_fragment.options(
-                scheduling_strategy=scheduling,
-                # Retry in case of transient errors during sampling.
-                retry_exceptions=[OSError],
-            ).remote(
+            sample_fragment.options(**task_options).remote(
                 to_batches_kwargs,
                 columns,
                 schema,

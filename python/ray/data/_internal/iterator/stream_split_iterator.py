@@ -13,7 +13,6 @@ from ray.data.context import DataContext
 from ray.data.iterator import DataIterator
 from ray.types import ObjectRef
 from ray.util.debug import log_once
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
     import pyarrow
@@ -49,9 +48,7 @@ class StreamSplitDataIterator(DataIterator):
         # To avoid deadlock, the concurrency on this actor must be set to at least `n`.
         coord_actor = SplitCoordinator.options(
             max_concurrency=n,
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                ray.get_runtime_context().get_node_id(), soft=False
-            ),
+            label_selector={"ray.io/node-id": ray.get_runtime_context().get_node_id()},
         ).remote(_DatasetWrapper(base_dataset), n, locality_hints)
 
         return [
