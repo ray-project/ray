@@ -86,3 +86,5 @@ cdef extern from "ray/common/ray_config.h" nogil:
         int maximum_gcs_destroyed_actor_cached_count() const
 
         c_bool record_task_actor_creation_sites() const
+
+        c_bool start_python_gc_manager_thread() const

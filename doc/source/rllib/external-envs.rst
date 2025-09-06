@@ -68,7 +68,7 @@ Message Structure
 
 RLlink messages consist of a header and a body:
 
-  - **Header**: 8-byte length field indicating the size of the body, for example `00000016` for a body of length 16 (thus, in total, the message size ).
+  - **Header**: 8-byte length field indicating the size of the body, for example `00000016` for a body of length 16 (thus, in total, the message size).
   - **Body**: JSON-encoded content with a `type` field indicating the message type.
 
 Example Messages: PING and EPISODES_AND_GET_STATE
@@ -153,7 +153,7 @@ Responses: Server → Client
 
 - **``SET_STATE``**
 
-  - Example: ``{"type": "PONG"}``
+  - Example: ``{"type": "SET_STATE", "weights_seq_no": 123, "onnx_file": "... [base64 encoded ONNX file] ..."}``
   - Purpose: Provide the client with the current state (for example, model weights).
   - Body:
 
