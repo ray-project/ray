@@ -133,10 +133,12 @@ class AutoscalingState:
 
         self._deployment_info = None
         self._config = None
-        self._policy = None
         self._running_replicas: List[ReplicaID] = []
         self._target_capacity: Optional[float] = None
         self._target_capacity_direction: Optional[TargetCapacityDirection] = None
+        self._last_scale_up_time: Optional[float] = None
+        self._last_scale_down_time: Optional[float] = None
+        self.policy = None
 
     def register(self, info: DeploymentInfo, curr_target_num_replicas: int) -> int:
         """Registers an autoscaling deployment's info.
@@ -154,10 +156,10 @@ class AutoscalingState:
 
         self._deployment_info = info
         self._config = config
-        self._policy = self._config.get_policy()
         self._target_capacity = info.target_capacity
         self._target_capacity_direction = info.target_capacity_direction
         self._policy_state = {}
+        self.policy = self._config.get_policy()
 
         return self.apply_bounds(target_num_replicas)
 
@@ -187,7 +189,13 @@ class AutoscalingState:
 
     def update_running_replica_ids(self, running_replicas: List[ReplicaID]):
         """Update cached set of running replica IDs for this deployment."""
+        existing_running_replicas_count = len(self._running_replicas)
         self._running_replicas = running_replicas
+
+        if existing_running_replicas_count > len(running_replicas):
+            self._last_scale_down_time = time.time()
+        elif existing_running_replicas_count < len(running_replicas):
+            self._last_scale_up_time = time.time()
 
     def is_within_bounds(self, num_replicas_running_at_target_version: int):
         """Whether or not this deployment is within the autoscaling bounds.
@@ -309,6 +317,20 @@ class AutoscalingState:
         `_skip_bound_check` is True, then the bounds are not applied.
         """
 
+        requests_per_replica = {
+            replica_id: (
+                self._replica_requests[replica_id].running_requests
+                if replica_id in self._replica_requests
+                else 0.0
+            )
+            for replica_id in self._running_replicas
+        }
+
+        total_queued_requests = sum(
+            handle_metric.queued_requests
+            for handle_metric in self._handle_requests.values()
+        )
+
         autoscaling_context: AutoscalingContext = AutoscalingContext(
             deployment_id=self._deployment_id,
             deployment_name=self._deployment_id.name,
@@ -319,18 +341,21 @@ class AutoscalingState:
             total_num_requests=self.get_total_num_requests(),
             capacity_adjusted_min_replicas=self.get_num_replicas_lower_bound(),
             capacity_adjusted_max_replicas=self.get_num_replicas_upper_bound(),
-            policy_state=self._policy_state.copy(),
+            policy_state=None,
             current_time=time.time(),
             config=self._config,
-            queued_requests=None,
-            requests_per_replica=None,
+            queued_requests=total_queued_requests,
+            requests_per_replica=requests_per_replica,
             aggregated_metrics=None,
             raw_metrics=None,
-            last_scale_up_time=None,
-            last_scale_down_time=None,
+            last_scale_up_time=self._last_scale_up_time,
+            last_scale_down_time=self._last_scale_down_time,
         )
 
-        decision_num_replicas, self._policy_state = self._policy(autoscaling_context)
+        if self._policy_state is not None:
+            autoscaling_context.policy_state = self._policy_state.copy()
+
+        decision_num_replicas, self._policy_state = self.policy(autoscaling_context)
 
         if _skip_bound_check:
             return decision_num_replicas
