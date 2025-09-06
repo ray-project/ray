@@ -163,7 +163,7 @@ If a task has ``max_task_retries > 0`` and it received ``ActorUnavailableError``
 Actor method exceptions
 -----------------------
 
-Sometime you want to retry when an actor method raises exceptions. Use ``max_task_retries`` with ``retry_exceptions`` to retry.
+Sometimes you want to retry when an actor method raises exceptions. Use ``max_task_retries`` with ``retry_exceptions`` to retry.
 
 Note that by default, retrying on user raised exceptions is disabled. To enable it, make sure the method is **idempotent**, that is, invoking it multiple times should be equivalent to invoking it only once.
 
@@ -180,6 +180,6 @@ Retry behavior depends on the value you set ``retry_exceptions`` to:
 - The method definition's value, for example, `@ray.method(max_task_retries=2)`. Ray ignores this value if you don't set it.
 - The actor creation call's value, for example, `Actor.options(max_task_retries=2)`. Ray ignores this value if you didn't set it.
 - The Actor class definition's value, for example, `@ray.remote(max_task_retries=2)` decorator. Ray ignores this value if you didn't set it.
-- The default value,`0`.
+- The default value, `0`.
 
 For example, if a method sets `max_task_retries=5` and `retry_exceptions=True`, and the actor sets `max_restarts=2`, Ray executes the method up to 6 times: once for the initial invocation, and 5 additional retries. The 6 invocations may include 2 actor crashes. After the 6th invocation, a `ray.get` call to the result Ray ObjectRef raises the exception raised in the last invocation, or `ray.exceptions.RayActorError` if the actor crashed in the last invocation.

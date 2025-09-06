@@ -59,7 +59,7 @@ Once the task is submitted to ``NormalTaskSubmitter``, a worker process on some 
 2. Once all the arguments are available, ``NormalTaskSubmitter`` will try to find an idle worker to execute the task. ``NormalTaskSubmitter`` gets workers for task execution from raylet via a process called worker lease and this is where scheduling happens.
    Specifically, it will `send <https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/src/ray/core_worker/transport/normal_task_submitter.cc#L350>`__ a ``RequestWorkerLease`` RPC to a `selected <https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/src/ray/core_worker/transport/normal_task_submitter.cc#L339>`__ (it's either the local raylet or a data-locality-favored raylet) raylet for a worker lease.
 3. Raylet `handles <https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/src/ray/raylet/node_manager.cc#L1754>`__ the ``RequestWorkerLease`` RPC.
-4. When the ``RequestWorkerLease`` RPC returns and a leased worker address is included in the response, a worker lease is granted to the caller to execute the task. If the ``RequestWorkerLease`` response contains another raylet address instead, ``NormalTaskSubmitter`` will then  worker lease from the specified raylet. This process continues until a worker lease is obtained.
+4. When the ``RequestWorkerLease`` RPC returns and a leased worker address is included in the response, a worker lease is granted to the caller to execute the task. If the ``RequestWorkerLease`` response contains another raylet address instead, ``NormalTaskSubmitter`` will then request a worker lease from the specified raylet. This process continues until a worker lease is obtained.
 
 Executing a task
 ----------------
