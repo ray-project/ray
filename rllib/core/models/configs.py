@@ -70,15 +70,9 @@ class ModelConfig(abc.ABC):
 
     Attributes:
         input_dims: The input dimensions of the network
-        always_check_shapes: Whether to always check the inputs and outputs of the
-            model for the specifications. Input specifications are checked on failed
-            forward passes of the model regardless of this flag. If this flag is set
-            to `True`, inputs and outputs are checked on every call. This leads to
-            a slow-down and should only be used for debugging.
     """
 
     input_dims: Union[List[int], Tuple[int]] = None
-    always_check_shapes: bool = False
 
     @abc.abstractmethod
     def build(self, framework: str):

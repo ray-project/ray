@@ -30,7 +30,7 @@ from ray.rllib.models.torch.torch_action_dist import (
     TorchMultiActionDistribution,
     TorchMultiCategorical,
 )
-from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
@@ -47,8 +47,7 @@ torch, _ = try_import_torch()
 
 logger = logging.getLogger(__name__)
 
-# fmt: off
-# __sphinx_doc_begin__
+# @OldAPIStack
 MODEL_DEFAULTS: ModelConfigDict = {
     "fcnet_hiddens": [256, 256],
     "fcnet_activation": "tanh",
@@ -107,37 +106,17 @@ MODEL_DEFAULTS: ModelConfigDict = {
     "custom_preprocessor": None,
     "encoder_latent_dim": None,
     "always_check_shapes": False,
-
     # Deprecated keys:
     "lstm_use_prev_action_reward": DEPRECATED_VALUE,
     "_use_default_native_models": DEPRECATED_VALUE,
     "_disable_preprocessor_api": False,
     "_disable_action_flattening": False,
 }
-# __sphinx_doc_end__
-# fmt: on
 
 
-@DeveloperAPI
+@OldAPIStack
 class ModelCatalog:
-    """Registry of models, preprocessors, and action distributions for envs.
-
-    .. testcode::
-        :skipif: True
-
-        prep = ModelCatalog.get_preprocessor(env)
-        observation = prep.transform(raw_observation)
-
-        dist_class, dist_dim = ModelCatalog.get_action_dist(
-            env.action_space, {})
-        model = ModelCatalog.get_model_v2(
-            obs_space, action_space, num_outputs, options)
-        dist = dist_class(model.outputs, model)
-        action = dist.sample()
-    """
-
     @staticmethod
-    @DeveloperAPI
     def get_action_dist(
         action_space: gym.Space,
         config: ModelConfigDict,
@@ -145,26 +124,6 @@ class ModelCatalog:
         framework: str = "tf",
         **kwargs
     ) -> (type, int):
-        """Returns a distribution class and size for the given action space.
-
-        Args:
-            action_space: Action space of the target gym env.
-            config (Optional[dict]): Optional model config.
-            dist_type (Optional[Union[str, Type[ActionDistribution]]]):
-                Identifier of the action distribution (str) interpreted as a
-                hint or the actual ActionDistribution class to use.
-            framework: One of "tf2", "tf", "torch", or "jax".
-            kwargs: Optional kwargs to pass on to the Distribution's
-                constructor.
-
-        Returns:
-            Tuple:
-                - dist_class (ActionDistribution): Python class of the
-                    distribution.
-                - dist_dim (int): The size of the input vector to the
-                    distribution.
-        """
-
         dist_cls = None
         config = config or MODEL_DEFAULTS
         # Custom distribution given.
@@ -268,19 +227,9 @@ class ModelCatalog:
         return dist_cls, int(dist_cls.required_model_output_shape(action_space, config))
 
     @staticmethod
-    @DeveloperAPI
     def get_action_shape(
         action_space: gym.Space, framework: str = "tf"
     ) -> (np.dtype, List[int]):
-        """Returns action tensor dtype and shape for the action space.
-
-        Args:
-            action_space: Action space of the target gym env.
-            framework: The framework identifier. One of "tf" or "torch".
-
-        Returns:
-            (dtype, shape): Dtype and shape of the actions tensor.
-        """
         dl_lib = torch if framework == "torch" else tf
         if isinstance(action_space, Discrete):
             return action_space.dtype, (None,)
@@ -311,26 +260,14 @@ class ModelCatalog:
             )
 
     @staticmethod
-    @DeveloperAPI
     def get_action_placeholder(
         action_space: gym.Space, name: str = "action"
     ) -> TensorType:
-        """Returns an action placeholder consistent with the action space
-
-        Args:
-            action_space: Action space of the target gym env.
-            name: An optional string to name the placeholder by.
-                Default: "action".
-
-        Returns:
-            action_placeholder: A placeholder for the actions
-        """
         dtype, shape = ModelCatalog.get_action_shape(action_space, framework="tf")
 
         return tf1.placeholder(dtype, shape=shape, name=name)
 
     @staticmethod
-    @DeveloperAPI
     def get_model_v2(
         obs_space: gym.Space,
         action_space: gym.Space,
@@ -342,27 +279,6 @@ class ModelCatalog:
         default_model: type = None,
         **model_kwargs
     ) -> ModelV2:
-        """Returns a suitable model compatible with given spaces and output.
-
-        Args:
-            obs_space: Observation space of the target gym env. This
-                may have an `original_space` attribute that specifies how to
-                unflatten the tensor into a ragged tensor.
-            action_space: Action space of the target gym env.
-            num_outputs: The size of the output vector of the model.
-            model_config: The "model" sub-config dict
-                within the Algorithm's config dict.
-            framework: One of "tf2", "tf", "torch", or "jax".
-            name: Name (scope) for the model.
-            model_interface: Interface required for the model
-            default_model: Override the default class for the model. This
-                only has an effect when not using a custom model
-            model_kwargs: Args to pass to the ModelV2 constructor
-
-        Returns:
-            model (ModelV2): Model to use for the policy.
-        """
-
         # Validate the given config dict.
         ModelCatalog._validate_config(
             config=model_config, action_space=action_space, framework=framework
@@ -655,38 +571,19 @@ class ModelCatalog:
             )
 
     @staticmethod
-    @DeveloperAPI
     def get_preprocessor(
         env: gym.Env, options: Optional[dict] = None, include_multi_binary: bool = False
     ) -> Preprocessor:
-        """Returns a suitable preprocessor for the given env.
-
-        This is a wrapper for get_preprocessor_for_space().
-        """
-
         return ModelCatalog.get_preprocessor_for_space(
             env.observation_space, options, include_multi_binary
         )
 
     @staticmethod
-    @DeveloperAPI
     def get_preprocessor_for_space(
         observation_space: gym.Space,
         options: dict = None,
         include_multi_binary: bool = False,
     ) -> Preprocessor:
-        """Returns a suitable preprocessor for the given observation space.
-
-        Args:
-            observation_space: The input observation space.
-            options: Options to pass to the preprocessor.
-            include_multi_binary: Whether to include the MultiBinaryPreprocessor in
-                the possible preprocessors returned by this method.
-
-        Returns:
-            preprocessor: Preprocessor for the observations.
-        """
-
         options = options or MODEL_DEFAULTS
         for k in options.keys():
             if k not in MODEL_DEFAULTS:
@@ -710,36 +607,16 @@ class ModelCatalog:
         return prep
 
     @staticmethod
-    @PublicAPI
     def register_custom_model(model_name: str, model_class: type) -> None:
-        """Register a custom model class by name.
-
-        The model can be later used by specifying {"custom_model": model_name}
-        in the model config.
-
-        Args:
-            model_name: Name to register the model under.
-            model_class: Python class of the model.
-        """
         if tf is not None:
             if issubclass(model_class, tf.keras.Model):
                 deprecation_warning(old="register_custom_model", error=False)
         _global_registry.register(RLLIB_MODEL, model_name, model_class)
 
     @staticmethod
-    @PublicAPI
     def register_custom_action_dist(
         action_dist_name: str, action_dist_class: type
     ) -> None:
-        """Register a custom action distribution class by name.
-
-        The model can be later used by specifying
-        {"custom_action_dist": action_dist_name} in the model config.
-
-        Args:
-            model_name: Name to register the action distribution under.
-            model_class: Python class of the action distribution.
-        """
         _global_registry.register(
             RLLIB_ACTION_DIST, action_dist_name, action_dist_class
         )
@@ -852,18 +729,6 @@ class ModelCatalog:
     def _validate_config(
         config: ModelConfigDict, action_space: gym.spaces.Space, framework: str
     ) -> None:
-        """Validates a given model config dict.
-
-        Args:
-            config: The "model" sub-config dict
-                within the Algorithm's config dict.
-            action_space: The action space of the model, whose config are
-                    validated.
-            framework: One of "jax", "tf2", "tf", or "torch".
-
-        Raises:
-            ValueError: If something is wrong with the given config.
-        """
         # Soft-deprecate custom preprocessors.
         if config.get("custom_preprocessor") is not None:
             deprecation_warning(

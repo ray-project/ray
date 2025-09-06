@@ -752,34 +752,6 @@ class RLModule(Checkpointable, abc.ABC):
         """
         return self
 
-    @Deprecated(error=False)
-    def output_specs_train(self):
-        pass
-
-    @Deprecated(error=False)
-    def output_specs_inference(self):
-        pass
-
-    @Deprecated(error=False)
-    def output_specs_exploration(self):
-        pass
-
-    @Deprecated(error=False)
-    def input_specs_inference(self):
-        pass
-
-    @Deprecated(error=False)
-    def input_specs_exploration(self):
-        pass
-
-    @Deprecated(error=False)
-    def input_specs_train(self):
-        pass
-
-    @Deprecated(error=False)
-    def _default_input_specs(self):
-        pass
-
 
 @Deprecated(
     old="RLModule(config=[RLModuleConfig object])",
