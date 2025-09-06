@@ -14,6 +14,7 @@ from ray.serve._private.common import (
     DeploymentStatusTrigger,
     HandleMetricReport,
     ReplicaID,
+    ReplicaMetricReport,
     ReplicaState,
     TargetCapacityDirection,
     TimeStampedValue,
@@ -2836,11 +2837,13 @@ class TestAutoscaling:
             asm.record_request_metrics_for_handle(handle_metric_report)
         else:
             for replica in replicas:
-                asm.record_request_metrics_for_replica(
+                replica_metric_report = ReplicaMetricReport(
                     replica_id=replica._actor.replica_id,
-                    window_avg=req_per_replica,
-                    send_timestamp=timer.time(),
+                    avg_running_requests=req_per_replica,
+                    running_requests=[TimeStampedValue(timer.time(), req_per_replica)],
+                    timestamp=timer.time(),
                 )
+                asm.record_request_metrics_for_replica(replica_metric_report)
 
         # status=UPSCALING/DOWNSCALING, status_trigger=AUTOSCALE
         dsm.update()
@@ -2999,9 +3002,13 @@ class TestAutoscaling:
             asm.record_request_metrics_for_handle(handle_metric_report)
         else:
             for replica in replicas:
-                asm.record_request_metrics_for_replica(
-                    replica._actor.replica_id, 2, timer.time()
+                replica_metric_report = ReplicaMetricReport(
+                    replica_id=replica._actor.replica_id,
+                    avg_running_requests=2,
+                    running_requests=[TimeStampedValue(timer.time(), 2)],
+                    timestamp=timer.time(),
                 )
+                asm.record_request_metrics_for_replica(replica_metric_report)
 
         # status=UPSCALING, status_trigger=AUTOSCALE
         dsm.update()
@@ -3083,9 +3090,13 @@ class TestAutoscaling:
             asm.record_request_metrics_for_handle(handle_metric_report)
         else:
             for replica in replicas:
-                asm.record_request_metrics_for_replica(
-                    replica._actor.replica_id, 1, timer.time()
+                replica_metric_report = ReplicaMetricReport(
+                    replica_id=replica._actor.replica_id,
+                    avg_running_requests=1,
+                    running_requests=[TimeStampedValue(timer.time(), 1)],
+                    timestamp=timer.time(),
                 )
+                asm.record_request_metrics_for_replica(replica_metric_report)
 
         # status=DOWNSCALING, status_trigger=AUTOSCALE
         dsm.update()
@@ -3180,9 +3191,13 @@ class TestAutoscaling:
             asm.record_request_metrics_for_handle(handle_metric_report)
         else:
             for replica in replicas:
-                asm.record_request_metrics_for_replica(
-                    replica._actor.replica_id, 1, timer.time()
+                replica_metric_report = ReplicaMetricReport(
+                    replica_id=replica._actor.replica_id,
+                    avg_running_requests=1,
+                    running_requests=[TimeStampedValue(timer.time(), 1)],
+                    timestamp=timer.time(),
                 )
+                asm.record_request_metrics_for_replica(replica_metric_report)
 
         check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, None)])
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
