@@ -122,6 +122,7 @@ class FakeCgroupDriver : public CgroupDriverInterface {
   }
 
   Status AddConstraint(const std::string &cgroup,
+                       const std::string &controller,
                        const std::string &constraint,
                        const std::string &value) override {
     if (!add_constraint_s_.ok()) {

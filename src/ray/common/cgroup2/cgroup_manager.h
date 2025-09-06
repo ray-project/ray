@@ -28,7 +28,6 @@ namespace ray {
 class CgroupManager : public CgroupManagerInterface {
  public:
   /**
-
     Creates a CgroupManager after checking for the following invariants:
 
     1. cgroupv2 is mounted correctly in unified mode. For more details (@see
@@ -116,7 +115,9 @@ class CgroupManager : public CgroupManagerInterface {
   // future PR.
   void RegisterDeleteCgroup(const std::string &cgroup_path);
   void RegisterMoveAllProcesses(const std::string &from, const std::string &to);
-  void RegisterRemoveConstraint(const std::string &cgroup, const std::string &constraint);
+  template <typename T>
+  void RegisterRemoveConstraint(const std::string &cgroup,
+                                const Constraint<T> &constraint);
   void RegisterDisableController(const std::string &cgroup,
                                  const std::string &controller);
 

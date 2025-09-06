@@ -11,9 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include <grp.h>
 #include <gtest/gtest.h>
-#include <pwd.h>
 #include <unistd.h>
 
 #include <filesystem>
@@ -482,7 +480,7 @@ TEST_F(SysFsCgroupDriverIntegrationTest, AddResourceConstraintFailsIfCgroupDoesn
   std::string non_existent_path =
       test_cgroup_path_ + std::filesystem::path::preferred_separator + "nope";
   SysFsCgroupDriver driver;
-  Status s = driver.AddConstraint(non_existent_path, "memory.min", "1");
+  Status s = driver.AddConstraint(non_existent_path, "memory", "memory.min", "1");
   ASSERT_TRUE(s.IsNotFound()) << s.ToString();
 }
 
@@ -492,7 +490,7 @@ TEST_F(SysFsCgroupDriverIntegrationTest,
   ASSERT_TRUE(cgroup_or_status.ok()) << cgroup_or_status.ToString();
   auto cgroup = std::move(cgroup_or_status.value());
   SysFsCgroupDriver driver;
-  Status s = driver.AddConstraint(cgroup->GetPath(), "memory.min", "1");
+  Status s = driver.AddConstraint(cgroup->GetPath(), "memory", "memory.min", "1");
   ASSERT_TRUE(s.IsPermissionDenied()) << s.ToString();
 }
 
@@ -503,20 +501,10 @@ TEST_F(SysFsCgroupDriverIntegrationTest,
   ASSERT_TRUE(cgroup_or_status.ok()) << cgroup_or_status.ToString();
   auto cgroup = std::move(cgroup_or_status.value());
   SysFsCgroupDriver driver;
-  Status s = driver.AddConstraint(cgroup->GetPath(), "memory.min", "1");
+  Status s = driver.AddConstraint(cgroup->GetPath(), "memory", "memory.min", "1");
   ASSERT_TRUE(s.IsPermissionDenied()) << s.ToString();
 }
 
-TEST_F(SysFsCgroupDriverIntegrationTest,
-       AddResourceConstraintFailsIfConstraintNotSupported) {
-  auto cgroup_or_status = TempCgroupDirectory::Create(test_cgroup_path_, S_IRWXU);
-  ASSERT_TRUE(cgroup_or_status.ok()) << cgroup_or_status.ToString();
-  auto cgroup = std::move(cgroup_or_status.value());
-  SysFsCgroupDriver driver;
-  // "memory.max" is not supported.
-  Status s = driver.AddConstraint(cgroup->GetPath(), "memory.max", "1");
-  ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
-}
 TEST_F(SysFsCgroupDriverIntegrationTest,
        AddResourceConstraintFailsIfControllerNotEnabled) {
   auto cgroup_or_status = TempCgroupDirectory::Create(test_cgroup_path_, S_IRWXU);
@@ -524,23 +512,8 @@ TEST_F(SysFsCgroupDriverIntegrationTest,
   auto cgroup = std::move(cgroup_or_status.value());
   SysFsCgroupDriver driver;
   // Memory controller is not enabled.
-  Status s = driver.AddConstraint(cgroup->GetPath(), "memory.min", "1");
+  Status s = driver.AddConstraint(cgroup->GetPath(), "memory", "memory.min", "1");
   ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
-}
-TEST_F(SysFsCgroupDriverIntegrationTest,
-       AddResourceConstraintFailsIfInvalidConstraintValue) {
-  auto cgroup_or_status = TempCgroupDirectory::Create(test_cgroup_path_, S_IRWXU);
-  ASSERT_TRUE(cgroup_or_status.ok()) << cgroup_or_status.ToString();
-  auto cgroup = std::move(cgroup_or_status.value());
-  SysFsCgroupDriver driver;
-  // Enable the cpu controller first.
-  Status enable_controller_s = driver.EnableController(cgroup->GetPath(), "cpu");
-  ASSERT_TRUE(enable_controller_s.ok()) << enable_controller_s.ToString();
-  // cpu.weight must be between [1,10000]
-  Status s_too_low = driver.AddConstraint(cgroup->GetPath(), "cpu.weight", "0");
-  ASSERT_TRUE(s_too_low.IsInvalidArgument()) << s_too_low.ToString();
-  Status s_too_high = driver.AddConstraint(cgroup->GetPath(), "cpu.weight", "10001");
-  ASSERT_TRUE(s_too_high.IsInvalidArgument()) << s_too_high.ToString();
 }
 
 TEST_F(SysFsCgroupDriverIntegrationTest, AddResourceConstraintSucceeds) {
@@ -552,7 +525,7 @@ TEST_F(SysFsCgroupDriverIntegrationTest, AddResourceConstraintSucceeds) {
   Status enable_controller_s = driver.EnableController(cgroup->GetPath(), "cpu");
   ASSERT_TRUE(enable_controller_s.ok()) << enable_controller_s.ToString();
   // cpu.weight must be between [1,10000]
-  Status s = driver.AddConstraint(cgroup->GetPath(), "cpu.weight", "500");
+  Status s = driver.AddConstraint(cgroup->GetPath(), "cpu", "cpu.weight", "500");
   ASSERT_TRUE(s.ok()) << s.ToString();
 }
 }  // namespace ray
