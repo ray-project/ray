@@ -66,7 +66,7 @@ extensions = [
     "sphinx.ext.doctest",
     "sphinx.ext.coverage",
     "sphinx.ext.autosummary",
-    "sphinxcontrib.autodoc_pydantic",
+    # "sphinxcontrib.autodoc_pydantic",
     "sphinxcontrib.redoc",
     "sphinx_remove_toctrees",
     "sphinx_design",
