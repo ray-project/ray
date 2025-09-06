@@ -1724,9 +1724,10 @@ def test_individual_operator_num_rows(shutdown_only):
     re_op0_output = re.compile(r"Operator 0.*?Total output num rows: (\d+)", re.DOTALL)
     re_op1_input = re.compile(r"Operator 1.*?Total input num rows: (\d+)", re.DOTALL)
 
-    op0_output = re_op0_output.search(stats_output).group(1)
-    op1_input = re_op1_input.search(stats_output).group(1)
+    op0_output = int(re_op0_output.search(stats_output).group(1))
+    op1_input = int(re_op1_input.search(stats_output).group(1))
 
+    assert op0_output == 500
     assert op0_output == op1_input
 
 
@@ -1768,6 +1769,8 @@ def test_sub_operator_num_rows(shutdown_only):
         else:
             extracted_data[key] = None
 
+    assert extracted_data["operator0_output"] == 500
+    assert extracted_data["subop0_output"] == 800
     assert extracted_data["operator0_output"] == extracted_data["subop0_input"]
     assert extracted_data["subop0_output"] == extracted_data["subop1_input"]
 
