@@ -1,6 +1,6 @@
 :orphan:
 
-.. _transformers_torch_trainer_basic_example :
+.. _transformers_torch_trainer_basic_example:
 
 Fine-tune a Text Classifier with Hugging Face Transformers
 ==========================================================

@@ -1,6 +1,6 @@
 :orphan:
 
-Fine-tune of Stable Diffusion with DreamBooth and Ray Train
+Fine-tuning of Stable Diffusion with DreamBooth and Ray Train
 ===========================================================
 
 .. raw:: html
