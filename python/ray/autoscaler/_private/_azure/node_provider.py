@@ -163,6 +163,55 @@ class AzureNodeProvider(NodeProvider):
 
         return metadata
 
+    def _get_zones_for_vm_size(self, vm_size, location):
+        """Get usable availability zones for a given VM size in a specific location."""
+        try:
+            # Note: Azure ResourceSKUs API filters don't work reliably(?), so we query all SKUs
+            # and filter in code. Each SKU object represents one location for the VM size.
+            skus = self.compute_client.resource_skus.list()
+
+            for sku in skus:
+                if sku.name == vm_size and sku.location_info:
+                    # Each SKU object represents one location, check if it matches our target
+                    for location_info in sku.location_info:
+                        if location_info.location.lower() == location.lower():
+                            zones = location_info.zones if location_info.zones else []
+                            logger.debug(
+                                f"Found {vm_size} in {location} with zones: {zones}"
+                            )
+                            return sorted(zones)
+
+            logger.warning(f"No zones found for {vm_size} in {location}")
+            return []  # No zones available for this VM size
+        except Exception as e:
+            logger.warning(
+                f"Failed to get zones for VM size {vm_size} in location {location}: {str(e)}"
+            )
+            return []
+
+    def _validate_zones_for_node_pool(self, zones, location, vm_size):
+        """Validate that the specified zones are available for the given VM size in the location."""
+        # Special case: zones: ["None"] explicitly disables availability zones
+        if zones and len(zones) == 1 and str(zones[0]).lower() in ["none", "null"]:
+            logger.info(
+                "Zones explicitly disabled with ['None'] - will create VM without an availability zone"
+            )
+            return None  # Special return value to indicate "no zones by choice"
+
+        vm_zones = self._get_zones_for_vm_size(vm_size, location)
+
+        available_zones = set(vm_zones)
+        if not available_zones:
+            logger.warning("No zones available for this VM size and location")
+            return []
+
+        if zones:
+            requested_zones = {str(z) for z in zones}
+            intersection = sorted(available_zones.intersection(requested_zones))
+            return intersection
+
+        return sorted(available_zones)
+
     def stopped_nodes(self, tag_filters):
         """Return a list of stopped node ids filtered by the specified tags dict."""
         nodes = self._get_filtered_nodes(tag_filters=tag_filters)
@@ -253,6 +302,24 @@ class AzureNodeProvider(NodeProvider):
     def _create_node(self, node_config, tags, count):
         """Creates a number of nodes within the namespace."""
         resource_group = self.provider_config["resource_group"]
+        location = self.provider_config["location"]
+        vm_size = node_config["azure_arm_parameters"]["vmSize"]
+        requested_zones = node_config.get("azure_arm_parameters", {}).get("zones", [])
+        logger.info(f"Requested zones from config: {requested_zones}")
+
+        # Get actually available zones for this VM size
+        available_zones = self._validate_zones_for_node_pool(
+            requested_zones, location, vm_size
+        )
+
+        # Handle explicit zone disabling
+        zones_explicitly_disabled = available_zones is None
+
+        if requested_zones and not zones_explicitly_disabled and not available_zones:
+            raise ValueError(
+                f"No available zones for VM size {vm_size} in {location}. "
+                f"Requested: {requested_zones}, but none are available for this VM size."
+            )
 
         # load the template file
         current_path = Path(__file__).parent
@@ -265,14 +332,17 @@ class AzureNodeProvider(NodeProvider):
         config_tags.update(tags)
         config_tags[TAG_RAY_CLUSTER_NAME] = self.cluster_name
 
-        vm_name = "{node}-{unique_id}-{vm_id}".format(
+        deployment_name = "{node}-{unique_id}-{vm_id}".format(
             node=config_tags.get(TAG_RAY_NODE_NAME, "node"),
             unique_id=self.provider_config["unique_id"],
             vm_id=uuid4().hex[:UNIQUE_ID_LEN],
         )[:VM_NAME_MAX_LEN]
 
         template_params = node_config["azure_arm_parameters"].copy()
-        template_params["vmName"] = vm_name
+        # Use deployment_name for the vmName template parameter since
+        # the template will append copyIndex() for each VM that gets created
+        # to guarantee uniqueness.
+        template_params["vmName"] = deployment_name
         # Provision public IP if not using internal IPs or if this is the
         # head node and use_external_head_ip is True
         template_params["provisionPublicIp"] = not self.provider_config.get(
@@ -287,6 +357,24 @@ class AzureNodeProvider(NodeProvider):
         template_params["nsg"] = self.provider_config["nsg"]
         template_params["subnet"] = self.provider_config["subnet"]
 
+        # Add zone information based on availability and requested zones
+        if zones_explicitly_disabled:
+            # User explicitly disabled zones with ["None"]
+            template_params["zones"] = []
+            logger.info(
+                f"Creating {count} VMs with zones explicitly disabled (no availability zone)"
+            )
+        elif available_zones:
+            # Pass the list of available zones to the template
+            template_params["zones"] = available_zones
+            logger.info(
+                f"Creating {count} VMs, distributed across availability zones: {available_zones}"
+            )
+        else:
+            # For non-zonal deployments (no zones available), use empty array
+            template_params["zones"] = []
+            logger.info(f"Creating {count} VMs without specific availability zone")
+
         parameters = {
             "properties": {
                 "mode": DeploymentMode.incremental,
@@ -299,11 +387,12 @@ class AzureNodeProvider(NodeProvider):
 
         # TODO: we could get the private/public ips back directly
         create_or_update = get_azure_sdk_function(
-            client=self.resource_client.deployments, function_name="create_or_update"
+            client=self.resource_client.deployments,
+            function_name="create_or_update",
         )
         create_or_update(
             resource_group_name=resource_group,
-            deployment_name=vm_name,
+            deployment_name=deployment_name,
             parameters=parameters,
         ).wait(timeout=AUTOSCALER_NODE_START_WAIT_S)
 
