@@ -2504,8 +2504,8 @@ class Dataset:
                 broadcasted to all workers using map_batches with PyArrow joins.
                 This is efficient when the smaller dataset is much smaller than the larger
                 dataset and can fit in a worker node's memory. Defaults to False.
-                Note that this will check the dataset counts and could materialize the
-                both datasets, triggering a full execution of the dataset.
+                Note that this will only check dataset counts if datasets are already
+                materialized to avoid expensive computation.
             partition_size_hint: (Optional) Hint to joining operator about the estimated
                 avg expected size of the individual partition (in bytes).
                 This is used in estimating the total dataset size and allow to tune
@@ -2665,68 +2665,19 @@ class Dataset:
             )
             from ray.data._internal.logical.operators.join_operator import JoinType
 
-            # Use more efficient size estimation instead of expensive count() operations
-            # For small datasets, we can estimate size from a sample
-            try:
-                # Try to estimate sizes from samples to avoid expensive count() operations
-                left_sample = self.limit(100)
-                right_sample = ds.limit(100)
+            # Determine which dataset should be broadcast (smaller one)
+            # Only call count() if datasets are already materialized to avoid expensive computation
+            def _get_count_if_materialized(dataset):
+                """Get count only if dataset is already materialized."""
+                if hasattr(dataset, "_plan") and dataset._plan.is_materialized():
+                    return dataset.count()
+                return None
 
-                left_refs = left_sample.to_arrow_refs()
-                right_refs = right_sample.to_arrow_refs()
+            ds_count = _get_count_if_materialized(ds)
+            self_count = _get_count_if_materialized(self)
 
-                if left_refs and right_refs:
-                    left_sample_table = ray.get(left_refs[0])
-                    right_sample_table = ray.get(right_refs[0])
-
-                    # Estimate total sizes based on sample
-                    left_estimated_size = left_sample_table.num_rows
-                    right_estimated_size = right_sample_table.num_rows
-
-                    # If samples are small, the datasets are likely small enough for broadcast
-                    if left_estimated_size <= 1000 and right_estimated_size <= 1000:
-                        # Both datasets are small, use the original logic
-                        if left_estimated_size >= right_estimated_size:
-                            # self (left) is larger, ds (right) is smaller
-                            large_ds = self
-                            small_ds = ds
-                            large_key_columns = on
-                            small_key_columns = right_on
-                            datasets_swapped = False
-                        else:
-                            # ds (right) is larger, self (left) is smaller
-                            large_ds = ds
-                            small_ds = self
-                            large_key_columns = right_on
-                            small_key_columns = on
-                            datasets_swapped = True
-                    else:
-                        # At least one dataset is large, use broadcast join with caution
-                        # Always broadcast the smaller one
-                        if left_estimated_size >= right_estimated_size:
-                            large_ds = self
-                            small_ds = ds
-                            large_key_columns = on
-                            small_key_columns = right_on
-                            datasets_swapped = False
-                        else:
-                            large_ds = ds
-                            small_ds = self
-                            large_key_columns = right_on
-                            small_key_columns = on
-                            datasets_swapped = True
-                else:
-                    # Fall back to original logic if sampling fails
-                    raise ValueError("Could not estimate dataset sizes")
-
-            except Exception:
-                # Fall back to original count-based logic if estimation fails
-                ds_count = ds.count()
-                self_count = self.count()
-                if ds_count == 0 or self_count == 0:
-                    raise ValueError("Cannot perform broadcast join on empty datasets")
-
-                # Always broadcast the smaller dataset and map over the larger one
+            # If both are materialized, use counts to determine which to broadcast
+            if ds_count is not None and self_count is not None:
                 if self_count >= ds_count:
                     # self (left) is larger, ds (right) is smaller
                     large_ds = self
@@ -2741,6 +2692,14 @@ class Dataset:
                     large_key_columns = right_on
                     small_key_columns = on
                     datasets_swapped = True
+            else:
+                # If not materialized, default to broadcasting the right dataset (ds)
+                # This is a reasonable default for most broadcast join use cases
+                large_ds = self
+                small_ds = ds
+                large_key_columns = on
+                small_key_columns = right_on
+                datasets_swapped = False
 
             # Create the broadcast join function - PyArrow will handle the supported join types natively
             # Note: left_suffix and right_suffix always refer to the original left and right datasets
@@ -2763,7 +2722,6 @@ class Dataset:
             # For broadcast joins, if num_partitions is not specified, use the number of partitions
             # from the large dataset to maintain partition structure
             if num_partitions is None:
-                # Use the current number of partitions from the large dataset
                 target_partitions = large_ds.num_blocks()
             else:
                 target_partitions = num_partitions
@@ -2793,7 +2751,7 @@ class Dataset:
                 aggregator_ray_remote_args=aggregator_ray_remote_args,
             )
 
-        return Dataset(plan, LogicalPlan(op, self.context))
+            return Dataset(plan, LogicalPlan(op, self.context))
 
     @AllToAllAPI
     @PublicAPI(api_group=GGA_API_GROUP)
@@ -5994,9 +5952,9 @@ class Dataset:
         import pyarrow as pa
 
         ref_bundles: Iterator[RefBundle] = self.iter_internal_ref_bundles()
-        block_refs: List[
-            ObjectRef["pyarrow.Table"]
-        ] = _ref_bundles_iterator_to_block_refs_list(ref_bundles)
+        block_refs: List[ObjectRef["pyarrow.Table"]] = (
+            _ref_bundles_iterator_to_block_refs_list(ref_bundles)
+        )
         # Schema is safe to call since we have already triggered execution with
         # iter_internal_ref_bundles.
         schema = self.schema(fetch_if_missing=True)

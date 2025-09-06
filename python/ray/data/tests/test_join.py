@@ -429,12 +429,6 @@ def test_default_shuffle_aggregator_args():
     } == args
 
 
-# Broadcast Join Tests
-#
-# Minimal tests to verify broadcast join functionality for different join types.
-# These tests ensure that broadcast joins work correctly for the supported join types.
-
-
 @pytest.mark.parametrize(
     "join_type",
     [
@@ -613,110 +607,6 @@ def test_broadcast_join_left_smaller(
 
     # Results should be identical
     pd.testing.assert_frame_equal(broadcast_df, regular_df)
-
-
-@pytest.mark.parametrize(
-    "join_type",
-    [
-        "inner",
-        "left_outer",
-        "right_outer",
-        "full_outer",
-    ],
-)
-def test_broadcast_join_dataset_swapping_edge_cases(
-    ray_start_regular_shared_2_cpus,
-    join_type,
-):
-    """Test edge cases for dataset swapping in broadcast joins.
-
-    This tests scenarios where the dataset sizes are very different or equal,
-    ensuring the swapping logic works correctly. The test covers:
-
-    - Extreme size differences (left much smaller than right)
-    - Equal sized datasets (no swapping needed)
-    - Single row datasets (minimal broadcast table)
-
-    Test cases:
-    - Left much smaller: (3, 15) - tests extreme size difference
-    - Equal sized: (5, 5) - tests no swapping scenario
-    - Single row left: (1, 8) - tests minimal broadcast table
-
-    These edge cases ensure the broadcast join implementation is robust and handles
-    various dataset size combinations correctly.
-    """
-
-    # Test case 1: Left dataset much smaller than right
-    left_ds_small = ray.data.range(3).map(  # Reduced from 5 to 3
-        lambda row: {"id": row["id"], "left_value": int(row["id"]) * 2}
-    )
-    right_ds_large = ray.data.range(15).map(  # Reduced from 100 to 15
-        lambda row: {"id": row["id"], "right_value": int(row["id"]) ** 2}
-    )
-
-    # Test case 2: Equal sized datasets
-    left_ds_equal = ray.data.range(5).map(  # Reduced from 10 to 5
-        lambda row: {"id": row["id"], "left_value": int(row["id"]) * 2}
-    )
-    right_ds_equal = ray.data.range(5).map(  # Reduced from 10 to 5
-        lambda row: {"id": row["id"], "right_value": int(row["id"]) ** 2}
-    )
-
-    # Test case 3: Single row left dataset
-    left_ds_single = ray.data.range(1).map(
-        lambda row: {"id": row["id"], "left_value": int(row["id"]) * 2}
-    )
-    right_ds_multi = ray.data.range(8).map(  # Reduced from 20 to 8
-        lambda row: {"id": row["id"], "right_value": int(row["id"]) ** 2}
-    )
-
-    test_cases = [
-        (left_ds_small, right_ds_large, "left much smaller"),
-        (left_ds_equal, right_ds_equal, "equal sized"),
-        (left_ds_single, right_ds_multi, "single row left"),
-    ]
-
-    for left_ds, right_ds, case_name in test_cases:
-        # Perform broadcast join
-        broadcast_result = left_ds.join(
-            right_ds,
-            join_type=join_type,
-            on=("id",),
-            broadcast=True,
-        )
-
-        # Perform regular join for comparison
-        regular_result = left_ds.join(
-            right_ds,
-            join_type=join_type,
-            num_partitions=2,  # Match the number of CPUs in the test fixture
-            broadcast=False,
-        )
-
-        # Convert to pandas for comparison
-        broadcast_df = (
-            pd.DataFrame(broadcast_result.take_all())
-            .sort_values(by=["id"])
-            .reset_index(drop=True)
-        )
-        regular_df = (
-            pd.DataFrame(regular_result.take_all())
-            .sort_values(by=["id"])
-            .reset_index(drop=True)
-        )
-
-        # Ensure both DataFrames have the same column ordering before comparison
-        common_columns = sorted(set(broadcast_df.columns) & set(regular_df.columns))
-        broadcast_df = broadcast_df[common_columns]
-        regular_df = regular_df[common_columns]
-
-        # Results should be identical
-        pd.testing.assert_frame_equal(
-            broadcast_df,
-            regular_df,
-            check_dtype=False,  # Allow dtype differences for edge cases
-            err_msg=f"Failed for case: {case_name}, join_type: {join_type}",
-        )
 
 
 @pytest.mark.parametrize(

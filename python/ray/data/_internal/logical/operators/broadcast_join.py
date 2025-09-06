@@ -13,6 +13,7 @@ from ray.data._internal.logical.operators.join_operator import JoinType
 from ray.data.block import DataBatch
 from ray.data.dataset import Dataset
 
+
 _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP = {
     JoinType.INNER: "inner",
     JoinType.LEFT_OUTER: "left outer",
@@ -32,32 +33,8 @@ class BroadcastJoinFunction:
     the other, as the smaller dataset can be loaded into memory and broadcast to
     all partitions of the larger dataset.
 
-    Examples:
-        .. testcode::
-
-            # Create sample datasets for demonstration
-            import ray
-            from ray.data import from_items
-
-            # Create small dataset (will be broadcasted)
-            small_data = [{"id": i, "name": f"item_{i}"} for i in range(3)]
-            small_ds = from_items(small_data)
-
-            # Create large dataset
-            large_data = [{"id": i, "value": f"val_{i}"} for i in range(10)]
-            large_ds = from_items(large_data)
-
-            # Create a broadcast join function
-            join_fn = BroadcastJoinFunction(
-                small_table_dataset=small_ds,
-                join_type=JoinType.INNER,
-                large_table_key_columns=("id",),
-                small_table_key_columns=("id",),
-                datasets_swapped=False
-            )
-
-            # Apply the join function to the larger dataset
-            result = large_ds.map_batches(join_fn, batch_format="pyarrow")
+    The implementation is stateless and fault-tolerant, inheriting Ray Data's
+    standard fault tolerance behavior through map_batches execution.
     """
 
     def __init__(
@@ -100,7 +77,6 @@ class BroadcastJoinFunction:
             )
 
         # Materialize the small dataset for broadcasting
-        # Repartition to 1 partition and materialize
         coalesced_ds = small_table_dataset.repartition(1).materialize()
 
         # Get PyArrow table reference from the dataset
@@ -118,81 +94,24 @@ class BroadcastJoinFunction:
             self.small_table = ray.get(arrow_refs[0])
 
     def __call__(self, batch: DataBatch) -> DataBatch:
-        """Perform PyArrow join on a batch from the large table.
-
-        This method is called for each batch of the large dataset, performing
-        a join with the broadcasted small dataset using PyArrow's native join
-        functionality.
-
-        Args:
-            batch: Batch from the large table to be joined with the small table.
-
-        Returns:
-            Joined batch containing the result of the join operation.
-
-        Note:
-            The small dataset must be materializable for broadcast joins to work.
-            If materialization fails, the join will fail.
-        """
+        """Perform PyArrow join on a batch from the large table."""
         import pyarrow as pa
 
         # Convert batch to PyArrow table if needed
         if isinstance(batch, dict):
             batch = pa.table(batch)
 
-        # Get the appropriate PyArrow join type for standard joins
+        # Get the appropriate PyArrow join type
         arrow_join_type = _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP[self.join_type]
 
-        # Determine whether to coalesce keys based on whether key column names are
-        # the same
+        # Determine whether to coalesce keys based on whether key column names are the same
         coalesce_keys = list(self.large_table_key_columns) == list(
             self.small_table_key_columns
         )
 
-        # Validate that both tables have the required key columns
+        # Perform the PyArrow join
         if self.datasets_swapped:
-            # Validate small table (originally left) has required key columns
-            missing_keys = [
-                col
-                for col in self.small_table_key_columns
-                if col not in self.small_table.schema.names
-            ]
-            if missing_keys:
-                raise ValueError(f"Small table missing key columns: {missing_keys}")
-
-            # Validate batch (originally right) has required key columns
-            missing_keys = [
-                col
-                for col in self.large_table_key_columns
-                if col not in batch.schema.names
-            ]
-            if missing_keys:
-                raise ValueError(f"Batch missing key columns: {missing_keys}")
-        else:
-            # Validate batch (originally left) has required key columns
-            missing_keys = [
-                col
-                for col in self.large_table_key_columns
-                if col not in batch.schema.names
-            ]
-            if missing_keys:
-                raise ValueError(f"Batch missing key columns: {missing_keys}")
-
-            # Validate small table (originally right) has required key columns
-            missing_keys = [
-                col
-                for col in self.small_table_key_columns
-                if col not in self.small_table.schema.names
-            ]
-            if missing_keys:
-                raise ValueError(f"Small table missing key columns: {missing_keys}")
-
-        if self.datasets_swapped:
-            # When datasets are swapped:
-            # - batch comes from the originally RIGHT dataset (larger)
-            # - small_table is the originally LEFT dataset (smaller, broadcasted)
-            # We need to maintain LEFT.join(RIGHT) semantics
-            # So we do: small_table.join(batch) = LEFT.join(RIGHT_BATCH)
+            # When datasets are swapped: small_table.join(batch)
             joined_table = self.small_table.join(
                 batch,
                 join_type=arrow_join_type,
@@ -203,14 +122,18 @@ class BroadcastJoinFunction:
                 coalesce_keys=coalesce_keys,
             )
         else:
-            # Normal case:
-            # - batch comes from the originally LEFT dataset (larger)
-            # - small_table is the originally RIGHT dataset (smaller, broadcasted)
-            # We maintain LEFT.join(RIGHT) semantics: batch.join(small_table)
+            # Normal case: batch.join(small_table)
             joined_table = batch.join(
                 self.small_table,
                 join_type=arrow_join_type,
                 keys=list(self.large_table_key_columns),
+                right_keys=(
+                    list(self.small_table_key_columns)
+                    if list(self.large_table_key_columns)
+                    != list(self.small_table_key_columns)
+                    else None
+                ),
+                left_suffix=self.large_table_columns_suffix,
                 right_suffix=self.small_table_columns_suffix,
                 coalesce_keys=coalesce_keys,
             )
