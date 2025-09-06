@@ -5,7 +5,7 @@ from typing import List, Optional
 
 import click
 import runfiles
-from networkx import DiGraph, topological_sort
+from networkx import DiGraph, topological_sort, ancestors as networkx_ancestors
 
 from ci.raydepsets.workspace import Depset, Workspace
 
@@ -60,10 +60,7 @@ def build(
         workspace_dir=workspace_dir,
         uv_cache_dir=uv_cache_dir,
     )
-    if name:
-        manager.execute_depset(_get_depset(manager.config.depsets, name))
-    else:
-        manager.execute()
+    manager.execute(name)
 
 
 class DependencySetManager:
@@ -110,15 +107,25 @@ class DependencySetManager:
                     )
                     self.build_graph.add_edge(hook_name, depset.name)
 
-    def execute(self):
+    def subgraph_dependency_nodes(self, depset_name: str):
+        dependency_nodes = networkx_ancestors(self.build_graph, depset_name)
+        nodes = dependency_nodes | {depset_name}
+        self.build_graph = self.build_graph.subgraph(nodes).copy()
+
+    def execute(self, single_depset_name: Optional[str] = None):
+        if single_depset_name:
+            # check if the depset exists
+            _get_depset(self.config.depsets, single_depset_name)
+            self.subgraph_dependency_nodes(single_depset_name)
+
         for node in topological_sort(self.build_graph):
             node_type = self.build_graph.nodes[node]["node_type"]
-            if node_type == "depset":
-                depset = self.build_graph.nodes[node]["depset"]
-                self.execute_depset(depset)
-            elif node_type == "pre_hook":
+            if node_type == "pre_hook":
                 pre_hook = self.build_graph.nodes[node]["pre_hook"]
                 self.execute_pre_hook(pre_hook)
+            elif node_type == "depset":
+                depset = self.build_graph.nodes[node]["depset"]
+                self.execute_depset(depset)
 
     def exec_uv_cmd(
         self, cmd: str, args: List[str], stdin: Optional[bytes] = None
