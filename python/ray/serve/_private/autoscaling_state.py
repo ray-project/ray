@@ -11,10 +11,12 @@ from ray.serve._private.common import (
     TargetCapacityDirection,
 )
 from ray.serve._private.constants import (
+    RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER,
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.metrics_utils import merge_timeseries_dicts
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -281,20 +283,65 @@ class AutoscalingState:
         """
 
         total_requests = 0
+        RUNNING_REQUESTS_KEY = "running_requests"
 
-        for id in self._running_replicas:
-            if id in self._replica_requests:
-                total_requests += self._replica_requests[id].avg_running_requests
+        if RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER:
+            metrics_timeseries_dicts = []
+            for id in self._running_replicas:
+                if id in self._replica_requests:
+                    metrics_timeseries_dicts.append(
+                        {
+                            RUNNING_REQUESTS_KEY: self._replica_requests[
+                                id
+                            ].running_requests
+                        }
+                    )
 
-        metrics_collected_on_replicas = total_requests > 0
-        for handle_metric in self._handle_requests.values():
-            total_requests += handle_metric.queued_requests
+            metrics_collected_on_replicas = len(metrics_timeseries_dicts) > 0
+            for handle_metric in self._handle_requests.values():
+                total_requests += handle_metric.queued_requests
+                if not metrics_collected_on_replicas:
+                    for id in self._running_replicas:
+                        if id in handle_metric.running_requests:
+                            metrics_timeseries_dicts.append(
+                                {
+                                    RUNNING_REQUESTS_KEY: handle_metric.running_requests[
+                                        id
+                                    ]
+                                }
+                            )
+            # Aggregate and average running requests
+            if metrics_timeseries_dicts:
+                # Window the timeseries to the metrics interval
+                # for stability during merging the timeseries.
+                # Use a minimum window of 1.0s to avoid noise from
+                # small metrics intervals.
+                aggregated_metrics = merge_timeseries_dicts(
+                    *metrics_timeseries_dicts,
+                    window_s=max(1.0, self._config.metrics_interval_s),
+                )
+                running_requests_timeseries = aggregated_metrics.get(
+                    RUNNING_REQUESTS_KEY, []
+                )
+                if running_requests_timeseries:
+                    avg_running = sum(
+                        point.value for point in running_requests_timeseries
+                    ) / len(running_requests_timeseries)
+                    total_requests += avg_running
+        else:
 
-            if not metrics_collected_on_replicas:
-                for id in self._running_replicas:
-                    if id in handle_metric.running_requests:
-                        total_requests += handle_metric.avg_running_requests[id]
+            for id in self._running_replicas:
+                if id in self._replica_requests:
+                    total_requests += self._replica_requests[id].avg_running_requests
 
+            metrics_collected_on_replicas = total_requests > 0
+            for handle_metric in self._handle_requests.values():
+                total_requests += handle_metric.queued_requests
+
+                if not metrics_collected_on_replicas:
+                    for id in self._running_replicas:
+                        if id in handle_metric.running_requests:
+                            total_requests += handle_metric.avg_running_requests[id]
         return total_requests
 
 
