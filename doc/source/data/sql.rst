@@ -13,18 +13,35 @@ Ray Data SQL: SQL for Data
 
 Ray Data SQL provides a comprehensive SQL interface for Ray Datasets, enabling familiar SQL operations on distributed data. Execute complex queries, joins, aggregations, and transformations using standard SQL syntax while leveraging Ray's scalable processing capabilities.
 
-Why Ray Data SQL?
-------------------
+What is Ray Data SQL?
+---------------------
 
-**Familiar SQL Interface**: Use standard SQL syntax you already know to process distributed datasets.
+Ray Data SQL is a distributed SQL engine that runs on Ray clusters. It allows you to query Ray Datasets using standard SQL syntax, making distributed data processing accessible to users familiar with SQL.
 
-**Seamless Integration**: SQL queries return Ray Datasets, allowing you to seamlessly mix SQL operations with Ray Data's rich API.
+Key features:
 
-**Distributed Processing**: Automatically scales across your Ray cluster, handling large datasets efficiently.
+- **Familiar SQL Interface**: Use standard SQL syntax you already know to process distributed datasets.
+- **Seamless Integration**: SQL queries return Ray Datasets, allowing you to seamlessly mix SQL operations with Ray Data's rich API.
+- **Distributed Processing**: Automatically scales across your Ray cluster, handling large datasets efficiently.
+- **Rich Data Type Support**: Works with Arrow data types, supporting complex nested structures, timestamps, and more.
+- **Performance Optimized**: Built-in query optimization and pushdown operations for efficient execution.
 
-**Rich Data Type Support**: Works with Arrow data types, supporting complex nested structures, timestamps, and more.
+Why use Ray Data SQL?
+---------------------
 
-**Performance Optimized**: Built-in query optimization and pushdown operations for efficient execution.
+Ray Data SQL is ideal for:
+
+- **Data analysts** who want to use familiar SQL syntax on distributed datasets
+- **Data scientists** who need to combine SQL queries with machine learning workflows
+- **Data engineers** who want to process large datasets using standard SQL operations
+- **Teams** that need to bridge the gap between SQL-based tools and distributed computing
+
+Common use cases:
+
+- **Data exploration**: Quickly explore large datasets using familiar SELECT queries
+- **Data transformation**: Transform and clean data using SQL before applying machine learning
+- **Analytics**: Perform complex aggregations and joins on distributed data
+- **ETL pipelines**: Build data pipelines that combine SQL operations with Ray Data transformations
 
 Install Ray Data SQL
 ---------------------
@@ -33,9 +50,9 @@ Ray Data SQL is included with Ray Data. To install:
 
 .. code-block:: console
 
-    $ pip install -U 'ray[data]'
+    pip install -U 'ray[data]'
 
-Quick Start
+Quick start
 -----------
 
 Here's a simple example of using SQL with Ray Data:
@@ -75,34 +92,34 @@ Here's a simple example of using SQL with Ray Data:
     print(result.take_all())
     # Output: [{'name': 'Alice', 'total_spent': 175}, {'name': 'Charlie', 'total_spent': 0}]
 
-Supported SQL Features
-----------------------
+Supported SQL features
+-----------------------
 
 Ray Data SQL supports a wide range of SQL operations:
 
-**Basic Queries**
+Basic queries
   - SELECT with column projections and aliases
   - WHERE clauses with complex conditions
   - ORDER BY with multiple columns
   - LIMIT and OFFSET for pagination
 
-**Aggregations**
+Aggregations
   - GROUP BY with multiple columns  
   - Aggregate functions: COUNT, SUM, AVG, MIN, MAX
   - HAVING clauses for post-aggregation filtering
 
-**Joins**
+Joins
   - INNER JOIN for combining datasets
   - LEFT JOIN for preserving left dataset records
   - Multiple table joins with complex conditions
 
-**Advanced Features**
+Advanced features
   - Subqueries and common table expressions (CTEs)
   - UNION operations for combining datasets
   - Window functions (coming soon)
   - User-defined functions (coming soon)
 
-Learn More
+Learn more
 ----------
 
 .. grid:: 1 2 2 2
@@ -169,8 +186,8 @@ Learn More
 
             More Examples
 
-Configuration and Advanced Usage
---------------------------------
+Configuration and advanced usage
+---------------------------------
 
 Ray Data SQL provides extensive configuration options for different use cases:
 
@@ -192,9 +209,10 @@ Ray Data SQL provides extensive configuration options for different use cases:
     # Use with context manager for session-specific settings
     with ray.data.DataContext() as ctx:
         ctx.sql_config = config
-        result = ray.data.sql("SELECT * FROM users WHERE age > 30")
+        result = sql("SELECT * FROM users WHERE age > 30")
 
-**Advanced Configuration Options**
+Advanced configuration options
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. testcode::
 
@@ -220,7 +238,8 @@ Ray Data SQL provides extensive configuration options for different use cases:
         max_memory_usage_gb=16          # Memory limit for operations
     )
 
-**SQL Dialect Configuration**
+SQL dialect configuration
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. testcode::
 
@@ -257,10 +276,10 @@ SQL queries seamlessly integrate with Ray Data operations:
     register_table("transformed_users", transformed)
     final_result = sql("SELECT age_group, COUNT(*) FROM transformed_users GROUP BY age_group")
 
-Limitations and Considerations
+Limitations and considerations
 ------------------------------
 
-**Current Limitations**
+Current limitations
   - **SQL Dialect**: Currently uses DuckDB SQL dialect through SQLGlot parsing
   - **Window Functions**: Limited support for advanced window functions
   - **Subqueries**: Complex nested subqueries may have performance implications
@@ -269,17 +288,17 @@ Limitations and Considerations
   - **Indexes**: No index support for query optimization
   - **Materialized Views**: Views aren't supported, only direct table queries
 
-**Performance Considerations**
+Performance considerations
   - **Memory Usage**: Large JOIN operations may require significant memory
   - **Data Shuffling**: Cross-partition operations can be expensive
   - **Optimization**: Limited query optimization compared to dedicated SQL engines
 
-**Data Type Mapping**
+Data type mapping
   - **Arrow Integration**: Best performance with Arrow-native types
   - **Type Coercion**: Automatic type conversion may impact performance
   - **Nested Data**: Complex nested structures have limited SQL support
 
-Performance Tips
+Performance tips
 ----------------
 
 - **Use explicit table registration** for better performance than auto-registration
@@ -289,7 +308,7 @@ Performance Tips
 - **Consider partitioning** for very large datasets
 - **Avoid complex nested queries** that may trigger expensive data movements
 
-What's Next?
+What's next?
 ------------
 
 - **Learn SQL basics**: Check out the :ref:`SQL Quickstart <data_sql_quickstart>`

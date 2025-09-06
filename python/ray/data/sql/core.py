@@ -14,7 +14,6 @@ from sqlglot import exp
 
 from ray.data import Dataset
 from ray.data.sql.config import LogLevel, SQLConfig
-from ray.util.annotations import PublicAPI
 from ray.data.sql.exceptions import (
     SQLExecutionError,
     SQLParseError,
@@ -25,6 +24,7 @@ from ray.data.sql.registry.base import TableRegistry
 from ray.data.sql.validators.base import CompositeValidator
 from ray.data.sql.validators.features import FeatureValidator
 from ray.data.sql.validators.syntax import SyntaxValidator
+from ray.util.annotations import PublicAPI
 
 
 @PublicAPI

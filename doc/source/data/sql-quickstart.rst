@@ -13,13 +13,13 @@ Ray Data SQL is included with Ray Data. Install Ray Data with:
 
 .. code-block:: console
 
-    $ pip install -U 'ray[data]'
+    pip install -U 'ray[data]'
 
-Basic Usage
+Basic usage
 ===========
 
-Step 1: Create and Register Datasets
--------------------------------------
+Step 1: Create and register datasets
+------------------------------------
 
 Start by creating Ray Datasets and registering them as SQL tables:
 
@@ -48,8 +48,8 @@ Start by creating Ray Datasets and registering them as SQL tables:
     register_table("users", users)
     register_table("orders", orders)
 
-Step 2: Execute Basic SQL Queries
-----------------------------------
+Step 2: Execute basic SQL queries
+---------------------------------
 
 Now you can execute SQL queries using the familiar SELECT syntax:
 
@@ -70,8 +70,8 @@ Now you can execute SQL queries using the familiar SELECT syntax:
     print(result.take_all())
     # Output: [{'city': 'New York', 'user_count': 2}, {'city': 'San Francisco', 'user_count': 1}, {'city': 'Los Angeles', 'user_count': 1}]
 
-Step 3: Join Multiple Tables
------------------------------
+Step 3: Join multiple tables
+----------------------------
 
 Perform JOIN operations to combine data from multiple tables:
 
@@ -100,8 +100,8 @@ Perform JOIN operations to combine data from multiple tables:
     """)
     print(result.take_all())
 
-Step 4: Advanced Queries
--------------------------
+Step 4: Advanced queries
+------------------------
 
 Use more advanced SQL features like subqueries and window functions:
 
@@ -166,7 +166,7 @@ SQL results are Ray Datasets, so you can seamlessly mix SQL with Ray Data operat
 
     print(final_result.take_all())
 
-Configuration Options
+Configuration options
 =====================
 
 Customize SQL engine behavior with configuration:
@@ -189,8 +189,8 @@ Customize SQL engine behavior with configuration:
         ctx.sql_config = config
         result = sql("SELECT NAME from USERS where AGE > 30")  # Case-insensitive
 
-Auto-Registration
-==================
+Auto-registration
+=================
 
 For convenience, you can use auto-registration with variable names:
 
@@ -201,13 +201,13 @@ For convenience, you can use auto-registration with variable names:
     purchases = ray.data.from_items([{"customer_id": 1, "item": "book"}])
 
     # Auto-register and query (uses variable names as table names)
-    result = ray.data.sql("""
+    result = sql("""
         SELECT c.name, p.item
         FROM customers c
         JOIN purchases p ON c.id = p.customer_id
     """)
 
-Table Management
+Table management
 ================
 
 Manage your SQL tables with utility functions:
@@ -227,23 +227,23 @@ Manage your SQL tables with utility functions:
     # Clear all tables when done
     clear_tables()
 
-Important Limitations to Know
+Important limitations to know
 =============================
 
 Before diving deeper, be aware of these current limitations:
 
-**SQL Feature Limitations**
+SQL feature limitations
   - **Window Functions**: Limited support for ROW_NUMBER(), RANK(), etc.
   - **User-Defined Functions**: Custom SQL functions aren't supported
   - **Recursive CTEs**: Recursive Common Table Expressions aren't available
   - **Materialized Views**: Only direct table queries, no view support
 
-**Performance Considerations**
+Performance considerations
   - **Large JOINs**: Cross-joins and large JOINs can be memory-intensive
   - **Complex Subqueries**: May have performance implications
   - **Data Types**: Best performance with Arrow-native types
 
-**Workarounds Available**
+Workarounds available
 Most limitations can be worked around using Ray Data operations:
 
 .. testcode::
@@ -256,12 +256,12 @@ Most limitations can be worked around using Ray Data operations:
     # ❌ Not supported: SELECT custom_function(name) FROM users  
     # ✅ Use: users.map(lambda row: {"result": custom_function(row["name"])})
 
-**SQL Dialect Support**
+SQL dialect support
   - **Primary**: DuckDB SQL dialect (recommended)
   - **Supported**: PostgreSQL, MySQL, BigQuery syntax (with conversion)
   - **Automatic Conversion**: SQLGlot handles dialect differences
 
-What's Next?
+What's next?
 ============
 
 Now that you've learned the basics, explore more advanced features:

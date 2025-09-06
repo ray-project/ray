@@ -10,10 +10,10 @@ This guide covers advanced SQL operations, optimization techniques, and best pra
    :local:
    :depth: 2
 
-Advanced SQL Operations
+Advanced SQL operations
 =======================
 
-Complex Joins
+Complex joins
 -------------
 
 Ray Data SQL supports various join types for combining datasets:
@@ -116,8 +116,8 @@ Use subqueries and Common Table Expressions for complex data analysis:
         ORDER BY salary_diff DESC
     """)
 
-Window Functions and Analytics
-------------------------------
+Window functions and analytics
+-------------------------------
 
 Perform advanced analytics with window functions:
 
@@ -145,10 +145,10 @@ Perform advanced analytics with window functions:
         ORDER BY salary
     """)
 
-Data Types and Type Handling
+Data types and type handling
 =============================
 
-Schema Inference
+Schema inference
 ----------------
 
 Ray Data SQL automatically infers data types from your datasets:
@@ -170,7 +170,7 @@ Ray Data SQL automatically infers data types from your datasets:
     
     register_table("mixed_data", mixed_data)
 
-Type Conversions
+Type conversions
 ----------------
 
 Perform explicit type conversions in your queries:
@@ -190,11 +190,11 @@ Perform explicit type conversions in your queries:
         FROM mixed_data
     """)
 
-Performance Optimization
+Performance optimization
 ========================
 
-Query Optimization Strategies
------------------------------
+Query optimization strategies
+----------------------------
 
 Follow these best practices for optimal performance:
 
@@ -232,7 +232,7 @@ Follow these best practices for optimal performance:
         WHERE avg_salary > 50000  -- Filter late
     """)
 
-Column Pruning
+Column pruning
 --------------
 
 Select only the columns you need:
@@ -245,7 +245,7 @@ Select only the columns you need:
     # AVOID: Select all columns when you don't need them
     # result = sql("SELECT * FROM employees WHERE dept_id = 10")
 
-Partitioning and Data Layout
+Partitioning and data layout
 ----------------------------
 
 For large datasets, consider data partitioning:
@@ -260,7 +260,7 @@ For large datasets, consider data partitioning:
     ])
     
     # Partition by date for time-series queries
-    partitioned = large_dataset.repartition_by_column("date")
+    partitioned = large_dataset.repartition(keys=["date"])
     register_table("sales", partitioned)
     
     # Queries on partitioned data are more efficient
@@ -271,10 +271,10 @@ For large datasets, consider data partitioning:
         GROUP BY region
     """)
 
-Configuration and Tuning
+Configuration and tuning
 =========================
 
-Engine Configuration
+Engine configuration
 --------------------
 
 Ray Data SQL provides extensive configuration options for different environments and use cases:
@@ -332,8 +332,8 @@ Ray Data SQL provides extensive configuration options for different environments
         ctx.sql_config = production_config
         result = sql("SELECT * FROM employees")
 
-SQL Dialect Handling
----------------------
+SQL dialect handling
+--------------------
 
 Ray Data SQL uses SQLGlot for parsing and supports multiple SQL dialects:
 

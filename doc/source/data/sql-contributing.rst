@@ -7,7 +7,7 @@ Contributions to Ray Data SQL are welcome. This guide helps you get started with
    :depth: 2
    :local:
 
-Getting Started
+Getting started
 ===============
 
 Ray Data SQL is an integral part of Ray Data that enables SQL querying capabilities on Ray Datasets. 
@@ -19,21 +19,21 @@ When contributing, you will work with several key components:
 * **Configuration** (``ray/python/ray/data/sql/config.py``): Engine configuration and settings
 * **Testing Framework** (``ray/python/ray/data/sql/testing.py``): Comprehensive test utilities
 
-Setting Up Your Development Environment
+Setting up your development environment
 =======================================
 
-1. **Fork and Clone Ray**
+1. **Fork and clone Ray**
 
    Follow the standard Ray development setup in the main contributing guide.
 
-2. **Install SQL-Specific Dependencies**
+2. **Install SQL-specific dependencies**
 
    .. code-block:: bash
 
        pip install sqlglot>=20.0.0
        pip install pytest
 
-3. **Verify Your Setup**
+3. **Verify your setup**
 
    .. code-block:: bash
 
@@ -159,7 +159,7 @@ Follow these patterns when writing tests:
         def test_basic_select(self):
             """Test basic SELECT functionality."""
             result = sql("SELECT name FROM users")
-            names = [row["name"] for row in result.take()]
+            names = [row["name"] for row in result.take_all()]
             assert "Alice" in names
             assert "Bob" in names
         
@@ -215,7 +215,7 @@ Use Google-style docstrings with examples:
 
                 # Query the registered table
                 result = sql("SELECT name FROM users")
-                print([row["name"] for row in result.take()])
+                print([row["name"] for row in result.take_all()])
 
             .. testoutput::
 

@@ -8,10 +8,10 @@ All examples are designed to run out-of-the-box and demonstrate real-world use c
    :depth: 2
    :local:
 
-Getting Started Examples
+Getting started examples
 ========================
 
-Basic Query Operations
+Basic query operations
 ----------------------
 
 Start with simple SELECT operations to explore your data:
@@ -45,7 +45,7 @@ Start with simple SELECT operations to explore your data:
       Charlie: 35
       Diana: 28
 
-Filtering and Aggregation
+Filtering and aggregation
 -------------------------
 
 Use WHERE clauses and aggregate functions to analyze your data:
@@ -61,7 +61,7 @@ Use WHERE clauses and aggregate functions to analyze your data:
     """)
     
     print("Department sizes:")
-    for row in dept_counts.take():
+    for row in dept_counts.take_all():
         print(f"  {row['department']}: {row['employee_count']} employees")
     
     # Calculate average age by department
@@ -72,7 +72,7 @@ Use WHERE clauses and aggregate functions to analyze your data:
     """)
     
     print("\nAverage ages by department:")
-    for row in avg_ages.take():
+    for row in avg_ages.take_all():
         print(f"  {row['department']}: {row['avg_age']:.1f} years")
 
 .. testoutput::
@@ -87,10 +87,10 @@ Use WHERE clauses and aggregate functions to analyze your data:
       Marketing: 25.0 years
       Sales: 28.0 years
 
-Advanced Query Examples
+Advanced query examples
 =======================
 
-JOIN Operations
+JOIN operations
 ---------------
 
 Combine multiple datasets using various types of joins:
@@ -115,7 +115,7 @@ Combine multiple datasets using various types of joins:
     """)
     
     print("Project assignments:")
-    for row in project_leaders.take():
+    for row in project_leaders.take_all():
         print(f"  {row['project_name']}: {row['leader_name']} ({row['department']})")
 
 .. testoutput::
@@ -150,7 +150,7 @@ Use Common Table Expressions (CTEs) for complex analytical queries:
     """)
     
     print("Departments with above-average age employees:")
-    for row in above_avg_depts.take():
+    for row in above_avg_depts.take_all():
         print(f"  {row['department']}: {row['avg_dept_age']:.1f} years")
 
 .. testoutput::
@@ -158,10 +158,10 @@ Use Common Table Expressions (CTEs) for complex analytical queries:
     Departments with above-average age employees:
       Engineering: 32.5 years
 
-Performance Optimization Examples
+Performance optimization examples
 =================================
 
-Efficient Filtering
+Efficient filtering
 -------------------
 
 Apply filters early to reduce data processing:
@@ -196,10 +196,10 @@ Apply filters early to reduce data processing:
       cat_3: ... records, avg=...
       cat_2: ... records, avg=...
 
-Configuration Examples
+Configuration examples
 ======================
 
-Custom SQL Configuration
+Custom SQL configuration
 ------------------------
 
 Configure the SQL engine for specific requirements:
@@ -238,10 +238,10 @@ Configure the SQL engine for specific requirements:
 
     Total users: 4
 
-Error Handling Examples
+Error handling examples
 =======================
 
-Graceful Error Handling
+Graceful error handling
 -----------------------
 
 Handle common SQL errors gracefully in your applications:
@@ -283,7 +283,7 @@ Handle common SQL errors gracefully in your applications:
     
     if result:
         print("Query succeeded:")
-        for row in result.take():
+        for row in result.take_all():
             print(f"  {row}")
 
 .. testoutput::
@@ -294,10 +294,10 @@ Handle common SQL errors gracefully in your applications:
       {'name': 'Alice'}
       {'name': 'Bob'}
 
-Integration Examples
+Integration examples
 ====================
 
-Ray Data Pipeline Integration
+Ray Data pipeline integration
 -----------------------------
 
 Combine SQL queries with Ray Data transformations:
@@ -330,7 +330,7 @@ Combine SQL queries with Ray Data transformations:
     """)
     
     print("Engineering team seniority breakdown:")
-    for row in seniority_breakdown.take():
+    for row in seniority_breakdown.take_all():
         print(f"  {row['seniority']}: {row['count']} people, avg age {row['avg_age']:.1f}")
 
 .. testoutput::
@@ -339,10 +339,10 @@ Combine SQL queries with Ray Data transformations:
       Senior: 2 people, avg age 32.5
       Junior: 0 people, avg age ...
 
-Cleanup Examples
+Cleanup examples
 ================
 
-Resource Management
+Resource management
 -------------------
 
 Clean up resources when you're done:
@@ -365,25 +365,25 @@ Clean up resources when you're done:
     Tables before cleanup: ['users', 'projects', 'large_data', 'engineering_enhanced']
     Tables after cleanup: []
 
-Best Practices Summary
+Best practices summary
 ======================
 
-**Query Optimization**
+Query optimization
   - Apply filters early in WHERE clauses
   - Use explicit column selection instead of SELECT *
   - Leverage indexes when available (future feature)
 
-**Error Handling**
+Error handling
   - Always handle ValueError for SQL syntax errors
   - Check table existence with ``list_tables()``
   - Validate schemas with ``get_schema()``
 
-**Resource Management**  
+Resource management
   - Clear tables when finished with ``clear_tables()``
   - Use appropriate batch sizes for large datasets
   - Configure memory limits for production workloads
 
-**Configuration**
+Configuration
   - Use development config for debugging and testing
   - Use production config for optimized performance
   - Enable optimizations for better query performance
