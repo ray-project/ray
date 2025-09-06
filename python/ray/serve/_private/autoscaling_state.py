@@ -366,6 +366,55 @@ class AutoscalingState:
 
         return total_requests
 
+    def get_snapshot(self, curr_target_num_replicas: int) -> Dict[str, Any]:
+        """Return a compact snapshot for observability/logging to avoid recomputing in controller.
+
+        Includes:
+        - current_replicas: number of currently running replicas
+        - target_replicas: bounded decision from policy
+        - min_replicas / max_replicas: capacity-adjusted bounds
+        - total_requests: aggregated request pressure
+        - queued_requests: aggregated queued requests reported by handles (best-effort)
+        - last_metrics_age_s: age (in seconds) of the freshest metric we've seen (best-effort)
+        """
+        current_replicas = len(self._running_replicas)
+        target_replicas = self.get_decision_num_replicas(
+            curr_target_num_replicas=curr_target_num_replicas
+        )
+
+        min_replicas = self.get_num_replicas_lower_bound()
+        max_replicas = self.get_num_replicas_upper_bound()
+
+        total_requests = self.get_total_num_requests()
+
+        if self._handle_requests:
+            queued_requests = sum(
+                h.queued_requests for h in self._handle_requests.values()
+            )
+        else:
+            queued_requests = 0.0
+
+        timestamps = [r.timestamp for r in self._replica_requests.values()]
+        timestamps.extend(h.timestamp for h in self._handle_requests.values())
+        latest_ts = max(timestamps) if timestamps else None
+
+        if latest_ts is not None:
+            last_metrics_age_s = max(0.0, time.time() - latest_ts)
+        else:
+            last_metrics_age_s = None
+
+        return {
+            "current_replicas": int(current_replicas),
+            "target_replicas": int(target_replicas),
+            "min_replicas": int(min_replicas) if min_replicas is not None else None,
+            "max_replicas": int(max_replicas) if max_replicas is not None else None,
+            "total_requests": total_requests,
+            "queued_requests": float(queued_requests),
+            "last_metrics_age_s": None
+            if last_metrics_age_s is None
+            else float(last_metrics_age_s),
+        }
+
 
 class AutoscalingStateManager:
     """Manages all things autoscaling related.
@@ -476,3 +525,11 @@ class AutoscalingStateManager:
 
         for autoscaling_state in self._autoscaling_states.values():
             autoscaling_state.drop_stale_handle_metrics(alive_serve_actor_ids)
+
+    def get_snapshot(
+        self, deployment_id: DeploymentID, curr_target_num_replicas: int
+    ) -> Dict[str, Any]:
+        """Expose a per-deployment snapshot so controller doesn't duplicate computations."""
+        return self._autoscaling_states[deployment_id].get_snapshot(
+            curr_target_num_replicas=curr_target_num_replicas
+        )

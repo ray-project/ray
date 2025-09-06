@@ -477,3 +477,8 @@ if RAY_SERVE_THROUGHPUT_OPTIMIZED:
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE = 1000
     RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP = False
     RAY_SERVE_LOG_TO_STDERR = False
+
+# Maximum number of past scaling decisions to retain per deployment.
+AUTOSCALER_SUMMARIZER_DECISION_HISTORY_MAX = 50
+# Maximum number of recent scaling decisions to include in each snapshot log.
+AUTOSCALER_SUMMARIZER_DECISION_LIMIT = 2

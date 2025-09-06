@@ -754,3 +754,95 @@ OBJ_REF_NOT_SUPPORTED_ERROR = RuntimeError(
     "Converting by-value DeploymentResponses to ObjectRefs is not supported. "
     "Use handle.options(_by_reference=True) to enable it."
 )
+
+
+@dataclass(frozen=True)
+class AutoscalingDecisionSummary:
+    timestamp_s: Optional[str]
+    prev_num_replicas: Optional[int]
+    curr_num_replicas: Optional[int]
+    reason: str
+
+
+@dataclass(frozen=True)
+class DeploymentSnapshot:
+    timestamp_s: str
+    app: str
+    deployment: str
+    current_replicas: int
+    target_replicas: int
+    min_replicas: Optional[int]
+    max_replicas: Optional[int]
+    scaling_status: str
+    policy: str
+    look_back_period_s: Optional[float]
+    queued_requests: Optional[float]
+    total_requests: float
+    metrics_health: str
+    errors: List[str]
+    decisions: List[AutoscalingDecisionSummary]
+
+    def to_log_dict(self) -> Dict[str, object]:
+        return {
+            "timestamp_s": self.timestamp_s,
+            "app": self.app,
+            "deployment": self.deployment,
+            "current_replicas": self.current_replicas,
+            "target_replicas": self.target_replicas,
+            "min": self.min_replicas,
+            "max": self.max_replicas,
+            "scaling_status": self.scaling_status,
+            "policy": self.policy,
+            "look_back_period_s": self.look_back_period_s,
+            "metrics": {
+                "queued_requests": self.queued_requests,
+                "total_requests": self.total_requests,
+            },
+            "metrics_health": self.metrics_health,
+            "errors": self.errors,
+            "decisions": [
+                {
+                    "timestamp_s": d.timestamp_s,
+                    "from": d.prev_num_replicas,
+                    "to": d.curr_num_replicas,
+                    "reason": d.reason,
+                }
+                for d in self.decisions
+            ],
+        }
+
+
+@dataclass(frozen=True)
+class InternalAutoscalingConfig:
+    """Normalized, typed view for autoscaling config used by the controller.
+
+    This removes the need for dual dict vs. object access patterns.
+    Only the fields needed by the controller are exposed here.
+    """
+
+    name: str = "default"
+    look_back_period_s: Optional[float] = None
+
+
+def normalize_autoscaling_config(cfg: Any) -> Optional[InternalAutoscalingConfig]:
+    """Normalize autoscaling config into a typed view.
+
+    If cfg is falsy, returns InternalAutoscalingConfig(name=None, look_back_period_s=None).
+    Otherwise, gets name from cfg["policy"] or cfg["name"] or "default", and look_back_period_s from cfg["look_back_period_s"].
+    """
+    if not cfg:
+        return InternalAutoscalingConfig(name=None, look_back_period_s=None)
+    name = cfg.get("policy") or cfg.get("name") or "default"
+    look_back_period_s = cfg.get("look_back_period_s")
+    return InternalAutoscalingConfig(name=name, look_back_period_s=look_back_period_s)
+
+
+# Signature for a snapshot of autoscaling state, used for deduplication.
+@dataclass(frozen=True)
+class SnapshotSignature:
+    current_replicas: int
+    target_replicas: int
+    min_replicas: Optional[int]
+    max_replicas: Optional[int]
+    scaling_status: str
+    total_requests: float
