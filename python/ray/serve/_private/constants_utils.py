@@ -259,36 +259,6 @@ def get_env_bool(name: str, default: str) -> bool:
     return env_value_str == "1"
 
 
-def get_env_float_non_zero_with_warning(
-    name: str, default: Optional[float]
-) -> Optional[float]:
-    """Introduced for backward compatibility for constants:
-
-    PROXY_HEALTH_CHECK_TIMEOUT_S
-    PROXY_HEALTH_CHECK_PERIOD_S
-    PROXY_READY_CHECK_TIMEOUT_S
-    PROXY_MIN_DRAINING_PERIOD_S
-    RAY_SERVE_KV_TIMEOUT_S
-
-    TODO: replace this function with 'get_env_float_positive' for the '2.50.0' release.
-    """
-    removal_version = "2.50.0"
-
-    env_value = get_env_float(name, default)
-    backward_compatible_result = env_value or default
-
-    if env_value is not None and env_value <= 0:
-        # warning message if unexpected value
-        warnings.warn(
-            f"Got unexpected value `{env_value}` for `{name}` environment variable! "
-            f"Starting from version `{removal_version}`, the environment variable will require a positive value. "
-            f"Setting `{name}` to `{backward_compatible_result}`. ",
-            FutureWarning,
-            stacklevel=2,
-        )
-    return backward_compatible_result
-
-
 def _deprecation_warning(name: str) -> None:
     """Log replacement warning for wrong or legacy environment variables.
 
