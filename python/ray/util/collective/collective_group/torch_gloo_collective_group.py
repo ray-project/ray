@@ -4,8 +4,11 @@ import torch
 import torch.distributed as dist
 
 import ray.experimental.internal_kv as internal_kv
-from ray.util.collective.collective_group.base_collective_group import BaseGroup
 from ray._common.network_utils import parse_address
+from ray.util.collective.collective_group.base_collective_group import (
+    BaseGroup,
+    get_master_address_metadata_key,
+)
 from ray.util.collective.types import (
     AllReduceOptions,
     BarrierOptions,
@@ -29,10 +32,6 @@ TORCH_REDUCE_OP_MAP = {
     ReduceOp.MIN: dist.ReduceOp.MIN,
     ReduceOp.MAX: dist.ReduceOp.MAX,
 }
-
-
-def get_master_address_metadata_key(group_name: str):
-    return f"collective_group_master_address_{group_name}"
 
 
 class TorchGLOOGroup(BaseGroup):
