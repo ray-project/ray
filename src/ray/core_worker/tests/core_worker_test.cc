@@ -484,6 +484,30 @@ TEST_F(CoreWorkerTest, HandleGetObjectStatusObjectOutOfScope) {
   EXPECT_EQ(reply2.status(), rpc::GetObjectStatusReply::OUT_OF_SCOPE);
 }
 
+TEST_F(CoreWorkerTest, HandlePubsubCommandBatchIdempotency) {
+  rpc::PubsubCommandBatchRequest command_batch_request;
+  command_batch_request.set_subscriber_id(WorkerID::FromRandom().Binary());
+  auto *command = command_batch_request.add_commands();
+  command->set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
+  command->set_key_id(ObjectID::FromRandom().Binary());
+  auto *sub_message = command->mutable_subscribe_message();
+  auto *real_sub_message = sub_message->mutable_worker_object_eviction_message();
+  real_sub_message->set_intended_worker_id(WorkerID::FromRandom().Binary());
+  real_sub_message->set_object_id(ObjectID::FromRandom().Binary());
+  *real_sub_message->mutable_subscriber_address() = rpc::Address{};
+
+  // Reply is always empty.
+  rpc::PubsubCommandBatchReply reply;
+  core_worker_->HandlePubsubCommandBatch(
+      command_batch_request,
+      &reply,
+      [](const Status &, std::function<void()>, std::function<void()>) {});
+  core_worker_->HandlePubsubCommandBatch(
+      command_batch_request,
+      &reply,
+      [](const Status &, std::function<void()>, std::function<void()>) {});
+}
+
 namespace {
 
 ObjectID CreateInlineObjectInMemoryStoreAndRefCounter(CoreWorkerMemoryStore &memory_store,
