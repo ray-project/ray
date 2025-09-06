@@ -1741,7 +1741,7 @@ def test_sub_operator_num_rows(shutdown_only):
     ds1 = ray.data.from_items(data1)
     data2 = [{"id": i, "value2": i * 1.5, "category2": i % 5} for i in range(300)]
     ds2 = ray.data.from_items(data2)
-    ds = ds1.join(ds2, join_type="left_outer", num_partitions=10)
+    ds = ds1.join(ds2, join_type="left_outer", num_partitions=2)
 
     stats_output = ds.materialize().stats()
 
