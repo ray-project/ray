@@ -1,7 +1,6 @@
-import logging
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional
 
+import ray.cloudpickle as cloudpickle
 from ray.data._internal.util import call_with_retry
 from ray.data.block import BlockMetadata
 from ray.data.datasource.file_meta_provider import (
@@ -12,7 +11,8 @@ from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow
-    from pyarrow.dataset import ParquetFileFragment
+
+    from ray.data._internal.datasource.parquet_datasource import SerializedFragment
 
 
 FRAGMENTS_PER_META_FETCH = 6
@@ -28,21 +28,35 @@ RETRY_MAX_ATTEMPTS_FOR_META_FETCH_TASK = 32
 RETRY_MAX_BACKOFF_S_FOR_META_FETCH_TASK = 64
 
 
-logger = logging.getLogger(__name__)
+class _ParquetFileFragmentMetaData:
+    """Class to store metadata of a Parquet file fragment. This includes
+    all attributes from `pyarrow.parquet.FileMetaData` except for `schema`,
+    which is stored in `self.schema_pickled` as a pickled object from
+    `cloudpickle.loads()`, used in deduplicating schemas across multiple fragments."""
 
+    def __init__(self, fragment_metadata: "pyarrow.parquet.FileMetaData"):
+        self.created_by = fragment_metadata.created_by
+        self.format_version = fragment_metadata.format_version
+        self.num_columns = fragment_metadata.num_columns
+        self.num_row_groups = fragment_metadata.num_row_groups
+        self.num_rows = fragment_metadata.num_rows
+        self.serialized_size = fragment_metadata.serialized_size
 
-@DeveloperAPI(stability="alpha")
-@dataclass
-class ParquetFileMetadata:
-    num_bytes: int
-    num_rows: Optional[int] = field(default=None)
+        # Serialize the schema directly in the constructor
+        schema_ser = cloudpickle.dumps(fragment_metadata.schema.to_arrow_schema())
+        self.schema_pickled = schema_ser
 
-    @classmethod
-    def from_(cls, pqm: "pyarrow.parquet.FileMetaData"):
-        return ParquetFileMetadata(
-            num_rows=pqm.num_rows,
-            num_bytes=_get_total_bytes(pqm),
-        )
+        # Calculate the total byte size of the file fragment using the original
+        # object, as it is not possible to access row groups from this class.
+        self.total_byte_size = 0
+        for row_group_idx in range(fragment_metadata.num_row_groups):
+            row_group_metadata = fragment_metadata.row_group(row_group_idx)
+            self.total_byte_size += row_group_metadata.total_byte_size
+
+    def set_schema_pickled(self, schema_pickled: bytes):
+        """Note: to get the underlying schema, use
+        `cloudpickle.loads(self.schema_pickled)`."""
+        self.schema_pickled = schema_pickled
 
 
 @DeveloperAPI
@@ -54,7 +68,7 @@ class ParquetMetadataProvider(FileMetadataProvider):
         paths: List[str],
         *,
         num_fragments: int,
-        prefetched_metadata: Optional[List["ParquetFileMetadata"]],
+        prefetched_metadata: Optional[List["_ParquetFileFragmentMetaData"]],
     ) -> BlockMetadata:
         """Resolves and returns block metadata for files of a single dataset block.
 
@@ -74,13 +88,11 @@ class ParquetMetadataProvider(FileMetadataProvider):
             and len(prefetched_metadata) == num_fragments
             and all(m is not None for m in prefetched_metadata)
         ):
-            total_bytes, total_rows = self._derive_totals(prefetched_metadata)
-
             # Fragment metadata was available, construct a normal
             # BlockMetadata.
             block_metadata = BlockMetadata(
-                num_rows=total_rows,
-                size_bytes=total_bytes,
+                num_rows=sum(m.num_rows for m in prefetched_metadata),
+                size_bytes=sum(m.total_byte_size for m in prefetched_metadata),
                 input_files=paths,
                 exec_stats=None,
             )  # Exec stats filled in later.
@@ -95,29 +107,11 @@ class ParquetMetadataProvider(FileMetadataProvider):
             )
         return block_metadata
 
-    @staticmethod
-    def _derive_totals(
-        prefetched_metadata: List["ParquetFileMetadata"],
-    ) -> Tuple[int, int]:
-        total_bytes = 0
-        total_rows = 0
-
-        for m in prefetched_metadata:
-            total_bytes += m.num_bytes
-
-            if total_rows is not None:
-                if m.num_rows is not None:
-                    total_rows += m.num_rows
-                else:
-                    total_rows = None
-
-        return total_bytes, total_rows
-
     def prefetch_file_metadata(
         self,
         fragments: List["pyarrow.dataset.ParquetFileFragment"],
         **ray_remote_args,
-    ) -> Optional[List[ParquetFileMetadata]]:
+    ) -> Optional[List[_ParquetFileFragmentMetaData]]:
         """Pre-fetches file metadata for all Parquet file fragments in a single batch.
 
         Subsets of the metadata returned will be provided as input to subsequent calls
@@ -132,18 +126,15 @@ class ParquetMetadataProvider(FileMetadataProvider):
             must be returned in the same order as all input file fragments, such
             that `metadata[i]` always contains the metadata for `fragments[i]`.
         """
-        from ray.data._internal.datasource.parquet_datasource import (
-            _NoIOSerializableFragmentWrapper,
-        )
+        from ray.data._internal.datasource.parquet_datasource import SerializedFragment
 
         if len(fragments) > PARALLELIZE_META_FETCH_THRESHOLD:
             # Wrap Parquet fragments in serialization workaround.
-            fragments = [
-                _NoIOSerializableFragmentWrapper(fragment) for fragment in fragments
-            ]
+            fragments = [SerializedFragment(fragment) for fragment in fragments]
             # Fetch Parquet metadata in parallel using Ray tasks.
-            def _remote_fetch(fragments: List["ParquetFileFragment"]):
-                return _fetch_metadata_with_retry(
+
+            def fetch_func(fragments):
+                return _fetch_metadata_serialization_wrapper(
                     fragments,
                     # Ensure that retry settings are propagated to remote tasks.
                     retry_match=RETRY_EXCEPTIONS_FOR_META_FETCH_TASK,
@@ -154,13 +145,13 @@ class ParquetMetadataProvider(FileMetadataProvider):
             raw_metadata = list(
                 _fetch_metadata_parallel(
                     fragments,
-                    _remote_fetch,
+                    fetch_func,
                     FRAGMENTS_PER_META_FETCH,
                     **ray_remote_args,
                 )
             )
 
-            return raw_metadata
+            return _dedupe_schemas(raw_metadata)
 
         else:
             # We don't deduplicate schemas in this branch because they're already
@@ -171,15 +162,20 @@ class ParquetMetadataProvider(FileMetadataProvider):
             return raw_metadata
 
 
-def _fetch_metadata_with_retry(
-    fragments: List["ParquetFileFragment"],
+def _fetch_metadata_serialization_wrapper(
+    fragments: List["SerializedFragment"],
     retry_match: Optional[List[str]],
     retry_max_attempts: int,
     retry_max_interval: int,
-) -> List["ParquetFileMetadata"]:
+) -> List["_ParquetFileFragmentMetaData"]:
+    from ray.data._internal.datasource.parquet_datasource import (
+        _deserialize_fragments_with_retry,
+    )
+
+    deserialized_fragments = _deserialize_fragments_with_retry(fragments)
     try:
         metadata = call_with_retry(
-            lambda: _fetch_metadata(fragments),
+            lambda: _fetch_metadata(deserialized_fragments),
             description="fetch metdata",
             match=retry_match,
             max_attempts=retry_max_attempts,
@@ -219,18 +215,53 @@ def _fetch_metadata_with_retry(
 
 def _fetch_metadata(
     fragments: List["pyarrow.dataset.ParquetFileFragment"],
-) -> List["ParquetFileMetadata"]:
+) -> List[_ParquetFileFragmentMetaData]:
     fragment_metadatas = []
     for f in fragments:
         try:
             # Convert directly to _ParquetFileFragmentMetaData
-            fragment_metadatas.append(ParquetFileMetadata.from_(f.metadata))
-        except AttributeError as ae:
-            logger.warning(f"Failed to extract metadata from parquet file: {ae}")
+            fragment_metadatas.append(_ParquetFileFragmentMetaData(f.metadata))
+        except AttributeError:
             break
     # Deduplicate schemas to reduce memory usage
-    return fragment_metadatas
+    return _dedupe_schemas(fragment_metadatas)
 
 
-def _get_total_bytes(pqm: "pyarrow.parquet.FileMetaData") -> int:
-    return sum(pqm.row_group(i).total_byte_size for i in range(pqm.num_row_groups))
+def _dedupe_schemas(
+    metadatas: List[_ParquetFileFragmentMetaData],
+) -> List[_ParquetFileFragmentMetaData]:
+    """Deduplicates schema objects across existing _ParquetFileFragmentMetaData objects.
+
+    For datasets with a large number of columns, the pickled schema can be very large.
+    This function reduces memory usage by ensuring that identical schemas across multiple
+    fragment metadata objects reference the same underlying pickled schema object,
+    rather than each fragment maintaining its own copy.
+
+    Args:
+        metadatas: List of _ParquetFileFragmentMetaData objects that already have
+                  pickled schemas set.
+
+    Returns:
+        The same list of _ParquetFileFragmentMetaData objects, but with duplicate
+        schemas deduplicated to reference the same object in memory.
+    """
+    schema_to_id = {}  # schema_ser -> schema_id
+    id_to_schema = {}  # schema_id -> schema_ser
+
+    for metadata in metadatas:
+        # Get the current schema serialization
+        schema_ser = metadata.schema_pickled
+
+        if schema_ser not in schema_to_id:
+            # This is a new unique schema
+            schema_id = len(schema_to_id)
+            schema_to_id[schema_ser] = schema_id
+            id_to_schema[schema_id] = schema_ser
+            # No need to set schema_pickled - it already has the correct value
+        else:
+            # This schema already exists, reuse the existing one
+            schema_id = schema_to_id[schema_ser]
+            existing_schema_ser = id_to_schema[schema_id]
+            metadata.set_schema_pickled(existing_schema_ser)
+
+    return metadatas

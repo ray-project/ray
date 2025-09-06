@@ -20,8 +20,7 @@ from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import RetryingPyFileSystem
 from ray.data.block import BlockMetadata
-from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
-from ray.data.datasource.path_util import _has_file_extension
+from ray.data.datasource.partitioning import Partitioning
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -242,46 +241,6 @@ def _handle_read_os_error(error: OSError, paths: Union[str, List[str]]) -> str:
         )
     else:
         raise error
-
-
-def _list_files(
-    paths: List[str],
-    filesystem: "RetryingPyFileSystem",
-    *,
-    partition_filter: Optional[PathPartitionFilter],
-    file_extensions: Optional[List[str]],
-) -> List[Tuple[str, int]]:
-    return list(
-        _list_files_internal(
-            paths,
-            filesystem,
-            partition_filter=partition_filter,
-            file_extensions=file_extensions,
-        )
-    )
-
-
-def _list_files_internal(
-    paths: List[str],
-    filesystem: "RetryingPyFileSystem",
-    *,
-    partition_filter: Optional[PathPartitionFilter],
-    file_extensions: Optional[List[str]],
-) -> Iterator[Tuple[str, int]]:
-    default_meta_provider = DefaultFileMetadataProvider()
-
-    for path, file_size in default_meta_provider.expand_paths(paths, filesystem):
-        # HACK: PyArrow's `ParquetDataset` errors if input paths contain non-parquet
-        # files. To avoid this, we expand the input paths with the default metadata
-        # provider and then apply the partition filter or file extensions.
-        if (
-            partition_filter
-            and not partition_filter.apply(path)
-            or not _has_file_extension(path, file_extensions)
-        ):
-            continue
-
-        yield path, file_size
 
 
 def _expand_paths(

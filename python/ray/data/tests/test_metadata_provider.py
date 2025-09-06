@@ -27,7 +27,6 @@ from ray.data.datasource.file_meta_provider import (
     _get_file_infos_parallel,
     _get_file_infos_serial,
 )
-from ray.data.datasource.parquet_meta_provider import _get_total_bytes
 from ray.data.datasource.path_util import (
     _resolve_paths_and_filesystem,
     _unwrap_protocol,
@@ -39,6 +38,13 @@ from ray.tests.conftest import *  # noqa
 
 def df_to_csv(dataframe, path, **kwargs):
     dataframe.to_csv(path, **kwargs)
+
+
+def _get_parquet_file_meta_size_bytes(file_metas):
+    return sum(
+        sum(m.row_group(i).total_byte_size for i in range(m.num_row_groups))
+        for m in file_metas
+    )
 
 
 def _get_file_sizes_bytes(paths, fs):
@@ -105,11 +111,9 @@ def test_default_parquet_metadata_provider(fs, data_path):
         num_fragments=len(pq_ds.fragments),
         prefetched_metadata=fragment_file_metas,
     )
-
-    expected_meta_size_bytes = sum(
-        [_get_total_bytes(f.metadata) for f in pq_ds.fragments]
+    expected_meta_size_bytes = _get_parquet_file_meta_size_bytes(
+        [f.metadata for f in pq_ds.fragments]
     )
-
     assert meta.size_bytes == expected_meta_size_bytes
     assert meta.num_rows == 6
     assert len(paths) == 2
