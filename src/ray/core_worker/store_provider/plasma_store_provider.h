@@ -100,9 +100,9 @@ class CoreWorkerPlasmaStoreProvider {
       ReferenceCounter &reference_counter,
       std::function<Status()> check_signals,
       bool warmup,
-      std::function<std::string()> get_current_call_site = nullptr,
-      std::shared_ptr<plasma::PlasmaClientInterface> store_client = nullptr,
-      int64_t fetch_batch_size_override = -1);
+      std::shared_ptr<plasma::PlasmaClientInterface> store_client,
+      int64_t fetch_batch_size,
+      std::function<std::string()> get_current_call_site = nullptr);
 
   ~CoreWorkerPlasmaStoreProvider();
 
@@ -246,7 +246,7 @@ class CoreWorkerPlasmaStoreProvider {
   uint32_t object_store_full_delay_ms_;
   // Pointer to the shared buffer tracker.
   std::shared_ptr<BufferTracker> buffer_tracker_;
-  int64_t fetch_batch_size_override_ = -1;
+  int64_t fetch_batch_size_ = 0;
 };
 
 }  // namespace core

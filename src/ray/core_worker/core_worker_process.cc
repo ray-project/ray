@@ -369,13 +369,12 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       /*warmup=*/
       (options.worker_type != WorkerType::SPILL_WORKER &&
        options.worker_type != WorkerType::RESTORE_WORKER),
-      /*get_current_call_site=*/
-      [this]() {
+      /*store_client=*/plasma_client,
+      /*fetch_batch_size=*/RayConfig::instance().worker_fetch_request_size(),
+      /*get_current_call_site=*/[this]() {
         auto core_worker = GetCoreWorker();
         return core_worker->CurrentCallSite();
-      },
-      /*store_client=*/plasma_client,
-      /*fetch_batch_size_override=*/-1);
+      });
   auto memory_store = std::make_shared<CoreWorkerMemoryStore>(
       io_service_,
       reference_counter.get(),

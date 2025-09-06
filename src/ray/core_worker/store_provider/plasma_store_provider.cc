@@ -67,9 +67,9 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     ReferenceCounter &reference_counter,
     std::function<Status()> check_signals,
     bool warmup,
-    std::function<std::string()> get_current_call_site,
     std::shared_ptr<plasma::PlasmaClientInterface> store_client,
-    int64_t fetch_batch_size_override)
+    int64_t fetch_batch_size,
+    std::function<std::string()> get_current_call_site)
     : raylet_ipc_client_(raylet_ipc_client),
       store_client_(std::move(store_client)),
       reference_counter_(reference_counter),
@@ -81,7 +81,7 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
   }
   object_store_full_delay_ms_ = RayConfig::instance().object_store_full_delay_ms();
   buffer_tracker_ = std::make_shared<BufferTracker>();
-  fetch_batch_size_override_ = fetch_batch_size_override;
+  fetch_batch_size_ = fetch_batch_size;
   if (!store_socket.empty()) {
     RAY_CHECK(store_client_ != nullptr) << "Plasma client must be provided";
     RAY_CHECK_OK(store_client_->Connect(store_socket));
@@ -276,9 +276,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     const WorkerContext &ctx,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
     bool *got_exception) {
-  int64_t batch_size = fetch_batch_size_override_ >= 0
-                           ? fetch_batch_size_override_
-                           : RayConfig::instance().worker_fetch_request_size();
+  int64_t batch_size = fetch_batch_size_;
   std::vector<ObjectID> batch_ids;
   absl::flat_hash_set<ObjectID> remaining(object_ids.begin(), object_ids.end());
 
