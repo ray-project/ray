@@ -80,6 +80,7 @@ def build_vllm_engine_processor(
             required fields for the following processing stages.
         postprocess: An optional lambda function that takes a row (dict) as input
             and returns a postprocessed row (dict).
+        telemetry_agent: An optional telemetry agent for collecting usage telemetry.
 
     Returns:
         The constructed processor.
@@ -87,12 +88,16 @@ def build_vllm_engine_processor(
     ray.init(runtime_env=config.runtime_env, ignore_reinit_error=True)
 
     stages = []
+
+    # Validate concurrency input and compute processor_concurrency for CPU stages
     if isinstance(config.concurrency, int):
         # For CPU-only stages, we leverage auto-scaling to recycle resources.
         processor_concurrency = (1, config.concurrency)
+    elif isinstance(config.concurrency, tuple):
+        processor_concurrency = config.concurrency
     else:
         raise ValueError(
-            "``concurrency`` is expected to be set as an integer,"
+            "``concurrency`` is expected to be set as an integer or tuple,"
             f" but got: {config.concurrency}."
         )
 
@@ -157,10 +162,8 @@ def build_vllm_engine_processor(
                 # which initiates enough many overlapping UDF calls per actor, to
                 # saturate `max_concurrency`.
                 compute=ray.data.ActorPoolStrategy(
-                    # vLLM start up time is significant, so if user give fixed
-                    # concurrency, start all instances without auto-scaling.
-                    min_size=config.concurrency,
-                    max_size=config.concurrency,
+                    min_size=config.get_concurrency(autoscaling_enabled=False)[0],
+                    max_size=config.get_concurrency(autoscaling_enabled=False)[1],
                     max_tasks_in_flight_per_actor=config.experimental.get(
                         "max_tasks_in_flight_per_actor", DEFAULT_MAX_TASKS_IN_FLIGHT
                     ),
