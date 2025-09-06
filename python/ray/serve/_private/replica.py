@@ -41,6 +41,7 @@ from ray.serve import metrics
 from ray.serve._private.common import (
     DeploymentID,
     ReplicaID,
+    ReplicaMetricReport,
     ReplicaQueueLengthInfo,
     RequestMetadata,
     ServeComponentType,
@@ -329,10 +330,16 @@ class ReplicaMetricsManager:
     def _push_autoscaling_metrics(self) -> Dict[str, Any]:
         look_back_period = self._autoscaling_config.look_back_period_s
         self._metrics_store.prune_keys_and_compact_data(time.time() - look_back_period)
-        self._controller_handle.record_autoscaling_metrics.remote(
+        replica_metric_report = ReplicaMetricReport(
             replica_id=self._replica_id,
-            window_avg=self._metrics_store.aggregate_avg([self._replica_id])[0],
-            send_timestamp=time.time(),
+            avg_running_requests=self._metrics_store.aggregate_avg([self._replica_id])[
+                0
+            ],
+            running_requests=self._metrics_store.data.get(self._replica_id, []),
+            timestamp=time.time(),
+        )
+        self._controller_handle.record_autoscaling_metrics_from_replica.remote(
+            replica_metric_report
         )
 
     def _add_autoscaling_metrics_point(self) -> None:
