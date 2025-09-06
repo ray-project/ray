@@ -22,9 +22,9 @@
 #include <utility>
 #include <vector>
 
+#include "ray/common/protobuf_utils.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/gcs/pb_util.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 #include "ray/util/time.h"
@@ -222,7 +222,7 @@ GcsActorManager::GcsActorManager(
     std::unique_ptr<GcsActorSchedulerInterface> scheduler,
     GcsTableStorage *gcs_table_storage,
     instrumented_io_context &io_context,
-    GcsPublisher *gcs_publisher,
+    pubsub::GcsPublisher *gcs_publisher,
     RuntimeEnvManager &runtime_env_manager,
     GCSFunctionManager &function_manager,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,

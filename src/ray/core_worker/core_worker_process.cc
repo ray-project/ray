@@ -27,13 +27,13 @@
 #include "ray/common/cgroup/cgroup_context.h"
 #include "ray/common/cgroup/cgroup_manager.h"
 #include "ray/common/cgroup/constants.h"
+#include "ray/common/protobuf_utils.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/core_worker_rpc_proxy.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
-#include "ray/gcs/pb_util.h"
 #include "ray/ipc/raylet_ipc_client.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/stats/stats.h"
@@ -255,7 +255,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
   core_worker_server->RegisterService(
-      std::make_unique<rpc::CoreWorkerGrpcService>(io_service_, *service_handler_),
+      std::make_unique<rpc::CoreWorkerGrpcService>(
+          io_service_, *service_handler_, /*max_active_rpcs_per_handler_=*/-1),
       false /* token_auth */);
   core_worker_server->Run();
 

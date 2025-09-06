@@ -22,8 +22,7 @@
 #include <vector>
 
 #include "absl/strings/match.h"
-#include "ray/gcs/pb_util.h"
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
+#include "ray/common/protobuf_utils.h"
 #include "ray/stats/metric.h"
 #include "ray/util/time.h"
 

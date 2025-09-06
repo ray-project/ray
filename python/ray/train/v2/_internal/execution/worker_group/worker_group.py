@@ -37,7 +37,6 @@ from ray.train.v2._internal.execution.callback import (
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.context import (
     DistributedContext,
-    StorageContext,
     TrainRunContext,
 )
 from ray.train.v2._internal.execution.worker_group.poll import (
@@ -145,11 +144,7 @@ class WorkerGroup:
         """
         self._train_run_context = train_run_context
         run_config = self._train_run_context.run_config
-        self._storage_context = StorageContext(
-            storage_path=run_config.storage_path,
-            experiment_dir_name=run_config.name,
-            storage_filesystem=run_config.storage_filesystem,
-        )
+        self._storage_context = run_config.storage_context
 
         self._worker_group_context: WorkerGroupContext = worker_group_context
 
@@ -475,12 +470,14 @@ class WorkerGroup:
 
     def abort(self):
         """Abort the worker group."""
-        # TODO: consider shutting down the workers in the future.
-        # We don't do this for now due to this risk of hanging e.g. when calling
-        # `destroy_process_group` on an active group.
         self._assert_active()
         for callback in self._callbacks:
             callback.before_worker_group_abort(self._worker_group_context)
+
+        # TODO: Add shutdown callback hooks
+
+        self._worker_group_state.shutdown()
+        self._clear_state()
 
     #####################################################################################
     # Polling Worker Group
