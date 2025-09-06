@@ -1,4 +1,5 @@
 from typing import List, Tuple
+import os
 import yaml
 from ray_release.configs.global_config import get_global_config
 from ray_release.logger import logger
@@ -20,12 +21,13 @@ def _generate_custom_build_step_key(image: str) -> str:
 def get_images_from_tests(tests: List[Test]) -> List[Tuple[str, str, str]]:
     """Get a list of custom BYOD images to build from a list of tests."""
     custom_byod_images = set()
+    build_id = os.environ.get("RAYCI_BUILD_ID", "") or "$$RAYCI_BUILD_ID"
     for test in tests:
         if not test.require_custom_byod_image():
             continue
         custom_byod_image_build = (
-            test.get_anyscale_byod_image(),
-            test.get_anyscale_base_byod_image(),
+            test.get_anyscale_byod_image(build_id),
+            test.get_anyscale_base_byod_image(build_id),
             test.get_byod_post_build_script(),
         )
         logger.info(f"To be built: {custom_byod_image_build[0]}")
@@ -34,10 +36,11 @@ def get_images_from_tests(tests: List[Test]) -> List[Tuple[str, str, str]]:
 
 
 def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
+    """Create a yaml file for building custom BYOD images"""
+
     config = get_global_config()
     if not config or not config.get("byod_ecr_region") or not config.get("byod_ecr"):
         raise ValueError("byod_ecr_region and byod_ecr must be set in the config")
-    """Create a yaml file for building custom BYOD images"""
     custom_byod_images = get_images_from_tests(tests)
     if not custom_byod_images:
         return
@@ -56,11 +59,11 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
             ],
         }
         if "ray-ml" in image:
-            step["depends_on"] = "anyscalemlbuild"
+            step["depends_on"] = config["image_build_step_ml"]
         elif "ray-llm" in image:
-            step["depends_on"] = "anyscalellmbuild"
+            step["depends_on"] = config["image_build_step_llm"]
         else:
-            step["depends_on"] = "anyscalebuild"
+            step["depends_on"] = config["image_build_step"]
         build_config["steps"].append(step)
 
     with open(destination_file, "w") as f:
