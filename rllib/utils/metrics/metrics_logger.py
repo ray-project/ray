@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, Iterable
 import tree  # pip install dm_tree
 
 from ray.rllib.utils import force_tuple, deep_update
@@ -1143,11 +1143,18 @@ class MetricsLogger:
         """
         self._del_key(key, key_error)
 
-    def get_state(self) -> Dict[str, Any]:
+    def get_state(
+        self, *, key: Optional[Union[str, Iterable[str]]] = None
+    ) -> Dict[str, Any]:
         """Returns the current state of `self` as a dict.
 
+        Args:
+            The key or key sequence (for nested location within self.stats) to get the
+            state for. If None, returns the state of all stats in `self.stats`.
+
         Note that the state is merely the combination of all states of the individual
-        `Stats` objects stored under `self.stats`.
+        `Stats` objects stored under `self.stats`, or the respective subdict if `key`
+        is passed.
         """
         stats_dict = {}
 
@@ -1158,7 +1165,18 @@ class MetricsLogger:
         with self._threading_lock:
             tree.map_structure_with_path(_map, self.stats)
 
-        return {"stats": stats_dict}
+        if key is None:
+            return {"stats": stats_dict}
+        if not isinstance(key, str):
+            key = "--".join(key)
+        prefix = key + "--"
+        return {
+            "stats": {
+                k[k.startswith(prefix) and len(prefix) :]: v
+                for k, v in stats_dict.items()
+                if k.startswith(prefix)
+            }
+        }
 
     def set_state(self, state: Dict[str, Any]) -> None:
         """Sets the state of `self` to the given `state`.
