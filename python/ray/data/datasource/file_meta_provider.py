@@ -37,7 +37,6 @@ class FileMetadataProvider:
 
     Current subclasses:
         - :class:`BaseFileMetadataProvider`
-        - :class:`ParquetMetadataProvider`
     """
 
     def _get_block_metadata(
