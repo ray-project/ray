@@ -10,6 +10,7 @@ from typing import (
     List,
     Literal,
     Optional,
+    Set,
     Tuple,
     TypeVar,
     Union,
@@ -50,6 +51,7 @@ from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.datasource.range_datasource import RangeDatasource
 from ray.data._internal.datasource.sql_datasource import SQLDatasource
 from ray.data._internal.datasource.text_datasource import TextDatasource
+from ray.data._internal.datasource.mcap_datasource import MCAPDatasource
 from ray.data._internal.datasource.tfrecords_datasource import TFRecordDatasource
 from ray.data._internal.datasource.torch_datasource import TorchDatasource
 from ray.data._internal.datasource.unity_catalog_datasource import UnityCatalogConnector
@@ -2097,6 +2099,150 @@ def read_tfrecords(
         return _infer_schema_and_transform(ds)
 
     return ds
+
+
+@PublicAPI(stability="alpha")
+def read_mcap(
+    paths: Union[str, List[str]],
+    *,
+    channels: Optional[Set[str]] = None,
+    topics: Optional[Set[str]] = None,
+    time_range: Optional[Tuple[int, int]] = None,
+    message_types: Optional[Set[str]] = None,
+    include_metadata: bool = True,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    parallelism: int = -1,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    meta_provider: Optional[BaseFileMetadataProvider] = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Partitioning = None,
+    include_paths: bool = False,
+    ignore_missing_paths: bool = False,
+    shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
+    file_extensions: Optional[List[str]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """Create a :class:`~ray.data.Dataset` from MCAP (Message Capture) files.
+
+    MCAP is a format commonly used in robotics and autonomous systems for storing
+    ROS2 messages and other time-series data. This reader provides predicate pushdown
+    optimization for efficient filtering by channels, topics, and time ranges.
+
+    Examples:
+        :noindex:
+
+        Read all MCAP files in a directory.
+
+        >>> import ray
+        >>> ds = ray.data.read_mcap("s3://bucket/mcap-data/") # doctest: +SKIP
+        >>> ds.schema() # doctest: +SKIP
+
+        Read with filtering for specific channels and time range.
+
+        >>> ds = ray.data.read_mcap( # doctest: +SKIP
+        ...     "s3://bucket/mcap-data/", # doctest: +SKIP
+        ...     channels={"camera", "lidar"}, # doctest: +SKIP
+        ...     time_range=(1000000000, 5000000000),  # 1-5 seconds in nanoseconds # doctest: +SKIP
+        ...     message_types={"sensor_msgs/Image", "sensor_msgs/PointCloud2"} # doctest: +SKIP
+        ... ) # doctest: +SKIP
+
+        Read multiple local files with include_paths.
+
+        >>> ray.data.read_mcap( # doctest: +SKIP
+        ...     ["local:///path/to/file1.mcap", "local:///path/to/file2.mcap"], # doctest: +SKIP
+        ...     include_paths=True # doctest: +SKIP
+        ... ) # doctest: +SKIP
+
+        Read with topic filtering and metadata inclusion.
+
+        >>> ds = ray.data.read_mcap( # doctest: +SKIP
+        ...     "data.mcap", # doctest: +SKIP
+        ...     topics={"/camera/image_raw", "/lidar/points"}, # doctest: +SKIP
+        ...     include_metadata=True, # doctest: +SKIP
+        ...     include_paths=True # doctest: +SKIP
+        ... ) # doctest: +SKIP
+
+    Args:
+        paths: A single file or directory, or a list of file or directory paths.
+            A list of paths can contain both files and directories.
+        channels: Optional set of channel names to include. If specified, only messages
+            from these channels will be read. Mutually exclusive with `topics`.
+        topics: Optional set of topic names to include. If specified, only messages
+            from these topics will be read. Mutually exclusive with `channels`.
+        time_range: Optional tuple of (start_time, end_time) in nanoseconds for filtering
+            messages by timestamp. Both values must be non-negative and start_time < end_time.
+        message_types: Optional set of message type names (schema names) to include.
+            Only messages with matching schema names will be read.
+        include_metadata: Whether to include MCAP metadata fields in the output.
+            Defaults to True. When True, includes schema, channel, and message metadata.
+        filesystem: The PyArrow filesystem implementation to read from.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
+        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
+            metadata providers may be able to resolve file metadata more quickly and/or
+            accurately. In most cases you do not need to set this parameter.
+        partition_filter: A :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
+            Use with a custom callback to read only selected partitions of a dataset.
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. Defaults to ``None``.
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
+        ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
+            found. Defaults to False.
+        shuffle: If setting to "files", randomly shuffle input files order before read.
+            If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
+            shuffle the input files. Defaults to not shuffle with ``None``.
+        file_extensions: A list of file extensions to filter files by.
+            Defaults to ``["mcap"]``.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+
+    Returns:
+        :class:`~ray.data.Dataset` producing records read from the specified MCAP files.
+    """
+    _emit_meta_provider_deprecation_warning(meta_provider)
+    _validate_shuffle_arg(shuffle)
+
+    if meta_provider is None:
+        meta_provider = DefaultFileMetadataProvider()
+
+    if file_extensions is None:
+        file_extensions = ["mcap"]
+
+    # Validate that channels and topics are not both specified
+    if channels is not None and topics is not None:
+        raise ValueError("Cannot specify both 'channels' and 'topics'. Use one or the other.")
+
+    datasource = MCAPDatasource(
+        paths,
+        channels=channels,
+        topics=topics,
+        time_range=time_range,
+        message_types=message_types,
+        include_metadata=include_metadata,
+        filesystem=filesystem,
+        meta_provider=meta_provider,
+        partition_filter=partition_filter,
+        partitioning=partitioning,
+        ignore_missing_paths=ignore_missing_paths,
+        shuffle=shuffle,
+        include_paths=include_paths,
+        file_extensions=file_extensions,
+    )
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
 
 
 @PublicAPI(stability="alpha")
