@@ -13,6 +13,7 @@ import ray
 from ray import cloudpickle
 from ray._common.utils import import_attr
 from ray.exceptions import RuntimeEnvSetupError
+from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.build_app import BuiltApplication, build_app
 from ray.serve._private.common import (
     DeploymentID,
@@ -222,6 +223,7 @@ class ApplicationState:
         self,
         name: str,
         deployment_state_manager: DeploymentStateManager,
+        autoscaling_state_manager: AutoscalingStateManager,
         endpoint_state: EndpointState,
         logging_config: LoggingConfig,
     ):
@@ -236,6 +238,7 @@ class ApplicationState:
         self._name = name
         self._status_msg = ""
         self._deployment_state_manager = deployment_state_manager
+        self._autoscaling_state_manager = autoscaling_state_manager
         self._endpoint_state = endpoint_state
         self._route_prefix: Optional[str] = None
         self._ingress_deployment_name: Optional[str] = None
@@ -430,6 +433,28 @@ class ApplicationState:
         """
         return self._target_state.deleting and len(self._get_live_deployments()) == 0
 
+    def should_autoscale(self):
+        return (
+            self._target_state.config is not None
+            and self._target_state.config.autoscaling_policy is not None
+        )
+
+    def autoscale(self):
+        deployments: Dict[str, DeploymentDetails] = self.list_deployment_details()
+        decisions: Dict[
+            str, int
+        ] = self._autoscaling_state_manager.apply_autoscaling_decision(
+            self._name, deployments
+        )
+
+        for deployment_name, decision_num_replicas in decisions.items():
+            deployment_id: DeploymentID = DeploymentID(
+                name=deployment_name, app_name=self._name
+            )
+            self._deployment_state_manager.autoscale(
+                deployment_id, decision_num_replicas
+            )
+
     def apply_deployment_info(
         self,
         deployment_name: str,
@@ -448,6 +473,11 @@ class ApplicationState:
         if route_prefix is not None and not route_prefix.startswith("/"):
             raise RayServeException(
                 f'Invalid route prefix "{route_prefix}", it must start with "/"'
+            )
+
+        if self.should_autoscale():
+            self._autoscaling_state_manager.register_application(
+                self._name, self._target_state.config
             )
 
         deployment_id = DeploymentID(name=deployment_name, app_name=self._name)
@@ -919,11 +949,13 @@ class ApplicationStateManager:
     def __init__(
         self,
         deployment_state_manager: DeploymentStateManager,
+        autoscaling_state_manager: AutoscalingStateManager,
         endpoint_state: EndpointState,
         kv_store: KVStoreBase,
         logging_config: LoggingConfig,
     ):
         self._deployment_state_manager = deployment_state_manager
+        self._autoscaling_state_manager = autoscaling_state_manager
         self._endpoint_state = endpoint_state
         self._kv_store = kv_store
         self._logging_config = logging_config
@@ -988,6 +1020,7 @@ class ApplicationStateManager:
                 self._application_states[name] = ApplicationState(
                     name,
                     self._deployment_state_manager,
+                    self._autoscaling_state_manager,
                     self._endpoint_state,
                     self._logging_config,
                 )
@@ -1122,6 +1155,8 @@ class ApplicationStateManager:
         apps_to_be_deleted = []
         any_target_state_changed = False
         for name, app in self._application_states.items():
+            if app.should_autoscale():
+                app.autoscale()
             ready_to_be_deleted, app_target_state_changed = app.update()
             any_target_state_changed = (
                 any_target_state_changed or app_target_state_changed

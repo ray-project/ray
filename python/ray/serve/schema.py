@@ -33,7 +33,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import DEFAULT, validate_ssl_config
-from ray.serve.config import ProxyLocation, RequestRouterConfig
+from ray.serve.config import AutoscalingPolicy, ProxyLocation, RequestRouterConfig
 from ray.util.annotations import PublicAPI
 
 # Shared amongst multiple schemas.
@@ -556,6 +556,15 @@ class ServeApplicationSchema(BaseModel):
             "must be shut down and restarted with the new port instead."
         ),
     )
+
+    autoscaling_policy: Optional[AutoscalingPolicy] = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "Cross deployment autoscaling policy "
+            "name of the custom autoscaling policy for the application. "
+        ),
+    )
+
     deployments: List[DeploymentSchema] = Field(
         default=[],
         description="Deployment options that override options specified in the code.",
