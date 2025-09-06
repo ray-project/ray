@@ -62,14 +62,10 @@ const MetricsDisabledWrapper = ({ children }: PropsWithChildren<{}>) => {
 
 describe("Metrics", () => {
   it("renders", async () => {
-    expect.assertions(5);
+    expect.assertions(1);
 
     render(<Metrics />, { wrapper: Wrapper });
     await screen.findByText(/View in Grafana/);
-    expect(screen.getByText(/5 minutes/)).toBeVisible();
-    expect(screen.getByText(/Tasks and Actors/)).toBeVisible();
-    expect(screen.getByText(/Ray Resource Usage/)).toBeVisible();
-    expect(screen.getByText(/Hardware Utilization/)).toBeVisible();
     expect(
       screen.queryByText(
         /Set up Prometheus and Grafana for better Ray Dashboard experience/,
@@ -78,16 +74,12 @@ describe("Metrics", () => {
   });
 
   it("renders warning when ", async () => {
-    expect.assertions(5);
+    expect.assertions(1);
 
     render(<Metrics />, { wrapper: MetricsDisabledWrapper });
     await screen.findByText(
       /Set up Prometheus and Grafana for better Ray Dashboard experience/,
     );
     expect(screen.queryByText(/View in Grafana/)).toBeNull();
-    expect(screen.queryByText(/5 minutes/)).toBeNull();
-    expect(screen.queryByText(/Tasks and Actors/)).toBeNull();
-    expect(screen.queryByText(/Ray Resource Usage/)).toBeNull();
-    expect(screen.queryByText(/Hardware Utilization/)).toBeNull();
   });
 });
