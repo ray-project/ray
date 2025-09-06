@@ -188,7 +188,7 @@ export const Metrics = () => {
                 component="iframe"
                 key="Default"
                 sx={{ width: "95%", height: "70vh" }}
-                src={`${grafanaHost}/d/${grafanaDefaultDashboardUid}/?orgId=${grafanaOrgId}&var-datasource=${grafanaDefaultDatasource}&timezone=${currentTimeZone}&var-SessionName=${sessionName}&var-datasource=${dashboardDatasource}&kiosk&theme=light`}
+                src={`${grafanaHost}/d/${grafanaDefaultDashboardUid}/?orgId=${grafanaOrgIdParam}&var-datasource=${grafanaDefaultDatasource}&timezone=${currentTimeZone}&var-SessionName=${sessionName}&kiosk&theme=light`}
                 frameBorder="0"
               />
             </CollapsibleSection>
@@ -204,7 +204,7 @@ export const Metrics = () => {
                   component="iframe"
                   key="Data"
                   sx={{ width: "95%", height: "70vh" }}
-                  src={`${grafanaHost}/d/${dashboardUids["data"]}/?orgId=${grafanaOrgId}&var-datasource=${grafanaDefaultDatasource}&timezone=${currentTimeZone}&var-SessionName=${sessionName}&var-datasource=${dashboardDatasource}&kiosk&theme=light`}
+                  src={`${grafanaHost}/d/${dashboardUids["data"]}/?orgId=${grafanaOrgIdParam}&var-datasource=${grafanaDefaultDatasource}&timezone=${currentTimeZone}&var-SessionName=${sessionName}&kiosk&theme=light`}
                   frameBorder="0"
                 />
               </CollapsibleSection>
