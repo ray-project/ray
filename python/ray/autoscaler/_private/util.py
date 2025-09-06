@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import os
+import sys
 import threading
 from dataclasses import dataclass
 from datetime import datetime
@@ -192,6 +193,12 @@ def validate_config(config: Dict[str, Any]) -> None:
                 "The specified global `max_workers` is smaller than the "
                 "sum of `min_workers` of all the available node types."
             )
+
+    if sys.platform == "win32" and config.get("file_mounts_sync_continuously", False):
+        raise ValueError(
+            "`file_mounts_sync_continuously` is not supported on Windows. "
+            "Please set this to False when running on Windows."
+        )
 
 
 def check_legacy_fields(config: Dict[str, Any]) -> None:
@@ -749,7 +756,7 @@ def get_constraint_report(request_demand: List[DictCount]):
     if len(constraint_lines) > 0:
         constraints_report = "\n".join(constraint_lines)
     else:
-        constraints_report = " (no request_resources() constraints)"
+        constraints_report = " (none)"
     return constraints_report
 
 
@@ -941,9 +948,9 @@ Resources
 {separator}
 Total Usage:
 {usage_report}
-Total Constraints:
+From request_resources:
 {constraints_report}
-Total Demands:
+Pending Demands:
 {demand_report}"""
 
     if verbose:
@@ -990,3 +997,47 @@ def format_no_node_type_string(node_type: dict):
         output_lines.append(output_line)
 
     return "\n  ".join(output_lines)
+
+
+def generate_rsa_key_pair():
+    from cryptography.hazmat.backends import default_backend
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    key = rsa.generate_private_key(
+        backend=default_backend(), public_exponent=65537, key_size=2048
+    )
+
+    public_key = (
+        key.public_key()
+        .public_bytes(
+            serialization.Encoding.OpenSSH, serialization.PublicFormat.OpenSSH
+        )
+        .decode("utf-8")
+    )
+
+    pem = key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.TraditionalOpenSSL,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode("utf-8")
+
+    return public_key, pem
+
+
+def generate_ssh_key_paths(key_name):
+    public_key_path = os.path.expanduser("~/.ssh/{}.pub".format(key_name))
+    private_key_path = os.path.expanduser("~/.ssh/{}.pem".format(key_name))
+    return public_key_path, private_key_path
+
+
+def generate_ssh_key_name(provider, i, region, identifier, ssh_user):
+    RAY_PREFIX = "ray-autoscaler"
+    if i is not None:
+        return "{}_{}_{}_{}_{}_{}".format(
+            RAY_PREFIX, provider, region, identifier, ssh_user, i
+        )
+    else:
+        return "{}_{}_{}_{}_{}".format(
+            RAY_PREFIX, provider, region, identifier, ssh_user
+        )

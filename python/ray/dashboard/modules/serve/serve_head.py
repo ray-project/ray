@@ -122,7 +122,7 @@ class ServeHead(SubprocessModule):
     @dashboard_optional_utils.init_ray_and_catch_exceptions()
     @validate_endpoint()
     async def put_all_applications(self, req: Request) -> Response:
-        from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+        from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
         from ray.serve._private.api import serve_start_async
         from ray.serve.config import ProxyLocation
         from ray.serve.schema import ServeDeploySchema

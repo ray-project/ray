@@ -36,6 +36,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
     MetadataOpTask,
     OpTask,
+    estimate_total_num_of_blocks,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
@@ -47,13 +48,14 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.stats import StatsDict
-from ray.data._internal.util import MemoryProfiler, unify_ref_bundles_schema
+from ray.data._internal.util import MemoryProfiler
 from ray.data.block import (
     Block,
     BlockAccessor,
     BlockExecStats,
     BlockMetadataWithSchema,
     BlockStats,
+    _take_first_non_empty_schema,
     to_stats,
 )
 from ray.data.context import DataContext
@@ -407,23 +409,13 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
 
             # Estimate number of tasks and rows from inputs received and tasks
             # submitted so far
-            upstream_op_num_outputs = self.input_dependencies[0].num_outputs_total()
-            if upstream_op_num_outputs:
-                estimated_num_tasks = (
-                    upstream_op_num_outputs
-                    / self._metrics.num_inputs_received
-                    * self._next_data_task_idx
-                )
-                self._estimated_num_output_bundles = round(
-                    estimated_num_tasks
-                    * self._metrics.num_outputs_of_finished_tasks
-                    / self._metrics.num_tasks_finished
-                )
-                self._estimated_output_num_rows = round(
-                    estimated_num_tasks
-                    * self._metrics.rows_task_outputs_generated
-                    / self._metrics.num_tasks_finished
-                )
+            (
+                _,
+                self._estimated_num_output_bundles,
+                self._estimated_output_num_rows,
+            ) = estimate_total_num_of_blocks(
+                self._next_data_task_idx, self.upstream_op_num_outputs(), self._metrics
+            )
 
             self._data_tasks.pop(task_index)
             # Notify output queue that this task is complete.
@@ -550,8 +542,6 @@ def _map_task(
         A generator of blocks, followed by the list of BlockMetadata for the blocks
         as the last generator return.
     """
-    from ray.data.block import BlockMetadataWithSchema
-
     logger.debug(
         "Executing map task of operator %s with task index %d",
         ctx.op_name,
@@ -671,14 +661,13 @@ class _BlockRefBundler:
 def _merge_ref_bundles(*bundles: RefBundle) -> RefBundle:
     """Merge N ref bundles into a single bundle of multiple blocks."""
     # Check that at least one bundle is non-null.
-    assert any(bundle is not None for bundle in bundles)
+    bundles = [bundle for bundle in bundles if bundle is not None]
+    assert len(bundles) > 0
     blocks = list(
-        itertools.chain(
-            block for bundle in bundles if bundle is not None for block in bundle.blocks
-        )
+        itertools.chain(block for bundle in bundles for block in bundle.blocks)
     )
-    owns_blocks = all(bundle.owns_blocks for bundle in bundles if bundle is not None)
-    schema = unify_ref_bundles_schema(bundles)
+    owns_blocks = all(bundle.owns_blocks for bundle in bundles)
+    schema = _take_first_non_empty_schema(bundle.schema for bundle in bundles)
     return RefBundle(blocks, owns_blocks=owns_blocks, schema=schema)
 
 

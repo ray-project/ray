@@ -26,14 +26,6 @@ class RandomRLModule(RLModule):
         # NOT including the ModuleID of this RLModule])`
         raise NotImplementedError("Random RLModule: Should not be trained!")
 
-    @override(RLModule)
-    def output_specs_inference(self):
-        return [SampleBatch.ACTIONS]
-
-    @override(RLModule)
-    def output_specs_exploration(self):
-        return [SampleBatch.ACTIONS]
-
     def compile(self, *args, **kwargs):
         """Dummy method for compatibility with TorchRLModule.
 

@@ -14,9 +14,13 @@ from ray._common.test_utils import wait_for_condition
 from ray.exceptions import RayActorError
 from ray.serve._private.test_utils import get_application_url
 from ray.serve._private.utils import call_function_from_import_path
-from ray.serve.config import HTTPOptions
+from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.context import _get_global_client
-from ray.serve.schema import LoggingConfig, ProxyStatus, ServeInstanceDetails
+from ray.serve.schema import (
+    LoggingConfig,
+    ProxyStatus,
+    ServeInstanceDetails,
+)
 
 
 # ==== Callbacks used in this test ====
@@ -146,7 +150,6 @@ def test_callback(ray_instance, capsys):
     resp = httpx.get(url)
 
     assert resp.text == "custom_header_value"
-
     captured = capsys.readouterr()
     assert "MyCustom message: hello" in captured.err
 
@@ -170,6 +173,7 @@ def test_callback_fail(ray_instance):
     actor_def = ray.serve._private.proxy.ProxyActor
     handle = actor_def.remote(
         http_options=HTTPOptions(host="http_proxy", root_path="/", port=123),
+        grpc_options=gRPCOptions(),
         node_ip_address="127.0.0.1",
         node_id="123",
         logging_config=LoggingConfig(),
@@ -182,6 +186,7 @@ def test_callback_fail(ray_instance):
     actor_def = ray.actor._make_actor(serve_controller, {})
     handle = actor_def.remote(
         http_options=HTTPOptions(),
+        grpc_options=gRPCOptions(),
         global_logging_config=LoggingConfig(),
     )
     with pytest.raises(RayActorError, match="cannot be imported"):
@@ -203,6 +208,7 @@ def test_http_proxy_return_aribitary_objects(ray_instance):
     actor_def = ray.serve._private.proxy.ProxyActor
     handle = actor_def.remote(
         http_options=HTTPOptions(host="http_proxy", root_path="/", port=123),
+        grpc_options=gRPCOptions(),
         node_ip_address="127.0.0.1",
         node_id="123",
         logging_config=LoggingConfig(),

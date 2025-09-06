@@ -71,7 +71,7 @@ def _lightgbm_train_fn_per_worker(
         valid_names.append(eval_name)
 
     # Add network params of the worker group to enable distributed training.
-    config.update(ray.train.lightgbm.v2.get_network_params())
+    config.update(ray.train.lightgbm.get_network_params())
 
     lightgbm.train(
         params=config,
@@ -121,6 +121,9 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
                 "learning_rate": 1e-4,
                 "subsample": 0.5,
                 "max_depth": 2,
+                # Adding the line below is the only change needed
+                # for your `lgb.train` call!
+                **ray.train.lightgbm.get_network_params(),
             }
 
             # 2. Do distributed data-parallel training.

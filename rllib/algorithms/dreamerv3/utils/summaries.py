@@ -20,7 +20,7 @@ from ray.rllib.utils.metrics import (
     LEARNER_RESULTS,
     REPLAY_BUFFER_RESULTS,
 )
-from ray.rllib.utils.tf_utils import inverse_symlog
+from ray.rllib.utils.torch_utils import inverse_symlog
 
 torch, _ = try_import_torch()
 
@@ -154,7 +154,7 @@ def report_predicted_vs_sampled_obs(
 
     Args:
         metrics: The MetricsLogger object of the DreamerV3 algo.
-        sample: The sampled data (dict) from the replay buffer. Already tf-tensor
+        sample: The sampled data (dict) from the replay buffer. Already torch-tensor
             converted.
         batch_size_B: The batch size (B). This is the number of trajectories sampled
             from the buffer.
@@ -214,7 +214,7 @@ def report_dreamed_eval_trajectory_vs_samples(
 
     Args:
         metrics: The MetricsLogger object of the DreamerV3 algo.
-        sample: The sampled data (dict) from the replay buffer. Already tf-tensor
+        sample: The sampled data (dict) from the replay buffer. Already torch-tensor
             converted.
         burn_in_T: The number of burn-in timesteps (these will be skipped over in the
             reported video comparisons and MSEs).
@@ -326,7 +326,6 @@ def _report_obs(
             video sequence.
         symlog_obs: Whether to inverse-symlog the computed observations or not. Set this
             to True for environments, in which we should symlog the observations.
-
     """
     # Videos: Create summary, comparing computed images with actual sampled ones.
     # 4=[B, T, w, h] grayscale image; 5=[B, T, w, h, C] RGB image.

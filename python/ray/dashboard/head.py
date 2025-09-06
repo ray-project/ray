@@ -12,7 +12,7 @@ import ray.experimental.internal_kv as internal_kv
 from ray._private import ray_constants
 from ray._private.async_utils import enable_monitor_loop_lag
 from ray._private.ray_constants import env_integer
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._raylet import GcsClient
 from ray.dashboard.consts import (
     AVAILABLE_COMPONENT_NAMES_FOR_METRICS,
@@ -24,6 +24,7 @@ from ray.dashboard.utils import (
     DashboardHeadModuleConfig,
     async_loop_forever,
 )
+from ray._common.network_utils import build_address
 
 import psutil
 
@@ -165,7 +166,7 @@ class DashboardHead:
         try:
             # If gcs is permanently dead, gcs client will exit the process
             # (see gcs_rpc_client.h)
-            await self.gcs_client.async_check_alive(node_ips=[], timeout=None)
+            await self.gcs_client.async_check_alive(node_ids=[], timeout=None)
         except Exception:
             logger.warning("Failed to check gcs aliveness, will retry", exc_info=True)
 
@@ -301,7 +302,7 @@ class DashboardHead:
         # Setup prometheus metrics export server
         assert internal_kv._internal_kv_initialized()
         assert gcs_client is not None
-        address = f"{self.ip}:{DASHBOARD_METRIC_PORT}"
+        address = build_address(self.ip, DASHBOARD_METRIC_PORT)
         await gcs_client.async_internal_kv_put(
             "DashboardMetricsAddress".encode(), address.encode(), True, namespace=None
         )
@@ -436,7 +437,9 @@ class DashboardHead:
                 dashboard_head_modules, subprocess_module_handles
             )
             http_host, http_port = self.http_server.get_address()
-            logger.info(f"http server initialized at {http_host}:{http_port}")
+            logger.info(
+                f"http server initialized at {build_address(http_host, http_port)}"
+            )
         else:
             logger.info("http server disabled.")
 
@@ -455,7 +458,7 @@ class DashboardHead:
         # server address to Ray via stdin / stdout or a pipe.
         self.gcs_client.internal_kv_put(
             ray_constants.DASHBOARD_ADDRESS.encode(),
-            f"{dashboard_http_host}:{http_port}".encode(),
+            build_address(dashboard_http_host, http_port).encode(),
             True,
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         )

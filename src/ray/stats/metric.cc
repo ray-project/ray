@@ -113,6 +113,30 @@ void Metric::Record(double value, TagsType tags) {
     return;
   }
 
+  if (::RayConfig::instance().enable_open_telemetry()) {
+    // Collect tags from both the metric-specific tags and the global tags.
+    absl::flat_hash_map<std::string, std::string> open_telemetry_tags;
+    std::unordered_set<std::string> tag_keys_set;
+    for (const auto &tag_key : tag_keys_) {
+      tag_keys_set.insert(tag_key.name());
+    }
+    // Insert metric-specific tags that match the expected keys.
+    for (const auto &tag : tags) {
+      const std::string &key = tag.first.name();
+      if (tag_keys_set.count(key)) {
+        open_telemetry_tags[key] = tag.second;
+      }
+    }
+    // Add global tags, overwriting any existing tag keys.
+    for (const auto &tag : StatsConfig::instance().GetGlobalTags()) {
+      open_telemetry_tags[tag.first.name()] = tag.second;
+    }
+    OpenTelemetryMetricRecorder::GetInstance().SetMetricValue(
+        name_, std::move(open_telemetry_tags), value);
+
+    return;
+  }
+
   absl::MutexLock lock(&registration_mutex_);
   if (measure_ == nullptr) {
     // Measure could be registered before, so we try to get it first.
@@ -137,7 +161,7 @@ void Metric::Record(double value, TagsType tags) {
 }
 
 void Metric::Record(double value,
-                    std::unordered_map<std::string_view, std::string> tags) {
+                    const std::unordered_map<std::string_view, std::string> &tags) {
   TagsType tags_pair_vec;
   tags_pair_vec.reserve(tags.size());
   std::for_each(tags.begin(), tags.end(), [&tags_pair_vec](auto &tag) {
@@ -147,7 +171,8 @@ void Metric::Record(double value,
   Record(value, std::move(tags_pair_vec));
 }
 
-void Metric::Record(double value, std::unordered_map<std::string, std::string> tags) {
+void Metric::Record(double value,
+                    const std::unordered_map<std::string, std::string> &tags) {
   TagsType tags_pair_vec;
   tags_pair_vec.reserve(tags.size());
   std::for_each(tags.begin(), tags.end(), [&tags_pair_vec](auto &tag) {
@@ -159,6 +184,11 @@ void Metric::Record(double value, std::unordered_map<std::string, std::string> t
 
 Metric::~Metric() { opencensus::stats::StatsExporter::RemoveView(name_); }
 
+void Gauge::RegisterOpenTelemetryMetric() {
+  // Register the metric in OpenTelemetry.
+  OpenTelemetryMetricRecorder::GetInstance().RegisterGaugeMetric(name_, description_);
+}
+
 void Gauge::RegisterView() {
   opencensus::stats::ViewDescriptor view_descriptor =
       opencensus::stats::ViewDescriptor()
@@ -167,6 +197,11 @@ void Gauge::RegisterView() {
           .set_measure(name_)
           .set_aggregation(opencensus::stats::Aggregation::LastValue());
   internal::RegisterAsView(view_descriptor, tag_keys_);
+}
+
+void Histogram::RegisterOpenTelemetryMetric() {
+  OpenTelemetryMetricRecorder::GetInstance().RegisterHistogramMetric(
+      name_, description_, boundaries_);
 }
 
 void Histogram::RegisterView() {
@@ -181,6 +216,10 @@ void Histogram::RegisterView() {
   internal::RegisterAsView(view_descriptor, tag_keys_);
 }
 
+void Count::RegisterOpenTelemetryMetric() {
+  OpenTelemetryMetricRecorder::GetInstance().RegisterCounterMetric(name_, description_);
+}
+
 void Count::RegisterView() {
   opencensus::stats::ViewDescriptor view_descriptor =
       opencensus::stats::ViewDescriptor()
@@ -190,6 +229,10 @@ void Count::RegisterView() {
           .set_aggregation(opencensus::stats::Aggregation::Count());
 
   internal::RegisterAsView(view_descriptor, tag_keys_);
+}
+
+void Sum::RegisterOpenTelemetryMetric() {
+  OpenTelemetryMetricRecorder::GetInstance().RegisterSumMetric(name_, description_);
 }
 
 void Sum::RegisterView() {

@@ -37,11 +37,10 @@ steps:
   - label: "llm gpu tests"
     key: "llm-gpu-tests"
     tags:
-      - python
       - llm
       - gpu
-    instance_type: gpu-large
+    instance_type: g6-large
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/llm/... //doc/source/llm/... llm
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/llm/... //doc/source/llm/... llm
         --build-name llmgpubuild --only-tags gpu
     depends_on: llmgpubuild

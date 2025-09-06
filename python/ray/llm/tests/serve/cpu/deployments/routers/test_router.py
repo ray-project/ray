@@ -86,7 +86,7 @@ class TestRouter:
             role = response.choices[0].message.role
 
         assert role == "assistant"
-        assert text == "".join([f"test_{i} " for i in range(n_tokens)])
+        assert text.strip() == " ".join([f"test_{i}" for i in range(n_tokens)])
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("stream_batching_interval_ms", [None, 0, 10000])
@@ -112,8 +112,56 @@ class TestRouter:
             text = response.choices[0].text
 
         # The mock engine produces "test_0 test_1 test_2 ..." pattern
-        expected_text = "".join([f"test_{i} " for i in range(n_tokens)])
-        assert text == expected_text
+        expected_text = " ".join([f"test_{i}" for i in range(n_tokens)])
+        assert text.strip() == expected_text
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("stream", [True, False])
+    async def test_tool_call(self, client, stream):
+        response = client.chat.completions.create(
+            model="llm_model_id",
+            messages=[
+                {
+                    "role": "user",
+                    "content": "Can you tell me what the temperate will be in Dallas, in fahrenheit?",
+                },
+                {
+                    "content": None,
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": "RBS92VTjJ",
+                            "function": {
+                                "arguments": '{"city": "Dallas", "state": "TX", "unit": "fahrenheit"}',
+                                "name": "get_current_weather",
+                            },
+                            "type": "function",
+                        }
+                    ],
+                },
+                {
+                    "role": "tool",
+                    "content": "The weather in Dallas, TX is 85 degrees fahrenheit. It is partly cloudly, with highs in the 90's.",
+                    "tool_call_id": "n3OMUpydP",
+                },
+            ],
+            stream=stream,
+            max_tokens=200,
+        )
+
+        if stream:
+            text = ""
+            role = None
+            for chunk in response:
+                if chunk.choices[0].delta.role is not None and role is None:
+                    role = chunk.choices[0].delta.role
+                if chunk.choices[0].delta.content:
+                    text += chunk.choices[0].delta.content
+        else:
+            text = response.choices[0].message.content
+            role = response.choices[0].message.role
+
+        assert text
 
     def test_router_with_num_router_replicas_config(self):
         """Test the router with num_router_replicas config."""

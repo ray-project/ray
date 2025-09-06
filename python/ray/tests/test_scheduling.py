@@ -12,16 +12,16 @@ import pytest
 import ray
 import ray.cluster_utils
 import ray.util.accelerators
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.internal_api import memory_summary
-from ray.util.scheduling_strategies import (
-    PlacementGroupSchedulingStrategy,
-    NodeAffinitySchedulingStrategy,
-)
-from ray._common.test_utils import SignalActor, Semaphore, wait_for_condition
 from ray._private.test_utils import (
-    object_memory_usage,
-    get_metric_check_condition,
     MetricSamplePattern,
+    get_metric_check_condition,
+    object_memory_usage,
+)
+from ray.util.scheduling_strategies import (
+    NodeAffinitySchedulingStrategy,
+    PlacementGroupSchedulingStrategy,
 )
 
 logger = logging.getLogger(__name__)
@@ -72,41 +72,41 @@ def test_hybrid_policy_threshold(ray_start_cluster):
     for _ in range(NUM_NODES):
         cluster.add_node(
             num_cpus=NUM_CPUS_PER_NODE,
-            resources={"custom": NUM_CPUS_PER_NODE},
+            memory=NUM_CPUS_PER_NODE,
         )
 
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
-    # `block_task` ensures that scheduled tasks do not return until all are
-    # running.
-    block_task = Semaphore.remote(0)
-    # `block_driver` ensures that the driver does not allow tasks to continue
-    # until all are running.
-    block_driver = Semaphore.remote(0)
+    # Use a SignalActor to ensure that the batches of tasks run in parallel.
+    signal = SignalActor.remote()
 
-    # Add the custom resource because the CPU will be released when the task is
+    # Add the `memory` resource because the CPU will be released when the task is
     # blocked calling `ray.get()`.
-    @ray.remote(num_cpus=1, resources={"custom": 1})
+    # NOTE(edoakes): this needs to be `memory`, not a custom resource.
+    # See: https://github.com/ray-project/ray/pull/54271.
+    @ray.remote(num_cpus=1, memory=1)
     def get_node_id() -> str:
-        ray.get(block_driver.release.remote())
-        ray.get(block_task.acquire.remote())
+        ray.get(signal.wait.remote())
         return ray.get_runtime_context().get_node_id()
 
     # Submit 1 * PER_NODE_HYBRID_THRESHOLD tasks.
     # They should all be packed on the local node.
     refs = [get_node_id.remote() for _ in range(PER_NODE_HYBRID_THRESHOLD)]
-    ray.get([block_driver.acquire.remote() for _ in refs], timeout=20)
-    ray.get([block_task.release.remote() for _ in refs], timeout=20)
+    wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == len(refs))
+    ray.get(signal.send.remote())
     nodes = ray.get(refs, timeout=20)
     assert len(set(nodes)) == 1
+
+    # Clear the signal between tests.
+    ray.get(signal.send.remote(clear=True))
 
     # Submit 2 * PER_NODE_HYBRID_THRESHOLD tasks.
     # The first PER_NODE_HYBRID_THRESHOLD tasks should be packed on the local node, then
     # the second PER_NODE_HYBRID_THRESHOLD tasks should be packed on the remote node.
     refs = [get_node_id.remote() for _ in range(int(PER_NODE_HYBRID_THRESHOLD * 2))]
-    ray.get([block_driver.acquire.remote() for _ in refs], timeout=20)
-    ray.get([block_task.release.remote() for _ in refs], timeout=20)
+    wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == len(refs))
+    ray.get(signal.send.remote())
     counter = collections.Counter(ray.get(refs, timeout=20))
     assert all(v == PER_NODE_HYBRID_THRESHOLD for v in counter.values()), counter
 
@@ -443,55 +443,6 @@ def test_lease_request_leak(shutdown_only):
     ray.get(tasks)
 
     wait_for_condition(lambda: object_memory_usage() == 0)
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
-def test_many_args(ray_start_cluster):
-    cluster = ray_start_cluster
-    object_size = int(1e6)
-    cluster.add_node(
-        num_cpus=1,
-        _system_config={
-            # Lower this to prevent excessive delays in pull retries.
-            "object_manager_pull_timeout_ms": 100,
-            "debug_dump_period_milliseconds": 1000,
-        },
-        object_store_memory=int(1e8),
-    )
-    for _ in range(3):
-        cluster.add_node(num_cpus=1, object_store_memory=int(1e8))
-    ray.init(address=cluster.address)
-
-    @ray.remote
-    def f(i, *args):
-        print(i)
-        return
-
-    @ray.remote
-    def put():
-        return np.zeros(object_size, dtype=np.uint8)
-
-    xs = [put.remote() for _ in range(200)]
-    ray.wait(xs, num_returns=len(xs), fetch_local=False)
-    (
-        num_tasks_submitted_before,
-        num_leases_requested_before,
-    ) = ray._private.worker.global_worker.core_worker.get_task_submission_stats()
-    tasks = []
-    for i in range(100):
-        args = [np.random.choice(xs) for _ in range(10)]
-        tasks.append(f.remote(i, *args))
-    ray.get(tasks, timeout=30)
-
-    (
-        num_tasks_submitted,
-        num_leases_requested,
-    ) = ray._private.worker.global_worker.core_worker.get_task_submission_stats()
-    num_tasks_submitted -= num_tasks_submitted_before
-    num_leases_requested -= num_leases_requested_before
-    print("submitted:", num_tasks_submitted, "leases requested:", num_leases_requested)
-    assert num_tasks_submitted == 100
-    assert num_leases_requested <= 10 * num_tasks_submitted
 
 
 def test_pull_manager_at_capacity_reports(ray_start_cluster):

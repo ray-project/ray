@@ -24,11 +24,13 @@
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/common/status_or.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/reference_count.h"
+#include "ray/ipc/raylet_ipc_client_interface.h"
 #include "ray/object_manager/plasma/client.h"
-#include "ray/raylet_client/raylet_client.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 namespace core {
@@ -94,7 +96,7 @@ class CoreWorkerPlasmaStoreProvider {
  public:
   CoreWorkerPlasmaStoreProvider(
       const std::string &store_socket,
-      const std::shared_ptr<raylet::RayletClient> raylet_client,
+      const std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
       ReferenceCounter &reference_counter,
       std::function<Status()> check_signals,
       bool warmup,
@@ -197,33 +199,28 @@ class CoreWorkerPlasmaStoreProvider {
   /// \return Output mapping of used object ids to (size, callsite).
   absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> UsedObjectsList() const;
 
-  std::string MemoryUsageString();
+  StatusOr<std::string> GetMemoryUsage();
 
   std::shared_ptr<plasma::PlasmaClient> &store_client() { return store_client_; }
 
  private:
-  /// Ask the raylet to fetch a set of objects and then attempt to get them
+  /// Ask the raylet to pull a set of objects and then attempt to get them
   /// from the local plasma store. Successfully fetched objects will be removed
   /// from the input set of remaining IDs and added to the results map.
   ///
   /// \param[in/out] remaining IDs of the remaining objects to get.
   /// \param[in] batch_ids IDs of the objects to get.
   /// \param[in] timeout_ms Timeout in milliseconds.
-  /// \param[in] fetch_only Whether the raylet should only fetch or also attempt to
-  /// reconstruct objects.
-  /// \param[in] task_id The current TaskID.
   /// \param[out] results Map of objects to write results into. This method will only
   /// add to this map, not clear or remove from it, so the caller can pass in a non-empty
   /// map.
   /// \param[out] got_exception Set to true if any of the fetched objects contained an
   /// exception.
   /// \return Status.
-  Status FetchAndGetFromPlasmaStore(
+  Status PullObjectsAndGetFromPlasmaStore(
       absl::flat_hash_set<ObjectID> &remaining,
       const std::vector<ObjectID> &batch_ids,
       int64_t timeout_ms,
-      bool fetch_only,
-      const TaskID &task_id,
       absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
       bool *got_exception);
 
@@ -238,7 +235,7 @@ class CoreWorkerPlasmaStoreProvider {
   /// \return status
   Status WarmupStore();
 
-  const std::shared_ptr<raylet::RayletClient> raylet_client_;
+  const std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client_;
   std::shared_ptr<plasma::PlasmaClient> store_client_;
   /// Used to look up a plasma object's owner.
   ReferenceCounter &reference_counter_;

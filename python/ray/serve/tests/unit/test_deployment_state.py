@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from ray._private.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
+from ray._common.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
     DeploymentHandleSource,
@@ -279,7 +279,7 @@ class MockReplicaActorWrapper:
     def check_stopped(self) -> bool:
         return self.done_stopping
 
-    def force_stop(self):
+    def force_stop(self, log_shutdown_message: bool = False):
         self.force_stopped_counter += 1
 
     def check_health(self):
@@ -2388,7 +2388,9 @@ def test_recover_state_from_replica_names(mock_deployment_state_manager):
 
     # Deploy deployment with version "1" and one replica
     info1, v1 = deployment_info(version="1")
-    assert dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+    target_state_changed = dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+    assert target_state_changed
+    dsm.save_checkpoint()
     ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
 
     # Single replica of version `version1` should be created and in STARTING state
@@ -2437,7 +2439,9 @@ def test_recover_during_rolling_update(mock_deployment_state_manager):
 
     # Step 1: Create some deployment info with actors in running state
     info1, v1 = deployment_info(version="1")
-    assert dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+    target_state_changed = dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+    assert target_state_changed
+    dsm.save_checkpoint()
     ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
 
     # Single replica of version `version1` should be created and in STARTING state
@@ -2452,8 +2456,8 @@ def test_recover_during_rolling_update(mock_deployment_state_manager):
 
     # Now execute a rollout: upgrade the version to "2".
     info2, v2 = deployment_info(version="2")
-    assert dsm.deploy(TEST_DEPLOYMENT_ID, info2)
-
+    target_state_changed = dsm.deploy(TEST_DEPLOYMENT_ID, info2)
+    assert target_state_changed
     # In real code this checkpoint would be done by the caller of .deploy()
     dsm.save_checkpoint()
 
@@ -2518,7 +2522,9 @@ def test_actor_died_before_recover(mock_deployment_state_manager):
 
     # Create some deployment info with actors in running state
     info1, v1 = deployment_info(version="1")
-    assert dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+    target_state_changed = dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+    assert target_state_changed
+    dsm.save_checkpoint()
     ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
 
     # Single replica of version `version1` should be created and in STARTING state

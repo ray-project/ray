@@ -66,6 +66,7 @@ The following examples uses Weights & Biases (W&B) and MLflow but it's adaptable
 
                 # Step 3
                 if train.get_context().get_world_rank() == 0:
+                    # Only report the results from the rank 0 worker to W&B to avoid duplication.
                     wandb.log(metrics)
 
                 # ...
@@ -99,11 +100,10 @@ The following examples uses Weights & Biases (W&B) and MLflow but it's adaptable
                 loss = optimize()
 
                 metrics = {"loss": loss}
-                # Only report the results from the first worker to MLflow
-                to avoid duplication
 
                 # Step 3
                 if train.get_context().get_world_rank() == 0:
+                    # Only report the results from the rank 0 worker to MLflow to avoid duplication.
                     mlflow.log_metrics(metrics)
 
 .. tip::
@@ -304,14 +304,14 @@ PyTorch
 .. dropdown:: Log to W&B
 
     .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking//torch_exp_tracking_wandb.py
-            :emphasize-lines: 15, 16, 17, 21, 22, 51, 52, 54, 55
+            :emphasize-lines: 16, 19-21, 59-60, 62-63
             :language: python
             :start-after: __start__
 
 .. dropdown:: Log to file-based MLflow
 
     .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking/torch_exp_tracking_mlflow.py
-        :emphasize-lines: 22, 23, 24, 25, 54, 55, 57, 58, 64
+        :emphasize-lines: 22-25, 58-59, 61-62, 68
         :language: python
         :start-after: __start__
         :end-before: __end__

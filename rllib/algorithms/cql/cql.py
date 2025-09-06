@@ -212,14 +212,6 @@ class CQLConfig(SACConfig):
             AddNextObservationsFromEpisodesToTrainBatch(),
         )
 
-        # In case we run multiple updates per RLlib training step in the `Learner` or
-        # when training on GPU conversion to tensors is managed in batch prefetching.
-        if self.num_gpus_per_learner > 0 or (
-            self.dataset_num_iters_per_learner
-            and self.dataset_num_iters_per_learner > 1
-        ):
-            pipeline.remove("NumpyToTensor")
-
         return pipeline
 
     @override(SACConfig)
@@ -310,15 +302,20 @@ class CQL(SAC):
 
         # Sampling from offline data.
         with self.metrics.log_time((TIMERS, OFFLINE_SAMPLING_TIMER)):
+            # If we should use an iterator in the learner(s). Note, in case of
+            # multiple learners we must always return a list of iterators.
+            return_iterator = return_iterator = (
+                self.config.num_learners > 0
+                or self.config.dataset_num_iters_per_learner != 1
+            )
+
             # Return an iterator in case we are using remote learners.
             batch_or_iterator = self.offline_data.sample(
                 num_samples=self.config.train_batch_size_per_learner,
                 num_shards=self.config.num_learners,
                 # Return an iterator, if a `Learner` should update
                 # multiple times per RLlib iteration.
-                return_iterator=self.config.dataset_num_iters_per_learner > 1
-                if self.config.dataset_num_iters_per_learner
-                else True,
+                return_iterator=return_iterator,
             )
 
         # Updating the policy.

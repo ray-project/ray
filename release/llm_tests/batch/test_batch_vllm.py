@@ -1,7 +1,6 @@
-import shutil
 import sys
-import os
 import logging
+import time
 
 import pytest
 
@@ -9,6 +8,28 @@ import ray
 from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
 
 logger = logging.getLogger(__name__)
+
+
+@pytest.fixture(autouse=True)
+def disable_vllm_compile_cache(monkeypatch):
+    """Automatically disable vLLM compile cache for all tests.
+
+    Avoids AssertionError due to torch compile cache corruption caused by
+    running multiple engines on the same node.
+    See: https://github.com/vllm-project/vllm/issues/18851, fix expected with
+    PyTorch 2.8.0
+    """
+    monkeypatch.setenv("VLLM_DISABLE_COMPILE_CACHE", "1")
+
+
+@pytest.fixture(autouse=True)
+def add_buffer_time_between_tests():
+    """Add buffer time after each test to avoid resource conflicts, which cause
+    flakiness.
+    """
+    yield  # Test runs here
+
+    time.sleep(10)
 
 
 def test_chat_template_with_vllm():
@@ -25,6 +46,7 @@ def test_chat_template_with_vllm():
         detokenize=True,
         batch_size=16,
         concurrency=1,
+        runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
 
     processor = build_llm_processor(
@@ -84,6 +106,7 @@ def test_vllm_llama_parallel(tp_size, pp_size, concurrency):
         batch_size=16,
         accelerator_type=None,
         concurrency=concurrency,
+        runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
 
     processor = build_llm_processor(
@@ -136,6 +159,7 @@ def test_vllm_llama_lora():
         detokenize=True,
         batch_size=16,
         concurrency=1,
+        runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
 
     processor = build_llm_processor(
@@ -167,18 +191,6 @@ def test_vllm_llama_lora():
     assert all("resp" in out for out in outs)
 
 
-@ray.remote(num_gpus=1)
-def delete_torch_compile_cache_on_worker():
-    """Delete torch compile cache on worker.
-    Avoids AssertionError due to torch compile cache corruption
-    TODO(seiji): check if this is still needed after https://github.com/vllm-project/vllm/issues/18851 is fixed
-    """
-    torch_compile_cache_path = os.path.expanduser("~/.cache/vllm/torch_compile_cache")
-    if os.path.exists(torch_compile_cache_path):
-        shutil.rmtree(torch_compile_cache_path)
-        logger.warning(f"Deleted torch compile cache at {torch_compile_cache_path}")
-
-
 @pytest.mark.parametrize(
     "model_source,tp_size,pp_size,concurrency,sample_size",
     [
@@ -189,16 +201,13 @@ def delete_torch_compile_cache_on_worker():
     ],
 )
 def test_vllm_vision_language_models(
-    model_source, tp_size, pp_size, concurrency, sample_size
+    model_source,
+    tp_size,
+    pp_size,
+    concurrency,
+    sample_size,
 ):
     """Test vLLM with vision language models using different configurations."""
-
-    # todo(seiji): Commenting out due to https://github.com/ray-project/ray/issues/53824
-    # Need to follow up once torch_compile_cache issue is fixed or PyTorch 2.8
-    if model_source == "mistral-community/pixtral-12b":
-        pytest.skip("Skipping test due to torch_compile_cache issue")
-
-    ray.get(delete_torch_compile_cache_on_worker.remote())
 
     # vLLM v1 does not support decoupled tokenizer,
     # but since the tokenizer is in a separate process,
@@ -221,6 +230,7 @@ def test_vllm_vision_language_models(
         batch_size=16,
         concurrency=concurrency,
         has_image=True,
+        runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
 
     processor = build_llm_processor(
@@ -260,6 +270,63 @@ def test_vllm_vision_language_models(
     outs = ds.take_all()
     assert len(outs) == sample_size
     assert all("resp" in out for out in outs)
+
+
+@pytest.mark.parametrize("concurrency", [1, 4])
+def test_async_udf_queue_capped(concurrency):
+    """
+    Test that the large object in input/output rows
+    are stored in object store and does not OOM.
+    """
+
+    processor_config = vLLMEngineProcessorConfig(
+        model_source="unsloth/Llama-3.2-1B-Instruct",
+        engine_kwargs=dict(
+            max_model_len=16384,
+            enable_chunked_prefill=True,
+            max_num_batched_tokens=2048,
+        ),
+        tokenize=False,
+        detokenize=False,
+        batch_size=4,
+        accelerator_type=None,
+        concurrency=concurrency,
+        runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
+    )
+
+    processor = build_llm_processor(
+        processor_config,
+        preprocess=lambda row: dict(
+            # 1M emoji (4 bytes), should not leak to memory heap.
+            large_memory_to_carry_over="🤗" * 1_000_000,
+            messages=[
+                {"role": "system", "content": "You are a calculator"},
+                {"role": "user", "content": f"{row['id']} ** 3 = ?"},
+            ],
+            sampling_params=dict(
+                temperature=0.3,
+                # we don't care about the actual output
+                max_tokens=1,
+                detokenize=False,
+            ),
+        ),
+        postprocess=lambda row: {
+            "resp": row["generated_text"],
+            "large_memory_still_there": "large_memory_to_carry_over" in row,
+        },
+    )
+
+    ds = ray.data.range(12000)
+
+    def map_id_to_val_in_test_no_memory_leak(x):
+        return {"id": x["id"], "val": x["id"] + 5}
+
+    ds = ds.map(map_id_to_val_in_test_no_memory_leak)
+    ds = processor(ds)
+    ds = ds.materialize()
+
+    outs = ds.take_all()
+    assert all(out["large_memory_still_there"] for out in outs)
 
 
 if __name__ == "__main__":

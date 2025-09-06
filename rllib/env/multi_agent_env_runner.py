@@ -284,10 +284,17 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             self._needs_initial_reset = True
 
         # Loop through `num_timesteps` timesteps or `num_episodes` episodes.
-        ts = 0
+        env_ts = 0
+        agent_ts = 0
         eps = 0
         while (
-            (ts < num_timesteps) if num_timesteps is not None else (eps < num_episodes)
+            (eps < num_episodes)
+            if num_timesteps is None
+            else (
+                env_ts < num_timesteps
+                if self.config.count_steps_by == "env_steps"
+                else agent_ts < num_timesteps
+            )
         ):
             # Act randomly.
             if random_actions:
@@ -318,7 +325,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                         # count times the number of env runners in the algo.
                         global_env_steps_lifetime = (
                             self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
-                            + ts
+                            + env_ts
                         ) * (self.config.num_env_runners or 1)
                         with self.metrics.log_time(RLMODULE_INFERENCE_TIMER):
                             to_env = self.module.forward_exploration(
@@ -403,9 +410,10 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     )
                     # Only increase ts when we actually stepped (not reset'd as a reset
                     # does not count as a timestep).
-                    ts += self._increase_sampled_metrics(
+                    env_ts += self._increase_sampled_metrics(
                         1, observations[env_index], episodes[env_index]
                     )
+                    agent_ts += len(observations[env_index])
 
             done_episodes_to_run_env_to_module = []
             for env_index in range(self.num_envs):

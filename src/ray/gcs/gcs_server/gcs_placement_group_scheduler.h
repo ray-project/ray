@@ -26,22 +26,16 @@
 #include "ray/common/id.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
+#include "ray/gcs/gcs_server/gcs_placement_group.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/policy/scheduling_context.h"
-#include "ray/raylet_client/raylet_client.h"
-#include "ray/rpc/node_manager/node_manager_client.h"
-#include "ray/rpc/node_manager/node_manager_client_pool.h"
-#include "ray/rpc/worker/core_worker_client.h"
+#include "ray/raylet_client/raylet_client_interface.h"
+#include "ray/raylet_client/raylet_client_pool.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
 namespace gcs {
-
-class GcsPlacementGroup;
-
-using ReserveResourceClientFactoryFn =
-    std::function<std::shared_ptr<ResourceReserveInterface>(const rpc::Address &address)>;
 
 using PGSchedulingFailureCallback =
     std::function<void(std::shared_ptr<GcsPlacementGroup>, bool)>;
@@ -294,12 +288,12 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param gcs_node_manager The node manager which is used when scheduling.
   /// \param cluster_resource_scheduler The resource scheduler which is used when
   /// scheduling.
-  /// \param lease_client_factory Factory to create remote lease client.
+  /// \param raylet_client_pool Pool to get remote raylet client connections.
   GcsPlacementGroupScheduler(instrumented_io_context &io_context,
                              gcs::GcsTableStorage &gcs_table_storage,
                              const GcsNodeManager &gcs_node_manager,
                              ClusterResourceScheduler &cluster_resource_scheduler,
-                             rpc::NodeManagerClientPool &raylet_client_pool);
+                             rpc::RayletClientPool &raylet_client_pool);
 
   virtual ~GcsPlacementGroupScheduler() = default;
 
@@ -409,11 +403,11 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       int current_retry_cnt);
 
   /// Get an existing lease client or connect a new one or connect a new one.
-  std::shared_ptr<ResourceReserveInterface> GetOrConnectLeaseClient(
+  std::shared_ptr<RayletClientInterface> GetOrConnectRayletClient(
       const rpc::Address &raylet_address);
 
   /// Get an existing lease client for a given node.
-  std::shared_ptr<ResourceReserveInterface> GetLeaseClientFromNode(
+  std::shared_ptr<RayletClientInterface> GetRayletClientFromNode(
       const std::shared_ptr<ray::rpc::GcsNodeInfo> &node);
 
   /// Called when all prepare requests are returned from nodes.
@@ -468,7 +462,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// Create scheduling options.
   SchedulingOptions CreateSchedulingOptions(const PlacementGroupID &placement_group_id,
                                             rpc::PlacementStrategy strategy,
-                                            double max_cpu_fraction_per_node,
                                             NodeID soft_target_node_id);
 
   /// Try to release bundle resource to cluster resource manager.
@@ -506,7 +499,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       placement_group_leasing_in_progress_;
 
   /// The cached raylet clients used to communicate with raylets.
-  rpc::NodeManagerClientPool &raylet_client_pool_;
+  rpc::RayletClientPool &raylet_client_pool_;
 
   /// The nodes which are releasing unused bundles.
   absl::flat_hash_set<NodeID> nodes_of_releasing_unused_bundles_;
@@ -517,6 +510,11 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// The bundles that waiting to be destroyed and release resources.
   std::list<std::pair<NodeID, std::shared_ptr<const BundleSpecification>>>
       waiting_removed_bundles_;
+
+  friend class GcsPlacementGroupSchedulerTest;
+  FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestCheckingWildcardResource);
+  FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestWaitingRemovedBundles);
+  FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestBundlesRemovedWhenNodeDead);
 };
 
 }  // namespace gcs

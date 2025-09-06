@@ -166,7 +166,7 @@ class SimpleImputer(Preprocessor):
                 ):
                     df[output_column] = df[column].copy(deep=True)
 
-                df[output_column].fillna(value, inplace=True)
+                df.fillna({output_column: value}, inplace=True)
 
         return df
 

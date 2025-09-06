@@ -7,6 +7,7 @@ from ray.core.generated.gcs_pb2 import JobsAPIInfo
 from ray.dashboard.modules.job.common import (
     JobInfo,
     JobStatus,
+    JobErrorType,
     JobSubmitRequest,
     http_uri_components_to_uri,
     uri_to_http_components,
@@ -179,7 +180,7 @@ def test_job_info_json_to_proto():
     info = JobInfo(
         status=JobStatus.PENDING,
         entrypoint="echo hi",
-        error_type="error_type",
+        error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_UNSCHEDULABLE,
         start_time=123,
         end_time=456,
         metadata={"hi": "hi2"},
@@ -208,7 +209,7 @@ def test_job_info_json_to_proto():
         "(CPUs, GPUs, memory, custom resources) to become available. "
         "It may be waiting for the runtime environment to be set up."
     )
-    assert info_proto.error_type == "error_type"
+    assert info_proto.error_type == "JOB_SUPERVISOR_ACTOR_UNSCHEDULABLE"
     assert info_proto.driver_agent_http_address == "http://localhost:1234"
     assert info_proto.driver_node_id == "node_id"
 

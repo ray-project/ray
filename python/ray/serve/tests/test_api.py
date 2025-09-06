@@ -1,7 +1,7 @@
 import asyncio
 import os
 import sys
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, overload
 
 import httpx
 import pytest
@@ -13,7 +13,7 @@ from ray import serve
 from ray._common.pydantic_compat import BaseModel, ValidationError
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.api import call_user_app_builder_with_args_if_necessary
-from ray.serve._private.common import DeploymentID, RequestProtocol
+from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
     DEFAULT_MAX_ONGOING_REQUESTS,
     SERVE_DEFAULT_APP_NAME,
@@ -27,7 +27,8 @@ from ray.serve._private.request_router.replica_wrapper import (
 from ray.serve._private.request_router.request_router import (
     RequestRouter,
 )
-from ray.serve._private.test_utils import get_application_url, get_application_urls
+from ray.serve._private.test_utils import get_application_url
+from ray.serve.config import RequestRouterConfig
 from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
@@ -80,8 +81,14 @@ class FakeRequestRouter(RequestRouter):
     ) -> List[List[RunningReplica]]:
         return [candidate_replicas]
 
+    def initialize_state(self, test_parameter: int = 0):
+        print("Called initialize_state in FakeRequestRouter")
+        self.test_parameter = test_parameter
 
-@serve.deployment(request_router_class=FakeRequestRouter)
+
+@serve.deployment(
+    request_router_config=RequestRouterConfig(request_router_class=FakeRequestRouter)
+)
 class AppWithCustomRequestRouter:
     def __call__(self) -> str:
         return "Hello, world!"
@@ -433,14 +440,15 @@ def test_delete_application(serve_instance):
     assert httpx.get(url).text == "got f"
 
     serve.delete("app_f")
-    assert "Path '/' not found" in httpx.get(url).text
+    url = "http://localhost:8000/app_f"
+    assert "Path '/app_f' not found" in httpx.get(url).text
 
     # delete again, no exception & crash expected.
     serve.delete("app_f")
 
     # make sure no affect to app_g
     assert g_handle.remote().result() == "got g"
-    url = f"{get_application_url(app_name='app_g')}"
+    url = get_application_url("HTTP", app_name="app_g")
     assert httpx.get(url).text == "got g"
 
 
@@ -549,6 +557,12 @@ def test_deploy_application_with_same_name(serve_instance):
     # Redeploy with same app to update route prefix
     serve.run(Model1.bind(), name="app", route_prefix="/my_app")
     url_new = get_application_url("HTTP", app_name="app")
+    # Reread the url to get the correct port value
+    old_url_route_prefix = "/"
+    url = (
+        get_application_url("HTTP", app_name="app", exclude_route_prefix=True)
+    ) + old_url_route_prefix
+
     assert httpx.get(url_new).text == "got model1"
     assert httpx.get(url).status_code == 404
 
@@ -898,8 +912,7 @@ def test_status_constructor_error(serve_instance):
     # return a 503 error to reflect the failed deployment state.
     # The timeout is there to prevent the test from hanging and blocking
     # the test suite if it does fail.
-    url = get_application_url("HTTP")
-    r = httpx.post(url, timeout=10)
+    r = httpx.post("http://localhost:8000/", timeout=10)
     assert r.status_code == 503 and "unavailable" in r.text
 
     @serve.deployment
@@ -1105,47 +1118,74 @@ def test_deploy_app_with_custom_request_router(serve_instance):
     assert handle.remote().result() == "Hello, world!"
 
 
+@serve.deployment(
+    request_router_config=RequestRouterConfig(
+        request_router_class="ray.serve.tests.test_api.FakeRequestRouter",
+        request_router_kwargs=dict(test_parameter=4848),
+    )
+)
+class AppWithCustomRequestRouterAndKwargs:
+    def __call__(self) -> str:
+        return "Hello, world!"
+
+
+def test_custom_request_router_kwargs(serve_instance):
+    """Check that custom kwargs can be passed to the request router."""
+
+    handle = serve.run(AppWithCustomRequestRouterAndKwargs.bind())
+    assert handle.remote().result() == "Hello, world!"
+
+
+def test_overloaded_app_builder_signatures():
+    """Test that call_user_app_builder_with_args_if_necessary validates the base
+    function signature with a pydantic basemodel, rather than the overload that
+    accepts a dict (for the sake of lint permissiveness).
+    """
+
+    class Config(BaseModel):
+        name: str
+        value: int = 42
+
+    @serve.deployment
+    class MockDeployment:
+        def __call__(self):
+            return "mock"
+
+    mock_app = MockDeployment.bind()
+
+    # Overloaded function where the implementation has a pydantic annotation
+    @overload
+    def overloaded_builder(args: dict) -> Application:
+        ...
+
+    def overloaded_builder(args: Config) -> Application:
+        """Implementation with pydantic BaseModel annotation."""
+
+        assert isinstance(args, Config), f"Expected Config but got {type(args)}"
+        return mock_app
+
+    # Test 1: Valid input should work and convert to Config model
+    result = call_user_app_builder_with_args_if_necessary(
+        overloaded_builder, {"name": "test", "value": 123}
+    )
+    assert isinstance(result, Application)
+
+    # Test 2: Invalid dict input should raise validation error
+    # Missing required field 'name'
+    with pytest.raises(ValidationError):
+        call_user_app_builder_with_args_if_necessary(
+            overloaded_builder, {"value": 123}  # Missing required 'name' field
+        )
+
+    # Test 3: Wrong type should also raise validation error
+    with pytest.raises(ValidationError):
+        call_user_app_builder_with_args_if_necessary(
+            overloaded_builder,
+            {"name": "test", "value": "not_an_int"},  # 'value' should be int
+        )
+
+
 if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main(["-v", "-s", __file__]))
-
-
-def test_get_application_urls(serve_instance):
-    @serve.deployment
-    def f():
-        return "Hello, world!"
-
-    serve.run(f.bind())
-    controller_details = ray.get(serve_instance._controller.get_actor_details.remote())
-    node_ip = controller_details.node_ip
-    assert get_application_urls() == [f"http://{node_ip}:8000"]
-    assert get_application_urls("gRPC") == [f"{node_ip}:9000"]
-    assert get_application_urls(RequestProtocol.HTTP) == [f"http://{node_ip}:8000"]
-    assert get_application_urls(RequestProtocol.GRPC) == [f"{node_ip}:9000"]
-
-
-def test_get_application_urls_with_app_name(serve_instance):
-    @serve.deployment
-    def f():
-        return "Hello, world!"
-
-    serve.run(f.bind(), name="app1", route_prefix="/")
-    controller_details = ray.get(serve_instance._controller.get_actor_details.remote())
-    node_ip = controller_details.node_ip
-    assert get_application_urls("HTTP", app_name="app1") == [f"http://{node_ip}:8000"]
-    assert get_application_urls("gRPC", app_name="app1") == [f"{node_ip}:9000"]
-
-
-def test_get_application_urls_with_route_prefix(serve_instance):
-    @serve.deployment
-    def f():
-        return "Hello, world!"
-
-    serve.run(f.bind(), name="app1", route_prefix="/app1")
-    controller_details = ray.get(serve_instance._controller.get_actor_details.remote())
-    node_ip = controller_details.node_ip
-    assert get_application_urls("HTTP", app_name="app1") == [
-        f"http://{node_ip}:8000/app1"
-    ]
-    assert get_application_urls("gRPC", app_name="app1") == [f"{node_ip}:9000"]

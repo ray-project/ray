@@ -141,7 +141,7 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
   // Check latest health status, see whether a new rpc message is needed.
   const auto now = absl::Now();
   absl::Time next_check_time =
-      lastest_known_healthy_timestamp_ + absl::Milliseconds(manager->period_ms_);
+      latest_known_healthy_timestamp_ + absl::Milliseconds(manager->period_ms_);
   if (now <= next_check_time) {
     // Update message is fresh enough, skip current check and schedule later.
     int64_t next_schedule_millisec = (next_check_time - now) / absl::Milliseconds(1);
@@ -152,7 +152,7 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
 
   // grpc context and health check response are dedicated to one single async request.
   auto context = std::make_shared<grpc::ClientContext>();
-  auto response = std::make_shared<::grpc::health::v1::HealthCheckResponse>();
+  auto response = std::make_shared<HealthCheckResponse>();
 
   // Get the context and response pointer before async call, since the order of function
   // arguments resolution is non-deterministic.
@@ -173,8 +173,8 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
       response_ptr,
       [this, start = now, context = std::move(context), response = std::move(response)](
           ::grpc::Status status) {
-        auto manager = manager_.lock();
-        if (manager == nullptr) {
+        auto gcs_health_check_manager = manager_.lock();
+        if (gcs_health_check_manager == nullptr) {
           delete this;
           return;
         }
@@ -183,14 +183,14 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
         STATS_health_check_rpc_latency_ms.Record(
             absl::ToInt64Milliseconds(absl::Now() - start));
 
-        manager->io_service_.post(
+        gcs_health_check_manager->io_service_.post(
             [this, status, response = std::move(response)]() {
               if (stopped_) {
                 delete this;
                 return;
               }
-              auto manager = manager_.lock();
-              if (manager == nullptr) {
+              auto mgr = manager_.lock();
+              if (mgr == nullptr) {
                 delete this;
                 return;
               }
@@ -201,7 +201,7 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
 
               if (status.ok() && response->status() == HealthCheckResponse::SERVING) {
                 // Health check passed.
-                health_check_remaining_ = manager->failure_threshold_;
+                health_check_remaining_ = mgr->failure_threshold_;
               } else {
                 --health_check_remaining_;
                 RAY_LOG(WARNING)
@@ -213,15 +213,14 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
               }
 
               if (health_check_remaining_ == 0) {
-                manager->FailNode(node_id_);
+                mgr->FailNode(node_id_);
                 delete this;
               } else {
                 // Do another health check.
                 //
                 // TODO(hjiang): Able to reduce a few health check based on know resource
                 // usage communication between GCS and raylet.
-                timer_.expires_from_now(
-                    boost::posix_time::milliseconds(manager->period_ms_));
+                timer_.expires_from_now(boost::posix_time::milliseconds(mgr->period_ms_));
                 timer_.async_wait([this](auto) { StartHealthCheck(); });
               }
             },

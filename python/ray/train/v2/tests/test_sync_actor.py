@@ -25,7 +25,10 @@ def test_broadcast_from_rank_0(world_size):
     for rank in range(world_size):
         remote_tasks.append(
             sync_actor.broadcast_from_rank_zero.remote(
-                world_rank=rank, world_size=world_size, data=f"data-{rank}"
+                world_rank=rank,
+                world_size=world_size,
+                data=f"data-{rank}",
+                caller_method_name="broadcast_from_rank_zero",
             )
         )
     # Ensure that all workers have the same consensus data same as rank 0
@@ -48,7 +51,10 @@ def test_hang():
     for rank in range(9):
         remote_tasks.append(
             sync_actor.broadcast_from_rank_zero.remote(
-                world_rank=rank, world_size=10, data=f"data-{rank}"
+                world_rank=rank,
+                world_size=10,
+                data=f"data-{rank}",
+                caller_method_name="broadcast_from_rank_zero",
             )
         )
     # Ensure that the workers are blocked and raise BroadcastCollectiveTimeoutError
@@ -70,14 +76,20 @@ def test_world_size_mismatch():
     for rank in range(9):
         remote_tasks.append(
             sync_actor.broadcast_from_rank_zero.remote(
-                world_rank=rank, world_size=10, data=f"data-{rank}"
+                world_rank=rank,
+                world_size=10,
+                data=f"data-{rank}",
+                caller_method_name="broadcast_from_rank_zero",
             )
         )
 
     # The last worker calls broadcast with a different world size.
     # This task should raise an error immediately.
     mismatch_task = sync_actor.broadcast_from_rank_zero.remote(
-        world_rank=9, world_size=11, data="data-9"
+        world_rank=9,
+        world_size=11,
+        data="data-9",
+        caller_method_name="broadcast_from_rank_zero",
     )
     with pytest.raises(ValueError, match="same world size"):
         ray.get(mismatch_task)

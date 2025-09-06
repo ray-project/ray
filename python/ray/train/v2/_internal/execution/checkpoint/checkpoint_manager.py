@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -9,9 +10,14 @@ from ray.train._internal.checkpoint_manager import (
 )
 from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.exceptions import CheckpointManagerInitializationError
-from ray.train.v2._internal.execution.callback import ReportCallback
+from ray.train.v2._internal.execution.callback import (
+    ReportCallback,
+    WorkerGroupCallback,
+)
 from ray.train.v2._internal.execution.context import StorageContext
 from ray.train.v2._internal.execution.storage import _delete_fs_path, _exists_at_fs_path
+from ray.train.v2._internal.execution.worker_group import Worker
+from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
 try:
     from pydantic import BaseModel
@@ -69,7 +75,7 @@ def _get_state_from_training_result(
     )
 
 
-class CheckpointManager(_CheckpointManager, ReportCallback):
+class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback):
     def __init__(
         self,
         checkpoint_config: CheckpointConfig,
@@ -77,6 +83,12 @@ class CheckpointManager(_CheckpointManager, ReportCallback):
     ):
         self._storage_context = storage_context
         self._checkpoint_config = checkpoint_config
+
+        # This tracks the number of report calls that have been processed
+        # for the current worker group.
+        self._num_report_calls = 0
+
+        self._condition = asyncio.Condition()
         super().__init__(checkpoint_config)
         # If the snapshot is found, the checkpoint manager will restore its state.
         self._maybe_load_state_from_storage()
@@ -134,6 +146,14 @@ class CheckpointManager(_CheckpointManager, ReportCallback):
             checkpoint = checkpoint_result.checkpoint
             logger.debug("Deleting checkpoint: ", checkpoint)
             _delete_fs_path(fs=checkpoint.filesystem, fs_path=checkpoint.path)
+
+        self._num_report_calls += 1
+
+        async def async_notify():
+            async with self._condition:
+                self._condition.notify_all()
+
+        asyncio.create_task(async_notify())
 
     # --------------------------
     # CheckpointManager state
@@ -263,9 +283,44 @@ class CheckpointManager(_CheckpointManager, ReportCallback):
         self, metrics: List[Dict[str, Any]], checkpoint: Optional[Checkpoint]
     ):
         if not checkpoint:
+            self._num_report_calls += 1
             return
 
         rank_0_metrics = metrics[0]
         self.register_checkpoint(
             _TrainingResult(checkpoint=checkpoint, metrics=rank_0_metrics)
         )
+
+    # --------------------------
+    # WorkerGroupCallback
+    # --------------------------
+
+    def before_init_train_context(self, workers: List[Worker]) -> Dict[str, List[Any]]:
+        self._num_report_calls = 0
+        latest_checkpoint = (
+            self.latest_checkpoint_result.checkpoint
+            if self.latest_checkpoint_result
+            else None
+        )
+        train_context_args = {
+            "checkpoint": [latest_checkpoint] * len(workers),
+        }
+        return train_context_args
+
+    async def get_all_reported_checkpoints(
+        self, expected_num_report_calls: int
+    ) -> List[ReportedCheckpoint]:
+        """Once expected_num_checkpoints are reported, return the ReportedCheckpoints."""
+        async with self._condition:
+            await self._condition.wait_for(
+                lambda: self._num_report_calls == expected_num_report_calls
+            )
+            # TODO: might be nice for CheckpointManager to manage ReportedCheckpoint
+            # instead of _TrainingResult but that is a large refactor.
+            return [
+                ReportedCheckpoint(
+                    checkpoint=tr.checkpoint,
+                    metrics=tr.metrics,
+                )
+                for tr in self._checkpoint_results
+            ]

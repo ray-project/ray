@@ -15,7 +15,7 @@ from ray.llm._internal.serve.builders.application_builders import (
     build_openai_app,
 )
 from ray.llm._internal.serve.configs.constants import (
-    RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS,
+    DEFAULT_LLM_ROUTER_TARGET_ONGOING_REQUESTS,
 )
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
@@ -180,7 +180,7 @@ class TestBuildOpenaiApp:
         assert router_autoscaling_config.max_replicas == 12  # (1 + 1 + 4) * 2
         assert (
             router_autoscaling_config.target_ongoing_requests
-            == RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS
+            == DEFAULT_LLM_ROUTER_TARGET_ONGOING_REQUESTS
         )
 
 
@@ -196,7 +196,7 @@ class TestBuildVllmDeployment:
         app = build_llm_deployment(llm_config_with_mock_engine)
         assert isinstance(app, serve.Application)
         handle = serve.run(app)
-        assert handle.deployment_name.startswith("LLMDeployment")
+        assert handle.deployment_name.startswith("LLMServer")
 
     def test_build_llm_deployment_with_name_prefix(
         self,

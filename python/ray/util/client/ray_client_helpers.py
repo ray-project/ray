@@ -43,7 +43,7 @@ def ray_start_client_server_pair(metadata=None, ray_connect_handler=None, **kwar
     with disable_client_hook():
         assert not ray.is_initialized()
     server = ray_client_server.serve(
-        "127.0.0.1:50051", ray_connect_handler=ray_connect_handler
+        "127.0.0.1", 50051, ray_connect_handler=ray_connect_handler
     )
     ray.connect("127.0.0.1:50051", metadata=metadata, **kwargs)
     try:
@@ -71,7 +71,7 @@ def ray_start_cluster_client_server_pair(address):
         real_ray.init(address=address)
 
     server = ray_client_server.serve(
-        "127.0.0.1:50051", ray_connect_handler=ray_connect_handler
+        "127.0.0.1", 50051, ray_connect_handler=ray_connect_handler
     )
     ray.connect("127.0.0.1:50051")
     try:

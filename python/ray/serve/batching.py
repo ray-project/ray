@@ -25,8 +25,8 @@ from typing import (
 )
 
 from ray import serve
+from ray._common.signature import extract_signature, flatten_args, recover_args
 from ray._common.utils import get_or_create_event_loop
-from ray._private.signature import extract_signature, flatten_args, recover_args
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.utils import extract_self_if_method_call
 from ray.serve.exceptions import RayServeException
@@ -551,7 +551,7 @@ def batch(
     _: Literal[None] = None,
     /,
     max_batch_size: int = 10,
-    batch_wait_timeout_s: float = 0.0,
+    batch_wait_timeout_s: float = 0.01,
     max_concurrent_batches: int = 1,
 ) -> "_BatchDecorator":
     ...
@@ -588,7 +588,7 @@ def batch(
     _func: Optional[Callable] = None,
     /,
     max_batch_size: int = 10,
-    batch_wait_timeout_s: float = 0.0,
+    batch_wait_timeout_s: float = 0.01,
     max_concurrent_batches: int = 1,
 ) -> Callable:
     """Converts a function to asynchronously handle batches.

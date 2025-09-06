@@ -36,6 +36,7 @@ steps:
       message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
       env:
         RAYCI_RELEASE: 1
+        RAYCI_DISABLE_TEST_DB: "1"
 
   - label: "Trigger Postmerge nightly build & test"
     if: build.env("RAYCI_WEEKLY_RELEASE_NIGHTLY") == "1"
@@ -47,8 +48,9 @@ steps:
       branch: "${BUILDKITE_BRANCH}"
       message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
       env:
-        RAYCI_RELEASE: 1
+        RAYCI_RELEASE: "1"
         RAYCI_SCHEDULE: "nightly"
+        RAYCI_DISABLE_TEST_DB: "1"
 
   - label: "Check Ray commit in {{matrix}} nightly images"
     key: check-ray-commit
@@ -72,7 +74,7 @@ steps:
       env:
         # KubeRay CI will pull an image based on this commit and the current date
         RAY_NIGHTLY_COMMIT: "${BUILDKITE_COMMIT}"
-        IS_FROM_RAY_RELEASE_AUTOMATION: 1
+        IS_FROM_RAY_RELEASE_AUTOMATION: "1"
 
   - label: "Trigger Postmerge MacOS test"
     key: trigger-postmerge-macos
@@ -83,7 +85,8 @@ steps:
       branch: "${BUILDKITE_BRANCH}"
       message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
       env:
-        RAYCI_RELEASE: 1
+        RAYCI_RELEASE: "1"
+        RAYCI_DISABLE_TEST_DB: "1"
 
   - block: "Trigger Release nightly test"
     if: build.env("RAYCI_WEEKLY_RELEASE_NIGHTLY") != "1"

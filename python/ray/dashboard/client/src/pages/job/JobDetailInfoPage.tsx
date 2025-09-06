@@ -172,19 +172,19 @@ export const JobMetadataSection = ({ job }: JobMetadataSectionProps) => {
             <div>
               <CpuStackTraceLink
                 pid={job.driver_info?.pid}
-                ip={job.driver_info?.node_ip_address}
+                nodeId={job.driver_node_id}
                 type="Driver"
               />
               <br />
               <CpuProfilingLink
                 pid={job.driver_info?.pid}
-                ip={job.driver_info?.node_ip_address}
+                nodeId={job.driver_node_id}
                 type="Driver"
               />
               <br />
               <MemoryProfilingButton
                 pid={job.driver_info?.pid}
-                ip={job.driver_info?.node_ip_address}
+                nodeId={job.driver_node_id}
                 type="Driver"
               />
             </div>

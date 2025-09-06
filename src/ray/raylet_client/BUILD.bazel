@@ -1,14 +1,44 @@
 load("//bazel:ray.bzl", "ray_cc_library")
 
-exports_files(["raylet_connection.h", "raylet_client.h"])
+ray_cc_library(
+    name = "raylet_client_interface",
+    hdrs = [
+        "raylet_client_interface.h",
+    ],
+    deps = [
+        "//src/ray/protobuf:autoscaler_cc_proto",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/protobuf:node_manager_cc_proto",
+        "//src/ray/rpc:client_call",
+    ],
+)
 
 ray_cc_library(
-    name = "raylet_client_connection_lib",
-    srcs = ["raylet_connection.cc"],
-    hdrs = ["raylet_connection.h"],
+    name = "raylet_client_pool",
+    srcs = ["raylet_client_pool.cc"],
+    hdrs = [
+        "raylet_client_pool.h",
+    ],
     deps = [
-        "//src/ray/common:asio",
-        "//src/ray/common:network",
+        ":raylet_client_interface",
+        "//src/ray/gcs/gcs_client:gcs_client_lib",
+    ],
+)
+
+ray_cc_library(
+    name = "node_manager_client",
+    hdrs = [
+        "node_manager_client.h",
+    ],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":raylet_client_interface",
+        "//src/ray/common:id",
+        "//src/ray/gcs/gcs_client:gcs_client_lib",
+        "//src/ray/protobuf:node_manager_cc_grpc",
+        "//src/ray/rpc:client_call",
+        "//src/ray/rpc:grpc_client",
+        "//src/ray/util:network_util",
     ],
 )
 
@@ -17,12 +47,9 @@ ray_cc_library(
     srcs = ["raylet_client.cc"],
     hdrs = ["raylet_client.h"],
     deps = [
-        ":raylet_client_connection_lib",
-        "//:node_manager_rpc",
-        "//src/ray/common:id",
-        "//src/ray/common:ray_object",
-        "//src/ray/common:status",
-        "//src/ray/common:task_common",
+        ":node_manager_client",
+        ":raylet_client_interface",
+        "//src/ray/flatbuffers:node_manager_generated",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/util:logging",
     ],

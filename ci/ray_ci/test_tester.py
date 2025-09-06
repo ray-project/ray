@@ -5,19 +5,19 @@ from tempfile import TemporaryDirectory
 from unittest import mock
 
 import pytest
+from ray_release.test import Test, TestState
 
 from ci.ray_ci.linux_tester_container import LinuxTesterContainer
-from ci.ray_ci.windows_tester_container import WindowsTesterContainer
 from ci.ray_ci.tester import (
     _add_default_except_tags,
-    _get_container,
     _get_all_test_query,
-    _get_test_targets,
-    _get_new_tests,
+    _get_container,
     _get_flaky_test_targets,
+    _get_new_tests,
     _get_tag_matcher,
+    _get_test_targets,
 )
-from ray_release.test import Test, TestState
+from ci.ray_ci.windows_tester_container import WindowsTesterContainer
 
 
 def _stub_test(val: dict) -> Test:
