@@ -449,6 +449,24 @@ class TestCli(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
 
+    def test_execute_single_depset(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.execute(single_depset_name="general_depset__py311_cpu")
+            assert (
+                manager.build_graph.nodes["general_depset__py311_cpu"]["operation"]
+                == "compile"
+            )
+            assert len(manager.build_graph.nodes()) == 1
+
+    def test_execute_single_depset_that_does_not_exist(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            with self.assertRaises(KeyError):
+                manager.execute(single_depset_name="fake_depset")
+
     def test_expand(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
