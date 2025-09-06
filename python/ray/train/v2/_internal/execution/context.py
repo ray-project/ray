@@ -37,7 +37,7 @@ logger = logging.getLogger(__file__)
 
 
 # TODO: make this value manually or automatically configurable.
-MAX_CHECKPOINT_UPLOAD_THREADS = 5
+MAX_CHECKPOINT_UPLOAD_THREADS = 1
 
 
 @dataclass(frozen=True)
@@ -111,11 +111,13 @@ class TrainContext:
     controller_actor: ActorHandle
 
     dataset_shard_provider: "DatasetShardProvider"
+
+    # TODO: consolidate into CheckpointContext
     checkpoint: Optional["Checkpoint"] = None
     num_report_calls: int = 0
     num_attempted_report_calls: int = 0
     report_order_condition: threading.Condition = threading.Condition()
-    checkpoint_uploads: ThreadPoolExecutor = ThreadPoolExecutor(
+    checkpoint_uploads_threadpool: ThreadPoolExecutor = ThreadPoolExecutor(
         max_workers=MAX_CHECKPOINT_UPLOAD_THREADS
     )
 
@@ -212,7 +214,7 @@ class TrainContext:
             )
         )
 
-    def _save_checkpoint(
+    def _upload_checkpoint(
         self,
         checkpoint_dir_name: str,
         metrics: Dict[str, Any],
@@ -314,7 +316,7 @@ class TrainContext:
 
             # Upload checkpoint, wait for turn, and report.
             if checkpoint_upload_mode == CheckpointUploadMode.SYNC:
-                training_result = self._save_checkpoint(
+                training_result = self._upload_checkpoint(
                     checkpoint_dir_name, metrics, checkpoint
                 )
                 self._wait_then_report(training_result, current_report_attempt_number)
@@ -334,7 +336,7 @@ class TrainContext:
                     current_report_attempt_number: int,
                 ) -> None:
                     try:
-                        training_result = self._save_checkpoint(
+                        training_result = self._upload_checkpoint(
                             checkpoint_dir_name, metrics, checkpoint
                         )
                         self._wait_then_report(
@@ -348,7 +350,7 @@ class TrainContext:
                             construct_user_exception_with_traceback(e)
                         )
 
-                self.checkpoint_uploads.submit(
+                self.checkpoint_uploads_threadpool.submit(
                     _upload_checkpoint_and_report,
                     checkpoint_dir_name,
                     metrics,

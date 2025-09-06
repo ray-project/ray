@@ -49,7 +49,7 @@ def test_worker_finished_after_all_threads_finish(monkeypatch, created_nested_th
             global_queue.put("nested")
 
         if created_nested_threads:
-            tc.checkpoint_uploads.submit(target)
+            tc.checkpoint_uploads_threadpool.submit(target)
         else:
             global_queue.put("main")
 
