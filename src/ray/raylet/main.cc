@@ -256,7 +256,6 @@ int main(int argc, char *argv[]) {
 
   // TODO(#54703): Link OSS documentation once it's available in the error messages.
   if (enable_resource_isolation) {
-    // invariant checking
     RAY_CHECK(!cgroup_path.empty())
         << "Failed to start up raylet. If enable_resource_isolation is set to true, "
            "cgroup_path cannot be empty.";
