@@ -73,7 +73,8 @@ struct Allocation {
   bool fallback_allocated_;
 
   // only allow moves.
-  RAY_DISALLOW_COPY_AND_ASSIGN(Allocation);
+  Allocation(const Allocation &) = delete;
+  Allocation &operator=(const Allocation &) = delete;
   Allocation(Allocation &&) noexcept = default;
   Allocation &operator=(Allocation &&) noexcept = default;
 
@@ -116,9 +117,11 @@ struct Allocation {
 /// the eviction policy.
 class LocalObject {
  public:
-  explicit LocalObject(Allocation allocation);
+  explicit LocalObject(Allocation allocation)
+      : allocation_(std::move(allocation)), ref_count_(0) {}
 
-  RAY_DISALLOW_COPY_AND_ASSIGN(LocalObject);
+  LocalObject(const LocalObject &) = delete;
+  LocalObject &operator=(const LocalObject &) = delete;
 
   int64_t GetObjectSize() const { return object_info_.GetObjectSize(); }
 
