@@ -30,16 +30,14 @@ def test_request_worker_lease_idempotent(
     cluster = ray_start_cluster
     remote_node = cluster.add_node(num_cpus=1)
 
-    remote_id = remote_node.node_id
-    print(f"remote_id: {remote_id}")
     result_ref1 = simple_task_1.options(
         scheduling_strategy=NodeAffinitySchedulingStrategy(
-            node_id=remote_id, soft=False
+            node_id=remote_node.node_id, soft=False
         )
     ).remote()
     result_ref2 = simple_task_2.options(
         scheduling_strategy=NodeAffinitySchedulingStrategy(
-            node_id=remote_id, soft=False
+            node_id=remote_node.node_id, soft=False
         )
     ).remote()
 
