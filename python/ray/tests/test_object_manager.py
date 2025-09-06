@@ -540,7 +540,7 @@ def test_object_directory_failure(ray_start_cluster):
         "health_check_failure_threshold": 10,
         "object_timeout_milliseconds": 200,
         # Required for reducing the retry time of RequestWorkerLease
-        "raylet_rpc_server_reconnect_timeout_s": 1,
+        "raylet_rpc_server_reconnect_timeout_s": 0,
     }
 
     # Add a head node.

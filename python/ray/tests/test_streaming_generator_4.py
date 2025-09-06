@@ -24,7 +24,7 @@ RECONSTRUCTION_CONFIG = {
     "object_timeout_milliseconds": 200,
     "fetch_warn_timeout_milliseconds": 1000,
     # Required for reducing the retry time of RequestWorkerLease
-    "raylet_rpc_server_reconnect_timeout_s": 1,
+    "raylet_rpc_server_reconnect_timeout_s": 0,
 }
 
 

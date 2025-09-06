@@ -32,7 +32,7 @@ def test_request_worker_lease_idempotent(
 
     remote_id = remote_node.node_id
     print(f"remote_id: {remote_id}")
-    _ = simple_task_1.options(
+    result_ref1 = simple_task_1.options(
         scheduling_strategy=NodeAffinitySchedulingStrategy(
             node_id=remote_id, soft=False
         )
@@ -43,7 +43,7 @@ def test_request_worker_lease_idempotent(
         )
     ).remote()
 
-    assert ray.get(result_ref2) == 1
+    assert ray.get([result_ref1, result_ref2]) == [0, 1]
 
 
 if __name__ == "__main__":
