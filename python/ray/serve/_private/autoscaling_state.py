@@ -270,6 +270,123 @@ class AutoscalingState:
 
         return self.apply_bounds(decision_num_replicas)
 
+    def _collect_replica_running_requests(self) -> List[Dict[str, List]]:
+        """Collect running requests metrics from replicas for aggregation."""
+        RUNNING_REQUESTS_KEY = "running_requests"
+        metrics_timeseries_dicts = []
+
+        for replica_id in self._running_replicas:
+            if replica_id in self._replica_requests:
+                metrics_timeseries_dicts.append(
+                    {
+                        RUNNING_REQUESTS_KEY: self._replica_requests[
+                            replica_id
+                        ].running_requests
+                    }
+                )
+
+        return metrics_timeseries_dicts
+
+    def _collect_handle_queued_requests(self) -> float:
+        """Collect total queued requests from all handles."""
+        total_queued = 0
+        for handle_metric in self._handle_requests.values():
+            total_queued += handle_metric.queued_requests
+        return total_queued
+
+    def _collect_handle_running_requests(
+        self, metrics_collected_on_replicas: bool
+    ) -> List[Dict[str, List]]:
+        """Collect running requests metrics from handles when not collected on replicas."""
+        RUNNING_REQUESTS_KEY = "running_requests"
+        metrics_timeseries_dicts = []
+
+        if not metrics_collected_on_replicas:
+            for handle_metric in self._handle_requests.values():
+                for replica_id in self._running_replicas:
+                    if replica_id in handle_metric.running_requests:
+                        metrics_timeseries_dicts.append(
+                            {
+                                RUNNING_REQUESTS_KEY: handle_metric.running_requests[
+                                    replica_id
+                                ]
+                            }
+                        )
+
+        return metrics_timeseries_dicts
+
+    def _aggregate_running_requests(
+        self, metrics_timeseries_dicts: List[Dict[str, List]]
+    ) -> float:
+        """Aggregate and average running requests from timeseries data."""
+        RUNNING_REQUESTS_KEY = "running_requests"
+
+        if not metrics_timeseries_dicts:
+            return 0.0
+
+        # Window the timeseries to the metrics interval for stability during merging.
+        # Use a minimum window of 1.0s to avoid noise from small metrics intervals.
+        aggregated_metrics = merge_timeseries_dicts(
+            *metrics_timeseries_dicts,
+            window_s=max(1.0, self._config.metrics_interval_s),
+        )
+
+        running_requests_timeseries = aggregated_metrics.get(RUNNING_REQUESTS_KEY, [])
+        if running_requests_timeseries:
+            avg_running = sum(
+                point.value for point in running_requests_timeseries
+            ) / len(running_requests_timeseries)
+            return avg_running
+
+        return 0.0
+
+    def _calculate_total_requests_aggregate_mode(self) -> float:
+        """Calculate total requests using aggregate metrics mode."""
+        # Collect replica-based running requests
+        replica_metrics = self._collect_replica_running_requests()
+        metrics_collected_on_replicas = len(replica_metrics) > 0
+
+        # Collect queued requests from handles
+        total_requests = self._collect_handle_queued_requests()
+
+        # Collect handle-based running requests if not collected on replicas
+        handle_metrics = self._collect_handle_running_requests(
+            metrics_collected_on_replicas
+        )
+
+        # Combine all running requests metrics
+        all_running_metrics = replica_metrics + handle_metrics
+
+        # Aggregate and add running requests to total
+        total_requests += self._aggregate_running_requests(all_running_metrics)
+
+        return total_requests
+
+    def _calculate_total_requests_simple_mode(self) -> float:
+        """Calculate total requests using simple metrics mode."""
+        total_requests = 0
+
+        # Sum average running requests from replicas
+        for replica_id in self._running_replicas:
+            if replica_id in self._replica_requests:
+                total_requests += self._replica_requests[
+                    replica_id
+                ].avg_running_requests
+
+        metrics_collected_on_replicas = total_requests > 0
+
+        # Add handle metrics
+        for handle_metric in self._handle_requests.values():
+            total_requests += handle_metric.queued_requests
+
+            # Add running requests from handles if not collected on replicas
+            if not metrics_collected_on_replicas:
+                for replica_id in self._running_replicas:
+                    if replica_id in handle_metric.running_requests:
+                        total_requests += handle_metric.avg_running_requests[replica_id]
+
+        return total_requests
+
     def get_total_num_requests(self) -> float:
         """Get average total number of requests aggregated over the past
         `look_back_period_s` number of seconds.
@@ -281,68 +398,10 @@ class AutoscalingState:
         or on replicas, but not both. Its the responsibility of the writer
         to ensure enclusivity of the metrics.
         """
-
-        total_requests = 0
-        RUNNING_REQUESTS_KEY = "running_requests"
-
         if RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER:
-            metrics_timeseries_dicts = []
-            for id in self._running_replicas:
-                if id in self._replica_requests:
-                    metrics_timeseries_dicts.append(
-                        {
-                            RUNNING_REQUESTS_KEY: self._replica_requests[
-                                id
-                            ].running_requests
-                        }
-                    )
-
-            metrics_collected_on_replicas = len(metrics_timeseries_dicts) > 0
-            for handle_metric in self._handle_requests.values():
-                total_requests += handle_metric.queued_requests
-                if not metrics_collected_on_replicas:
-                    for id in self._running_replicas:
-                        if id in handle_metric.running_requests:
-                            metrics_timeseries_dicts.append(
-                                {
-                                    RUNNING_REQUESTS_KEY: handle_metric.running_requests[
-                                        id
-                                    ]
-                                }
-                            )
-            # Aggregate and average running requests
-            if metrics_timeseries_dicts:
-                # Window the timeseries to the metrics interval
-                # for stability during merging the timeseries.
-                # Use a minimum window of 1.0s to avoid noise from
-                # small metrics intervals.
-                aggregated_metrics = merge_timeseries_dicts(
-                    *metrics_timeseries_dicts,
-                    window_s=max(1.0, self._config.metrics_interval_s),
-                )
-                running_requests_timeseries = aggregated_metrics.get(
-                    RUNNING_REQUESTS_KEY, []
-                )
-                if running_requests_timeseries:
-                    avg_running = sum(
-                        point.value for point in running_requests_timeseries
-                    ) / len(running_requests_timeseries)
-                    total_requests += avg_running
+            return self._calculate_total_requests_aggregate_mode()
         else:
-
-            for id in self._running_replicas:
-                if id in self._replica_requests:
-                    total_requests += self._replica_requests[id].avg_running_requests
-
-            metrics_collected_on_replicas = total_requests > 0
-            for handle_metric in self._handle_requests.values():
-                total_requests += handle_metric.queued_requests
-
-                if not metrics_collected_on_replicas:
-                    for id in self._running_replicas:
-                        if id in handle_metric.running_requests:
-                            total_requests += handle_metric.avg_running_requests[id]
-        return total_requests
+            return self._calculate_total_requests_simple_mode()
 
 
 class AutoscalingStateManager:
