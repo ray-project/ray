@@ -5,6 +5,7 @@ ray_cc_library(
     hdrs = [
         "raylet_client_interface.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         "//src/ray/protobuf:autoscaler_cc_proto",
         "//src/ray/protobuf:common_cc_proto",
@@ -19,26 +20,10 @@ ray_cc_library(
     hdrs = [
         "raylet_client_pool.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":raylet_client_interface",
         "//src/ray/gcs/gcs_client:gcs_client_lib",
-    ],
-)
-
-ray_cc_library(
-    name = "node_manager_client",
-    hdrs = [
-        "node_manager_client.h",
-    ],
-    visibility = [":__subpackages__"],
-    deps = [
-        ":raylet_client_interface",
-        "//src/ray/common:id",
-        "//src/ray/gcs/gcs_client:gcs_client_lib",
-        "//src/ray/protobuf:node_manager_cc_grpc",
-        "//src/ray/rpc:client_call",
-        "//src/ray/rpc:grpc_client",
-        "//src/ray/util:network_util",
     ],
 )
 
@@ -46,11 +31,15 @@ ray_cc_library(
     name = "raylet_client_lib",
     srcs = ["raylet_client.cc"],
     hdrs = ["raylet_client.h"],
+    visibility = ["//visibility:public"],
     deps = [
-        ":node_manager_client",
         ":raylet_client_interface",
+        "//src/ray/common:task_common",
         "//src/ray/flatbuffers:node_manager_generated",
+        "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/protobuf:node_manager_cc_grpc",
+        "//src/ray/rpc:retryable_grpc_client",
         "//src/ray/util:logging",
     ],
 )

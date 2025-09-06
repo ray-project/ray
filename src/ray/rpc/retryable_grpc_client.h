@@ -31,6 +31,26 @@
 
 namespace ray::rpc {
 
+// This macro wraps the logic to call a specific RPC method of a service with the
+// retryable grpc client, to make it easier to implement a new RPC client.
+#define INVOKE_RETRYABLE_RPC_CALL_FULL(retryable_rpc_client,            \
+                                       SERVICE_NAMESPACE,               \
+                                       SERVICE,                         \
+                                       METHOD,                          \
+                                       request,                         \
+                                       callback,                        \
+                                       rpc_client,                      \
+                                       method_timeout_ms)               \
+  (retryable_rpc_client->CallMethod<SERVICE_NAMESPACE::SERVICE,         \
+                                    SERVICE_NAMESPACE::METHOD##Request, \
+                                    SERVICE_NAMESPACE::METHOD##Reply>(  \
+      &SERVICE_NAMESPACE::SERVICE::Stub::PrepareAsync##METHOD,          \
+      rpc_client,                                                       \
+      #SERVICE ".grpc_client." #METHOD,                                 \
+      std::move(request),                                               \
+      callback,                                                         \
+      method_timeout_ms))
+
 // Define a void retryable RPC client method.
 #define VOID_RETRYABLE_RPC_CLIENT_METHOD(                                               \
     retryable_rpc_client, SERVICE, METHOD, rpc_client, method_timeout_ms, SPECS)        \
