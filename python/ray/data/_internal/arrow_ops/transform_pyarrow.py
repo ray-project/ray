@@ -410,6 +410,7 @@ def _backfill_missing_fields(
 
     from ray.air.util.tensor_extensions.arrow import (
         ArrowTensorType,
+        ArrowVariableShapedTensorArray,
         ArrowVariableShapedTensorType,
         get_arrow_extension_tensor_types,
     )
@@ -462,7 +463,9 @@ def _backfill_missing_fields(
                     [current_array.type, field_type]
                 ) and not isinstance(current_array.type, ArrowVariableShapedTensorType):
                     # Only convert if it's not already a variable-shaped tensor array
-                    current_array = current_array.to_variable_shaped_tensor_array()
+                    current_array = ArrowVariableShapedTensorArray.from_numpy(
+                        current_array.to_numpy_ndarray()
+                    )
 
             # The schema should already be unified by unify_schemas, so types
             # should be compatible. If not, let the error propagate up.
@@ -751,9 +754,14 @@ def to_numpy(
 
     import pyarrow as pa
 
+    from ray.air.util.transform_pyarrow import _is_native_tensor_type
+
     if isinstance(array, pa.Array):
         if pa.types.is_null(array.type):
             return np.full(len(array), np.nan, dtype=np.float32)
+        if _is_native_tensor_type(array.type):
+            # This is zero-copy
+            return array.to_numpy_ndarray()
         return array.to_numpy(zero_copy_only=zero_copy_only)
     elif isinstance(array, pa.ChunkedArray):
         if pa.types.is_null(array.type):
@@ -840,13 +848,14 @@ def combine_chunked_array(
     from ray.air.util.transform_pyarrow import (
         _concatenate_extension_column,
         _is_column_extension_type,
+        _is_native_tensor_type,
     )
 
     assert isinstance(
         array, pa.ChunkedArray
     ), f"Expected `ChunkedArray`, got {type(array)}"
 
-    if _is_column_extension_type(array):
+    if _is_column_extension_type(array) or _is_native_tensor_type(array.type):
         # Arrow `ExtensionArray`s can't be concatenated via `combine_chunks`,
         # hence require manual concatenation
         return _concatenate_extension_column(array, ensure_copy)
