@@ -476,7 +476,6 @@ int main(int argc, char *argv[]) {
     node_manager_config.max_worker_port = max_worker_port;
     node_manager_config.worker_ports = worker_ports;
     node_manager_config.labels = parse_node_labels(labels_json_str);
-    node_manager_config.enable_resource_isolation = false;
 
     if (!python_worker_command.empty()) {
       node_manager_config.worker_commands.emplace(
