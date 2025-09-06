@@ -634,7 +634,11 @@ def _estimate_reader_batch_size(
     avg_num_rows_per_block = [
         target_block_size / fi.avg_row_in_mem_bytes
         for fi in file_infos
-        if fi is not None and fi.avg_row_in_mem_bytes is not None
+        if (
+            fi is not None
+            and fi.avg_row_in_mem_bytes is not None
+            and fi.avg_row_in_mem_bytes > 0
+        )
     ]
 
     if not avg_num_rows_per_block:
