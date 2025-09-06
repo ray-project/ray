@@ -1,7 +1,7 @@
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, DefaultDict, Dict, Hashable, List, Optional, Set, Tuple
 
 from ray.serve._private.common import (
     DeploymentHandleSource,
@@ -14,6 +14,12 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.metrics_utils import (
+    InMemoryMetricsStore,
+    TimeStampedValue,
+    merge_timeseries_dicts,
+)
+from ray.serve._private.router import QUEUED_REQUESTS_KEY
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -32,22 +38,21 @@ class HandleMetricReport:
         queued_requests: The current number of queued requests at the
             handle, i.e. requests that haven't been assigned to any
             replica yet.
-        running_requests: A map of replica ID to the average number of
-            requests, assigned through the handle, running at that
-            replica.
+        metrics_dict: A map of replica ID to *ascending* timeseries of requests
+            assigned through the handle to the replica.
         timestamp: The time at which this report was received.
     """
 
     actor_id: Optional[str]
     handle_source: DeploymentHandleSource
-    queued_requests: float
-    running_requests: Dict[ReplicaID, float]
+    metrics_dict: DefaultDict[Hashable, List[TimeStampedValue]]
     timestamp: float
 
     @property
-    def total_requests(self) -> float:
-        """Total number of queued and running requests."""
-        return self.queued_requests + sum(self.running_requests.values())
+    def approximate_total_requests(self) -> float:
+        """Approximation of the total running requests, computed from the
+        latest value at each data key."""
+        return sum(ts[-1].value for ts in self.metrics_dict.values() if ts)
 
     @property
     def is_serve_component_source(self) -> bool:
@@ -69,12 +74,12 @@ class ReplicaMetricReport:
     """Report from a replica on ongoing requests.
 
     Args:
-        running_requests: Average number of running requests at the
-            replica.
+        metrics_dict: A map of replica ID to *ascending* timeseries of total
+            requests currently running at the replica.
         timestamp: The time at which this report was received.
     """
 
-    running_requests: float
+    metrics_dict: DefaultDict[Hashable, List[TimeStampedValue]]
     timestamp: float
 
 
@@ -214,20 +219,18 @@ class AutoscalingState:
         )
 
     def record_request_metrics_for_replica(
-        self, replica_id: ReplicaID, window_avg: Optional[float], send_timestamp: float
+        self,
+        replica_id: ReplicaID,
+        metrics_dict: DefaultDict[Hashable, List[TimeStampedValue]],
+        send_timestamp: float,
     ) -> None:
-        """Records average number of ongoing requests at a replica."""
-
-        if window_avg is None:
-            return
-
+        """Records the raw autoscaling metrics for a replica."""
         if (
             replica_id not in self._replica_requests
             or send_timestamp > self._replica_requests[replica_id].timestamp
         ):
             self._replica_requests[replica_id] = ReplicaMetricReport(
-                running_requests=window_avg,
-                timestamp=send_timestamp,
+                metrics_dict=metrics_dict, timestamp=send_timestamp
             )
 
     def record_request_metrics_for_handle(
@@ -236,13 +239,10 @@ class AutoscalingState:
         handle_id: str,
         actor_id: Optional[str],
         handle_source: DeploymentHandleSource,
-        queued_requests: float,
-        running_requests: Dict[ReplicaID, float],
+        metrics_dict: DefaultDict[Hashable, List[TimeStampedValue]],
         send_timestamp: float,
     ) -> None:
-        """Records average number of queued and running requests at a handle for this
-        deployment.
-        """
+        """Records the raw autoscaling metrics for a deployment handle."""
 
         if (
             handle_id not in self._handle_requests
@@ -251,8 +251,7 @@ class AutoscalingState:
             self._handle_requests[handle_id] = HandleMetricReport(
                 actor_id=actor_id,
                 handle_source=handle_source,
-                queued_requests=queued_requests,
-                running_requests=running_requests,
+                metrics_dict=metrics_dict,
                 timestamp=send_timestamp,
             )
 
@@ -277,24 +276,24 @@ class AutoscalingState:
                 and handle_metric.actor_id not in alive_serve_actor_ids
             ):
                 del self._handle_requests[handle_id]
-                if handle_metric.total_requests > 0:
+                if handle_metric.approximate_total_requests > 0:
                     logger.debug(
                         f"Dropping metrics for handle '{handle_id}' because the Serve "
                         f"actor it was on ({handle_metric.actor_id}) is no longer "
-                        f"alive. It had {handle_metric.total_requests} ongoing requests"
+                        f"alive. It had ~{handle_metric.approximate_total_requests} ongoing requests"
                     )
             # Drop metrics for handles that haven't sent an update in a while.
             # This is expected behavior for handles that were on replicas or
             # proxies that have been shut down.
             elif time.time() - handle_metric.timestamp >= timeout_s:
                 del self._handle_requests[handle_id]
-                if handle_metric.total_requests > 0:
+                if handle_metric.approximate_total_requests > 0:
                     actor_id = handle_metric.actor_id
                     actor_info = f"on actor '{actor_id}' " if actor_id else ""
                     logger.info(
                         f"Dropping stale metrics for handle '{handle_id}' {actor_info}"
                         f"because no update was received for {timeout_s:.1f}s. "
-                        f"Ongoing requests was: {handle_metric.total_requests}."
+                        f"Ongoing requests was : ~{handle_metric.approximate_total_requests}."
                     )
 
     def get_decision_num_replicas(
@@ -337,34 +336,62 @@ class AutoscalingState:
 
         return self.apply_bounds(decision_num_replicas)
 
-    def get_total_num_requests(self) -> float:
-        """Get average total number of requests aggregated over the past
-        `look_back_period_s` number of seconds.
-
-        If there are 0 running replicas, then returns the total number
-        of requests queued at handles
-
-        This code assumes that the metrics are either emmited on handles
-        or on replicas, but not both. Its the responsibility of the writer
-        to ensure enclusivity of the metrics.
+    def _get_request_count(self) -> Tuple[float, int]:
+        """Helper function to aggregate request counts from replicas and handles.
+        If there are 0 running replicas, then returns the number
+        of requests queued at handles.
         """
 
         total_requests = 0
+        if self._replica_requests:
+            merged_metrics = merge_timeseries_dicts(
+                *[
+                    replica_report.metrics_dict
+                    for replica_report in self._replica_requests.values()
+                ],
+                window_s=1,
+            )
+        elif self._handle_requests:
+            merged_metrics = merge_timeseries_dicts(
+                *[
+                    handle_metric.metrics_dict
+                    for handle_metric in self._handle_requests.values()
+                ],
+                window_s=1,
+            )
+        else:
+            logger.debug("No metrics stores detected in autoscaler.")
+            return total_requests, 0
+        metrics_store = InMemoryMetricsStore()
+        metrics_store.data = merged_metrics
 
-        for id in self._running_replicas:
-            if id in self._replica_requests:
-                total_requests += self._replica_requests[id].running_requests
+        queued_requests = metrics_store.get_latest(QUEUED_REQUESTS_KEY) or 0.0
+        queued_per_replica = (
+            queued_requests / len(self._running_replicas)
+            if self._running_replicas
+            else queued_requests
+        )
+        total_requests, report_count = metrics_store.aggregate(
+            self._running_replicas, self._config.get_aggregation_function()
+        )
+        total_requests = 0.0 if total_requests is None else total_requests
+        total_requests += queued_per_replica
 
-        metrics_collected_on_replicas = total_requests > 0
-        for handle_metric in self._handle_requests.values():
-            total_requests += handle_metric.queued_requests
+        return total_requests, report_count
 
-            if not metrics_collected_on_replicas:
-                for id in self._running_replicas:
-                    if id in handle_metric.running_requests:
-                        total_requests += handle_metric.running_requests[id]
+    def get_total_num_requests(self) -> float:
+        """Get total number of requests aggregated over the past
+        `look_back_period_s` number of seconds.
 
-        return total_requests
+        If there are 0 running replicas, then returns the aggregated number
+        of requests queued at handles.
+
+        This code assumes that the metrics are either emitted on handles
+        or on replicas, but not both. It's the responsibility of the writer
+        to ensure enclusivity of the metrics.
+        """
+        aggregated_requests, report_count = self._get_request_count()
+        return aggregated_requests * max(1, report_count)
 
 
 class AutoscalingStateManager:
@@ -431,7 +458,10 @@ class AutoscalingStateManager:
         )
 
     def record_request_metrics_for_replica(
-        self, replica_id: ReplicaID, window_avg: Optional[float], send_timestamp: float
+        self,
+        replica_id: ReplicaID,
+        metrics_dict: DefaultDict[Hashable, List[TimeStampedValue]],
+        send_timestamp: float,
     ) -> None:
         deployment_id = replica_id.deployment_id
         # Defensively guard against delayed replica metrics arriving
@@ -439,19 +469,18 @@ class AutoscalingStateManager:
         if deployment_id in self._autoscaling_states:
             self._autoscaling_states[deployment_id].record_request_metrics_for_replica(
                 replica_id=replica_id,
-                window_avg=window_avg,
+                metrics_dict=metrics_dict,
                 send_timestamp=send_timestamp,
             )
 
     def record_request_metrics_for_handle(
         self,
         *,
-        deployment_id: str,
+        deployment_id: DeploymentID,
         handle_id: str,
         actor_id: Optional[str],
         handle_source: DeploymentHandleSource,
-        queued_requests: float,
-        running_requests: Dict[ReplicaID, float],
+        metrics_dict: DefaultDict[Hashable, List[TimeStampedValue]],
         send_timestamp: float,
     ) -> None:
         """Update request metric for a specific handle."""
@@ -461,8 +490,7 @@ class AutoscalingStateManager:
                 handle_id=handle_id,
                 actor_id=actor_id,
                 handle_source=handle_source,
-                queued_requests=queued_requests,
-                running_requests=running_requests,
+                metrics_dict=metrics_dict,
                 send_timestamp=send_timestamp,
             )
 
