@@ -232,6 +232,8 @@ class JobManager:
                         should_monitor = False
                         logger.error(err_msg)
                         continue
+                    else:
+                        continue
 
                 if job_supervisor is None:
                     job_supervisor = self._get_actor_for_job(job_id)
@@ -259,18 +261,18 @@ class JobManager:
                         should_monitor = False
                         continue
 
-                # Verify `JobSupervisor` is alive and reachable
-                try:
-                    await asyncio.wait_for(
-                        job_supervisor.ping.remote(), timeout=self.PING_TIMEOUT_S
-                    )
-                except asyncio.TimeoutError:
-                    logger.warning(
-                        f"Job supervisor ping timed out for job {job_id}. "
-                        f"Timeout threshold: {self.PING_TIMEOUT_S} seconds. "
-                        "This may indicate that the cluster does not have enough resources to schedule the job supervisor."
-                    )
-                    continue
+                # # Verify `JobSupervisor` is alive and reachable
+                # try:
+                #     await asyncio.wait_for(
+                #         job_supervisor.ping.remote(), timeout=self.PING_TIMEOUT_S
+                #     )
+                # except asyncio.TimeoutError:
+                #     logger.warning(
+                #         f"Job supervisor ping timed out for job {job_id}. "
+                #         f"Timeout threshold: {self.PING_TIMEOUT_S} seconds. "
+                #         "This may indicate that the cluster does not have enough resources to schedule the job supervisor."
+                #     )
+                #     continue
                 # Reset consecutive failures counter
                 num_consecutive_failures = 0
 
