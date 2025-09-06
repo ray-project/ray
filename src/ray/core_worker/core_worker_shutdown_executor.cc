@@ -35,22 +35,27 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
   RAY_LOG(INFO) << "Executing graceful shutdown: " << exit_type << " - " << detail
                 << " (timeout: " << timeout_ms.count() << "ms)";
 
-  // For actors, perform cleanup before shutdown proceeds.
-  if (!core_worker_->worker_context_->GetCurrentActorID().IsNil() &&
-      core_worker_->actor_shutdown_callback_) {
-    RAY_LOG(INFO) << "Calling actor shutdown callback before shutdown";
-    core_worker_->actor_shutdown_callback_();
-  }
-
   if (core_worker_->options_.worker_type == WorkerType::WORKER) {
+    // For asyncio actors, terminate the asyncio thread early to prevent coroutines
+    // from accessing torn-down C++ state during shutdown.
+    if (!core_worker_->worker_context_->GetCurrentActorID().IsNil() &&
+        core_worker_->worker_context_->CurrentActorIsAsync()) {
+      RAY_LOG(INFO) << "Terminating asyncio thread early for actor shutdown";
+      core_worker_->options_.terminate_asyncio_thread();
+    }
+
+    // For actors, perform Python-side cleanup before shutdown proceeds.
+    if (!core_worker_->worker_context_->GetCurrentActorID().IsNil() &&
+        core_worker_->actor_shutdown_callback_) {
+      RAY_LOG(INFO) << "Calling actor shutdown callback";
+      core_worker_->actor_shutdown_callback_();
+    }
+
     // Running in a main thread.
     // Asyncio coroutines could still run after CoreWorker is removed because it is
     // running in a different thread. This can cause segfault because coroutines try to
     // access CoreWorker methods that are already garbage collected. We should complete
     // all coroutines before shutting down in order to prevent this.
-    if (core_worker_->worker_context_->CurrentActorIsAsync()) {
-      core_worker_->options_.terminate_asyncio_thread();
-    }
     core_worker_->task_execution_service_.stop();
   }
 

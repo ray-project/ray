@@ -253,5 +253,21 @@ void OutOfOrderActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(
   }
 }
 
+void OutOfOrderActorSchedulingQueue::CancelAllPendingUnsafe(const Status &status) {
+  for (auto it = queued_actor_tasks_.begin(); it != queued_actor_tasks_.end();) {
+    RAY_LOG(INFO) << "Canceling queued out-of-order actor task due to shutdown: task_id="
+                  << it->first;
+    it->second.Cancel(status);
+    pending_task_id_to_is_canceled.erase(it->first);
+    auto to_erase = it++;
+    queued_actor_tasks_.erase(to_erase);
+  }
+}
+
+void OutOfOrderActorSchedulingQueue::CancelAllPending(const Status &status) {
+  absl::MutexLock lock(&mu_);
+  CancelAllPendingUnsafe(status);
+}
+
 }  // namespace core
 }  // namespace ray

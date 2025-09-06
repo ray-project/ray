@@ -110,6 +110,10 @@ class TaskReceiver {
   void SetActorReprName(const std::string &repr_name);
 
  private:
+  /// Guard for shutdown state.
+  absl::Mutex stop_mu_;
+  /// True once shutdown begins. New PushTask RPCs should be rejected.
+  bool stopping_ ABSL_GUARDED_BY(stop_mu_) = false;
   /// Set up the configs for an actor.
   /// This should be called once for the actor creation task.
   void SetupActor(bool is_asyncio,

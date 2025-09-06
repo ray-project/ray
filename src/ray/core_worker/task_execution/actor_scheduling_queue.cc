@@ -35,7 +35,15 @@ ActorSchedulingQueue::ActorSchedulingQueue(
       task_event_buffer_(task_event_buffer),
       pool_manager_(std::move(pool_manager)) {}
 
-void ActorSchedulingQueue::Stop() { pool_manager_->Stop(); }
+void ActorSchedulingQueue::Stop() {
+  pool_manager_->Stop();
+  // Best-effort cancel of any pending tasks when stopping.
+  {
+    absl::MutexLock lock(&mu_);
+    CancelAllPendingUnsafe(Status::SchedulingCancelled(
+        "Actor scheduling queue stopped; canceling pending tasks"));
+  }
+}
 
 bool ActorSchedulingQueue::TaskQueueEmpty() const {
   RAY_CHECK(false) << "TaskQueueEmpty() not implemented for actor queues";
@@ -248,6 +256,32 @@ void ActorSchedulingQueue::ScheduleRequests() {
       }
     });
   }
+}
+
+void ActorSchedulingQueue::CancelAllPendingUnsafe(const Status &status) {
+  // Cancel in-order pending tasks
+  while (!pending_actor_tasks_.empty()) {
+    auto head = pending_actor_tasks_.begin();
+    RAY_LOG(INFO) << "Canceling pending in-order actor task due to shutdown: seq_no="
+                  << head->first;
+    head->second.Cancel(status);
+    pending_task_id_to_is_canceled.erase(head->second.TaskID());
+    pending_actor_tasks_.erase(head);
+  }
+  // Cancel retry tasks
+  while (!pending_retry_actor_tasks_.empty()) {
+    auto &req = pending_retry_actor_tasks_.front();
+    RAY_LOG(INFO) << "Canceling pending retry actor task due to shutdown: task_id="
+                  << req.TaskID();
+    req.Cancel(status);
+    pending_task_id_to_is_canceled.erase(req.TaskID());
+    pending_retry_actor_tasks_.pop_front();
+  }
+}
+
+void ActorSchedulingQueue::CancelAllPending(const Status &status) {
+  absl::MutexLock lock(&mu_);
+  CancelAllPendingUnsafe(status);
 }
 
 void ActorSchedulingQueue::ExecuteRequest(InboundRequest &&request) {
