@@ -157,6 +157,7 @@ class CgroupDriverInterface {
     supported or the value not correct.
    */
   virtual Status AddConstraint(const std::string &cgroup,
+                               const std::string &controller,
                                const std::string &constraint,
                                const std::string &value) = 0;
   /**
@@ -190,17 +191,5 @@ class CgroupDriverInterface {
     */
   virtual StatusOr<std::unordered_set<std::string>> GetEnabledControllers(
       const std::string &cgroup) = 0;
-
-  struct Constraint {
-    std::pair<size_t, size_t> range;
-    std::string controller;
-  };
-
- protected:
-  const std::unordered_map<std::string, Constraint> supported_constraints_ = {
-      {"cpu.weight", {{1, 10000}, "cpu"}},
-      {"memory.min", {{0, std::numeric_limits<size_t>::max()}, "memory"}},
-  };
-  const std::unordered_set<std::string> supported_controllers_ = {"cpu", "memory"};
 };
 }  // namespace ray
