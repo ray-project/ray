@@ -28,6 +28,7 @@ ray_cc_library(
         ":generator_waiter",
         ":grpc_service",
         ":memory_store",
+        ":metrics",
         ":object_recovery_manager",
         ":plasma_store_provider",
         ":profile_event",
@@ -393,5 +394,13 @@ ray_cc_library(
         "//src/ray/util:time",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+ray_cc_library(
+    name = "metrics",
+    hdrs = ["metrics.h"],
+    deps = [
+        "//src/ray/stats:stats_lib",
     ],
 )

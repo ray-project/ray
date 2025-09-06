@@ -24,6 +24,7 @@
 #include "gtest/gtest.h"
 #include "mock/ray/object_manager/object_manager.h"
 #include "ray/common/test_utils.h"
+#include "ray/observability/fake_metric.h"
 
 namespace ray {
 
@@ -69,7 +70,9 @@ class CustomMockObjectManager : public MockObjectManager {
 class LeaseDependencyManagerTest : public ::testing::Test {
  public:
   LeaseDependencyManagerTest()
-      : object_manager_mock_(), lease_dependency_manager_(object_manager_mock_) {}
+      : object_manager_mock_(),
+        fake_task_by_state_counter_(),
+        lease_dependency_manager_(object_manager_mock_, fake_task_by_state_counter_) {}
 
   int64_t NumWaiting(const std::string &lease_name) {
     return lease_dependency_manager_.waiting_leases_counter_.Get({lease_name, false});
@@ -92,8 +95,21 @@ class LeaseDependencyManagerTest : public ::testing::Test {
   }
 
   CustomMockObjectManager object_manager_mock_;
+  ray::observability::FakeMetric fake_task_by_state_counter_;
   LeaseDependencyManager lease_dependency_manager_;
 };
+
+TEST_F(LeaseDependencyManagerTest, TestRecordMetrics) {
+  auto obj_id = ObjectID::FromRandom();
+  lease_dependency_manager_.RequestLeaseDependencies(
+      LeaseID::FromRandom(), ObjectIdsToRefs({obj_id}), {"foo", false});
+  lease_dependency_manager_.HandleObjectLocal(obj_id);
+  lease_dependency_manager_.RecordMetrics();
+  auto tag_to_value = fake_task_by_state_counter_.GetTagToValue();
+  // 3 states: PENDING_NODE_ASSIGNMENT, PENDING_ARGS_FETCH, PENDING_OBJ_STORE_MEM_AVAIL
+  ASSERT_EQ(tag_to_value.size(), 3);
+  ASSERT_EQ(tag_to_value.begin()->first.at("Name"), "foo");
+}
 
 /// Test requesting the dependencies for a lease. The dependency manager should
 /// return the lease ID as ready once all of its arguments are local.
