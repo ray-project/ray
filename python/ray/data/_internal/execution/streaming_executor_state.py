@@ -94,6 +94,9 @@ class OpBufferQueue:
         Args:
             output_split_idx: If specified, only check ref bundles with the
                 given output split.
+
+        Returns:
+            bool: True if there is a next RefBundle available for the specified output split, False otherwise.
         """
         if output_split_idx is None:
             with self._lock:
