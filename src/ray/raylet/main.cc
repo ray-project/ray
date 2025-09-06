@@ -24,7 +24,6 @@
 #include "gflags/gflags.h"
 #include "nlohmann/json.hpp"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/cgroup/cgroup_manager.h"
 #include "ray/common/constants.h"
 #include "ray/common/id.h"
 #include "ray/common/lease/lease.h"
@@ -96,12 +95,6 @@ DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.")
 DEFINE_string(node_name, "", "The user-provided identifier or name for this node.");
 DEFINE_string(session_name, "", "The current Ray session name.");
 DEFINE_string(cluster_id, "", "ID of the cluster, separate from observability.");
-// TODO(hjiang): At the moment only enablement flag is added, I will add other flags for
-// CPU and memory resource reservation in the followup PR.
-DEFINE_bool(enable_resource_isolation,
-            false,
-            "Enable resource isolation through cgroupv2 by reserving resources for ray "
-            "system processes.");
 
 #ifdef __linux__
 DEFINE_string(plasma_directory,
@@ -230,12 +223,8 @@ int main(int argc, char *argv[]) {
   RAY_LOG(INFO) << "Setting cluster ID to: " << cluster_id;
   gflags::ShutDownCommandLineFlags();
 
-  // Get cgroup setup instance and perform necessary resource setup.
-  ray::GetCgroupSetup(FLAGS_enable_resource_isolation);
-
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
-  node_manager_config.enable_resource_isolation = FLAGS_enable_resource_isolation;
 
   absl::flat_hash_map<std::string, double> static_resource_conf;
 
@@ -542,8 +531,7 @@ int main(int argc, char *argv[]) {
         /*starting_worker_timeout_callback=*/
         [&] { cluster_lease_manager->ScheduleAndGrantLeases(); },
         node_manager_config.ray_debugger_external,
-        /*get_time=*/[]() { return absl::Now(); },
-        node_manager_config.enable_resource_isolation);
+        /*get_time=*/[]() { return absl::Now(); });
 
     client_call_manager = std::make_unique<ray::rpc::ClientCallManager>(
         main_service, /*record_stats=*/true);
