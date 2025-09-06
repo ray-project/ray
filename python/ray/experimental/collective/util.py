@@ -3,6 +3,7 @@ from contextlib import closing
 import socket
 
 import ray
+from ray._common.network_utils import create_socket
 
 from ray.util.collective.types import Backend
 from ray.experimental.collective.tensor_transport_manager import TensorTransportManager
@@ -63,7 +64,7 @@ def device_match_transport(device: "torch.device", tensor_transport: Backend) ->
 
 
 def find_free_port() -> int:
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+    with closing(create_socket(socket.SOCK_STREAM)) as s:
         s.bind(("", 0))
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         return s.getsockname()[1]

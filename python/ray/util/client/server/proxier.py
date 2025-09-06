@@ -18,6 +18,7 @@ import grpc
 import psutil
 
 import ray
+from ray._common.network_utils import create_socket
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import ray.core.generated.runtime_env_agent_pb2 as runtime_env_agent_pb2
@@ -144,7 +145,7 @@ class ProxyManager:
             num_ports = len(self._free_ports)
             for _ in range(num_ports):
                 port = self._free_ports.pop(0)
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s = create_socket(socket.SOCK_STREAM)
                 try:
                     s.bind(("", port))
                 except OSError:

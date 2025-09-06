@@ -14,6 +14,7 @@ import pytest
 
 import ray
 from ray import serve
+from ray._common.network_utils import create_socket
 from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     run_string_as_driver,
@@ -393,7 +394,7 @@ def test_connect(ray_shutdown):
 
 
 def test_set_socket_reuse_port():
-    sock = socket.socket()
+    sock = create_socket()
     if hasattr(socket, "SO_REUSEPORT"):
         # If the flag exists, we should be able to to use it
         assert set_socket_reuse_port(sock)
@@ -407,7 +408,7 @@ def test_set_socket_reuse_port():
 
 
 def _reuse_port_is_available():
-    sock = socket.socket()
+    sock = create_socket()
     return set_socket_reuse_port(sock)
 
 
