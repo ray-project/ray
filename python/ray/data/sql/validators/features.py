@@ -85,13 +85,11 @@ class FeatureValidator(SQLValidator):
         exp.Intersect: "INTERSECT is not yet supported",
         exp.Except: "EXCEPT is not yet supported",
         exp.Window: "Window functions are not yet supported",
-        exp.With: "Common Table Expressions (WITH) are not yet supported",
         exp.Insert: "INSERT statements are not supported. Use ray.data.Dataset.write_*() methods",
         exp.Update: "UPDATE statements are not supported. Use ray.data.Dataset.map() for transformations",
         exp.Delete: "DELETE statements are not supported. Use ray.data.Dataset.filter() for filtering",
         exp.Create: "CREATE statements are not supported. Use ray.data.from_*() methods to create datasets",
         exp.Drop: "DROP statements are not supported. Use clear_tables() or del operations",
-        exp.Having: "HAVING clauses are not yet supported. Apply filtering after GROUP BY using Dataset.filter()",
     }
 
     def validate(self, query: str, ast: exp.Expression) -> None:

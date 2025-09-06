@@ -929,8 +929,8 @@ result.materialize()  # Force execution
 **Memory Usage Monitoring**
 ```python
 # Monitor memory during execution
-import psutil
 import ray
+import psutil
 
 def monitor_memory(func):
     def wrapper(*args, **kwargs):

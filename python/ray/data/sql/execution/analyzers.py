@@ -233,11 +233,44 @@ class AggregateAnalyzer:
         self._logger = setup_logger("AggregateAnalyzer")
 
     def extract_group_by_keys(self, select_ast: exp.Select) -> Optional[List[str]]:
-        """Extract GROUP BY column names from the SELECT AST."""
+        """Extract GROUP BY column names and expressions from the SELECT AST."""
         group_by = select_ast.args.get("group")
         if not group_by:
             return None
-        return [str(expr.name) for expr in group_by.expressions]
+
+        keys = []
+        for expr in group_by.expressions:
+            if isinstance(expr, exp.Column):
+                # Simple column name
+                keys.append(str(expr.name))
+            elif isinstance(expr, exp.Identifier):
+                # Identifier (column name)
+                keys.append(str(expr.this))
+            elif isinstance(expr, exp.Literal):
+                # Positional reference (GROUP BY 1, 2)
+                try:
+                    position = int(str(expr.name)) - 1  # Convert to 0-based
+                    # Need to resolve position to actual column name from SELECT
+                    select_exprs = select_ast.args.get("expressions", [])
+                    if 0 <= position < len(select_exprs):
+                        select_expr = select_exprs[position]
+                        if isinstance(select_expr, exp.Alias):
+                            keys.append(str(select_expr.alias))
+                        elif isinstance(select_expr, exp.Column):
+                            keys.append(str(select_expr.name))
+                        else:
+                            keys.append(f"col_{position}")
+                    else:
+                        keys.append(f"col_{position}")
+                except (ValueError, TypeError):
+                    keys.append(str(expr.name))
+            else:
+                # Expression - for now, we'll use a generated column name
+                # Full expression support would require adding a computed column first
+                expr_str = str(expr)
+                keys.append(f"expr_{hash(expr_str) % 10000}")
+
+        return keys
 
     def extract_aggregates(
         self, select_ast: exp.Select

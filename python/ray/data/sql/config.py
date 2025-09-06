@@ -9,7 +9,10 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
+from ray.util.annotations import PublicAPI
 
+
+@PublicAPI
 class LogLevel(Enum):
     """Logging levels for the SQL engine.
 
@@ -26,6 +29,7 @@ class LogLevel(Enum):
     ERROR = "ERROR"
 
 
+@PublicAPI
 class SQLDialect(Enum):
     """SQL dialects supported by the Ray Data SQL engine.
 
@@ -64,6 +68,7 @@ class SQLDialect(Enum):
         return mapping[self]
 
 
+@PublicAPI
 @dataclass
 class SQLConfig:
     """Configuration for the Ray Data SQL engine.

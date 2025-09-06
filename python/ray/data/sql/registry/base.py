@@ -303,7 +303,8 @@ class TableRegistry:
                 try:
                     size_bytes = dataset.size_bytes()
                     info["size_bytes"] = size_bytes
-                except:
+                except Exception:
+                    # Ignore errors when getting size information
                     pass
 
         except Exception as e:

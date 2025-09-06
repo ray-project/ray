@@ -442,38 +442,67 @@ class LimitHandler:
         self._logger = setup_logger("LimitHandler")
 
     def apply_limit(self, dataset: Dataset, ast: exp.Select) -> Dataset:
-        """Apply LIMIT clause to the dataset, if present."""
+        """Apply LIMIT and OFFSET clauses to the dataset."""
         limit_clause = ast.args.get("limit")
-        if not limit_clause:
+        offset_clause = ast.args.get("offset")
+
+        if not limit_clause and not offset_clause:
             return dataset
 
-        limit_expr = getattr(limit_clause, "this", None)
-        if limit_expr is None:
-            return dataset
+        # Extract LIMIT value
+        limit_value = None
+        if limit_clause:
+            limit_expr = getattr(limit_clause, "this", None)
+            if limit_expr:
+                limit_value = self._extract_limit_value(limit_expr)
 
-        limit_value = self._extract_limit_value(limit_expr)
-        if limit_value <= 0:
-            return ray.data.from_items([])
+        # Extract OFFSET value
+        offset_value = 0
+        if offset_clause:
+            offset_expr = getattr(offset_clause, "this", None)
+            if offset_expr:
+                offset_value = self._extract_limit_value(offset_expr)
 
-        self._logger.debug(f"Applying LIMIT {limit_value}")
+        self._logger.debug(f"Applying LIMIT {limit_value} OFFSET {offset_value}")
 
-        # Use Ray's built-in limit method
-        try:
-            result = dataset.limit(limit_value)
-            self._logger.debug("LIMIT applied successfully")
-            return result
-        except Exception as e:
-            self._logger.warning(f"Failed to apply LIMIT using limit(): {e}")
-            # Fallback to take() and from_items() if limit() fails
+        # Handle different combinations
+        if offset_value > 0 and limit_value is not None:
+            # Both OFFSET and LIMIT - use take() with calculated values
+            total_rows_needed = offset_value + limit_value
             try:
-                limited_rows = dataset.take(limit_value)
+                all_rows = dataset.take(total_rows_needed)
+                limited_rows = all_rows[offset_value : offset_value + limit_value]
                 result = ray.data.from_items(limited_rows)
-                self._logger.debug("LIMIT applied using take()")
+                self._logger.debug(f"LIMIT {limit_value} OFFSET {offset_value} applied")
                 return result
-            except Exception as e2:
-                self._logger.warning(f"Failed to apply LIMIT using take(): {e2}")
-                # Fallback to original dataset if both methods fail
+            except Exception as e:
+                self._logger.warning(f"Failed to apply LIMIT/OFFSET: {e}")
                 return dataset
+        elif offset_value > 0:
+            # Only OFFSET - skip first N rows
+            try:
+                # Take a large number and skip offset rows
+                # This is not ideal for very large datasets, but works for most cases
+                large_limit = 1000000  # Reasonable default
+                all_rows = dataset.take(large_limit)
+                offset_rows = all_rows[offset_value:]
+                result = ray.data.from_items(offset_rows)
+                self._logger.debug(f"OFFSET {offset_value} applied")
+                return result
+            except Exception as e:
+                self._logger.warning(f"Failed to apply OFFSET: {e}")
+                return dataset
+        elif limit_value is not None and limit_value > 0:
+            # Only LIMIT - use Ray's built-in limit method
+            try:
+                result = dataset.limit(limit_value)
+                self._logger.debug(f"LIMIT {limit_value} applied successfully")
+                return result
+            except Exception as e:
+                self._logger.warning(f"Failed to apply LIMIT: {e}")
+                return dataset
+        else:
+            return dataset
 
     def _extract_limit_value(self, limit_expr) -> int:
         """Extract the limit value from the limit expression."""

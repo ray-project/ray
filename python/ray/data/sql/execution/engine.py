@@ -205,9 +205,11 @@ class JoinHandler:
             right_dataset=right_dataset,
             left_suffix="",  # Default suffix for left columns
             right_suffix="_r",  # Default suffix for right columns
-            num_partitions=self.config.max_join_partitions
-            if hasattr(self.config, "max_join_partitions")
-            else 10,
+            num_partitions=(
+                self.config.max_join_partitions
+                if hasattr(self.config, "max_join_partitions")
+                else 10
+            ),
         )
 
     def _extract_column_name(self, expr) -> str:

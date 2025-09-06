@@ -129,6 +129,7 @@ __all__ = [
 __version__ = "1.0.0"
 __author__ = "Ray Data Team"
 
+
 # Module-level properties for easy access
 def _get_dialect():
     """Get the current SQL dialect."""

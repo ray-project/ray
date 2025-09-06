@@ -14,6 +14,7 @@ from sqlglot import exp
 
 from ray.data import Dataset
 from ray.data.sql.config import LogLevel, SQLConfig
+from ray.util.annotations import PublicAPI
 from ray.data.sql.exceptions import (
     SQLExecutionError,
     SQLParseError,
@@ -26,6 +27,7 @@ from ray.data.sql.validators.features import FeatureValidator
 from ray.data.sql.validators.syntax import SyntaxValidator
 
 
+@PublicAPI
 class RaySQL:
     """Main SQL engine for Ray Data.
 
@@ -119,13 +121,19 @@ class RaySQL:
             # Validate the query
             self.validator.validate(query, ast)
 
+            # Handle WITH clauses (CTEs) before main query execution
+            if hasattr(ast, "with_") and ast.with_:
+                self._execute_ctes(ast.with_)
+
             # Execute the query
             if isinstance(ast, exp.Select):
                 result = self.execution_engine.execute(ast, default_dataset)
+            elif isinstance(ast, exp.Union):
+                result = self._execute_union(ast, default_dataset)
             else:
                 raise UnsupportedOperationError(
                     f"{type(ast).__name__} statements",
-                    suggestion="Only SELECT statements are currently supported",
+                    suggestion="Only SELECT and UNION statements are currently supported",
                     query=query,
                 )
 
@@ -185,6 +193,70 @@ class RaySQL:
             Set of unsupported feature names.
         """
         return self.validator.get_unsupported_features()
+
+    def _execute_union(
+        self, ast: exp.Union, default_dataset: Optional[Dataset] = None
+    ) -> Dataset:
+        """Execute a UNION operation.
+
+        Args:
+            ast: UNION AST node.
+            default_dataset: Default dataset for queries without FROM clause.
+
+        Returns:
+            Dataset containing the union of all SELECT results.
+        """
+        # Execute left side
+        left_result = self.execution_engine.execute(ast.left, default_dataset)
+
+        # Execute right side
+        right_result = self.execution_engine.execute(ast.right, default_dataset)
+
+        # Use Ray Dataset union operation
+        result = left_result.union(right_result)
+
+        # Handle DISTINCT vs ALL
+        if not ast.args.get("distinct", True):  # UNION ALL
+            return result
+        else:  # UNION (with implicit DISTINCT)
+            # DISTINCT is not supported in Ray Dataset API yet
+            raise UnsupportedOperationError(
+                "UNION with DISTINCT",
+                suggestion="Use UNION ALL instead, or apply deduplication manually with Ray Dataset operations",
+            )
+
+    def _execute_ctes(self, with_clause) -> None:
+        """Execute Common Table Expressions (WITH clauses).
+
+        CTEs are just named intermediate datasets that get registered
+        as temporary tables in the registry.
+
+        Args:
+            with_clause: The WITH clause containing CTE definitions.
+        """
+        # Process each CTE in the WITH clause
+        for cte in with_clause.expressions:
+            if not isinstance(cte, exp.CTE):
+                continue
+
+            # Get the CTE name and query
+            cte_name = str(cte.alias)
+            cte_query = cte.this
+
+            # Execute the CTE query to get a dataset
+            if isinstance(cte_query, exp.Select):
+                cte_result = self.execution_engine.execute(cte_query)
+            elif isinstance(cte_query, exp.Union):
+                cte_result = self._execute_union(cte_query)
+            else:
+                raise UnsupportedOperationError(
+                    f"CTE with {type(cte_query).__name__} statement",
+                    suggestion="CTEs only support SELECT and UNION statements",
+                )
+
+            # Register the CTE result as a temporary table
+            self.register_table(cte_name, cte_result)
+            self._logger.info(f"Registered CTE '{cte_name}' as temporary table")
 
 
 # Global engine instance
@@ -460,6 +532,7 @@ def get_config_summary() -> Dict[str, Any]:
 
 
 # Public API functions
+@PublicAPI
 def sql(query: str, default_dataset: Optional[Dataset] = None) -> Dataset:
     """Execute a SQL query using the global engine.
 
@@ -473,6 +546,7 @@ def sql(query: str, default_dataset: Optional[Dataset] = None) -> Dataset:
     return get_engine().sql(query, default_dataset)
 
 
+@PublicAPI
 def register_table(name: str, dataset: Dataset) -> None:
     """Register a Ray Dataset as a SQL table.
 
@@ -483,6 +557,7 @@ def register_table(name: str, dataset: Dataset) -> None:
     get_engine().register_table(name, dataset)
 
 
+@PublicAPI
 def list_tables() -> List[str]:
     """List all registered table names.
 
@@ -492,6 +567,7 @@ def list_tables() -> List[str]:
     return get_engine().list_tables()
 
 
+@PublicAPI
 def get_schema(table_name: str) -> Optional[Dict[str, str]]:
     """Get the schema for a registered table.
 
@@ -504,6 +580,7 @@ def get_schema(table_name: str) -> Optional[Dict[str, str]]:
     return get_engine().get_schema(table_name)
 
 
+@PublicAPI
 def clear_tables() -> None:
     """Clear all registered tables."""
     get_engine().clear_tables()

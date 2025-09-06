@@ -12,6 +12,7 @@ from sqlglot import exp
 import ray
 from ray.data import Dataset
 from ray.data.sql.config import SQLConfig
+from ray.data.sql.exceptions import UnsupportedOperationError
 from ray.data.sql.execution.analyzers import AggregateAnalyzer, ProjectionAnalyzer
 from ray.data.sql.execution.handlers import (
     FilterHandler,
@@ -131,6 +132,14 @@ class QueryExecutor:
 
         # Apply operations in sequence following Ray Dataset API patterns
         dataset = self._apply_query_operations(dataset, ast, table_name, select_exprs)
+
+        # Note: DISTINCT is not yet supported in Ray Dataset API
+        if ast.args.get("distinct"):
+            raise UnsupportedOperationError(
+                "DISTINCT",
+                suggestion="Ray Dataset API does not yet support deduplication operations",
+            )
+
         return dataset
 
     def _execute_literal_query(
@@ -335,6 +344,9 @@ class QueryExecutor:
             except Exception as e:
                 self._logger.warning(f"Failed to rename columns: {e}")
 
+        # Apply HAVING clause if present (post-aggregation filtering)
+        result = self._apply_having_clause(result, ast)
+
         # Apply ORDER BY and LIMIT following Ray Dataset API patterns
         result = self.order_handler.apply_order_by(result, ast)
         result = self.limit_handler.apply_limit(result, ast)
@@ -473,12 +485,55 @@ class QueryExecutor:
         if from_clause:
             if hasattr(from_clause, "expressions") and from_clause.expressions:
                 table_expr = from_clause.expressions[0]
+
+                # Handle subqueries in FROM clause
+                if isinstance(table_expr, exp.Subquery):
+                    subquery_ast = table_expr.this
+                    subquery_alias = (
+                        str(table_expr.alias) if table_expr.alias else "subquery"
+                    )
+
+                    # Execute the subquery to get a dataset
+                    if isinstance(subquery_ast, exp.Select):
+                        subquery_result = self.execute(subquery_ast)
+                        # Register as temporary table
+                        self.registry.register(subquery_alias, subquery_result)
+                        return subquery_result, subquery_alias
+                    else:
+                        raise UnsupportedOperationError(
+                            f"Subquery with {type(subquery_ast).__name__} statement",
+                            suggestion="Only SELECT subqueries are supported in FROM clause",
+                        )
+
+                # Handle regular table names
                 table_name = str(table_expr.name)
             elif hasattr(from_clause, "this") and from_clause.this:
                 table_expr = from_clause.this
+
+                # Handle subqueries in FROM clause
+                if isinstance(table_expr, exp.Subquery):
+                    subquery_ast = table_expr.this
+                    subquery_alias = (
+                        str(table_expr.alias) if table_expr.alias else "subquery"
+                    )
+
+                    # Execute the subquery to get a dataset
+                    if isinstance(subquery_ast, exp.Select):
+                        subquery_result = self.execute(subquery_ast)
+                        # Register as temporary table
+                        self.registry.register(subquery_alias, subquery_result)
+                        return subquery_result, subquery_alias
+                    else:
+                        raise UnsupportedOperationError(
+                            f"Subquery with {type(subquery_ast).__name__} statement",
+                            suggestion="Only SELECT subqueries are supported in FROM clause",
+                        )
+
+                # Handle regular table names
                 table_name = str(table_expr.name)
             else:
                 raise ValueError("Invalid FROM clause")
+
             dataset = self.registry.get(table_name)
             return dataset, table_name
 
@@ -506,3 +561,34 @@ class QueryExecutor:
             else:
                 result_row[output_name] = None
         return ray.data.from_items([result_row])
+
+    def _apply_having_clause(self, dataset: Dataset, ast: exp.Select) -> Dataset:
+        """Apply HAVING clause for post-aggregation filtering.
+
+        This maps to dataset.filter() applied after GROUP BY aggregation.
+
+        Args:
+            dataset: Dataset after GROUP BY aggregation.
+            ast: SELECT AST containing HAVING clause.
+
+        Returns:
+            Dataset with HAVING filter applied.
+        """
+        having_clause = ast.args.get("having")
+        if not having_clause:
+            return dataset
+
+        # Use FilterHandler to apply the HAVING condition
+        # HAVING works just like WHERE but on aggregated results
+        from ray.data.sql.compiler import ExpressionCompiler
+
+        compiler = ExpressionCompiler(self.config)
+        having_func = compiler.compile(having_clause.this)
+
+        def having_filter(row):
+            try:
+                return bool(having_func(row))
+            except Exception:
+                return False
+
+        return dataset.filter(having_filter)
