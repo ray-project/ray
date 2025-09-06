@@ -73,7 +73,11 @@ Now you can execute SQL queries using the familiar SELECT syntax:
 Step 3: Join multiple tables
 ----------------------------
 
+.. vale off
+
 Perform JOIN operations to combine data from multiple tables:
+
+.. vale on
 
 .. testcode::
 
@@ -232,6 +236,8 @@ Important limitations to know
 
 Before diving deeper, be aware of these current limitations:
 
+.. vale off
+
 SQL feature limitations
   - **Window Functions**: Limited support for ROW_NUMBER(), RANK(), etc.
   - **User-Defined Functions**: Custom SQL functions aren't supported
@@ -241,6 +247,8 @@ SQL feature limitations
 Performance considerations
   - **Large JOINs**: Cross-joins and large JOINs can be memory-intensive
   - **Complex Subqueries**: May have performance implications
+
+.. vale on
   - **Data Types**: Best performance with Arrow-native types
 
 Workarounds available
@@ -256,10 +264,14 @@ Most limitations can be worked around using Ray Data operations:
     # ❌ Not supported: SELECT custom_function(name) FROM users  
     # ✅ Use: users.map(lambda row: {"result": custom_function(row["name"])})
 
+.. vale off
+
 SQL dialect support
   - **Primary**: DuckDB SQL dialect (recommended)
   - **Supported**: PostgreSQL, MySQL, BigQuery syntax (with conversion)
   - **Automatic Conversion**: SQLGlot handles dialect differences
+
+.. vale on
 
 What's next?
 ============

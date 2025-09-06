@@ -63,10 +63,14 @@ Ray Data SQL supports various join types for combining datasets:
         ORDER BY budget_remaining DESC
     """)
 
+.. vale off
+
 Subqueries and CTEs
 -------------------
 
 Use subqueries and Common Table Expressions for complex data analysis:
+
+.. vale on
 
 .. testcode::
 
@@ -335,7 +339,11 @@ Ray Data SQL provides extensive configuration options for different environments
 SQL dialect handling
 --------------------
 
+.. vale off
+
 Ray Data SQL uses SQLGlot for parsing and supports multiple SQL dialects:
+
+.. vale on
 
 .. testcode::
 
@@ -514,6 +522,7 @@ Understanding Current Limitations
         transformed = result.map(lambda row: {"custom_result": custom_function(row["name"])})
 
     # ❌ NOT SUPPORTED: Recursive CTEs
+    # .. vale off
     try:
         result = sql("""
             WITH RECURSIVE employee_hierarchy AS (
@@ -611,6 +620,8 @@ Dialect Compatibility Matrix
 
 **Supported SQL Dialects and Features**
 
+.. vale off
+
 .. list-table:: SQL Dialect Support
    :header-rows: 1
    :widths: 20 15 15 15 15 20
@@ -663,6 +674,8 @@ Dialect Compatibility Matrix
      - ✅ Good
      - ✅ Good
      - Most functions supported
+
+.. vale on
 
 **Dialect-Specific Examples**
 

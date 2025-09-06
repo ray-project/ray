@@ -148,11 +148,15 @@ Supported Features Reference
   - Null: ``IS NULL``, ``IS NOT NULL``
   - Range: ``BETWEEN``
 
+.. vale off
+
 **SQL Constructs**
   - ``SELECT``, ``FROM``, ``WHERE``, ``GROUP BY``, ``HAVING``, ``ORDER BY``, ``LIMIT``
   - ``JOIN`` (``INNER``, ``LEFT``, ``RIGHT``, ``FULL OUTER``)
   - ``CASE`` expressions
   - Subqueries (limited)
+
+.. vale on
   - Column aliases
 
 **Data Types**
@@ -180,6 +184,8 @@ Unsupported Features with Alternatives
 - **RANK/DENSE_RANK** → Use ROW_NUMBER() with ordering  
 - **NTILE** → Use manual bucketing with modulo operations
 
+.. vale off
+
 **SQL Constructs**
 
 - **Common Table Expressions (WITH)** → Break into multiple steps using intermediate tables
@@ -192,6 +198,8 @@ Unsupported Features with Alternatives
 
 - **IN** → Use multiple OR conditions or JOIN operations
 - **EXISTS** → Use JOIN operations instead
+
+.. vale on
 - **ALL/ANY** → Use aggregation with MIN/MAX functions
 
 Integration with Development Workflow

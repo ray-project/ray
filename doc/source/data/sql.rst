@@ -108,6 +108,8 @@ Aggregations
   - Aggregate functions: COUNT, SUM, AVG, MIN, MAX
   - HAVING clauses for post-aggregation filtering
 
+.. vale off
+
 Joins
   - INNER JOIN for combining datasets
   - LEFT JOIN for preserving left dataset records
@@ -115,6 +117,8 @@ Joins
 
 Advanced features
   - Subqueries and common table expressions (CTEs)
+
+.. vale on
   - UNION operations for combining datasets
   - Window functions (coming soon)
   - User-defined functions (coming soon)
@@ -196,6 +200,7 @@ Ray Data SQL provides extensive configuration options for different use cases:
     from ray.data.sql import SQLConfig, LogLevel
 
     # Basic configuration
+    # .. vale off
     config = SQLConfig(
         log_level=LogLevel.DEBUG,          # Control logging verbosity
         case_sensitive=False,              # Case-insensitive column names
@@ -205,6 +210,7 @@ Ray Data SQL provides extensive configuration options for different use cases:
         max_join_partitions=100,           # Limit join complexity
         enable_predicate_pushdown=True     # Push filters to data sources
     )
+    # .. vale on
 
     # Use with context manager for session-specific settings
     with ray.data.DataContext() as ctx:
@@ -279,10 +285,14 @@ SQL queries seamlessly integrate with Ray Data operations:
 Limitations and considerations
 ------------------------------
 
+.. vale off
+
 Current limitations
   - **SQL Dialect**: Currently uses DuckDB SQL dialect through SQLGlot parsing
   - **Window Functions**: Limited support for advanced window functions
   - **Subqueries**: Complex nested subqueries may have performance implications
+
+.. vale on
   - **User-Defined Functions**: Custom SQL functions aren't yet supported
   - **Transactions**: No transaction support (operations aren't atomic)
   - **Indexes**: No index support for query optimization

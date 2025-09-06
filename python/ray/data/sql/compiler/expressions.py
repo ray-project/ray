@@ -58,8 +58,6 @@ class ExpressionCompiler:
         ),
         exp.Concat: lambda *args: "".join(str(arg) for arg in args),
         exp.Trim: str.strip,
-        exp.Ltrim: str.lstrip,
-        exp.Rtrim: str.rstrip,
     }
 
     # Mathematical functions mapping
@@ -69,7 +67,6 @@ class ExpressionCompiler:
         exp.Ceil: math.ceil,
         exp.Floor: math.floor,
         exp.Sqrt: math.sqrt,
-        exp.Power: pow,
         exp.Log: math.log,
         exp.Exp: math.exp,
     }

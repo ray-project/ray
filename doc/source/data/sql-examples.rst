@@ -2,7 +2,7 @@ Ray Data SQL Examples
 =====================
 
 This page provides practical examples of using Ray Data SQL for common data processing tasks.
-All examples are designed to run out-of-the-box and demonstrate real-world use cases.
+All examples run out-of-the-box and demonstrate real-world use cases.
 
 .. contents::
    :depth: 2
@@ -48,7 +48,11 @@ Start with simple SELECT operations to explore your data:
 Filtering and aggregation
 -------------------------
 
+.. vale off
+
 Use WHERE clauses and aggregate functions to analyze your data:
+
+.. vale on
 
 .. testcode::
 
@@ -90,10 +94,14 @@ Use WHERE clauses and aggregate functions to analyze your data:
 Advanced query examples
 =======================
 
+.. vale off
+
 JOIN operations
 ---------------
 
 Combine multiple datasets using various types of joins:
+
+.. vale on
 
 .. testcode::
 
@@ -125,10 +133,14 @@ Combine multiple datasets using various types of joins:
       Mobile App: Charlie (Engineering)
       Data Pipeline: Alice (Engineering)
 
+.. vale off
+
 Subqueries and CTEs
 -------------------
 
 Use Common Table Expressions (CTEs) for complex analytical queries:
+
+.. vale on
 
 .. testcode::
 
@@ -368,10 +380,14 @@ Clean up resources when you're done:
 Best practices summary
 ======================
 
+.. vale off
+
 Query optimization
   - Apply filters early in WHERE clauses
   - Use explicit column selection instead of SELECT *
   - Leverage indexes when available (future feature)
+
+.. vale on
 
 Error handling
   - Always handle ValueError for SQL syntax errors

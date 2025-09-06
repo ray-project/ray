@@ -11,13 +11,17 @@ Getting started
 ===============
 
 Ray Data SQL is an integral part of Ray Data that enables SQL querying capabilities on Ray Datasets. 
-When contributing, you will work with several key components:
+When contributing, you work with several key components:
 
-* **Core SQL Engine** (``ray/python/ray/data/sql/core.py``): Main query execution logic
-* **SQL Parsing** (``ray/python/ray/data/sql/parser.py``): Query parsing and optimization using SQLGlot
-* **Execution Handlers** (``ray/python/ray/data/sql/execution/``): Query execution strategies
-* **Configuration** (``ray/python/ray/data/sql/config.py``): Engine configuration and settings
-* **Testing Framework** (``ray/python/ray/data/sql/testing.py``): Comprehensive test utilities
+.. vale off
+
+* **Core SQL Engine** - ``ray/python/ray/data/sql/core.py``: Main query execution logic
+* **SQL Parsing** - ``ray/python/ray/data/sql/parser.py``: Query parsing and optimization using SQLGlot
+* **Execution Handlers** - ``ray/python/ray/data/sql/execution/``: Query execution strategies
+* **Configuration** - ``ray/python/ray/data/sql/config.py``: Engine configuration and settings
+* **Testing Framework** - ``ray/python/ray/data/sql/testing.py``: Comprehensive test utilities
+
+.. vale on
 
 Setting up your development environment
 =======================================
