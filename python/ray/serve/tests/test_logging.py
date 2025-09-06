@@ -7,6 +7,7 @@ import string
 import sys
 import time
 import uuid
+from collections import Counter
 from contextlib import redirect_stderr
 from pathlib import Path
 from typing import List, Tuple
@@ -1358,6 +1359,53 @@ def test_configure_default_serve_logger_with_stderr_redirect(
     assert print != redirected_print
     assert not isinstance(sys.stdout, StreamToLogger)
     assert not isinstance(sys.stderr, StreamToLogger)
+
+
+@pytest.mark.parametrize(
+    "ray_instance",
+    [
+        {"RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE": "1"},
+        {"RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE": "100"},
+    ],
+    indirect=True,
+)
+def test_request_id_uniqueness_with_buffering(ray_instance):
+    """Test request IDs are unique when buffering is enabled."""
+
+    logger = logging.getLogger("ray.serve")
+
+    @serve.deployment(logging_config={"encoding": "JSON"})
+    class TestApp:
+        async def __call__(self):
+            logger.info("Processing request")
+            logger.info("Additional log entry")
+            return "OK"
+
+    serve.run(TestApp.bind())
+    for _ in range(200):
+        httpx.get("http://127.0.0.1:8000/")
+
+    logs_dir = get_serve_logs_dir()
+
+    def check_logs():
+        for log_file in os.listdir(logs_dir):
+            if log_file.startswith("replica"):
+                with open(os.path.join(logs_dir, log_file)) as f:
+                    log_request_ids = []
+                    for line in f:
+                        log_entry = json.loads(line)
+                        request_id = log_entry.get("request_id", None)
+                        message = log_entry.get("message", None)
+                        if request_id:
+                            # Append the (request_id, message) pairs to the list
+                            log_request_ids.append((request_id, message))
+                    # Check that there are no duplicate (request_id, message) pairs
+                    request_id_counts = Counter(log_request_ids)
+                    for _, count in request_id_counts.items():
+                        assert count == 1, "Request ID duplicates when buffering"
+        return True
+
+    wait_for_condition(check_logs)
 
 
 if __name__ == "__main__":
