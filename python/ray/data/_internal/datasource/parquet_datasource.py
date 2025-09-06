@@ -448,7 +448,7 @@ def read_fragments(
         ctx = ray.data.DataContext.get_current()
         for table in iterate_with_retry(
             lambda: _read_batches_from(
-                fragment,
+                fragment.original,
                 schema=schema,
                 data_columns=data_columns,
                 partition_columns=partition_columns,
@@ -469,7 +469,7 @@ def read_fragments(
 
 
 def _read_batches_from(
-    fragment: _ParquetFragment,
+    fragment: "ParquetFileFragment",
     *,
     schema: "pyarrow.Schema",
     data_columns: Optional[List[str]],
@@ -501,7 +501,7 @@ def _read_batches_from(
     )
 
     try:
-        for batch in fragment.original.to_batches(
+        for batch in fragment.to_batches(
             columns=data_columns,
             filter=filter_expr,
             schema=schema,
@@ -553,7 +553,7 @@ def _read_batches_from(
 
 
 def _parse_partition_column_values(
-    fragment: _ParquetFragment,
+    fragment: "ParquetFileFragment",
     partition_columns: Optional[List[str]],
     partitioning: Partitioning,
 ):
@@ -561,7 +561,7 @@ def _parse_partition_column_values(
 
     if partitioning is not None:
         parse = PathPartitionParser(partitioning)
-        partitions = parse(fragment.original.path)
+        partitions = parse(fragment.path)
 
     # Filter out partitions that aren't in the user-specified columns list.
     if partition_columns is not None:
