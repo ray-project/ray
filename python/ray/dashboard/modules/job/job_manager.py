@@ -230,6 +230,8 @@ class JobManager:
                         should_monitor = False
                         logger.error(err_msg)
                         continue
+                    else:
+                        continue
 
                 if job_supervisor is None:
                     job_supervisor = self._get_actor_for_job(job_id)
