@@ -56,7 +56,13 @@ class NixlBackend:
         remote_name = nixl_agent.add_remote_agent(remote_nixl_agent_meta)
 
         xfer_handle = nixl_agent.initialize_xfer(
-            "READ", local_descs.trim(), remote_descs, remote_name
+            # "UUID" here is just a placeholder, can be any bytes, but without it,
+            # nixl will fail to transfer multiple times.
+            "READ",
+            local_descs.trim(),
+            remote_descs,
+            remote_name,
+            "UUID",
         )
 
         state = nixl_agent.transfer(xfer_handle)

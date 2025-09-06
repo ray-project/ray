@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 from typing import List, Optional, TYPE_CHECKING
 from ray.util.collective.types import TensorTransportMetadata, CommunicatorMetadata
 from ray.util.collective.types import Backend
-from ray._private.custom_types import TensorTransportEnum
 
 import ray
 
@@ -45,7 +44,6 @@ class TensorTransportManager(ABC):
     def get_tensor_transport_metadata(
         src_actor: "ray.actor.ActorHandle",
         obj_id: str,
-        tensor_transport: TensorTransportEnum,
     ) -> TensorTransportMetadata:
         """
         Get the tensor transport metadata for the GPU object.
@@ -55,10 +53,24 @@ class TensorTransportManager(ABC):
         Args:
             src_actor: The actor that runs this function.
             obj_id: The ID of the GPU object to get metadata for
-            tensor_transport: The tensor transport protocol to use for the GPU object.
 
         Returns:
             TensorTransportMetadata: A named tuple containing the tensor metadata.
+        """
+
+    @staticmethod
+    @abstractmethod
+    def extract_tensor_transport_metadata(
+        gpu_object: List["torch.Tensor"],
+    ) -> TensorTransportMetadata:
+        """
+        Extract the tensor transport metadata from the GPU object.
+
+        Args:
+            gpu_object: The GPU object to extract the tensor transport metadata from.
+
+        Returns:
+            TensorTransportMetadata: The tensor transport metadata.
         """
 
     @staticmethod

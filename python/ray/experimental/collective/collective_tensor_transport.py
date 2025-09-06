@@ -4,7 +4,6 @@ import ray
 from ray.util.collective.types import Backend
 from ray.experimental.collective.tensor_transport_manager import (
     TensorTransportManager,
-    TensorTransportEnum,
 )
 
 from ray.util.collective.types import (
@@ -37,38 +36,43 @@ class CollectiveTensorTransport(TensorTransportManager):
         return len(communicators) > 0
 
     @staticmethod
+    def extract_tensor_transport_metadata(
+        gpu_object: List["torch.Tensor"],
+    ) -> CollectiveTransportMetadata:
+        tensor_meta = []
+        device = None
+        if gpu_object:
+            device = gpu_object[0].device
+            for t in gpu_object:
+                if t.device.type != device.type:
+                    raise ValueError(
+                        "All tensors in one GPU object must be the same device type."
+                    )
+                tensor_meta.append((t.shape, t.dtype))
+        return CollectiveTransportMetadata(
+            tensor_meta=tensor_meta,
+            tensor_device=device,
+        )
+
+    @staticmethod
     def get_tensor_transport_metadata(
         src_actor: "ray.actor.ActorHandle",
         obj_id: str,
-        tensor_transport: TensorTransportEnum,
     ) -> CollectiveTransportMetadata:
         def __ray_get_tensor_transport_metadata__(
             self: "ray.actor.ActorHandle",
             obj_id: str,
-            tensor_transport: TensorTransportEnum,
         ) -> CollectiveTransportMetadata:
 
             from ray._private.worker import global_worker
-            from ray.util.collective.types import CollectiveTransportMetadata
 
             gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
             # NOTE: We do not specify a timeout here because the user task that returns
             # it could take arbitrarily long and we don't want to trigger a spurious
             # timeout.
             gpu_object = gpu_object_store.wait_and_get_object(obj_id)
-            tensor_meta = []
-            device = None
-            if gpu_object:
-                device = gpu_object[0].device
-                for t in gpu_object:
-                    if t.device.type != device.type:
-                        raise ValueError(
-                            "All tensors in one GPU object must be the same device type."
-                        )
-                    tensor_meta.append((t.shape, t.dtype))
-            return CollectiveTransportMetadata(
-                tensor_meta=tensor_meta,
-                tensor_device=device,
+            return CollectiveTensorTransport.extract_tensor_transport_metadata(
+                gpu_object
             )
 
         # Submit a Ray actor task to the source actor to get the tensor metadata.
@@ -79,7 +83,7 @@ class CollectiveTensorTransport(TensorTransportManager):
         # executing on the main thread blocking this task.
 
         return src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
-            __ray_get_tensor_transport_metadata__, obj_id, tensor_transport
+            __ray_get_tensor_transport_metadata__, obj_id
         )
 
     @staticmethod

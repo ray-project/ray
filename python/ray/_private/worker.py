@@ -797,6 +797,7 @@ class Worker:
         value: Any,
         owner_address: Optional[str] = None,
         _is_experimental_channel: bool = False,
+        tensor_transport: str = "object_store",
     ):
         """Put value in the local object store.
 
@@ -813,6 +814,7 @@ class Worker:
                 objects. If True, then the returned object will not have a
                 valid value. The object must be written to using the
                 ray.experimental.channel API before readers can read.
+            tensor_transport: The tensor transport backend to use. Currently, we only support "object_store" and "nixl".
 
         Returns:
             ObjectRef: The object ref the object was put under.
@@ -829,9 +831,22 @@ class Worker:
                 "If you really want to do this, you can wrap the "
                 "ray.ObjectRef in a list and call 'put' on it."
             )
-
+        tensors = None
+        tensor_transport: TensorTransportEnum = TensorTransportEnum.from_str(
+            tensor_transport
+        )
+        assert tensor_transport in [
+            TensorTransportEnum.OBJECT_STORE,
+            TensorTransportEnum.NIXL,
+        ], "Currently, we only support 'object_store' and 'nixl' for tensor transport in ray.put()."
         try:
-            serialized_value = self.get_serialization_context().serialize(value)
+            if tensor_transport != TensorTransportEnum.OBJECT_STORE:
+                (
+                    serialized_value,
+                    tensors,
+                ) = self.get_serialization_context().serialize_gpu_objects(value)
+            else:
+                serialized_value = self.get_serialization_context().serialize(value)
         except TypeError as e:
             sio = io.StringIO()
             ray.util.inspect_serializability(value, print_file=sio)
@@ -852,13 +867,17 @@ class Worker:
         # reference will be created. If another reference is created and
         # removed before this one, it will corrupt the state in the
         # reference counter.
-        return self.core_worker.put_object(
+        ret = self.core_worker.put_object(
             serialized_value,
             pin_object=pin_object,
             owner_address=owner_address,
             inline_small_object=True,
             _is_experimental_channel=_is_experimental_channel,
+            tensor_transport_val=tensor_transport.value,
         )
+        if tensors:
+            self.gpu_object_manager.put_object(ret, tensor_transport, tensors)
+        return ret
 
     def raise_errors(self, serialized_objects, object_refs):
         out = self.deserialize_objects(serialized_objects, object_refs)
@@ -867,21 +886,46 @@ class Worker:
         for e in out:
             _unhandled_error_handler(e)
 
-    def deserialize_objects(self, serialized_objects, object_refs):
+    def deserialize_objects(
+        self,
+        serialized_objects,
+        object_refs,
+        tensor_transport_hint: Optional[TensorTransportEnum] = None,
+    ):
         gpu_objects: Dict[str, List["torch.Tensor"]] = {}
         for obj_ref, (_, _, tensor_transport) in zip(object_refs, serialized_objects):
-            # If using a non-object store transport, then tensors will be sent
-            # out-of-band. Get them before deserializing the object store data.
-            if (
-                tensor_transport is None
-                or tensor_transport == TensorTransportEnum.OBJECT_STORE
-            ):
-                continue
+            # The `tensor_transport_hint` has the highest priority, so if it's `OBJECT_STORE`,
+            # we will use the object store to fetch the GPU object. If it's None, we will decide
+            # based on the `tensor_transport` in the serialized objects, which is set by the
+            # `put_object` function.
+            tensor_transport_hint_val = (
+                tensor_transport_hint.value
+                if tensor_transport_hint is not None
+                else obj_ref.tensor_transport()
+            )
+            # 1. If it's a ray.put/get pattern, tensor_transport will be None, then we
+            # will use the `tensor_transport_hint_val` to decide whether to use the
+            # object store to fetch the GPU object.
+            # 2. If it's not a ray.put/get pattern, tensor_transport_hint_val will be
+            # 'object_store', then we will use `tensor_transport` to decide whether to use the
+            # object store to fetch the GPU object.
+            use_object_store = (
+                tensor_transport_hint_val == TensorTransportEnum.OBJECT_STORE.value
+                and (
+                    tensor_transport is None
+                    or tensor_transport == TensorTransportEnum.OBJECT_STORE
+                )
+            )
 
             object_id = obj_ref.hex()
-            if object_id not in gpu_objects:
+            if (
+                self.gpu_object_manager.is_managed_object(object_id)
+                or not use_object_store
+            ) and object_id not in gpu_objects:
+                # If using a non-object store transport, then tensors will be sent
+                # out-of-band. Get them before deserializing the object store data.
                 gpu_objects[object_id] = self.gpu_object_manager.get_gpu_object(
-                    object_id
+                    object_id, use_object_store
                 )
 
         # Function actor manager or the import thread may call pickle.loads
@@ -900,6 +944,7 @@ class Worker:
         timeout: Optional[float] = None,
         return_exceptions: bool = False,
         skip_deserialization: bool = False,
+        tensor_transport: Optional[str] = None,
     ) -> Tuple[List[serialization.SerializedRayObject], bytes]:
         """Get the values in the object store associated with the IDs.
 
@@ -918,6 +963,7 @@ class Worker:
                 raised.
             skip_deserialization: If true, only the buffer will be released and
                 the object associated with the buffer will not be deserialized.
+            tensor_transport: The tensor transport to use for the GPU object. Currently, we only support "object_store" and "nixl" for tensor transport in ray.get().
         Returns:
             list: List of deserialized objects or None if skip_deserialization is True.
             bytes: UUID of the debugger breakpoint we should drop
@@ -930,7 +976,16 @@ class Worker:
                     f"Attempting to call `get` on the value {object_ref}, "
                     "which is not an ray.ObjectRef."
                 )
-
+        tensor_transport: TensorTransportEnum = (
+            TensorTransportEnum.from_str(tensor_transport)
+            if tensor_transport is not None
+            else None
+        )
+        assert tensor_transport in [
+            TensorTransportEnum.OBJECT_STORE,
+            TensorTransportEnum.NIXL,
+            None,
+        ], "Currently, we only support 'object_store' and 'nixl' for tensor transport in ray.get()."
         timeout_ms = (
             int(timeout * 1000) if timeout is not None and timeout != -1 else -1
         )
@@ -954,7 +1009,9 @@ class Worker:
         if skip_deserialization:
             return None, debugger_breakpoint
 
-        values = self.deserialize_objects(serialized_objects, object_refs)
+        values = self.deserialize_objects(
+            serialized_objects, object_refs, tensor_transport_hint=tensor_transport
+        )
         if not return_exceptions:
             # Raise exceptions instead of returning them to the user.
             for i, value in enumerate(values):
@@ -2797,6 +2854,7 @@ def get(
     ],
     *,
     timeout: Optional[float] = None,
+    tensor_transport: Optional[str] = None,
 ) -> Union[Any, List[Any]]:
     """Get a remote object or a list of remote objects from the object store.
 
@@ -2832,6 +2890,7 @@ def get(
             corresponding object becomes available. Setting ``timeout=0`` will
             return the object immediately if it's available, else raise
             GetTimeoutError in accordance with the above docstring.
+        tensor_transport: The tensor transport to use for the GPU object. Currently, we only support "object_store" and "nixl" for tensor transport in ray.get().
 
     Returns:
         A Python object or a list of Python objects.
@@ -2891,7 +2950,9 @@ def get(
                 "'object_refs' must either be an ObjectRef or a list of ObjectRefs. "
             )
 
-        values, debugger_breakpoint = worker.get_objects(object_refs, timeout=timeout)
+        values, debugger_breakpoint = worker.get_objects(
+            object_refs, timeout=timeout, tensor_transport=tensor_transport
+        )
         for i, value in enumerate(values):
             if isinstance(value, RayError):
                 if isinstance(value, ray.exceptions.ObjectLostError):
@@ -2927,6 +2988,7 @@ def put(
     value: Any,
     *,
     _owner: Optional["ray.actor.ActorHandle"] = None,
+    tensor_transport: str = "object_store",
 ) -> "ray.ObjectRef":
     """Store an object in the object store.
 
@@ -2946,6 +3008,7 @@ def put(
             object prior to the object creator exiting, otherwise the reference
             will still be lost. *Note that this argument is an experimental API
             and should be avoided if possible.*
+        tensor_transport: The tensor transport to use for the GPU object. Currently, we only support "object_store" and "nixl" for tensor transport in ray.put().
 
     Returns:
         The object ref assigned to this value.
@@ -2972,7 +3035,11 @@ def put(
 
     with profiling.profile("ray.put"):
         try:
-            object_ref = worker.put_object(value, owner_address=serialize_owner_address)
+            object_ref = worker.put_object(
+                value,
+                owner_address=serialize_owner_address,
+                tensor_transport=tensor_transport,
+            )
         except ObjectStoreFullError:
             logger.info(
                 "Put failed since the value was either too large or the "
