@@ -62,6 +62,16 @@ CONFIGURATIONS = {
         "logging_steps": 1,
         "no_cuda": True,
     },
+    "steps_cpu_eval_dict": {
+        "evaluation_strategy": "steps",
+        "save_strategy": "steps",
+        "logging_strategy": "steps",
+        "eval_steps": STEPS_PER_EPOCH,
+        "save_steps": STEPS_PER_EPOCH,
+        "logging_steps": 1,
+        "no_cuda": True,
+        "eval_dataset_as_dict": True,
+    },
 }
 
 
@@ -83,6 +93,10 @@ def train_func(config):
 
         train_dataset = Dataset.from_pandas(train_df)
         eval_dataset = Dataset.from_pandas(validation_df)
+
+    # Convert eval_dataset to dictionary if specified
+    if config.get("eval_dataset_as_dict", False):
+        eval_dataset = {"eval": eval_dataset}
 
     # Model
     model_config = AutoConfig.from_pretrained(MODEL_NAME)
@@ -124,7 +138,7 @@ def train_func(config):
 
 # TODO: Re-enable GPU tests. Right now, ray turbo has no GPU CI.
 # @pytest.mark.parametrize("config_id", ["epoch_gpu", "steps_gpu", "steps_cpu"])
-@pytest.mark.parametrize("config_id", ["steps_cpu"])
+@pytest.mark.parametrize("config_id", ["steps_cpu", "steps_cpu_eval_dict"])
 def test_e2e_hf_data(ray_start_6_cpus_2_gpus, config_id):
     def train_func(config):
         # Datasets
