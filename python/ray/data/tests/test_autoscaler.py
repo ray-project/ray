@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import ray
-from ray.data import ExecutionResources
+from ray.data import ExecutionOptions, ExecutionResources
 from ray.data._internal.actor_autoscaler import (
     ActorPoolScalingRequest,
     DefaultActorAutoscaler,
@@ -68,7 +68,11 @@ def test_actor_pool_scaling():
         input_dependencies=[MagicMock()],
         internal_queue_size=MagicMock(return_value=1),
     )
-    op_state = OpState(op, inqueues=[MagicMock(__len__=MagicMock(return_value=10))])
+    op_state = OpState(
+        op,
+        inqueues=[MagicMock(__len__=MagicMock(return_value=10))],
+        options=ExecutionOptions(),
+    )
     op_state._scheduling_status = MagicMock(under_resource_limits=True)
 
     @contextmanager

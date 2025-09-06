@@ -365,6 +365,8 @@ class PhysicalOperator(Operator):
         )
 
         if not self._execution_finished:
+            if not self._started:
+                return False
             if (
                 self._inputs_complete
                 and internal_queue_size == 0
@@ -385,7 +387,7 @@ class PhysicalOperator(Operator):
     @property
     def metrics(self) -> OpRuntimeMetrics:
         """Returns the runtime metrics of this operator."""
-        self._metrics._extra_metrics = self._extra_metrics()
+        self._metrics._extra_metrics = self._extra_metrics() if self._started else {}
         return self._metrics
 
     def _extra_metrics(self) -> Dict[str, Any]:
@@ -554,10 +556,8 @@ class PhysicalOperator(Operator):
         This release any Ray resources acquired by this operator such as active
         tasks, actors, and objects.
         """
-        if self._shutdown:
+        if self._shutdown or not self._started:
             return
-        elif not self._started:
-            raise ValueError("Operator must be started before being shutdown.")
 
         # Mark operator as shut down
         self._shutdown = True
