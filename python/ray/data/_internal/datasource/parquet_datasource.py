@@ -67,7 +67,7 @@ NUM_CPUS_FOR_META_FETCH_TASK = 0.5
 
 # The number of rows to read per batch. This is sized to generate 10MiB batches
 # for rows about 1KiB in size.
-PARQUET_READER_ROW_BATCH_SIZE = 10_000
+DEFAULT_PARQUET_READER_ROW_BATCH_SIZE = 10_000
 FILE_READING_RETRY = 8
 
 # The default size multiplier for reading Parquet data source in Arrow.
@@ -312,8 +312,9 @@ class ParquetDatasource(Datasource):
             sampled_file_infos,
         )
 
-        self._default_read_batch_size = _estimate_default_read_batch_size(
-            sampled_file_infos
+        self._default_batch_size = _estimate_reader_batch_size(
+            sampled_file_infos,
+            DataContext.get_current().target_max_block_size
         )
 
         if file_extensions is None:
@@ -372,7 +373,7 @@ class ParquetDatasource(Datasource):
             ) = (
                 self._block_udf,
                 self._to_batches_kwargs,
-                self._default_read_batch_size,
+                self._default_batch_size,
                 self._data_columns,
                 self._partition_columns,
                 self._read_schema,
@@ -618,37 +619,36 @@ def _fetch_file_infos(
             )
         )
 
-    sample_bar = ProgressBar("Parquet Files Sample", len(futures), unit="file")
+    sample_bar = ProgressBar("Parquet dataset sampling", len(futures), unit="file")
     file_infos = sample_bar.fetch_until_complete(futures)
     sample_bar.close()
 
     return file_infos
 
 
-def _estimate_default_read_batch_size(
+def _estimate_reader_batch_size(
     file_infos: List[Optional[_ParquetFileInfo]],
+    target_block_size: Optional[int]
 ) -> Optional[int]:
-    ctx = DataContext.get_current()
-    if ctx.target_max_block_size is None:
+    if target_block_size is None:
         return None
 
-    def compute_batch_size_rows(file_info: Optional[_ParquetFileInfo]) -> int:
-        # 'avg_row_in_mem_bytes' is None if the sampled file was empty and 0 if the data
-        # was all null.
-        if not file_info or not file_info.avg_row_in_mem_bytes:
-            return PARQUET_READER_ROW_BATCH_SIZE
-        else:
-            max_parquet_reader_row_batch_size_bytes = ctx.target_max_block_size // 10
-            return max(
-                1,
-                min(
-                    PARQUET_READER_ROW_BATCH_SIZE,
-                    max_parquet_reader_row_batch_size_bytes
-                    // file_info.avg_row_in_mem_bytes,
-                ),
-            )
+    avg_num_rows_per_block = [
+        target_block_size / fi.avg_row_in_mem_bytes
+        for fi in file_infos
+        if fi is not None and fi.avg_row_in_mem_bytes is not None
+    ]
 
-    return np.mean(list(map(compute_batch_size_rows, file_infos)))
+    if not avg_num_rows_per_block:
+        return DEFAULT_PARQUET_READER_ROW_BATCH_SIZE
+
+    estimated_batch_size: int = max(
+        math.ceil(np.mean(avg_num_rows_per_block)), 1
+    )
+
+    logger.info(f"Estimated parquet reader batch size at {estimated_batch_size} rows")
+
+    return estimated_batch_size
 
 
 def get_parquet_dataset(paths, filesystem, dataset_kwargs):
