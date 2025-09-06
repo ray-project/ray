@@ -469,7 +469,7 @@ def read_fragments(
 
 
 def _read_batches_from(
-    fragment: "ParquetFileFragment",
+    fragment: _ParquetFragment,
     *,
     schema: "pyarrow.Schema",
     data_columns: Optional[List[str]],
@@ -501,7 +501,7 @@ def _read_batches_from(
     )
 
     try:
-        for batch in fragment.to_batches(
+        for batch in fragment.original.to_batches(
             columns=data_columns,
             filter=filter_expr,
             schema=schema,
@@ -553,7 +553,7 @@ def _read_batches_from(
 
 
 def _parse_partition_column_values(
-    fragment: "ParquetFileFragment",
+    fragment: _ParquetFragment,
     partition_columns: Optional[List[str]],
     partitioning: Partitioning,
 ):
