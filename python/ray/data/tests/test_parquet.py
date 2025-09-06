@@ -601,6 +601,32 @@ def test_parquet_read_partitioned_explicit(
     ]
 
 
+def test_proper_projection_for_partitioned_datasets(temp_dir):
+    ds = ray.data.read_parquet("example://iris.parquet").materialize()
+
+    partitioned_ds_path = f"{temp_dir}/partitioned_iris"
+    # Write out partitioned dataset
+    ds.write_parquet(partitioned_ds_path, partition_cols=["variety"])
+
+    partitioned_ds = ray.data.read_parquet(
+        partitioned_ds_path, columns=["variety"]
+    ).materialize()
+
+    print(partitioned_ds.schema())
+
+    assert [
+        "sepal.length",
+        "sepal.width",
+        "petal.length",
+        "petal.width",
+        "variety",
+    ] == ds.take_batch(batch_format="pyarrow").column_names
+
+    assert ["variety"] == partitioned_ds.take_batch(batch_format="pyarrow").column_names
+
+    assert ds.count() == partitioned_ds.count()
+
+
 def test_parquet_read_with_udf(
     ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
 ):
@@ -1982,6 +2008,117 @@ def test_read_parquet_with_none_partitioning_and_columns(tmp_path):
     ds = ray.data.read_parquet(path, partitioning=None, columns=["column"])
 
     assert ds.take_all() == [{"column": 42}]
+
+
+def _create_test_data(num_rows: int) -> dict:
+    return {
+        "int_col": list(range(num_rows)),
+        "float_col": [float(i) for i in range(num_rows)],
+        "str_col": [f"str_{i}" for i in range(num_rows)],
+    }
+
+
+@pytest.mark.parametrize(
+    "batch_size,filter_expr,expected_rows,description",
+    [
+        # No batch size cases
+        (None, "int_col > 500", 499, "No batch size, int > 500"),
+        (None, "int_col < 200", 200, "No batch size, int < 200"),
+        (
+            None,
+            "float_col == 42.0",
+            1,
+            "No batch size, float == 42.0",
+        ),
+        (
+            None,
+            "str_col == 'str_42'",
+            1,
+            "No batch size, str == str_42",
+        ),
+        # Batch size cases
+        (100, "int_col > 500", 499, "Fixed batch size, int > 500"),
+        (200, "int_col < 200", 200, "Fixed batch size, int < 200"),
+        (
+            300,
+            "float_col == 42.0",
+            1,
+            "Fixed batch size, float == 42.0",
+        ),
+        (
+            400,
+            "str_col == 'str_42'",
+            1,
+            "Fixed batch size, str == str_42",
+        ),
+    ],
+)
+def test_read_parquet_with_filter_selectivity(
+    ray_start_regular_shared,
+    tmp_path,
+    batch_size,
+    filter_expr,
+    expected_rows,
+    description,
+):
+    """Test reading parquet files with filter expressions and different batch sizes."""
+    num_rows = 1000
+    data = _create_test_data(num_rows)
+    table = pa.Table.from_pydict(data)
+
+    file_path = os.path.join(tmp_path, "test.parquet")
+    pq.write_table(table, file_path, row_group_size=200)
+
+    if batch_size is not None:
+        ray.data.DataContext.get_current().target_max_block_size = batch_size
+    ds = ray.data.read_parquet(file_path).filter(expr=filter_expr)
+
+    assert ds.count() == expected_rows, (
+        f"{description}: Filter '{filter_expr}' returned {ds.count()} rows, "
+        f"expected {expected_rows}"
+    )
+
+    # Verify schema has expected columns and types
+    assert ds.schema().base_schema == table.schema
+
+
+@pytest.mark.parametrize("batch_size", [None, 100, 200, 10_000])
+@pytest.mark.parametrize(
+    "columns",
+    [
+        # Empty projection
+        [],
+        ["int_col"],
+        ["int_col", "float_col", "str_col"],
+    ],
+)
+def test_read_parquet_with_columns_selectivity(
+    ray_start_regular_shared,
+    tmp_path,
+    batch_size,
+    columns,
+):
+    """Test reading parquet files with different column selections and batch sizes."""
+    num_rows = 1000
+    data = _create_test_data(num_rows)
+    table = pa.Table.from_pydict(data)
+
+    file_path = os.path.join(tmp_path, "test.parquet")
+    pq.write_table(table, file_path, row_group_size=200)
+
+    if batch_size is not None:
+        ray.data.DataContext.get_current().target_max_block_size = batch_size
+    ds = ray.data.read_parquet(file_path, columns=columns)
+
+    assert ds.count() == num_rows, (
+        f"Column selection {columns} with batch_size={batch_size} "
+        f"returned {ds.count()} rows, expected {num_rows}"
+    )
+
+    assert set(ds.schema().names) == set(columns), (
+        f"Column selection {columns} with batch_size={batch_size} "
+        f"returned columns {ds.schema().names}"
+    )
 
 
 if __name__ == "__main__":
