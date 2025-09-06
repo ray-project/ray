@@ -1,5 +1,3 @@
-.. _:: ../doc_code:
-
 .. _train-fault-tolerance:
 
 Handling Failures and Node Preemption

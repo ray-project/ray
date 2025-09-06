@@ -14,7 +14,7 @@ Automatically Recover from Train Worker Failures
 ------------------------------------------------
 
 Ray Train has built-in fault tolerance to recover from worker failures (i.e.
-``RayActorError``\s). When a failure is detected, the workers will be shut
+``RayActorError``s). When a failure is detected, the workers will be shut
 down and new workers will be added in.
 
 The training function will be restarted, but progress from the previous execution can
