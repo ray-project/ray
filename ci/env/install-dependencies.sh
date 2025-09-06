@@ -154,13 +154,13 @@ install_node() {
   if [[ -n "${BUILDKITE-}" ]] ; then
     if [[ "${OSTYPE}" = darwin* ]]; then
       if [[ "$(uname -m)" == "arm64" ]]; then
-        curl -sSL -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+        curl -sSL -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
       else
-        curl -sSL -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
+        curl -sSL -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
       fi
     else
       # https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions
-      curl -sSL https://deb.nodesource.com/setup_14.x | sudo -E bash -
+      curl -sSL https://deb.nodesource.com/setup_16.x | sudo -E bash -
       sudo apt-get install -y nodejs
       return
     fi
@@ -170,7 +170,7 @@ install_node() {
   (
     set +x # suppress set -x since it'll get very noisy here.
     . "${HOME}/.nvm/nvm.sh"
-    NODE_VERSION="14"
+    NODE_VERSION="16"
     nvm install $NODE_VERSION
     nvm use --silent $NODE_VERSION
     npm config set loglevel warn  # make NPM quieter
