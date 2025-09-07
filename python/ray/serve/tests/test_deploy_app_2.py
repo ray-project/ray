@@ -616,6 +616,7 @@ def test_num_replicas_auto_api(serve_instance):
         "downscaling_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
+        "aggregation_function": "mean",
     }
 
 
@@ -668,6 +669,7 @@ def test_num_replicas_auto_basic(serve_instance):
         "downscaling_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
+        "aggregation_function": "mean",
     }
 
     h = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)

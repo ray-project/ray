@@ -129,7 +129,8 @@ def check_num_requests_ge(client, id: DeploymentID, expected: int):
 
 
 class TestAutoscalingMetrics:
-    def test_basic(self, serve_instance):
+    @pytest.mark.parametrize("aggregation_function", ["mean", "max", "min"])
+    def test_basic(self, serve_instance, aggregation_function):
         """Test that request metrics are sent correctly to the controller."""
 
         client = serve_instance
@@ -144,6 +145,7 @@ class TestAutoscalingMetrics:
                 "upscale_delay_s": 0,
                 "downscale_delay_s": 5,
                 "look_back_period_s": 1,
+                "aggregation_function": aggregation_function,
             },
             max_ongoing_requests=25,
             version="v1",
@@ -391,7 +393,10 @@ class TestAutoscalingMetrics:
 
 
 @pytest.mark.parametrize("min_replicas", [1, 2])
-def test_e2e_scale_up_down_basic(min_replicas, serve_instance_with_signal):
+@pytest.mark.parametrize("aggregation_function", ["mean", "max", "min"])
+def test_e2e_scale_up_down_basic(
+    min_replicas, serve_instance_with_signal, aggregation_function
+):
     """Send 100 requests and check that we autoscale up, and then back down."""
 
     client, signal = serve_instance_with_signal
@@ -404,6 +409,7 @@ def test_e2e_scale_up_down_basic(min_replicas, serve_instance_with_signal):
             "look_back_period_s": 0.2,
             "downscale_delay_s": 0.5,
             "upscale_delay_s": 0,
+            "aggregation_function": aggregation_function,
         },
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
@@ -571,7 +577,8 @@ def test_cold_start_time(serve_instance):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_e2e_bursty(serve_instance_with_signal):
+@pytest.mark.parametrize("aggregation_function", ["mean", "max", "min"])
+def test_e2e_bursty(serve_instance_with_signal, aggregation_function):
     """
     Sends 100 requests in bursts. Uses delays for smooth provisioning.
     """
@@ -587,6 +594,7 @@ def test_e2e_bursty(serve_instance_with_signal):
             "look_back_period_s": 0.5,
             "downscale_delay_s": 0.5,
             "upscale_delay_s": 0.5,
+            "aggregation_function": aggregation_function,
         },
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.

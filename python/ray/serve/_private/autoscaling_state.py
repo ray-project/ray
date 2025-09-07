@@ -16,7 +16,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
-from ray.serve._private.metrics_utils import merge_timeseries_dicts
+from ray.serve._private.metrics_utils import aggregate, merge_timeseries_dicts
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -318,9 +318,36 @@ class AutoscalingState:
     def _aggregate_running_requests(
         self, metrics_timeseries_dicts: List[Dict[str, List]]
     ) -> float:
-        """Aggregate and average running requests from timeseries data."""
-        RUNNING_REQUESTS_KEY = "running_requests"
+        """Aggregate and average running requests from timeseries data.
 
+        Let's assume we have the following metrics_timeseries_dicts:
+        [
+            {
+                "running_requests": [
+                    {"timestamp": 1, "value": 10},
+                    {"timestamp": 2, "value": 20},
+                ]
+            }, # replica 1
+            {
+                "running_requests": [
+                    {"timestamp": 1, "value": 10},
+                    {"timestamp": 2, "value": 20},
+                ]
+            }, # replica 2
+        ]
+
+        If we merge the two dictionaries, we will get the following:
+        {
+            "running_requests": [
+                {"timestamp": 1, "value": 20},
+                {"timestamp": 2, "value": 40},
+            ]
+        }
+
+        Then, if we aggregate using the default aggregation function (mean), we will get the following:
+        (20 + 40) / 2 = 30
+
+        """
         if not metrics_timeseries_dicts:
             return 0.0
 
@@ -331,14 +358,9 @@ class AutoscalingState:
             window_s=max(1.0, self._config.metrics_interval_s),
         )
 
-        running_requests_timeseries = aggregated_metrics.get(RUNNING_REQUESTS_KEY, [])
-        if running_requests_timeseries:
-            avg_running = sum(
-                point.value for point in running_requests_timeseries
-            ) / len(running_requests_timeseries)
-            return avg_running
+        metric, _ = aggregate(aggregated_metrics, self._config.aggregation_function)
 
-        return 0.0
+        return metric or 0.0
 
     def _calculate_total_requests_aggregate_mode(self) -> float:
         """Calculate total requests using aggregate metrics mode."""

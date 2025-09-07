@@ -12,7 +12,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 def _calculate_desired_num_replicas(
     autoscaling_config: AutoscalingConfig,
-    total_num_requests: int,
+    total_num_requests: float,
     num_running_replicas: int,
     override_min_replicas: Optional[float] = None,
     override_max_replicas: Optional[float] = None,
@@ -22,9 +22,8 @@ def _calculate_desired_num_replicas(
     Args:
         autoscaling_config: The autoscaling parameters to use for this
             calculation.
-        current_num_ongoing_requests (List[float]): A list of the number of
-            ongoing requests for each replica.  Assumes each entry has already
-            been time-averaged over the desired lookback window.
+        total_num_requests: The total number of requests across all replicas.
+        num_running_replicas: The number of running replicas.
         override_min_replicas: Overrides min_replicas from the config
             when calculating the final number of replicas.
         override_max_replicas: Overrides max_replicas from the config
@@ -97,7 +96,7 @@ def replica_queue_length_autoscaling_policy(
     """
 
     curr_target_num_replicas: int = ctx.target_num_replicas
-    total_num_requests: int = ctx.total_num_requests
+    total_num_requests: float = ctx.total_num_requests
     num_running_replicas: int = ctx.current_num_replicas
     config: Optional[AutoscalingConfig] = ctx.config
     capacity_adjusted_min_replicas: int = ctx.capacity_adjusted_min_replicas
