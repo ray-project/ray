@@ -27,7 +27,7 @@
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
-#include "ray/common/test_util.h"
+#include "ray/common/test_utils.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_event_buffer.h"
@@ -2560,10 +2560,10 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBackpressure) {
   bool signal_called = false;
   ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
       req,
-      /*execution_signal_callback*/ [&signal_called](Status status,
+      /*execution_signal_callback*/ [&signal_called](Status callback_status,
                                                      int64_t num_objects_consumed) {
         signal_called = true;
-        ASSERT_TRUE(status.ok());
+        ASSERT_TRUE(callback_status.ok());
         ASSERT_EQ(num_objects_consumed, 0);
       }));
   ASSERT_TRUE(signal_called);

@@ -40,7 +40,7 @@ from ray.core.generated.events_driver_job_definition_event_pb2 import (
 from ray.core.generated.events_driver_job_execution_event_pb2 import (
     DriverJobExecutionEvent,
 )
-from ray.core.generated.runtime_env_common_pb2 import (
+from ray.core.generated.runtime_environment_pb2 import (
     RuntimeEnvInfo,
     RuntimeEnvUris,
     RuntimeEnvConfig,

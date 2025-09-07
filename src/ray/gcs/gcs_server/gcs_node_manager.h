@@ -21,17 +21,21 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/grpc_service_interfaces.h"
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/rpc/node_manager/raylet_client_pool.h"
+#include "ray/pubsub/gcs_publisher.h"
+#include "ray/raylet_client/raylet_client_pool.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/util/event.h"
+#include "src/ray/protobuf/autoscaler.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/ray_syncer.pb.h"
 
-namespace ray::gcs {
+namespace ray {
+namespace gcs {
 
 class GcsAutoscalerStateManagerTest;
 class GcsStateTest;
@@ -45,8 +49,8 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   ///
   /// \param gcs_publisher GCS message publisher.
   /// \param gcs_table_storage GCS table external storage accessor.
-  GcsNodeManager(GcsPublisher *gcs_publisher,
-                 gcs::GcsTableStorage *gcs_table_storage,
+  GcsNodeManager(pubsub::GcsPublisher *gcs_publisher,
+                 GcsTableStorage *gcs_table_storage,
                  instrumented_io_context &io_context,
                  rpc::RayletClientPool *raylet_client_pool,
                  const ClusterID &cluster_id);
@@ -258,9 +262,9 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   std::vector<std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)>>
       node_removed_listeners_;
   /// A publisher for publishing gcs messages.
-  GcsPublisher *gcs_publisher_;
+  pubsub::GcsPublisher *gcs_publisher_;
   /// Storage for GCS tables.
-  gcs::GcsTableStorage *gcs_table_storage_;
+  GcsTableStorage *gcs_table_storage_;
   instrumented_io_context &io_context_;
   /// Raylet client pool.
   rpc::RayletClientPool *raylet_client_pool_;
@@ -289,4 +293,5 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   friend GcsStateTest;
 };
 
-}  // namespace ray::gcs
+}  // namespace gcs
+}  // namespace ray
