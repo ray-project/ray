@@ -2878,6 +2878,7 @@
 
   team: core
   cluster:
+    byod: {}
     cluster_compute: shuffle/shuffle_compute_multi.yaml
 
   run:
@@ -2949,6 +2950,7 @@
   frequency: nightly
 
   team: core
+  byod: {}
   cluster:
     cluster_compute: shuffle/shuffle_compute_autoscaling.yaml
 
@@ -3115,6 +3117,7 @@
   stable: false
 
   cluster:
+    byod: {}
     cluster_compute: dask_on_ray/dask_on_ray_sort_compute_template.yaml
 
   run:
@@ -3139,6 +3142,7 @@
   team: data
 
   cluster:
+    byod: {}
     cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
 
   run:
@@ -3463,6 +3467,7 @@
   team: core
 
   cluster:
+    byod: {}
     cluster_compute: dask_on_ray/1tb_sort_compute.yaml
 
   run:
