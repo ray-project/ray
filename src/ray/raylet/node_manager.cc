@@ -158,8 +158,7 @@ NodeManager::NodeManager(
       record_metrics_period_ms_(config.record_metrics_period_ms),
       next_resource_seq_no_(0),
       ray_syncer_(io_service_, self_node_id_.Binary()),
-      worker_killing_policy_(
-          CreateWorkerKillingPolicy(RayConfig::instance().worker_killing_policy())),
+      worker_killing_policy_(CreateWorkerKillingPolicy()),
       memory_monitor_(std::make_unique<MemoryMonitor>(
           io_service,
           RayConfig::instance().memory_usage_threshold(),

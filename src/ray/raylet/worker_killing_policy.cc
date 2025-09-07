@@ -25,38 +25,12 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/raylet/worker.h"
-#include "ray/raylet/worker_killing_policy_fifo.h"
 #include "ray/raylet/worker_killing_policy_group_by_owner.h"
 #include "ray/raylet/worker_pool.h"
 
 namespace ray {
 
 namespace raylet {
-
-std::shared_ptr<WorkerInterface> LIFOWorkerKillingPolicy::SelectWorkerToKill(
-    const std::vector<std::shared_ptr<WorkerInterface>> &workers,
-    const MemorySnapshot &system_memory) const {
-  if (workers.empty()) {
-    RAY_LOG_EVERY_MS(INFO, 5000) << "Worker list is empty. Nothing can be killed";
-    return nullptr;
-  }
-
-  std::vector<std::shared_ptr<WorkerInterface>> sorted = workers;
-
-  std::sort(sorted.begin(),
-            sorted.end(),
-            [](std::shared_ptr<WorkerInterface> const &left,
-               std::shared_ptr<WorkerInterface> const &right) -> bool {
-              // Sort by assigned time in descending order.
-              return left->GetGrantedLeaseTime() > right->GetGrantedLeaseTime();
-            });
-
-  static const int32_t max_to_print = 10;
-  RAY_LOG(INFO) << "The top 10 workers to be killed based on the worker killing policy:\n"
-                << WorkersDebugString(sorted, max_to_print, system_memory);
-
-  return sorted.front();
-}
 
 std::string WorkerKillingPolicy::WorkersDebugString(
     const std::vector<std::shared_ptr<WorkerInterface>> &workers,
@@ -88,22 +62,9 @@ std::string WorkerKillingPolicy::WorkersDebugString(
   return result.str();
 }
 
-std::shared_ptr<WorkerKillingPolicy> CreateWorkerKillingPolicy(
-    const std::string &killing_policy_str) {
-  if (killing_policy_str == kLifoPolicy) {
-    RAY_LOG(INFO) << "Running LIFO policy.";
-    return std::make_shared<LIFOWorkerKillingPolicy>();
-  } else if (killing_policy_str == kGroupByOwner) {
-    RAY_LOG(INFO) << "Running GroupByOwner policy.";
-    return std::make_shared<GroupByOwnerIdWorkerKillingPolicy>();
-  } else if (killing_policy_str == kFifoPolicy) {
-    RAY_LOG(INFO) << "Running FIFO policy.";
-    return std::make_shared<FIFOWorkerKillingPolicy>();
-  } else {
-    RAY_LOG(ERROR) << killing_policy_str
-                   << " is an invalid killing policy. Defaulting to LIFO policy.";
-    return std::make_shared<LIFOWorkerKillingPolicy>();
-  }
+std::shared_ptr<WorkerKillingPolicy> CreateWorkerKillingPolicy() {
+  RAY_LOG(INFO) << "Running GroupByOwner policy.";
+  return std::make_shared<GroupByOwnerIdWorkerKillingPolicy>();
 }
 
 }  // namespace raylet
