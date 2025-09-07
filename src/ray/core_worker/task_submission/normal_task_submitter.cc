@@ -32,28 +32,19 @@ void NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_CHECK(task_spec.IsNormalTask());
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
 
-  resolver_.ResolveDependencies(task_spec, [this, task_spec](Status status) mutable {
-    task_manager_.MarkDependenciesResolved(task_spec.TaskId());
-    if (!status.ok()) {
-      // TODO(https://github.com/ray-project/ray/issues/54871): There is a potential
-      // logical race conditions here where the task is cancelled right before the
-      // task is retried. Task cancellation might remove the task from the submissible
-      // task queue, while the task retry here expects that the task must be in the
-      // submissible task queue.
-      RAY_LOG(WARNING) << "Resolving task dependencies failed " << status.ToString();
-      bool will_retry = task_manager_.FailOrRetryPendingTask(
-          task_spec.TaskId(), rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status);
-      if (!will_retry) {
-        absl::MutexLock lock(&mu_);
-        cancelled_tasks_.erase(task_spec.TaskId());
-      }
-      return;
-    }
+  auto on_dependencies_resolved = [this, task_spec](const Status &status) mutable {
     RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
+    task_manager_.MarkDependenciesResolved(task_spec.TaskId());
 
     absl::MutexLock lock(&mu_);
     if (cancelled_tasks_.erase(task_spec.TaskId()) > 0) {
-      task_manager_.FailPendingTask(task_spec.TaskId(), rpc::ErrorType::TASK_CANCELLED);
+      return;
+    }
+
+    if (!status.ok()) {
+      RAY_LOG(WARNING) << "Resolving task dependencies failed " << status.ToString();
+      task_manager_.FailOrRetryPendingTask(
+          task_spec.TaskId(), rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status);
       return;
     }
 
@@ -70,8 +61,7 @@ void NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     scheduling_key_entry.task_queue.push_back(std::move(task_spec));
 
     if (!scheduling_key_entry.AllWorkersBusy()) {
-      // There are idle workers, so we don't need more
-      // workers.
+      // There are idle workers, so we don't need more workers.
       for (const auto &active_worker_addr : scheduling_key_entry.active_workers) {
         auto iter = worker_to_lease_entry_.find(active_worker_addr);
         RAY_CHECK(iter != worker_to_lease_entry_.end());
@@ -88,7 +78,27 @@ void NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       }
     }
     RequestNewWorkerIfNeeded(scheduling_key);
-  });
+  };
+
+  io_context_.post(
+      [this,
+       task_spec,
+       on_dependencies_resolved = std::move(on_dependencies_resolved)]() mutable {
+        absl::MutexLock mutex(&mu_);
+        if (cancelled_tasks_.erase(task_spec.TaskId()) > 0) {
+          return;
+        }
+        resolver_.ResolveDependencies(
+            task_spec,
+            [this, on_dependencies_resolved = std::move(on_dependencies_resolved)](
+                const Status &status) mutable {
+              this->io_context_.post(
+                  [on_dependencies_resolved = std::move(on_dependencies_resolved),
+                   status]() mutable { on_dependencies_resolved(status); },
+                  "NormalTaskSubmitter.ResolveDependenciesCallback");
+            });
+      },
+      "NormalTaskSubmitter.SubmitTask");
 }
 
 void NormalTaskSubmitter::AddWorkerLeaseClient(

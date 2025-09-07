@@ -96,7 +96,8 @@ class NormalTaskSubmitter {
       const JobID &job_id,
       std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter,
       const TensorTransportGetter &tensor_transport_getter,
-      boost::asio::steady_timer cancel_timer)
+      boost::asio::steady_timer cancel_timer,
+      instrumented_io_context &io_context)
       : rpc_address_(std::move(rpc_address)),
         local_raylet_client_(std::move(local_raylet_client)),
         raylet_client_pool_(std::move(raylet_client_pool)),
@@ -110,7 +111,8 @@ class NormalTaskSubmitter {
         core_worker_client_pool_(std::move(core_worker_client_pool)),
         job_id_(job_id),
         lease_request_rate_limiter_(std::move(lease_request_rate_limiter)),
-        cancel_retry_timer_(std::move(cancel_timer)) {}
+        cancel_retry_timer_(std::move(cancel_timer)),
+        io_context_(io_context) {}
 
   /// Schedule a task for direct submission to a worker.
   void SubmitTask(TaskSpecification task_spec);
@@ -363,6 +365,8 @@ class NormalTaskSubmitter {
 
   // Retries cancelation requests if they were not successful.
   boost::asio::steady_timer cancel_retry_timer_ ABSL_GUARDED_BY(mu_);
+
+  instrumented_io_context &io_context_;
 };
 
 }  // namespace core

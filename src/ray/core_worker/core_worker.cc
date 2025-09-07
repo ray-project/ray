@@ -1993,12 +1993,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   } else {
     returned_refs = task_manager_->AddPendingTask(
         task_spec.CallerAddress(), task_spec, CurrentCallSite(), max_retries);
-
-    io_service_.post(
-        [this, task_spec = std::move(task_spec)]() mutable {
-          normal_task_submitter_->SubmitTask(std::move(task_spec));
-        },
-        "CoreWorker.SubmitTask");
+    normal_task_submitter_->SubmitTask(std::move(task_spec));
   }
   return returned_refs;
 }

@@ -197,6 +197,12 @@ void ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   if (task_queued) {
     {
       absl::MutexLock resolver_lock(&resolver_mu_);
+      absl::MutexLock lock(&mu_);
+      // Need to check this because cancel could arrive right before we insert into
+      // pending_dependency_resolution_ on a retry.
+      if (!client_queues_[actor_id].actor_submit_queue_->Contains(send_pos)) {
+        return;
+      };
       pending_dependency_resolution_.insert(task_id);
     }
     io_service_.post(
