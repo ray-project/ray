@@ -21,6 +21,7 @@ from ray.serve._private.constants import (
     METRICS_PUSHER_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
+from ray.serve.config import AggregationFunction
 
 QUEUED_REQUESTS_KEY = "queued"
 
@@ -127,8 +128,12 @@ class MetricsPusher:
 class InMemoryMetricsStore:
     """A very simple, in memory time series database"""
 
-    def __init__(self):
-        self.data: DefaultDict[Hashable, List[TimeStampedValue]] = defaultdict(list)
+    def __init__(
+        self, data: Optional[DefaultDict[Hashable, List[TimeStampedValue]]] = None
+    ):
+        self.data: DefaultDict[Hashable, List[TimeStampedValue]] = data or defaultdict(
+            list
+        )
 
     def add_metrics_point(self, data_points: Dict[Hashable, float], timestamp: float):
         """Push new data points to the store.
@@ -305,6 +310,21 @@ class InMemoryMetricsStore:
             Returns (None, 0) if no valid keys have data.
         """
         return self._aggregate_reduce(keys, statistics.mean)
+
+
+def aggregate(
+    data: DefaultDict[Hashable, List[TimeStampedValue]],
+    aggregation_function: AggregationFunction,
+) -> Tuple[Optional[float], int]:
+    """Aggregate the entire set of timeseries values across the specified keys."""
+    if aggregation_function == AggregationFunction.MEAN:
+        return InMemoryMetricsStore(data).aggregate_avg(list(data.keys()))
+    elif aggregation_function == AggregationFunction.MAX:
+        return InMemoryMetricsStore(data).aggregate_max(list(data.keys()))
+    elif aggregation_function == AggregationFunction.MIN:
+        return InMemoryMetricsStore(data).aggregate_min(list(data.keys()))
+    else:
+        raise ValueError(f"Invalid aggregation function: {aggregation_function}")
 
 
 def _bucket_latest_by_window(
