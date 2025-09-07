@@ -6,6 +6,7 @@ from ray.serve._private.constants_utils import (
     get_env_float_non_negative,
     get_env_float_positive,
     get_env_int,
+    get_env_int_non_negative,
     get_env_int_positive,
     get_env_str,
     parse_latency_buckets,
@@ -244,14 +245,14 @@ SERVE_LOG_UNWANTED_ATTRS = {
     "skip_context_filter",
 }
 
-RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S = get_env_int(
+RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S = get_env_int_non_negative(
     "RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S", 0
 )
 
 RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
-    get_env_float(
+    get_env_float_non_negative(
         "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S",
-        get_env_float("SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0.0),
+        get_env_float_non_negative("SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0.0),
     )
     or None
 )
@@ -307,11 +308,11 @@ RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S = get_env_float(
 
 # Serve multiplexed matching timeout.
 # This is the timeout for the matching process of multiplexed requests. To avoid
-# thundering herd problem, the timeout value will be randomed between this value
+# thundering herd problem, the timeout value will be randomized between this value
 # and this value * 2. The unit is second.
 # If the matching process takes longer than the timeout, the request will be
 # fallen to the default routing strategy.
-RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S = get_env_float(
+RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S = get_env_float_non_negative(
     "RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S", 1.0
 )
 
@@ -346,7 +347,7 @@ RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S = get_env_float(
 )
 
 # Length of time to respect entries in the queue length cache when routing requests.
-RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S = get_env_float(
+RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S = get_env_float_non_negative(
     "RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S", 10.0
 )
 
@@ -374,7 +375,7 @@ RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE = get_env_bool(
     "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", "1"
 )
 
-RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S = get_env_float(
+RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S = get_env_float_non_negative(
     "RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S", 10.0
 )
 
