@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "fakes/ray/object_manager/plasma/client.h"
 #include "fakes/ray/pubsub/subscriber.h"
 #include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "gmock/gmock.h"
@@ -93,94 +94,6 @@ class FakeLocalObjectManager : public LocalObjectManagerInterface {
 
  private:
   std::shared_ptr<absl::flat_hash_set<ObjectID>> objects_pending_deletion_;
-};
-
-class FakePlasmaClient : public plasma::PlasmaClientInterface {
- public:
-  Status Connect(const std::string &store_socket_name,
-                 const std::string &manager_socket_name = "",
-                 int num_retries = -1) override {
-    return Status::OK();
-  };
-
-  Status CreateAndSpillIfNeeded(const ObjectID &object_id,
-                                const ray::rpc::Address &owner_address,
-                                bool is_mutable,
-                                int64_t data_size,
-                                const uint8_t *metadata,
-                                int64_t metadata_size,
-                                std::shared_ptr<Buffer> *data,
-                                plasma::flatbuf::ObjectSource source,
-                                int device_num = 0) override {
-    return TryCreateImmediately(
-        object_id, owner_address, data_size, metadata, metadata_size, data, source);
-  }
-
-  Status TryCreateImmediately(const ObjectID &object_id,
-                              const ray::rpc::Address &owner_address,
-                              int64_t data_size,
-                              const uint8_t *metadata,
-                              int64_t metadata_size,
-                              std::shared_ptr<Buffer> *data,
-                              plasma::flatbuf::ObjectSource source,
-                              int device_num = 0) override {
-    objects_ids_in_plasma_.emplace(object_id);
-    objects_in_plasma_.emplace(
-        object_id, std::make_pair(std::vector<uint8_t>{}, std::vector<uint8_t>{}));
-    return Status::OK();
-  }
-
-  Status Get(const std::vector<ObjectID> &object_ids,
-             int64_t timeout_ms,
-             std::vector<plasma::ObjectBuffer> *object_buffers) override {
-    for (const auto &id : object_ids) {
-      auto &buffers = objects_in_plasma_[id];
-      plasma::ObjectBuffer shm_buffer{std::make_shared<SharedMemoryBuffer>(
-                                          buffers.first.data(), buffers.first.size()),
-                                      std::make_shared<SharedMemoryBuffer>(
-                                          buffers.second.data(), buffers.second.size())};
-      object_buffers->emplace_back(shm_buffer);
-    }
-    return Status::OK();
-  }
-
-  Status GetExperimentalMutableObject(
-      const ObjectID &object_id,
-      std::unique_ptr<plasma::MutableObject> *mutable_object) override {
-    return Status::OK();
-  }
-
-  Status Release(const ObjectID &object_id) override {
-    objects_ids_in_plasma_.erase(object_id);
-    return Status::OK();
-  }
-
-  Status Contains(const ObjectID &object_id, bool *has_object) override {
-    *has_object = objects_ids_in_plasma_.find(object_id) != objects_ids_in_plasma_.end();
-    return Status::OK();
-  }
-
-  Status Abort(const ObjectID &object_id) override { return Status::OK(); }
-
-  Status Seal(const ObjectID &object_id) override { return Status::OK(); }
-
-  Status Delete(const std::vector<ObjectID> &object_ids) override {
-    for (const auto &id : object_ids) {
-      objects_ids_in_plasma_.erase(id);
-    }
-    return Status::OK();
-  }
-
-  Status Disconnect() override { return Status::OK(); };
-
-  std::string DebugString() { return ""; }
-
-  int64_t store_capacity() { return 1; }
-
- private:
-  absl::flat_hash_set<ObjectID> objects_ids_in_plasma_;
-  absl::flat_hash_map<ObjectID, std::pair<std::vector<uint8_t>, std::vector<uint8_t>>>
-      objects_in_plasma_;
 };
 
 LeaseSpecification BuildLeaseSpec(

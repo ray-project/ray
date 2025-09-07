@@ -179,6 +179,7 @@ ray_cc_test(
         ":util",
         "//:ray_fakes",
         "//:ray_mock",
+        "//src/fakes/ray/object_manager/plasma:fake_plasma_client",
         "//src/fakes/ray/rpc/raylet:fake_raylet_client",
         "//src/ray/common:lease",
         "//src/ray/common:ray_object",
