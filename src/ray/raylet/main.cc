@@ -35,7 +35,7 @@
 #include "ray/raylet/local_object_manager.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/raylet.h"
-#include "ray/raylet_client/raylet_client.h"
+#include "ray/rpc/raylet/raylet_client.h"
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/stats/stats.h"
 #include "ray/util/cmd_line_utils.h"
@@ -563,7 +563,7 @@ int main(int argc, char *argv[]) {
 
     raylet_client_pool =
         std::make_unique<ray::rpc::RayletClientPool>([&](const ray::rpc::Address &addr) {
-          return std::make_shared<ray::raylet::RayletClient>(
+          return std::make_shared<ray::rpc::RayletClient>(
               addr,
               *client_call_manager,
               ray::rpc::RayletClientPool::GetDefaultUnavailableTimeoutCallback(
