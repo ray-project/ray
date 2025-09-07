@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/raylet_client/raylet_client_pool.h"
+#include "ray/rpc/raylet/raylet_client_pool.h"
 
 #include <memory>
 #include <string>

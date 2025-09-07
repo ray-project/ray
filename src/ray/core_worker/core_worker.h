@@ -52,7 +52,7 @@
 #include "ray/ipc/raylet_ipc_client_interface.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
-#include "ray/raylet_client/raylet_client_interface.h"
+#include "ray/rpc/raylet/raylet_client_interface.h"
 #include "ray/util/process.h"
 #include "ray/util/shared_lru.h"
 #include "src/ray/protobuf/pubsub.pb.h"
