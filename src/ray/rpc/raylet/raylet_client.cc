@@ -59,15 +59,15 @@ void RayletClient::RequestWorkerLease(
   request.set_backlog_size(backlog_size);
   request.set_is_selected_based_on_locality(is_selected_based_on_locality);
   INVOKE_RETRYABLE_RPC_CALL(
-    retryable_grpc_client_,
-    NodeManagerService,
-    RequestWorkerLease,
-    request,
-    [](const Status &status, rpc::RequestWorkerLeaseReply &&reply /*unused*/) {
-      RAY_LOG_IF_ERROR(INFO, status) << "Error requesting worker lease: " << status;
-    },
-    grpc_client_,
-    /*method_timeout_ms*/ -1);
+      retryable_grpc_client_,
+      NodeManagerService,
+      RequestWorkerLease,
+      request,
+      [](const Status &status, rpc::RequestWorkerLeaseReply &&reply /*unused*/) {
+        RAY_LOG_IF_ERROR(INFO, status) << "Error requesting worker lease: " << status;
+      },
+      grpc_client_,
+      /*method_timeout_ms*/ -1);
 }
 
 void RayletClient::PrestartWorkers(
