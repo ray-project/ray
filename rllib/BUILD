@@ -5017,9 +5017,9 @@ py_test(
 	],
 	main = "examples/multi_agent/pettingzoo_shared_value_function.py",
 	tags = [
-		"team:rllib",
-		"exclusive",
 		"examples",
+		"exclusive",
+		"team:rllib",
 	],
 )
 

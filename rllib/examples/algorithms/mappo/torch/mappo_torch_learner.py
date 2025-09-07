@@ -1,4 +1,3 @@
-# @title MAPPOTorchLearner
 import logging
 from typing import Any, Dict
 from collections.abc import Callable
@@ -39,6 +38,10 @@ logger = logging.getLogger(__name__)
 
 
 class MAPPOTorchLearner(MAPPOLearner, TorchLearner):
+    """
+    Implements MAPPO in Torch, on top of a MAPPOLearner.
+    """
+
     def get_pmm(self, batch: Dict[str, Any]) -> Callable:
         """Gets the possibly_masked_mean function"""
         if Columns.LOSS_MASK in batch:
@@ -51,10 +54,6 @@ class MAPPOTorchLearner(MAPPOLearner, TorchLearner):
         else:
             possibly_masked_mean = torch.mean
         return possibly_masked_mean
-
-    """
-      Implements MAPPO in Torch, on top of a MAPPOLearner.
-    """
 
     def compute_loss_for_critic(self, batch: Dict[str, Any]):
         """Computes the loss for the shared critic module."""
@@ -73,8 +72,8 @@ class MAPPOTorchLearner(MAPPOLearner, TorchLearner):
                 VF_LOSS_KEY: mean_vf_loss,
                 LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY: mean_vf_unclipped_loss,
                 LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY: explained_variance(
-                    vf_targets, vf_preds
-                ),
+                    vf_targets.reshape(-1), vf_preds.reshape(-1)
+                ),  # Flatten multi-agent value predictions
             },
             key=SHARED_CRITIC_ID,
             window=1,
@@ -95,10 +94,14 @@ class MAPPOTorchLearner(MAPPOLearner, TorchLearner):
         Returns:
             A dictionary mapping module IDs to individual loss terms.
         """
-        loss_per_module = {SHARED_CRITIC_ID: 0}
+        loss_per_module = {}
+        # Optimize the critic
+        loss_per_module[SHARED_CRITIC_ID] = self.compute_loss_for_critic(
+            batch[SHARED_CRITIC_ID]
+        )
         # Calculate loss for agent policies
         for module_id in fwd_out:
-            if module_id == SHARED_CRITIC_ID:  # Computed for each module
+            if module_id == SHARED_CRITIC_ID:  # Computed above
                 continue
             module_batch = batch[module_id]
             module_fwd_out = fwd_out[module_id]
@@ -119,10 +122,6 @@ class MAPPOTorchLearner(MAPPOLearner, TorchLearner):
                     config=self.config.get_config_for_module(module_id),
                     batch=module_batch,
                     fwd_out=module_fwd_out,
-                )
-                # Optimize the critic
-                loss_per_module[SHARED_CRITIC_ID] += self.compute_loss_for_critic(
-                    module_batch
                 )
             loss_per_module[module_id] = loss
         return loss_per_module

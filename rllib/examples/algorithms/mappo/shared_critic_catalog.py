@@ -30,6 +30,14 @@ class SharedCriticCatalog(Catalog):
         )
         # We only want one encoder, so we use the base encoder config.
         self.encoder_config = self._encoder_config
+        # Adjust the input and output dimensions of the encoder.
+        observation_spaces = self._model_config_dict["observation_spaces"]
+        obs_size = 0
+        self.encoder_config.output_dim = len(observation_spaces)
+        for agent, obs in observation_spaces.items():
+            obs_size += obs.shape[0]  # Assume 1D observations
+        self.encoder_config.input_dims = (obs_size,)
+        # Value head architecture
         self.vf_head_hiddens = self._model_config_dict["head_fcnet_hiddens"]
         self.vf_head_activation = self._model_config_dict["head_fcnet_activation"]
         self.vf_head_config = MLPHeadConfig(
@@ -37,7 +45,7 @@ class SharedCriticCatalog(Catalog):
             hidden_layer_dims=self.vf_head_hiddens,
             hidden_layer_activation=self.vf_head_activation,
             output_layer_activation="linear",
-            output_layer_dim=1,
+            output_layer_dim=len(observation_spaces),  # 1 value pred. per agent
         )
 
     @override(Catalog)

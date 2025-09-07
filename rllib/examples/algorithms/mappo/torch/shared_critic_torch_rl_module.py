@@ -35,7 +35,6 @@ class SharedCriticTorchRLModule(TorchRLModule, SharedCriticRLModule):
     ) -> TensorType:
         if embeddings is None:
             embeddings = self.encoder(batch)[ENCODER_OUT]
-        # Value head.
         vf_out = self.vf(embeddings)
-        # Squeeze out last dimension (single node value head).
-        return vf_out.squeeze(-1)
+        # Don't squeeze out last dimension (multi node value head).
+        return vf_out

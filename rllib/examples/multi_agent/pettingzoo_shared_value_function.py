@@ -26,19 +26,19 @@ For logging to your WandB account, use:
 
 Results to expect
 -----------------
-The above options can reach a combined reward of 0 or more after about 500k-1M env timesteps. Keep in mind, though, that due to the separate learned policies in general,  one agent's gain (in per-agent reward) might cause the other agent's reward to decrease at the same time. However, over time, both agents should simply improve. For reasons similar to those described in pettingzoo_parameter_sharing.py, learning may take slightly longer than in fully-independent settings, as agents are less inclined to specialize and thereby balance out one anothers' mistakes.
+The above options will typically reach a combined reward of 0 or more before 500k env timesteps. Keep in mind, though, that due to the separate learned policies in general, one agent's gain (in per-agent reward) might cause the other agent's reward to decrease at the same time. However, over time, both agents should simply improve, with the shared critic stabilizing this process significantly.
 
-+---------------------+------------+--------------------+--------+------------------+
-| Trial name          | status     | loc                |   iter |   total time (s) |
-|---------------------+------------+--------------------+--------+------------------+
-| PPO_env_c90f4_00000 | TERMINATED | 172.29.87.208:6322 |    101 |          1269.24 |
-+---------------------+------------+--------------------+--------+------------------+
++-----------------------+------------+--------------------+--------+------------------+--------+-------------------+--------------------+--------------------+
+| Trial name            | status     | loc                |   iter |   total time (s) |     ts |   combined return |   return pursuer_0 |   return pursuer_1 |
+|-----------------------+------------+--------------------+--------+------------------+--------+-------------------+--------------------+--------------------|
+| MAPPO_env_39b0c_00000 | TERMINATED | 172.29.87.208:9993 |    148 |          2690.21 | 592000 |           2.06999 |            38.2254 |           -36.1554 |
++-----------------------+------------+--------------------+--------+------------------+--------+-------------------+--------------------+--------------------+
 
---------+-------------------+--------------------+--------------------+
-     ts |   combined return |   return pursuer_0 |   return pursuer_1 |
---------+-------------------+--------------------+--------------------|
- 404000 |           1.31496 |            48.0908 |           -46.7758 |
---------+-------------------+--------------------+--------------------+
++--------+-------------------+--------------------+--------------------+
+|     ts |   combined return |   return pursuer_0 |   return pursuer_1 |
++--------+-------------------+--------------------+--------------------|
+| 592000 |           2.06999 |            38.2254 |           -36.1554 |
++--------+-------------------+--------------------+--------------------+
 
 Note that the two agents (`pursuer_0` and `pursuer_1`) are optimized on the exact same
 objective and thus differences in the rewards can be attributed to weight initialization
@@ -49,7 +49,7 @@ from pettingzoo.sisl import waterworld_v4
 
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
+from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -77,11 +77,10 @@ if __name__ == "__main__":
 
     assert args.num_agents > 0, "Must set --num-agents > 0 when running this script!"
 
-    # Here, we use the "Agent Environment Cycle" (AEC) PettingZoo environment type.
-    # For a "Parallel" environment example, see the rock paper scissors examples
-    # in this same repository folder.
+    # Here, we use the "Parallel" PettingZoo environment type.
+    # This allows MAPPO's global observations to be constructed more neatly.
     def get_env(_):
-        return PettingZooEnv(waterworld_v4.env())
+        return ParallelPettingZooEnv(waterworld_v4.parallel_env())
 
     register_env("env", get_env)
 
@@ -93,17 +92,17 @@ if __name__ == "__main__":
     specs = {p: RLModuleSpec() for p in policies}
     specs[SHARED_CRITIC_ID] = RLModuleSpec(
         module_class=SharedCriticTorchRLModule,
-        observation_space=env_instantiated.observation_spaces[policies[0]],
-        action_space=env_instantiated.action_spaces[policies[0]],
+        observation_space=env_instantiated.observation_space[policies[0]],
+        action_space=env_instantiated.action_space[policies[0]],
         learner_only=True,  # Only build on learner
-        model_config={},
+        model_config={"observation_spaces": env_instantiated.observation_space},
     )
 
     base_config = (
         MAPPOConfig()
         .environment("env")
         .multi_agent(
-            policies=policies,
+            policies=policies + [SHARED_CRITIC_ID],
             # Exact 1:1 mapping from AgentID to ModuleID.
             policy_mapping_fn=(lambda aid, *args, **kwargs: aid),
         )

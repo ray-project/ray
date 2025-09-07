@@ -1,6 +1,7 @@
 import logging
 from typing import Any, Dict, List, Optional, Type, Union, TYPE_CHECKING
 
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.utils.annotations import override
@@ -24,6 +25,13 @@ LEARNER_RESULTS_CURR_KL_COEFF_KEY = "curr_kl_coeff"
 LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY = "curr_entropy_coeff"
 
 
+class MAPPO(PPO):
+    @classmethod
+    @override(Algorithm)
+    def get_default_config(cls) -> AlgorithmConfig:
+        return MAPPOConfig()
+
+
 class MAPPOConfig(AlgorithmConfig):  # AlgorithmConfig -> PPOConfig -> MAPPO
     """Defines a configuration class from which a MAPPO Algorithm can be built."""
 
@@ -39,7 +47,7 @@ class MAPPOConfig(AlgorithmConfig):  # AlgorithmConfig -> PPOConfig -> MAPPO
             # Add constructor kwargs here (if any).
         }
 
-        super().__init__(algo_class=algo_class or PPO)
+        super().__init__(algo_class=algo_class or MAPPO)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -57,6 +65,7 @@ class MAPPOConfig(AlgorithmConfig):  # AlgorithmConfig -> PPOConfig -> MAPPO
         self.kl_target = 0.01
         self.entropy_coeff = 0.0
         self.clip_param = 0.3
+        self.vf_clip_param = 10.0
         self.grad_clip = None
 
         # Override some of AlgorithmConfig's default values with MAPPO-specific values.
@@ -87,6 +96,7 @@ class MAPPOConfig(AlgorithmConfig):  # AlgorithmConfig -> PPOConfig -> MAPPO
         entropy_coeff: Optional[float] = NotProvided,
         entropy_coeff_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
         clip_param: Optional[float] = NotProvided,
+        vf_clip_param: Optional[float] = NotProvided,
         grad_clip: Optional[float] = NotProvided,
         **kwargs,
     ) -> "MAPPOConfig":
@@ -104,6 +114,8 @@ class MAPPOConfig(AlgorithmConfig):  # AlgorithmConfig -> PPOConfig -> MAPPO
             self.entropy_coeff = entropy_coeff
         if clip_param is not NotProvided:
             self.clip_param = clip_param
+        if vf_clip_param is not NotProvided:
+            self.vf_clip_param = vf_clip_param
         if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
         return self
@@ -145,22 +157,6 @@ class MAPPOConfig(AlgorithmConfig):  # AlgorithmConfig -> PPOConfig -> MAPPO
                     f" will be split into {mbs} chunks, each of which is iterated over "
                     f"(used for updating the policy) {self.num_epochs} times."
                 )
-
-        # Episodes may only be truncated (and passed into PPO's
-        # `postprocessing_fn`), iff generalized advantage estimation is used
-        # (value function estimate at end of truncated episode to estimate
-        # remaining value).
-        if (
-            not self.in_evaluation
-            and self.batch_mode == "truncate_episodes"
-            and not self.use_gae
-        ):
-            self._value_error(
-                "Episode truncation is not supported without a value "
-                "function (to estimate the return at the end of the truncated"
-                " trajectory). Consider setting "
-                "batch_mode=complete_episodes."
-            )
         if isinstance(self.entropy_coeff, float) and self.entropy_coeff < 0.0:
             self._value_error("`entropy_coeff` must be >= 0.0")
 
