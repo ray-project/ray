@@ -156,10 +156,10 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "worker_killing_policy_retriable_fifo_test",
+    name = "worker_killing_policy_fifo_test",
     size = "small",
     srcs = [
-        "worker_killing_policy_retriable_fifo_test.cc",
+        "worker_killing_policy_fifo_test.cc",
     ],
     tags = ["team:core"],
     deps = [

@@ -232,7 +232,8 @@ class NormalTaskSubmitter {
       const TaskID &task_id,
       const rpc::Address &addr,
       const Status &get_worker_failure_cause_reply_status,
-      const rpc::GetWorkerFailureCauseReply &get_worker_failure_cause_reply);
+      const rpc::GetWorkerFailureCauseReply &get_worker_failure_cause_reply,
+      bool should_retry);
 
   /// Address of our RPC server.
   rpc::Address rpc_address_;

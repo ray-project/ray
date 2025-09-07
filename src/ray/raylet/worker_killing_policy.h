@@ -31,9 +31,9 @@ namespace ray {
 
 namespace raylet {
 
-constexpr char kLifoPolicy[] = "retriable_lifo";
+constexpr char kLifoPolicy[] = "lifo";
 constexpr char kGroupByOwner[] = "group_by_owner";
-constexpr char kFifoPolicy[] = "retriable_fifo";
+constexpr char kFifoPolicy[] = "fifo";
 
 /// Provides the policy on which worker to prioritize killing.
 class WorkerKillingPolicy {
@@ -43,12 +43,12 @@ class WorkerKillingPolicy {
   /// \param workers the list of candidate workers.
   /// \param system_memory snapshot of memory usage.
   ///
-  /// \return the worker to kill and whether the task on the worker should be retried.
-  virtual const std::pair<std::shared_ptr<WorkerInterface>, bool> SelectWorkerToKill(
+  /// \return the worker to kill.
+  virtual std::shared_ptr<WorkerInterface> SelectWorkerToKill(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
       const MemorySnapshot &system_memory) const = 0;
 
-  virtual ~WorkerKillingPolicy() {}
+  virtual ~WorkerKillingPolicy() = default;
 
  protected:
   /// Returns debug string of the workers.
@@ -66,16 +66,16 @@ class WorkerKillingPolicy {
 };
 
 /// Prefers killing retriable workers over non-retriable ones, in LIFO order.
-class RetriableLIFOWorkerKillingPolicy : public WorkerKillingPolicy {
+class LIFOWorkerKillingPolicy : public WorkerKillingPolicy {
  public:
-  RetriableLIFOWorkerKillingPolicy();
-  const std::pair<std::shared_ptr<WorkerInterface>, bool> SelectWorkerToKill(
+  LIFOWorkerKillingPolicy() = default;
+  std::shared_ptr<WorkerInterface> SelectWorkerToKill(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
-      const MemorySnapshot &system_memory) const;
+      const MemorySnapshot &system_memory) const override;
 };
 
 std::shared_ptr<WorkerKillingPolicy> CreateWorkerKillingPolicy(
-    std::string killing_policy_str);
+    const std::string &killing_policy_str);
 
 }  // namespace raylet
 

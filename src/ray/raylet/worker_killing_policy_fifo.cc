@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/raylet/worker_killing_policy_retriable_fifo.h"
+#include "ray/raylet/worker_killing_policy_fifo.h"
 
 #include <gtest/gtest_prod.h>
 
@@ -35,15 +35,12 @@ namespace ray {
 
 namespace raylet {
 
-RetriableFIFOWorkerKillingPolicy::RetriableFIFOWorkerKillingPolicy() {}
-
-const std::pair<std::shared_ptr<WorkerInterface>, bool>
-RetriableFIFOWorkerKillingPolicy::SelectWorkerToKill(
+std::shared_ptr<WorkerInterface> FIFOWorkerKillingPolicy::SelectWorkerToKill(
     const std::vector<std::shared_ptr<WorkerInterface>> &workers,
     const MemorySnapshot &system_memory) const {
   if (workers.empty()) {
     RAY_LOG_EVERY_MS(INFO, 5000) << "Worker list is empty. Nothing can be killed";
-    return std::make_pair(nullptr, /*should retry*/ false);
+    return nullptr;
   }
 
   std::vector<std::shared_ptr<WorkerInterface>> sorted = workers;
@@ -52,15 +49,8 @@ RetriableFIFOWorkerKillingPolicy::SelectWorkerToKill(
             sorted.end(),
             [](std::shared_ptr<WorkerInterface> const &left,
                std::shared_ptr<WorkerInterface> const &right) -> bool {
-              // First sort by retriable leases and then by lease time in ascending order.
-              int left_retriable =
-                  left->GetGrantedLease().GetLeaseSpecification().IsRetriable() ? 0 : 1;
-              int right_retriable =
-                  right->GetGrantedLease().GetLeaseSpecification().IsRetriable() ? 0 : 1;
-              if (left_retriable == right_retriable) {
-                return left->GetGrantedLeaseTime() < right->GetGrantedLeaseTime();
-              }
-              return left_retriable < right_retriable;
+              // First sort by lease time in ascending order.
+              return left->GetGrantedLeaseTime() < right->GetGrantedLeaseTime();
             });
 
   static const int32_t max_to_print = 10;
@@ -68,7 +58,7 @@ RetriableFIFOWorkerKillingPolicy::SelectWorkerToKill(
                 << WorkerKillingPolicy::WorkersDebugString(
                        sorted, max_to_print, system_memory);
 
-  return std::make_pair(sorted.front(), /*should retry*/ true);
+  return sorted.front();
 }
 
 }  // namespace raylet

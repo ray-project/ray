@@ -16,6 +16,7 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -30,13 +31,13 @@ namespace ray {
 
 namespace raylet {
 
-/// Prefers killing retriable workers over non-retriable ones, then in FIFO order.
-class RetriableFIFOWorkerKillingPolicy : public WorkerKillingPolicy {
+/// Prefers killing workers in FIFO order.
+class FIFOWorkerKillingPolicy : public WorkerKillingPolicy {
  public:
-  RetriableFIFOWorkerKillingPolicy();
-  const std::pair<std::shared_ptr<WorkerInterface>, bool> SelectWorkerToKill(
+  FIFOWorkerKillingPolicy() = default;
+  std::shared_ptr<WorkerInterface> SelectWorkerToKill(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
-      const MemorySnapshot &system_memory) const;
+      const MemorySnapshot &system_memory) const override;
 };
 
 }  // namespace raylet

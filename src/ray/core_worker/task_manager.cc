@@ -768,7 +768,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   const auto &generator_id = ObjectID::FromBinary(request.generator_id());
   const auto &task_id = generator_id.TaskId();
   int64_t item_index = request.item_index();
-  uint64_t attempt_number = request.attempt_number();
+  int64_t attempt_number = request.attempt_number();
   // Every generated object has the same task id.
   RAY_LOG(DEBUG) << "Received an intermediate result of index " << item_index
                  << " generator_id: " << generator_id;

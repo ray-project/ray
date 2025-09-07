@@ -176,13 +176,13 @@ ray_cc_library(
     name = "worker_killing_policy",
     srcs = [
         "worker_killing_policy.cc",
+        "worker_killing_policy_fifo.cc",
         "worker_killing_policy_group_by_owner.cc",
-        "worker_killing_policy_retriable_fifo.cc",
     ],
     hdrs = [
         "worker_killing_policy.h",
+        "worker_killing_policy_fifo.h",
         "worker_killing_policy_group_by_owner.h",
-        "worker_killing_policy_retriable_fifo.h",
     ],
     visibility = [":__subpackages__"],
     deps = [

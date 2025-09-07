@@ -589,10 +589,8 @@ void NodeManager::HandleGetWorkerFailureCause(
   auto it = worker_failure_reasons_.find(lease_id);
   if (it != worker_failure_reasons_.end()) {
     RAY_LOG(DEBUG) << "lease " << lease_id << " has failure reason "
-                   << ray::gcs::RayErrorInfoToString(it->second.ray_error_info_)
-                   << ", fail immediately: " << !it->second.should_retry_;
+                   << ray::gcs::RayErrorInfoToString(it->second.ray_error_info_);
     reply->mutable_failure_cause()->CopyFrom(it->second.ray_error_info_);
-    reply->set_fail_task_immediately(!it->second.should_retry_);
   } else {
     RAY_LOG(INFO) << "didn't find failure cause for lease " << lease_id;
   }
@@ -2817,8 +2815,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
         }
         auto worker_to_kill_and_should_retry =
             worker_killing_policy_->SelectWorkerToKill(workers, system_memory);
-        auto worker_to_kill = worker_to_kill_and_should_retry.first;
-        bool should_retry = worker_to_kill_and_should_retry.second;
+        auto worker_to_kill = worker_to_kill_and_should_retry;
         if (worker_to_kill == nullptr) {
           RAY_LOG_EVERY_MS(WARNING, 5000) << "Worker killer did not select a worker to "
                                              "kill even though memory usage is high.";
@@ -2829,7 +2826,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           std::string oom_kill_details = this->CreateOomKillMessageDetails(
               worker_to_kill, this->self_node_id_, system_memory, usage_threshold);
           std::string oom_kill_suggestions =
-              this->CreateOomKillMessageSuggestions(worker_to_kill, should_retry);
+              this->CreateOomKillMessageSuggestions(worker_to_kill);
 
           RAY_LOG(INFO)
               << "Killing worker with task "
@@ -2853,8 +2850,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           worker_failure_reason.set_error_message(worker_exit_message);
           worker_failure_reason.set_error_type(rpc::ErrorType::OUT_OF_MEMORY);
           SetWorkerFailureReason(worker_to_kill->GetGrantedLeaseId(),
-                                 std::move(worker_failure_reason),
-                                 should_retry);
+                                 std::move(worker_failure_reason));
 
           /// since we print the process memory in the message. Destroy should be called
           /// as soon as possible to free up memory.
@@ -2932,30 +2928,26 @@ const std::string NodeManager::CreateOomKillMessageDetails(
 }
 
 const std::string NodeManager::CreateOomKillMessageSuggestions(
-    const std::shared_ptr<WorkerInterface> &worker, bool should_retry) const {
-  std::stringstream not_retriable_recommendation_ss;
-  if (worker && !worker->GetGrantedLease().GetLeaseSpecification().IsRetriable()) {
-    not_retriable_recommendation_ss << "Set ";
-    if (worker->GetGrantedLease().GetLeaseSpecification().IsNormalTask()) {
-      not_retriable_recommendation_ss << "max_retries";
-    } else {
-      not_retriable_recommendation_ss << "max_restarts and max_task_retries";
-    }
-    not_retriable_recommendation_ss
-        << " to enable retry when the task crashes due to OOM. ";
+    const std::shared_ptr<WorkerInterface> &worker) const {
+  std::stringstream retry_recommendation_ss;
+  retry_recommendation_ss << "Set ";
+  if (worker->GetGrantedLease().GetLeaseSpecification().IsNormalTask()) {
+    retry_recommendation_ss << "max_retries";
+  } else {
+    retry_recommendation_ss << "max_restarts and max_task_retries";
   }
+  retry_recommendation_ss << " to enable retry when the task crashes due to OOM. ";
   std::stringstream deadlock_recommendation;
-  if (!should_retry) {
-    deadlock_recommendation
-        << "The node has insufficient memory to execute this workload. ";
-  }
+  deadlock_recommendation
+      << "The node has insufficient memory to execute this workload. ";
+
   std::stringstream oom_kill_suggestions_ss;
   oom_kill_suggestions_ss
       << "Refer to the documentation on how to address the out of memory issue: "
          "https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. "
          "Consider provisioning more memory on this node or reducing task "
          "parallelism by requesting more CPUs per task. "
-      << not_retriable_recommendation_ss.str()
+      << retry_recommendation_ss.str()
       << "To adjust the kill "
          "threshold, set the environment variable "
          "`RAY_memory_usage_threshold` when starting Ray. To disable "
@@ -2965,10 +2957,9 @@ const std::string NodeManager::CreateOomKillMessageSuggestions(
 }
 
 void NodeManager::SetWorkerFailureReason(const LeaseID &lease_id,
-                                         const rpc::RayErrorInfo &failure_reason,
-                                         bool should_retry) {
+                                         const rpc::RayErrorInfo &failure_reason) {
   RAY_LOG(DEBUG).WithField(lease_id) << "set failure reason for lease ";
-  ray::TaskFailureEntry entry(failure_reason, should_retry);
+  ray::TaskFailureEntry entry(failure_reason);
   auto result = worker_failure_reasons_.emplace(lease_id, std::move(entry));
   if (!result.second) {
     RAY_LOG(WARNING).WithField(lease_id)

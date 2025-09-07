@@ -332,7 +332,6 @@ message GetWorkerFailureCauseRequest {
 
 message GetWorkerFailureCauseReply {
   optional RayErrorInfo failure_cause = 1;
-  bool fail_task_immediately = 2;
 }
 
 message DrainRayletRequest {
