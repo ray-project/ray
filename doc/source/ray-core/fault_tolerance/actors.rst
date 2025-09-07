@@ -163,7 +163,7 @@ If a task has ``max_task_retries > 0`` and it received ``ActorUnavailableError``
 Actor method exceptions
 -----------------------
 
-Sometimes you want to retry when an actor method raises exceptions. Use ``max_task_retries`` with ``retry_exceptions`` to retry.
+Sometimes you want to retry when an actor method raises exceptions. Use ``max_task_retries`` with ``retry_exceptions`` to enable this.
 
 Note that by default, retrying on user raised exceptions is disabled. To enable it, make sure the method is **idempotent**, that is, invoking it multiple times should be equivalent to invoking it only once.
 
