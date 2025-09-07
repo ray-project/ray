@@ -3,7 +3,7 @@
 import pytest
 
 import ray
-from ray.data._internal.datasource.unbound.kafka_datasource import KafkaDatasource
+from ray.data._internal.datasource.kafka_datasource import KafkaDatasource
 from ray.tests.conftest import *  # noqa
 
 

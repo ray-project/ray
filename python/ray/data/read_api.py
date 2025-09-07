@@ -31,7 +31,7 @@ from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data._internal.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
 )
-from ray.data._internal.datasource.unbound.flink_datasource import FlinkDatasource
+from ray.data._internal.datasource.flink_datasource import FlinkDatasource
 from ray.data._internal.datasource.hudi_datasource import HudiDatasource
 from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
 from ray.data._internal.datasource.image_datasource import (
@@ -43,7 +43,7 @@ from ray.data._internal.datasource.json_datasource import (
     ArrowJSONDatasource,
     PandasJSONDatasource,
 )
-from ray.data._internal.datasource.unbound.kafka_datasource import KafkaDatasource
+from ray.data._internal.datasource.kafka_datasource import KafkaDatasource
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
@@ -69,7 +69,7 @@ from ray.data._internal.logical.operators.from_operators import (
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.operators.unbound_data_operator import (
     StreamingTrigger,
-    UnboundedQueueStreamingData,
+    UnboundedData,
 )
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -4450,7 +4450,7 @@ def read_kafka(
     """
     from ray.data._internal.logical.interfaces import LogicalPlan
     from ray.data._internal.logical.operators.unbound_data_operator import (
-        UnboundedQueueStreamingData,
+        UnboundedData,
     )
     from ray.data._internal.plan import ExecutionPlan
     from ray.data._internal.stats import DatasetStats
@@ -4523,7 +4523,7 @@ def read_kafka(
     # For streaming triggers, use the new streaming operator
     if streaming_trigger.trigger_type != "once":
         # Create streaming logical operator
-        streaming_logical_op = UnboundedQueueStreamingData(
+        streaming_logical_op = UnboundedData(
             datasource=datasource,
             trigger=streaming_trigger,
             parallelism=parallelism,
@@ -4534,11 +4534,11 @@ def read_kafka(
         logical_plan = LogicalPlan(streaming_logical_op, ctx)
 
         # Create physical operator for streaming execution
-        from ray.data._internal.execution.operators.unbounded_queue_streaming_data import (
-            UnboundedQueueStreamingDataOperator,
+        from ray.data._internal.execution.operators.unbounded_data_operator import (
+            UnboundedDataOperator,
         )
 
-        streaming_physical_op = UnboundedQueueStreamingDataOperator(
+        streaming_physical_op = UnboundedDataOperator(
             data_context=ctx,
             datasource=datasource,
             trigger=streaming_trigger,
@@ -4701,7 +4701,7 @@ def read_kinesis(
     Returns:
         Dataset containing Kinesis records.
     """
-    from ray.data._internal.datasource.unbound.kinesis_datasource import (
+    from ray.data._internal.datasource.kinesis_datasource import (
         KinesisDatasource,
     )
     from ray.data._internal.logical.interfaces import LogicalPlan
@@ -4768,7 +4768,7 @@ def read_kinesis(
     # For streaming triggers, use the new streaming operator
     if streaming_trigger.trigger_type != "once":
         # Create streaming logical operator
-        streaming_op = UnboundedQueueStreamingData(
+        streaming_op = UnboundedData(
             datasource=datasource,
             trigger=streaming_trigger,
             parallelism=parallelism,
@@ -5001,7 +5001,7 @@ def read_flink(
     # For streaming triggers, use the new streaming operator
     if streaming_trigger.trigger_type != "once":
         # Create streaming logical operator
-        streaming_op = UnboundedQueueStreamingData(
+        streaming_op = UnboundedData(
             datasource=datasource,
             trigger=streaming_trigger,
             parallelism=parallelism,

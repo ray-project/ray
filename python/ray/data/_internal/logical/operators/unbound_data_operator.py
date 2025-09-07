@@ -389,7 +389,7 @@ class StreamingTrigger:
             return "continuous"  # Fallback
 
 
-class UnboundedQueueStreamingData(LogicalOperator, SourceOperator):
+class UnboundedData(LogicalOperator, SourceOperator):
     """Logical operator for unbounded streaming data sources.
 
     This operator represents an unbounded data source like Kafka, Kinesis, or
@@ -412,7 +412,7 @@ class UnboundedQueueStreamingData(LogicalOperator, SourceOperator):
             datasource_config: Configuration for the datasource
             parallelism: Number of parallel read tasks
         """
-        super().__init__("UnboundedQueueStreamingData", [], None)  # Unbounded output
+        super().__init__("UnboundedData", [], None)  # Unbounded output
         self.datasource = datasource
         self.trigger = trigger
         self.datasource_config = datasource_config or {}

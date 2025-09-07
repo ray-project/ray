@@ -3,7 +3,7 @@
 import pytest
 
 import ray
-from ray.data._internal.datasource.unbound.flink_datasource import FlinkDatasource
+from ray.data._internal.datasource.flink_datasource import FlinkDatasource
 from ray.tests.conftest import *  # noqa
 
 

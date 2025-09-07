@@ -3,7 +3,7 @@
 import pytest
 
 import ray
-from ray.data._internal.datasource.unbound.kinesis_datasource import KinesisDatasource
+from ray.data._internal.datasource.kinesis_datasource import KinesisDatasource
 from ray.tests.conftest import *  # noqa
 
 
