@@ -1,15 +1,12 @@
 from typing import Any, List, Dict
 
 import numpy as np
-import torch
-from collections import defaultdict
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.connectors.common.numpy_to_tensor import NumpyToTensor
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
+from ray.rllib.core.rl_module.apis import SelfSupervisedLossAPI
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
-from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -65,7 +62,8 @@ class MAPPOGAEConnector(ConnectorV2):
         vf_preds = rl_module.foreach_module(
             func=lambda mid, module: (
                 rl_module[SHARED_CRITIC_ID].compute_values(batch[mid])
-                if (mid in batch) and (Columns.OBS in batch[mid])
+                if (mid in batch)
+                and (Columns.OBS in batch[mid])
                 and (not isinstance(module, SelfSupervisedLossAPI))
                 else None
             ),

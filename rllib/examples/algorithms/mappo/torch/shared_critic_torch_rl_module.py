@@ -9,10 +9,15 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TensorType
 from ray.util.annotations import DeveloperAPI
 
+from ray.rllib.examples.algorithms.mappo.shared_critic_rl_module import (
+    SharedCriticRLModule,
+)
+from ray.rllib.examples.algorithms.mappo.shared_critic_catalog import (
+    SharedCriticCatalog,
+)
+
 torch, nn = try_import_torch()
 
-from ray.rllib.examples.algorithms.mappo.shared_critic_rl_module import SharedCriticRLModule
-from ray.rllib.examples.algorithms.mappo.shared_critic_catalog import SharedCriticCatalog 
 
 @DeveloperAPI
 class SharedCriticTorchRLModule(TorchRLModule, SharedCriticRLModule):
@@ -29,7 +34,7 @@ class SharedCriticTorchRLModule(TorchRLModule, SharedCriticRLModule):
         embeddings: Optional[Any] = None,
     ) -> TensorType:
         if embeddings is None:
-            embeddings = self.encoder(batch)[ENCODER_OUT][CRITIC]
+            embeddings = self.encoder(batch)[ENCODER_OUT]
         # Value head.
         vf_out = self.vf(embeddings)
         # Squeeze out last dimension (single node value head).

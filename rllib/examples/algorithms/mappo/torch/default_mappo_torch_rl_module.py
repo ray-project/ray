@@ -1,22 +1,20 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
-from ray.rllib.algorithms.ppo.default_ppo_rl_module import DefaultPPORLModule
-from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.models.base import ACTOR, CRITIC, ENCODER_OUT
-from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
+from ray.rllib.core.models.base import ENCODER_OUT
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.typing import TensorType
 from ray.util.annotations import DeveloperAPI
 
 from ray.rllib.examples.algorithms.mappo.mappo_catalog import MAPPOCatalog
-from ray.rllib.examples.algorithms.mappo.default_mappo_rl_module import DefaultMAPPORLModule
-from ray.rllib.examples.algorithms.mappo.shared_critic_catalog import SharedCriticCatalog
+from ray.rllib.examples.algorithms.mappo.default_mappo_rl_module import (
+    DefaultMAPPORLModule,
+)
 
 torch, nn = try_import_torch()
+
 
 @DeveloperAPI
 class DefaultMAPPOTorchRLModule(TorchRLModule, DefaultMAPPORLModule):
@@ -36,16 +34,16 @@ class DefaultMAPPOTorchRLModule(TorchRLModule, DefaultMAPPORLModule):
         if Columns.STATE_OUT in encoder_outs:
             output[Columns.STATE_OUT] = encoder_outs[Columns.STATE_OUT]
         # Pi head.
-        output[Columns.ACTION_DIST_INPUTS] = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
+        output[Columns.ACTION_DIST_INPUTS] = self.pi(encoder_outs[ENCODER_OUT])
         return output
 
     @override(RLModule)
     def _forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        """Train forward pass (keep embeddings for possible shared value func. call)."""
+        """Train forward pass."""
         output = {}
         encoder_outs = self.encoder(batch)
-        output[Columns.EMBEDDINGS] = encoder_outs[ENCODER_OUT][CRITIC]
+        output[Columns.EMBEDDINGS] = encoder_outs[ENCODER_OUT]
         if Columns.STATE_OUT in encoder_outs:
             output[Columns.STATE_OUT] = encoder_outs[Columns.STATE_OUT]
-        output[Columns.ACTION_DIST_INPUTS] = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
+        output[Columns.ACTION_DIST_INPUTS] = self.pi(encoder_outs[ENCODER_OUT])
         return output

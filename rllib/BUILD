@@ -5004,15 +5004,14 @@ py_test(
     ],
 )
 
-# TODO (sven): Activate this test once this script is ready.
-# py_test(
-#    name = "examples/multi_agent/pettingzoo_shared_value_function",
-#    main = "examples/multi_agent/pettingzoo_shared_value_function.py",
-#    tags = ["team:rllib", "exclusive", "examples"],
-#    size = "large",
-#    srcs = ["examples/multi_agent/pettingzoo_shared_value_function.py"],
-#    args = ["--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=-100.0", "--num-cpus=4"],
-# )
+py_test(
+	name = "examples/multi_agent/pettingzoo_shared_value_function",
+	main = "examples/multi_agent/pettingzoo_shared_value_function.py",
+	tags = ["team:rllib", "exclusive", "examples"],
+	size = "large",
+	srcs = ["examples/multi_agent/pettingzoo_shared_value_function.py"],
+	args = ["--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=-100.0", "--num-cpus=4"],
+)
 
 py_test(
     name = "examples/checkpoints/restore_1_of_n_agents_from_checkpoint",

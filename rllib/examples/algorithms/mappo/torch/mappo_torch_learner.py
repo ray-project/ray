@@ -13,7 +13,12 @@ from ray.rllib.algorithms.ppo.ppo import (
     PPOConfig,
 )
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.learner.learner import Learner, POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
+from ray.rllib.core.learner.learner import (
+    Learner,
+    POLICY_LOSS_KEY,
+    VF_LOSS_KEY,
+    ENTROPY_KEY,
+)
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.annotations import override
@@ -24,7 +29,9 @@ from ray.rllib.utils.typing import ModuleID, TensorType
 from ray.rllib.core.rl_module.apis import SelfSupervisedLossAPI
 
 from ray.rllib.examples.algorithms.mappo.mappo_learner import MAPPOLearner
-from ray.rllib.examples.algorithms.mappo.connectors.general_advantage_estimation import SHARED_CRITIC_ID
+from ray.rllib.examples.algorithms.mappo.connectors.general_advantage_estimation import (
+    SHARED_CRITIC_ID,
+)
 
 torch, nn = try_import_torch()
 
@@ -32,16 +39,15 @@ logger = logging.getLogger(__name__)
 
 
 class MAPPOTorchLearner(MAPPOLearner, TorchLearner):
-    def get_pmm(
-            self,
-            batch: Dict[str, Any]
-        ) -> Callable:
-        """ Gets the possibly_masked_mean function """
+    def get_pmm(self, batch: Dict[str, Any]) -> Callable:
+        """Gets the possibly_masked_mean function"""
         if Columns.LOSS_MASK in batch:
-              mask = batch[Columns.LOSS_MASK]
-              num_valid = torch.sum(mask)
-              def possibly_masked_mean(data_):
-                  return torch.sum(data_[mask]) / num_valid
+            mask = batch[Columns.LOSS_MASK]
+            num_valid = torch.sum(mask)
+
+            def possibly_masked_mean(data_):
+                return torch.sum(data_[mask]) / num_valid
+
         else:
             possibly_masked_mean = torch.mean
         return possibly_masked_mean
@@ -49,35 +55,33 @@ class MAPPOTorchLearner(MAPPOLearner, TorchLearner):
     """
       Implements MAPPO in Torch, on top of a MAPPOLearner.
     """
-    def compute_loss_for_critic(
-        self,
-        batch: Dict[str, Any]
-    ):
-      """
+
+    def compute_loss_for_critic(self, batch: Dict[str, Any]):
+        """
         Computes loss for critic, and returns a list of advantages and rewards for the target batch.
-      """
-      possibly_masked_mean = self.get_pmm(batch)
-      module = self.module[SHARED_CRITIC_ID].unwrapped()
-      vf_preds = module.compute_values(batch)
-      vf_targets = batch[Postprocessing.VALUE_TARGETS]
-      # Compute a value function loss.
-      vf_loss = torch.pow(vf_preds - vf_targets, 2.0)
-      vf_loss_clipped = torch.clamp(vf_loss, 0, self.config.vf_clip_param)
-      mean_vf_loss = possibly_masked_mean(vf_loss_clipped)
-      mean_vf_unclipped_loss = possibly_masked_mean(vf_loss)
-      # record metrics
-      self.metrics.log_dict(
-          {
-              VF_LOSS_KEY: mean_vf_loss,
-              LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY: mean_vf_unclipped_loss,
-              LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY: explained_variance(
-                  vf_targets, vf_preds
-              ),
-          },
-          key=SHARED_CRITIC_ID,
-          window=1,
-      )
-      return mean_vf_loss
+        """
+        possibly_masked_mean = self.get_pmm(batch)
+        module = self.module[SHARED_CRITIC_ID].unwrapped()
+        vf_preds = module.compute_values(batch)
+        vf_targets = batch[Postprocessing.VALUE_TARGETS]
+        # Compute a value function loss.
+        vf_loss = torch.pow(vf_preds - vf_targets, 2.0)
+        vf_loss_clipped = torch.clamp(vf_loss, 0, self.config.vf_clip_param)
+        mean_vf_loss = possibly_masked_mean(vf_loss_clipped)
+        mean_vf_unclipped_loss = possibly_masked_mean(vf_loss)
+        # record metrics
+        self.metrics.log_dict(
+            {
+                VF_LOSS_KEY: mean_vf_loss,
+                LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY: mean_vf_unclipped_loss,
+                LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY: explained_variance(
+                    vf_targets, vf_preds
+                ),
+            },
+            key=SHARED_CRITIC_ID,
+            window=1,
+        )
+        return mean_vf_loss
 
     @override(Learner)
     def compute_losses(
@@ -96,12 +100,13 @@ class MAPPOTorchLearner(MAPPOLearner, TorchLearner):
         loss_per_module = {SHARED_CRITIC_ID: 0}
         # Calculate loss for agent policies
         for module_id in fwd_out:
-            if (module_id == SHARED_CRITIC_ID): # Computed for each module
-              continue
-            #
+            if module_id == SHARED_CRITIC_ID:  # Computed for each module
+                continue
+            module_batch = batch[module_id]
+            module_fwd_out = fwd_out[module_id]
             module = self.module[module_id].unwrapped()
             if isinstance(module, SelfSupervisedLossAPI):
-                # For e.g. enabling intrinsic curiosity modules.
+                # For training e.g. intrinsic curiosity modules.
                 loss = module.compute_self_supervised_loss(
                     learner=self,
                     module_id=module_id,
@@ -110,8 +115,6 @@ class MAPPOTorchLearner(MAPPOLearner, TorchLearner):
                     fwd_out=module_fwd_out,
                 )
             else:
-                module_batch = batch[module_id]
-                module_fwd_out = fwd_out[module_id]
                 # For every module we're going to touch, sans the critic
                 loss = self.compute_loss_for_module(
                     module_id=module_id,
@@ -120,7 +123,9 @@ class MAPPOTorchLearner(MAPPOLearner, TorchLearner):
                     fwd_out=module_fwd_out,
                 )
                 # Optimize the critic
-                loss_per_module[SHARED_CRITIC_ID] += self.compute_loss_for_critic(module_batch)
+                loss_per_module[SHARED_CRITIC_ID] += self.compute_loss_for_critic(
+                    module_batch
+                )
             loss_per_module[module_id] = loss
         return loss_per_module
 
@@ -138,7 +143,7 @@ class MAPPOTorchLearner(MAPPOLearner, TorchLearner):
         possibly_masked_mean = self.get_pmm(batch)
         # Possibly apply masking to some sub loss terms and to the total loss term
         # at the end. Masking could be used for RNN-based model (zero padded `batch`)
-        # and for PPO's batched value function (and bootstrap value) computations,
+        # and for MAPPO's batched value function (and bootstrap value) computations,
         # for which we add an (artificial) timestep to each episode to
         # simplify the actual computation.
         action_dist_class_train = module.get_train_action_dist_cls()
@@ -170,7 +175,7 @@ class MAPPOTorchLearner(MAPPOLearner, TorchLearner):
             batch[Postprocessing.ADVANTAGES]
             * torch.clamp(logp_ratio, 1 - config.clip_param, 1 + config.clip_param),
         )
-        # Remove critic loss from per-module computation
+        # Removed critic loss from per-module computation
         total_loss = possibly_masked_mean(
             -surrogate_loss
             - (
@@ -197,7 +202,6 @@ class MAPPOTorchLearner(MAPPOLearner, TorchLearner):
         # Return the total loss.
         return total_loss
 
-    # Same as PPOTorchLearner
     @override(MAPPOLearner)
     def _update_module_kl_coeff(
         self,
@@ -206,6 +210,7 @@ class MAPPOTorchLearner(MAPPOLearner, TorchLearner):
         config: PPOConfig,
         kl_loss: float,
     ) -> None:
+        # Same as PPOTorchLearner
         if np.isnan(kl_loss):
             logger.warning(
                 f"KL divergence for Module {module_id} is non-finite, this "

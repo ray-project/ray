@@ -1,45 +1,21 @@
 import logging
 from typing import Any, Dict, List, Optional, Type, Union, TYPE_CHECKING
 
-from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.execution.rollout_ops import (
-    standardize_fields,
-    synchronous_parallel_sample,
-)
-from ray.rllib.execution.train_ops import (
-    train_one_step,
-    multi_gpu_train_one_step,
-)
-from ray.rllib.policy.policy import Policy
-from ray.rllib.utils.annotations import OldAPIStack, override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
-from ray.rllib.utils.metrics import (
-    ENV_RUNNER_RESULTS,
-    ENV_RUNNER_SAMPLING_TIMER,
-    LEARNER_RESULTS,
-    LEARNER_UPDATE_TIMER,
-    NUM_AGENT_STEPS_SAMPLED,
-    NUM_ENV_STEPS_SAMPLED,
-    NUM_ENV_STEPS_SAMPLED_LIFETIME,
-    SYNCH_WORKER_WEIGHTS_TIMER,
-    SAMPLE_TIMER,
-    TIMERS,
-    ALL_MODULES,
-)
-from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
-from ray.rllib.utils.schedules.scheduler import Scheduler
-from ray.rllib.utils.typing import ResultDict
-from ray.util.debug import log_once
+from ray.rllib.utils.annotations import override
 
-from ray.rllib.algorithms.ppo.ppo import PPOConfig, PPO
+from ray.rllib.algorithms.ppo.ppo import PPO
 
 if TYPE_CHECKING:
     from ray.rllib.core.learner.learner import Learner
 
-from ray.rllib.examples.algorithms.mappo.torch.mappo_torch_learner import MAPPOTorchLearner
-from ray.rllib.examples.algorithms.mappo.torch.default_mappo_torch_rl_module import DefaultMAPPOTorchRLModule
+from ray.rllib.examples.algorithms.mappo.torch.mappo_torch_learner import (
+    MAPPOTorchLearner,
+)
+from ray.rllib.examples.algorithms.mappo.torch.default_mappo_torch_rl_module import (
+    DefaultMAPPOTorchRLModule,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,9 +24,8 @@ LEARNER_RESULTS_CURR_KL_COEFF_KEY = "curr_kl_coeff"
 LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY = "curr_entropy_coeff"
 
 
-class MAPPOConfig(PPOConfig): # AlgorithmConfig -> PPOConfig -> MAPPO
-    """Defines a configuration class from which a MAPPO Algorithm can be built.
-    """
+class MAPPOConfig(AlgorithmConfig):  # AlgorithmConfig -> PPOConfig -> MAPPO
+    """Defines a configuration class from which a MAPPO Algorithm can be built."""
 
     def __init__(self, algo_class=None):
         """Initializes a MAPPOConfig instance."""
@@ -72,7 +47,7 @@ class MAPPOConfig(PPOConfig): # AlgorithmConfig -> PPOConfig -> MAPPO
         self.rollout_fragment_length = "auto"
         self.train_batch_size = 4000
 
-        # PPO specific settings:
+        # MAPPO specific settings:
         self.num_epochs = 30
         self.minibatch_size = 128
         self.shuffle_batch_per_epoch = True
@@ -84,16 +59,10 @@ class MAPPOConfig(PPOConfig): # AlgorithmConfig -> PPOConfig -> MAPPO
         self.clip_param = 0.3
         self.grad_clip = None
 
-        # Override some of AlgorithmConfig's default values with PPO-specific values.
+        # Override some of AlgorithmConfig's default values with MAPPO-specific values.
         self.num_env_runners = 2
         # __sphinx_doc_end__
         # fmt: on
-
-        self.entropy_coeff_schedule = None  # OldAPIStack
-        self.lr_schedule = None  # OldAPIStack
-
-        # Deprecated keys.
-        self.sgd_minibatch_size = DEPRECATED_VALUE
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> RLModuleSpec:
@@ -119,10 +88,8 @@ class MAPPOConfig(PPOConfig): # AlgorithmConfig -> PPOConfig -> MAPPO
         entropy_coeff_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
         clip_param: Optional[float] = NotProvided,
         grad_clip: Optional[float] = NotProvided,
-        # OldAPIStack
-        lr_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
         **kwargs,
-    ) -> "PPOConfig":
+    ) -> "MAPPOConfig":
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
         if lambda_ is not NotProvided:
@@ -139,13 +106,6 @@ class MAPPOConfig(PPOConfig): # AlgorithmConfig -> PPOConfig -> MAPPO
             self.clip_param = clip_param
         if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
-
-        # TODO (sven): Remove these once new API stack is only option for PPO.
-        if lr_schedule is not NotProvided:
-            self.lr_schedule = lr_schedule
-        if entropy_coeff_schedule is not NotProvided:
-            self.entropy_coeff_schedule = entropy_coeff_schedule
-
         return self
 
     @override(AlgorithmConfig)
@@ -170,7 +130,7 @@ class MAPPOConfig(PPOConfig): # AlgorithmConfig -> PPOConfig -> MAPPO
         ):
             self._value_error(
                 f"`minibatch_size` ({self.minibatch_size}) must be <= "
-                f"`train_batch_size` ({self.train_batch_size}). In PPO, the train batch"
+                f"`train_batch_size` ({self.train_batch_size}). In MAPPO, the train batch"
                 f" will be split into {self.minibatch_size} chunks, each of which "
                 f"is iterated over (used for updating the policy) {self.num_epochs} "
                 "times."
@@ -181,7 +141,7 @@ class MAPPOConfig(PPOConfig): # AlgorithmConfig -> PPOConfig -> MAPPO
             if isinstance(mbs, int) and isinstance(tbs, int) and mbs > tbs:
                 self._value_error(
                     f"`minibatch_size` ({mbs}) must be <= "
-                    f"`train_batch_size_per_learner` ({tbs}). In PPO, the train batch"
+                    f"`train_batch_size_per_learner` ({tbs}). In MAPPO, the train batch"
                     f" will be split into {mbs} chunks, each of which is iterated over "
                     f"(used for updating the policy) {self.num_epochs} times."
                 )
@@ -200,25 +160,6 @@ class MAPPOConfig(PPOConfig): # AlgorithmConfig -> PPOConfig -> MAPPO
                 "function (to estimate the return at the end of the truncated"
                 " trajectory). Consider setting "
                 "batch_mode=complete_episodes."
-            )
-
-        # New API stack checks.
-        if self.enable_rl_module_and_learner:
-            # `lr_schedule` checking.
-            if self.lr_schedule is not None:
-                self._value_error(
-                    "`lr_schedule` is deprecated and must be None! Use the "
-                    "`lr` setting to setup a schedule."
-                )
-            if self.entropy_coeff_schedule is not None:
-                self._value_error(
-                    "`entropy_coeff_schedule` is deprecated and must be None! Use the "
-                    "`entropy_coeff` setting to setup a schedule."
-                )
-            Scheduler.validate(
-                fixed_value_or_schedule=self.entropy_coeff,
-                setting_name="entropy_coeff",
-                description="entropy coefficient",
             )
         if isinstance(self.entropy_coeff, float) and self.entropy_coeff < 0.0:
             self._value_error("`entropy_coeff` must be >= 0.0")

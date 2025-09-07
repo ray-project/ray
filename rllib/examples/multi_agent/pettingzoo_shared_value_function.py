@@ -26,7 +26,7 @@ For logging to your WandB account, use:
 
 Results to expect
 -----------------
-The above options can reach a combined reward of _ or more after about _ env timesteps. Keep in mind, though, that due to the separate learned policies in general,  one agent's gain (in per-agent reward) might cause the other agent's reward to decrease at the same time. However, over time, both agents should simply improve. For reasons similar to those described in pettingzoo_parameter_sharing.py, learning may take slightly longer than in fully-independent settings, as agents are less inclined to specialize and thereby balance out one anothers' mistakes.
+The above options can reach a combined reward of 0 or more after about 500k-1M env timesteps. Keep in mind, though, that due to the separate learned policies in general,  one agent's gain (in per-agent reward) might cause the other agent's reward to decrease at the same time. However, over time, both agents should simply improve. For reasons similar to those described in pettingzoo_parameter_sharing.py, learning may take slightly longer than in fully-independent settings, as agents are less inclined to specialize and thereby balance out one anothers' mistakes.
 
 +---------------------+------------+--------------------+--------+------------------+
 | Trial name          | status     | loc                |   iter |   total time (s) |
@@ -47,7 +47,6 @@ objective and thus differences in the rewards can be attributed to weight initia
 
 from pettingzoo.sisl import waterworld_v4
 
-from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
@@ -55,11 +54,15 @@ from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
-from ray.tune.registry import get_trainable_cls, register_env
+from ray.tune.registry import register_env
 
 from ray.rllib.examples.algorithms.mappo.mappo import MAPPOConfig
-from ray.rllib.examples.algorithms.mappo.connectors.general_advantage_estimation import SHARED_CRITIC_ID
-from ray.rllib.examples.algorithms.mappo.torch.shared_critic_torch_rl_module import SharedCriticTorchRLModule
+from ray.rllib.examples.algorithms.mappo.connectors.general_advantage_estimation import (
+    SHARED_CRITIC_ID,
+)
+from ray.rllib.examples.algorithms.mappo.torch.shared_critic_torch_rl_module import (
+    SharedCriticTorchRLModule,
+)
 
 
 parser = add_rllib_example_script_args(
@@ -77,20 +80,22 @@ if __name__ == "__main__":
     # Here, we use the "Agent Environment Cycle" (AEC) PettingZoo environment type.
     # For a "Parallel" environment example, see the rock paper scissors examples
     # in this same repository folder.
-    get_env = lambda _: PettingZooEnv(waterworld_v4.env())
+    def get_env(_):
+        return PettingZooEnv(waterworld_v4.env())
+
     register_env("env", get_env)
 
     # Policies are called just like the agents (exact 1:1 mapping).
     policies = [f"pursuer_{i}" for i in range(args.num_agents)]
-    
+
     # An agent for each of our policies, and a single shared critic
-    env_instantiated = get_env({}) # neccessary for non-agent modules
+    env_instantiated = get_env({})  # neccessary for non-agent modules
     specs = {p: RLModuleSpec() for p in policies}
     specs[SHARED_CRITIC_ID] = RLModuleSpec(
         module_class=SharedCriticTorchRLModule,
         observation_space=env_instantiated.observation_spaces[policies[0]],
         action_space=env_instantiated.action_spaces[policies[0]],
-        learner_only=True, # Only build on learner
+        learner_only=True,  # Only build on learner
         model_config={},
     )
 
@@ -101,9 +106,6 @@ if __name__ == "__main__":
             policies=policies,
             # Exact 1:1 mapping from AgentID to ModuleID.
             policy_mapping_fn=(lambda aid, *args, **kwargs: aid),
-        )
-        .training(
-            vf_loss_coeff=0.005,
         )
         .rl_module(
             rl_module_spec=MultiRLModuleSpec(

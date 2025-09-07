@@ -7,12 +7,7 @@ from ray.rllib.algorithms.ppo.ppo import (
     LEARNER_RESULTS_KL_KEY,
     PPOConfig,
 )
-from ray.rllib.connectors.learner import (
-    AddOneTsToEpisodesAndTruncate,
-    GeneralAdvantageEstimation,
-)
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -26,14 +21,16 @@ from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import ModuleID, TensorType
 
-from ray.rllib.examples.algorithms.mappo.connectors.general_advantage_estimation import MAPPOGAEConnector, SHARED_CRITIC_ID
+from ray.rllib.examples.algorithms.mappo.connectors.general_advantage_estimation import (
+    MAPPOGAEConnector,
+    SHARED_CRITIC_ID,
+)
+
 
 class MAPPOLearner(Learner):
-
-    # Deal with GAE somehow. Maybe skip it and move the logic over here, into the value loss calculation method. Saves us a VF pass, too.
     @override(Learner)
     def build(self) -> None:
-        super().build() # We call Learner's build function, not PPOLearner's
+        super().build()
 
         # Dict mapping module IDs to the respective entropy Scheduler instance.
         self.entropy_coeff_schedulers_per_module: Dict[
@@ -79,9 +76,8 @@ class MAPPOLearner(Learner):
     @override(Learner)
     def remove_module(self, module_id: ModuleID, **kwargs):
         marl_spec = super().remove_module(module_id, **kwargs)
-        if (module_id != SHARED_CRITIC_ID):
-          self.entropy_coeff_schedulers_per_module.pop(module_id, None)
-          self.curr_kl_coeffs_per_module.pop(module_id, None)
+        self.entropy_coeff_schedulers_per_module.pop(module_id, None)
+        self.curr_kl_coeffs_per_module.pop(module_id, None)
         return marl_spec
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
@@ -94,8 +90,8 @@ class MAPPOLearner(Learner):
         super().after_gradient_based_update(timesteps=timesteps)
 
         for module_id, module in self.module._rl_modules.items():
-            if (module_id == SHARED_CRITIC_ID):
-              continue # Policy terms irrelevant to shared critic.
+            if module_id == SHARED_CRITIC_ID:
+                continue  # Policy terms irrelevant to shared critic.
             config = self.config.get_config_for_module(module_id)
             # Update entropy coefficient via our Scheduler.
             new_entropy_coeff = self.entropy_coeff_schedulers_per_module[
@@ -120,12 +116,6 @@ class MAPPOLearner(Learner):
                     config=config,
                     kl_loss=kl_loss,
                 )
-
-    @classmethod
-    @override(Learner)
-    def rl_module_required_apis(cls) -> list[type]:
-        # We no longer require value functions for modules, since there's a central critic
-        return []
 
     @abc.abstractmethod
     def _update_module_kl_coeff(
