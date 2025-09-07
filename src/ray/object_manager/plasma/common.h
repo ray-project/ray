@@ -18,11 +18,8 @@
 #pragma once
 
 #include <gtest/gtest_prod.h>
-#include <stddef.h>
 
-#include <memory>
-#include <string>
-#include <unordered_map>
+#include <cstddef>
 #include <utility>
 
 #include "ray/common/id.h"
@@ -30,7 +27,6 @@
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/plasma_generated.h"
 #include "ray/util/compat.h"
-#include "ray/util/macros.h"
 
 namespace plasma {
 
