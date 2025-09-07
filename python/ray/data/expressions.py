@@ -4,7 +4,7 @@ import functools
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Union
 
 from ray.data.block import BatchColumn
 from ray.data.datatype import DataType
@@ -23,26 +23,40 @@ class Operation(Enum):
         SUB: Subtraction operation (-)
         MUL: Multiplication operation (*)
         DIV: Division operation (/)
+        FLOORDIV: Floor division operation (//)
         GT: Greater than comparison (>)
         LT: Less than comparison (<)
         GE: Greater than or equal comparison (>=)
         LE: Less than or equal comparison (<=)
         EQ: Equality comparison (==)
+        NE: Not equal comparison (!=)
         AND: Logical AND operation (&)
         OR: Logical OR operation (|)
+        NOT: Logical NOT operation (~)
+        IS_NULL: Check if value is null
+        IS_NOT_NULL: Check if value is not null
+        IN: Check if value is in a list
+        NOT_IN: Check if value is not in a list
     """
 
     ADD = "add"
     SUB = "sub"
     MUL = "mul"
     DIV = "div"
+    FLOORDIV = "floordiv"
     GT = "gt"
     LT = "lt"
     GE = "ge"
     LE = "le"
     EQ = "eq"
+    NE = "ne"
     AND = "and"
     OR = "or"
+    NOT = "not"
+    IS_NULL = "is_null"
+    IS_NOT_NULL = "is_not_null"
+    IN = "in"
+    NOT_IN = "not_in"
 
 
 @DeveloperAPI(stability="alpha")
@@ -127,6 +141,14 @@ class Expr(ABC):
         """Reverse division operator (for literal / expr)."""
         return LiteralExpr(other)._bin(self, Operation.DIV)
 
+    def __floordiv__(self, other: Any) -> "Expr":
+        """Floor division operator (//)."""
+        return self._bin(other, Operation.FLOORDIV)
+
+    def __rfloordiv__(self, other: Any) -> "Expr":
+        """Reverse floor division operator (for literal // expr)."""
+        return LiteralExpr(other)._bin(self, Operation.FLOORDIV)
+
     # comparison
     def __gt__(self, other: Any) -> "Expr":
         """Greater than operator (>)."""
@@ -148,6 +170,10 @@ class Expr(ABC):
         """Equality operator (==)."""
         return self._bin(other, Operation.EQ)
 
+    def __ne__(self, other: Any) -> "Expr":
+        """Not equal operator (!=)."""
+        return self._bin(other, Operation.NE)
+
     # boolean
     def __and__(self, other: Any) -> "Expr":
         """Logical AND operator (&)."""
@@ -156,6 +182,31 @@ class Expr(ABC):
     def __or__(self, other: Any) -> "Expr":
         """Logical OR operator (|)."""
         return self._bin(other, Operation.OR)
+
+    def __invert__(self) -> "Expr":
+        """Logical NOT operator (~)."""
+        return UnaryExpr(Operation.NOT, self)
+
+    # predicate methods
+    def is_null(self) -> "Expr":
+        """Check if the expression value is null."""
+        return UnaryExpr(Operation.IS_NULL, self)
+
+    def is_not_null(self) -> "Expr":
+        """Check if the expression value is not null."""
+        return UnaryExpr(Operation.IS_NOT_NULL, self)
+
+    def isin(self, values: Union[List[Any], "Expr"]) -> "Expr":
+        """Check if the expression value is in a list of values."""
+        if not isinstance(values, Expr):
+            values = LiteralExpr(values)
+        return self._bin(values, Operation.IN)
+
+    def not_in(self, values: Union[List[Any], "Expr"]) -> "Expr":
+        """Check if the expression value is not in a list of values."""
+        if not isinstance(values, Expr):
+            values = LiteralExpr(values)
+        return self._bin(values, Operation.NOT_IN)
 
 
 @DeveloperAPI(stability="alpha")
@@ -259,6 +310,39 @@ class BinaryExpr(Expr):
 
 @DeveloperAPI(stability="alpha")
 @dataclass(frozen=True, eq=False)
+class UnaryExpr(Expr):
+    """Expression that represents a unary operation on a single expression.
+
+    This expression type represents an operation with one operand.
+    Common unary operations include logical NOT, IS NULL, IS NOT NULL, etc.
+
+    Args:
+        op: The operation to perform (from Operation enum)
+        operand: The operand expression
+
+    Example:
+        >>> from ray.data.expressions import col
+        >>> # Check if a column is null
+        >>> expr = col("age").is_null()  # Creates UnaryExpr(IS_NULL, col("age"))
+        >>> # Logical not
+        >>> expr = ~(col("active"))  # Creates UnaryExpr(NOT, col("active"))
+    """
+
+    op: Operation
+    operand: Expr
+
+    data_type: DataType = field(default_factory=lambda: DataType.bool(), init=False)
+
+    def structurally_equals(self, other: Any) -> bool:
+        return (
+            isinstance(other, UnaryExpr)
+            and self.op is other.op
+            and self.operand.structurally_equals(other.operand)
+        )
+
+
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False)
 class UDFExpr(Expr):
     """Expression that represents a user-defined function call.
 
@@ -303,6 +387,63 @@ class UDFExpr(Expr):
                 for k in self.kwargs.keys()
             )
         )
+
+
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False)
+class PredicateExpr(Expr):
+    """Expression that represents a predicate (boolean condition) for filtering.
+
+    This expression type is specifically designed for filtering operations
+    and represents boolean conditions that can be evaluated to determine
+    which rows to include or exclude from a dataset.
+
+    PredicateExpr can contain any boolean expression, including comparisons,
+    logical operations, null checks, and complex nested conditions.
+
+    Args:
+        condition: The boolean expression that defines the predicate
+
+    Example:
+        >>> from ray.data.expressions import col, where
+        >>> # Simple comparison predicate
+        >>> age_filter = where(col("age") > lit(21))
+        >>>
+        >>> # Complex predicate with logical operations
+        >>> complex_filter = where(
+        ...     (col("age") > lit(21)) & (col("country") == lit("USA")) & col("active").is_not_null()
+        ... )
+    """
+
+    condition: Expr
+    data_type: DataType = field(default_factory=lambda: DataType.bool(), init=False)
+
+    def structurally_equals(self, other: Any) -> bool:
+        return isinstance(other, PredicateExpr) and self.condition.structurally_equals(
+            other.condition
+        )
+
+    def __and__(self, other: Any) -> "PredicateExpr":
+        """Combine predicates with logical AND."""
+        if isinstance(other, PredicateExpr):
+            other = other.condition
+        elif not isinstance(other, Expr):
+            other = LiteralExpr(other)
+
+        return PredicateExpr(self.condition & other)
+
+    def __or__(self, other: Any) -> "PredicateExpr":
+        """Combine predicates with logical OR."""
+        if isinstance(other, PredicateExpr):
+            other = other.condition
+        elif not isinstance(other, Expr):
+            other = LiteralExpr(other)
+
+        return PredicateExpr(self.condition | other)
+
+    def __invert__(self) -> "PredicateExpr":
+        """Negate the predicate."""
+        return PredicateExpr(~self.condition)
 
 
 def _create_udf_callable(
@@ -476,6 +617,49 @@ def lit(value: Any) -> LiteralExpr:
     return LiteralExpr(value)
 
 
+@PublicAPI(stability="alpha")
+def where(condition: Expr) -> PredicateExpr:
+    """
+    Create a predicate expression for filtering operations.
+
+    This creates a predicate that can be used with dataset filtering operations.
+    The predicate represents a boolean condition that determines which rows
+    to include or exclude.
+
+    Args:
+        condition: A boolean expression that defines the filtering condition
+
+    Returns:
+        A PredicateExpr that can be used for filtering
+
+    Example:
+        >>> from ray.data.expressions import col, lit, where
+        >>> import ray
+        >>>
+        >>> # Simple filter
+        >>> age_filter = where(col("age") > 21)
+        >>>
+        >>> # Complex filter with multiple conditions
+        >>> complex_filter = where(
+        ...     (col("age") > 21) &
+        ...     (col("country") == "USA") &
+        ...     col("active").is_not_null()
+        ... )
+        >>>
+        >>> # Use with with_column to create boolean flag columns
+        >>> ds = ray.data.from_items([
+        ...     {"age": 25, "country": "USA", "active": True},
+        ...     {"age": 19, "country": "Canada", "active": False}
+        ... ])
+        >>> ds_with_flag = ds.with_column("is_adult", where(col("age") > 21))
+        >>> ds_with_complex_flag = ds.with_column(
+        ...     "eligible",
+        ...     where((col("age") > 21) & (col("country") == "USA"))
+        ... )
+    """
+    return PredicateExpr(condition)
+
+
 @DeveloperAPI(stability="alpha")
 def download(uri_column_name: str) -> DownloadExpr:
     """
@@ -517,10 +701,13 @@ __all__ = [
     "ColumnExpr",
     "LiteralExpr",
     "BinaryExpr",
+    "UnaryExpr",
     "UDFExpr",
+    "PredicateExpr",
     "udf",
     "DownloadExpr",
     "col",
     "lit",
+    "where",
     "download",
 ]

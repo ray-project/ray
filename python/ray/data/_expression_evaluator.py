@@ -15,35 +15,58 @@ from ray.data.expressions import (
     Expr,
     LiteralExpr,
     Operation,
+    PredicateExpr,
     UDFExpr,
+    UnaryExpr,
 )
 
-_PANDAS_EXPR_OPS_MAP = {
+
+def _arrow_is_in(left: Any, right: Any) -> Any:
+    if not isinstance(right, (pa.Array, pa.ChunkedArray)):
+        right = pa.array(right.as_py() if isinstance(right, pa.Scalar) else right)
+    return pc.is_in(left, right)
+
+
+_PANDAS_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
     Operation.ADD: operator.add,
     Operation.SUB: operator.sub,
     Operation.MUL: operator.mul,
     Operation.DIV: operator.truediv,
+    Operation.FLOORDIV: operator.floordiv,
     Operation.GT: operator.gt,
     Operation.LT: operator.lt,
     Operation.GE: operator.ge,
     Operation.LE: operator.le,
     Operation.EQ: operator.eq,
+    Operation.NE: operator.ne,
     Operation.AND: operator.and_,
     Operation.OR: operator.or_,
+    Operation.NOT: operator.not_,
+    Operation.IS_NULL: pd.isna,
+    Operation.IS_NOT_NULL: pd.notna,
+    Operation.IN: lambda left, right: left.isin(right),
+    Operation.NOT_IN: lambda left, right: ~left.isin(right),
 }
 
-_ARROW_EXPR_OPS_MAP = {
+_ARROW_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
     Operation.ADD: pc.add,
     Operation.SUB: pc.subtract,
     Operation.MUL: pc.multiply,
     Operation.DIV: pc.divide,
+    Operation.FLOORDIV: lambda left, right: pc.floor(pc.divide(left, right)),
     Operation.GT: pc.greater,
     Operation.LT: pc.less,
     Operation.GE: pc.greater_equal,
     Operation.LE: pc.less_equal,
     Operation.EQ: pc.equal,
+    Operation.NE: pc.not_equal,
     Operation.AND: pc.and_,
     Operation.OR: pc.or_,
+    Operation.NOT: pc.invert,
+    Operation.IS_NULL: pc.is_null,
+    Operation.IS_NOT_NULL: pc.is_valid,
+    Operation.IN: _arrow_is_in,
+    Operation.NOT_IN: lambda left, right: pc.invert(_arrow_is_in(left, right)),
 }
 
 
@@ -63,6 +86,9 @@ def _eval_expr_recursive(
             _eval_expr_recursive(expr.left, batch, ops),
             _eval_expr_recursive(expr.right, batch, ops),
         )
+    if isinstance(expr, UnaryExpr):
+        return ops[expr.op](_eval_expr_recursive(expr.operand, batch, ops))
+
     if isinstance(expr, UDFExpr):
         args = [_eval_expr_recursive(arg, batch, ops) for arg in expr.args]
         kwargs = {
@@ -79,6 +105,10 @@ def _eval_expr_recursive(
             )
 
         return result
+
+    if isinstance(expr, PredicateExpr):
+        return _eval_expr_recursive(expr.condition, batch, ops)
+
     raise TypeError(f"Unsupported expression node: {type(expr).__name__}")
 
 
