@@ -2950,8 +2950,8 @@
   frequency: nightly
 
   team: core
-  byod: {}
   cluster:
+    byod: {}
     cluster_compute: shuffle/shuffle_compute_autoscaling.yaml
 
   run:
