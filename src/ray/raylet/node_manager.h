@@ -48,8 +48,8 @@
 #include "ray/raylet/wait_manager.h"
 #include "ray/raylet/worker_killing_policy.h"
 #include "ray/raylet/worker_pool.h"
-#include "ray/rpc/raylet/raylet_client_pool.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
+#include "ray/rpc/raylet/raylet_client_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/throttler.h"
 

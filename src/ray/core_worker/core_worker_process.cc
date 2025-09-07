@@ -244,10 +244,10 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   // instead of crashing.
   auto raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
       local_node_id, options.node_ip_address, options.node_manager_port);
-  auto local_raylet_rpc_client = std::make_shared<rpc::RayletClient>(
-      std::move(raylet_address),
-      *client_call_manager,
-      /*raylet_unavailable_timeout_callback=*/[] {});
+  auto local_raylet_rpc_client =
+      std::make_shared<rpc::RayletClient>(std::move(raylet_address),
+                                          *client_call_manager,
+                                          /*raylet_unavailable_timeout_callback=*/[] {});
   auto core_worker_server =
       std::make_unique<rpc::GrpcServer>(WorkerTypeString(options.worker_type),
                                         assigned_port,
@@ -841,8 +841,7 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
     // TODO(joshlee): This local raylet client has a custom retry policy below since its
     // likely the driver can start up before the raylet is ready. We want to move away
     // from this and will be fixed in https://github.com/ray-project/ray/issues/55200
-    rpc::RayletClient local_raylet_rpc_client(
-        raylet_address, client_call_manager, [] {});
+    rpc::RayletClient local_raylet_rpc_client(raylet_address, client_call_manager, [] {});
 
     std::function<void(int64_t)> get_once = [this,
                                              &get_once,

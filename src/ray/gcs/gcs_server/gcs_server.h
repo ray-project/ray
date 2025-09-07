@@ -39,10 +39,10 @@
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
-#include "ray/rpc/raylet/raylet_client_pool.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/metrics_agent_client.h"
+#include "ray/rpc/raylet/raylet_client_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/throttler.h"
 

@@ -228,7 +228,6 @@ ray_cc_library(
     ],
 )
 
-
 ray_cc_library(
     name = "core_worker_client",
     srcs = [

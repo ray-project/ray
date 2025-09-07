@@ -45,9 +45,9 @@ ray_cc_library(
         "//src/ray/protobuf:pubsub_cc_proto",
         "//src/ray/pubsub:publisher",
         "//src/ray/pubsub:subscriber",
-        "//src/ray/rpc:raylet_client_lib",
         "//src/ray/rpc:core_worker_client",
         "//src/ray/rpc:metrics_agent_client",
+        "//src/ray/rpc:raylet_client_lib",
         "//src/ray/stats:stats_lib",
         "//src/ray/util:container_util",
         "//src/ray/util:env",
@@ -333,8 +333,8 @@ ray_cc_library(
     hdrs = ["experimental_mutable_object_provider.h"],
     deps = [
         ":experimental_mutable_object_manager",
-        "//src/ray/rpc:raylet_client_interface",
         "//src/ray/rpc:client_call",
+        "//src/ray/rpc:raylet_client_interface",
     ],
 )
 

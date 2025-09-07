@@ -22,8 +22,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "ray/rpc/raylet/raylet_client_interface.h"
 #include "ray/rpc/grpc_client.h"
+#include "ray/rpc/raylet/raylet_client_interface.h"
 #include "ray/rpc/retryable_grpc_client.h"
 #include "src/ray/protobuf/node_manager.grpc.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
