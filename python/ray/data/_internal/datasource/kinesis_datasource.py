@@ -58,9 +58,10 @@ class KinesisDatasource(UnboundDatasource):
             List of ReadTask objects for Kinesis shards
         """
         tasks = []
-        
+
         # Create tasks based on parallelism (simulate shards)
         for shard_id in range(min(parallelism, 4)):  # Max 4 shards for testing
+
             def create_kinesis_read_fn(shard_num: int):
                 def kinesis_read_fn() -> Iterator[pa.Table]:
                     """Read function for Kinesis shard."""
@@ -68,22 +69,24 @@ class KinesisDatasource(UnboundDatasource):
                     # In production, this would use boto3 kinesis client
                     records = []
                     for i in range(self.max_records_per_task):
-                        records.append({
-                            "sequence_number": f"shard_{shard_num}_{i}",
-                            "partition_key": f"partition_{i % 10}",
-                            "data": f"kinesis_record_{shard_num}_{i}",
-                            "stream_name": self.stream_name,
-                            "shard_id": f"shardId-{shard_num:012d}",
-                            "timestamp": "2024-01-01T00:00:00Z",
-                        })
-                    
+                        records.append(
+                            {
+                                "sequence_number": f"shard_{shard_num}_{i}",
+                                "partition_key": f"partition_{i % 10}",
+                                "data": f"kinesis_record_{shard_num}_{i}",
+                                "stream_name": self.stream_name,
+                                "shard_id": f"shardId-{shard_num:012d}",
+                                "timestamp": "2024-01-01T00:00:00Z",
+                            }
+                        )
+
                     # Convert to PyArrow table
                     if records:
                         table = pa.Table.from_pylist(records)
                         yield table
-                    
+
                 return kinesis_read_fn
-            
+
             # Create metadata for this task
             metadata = BlockMetadata(
                 num_rows=self.max_records_per_task,
@@ -91,17 +94,19 @@ class KinesisDatasource(UnboundDatasource):
                 input_files=[f"kinesis://{self.stream_name}/shard-{shard_id}"],
                 exec_stats=None,
             )
-            
+
             # Create schema
-            schema = pa.schema([
-                ("sequence_number", pa.string()),
-                ("partition_key", pa.string()),
-                ("data", pa.string()),
-                ("stream_name", pa.string()),
-                ("shard_id", pa.string()),
-                ("timestamp", pa.string()),
-            ])
-            
+            schema = pa.schema(
+                [
+                    ("sequence_number", pa.string()),
+                    ("partition_key", pa.string()),
+                    ("data", pa.string()),
+                    ("stream_name", pa.string()),
+                    ("shard_id", pa.string()),
+                    ("timestamp", pa.string()),
+                ]
+            )
+
             # Create read task
             task = create_unbound_read_task(
                 read_fn=create_kinesis_read_fn(shard_id),
@@ -109,7 +114,7 @@ class KinesisDatasource(UnboundDatasource):
                 schema=schema,
             )
             tasks.append(task)
-        
+
         return tasks
 
     def get_name(self) -> str:

@@ -38,11 +38,11 @@ from ray.data.datasource.partitioning import (
     PathPartitionFilter,
     PathPartitionParser,
 )
-from ray.data.datasource.streaming_datasource import (
-    StreamingDatasource,
-    StreamingMetrics,
-    StreamingPosition,
-    create_streaming_read_task,
+from ray.data.datasource.unbound_datasource import (
+    UnboundDatasource,
+    UnboundMetrics,
+    UnboundPosition,
+    create_unbound_read_task,
 )
 
 # Note: HuggingFaceDatasource should NOT be imported here, because
@@ -71,12 +71,12 @@ __all__ = [
     "ReadTask",
     "Reader",
     "RowBasedFileDatasink",
-    "StreamingDatasource",
-    "StreamingMetrics",
-    "StreamingPosition",
+    "UnboundDatasource",
+    "UnboundMetrics",
+    "UnboundPosition",
     "_S3FileSystemWrapper",
     "WriteResult",
-    "create_streaming_read_task",
+    "create_unbound_read_task",
     "WriteReturnType",
     "SaveMode",
 ]

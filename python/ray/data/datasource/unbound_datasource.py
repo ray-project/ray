@@ -1,8 +1,8 @@
 """Unbound datasource base classes and utilities.
 
-This module provides the core abstract base class and utilities for all unbounded 
-online data sources in Ray Data. These are different from Ray Data's "streaming 
-execution" - they represent sources of unbounded data like Kafka topics, Kinesis 
+This module provides the core abstract base class and utilities for all unbounded
+online data sources in Ray Data. These are different from Ray Data's "streaming
+execution" - they represent sources of unbounded data like Kafka topics, Kinesis
 streams, etc.
 
 Example:
@@ -12,14 +12,13 @@ Example:
     ...     def _get_read_tasks_for_partition(self, partition_info, parallelism):
     ...         # Implementation here
     ...         pass
-    
     >>> datasource = MyUnboundDatasource("my_source")
     >>> read_tasks = datasource.get_read_tasks(parallelism=4)
 """
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any, Callable, Dict, Iterable,List, Optional, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Union
 
 import pyarrow as pa
 
@@ -34,7 +33,6 @@ class UnboundPosition:
 
     def __init__(self, value: Union[str, int], position_type: str = "offset"):
         """Initialize an unbound position.
-        
         Args:
             value: Position value (string or integer)
             position_type: Type of position (offset, timestamp, sequence)
@@ -118,7 +116,7 @@ class UnboundDatasource(Datasource, ABC):
         ...     def _get_read_tasks_for_partition(self, partition_info, parallelism):
         ...         # Create and return ReadTask objects
         ...         return [create_unbound_read_task(...)]
-        
+
         >>> ds = MyDatasource("my_source")
         >>> tasks = ds.get_read_tasks(parallelism=2)
     """
@@ -165,7 +163,7 @@ class UnboundDatasource(Datasource, ABC):
         # Default implementation that subclasses can override
         # Get partition information - this is source-specific
         partition_info = {"default_partition": True}
-        
+
         # Create read tasks for the partition
         return self._get_read_tasks_for_partition(partition_info, parallelism)
 
@@ -197,13 +195,11 @@ class UnboundDatasource(Datasource, ABC):
     @property
     def supports_distributed_reads(self) -> bool:
         """Whether this datasource supports distributed reads.
-        
+
         Returns:
             True - unbound datasources support distributed reads
         """
         return True
-
-
 
 
 def create_unbound_read_task(
@@ -224,8 +220,6 @@ def create_unbound_read_task(
     return ReadTask(read_fn, metadata, schema=schema)
 
 
-
-
 def infer_schema_from_records(records: List[Dict[str, Any]]) -> Optional[pa.Schema]:
     """Infer PyArrow schema from record samples.
 
@@ -237,7 +231,7 @@ def infer_schema_from_records(records: List[Dict[str, Any]]) -> Optional[pa.Sche
     """
     if not records:
         return None
-        
+
     try:
         table = pa.Table.from_pylist(records)
         return table.schema
@@ -247,7 +241,7 @@ def infer_schema_from_records(records: List[Dict[str, Any]]) -> Optional[pa.Sche
 
 __all__ = [
     "UnboundDatasource",
-    "UnboundPosition", 
+    "UnboundPosition",
     "UnboundMetrics",
     "create_unbound_read_task",
     "infer_schema_from_records",

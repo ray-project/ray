@@ -58,11 +58,14 @@ class KafkaDatasource(UnboundDatasource):
             List of ReadTask objects for Kafka topics
         """
         tasks = []
-        
+
         # Create one task per topic, up to parallelism limit
-        topics_to_process = self.topics[:parallelism] if parallelism > 0 else self.topics
-        
+        topics_to_process = (
+            self.topics[:parallelism] if parallelism > 0 else self.topics
+        )
+
         for topic in topics_to_process:
+
             def create_kafka_read_fn(topic_name: str):
                 def kafka_read_fn() -> Iterator[pa.Table]:
                     """Read function for Kafka topic."""
@@ -70,22 +73,24 @@ class KafkaDatasource(UnboundDatasource):
                     # In production, this would use kafka-python or confluent-kafka
                     records = []
                     for i in range(self.max_records_per_task):
-                        records.append({
-                            "offset": i,
-                            "key": f"key_{i}",
-                            "value": f"message_{i}_from_{topic_name}",
-                            "topic": topic_name,
-                            "partition": 0,
-                            "timestamp": "2024-01-01T00:00:00Z",
-                        })
-                    
+                        records.append(
+                            {
+                                "offset": i,
+                                "key": f"key_{i}",
+                                "value": f"message_{i}_from_{topic_name}",
+                                "topic": topic_name,
+                                "partition": 0,
+                                "timestamp": "2024-01-01T00:00:00Z",
+                            }
+                        )
+
                     # Convert to PyArrow table
                     if records:
                         table = pa.Table.from_pylist(records)
                         yield table
-                    
+
                 return kafka_read_fn
-            
+
             # Create metadata for this task
             metadata = BlockMetadata(
                 num_rows=self.max_records_per_task,
@@ -93,17 +98,19 @@ class KafkaDatasource(UnboundDatasource):
                 input_files=[f"kafka://{topic}"],
                 exec_stats=None,
             )
-            
+
             # Create schema
-            schema = pa.schema([
-                ("offset", pa.int64()),
-                ("key", pa.string()),
-                ("value", pa.string()),
-                ("topic", pa.string()),
-                ("partition", pa.int32()),
-                ("timestamp", pa.string()),
-            ])
-            
+            schema = pa.schema(
+                [
+                    ("offset", pa.int64()),
+                    ("key", pa.string()),
+                    ("value", pa.string()),
+                    ("topic", pa.string()),
+                    ("partition", pa.int32()),
+                    ("timestamp", pa.string()),
+                ]
+            )
+
             # Create read task
             task = create_unbound_read_task(
                 read_fn=create_kafka_read_fn(topic),
@@ -111,7 +118,7 @@ class KafkaDatasource(UnboundDatasource):
                 schema=schema,
             )
             tasks.append(task)
-        
+
         return tasks
 
     def get_name(self) -> str:

@@ -221,6 +221,7 @@ boto==2.49.0
 boto3==1.26.76
     # via
     #   -r python/requirements/cloud-requirements.txt
+    #   -r python/requirements/ml/data-test-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   aim
     #   aiobotocore
@@ -355,6 +356,8 @@ crc32c==2.3
     # via -r python/requirements/ml/data-requirements.txt
 crcmod==1.7
     # via gsutil
+croniter==6.0.0
+    # via -r python/requirements/ml/data-test-requirements.txt
 cryptography==44.0.3 ; sys_platform != "darwin"
     # via
     #   -r python/requirements/test-requirements.txt
@@ -957,6 +960,8 @@ jupyterlab-widgets==3.0.11
     # via ipywidgets
 jupytext==1.16.3
     # via -r python/requirements/test-requirements.txt
+kafka-python==2.2.15
+    # via -r python/requirements/ml/data-test-requirements.txt
 keras==2.15.0
     # via tensorflow
 kiwisolver==1.4.5
@@ -1735,6 +1740,7 @@ python-dateutil==2.8.2
     #   aim
     #   arrow
     #   botocore
+    #   croniter
     #   freezegun
     #   google-cloud-bigquery
     #   graphene
@@ -1765,6 +1771,7 @@ pytz==2022.7.1
     #   -r python/requirements/test-requirements.txt
     #   aim
     #   clickhouse-connect
+    #   croniter
     #   pandas
     #   snowflake-connector-python
 pyu2f==0.1.5
@@ -1834,6 +1841,7 @@ requests==2.32.3
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
+    #   -r python/requirements/ml/data-test-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   adal
     #   aim
