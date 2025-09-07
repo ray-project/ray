@@ -187,7 +187,7 @@ def _get_max_chunk_size(
     if table.nbytes == 0:
         return None
     else:
-        avg_row_size = int(table.nbytes / table.num_rows)
+        avg_row_size = table.nbytes / table.num_rows
         return max(1, int(max_chunk_size_bytes / avg_row_size))
 
 
@@ -334,6 +334,19 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 col_name = new_name
             r = r.append_column(col_name, col)
         return r
+
+    def upsert_column(
+        self, column_name: str, column_data: BlockColumn
+    ) -> "pyarrow.Table":
+        assert isinstance(
+            column_data, (pyarrow.Array, pyarrow.ChunkedArray)
+        ), f"Expected either a pyarrow.Array or pyarrow.ChunkedArray, got: {type(column_data)}"
+
+        column_idx = self._table.schema.get_field_index(column_name)
+        if column_idx == -1:
+            return self._table.append_column(column_name, column_data)
+        else:
+            return self._table.set_column(column_idx, column_name, column_data)
 
     @staticmethod
     def builder() -> ArrowBlockBuilder:

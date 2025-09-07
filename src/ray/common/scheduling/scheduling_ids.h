@@ -25,7 +25,6 @@
 #include "ray/common/constants.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
-#include "ray/util/util.h"
 
 namespace ray {
 

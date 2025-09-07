@@ -15,8 +15,20 @@
 #pragma once
 
 #include <array>
+#include <memory>
 #include <optional>
 #include <string>
+
+#include "absl/container/flat_hash_map.h"
+
+// Boost forward-declarations (to avoid forcing slow header inclusions)
+namespace boost::asio::generic {
+
+template <class Protocol>
+class basic_endpoint;
+class stream_protocol;
+
+}  // namespace boost::asio::generic
 
 namespace ray {
 
@@ -42,5 +54,29 @@ std::optional<std::array<std::string, 2>> ParseAddress(const std::string &addres
 /// \param port The port number to check.
 /// \return true if the port is available, false otherwise.
 bool CheckPortFree(int port);
+
+/// Converts the given endpoint (such as TCP or UNIX domain socket address) to a string.
+/// \param include_scheme Whether to include the scheme prefix (such as tcp://).
+///                       This is recommended to avoid later ambiguity when parsing.
+std::string EndpointToUrl(
+    const boost::asio::generic::basic_endpoint<boost::asio::generic::stream_protocol> &ep,
+    bool include_scheme = true);
+
+/// Parses the endpoint socket address of a URL.
+/// If a scheme:// prefix is absent, the address family is guessed automatically.
+/// For TCP/IP, the endpoint comprises the IP address and port number in the URL.
+/// For UNIX domain sockets, the endpoint comprises the socket path.
+boost::asio::generic::basic_endpoint<boost::asio::generic::stream_protocol>
+ParseUrlEndpoint(const std::string &endpoint, int default_port = 0);
+
+/// Parse the url and return a pair of base_url and query string map.
+/// EX) http://abc?num_objects=9&offset=8388878
+/// will be returned as
+/// {
+///   url: http://abc,
+///   num_objects: 9,
+///   offset: 8388878
+/// }
+std::shared_ptr<absl::flat_hash_map<std::string, std::string>> ParseURL(std::string url);
 
 }  // namespace ray

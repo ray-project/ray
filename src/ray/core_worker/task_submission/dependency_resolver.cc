@@ -77,6 +77,9 @@ void InlineDependencies(
             mutable_arg->add_nested_inlined_refs()->CopyFrom(nested_ref);
             contained_ids->push_back(ObjectID::FromBinary(nested_ref.object_id()));
           }
+        } else {
+          auto tensor_transport = mutable_arg->object_ref().tensor_transport();
+          mutable_arg->set_tensor_transport(tensor_transport);
         }
         found++;
       }
@@ -101,12 +104,12 @@ void LocalDependencyResolver::ResolveDependencies(
     if (task.ArgByRef(i)) {
       local_dependency_ids.insert(task.ArgObjectId(i));
     }
-    for (const auto &in : task.ArgInlinedRefs(i)) {
-      auto object_id = ObjectID::FromBinary(in.object_id());
+    for (const auto &inlined_ref : task.ArgInlinedRefs(i)) {
+      const auto object_id = ObjectID::FromBinary(inlined_ref.object_id());
       if (ObjectID::IsActorID(object_id)) {
-        auto actor_id = ObjectID::ToActorID(object_id);
+        const auto actor_id = ObjectID::ToActorID(object_id);
         if (actor_creator_.IsActorInRegistering(actor_id)) {
-          actor_dependency_ids.insert(ObjectID::ToActorID(object_id));
+          actor_dependency_ids.insert(actor_id);
         }
       }
     }
