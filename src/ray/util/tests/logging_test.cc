@@ -30,7 +30,7 @@
 #include "ray/util/env.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/path_utils.h"
-#include "ray/util/util.h"
+#include "ray/util/time.h"
 
 using namespace testing;  // NOLINT
 using json = nlohmann::json;

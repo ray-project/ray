@@ -300,7 +300,7 @@ receives +1 reward. The losing player receives a -1 reward.
 To make the implementation easier, the aberration from the original game is that trying to
 place a piece on an already occupied field results in the board not changing at all, but the
 moving player receiving a -5 reward as a penalty (in the original game, this move is
-simply not allowed and therefor can never happen).
+simply not allowed and therefore can never happen).
 
 Here is your initial class scaffold for the Tic-Tac-Toe game:
 

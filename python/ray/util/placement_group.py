@@ -148,7 +148,6 @@ def placement_group(
     strategy: str = "PACK",
     name: str = "",
     lifetime: Optional[str] = None,
-    _max_cpu_fraction_per_node: float = 1.0,
     _soft_target_node_id: Optional[str] = None,
     bundle_label_selector: List[Dict[str, str]] = None,
 ) -> PlacementGroup:
@@ -170,14 +169,6 @@ def placement_group(
             will fate share with its creator and will be deleted once its
             creator is dead, or "detached", which means the placement group
             will live as a global object independent of the creator.
-        _max_cpu_fraction_per_node: (Experimental) Disallow placing bundles on nodes
-            if it would cause the fraction of CPUs used by bundles from *any* placement
-            group on the node to exceed this fraction. This effectively sets aside
-            CPUs that placement groups cannot occupy on nodes. when
-            `max_cpu_fraction_per_node < 1.0`, at least 1 CPU will be excluded from
-            placement group scheduling. Note: This feature is experimental and is not
-            recommended for use with autoscaling clusters (scale-up will not trigger
-            properly).
         _soft_target_node_id: (Private, Experimental) Soft hint where bundles of
             this placement group should be placed.
             The target node is specified by it's hex ID.
@@ -202,7 +193,6 @@ def placement_group(
         bundles=bundles,
         strategy=strategy,
         lifetime=lifetime,
-        _max_cpu_fraction_per_node=_max_cpu_fraction_per_node,
         _soft_target_node_id=_soft_target_node_id,
         bundle_label_selector=bundle_label_selector,
     )
@@ -220,7 +210,6 @@ def placement_group(
         bundles,
         strategy,
         detached,
-        _max_cpu_fraction_per_node,
         _soft_target_node_id,
         bundle_label_selector,
     )
@@ -353,7 +342,6 @@ def validate_placement_group(
     bundles: List[Dict[str, float]],
     strategy: str = "PACK",
     lifetime: Optional[str] = None,
-    _max_cpu_fraction_per_node: float = 1.0,
     _soft_target_node_id: Optional[str] = None,
     bundle_label_selector: List[Dict[str, str]] = None,
 ) -> bool:
@@ -361,22 +349,6 @@ def validate_placement_group(
 
     Raises ValueError if inputs are invalid.
     """
-
-    assert _max_cpu_fraction_per_node is not None
-
-    if _max_cpu_fraction_per_node != 1.0:
-        warnings.warn(
-            "The experimental '_max_cpu_fraction_per_node' option for placement groups "
-            "is deprecated and will be removed in a future version of Ray."
-        )
-
-    if _max_cpu_fraction_per_node <= 0 or _max_cpu_fraction_per_node > 1:
-        raise ValueError(
-            "Invalid argument `_max_cpu_fraction_per_node`: "
-            f"{_max_cpu_fraction_per_node}. "
-            "_max_cpu_fraction_per_node must be a float between 0 and 1. "
-        )
-
     if _soft_target_node_id and strategy != "STRICT_PACK":
         raise ValueError(
             "_soft_target_node_id currently only works "

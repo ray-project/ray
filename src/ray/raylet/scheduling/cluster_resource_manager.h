@@ -33,7 +33,7 @@
 
 namespace ray {
 namespace raylet {
-class ClusterTaskManagerTest;
+class ClusterLeaseManagerTest;
 class SchedulingPolicyTest;
 }  // namespace raylet
 namespace raylet_scheduling_policy {
@@ -138,7 +138,7 @@ class ClusterResourceManager {
   BundleLocationIndex &GetBundleLocationIndex();
 
   void SetNodeLabels(const scheduling::NodeID &node_id,
-                     const absl::flat_hash_map<std::string, std::string> &labels);
+                     absl::flat_hash_map<std::string, std::string> labels);
 
  private:
   friend class ClusterResourceScheduler;
@@ -180,7 +180,7 @@ class ClusterResourceManager {
 
   friend class ClusterResourceSchedulerTest;
   friend struct ClusterResourceManagerTest;
-  friend class raylet::ClusterTaskManagerTest;
+  friend class raylet::ClusterLeaseManagerTest;
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingDeleteClusterNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingModifyClusterNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest);
@@ -199,7 +199,7 @@ class ClusterResourceManager {
   FRIEND_TEST(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, DirtyLocalViewTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, DynamicResourceTest);
-  FRIEND_TEST(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources);
+  FRIEND_TEST(ClusterLeaseManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources);
   FRIEND_TEST(ClusterResourceSchedulerTest, TestForceSpillback);
   FRIEND_TEST(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, LabelSelectorIsSchedulableOnNodeTest);

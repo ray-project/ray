@@ -100,7 +100,7 @@ void RedisStoreClient::MGetValues(
                           shared_callback,
                           key_value_map](const std::shared_ptr<CallbackReply> &reply) {
       if (!reply->IsNil()) {
-        auto value = reply->ReadAsStringArray();
+        const auto &value = reply->ReadAsStringArray();
         for (size_t index = 0; index < value.size(); ++index) {
           if (value[index].has_value()) {
             (*key_value_map)[args[index]] = *(value[index]);
@@ -140,28 +140,13 @@ RedisStoreClient::RedisStoreClient(instrumented_io_context &io_service,
   RAY_CHECK(!absl::StrContains(external_storage_namespace_, kClusterSeparator))
       << "Storage namespace (" << external_storage_namespace_ << ") shouldn't contain "
       << kClusterSeparator << ".";
-
-  // Health check Redis periodically and crash if it becomes unavailable.
-  periodic_health_check_runner_ = PeriodicalRunner::Create(io_service_);
-  periodic_health_check_runner_->RunFnPeriodically(
-      [this] {
-        AsyncCheckHealth({[](const Status &status) {
-                            RAY_CHECK_OK(status)
-                                << "Redis connection failed unexpectedly.";
-                          },
-                          io_service_});
-      },
-      options.heartbeat_interval_ms,
-      "RedisStoreClient.redis_health_check");
 }
 
-RedisStoreClient::~RedisStoreClient() { periodic_health_check_runner_.reset(); }
-
-Status RedisStoreClient::AsyncPut(const std::string &table_name,
-                                  const std::string &key,
-                                  std::string data,
-                                  bool overwrite,
-                                  Postable<void(bool)> callback) {
+void RedisStoreClient::AsyncPut(const std::string &table_name,
+                                const std::string &key,
+                                std::string data,
+                                bool overwrite,
+                                Postable<void(bool)> callback) {
   RedisCommand command{/*command=*/overwrite ? "HSET" : "HSETNX",
                        RedisKey{external_storage_namespace_, table_name},
                        /*args=*/{key, std::move(data)}};
@@ -172,13 +157,11 @@ Status RedisStoreClient::AsyncPut(const std::string &table_name,
         std::move(callback).Dispatch("RedisStoreClient.AsyncPut", added_num != 0);
       };
   SendRedisCmdWithKeys({key}, std::move(command), std::move(write_callback));
-  return Status::OK();
 }
 
-Status RedisStoreClient::AsyncGet(
-    const std::string &table_name,
-    const std::string &key,
-    ToPostable<OptionalItemCallback<std::string>> callback) {
+void RedisStoreClient::AsyncGet(const std::string &table_name,
+                                const std::string &key,
+                                ToPostable<OptionalItemCallback<std::string>> callback) {
   auto redis_callback = [callback = std::move(callback)](
                             const std::shared_ptr<CallbackReply> &reply) mutable {
     std::optional<std::string> result;
@@ -196,49 +179,45 @@ Status RedisStoreClient::AsyncGet(
                        RedisKey{external_storage_namespace_, table_name},
                        /*args=*/{key}};
   SendRedisCmdArgsAsKeys(std::move(command), std::move(redis_callback));
-  return Status::OK();
 }
 
-Status RedisStoreClient::AsyncGetAll(
+void RedisStoreClient::AsyncGetAll(
     const std::string &table_name,
     Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) {
   RedisScanner::ScanKeysAndValues(primary_context_,
                                   RedisKey{external_storage_namespace_, table_name},
                                   RedisMatchPattern::Any(),
                                   std::move(callback));
-  return Status::OK();
 }
 
-Status RedisStoreClient::AsyncDelete(const std::string &table_name,
-                                     const std::string &key,
-                                     Postable<void(bool)> callback) {
-  return AsyncBatchDelete(
-      table_name, {key}, std::move(callback).TransformArg([](int64_t cnt) {
-        return cnt > 0;
-      }));
+void RedisStoreClient::AsyncDelete(const std::string &table_name,
+                                   const std::string &key,
+                                   Postable<void(bool)> callback) {
+  AsyncBatchDelete(table_name, {key}, std::move(callback).TransformArg([](int64_t cnt) {
+    return cnt > 0;
+  }));
 }
 
-Status RedisStoreClient::AsyncBatchDelete(const std::string &table_name,
-                                          const std::vector<std::string> &keys,
-                                          Postable<void(int64_t)> callback) {
+void RedisStoreClient::AsyncBatchDelete(const std::string &table_name,
+                                        const std::vector<std::string> &keys,
+                                        Postable<void(int64_t)> callback) {
   if (keys.empty()) {
     std::move(callback).Dispatch("RedisStoreClient.AsyncBatchDelete", 0);
-    return Status::OK();
+    return;
   }
-  return DeleteByKeys(table_name, keys, std::move(callback));
+  DeleteByKeys(table_name, keys, std::move(callback));
 }
 
-Status RedisStoreClient::AsyncMultiGet(
+void RedisStoreClient::AsyncMultiGet(
     const std::string &table_name,
     const std::vector<std::string> &keys,
     Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) {
   if (keys.empty()) {
     std::move(callback).Dispatch("RedisStoreClient.AsyncMultiGet",
                                  absl::flat_hash_map<std::string, std::string>{});
-    return Status::OK();
+    return;
   }
   MGetValues(table_name, keys, std::move(callback));
-  return Status::OK();
 }
 
 size_t RedisStoreClient::PushToSendingQueue(const std::vector<RedisConcurrencyKey> &keys,
@@ -356,9 +335,9 @@ void RedisStoreClient::SendRedisCmdWithKeys(std::vector<std::string> keys,
   }
 }
 
-Status RedisStoreClient::DeleteByKeys(const std::string &table,
-                                      const std::vector<std::string> &keys,
-                                      Postable<void(int64_t)> callback) {
+void RedisStoreClient::DeleteByKeys(const std::string &table,
+                                    const std::vector<std::string> &keys,
+                                    Postable<void(int64_t)> callback) {
   auto del_cmds =
       GenCommandsBatched("HDEL", RedisKey{external_storage_namespace_, table}, keys);
   auto total_count = del_cmds.size();
@@ -379,7 +358,6 @@ Status RedisStoreClient::DeleteByKeys(const std::string &table,
     };
     SendRedisCmdArgsAsKeys(std::move(command), std::move(delete_callback));
   }
-  return Status::OK();
 }
 
 RedisStoreClient::RedisScanner::RedisScanner(
@@ -427,9 +405,9 @@ void RedisStoreClient::RedisScanner::Scan() {
 
   // Scan by prefix from Redis.
   RedisCommand command = {"HSCAN", redis_key_, {std::to_string(cursor_.value())}};
-  if (match_pattern_.escaped != "*") {
+  if (match_pattern_.escaped_ != "*") {
     command.args.push_back("MATCH");
-    command.args.push_back(match_pattern_.escaped);
+    command.args.push_back(match_pattern_.escaped_);
   }
   command.args.push_back("COUNT");
   command.args.push_back(std::to_string(batch_count));
@@ -474,7 +452,7 @@ void RedisStoreClient::RedisScanner::OnScanCallback(
   }
 }
 
-Status RedisStoreClient::AsyncGetNextJobID(Postable<void(int)> callback) {
+void RedisStoreClient::AsyncGetNextJobID(Postable<void(int)> callback) {
   // Note: This is not a HASH! It's a simple key-value pair.
   // Key: "RAYexternal_storage_namespace@JobCounter"
   // Value: The next job ID.
@@ -488,13 +466,11 @@ Status RedisStoreClient::AsyncGetNextJobID(Postable<void(int)> callback) {
         auto job_id = static_cast<int>(reply->ReadAsInteger());
         std::move(callback).Post("GcsStore.GetNextJobID", job_id);
       });
-
-  return Status::OK();
 }
 
-Status RedisStoreClient::AsyncGetKeys(const std::string &table_name,
-                                      const std::string &prefix,
-                                      Postable<void(std::vector<std::string>)> callback) {
+void RedisStoreClient::AsyncGetKeys(const std::string &table_name,
+                                    const std::string &prefix,
+                                    Postable<void(std::vector<std::string>)> callback) {
   RedisScanner::ScanKeysAndValues(
       primary_context_,
       RedisKey{external_storage_namespace_, table_name},
@@ -508,12 +484,11 @@ Status RedisStoreClient::AsyncGetKeys(const std::string &table_name,
             }
             return keys;
           }));
-  return Status::OK();
 }
 
-Status RedisStoreClient::AsyncExists(const std::string &table_name,
-                                     const std::string &key,
-                                     Postable<void(bool)> callback) {
+void RedisStoreClient::AsyncExists(const std::string &table_name,
+                                   const std::string &key,
+                                   Postable<void(bool)> callback) {
   RedisCommand command = {
       "HEXISTS", RedisKey{external_storage_namespace_, table_name}, {key}};
   SendRedisCmdArgsAsKeys(
@@ -523,7 +498,6 @@ Status RedisStoreClient::AsyncExists(const std::string &table_name,
         bool exists = reply->ReadAsInteger() > 0;
         std::move(callback).Dispatch("RedisStoreClient.AsyncExists", exists);
       });
-  return Status::OK();
 }
 
 void RedisStoreClient::AsyncCheckHealth(Postable<void(Status)> callback) {
@@ -567,7 +541,7 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   // Delete all such keys by using empty table name.
   RedisKey redis_key{external_storage_namespace, /*table_name=*/""};
   std::vector<std::string> cmd{"KEYS",
-                               RedisMatchPattern::Prefix(redis_key.ToString()).escaped};
+                               RedisMatchPattern::Prefix(redis_key.ToString()).escaped_};
   std::promise<std::shared_ptr<CallbackReply>> promise;
   context->RunArgvAsync(cmd, [&promise](const std::shared_ptr<CallbackReply> &reply) {
     promise.set_value(reply);
@@ -581,12 +555,12 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   }
   auto delete_one_sync = [&context](const std::string &key) {
     auto del_cmd = std::vector<std::string>{"DEL", key};
-    std::promise<std::shared_ptr<CallbackReply>> promise;
+    std::promise<std::shared_ptr<CallbackReply>> prom;
     context->RunArgvAsync(del_cmd,
-                          [&promise](const std::shared_ptr<CallbackReply> &reply) {
-                            promise.set_value(reply);
+                          [&prom](const std::shared_ptr<CallbackReply> &callback_reply) {
+                            prom.set_value(callback_reply);
                           });
-    auto del_reply = promise.get_future().get();
+    auto del_reply = prom.get_future().get();
     return del_reply->ReadAsInteger() > 0;
   };
   size_t num_deleted = 0;
