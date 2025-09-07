@@ -57,9 +57,7 @@ class MAPPOTorchLearner(MAPPOLearner, TorchLearner):
     """
 
     def compute_loss_for_critic(self, batch: Dict[str, Any]):
-        """
-        Computes loss for critic, and returns a list of advantages and rewards for the target batch.
-        """
+        """Computes the loss for the shared critic module."""
         possibly_masked_mean = self.get_pmm(batch)
         module = self.module[SHARED_CRITIC_ID].unwrapped()
         vf_preds = module.compute_values(batch)

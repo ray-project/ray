@@ -5006,11 +5006,21 @@ py_test(
 
 py_test(
 	name = "examples/multi_agent/pettingzoo_shared_value_function",
-	main = "examples/multi_agent/pettingzoo_shared_value_function.py",
-	tags = ["team:rllib", "exclusive", "examples"],
 	size = "large",
 	srcs = ["examples/multi_agent/pettingzoo_shared_value_function.py"],
-	args = ["--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=-100.0", "--num-cpus=4"],
+	args = [
+		"--num-agents=2",
+		"--as-test",
+		"--framework=torch",
+		"--stop-reward=-100.0",
+		"--num-cpus=4",
+	],
+	main = "examples/multi_agent/pettingzoo_shared_value_function.py",
+	tags = [
+		"team:rllib",
+		"exclusive",
+		"examples",
+	],
 )
 
 py_test(
