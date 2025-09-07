@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/raylet_client/raylet_client.h"
+#include "ray/rpc/raylet/raylet_client.h"
 
 #include <limits>
 #include <memory>
@@ -26,7 +26,8 @@
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/node_manager.grpc.pb.h"
 
-namespace ray::raylet {
+namespace ray {
+namespace rpc {
 
 RayletClient::RayletClient(const rpc::Address &address,
                            rpc::ClientCallManager &client_call_manager,
@@ -492,4 +493,5 @@ void RayletClient::GetNodeStats(
                        /*method_timeout_ms*/ -1);
 }
 
-}  // namespace ray::raylet
+}  // namespace rpc
+}  // namespace ray

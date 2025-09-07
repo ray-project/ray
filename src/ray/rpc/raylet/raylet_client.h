@@ -22,7 +22,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "ray/raylet_client/raylet_client_interface.h"
+#include "ray/rpc/raylet/raylet_client_interface.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/retryable_grpc_client.h"
 #include "src/ray/protobuf/node_manager.grpc.pb.h"
@@ -33,8 +33,7 @@ using ResourceMappingType =
     std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
 
 namespace ray {
-
-namespace raylet {
+namespace rpc {
 
 /// Raylet client is responsible for communication with raylet. It implements
 /// [RayletClientInterface] and works on worker registration, lease management, etc.
@@ -179,6 +178,5 @@ class RayletClient : public RayletClientInterface {
   std::atomic<int64_t> pins_in_flight_ = 0;
 };
 
-}  // namespace raylet
-
+}  // namespace rpc
 }  // namespace ray

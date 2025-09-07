@@ -45,7 +45,7 @@ ray_cc_library(
         "//src/ray/protobuf:pubsub_cc_proto",
         "//src/ray/pubsub:publisher",
         "//src/ray/pubsub:subscriber",
-        "//src/ray/raylet_client:raylet_client_lib",
+        "//src/ray/rpc:raylet_client_lib",
         "//src/ray/rpc:core_worker_client",
         "//src/ray/rpc:metrics_agent_client",
         "//src/ray/stats:stats_lib",
@@ -333,7 +333,7 @@ ray_cc_library(
     hdrs = ["experimental_mutable_object_provider.h"],
     deps = [
         ":experimental_mutable_object_manager",
-        "//src/ray/raylet_client:raylet_client_interface",
+        "//src/ray/rpc:raylet_client_interface",
         "//src/ray/rpc:client_call",
     ],
 )
@@ -357,7 +357,7 @@ ray_cc_library(
         ":reference_count",
         ":task_manager",
         "//src/ray/common:id",
-        "//src/ray/raylet_client:raylet_client_pool",
+        "//src/ray/rpc:raylet_client_pool",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",
     ],
