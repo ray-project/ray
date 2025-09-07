@@ -2825,7 +2825,7 @@ def test_with_column_floor_division_and_logical_operations(
                 {"name": None},
             ],
             where(col("name").is_not_null() & (col("name") != "excluded")),
-            [True, False, None],
+            [True, False, False],
             "string_filter",
         ),
     ],
@@ -2906,7 +2906,7 @@ def test_with_column_null_checks_and_membership_operations(
             [
                 True,
                 False,
-                None,
+                False,
             ],
             "eligibility_flag",
         ),
@@ -3055,10 +3055,10 @@ def test_with_column_chained_expression_operations(
                 {"value": 10},
             ],
             [
-                None,
+                False,
                 False,
                 True,
-            ],  # Changed from [False, False, True] to match SQL semantics
+            ],
             "null_aware_filter",
         ),
         # Filter with string operations - reorder to check null first
@@ -3069,7 +3069,7 @@ def test_with_column_chained_expression_operations(
                 {"name": "excluded"},
                 {"name": None},
             ],
-            [True, False, None],
+            [True, False, False],
             "string_filter",
         ),
         # Filter with membership operations

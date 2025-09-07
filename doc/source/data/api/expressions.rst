@@ -21,6 +21,7 @@ Public API
     lit
     udf
     download
+    where
 
 Expression Classes
 ------------------
@@ -36,3 +37,6 @@ instantiate them directly, but you may encounter them when working with expressi
     ColumnExpr
     LiteralExpr
     BinaryExpr
+    UnaryExpr
+    UDFExpr
+    PredicateExpr

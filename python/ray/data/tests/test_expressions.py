@@ -1,14 +1,14 @@
 import pytest
 
 from ray.data.expressions import (
+    BinaryExpr,
     Expr,
+    Operation,
+    PredicateExpr,
+    UnaryExpr,
     col,
     lit,
     where,
-    PredicateExpr,
-    UnaryExpr,
-    BinaryExpr,
-    Operation,
 )
 
 # Tuples of (expr1, expr2, expected_result)
