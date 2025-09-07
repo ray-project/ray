@@ -14,26 +14,26 @@
 
 #pragma once
 
+#include <grpcpp/grpcpp.h>
+
 #include <memory>
 #include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
-#include "ray/raylet_client/raylet_client_interface.h"
+#include "ray/rpc/grpc_client.h"
+#include "ray/rpc/raylet/raylet_client_interface.h"
+#include "ray/rpc/retryable_grpc_client.h"
+#include "src/ray/protobuf/node_manager.grpc.pb.h"
+#include "src/ray/protobuf/node_manager.pb.h"
 
 // Maps from resource name to its allocation.
 using ResourceMappingType =
     std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
 
 namespace ray {
-
-// Forward declaration.
 namespace rpc {
-class NodeManagerClient;
-}
-
-namespace raylet {
 
 /// Raylet client is responsible for communication with raylet. It implements
 /// [RayletClientInterface] and works on worker registration, lease management, etc.
@@ -164,7 +164,10 @@ class RayletClient : public RayletClientInterface {
 
  private:
   /// gRPC client to the NodeManagerService.
-  std::shared_ptr<rpc::NodeManagerClient> grpc_client_;
+  std::shared_ptr<rpc::GrpcClient<rpc::NodeManagerService>> grpc_client_;
+
+  /// Retryable gRPC client to monitor channel health and trigger timeout callbacks.
+  std::shared_ptr<rpc::RetryableGrpcClient> retryable_grpc_client_;
 
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
@@ -175,6 +178,5 @@ class RayletClient : public RayletClientInterface {
   std::atomic<int64_t> pins_in_flight_ = 0;
 };
 
-}  // namespace raylet
-
+}  // namespace rpc
 }  // namespace ray
