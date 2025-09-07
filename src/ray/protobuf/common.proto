@@ -909,18 +909,20 @@ enum TaskStatus {
   PENDING_ACTOR_TASK_ARGS_FETCH = 6;
   // The actor task is waiting due to ordering or concurrency constraints.
   PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY = 7;
+  // The task is in GetAndPinArgsForExecutor and trying to pin or re-retrieve arguments.
+  GETTING_AND_PINNING_ARGS = 8;
   // The task is running on a worker.
-  RUNNING = 8;
+  RUNNING = 9;
   // The task is running on a worker, but is blocked in a ray.get() call.
   // This state is a sub-state of RUNNING and used for metrics only.
-  RUNNING_IN_RAY_GET = 9;
+  RUNNING_IN_RAY_GET = 10;
   // The task is running on a worker, but is blocked in a ray.wait() call.
   // This state is a sub-state of RUNNING and used for metrics only.
-  RUNNING_IN_RAY_WAIT = 10;
+  RUNNING_IN_RAY_WAIT = 11;
   // The task has finished.
-  FINISHED = 11;
+  FINISHED = 13;
   // The task has finished but failed with an Exception or system error.
-  FAILED = 12;
+  FAILED = 14;
 }
 
 // Debug info for a referenced object.
