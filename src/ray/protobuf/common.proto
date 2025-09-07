@@ -475,7 +475,7 @@ message LeaseSpec {
   Language language = 16;
   FunctionDescriptor function_descriptor = 17;
   repeated string dynamic_worker_options = 18;
-  uint64 attempt_number = 19;
+  int32 attempt_number = 19;
   string task_name = 20;
 }
 

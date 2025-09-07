@@ -563,6 +563,7 @@ void NormalTaskSubmitter::PushNormalTask(
             failed_tasks_pending_failure_cause_.insert(task_id);
             RAY_LOG(DEBUG) << "Getting error from raylet for task " << task_id;
             bool fail_immediately =
+                task_spec.MaxRetries() != -1 &&
                 task_spec.AttemptNumber() + 1 > task_spec.MaxRetries();
             const ray::rpc::ClientCallback<ray::rpc::GetWorkerFailureCauseReply>
                 callback = [this, status, task_id, fail_immediately, addr](
