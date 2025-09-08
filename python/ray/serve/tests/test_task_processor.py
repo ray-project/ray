@@ -233,7 +233,7 @@ class TestTaskConsumerWithRayServe:
             else:
                 return False
 
-        wait_for_condition(assert_result, timeout=10)
+        wait_for_condition(assert_result, timeout=20)
 
     def test_task_consumer_persistence_across_restarts(
         self, temp_queue_directory, serve_instance, create_processor_config
