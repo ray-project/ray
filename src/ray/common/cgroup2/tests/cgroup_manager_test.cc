@@ -97,9 +97,6 @@ TEST(CgroupManagerTest, CreateReturnsInvalidArgumentIfConstraintValuesOutOfBound
   ASSERT_EQ(cgroups->begin()->second, base_cgroup);
 }
 
-// // I'll write this as one long happy path test that also tests the destructor
-// // FakeCgroupDriver needs to record all operations it's required to do in order
-// // then track them in reverse :)
 TEST(CgroupManagerTest, CreateSucceedsWithCleanupInOrder) {
   std::shared_ptr<std::unordered_map<std::string, FakeCgroup>> cgroups =
       std::make_shared<std::unordered_map<std::string, FakeCgroup>>();
