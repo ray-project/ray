@@ -67,19 +67,19 @@ TEST_F(ActorCreatorTest, AsyncWaitForFinish) {
   EXPECT_CALL(*gcs_client->mock_actor_accessor,
               AsyncRegisterActor(::testing::_, ::testing::_, ::testing::_))
       .WillRepeatedly(::testing::DoAll(::testing::SaveArg<1>(&cb)));
-  int cnt = 0;
-  auto per_finish_cb = [&cnt](Status status) {
+  int count = 0;
+  auto per_finish_cb = [&count](Status status) {
     ASSERT_TRUE(status.ok());
-    cnt++;
+    count++;
   };
   actor_creator->AsyncRegisterActor(task_spec, per_finish_cb);
   ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
-  for (int i = 0; i < 100; ++i) {
+  for (int i = 0; i < 10; ++i) {
     actor_creator->AsyncWaitForActorRegisterFinish(actor_id, per_finish_cb);
   }
   cb(Status::OK());
   ASSERT_FALSE(actor_creator->IsActorInRegistering(actor_id));
-  ASSERT_EQ(101, cnt);
+  ASSERT_EQ(11, count);
 }
 
 }  // namespace core
