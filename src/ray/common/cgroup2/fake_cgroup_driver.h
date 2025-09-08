@@ -67,6 +67,7 @@ class FakeCgroupDriver : public CgroupDriverInterface {
   Status check_cgroup_enabled_s_ = Status::OK();
   Status check_cgroup_s_ = Status::OK();
   Status create_cgroup_s_ = Status::OK();
+  Status delete_cgroup_s_ = Status::OK();
   Status move_all_processes_s_ = Status::OK();
   Status enable_controller_s_ = Status::OK();
   Status disable_controller_s_ = Status::OK();
@@ -82,12 +83,19 @@ class FakeCgroupDriver : public CgroupDriverInterface {
   // All of them can be short-circuited by setting the corresponding
   // status to not ok.
   Status CreateCgroup(const std::string &cgroup) override {
-    RAY_LOG(INFO) << "CreateCgroup " << cgroup;
     if (!create_cgroup_s_.ok()) {
       return create_cgroup_s_;
     }
     cgroups_->emplace(cgroup, FakeCgroup{cgroup});
     return create_cgroup_s_;
+  }
+
+  Status DeleteCgroup(const std::string &cgroup) override {
+    if (!delete_cgroup_s_.ok()) {
+      return delete_cgroup_s_;
+    }
+    cgroups_->erase(cgroup);
+    return delete_cgroup_s_;
   }
 
   Status MoveAllProcesses(const std::string &from, const std::string &to) override {

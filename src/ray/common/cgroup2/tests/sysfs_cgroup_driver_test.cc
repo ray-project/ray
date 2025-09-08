@@ -87,6 +87,23 @@ TEST(SysFsCgroupDriver, CheckCgroupFailsIfCgroupDoesNotExist) {
   EXPECT_TRUE(s.IsNotFound()) << s.ToString();
 }
 
+TEST(SysFsCgroupDriver, DeleteCgroupFailsIfNotCgroup2Path) {
+  // This is not a directory on the cgroupv2 vfs.
+  auto temp_dir_or_status = TempDirectory::Create();
+  ASSERT_TRUE(temp_dir_or_status.ok()) << temp_dir_or_status.ToString();
+  std::unique_ptr<TempDirectory> temp_dir = std::move(temp_dir_or_status.value());
+  SysFsCgroupDriver driver;
+  Status s = driver.DeleteCgroup(temp_dir->GetPath());
+  EXPECT_TRUE(s.IsInvalidArgument()) << s.ToString();
+}
+
+TEST(SysFsCgroupDriver, DeleteCgroupFailsIfCgroupDoesNotExist) {
+  // This is not a directory on the cgroupv2 vfs.
+  SysFsCgroupDriver driver;
+  Status s = driver.DeleteCgroup("/some/path/that/doesnt/exist");
+  EXPECT_TRUE(s.IsNotFound()) << s.ToString();
+}
+
 TEST(SysFsCgroupDriver, GetAvailableControllersFailsIfNotCgroup2Path) {
   auto temp_dir_or_status = TempDirectory::Create();
   ASSERT_TRUE(temp_dir_or_status.ok()) << temp_dir_or_status.ToString();
