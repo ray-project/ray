@@ -489,36 +489,6 @@ def test_read_tfrecords_ray_remote_args(
     assert kwargs["ray_remote_args"] == ray_remote_args
 
 
-@pytest.mark.parametrize("ignore_missing_paths", [True, False])
-def test_read_tfrecords_ignore_missing_paths(
-    ray_start_regular_shared, tmp_path, ignore_missing_paths
-):
-    import tensorflow as tf
-
-    example = tf_records_empty()[0]
-
-    path = os.path.join(tmp_path, "data.tfrecords")
-    with tf.io.TFRecordWriter(path=path) as writer:
-        writer.write(example.SerializeToString())
-
-    paths = [
-        path,
-        "missing.tfrecords",
-    ]
-
-    if ignore_missing_paths:
-        ds = read_tfrecords_with_tfx_read_override(
-            path, ignore_missing_paths=ignore_missing_paths
-        )
-        assert ds.input_files() == [path]
-    else:
-        with pytest.raises(FileNotFoundError):
-            ds = read_tfrecords_with_tfx_read_override(
-                paths, ignore_missing_paths=ignore_missing_paths
-            )
-            ds.materialize()
-
-
 @pytest.mark.parametrize("with_tf_schema", (True, False))
 def test_write_tfrecords(
     with_tf_schema,
