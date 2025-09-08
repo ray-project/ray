@@ -463,7 +463,7 @@ proto_library(
         ":events_task_profile_events_proto",
         "//src/ray/protobuf/public:events_actor_task_definition_event_proto",
         "//src/ray/protobuf/public:events_actor_definition_event_proto",
-        "//src/ray/protobuf/public:events_actor_execution_event_proto",
+        "//src/ray/protobuf/public:events_actor_lifecycle_event_proto",
         "//src/ray/protobuf/public:events_driver_job_definition_event_proto",
         "//src/ray/protobuf/public:events_driver_job_execution_event_proto",
         "//src/ray/protobuf/public:events_task_definition_event_proto",
