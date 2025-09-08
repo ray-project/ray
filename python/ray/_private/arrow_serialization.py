@@ -254,7 +254,7 @@ def _array_payload_to_array(payload: "PicklableArrayPayload") -> "pyarrow.Array"
         assert len(children) == 3, len(children)
         offsets, keys, items = children
         return pa.MapArray.from_arrays(offsets, keys, items)
-    elif isinstance(payload.type, (pa.ExtensionType, pa.BaseExtensionType)):
+    elif isinstance(payload.type, pa.BaseExtensionType):
         assert len(children) == 1, len(children)
         storage = children[0]
         return payload.type.wrap_array(storage)
@@ -305,7 +305,7 @@ def _array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPayload":
         return _dictionary_array_to_array_payload(a)
     elif pa.types.is_map(a.type):
         return _map_array_to_array_payload(a)
-    elif isinstance(a.type, (pa.ExtensionType, pa.BaseExtensionType)):
+    elif isinstance(a.type, pa.BaseExtensionType):
         return _extension_array_to_array_payload(a)
     else:
         raise ValueError("Unhandled Arrow array type:", a.type)
