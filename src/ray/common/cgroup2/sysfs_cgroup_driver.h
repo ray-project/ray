@@ -122,6 +122,25 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
   Status CreateCgroup(const std::string &cgroup_path) override;
 
   /**
+    To delete a cgroup using the cgroupv2 vfs, the current user needs to read, write, and
+    execute permissions for the parent cgroup. This can be achieved through cgroup
+    delegation. The cgroup must also have no processes or children.
+
+    @see The relevant manpage section on delegation for more details
+    https://docs.kernel.org/admin-guide/cgroup-v2.html#delegation
+
+    @param cgroup_path the absolute path of the cgroup directory to create.
+
+    @return Status::OK if no errors are encounted.
+    @return Status::NotFound if an ancestor cgroup does not exist.
+    @return Status::PermissionDenied if current user doesn't have read, write, and execute
+    permissions.
+    @return Status::InvalidArgument if the cgroup has children, processes, or for any
+    other reason.
+    */
+  Status DeleteCgroup(const std::string &cgroup_path) override;
+
+  /**
     Parses the cgroup.controllers file which has a space separated list of all controllers
     available to the cgroup.
 
