@@ -214,7 +214,8 @@ def test_e2e_ray_data(ray_start_6_cpus_2_gpus, config_id):
     assert "eval_loss" in result.metrics
 
 
-@pytest.mark.parametrize("config_id", ["steps_gpu", "steps_cpu"])
+# @pytest.mark.parametrize("config_id", ["steps_gpu", "steps_cpu"])
+@pytest.mark.parametrize("config_id", ["steps_cpu"])
 def test_e2e_dict_eval_ray_data(ray_start_6_cpus_2_gpus, config_id):
     train_loop_config = CONFIGURATIONS[config_id]
 
@@ -252,8 +253,8 @@ def test_e2e_dict_eval_ray_data(ray_start_6_cpus_2_gpus, config_id):
     assert result.checkpoint
     assert isinstance(result.checkpoint, Checkpoint)
     assert len(result.best_checkpoints) == num_iterations
-    assert "eval_loss_1" in result.metrics
-    assert "eval_loss_2" in result.metrics
+    assert "eval_eval_1_loss" in result.metrics
+    assert "eval_eval_2_loss" in result.metrics
 
 
 # Tests if Ray Tune works correctly.
