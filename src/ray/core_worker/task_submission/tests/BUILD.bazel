@@ -9,8 +9,8 @@ ray_cc_test(
         "//:ray_mock",
         "//src/ray/common:task_common",
         "//src/ray/common:test_utils",
-        "//src/ray/core_worker/task_submission:dependency_resolver",
         "//src/ray/core_worker:fake_actor_creator",
+        "//src/ray/core_worker/task_submission:dependency_resolver",
         "@com_google_googletest//:gtest",
     ],
 )
