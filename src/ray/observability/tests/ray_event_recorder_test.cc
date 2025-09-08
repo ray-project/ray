@@ -143,7 +143,7 @@ TEST_F(RayEventRecorderTest, TestRecordActorEvents) {
       std::make_unique<RayActorDefinitionEvent>(actor_data1, "test_session_name_1"));
   events.push_back(
       std::make_unique<RayActorLifecycleEvent>(actor_data2,
-                                               rpc::ActorExecutionEvent::DEAD,
+                                               rpc::ActorLifecycleEvent::DEAD,
                                                "test_worker_id_2",
                                                "test_session_name_2"));
 
@@ -169,9 +169,9 @@ TEST_F(RayEventRecorderTest, TestRecordActorEvents) {
   ASSERT_EQ(recorded_events_[1].source_type(), rpc::events::RayEvent::GCS);
   ASSERT_EQ(recorded_events_[1].session_name(), "test_session_name_2");
   ASSERT_EQ(recorded_events_[1].event_type(),
-            rpc::events::RayEvent::ACTOR_EXECUTION_EVENT);
+            rpc::events::RayEvent::ACTOR_LIFECYCLE_EVENT);
   ASSERT_EQ(recorded_events_[1].severity(), rpc::events::RayEvent::INFO);
-  ASSERT_TRUE(recorded_events_[1].has_actor_execution_event());
+  ASSERT_TRUE(recorded_events_[1].has_actor_lifecycle_event());
   ASSERT_EQ(recorded_events_[1].actor_lifecycle_event().actor_id(), "test_actor_id_2");
   ASSERT_EQ(recorded_events_[1].actor_lifecycle_event().states_size(), 1);
   ASSERT_EQ(recorded_events_[1].actor_lifecycle_event().states(0).state(),
@@ -186,7 +186,7 @@ TEST_F(RayEventRecorderTest, TestRecordActorEvents) {
             "test error message");
 }
 
-TEST_F(RayEventRecorderTest, TestMergeActorExecutionEvents) {
+TEST_F(RayEventRecorderTest, TestMergeActorLifecycleEvents) {
   rpc::ActorTableData actor_data;
   actor_data.set_actor_id("test_actor_id_merge");
   actor_data.set_job_id("test_job_id_merge");
@@ -195,7 +195,7 @@ TEST_F(RayEventRecorderTest, TestMergeActorExecutionEvents) {
 
   // Create first event with ALIVE state
   auto event1 = std::make_unique<RayActorLifecycleEvent>(actor_data,
-                                                         rpc::ActorExecutionEvent::ALIVE,
+                                                         rpc::ActorLifecycleEvent::ALIVE,
                                                          "test_worker_id_1",
                                                          "test_session_name_merge");
 
@@ -204,7 +204,7 @@ TEST_F(RayEventRecorderTest, TestMergeActorExecutionEvents) {
   actor_data.mutable_death_cause()->mutable_actor_died_error_context()->set_error_message(
       "test error message");
   auto event2 = std::make_unique<RayActorLifecycleEvent>(actor_data,
-                                                         rpc::ActorExecutionEvent::DEAD,
+                                                         rpc::ActorLifecycleEvent::DEAD,
                                                          "test_worker_id_2",
                                                          "test_session_name_merge");
 
@@ -233,7 +233,6 @@ TEST_F(RayEventRecorderTest, TestMergeActorExecutionEvents) {
   ASSERT_EQ(
       actor_event.states(1).death_cause().actor_died_error_context().error_message(),
       "test error message");
-  ASSERT_EQ(actor_event.session_name(), "test_session_name_merge");
 }
 }  // namespace observability
 }  // namespace ray

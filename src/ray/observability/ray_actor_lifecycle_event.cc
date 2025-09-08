@@ -18,25 +18,25 @@ namespace ray {
 namespace observability {
 
 RayActorLifecycleEvent::RayActorLifecycleEvent(const rpc::ActorTableData &data,
-                                               rpc::ActorExecutionEvent::State state,
+                                               rpc::ActorLifecycleEvent::State state,
                                                const std::string &worker_id,
                                                const std::string &session_name)
-    : RayEvent<rpc::ActorExecutionEvent>(session_name) {
-  event_type_ = rpc::events::RayEvent::ACTOR_EXECUTION_EVENT;
-  ray::rpc::ActorExecutionEvent::StateTransition state_transition;
+    : RayEvent<rpc::ActorLifecycleEvent>(session_name) {
+  event_type_ = rpc::events::RayEvent::ACTOR_LIFECYCLE_EVENT;
+  ray::rpc::ActorLifecycleEvent::StateTransition state_transition;
   state_transition.set_state(state);
   state_transition.mutable_timestamp()->CopyFrom(AbslTimeNanosToProtoTimestamp(
       absl::ToInt64Nanoseconds(absl::Now() - absl::UnixEpoch())));
 
   // Set state specific fields
-  if (state == rpc::ActorExecutionEvent::ALIVE) {
+  if (state == rpc::ActorLifecycleEvent::ALIVE) {
     if (data.has_node_id()) {
       state_transition.set_node_id(data.node_id());
     }
     state_transition.set_worker_id(worker_id);
   }
 
-  if (state == rpc::ActorExecutionEvent::DEAD) {
+  if (state == rpc::ActorLifecycleEvent::DEAD) {
     if (data.has_death_cause()) {
       *state_transition.mutable_death_cause() = data.death_cause();
     }
@@ -48,7 +48,7 @@ RayActorLifecycleEvent::RayActorLifecycleEvent(const rpc::ActorTableData &data,
 
 std::string RayActorLifecycleEvent::GetResourceId() const { return data_.actor_id(); }
 
-void RayActorLifecycleEvent::Merge(RayEvent<rpc::ActorExecutionEvent> &&other) {
+void RayActorLifecycleEvent::Merge(RayEvent<rpc::ActorLifecycleEvent> &&other) {
   auto &&other_event = static_cast<RayActorLifecycleEvent &&>(other);
   for (auto &state : *other_event.data_.mutable_states()) {
     data_.mutable_states()->Add(std::move(state));
@@ -59,7 +59,7 @@ ray::rpc::events::RayEvent RayActorLifecycleEvent::SerializeData() const {
   ray::rpc::events::RayEvent event;
   event.set_source_type(rpc::events::RayEvent::GCS);
   event.set_severity(rpc::events::RayEvent::INFO);
-  *event.mutable_actor_execution_event() = data_;
+  *event.mutable_actor_lifecycle_event() = data_;
   return event;
 }
 
