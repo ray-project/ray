@@ -36,7 +36,7 @@ from ray.data._internal.planner.plan_udf_map_op import (
 from ray.data.context import DataContext
 from ray.data.datatype import DataType
 from ray.data.exceptions import UserCodeException
-from ray.data.expressions import col, lit, udf, where
+from ray.data.expressions import col, lit, udf
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.data.tests.util import column_udf, extract_values
@@ -2824,7 +2824,7 @@ def test_with_column_floor_division_and_logical_operations(
                 {"name": "excluded"},
                 {"name": None},
             ],
-            where(col("name").is_not_null() & (col("name") != "excluded")),
+            col("name").is_not_null() & (col("name") != "excluded"),
             [True, False, False],
             "string_filter",
         ),
@@ -3006,7 +3006,7 @@ def test_with_column_chained_expression_operations(
     [
         # Simple filter expressions
         pytest.param(
-            where(col("age") >= 21),
+            col("age") >= 21,
             [
                 {"age": 20, "name": "Alice"},
                 {"age": 21, "name": "Bob"},
@@ -3016,7 +3016,7 @@ def test_with_column_chained_expression_operations(
             "age_filter",
         ),
         pytest.param(
-            where(col("score") > 50),
+            col("score") > 50,
             [
                 {"score": 30, "status": "fail"},
                 {"score": 50, "status": "pass"},
@@ -3027,7 +3027,7 @@ def test_with_column_chained_expression_operations(
         ),
         # Complex filter with multiple conditions
         pytest.param(
-            where((col("age") >= 18) & col("active")),
+            (col("age") >= 18) & col("active"),
             [
                 {"age": 17, "active": True},
                 {"age": 18, "active": False},
@@ -3037,7 +3037,7 @@ def test_with_column_chained_expression_operations(
             "complex_and_filter",
         ),
         pytest.param(
-            where((col("status") == "approved") | (col("priority") == "high")),
+            (col("status") == "approved") | (col("priority") == "high"),
             [
                 {"status": "pending", "priority": "low"},
                 {"status": "approved", "priority": "low"},
@@ -3048,7 +3048,7 @@ def test_with_column_chained_expression_operations(
         ),
         # Filter with null handling
         pytest.param(
-            where(col("value").is_not_null() & (col("value") > 0)),
+            col("value").is_not_null() & (col("value") > 0),
             [
                 {"value": None},
                 {"value": -5},
@@ -3063,7 +3063,7 @@ def test_with_column_chained_expression_operations(
         ),
         # Filter with string operations - reorder to check null first
         pytest.param(
-            where(col("name").is_not_null() & (col("name") != "excluded")),
+            col("name").is_not_null() & (col("name") != "excluded"),
             [
                 {"name": "included"},
                 {"name": "excluded"},
@@ -3074,7 +3074,7 @@ def test_with_column_chained_expression_operations(
         ),
         # Filter with membership operations
         pytest.param(
-            where(col("category").isin(["A", "B"])),
+            col("category").isin(["A", "B"]),
             [
                 {"category": "A"},
                 {"category": "B"},
@@ -3086,7 +3086,7 @@ def test_with_column_chained_expression_operations(
         ),
         # Nested filter expressions
         pytest.param(
-            where(where(col("score") >= 50) & where(col("grade") != "F")),
+            (col("score") >= 50) & (col("grade") != "F"),
             [
                 {"score": 45, "grade": "F"},
                 {"score": 55, "grade": "D"},
@@ -3142,18 +3142,18 @@ def test_with_column_filter_in_pipeline(ray_start_regular_shared):
         # Calculate total revenue
         .with_column("revenue", col("quantity") * col("price"))
         # Flag high-value transactions
-        .with_column("is_high_value", where(col("revenue") >= 1000))
+        .with_column("is_high_value", col("revenue") >= 1000)
         # Flag bulk orders
-        .with_column("is_bulk_order", where(col("quantity") >= 10))
+        .with_column("is_bulk_order", col("quantity") >= 10)
         # Flag premium products
-        .with_column("is_premium", where(col("price") >= 100))
+        .with_column("is_premium", col("price") >= 100)
         # Create composite filter for special handling
         .with_column(
             "needs_special_handling",
-            where((col("is_high_value")) | (col("is_bulk_order") & col("is_premium"))),
+            (col("is_high_value")) | (col("is_bulk_order") & col("is_premium")),
         )
         # Regional filter
-        .with_column("is_north_region", where(col("region") == "North"))
+        .with_column("is_north_region", col("region") == "North")
     )
 
     # Convert to pandas and verify

@@ -8,7 +8,6 @@ from ray.data.expressions import (
     UnaryExpr,
     col,
     lit,
-    where,
 )
 
 # Tuples of (expr1, expr2, expected_result)
@@ -135,8 +134,8 @@ class TestBinaryExpressions:
         assert expr.right == values_expr
 
 
-class TestFilterFunction:
-    """Test the where() function for creating predicates."""
+class TestPredicateExpressions:
+    """Test predicate expression functionality."""
 
     @pytest.mark.parametrize(
         "condition",
@@ -148,16 +147,16 @@ class TestFilterFunction:
         ],
         ids=["simple_gt", "simple_eq", "is_not_null", "complex_and"],
     )
-    def test_filter_creates_predicate_expr(self, condition):
-        """Test that where() creates PredicateExpr with correct condition."""
-        predicate = where(condition)
+    def test_predicate_expr_directly(self, condition):
+        """Test that boolean expressions can be used directly as predicates."""
+        predicate = PredicateExpr(condition)
         assert isinstance(predicate, PredicateExpr)
         assert predicate.condition.structurally_equals(condition)
 
     def test_predicate_combination(self):
         """Test combining predicates with logical operators."""
-        pred1 = where(col("age") > 18)
-        pred2 = where(col("status") == "active")
+        pred1 = PredicateExpr(col("age") > 18)
+        pred2 = PredicateExpr(col("status") == "active")
 
         # Test AND combination
         combined_and = pred1 & pred2
@@ -173,12 +172,39 @@ class TestFilterFunction:
 
     def test_predicate_structural_equality(self):
         """Test structural equality for predicates."""
-        pred1 = where(col("age") > 18)
-        pred2 = where(col("age") > 18)
-        pred3 = where(col("age") > 21)
+        pred1 = PredicateExpr(col("age") > 18)
+        pred2 = PredicateExpr(col("age") > 18)
+        pred3 = PredicateExpr(col("age") > 21)
 
         assert pred1.structurally_equals(pred2)
         assert not pred1.structurally_equals(pred3)
+
+    def test_boolean_expressions_work_directly(self):
+        """Test that boolean expressions work directly without wrapping."""
+        # Simple boolean expression
+        bool_expr = col("age") > 21
+        assert isinstance(bool_expr, BinaryExpr)
+        assert bool_expr.op == Operation.GT
+
+        # Complex boolean expression
+        complex_expr = (col("age") >= 21) & (col("country") == "USA")
+        assert isinstance(complex_expr, BinaryExpr)
+        assert complex_expr.op == Operation.AND
+
+    def test_predicate_expr_provides_different_behavior(self):
+        """Test that PredicateExpr provides different chaining behavior than regular expressions."""
+        # PredicateExpr chaining returns PredicateExpr
+        pred1 = PredicateExpr(col("age") > 21)
+        pred2 = PredicateExpr(col("status") == "active")
+        combined_pred = pred1 & pred2
+        assert isinstance(combined_pred, PredicateExpr)
+
+        # Regular expression chaining returns BinaryExpr
+        expr1 = col("age") > 21
+        expr2 = col("status") == "active"
+        combined_expr = expr1 & expr2
+        assert isinstance(combined_expr, BinaryExpr)
+        assert combined_expr.op == Operation.AND
 
 
 if __name__ == "__main__":

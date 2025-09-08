@@ -405,13 +405,13 @@ class PredicateExpr(Expr):
         condition: The boolean expression that defines the predicate
 
     Example:
-        >>> from ray.data.expressions import col, where
+        >>> from ray.data.expressions import col, PredicateExpr
         >>> # Simple comparison predicate
-        >>> age_filter = where(col("age") > lit(21))
+        >>> age_filter = PredicateExpr(col("age") > 21)
         >>>
         >>> # Complex predicate with logical operations
-        >>> complex_filter = where(
-        ...     (col("age") > lit(21)) & (col("country") == lit("USA")) & col("active").is_not_null()
+        >>> complex_filter = PredicateExpr(
+        ...     (col("age") > 21) & (col("country") == "USA") & col("active").is_not_null()
         ... )
     """
 
@@ -617,49 +617,6 @@ def lit(value: Any) -> LiteralExpr:
     return LiteralExpr(value)
 
 
-@PublicAPI(stability="alpha")
-def where(condition: Expr) -> PredicateExpr:
-    """
-    Create a predicate expression for filtering operations.
-
-    This creates a predicate that can be used with dataset filtering operations.
-    The predicate represents a boolean condition that determines which rows
-    to include or exclude.
-
-    Args:
-        condition: A boolean expression that defines the filtering condition
-
-    Returns:
-        A PredicateExpr that can be used for filtering
-
-    Example:
-        >>> from ray.data.expressions import col, lit, where
-        >>> import ray
-        >>>
-        >>> # Simple filter
-        >>> age_filter = where(col("age") > 21)
-        >>>
-        >>> # Complex filter with multiple conditions
-        >>> complex_filter = where(
-        ...     (col("age") > 21) &
-        ...     (col("country") == "USA") &
-        ...     col("active").is_not_null()
-        ... )
-        >>>
-        >>> # Use with with_column to create boolean flag columns
-        >>> ds = ray.data.from_items([
-        ...     {"age": 25, "country": "USA", "active": True},
-        ...     {"age": 19, "country": "Canada", "active": False}
-        ... ])
-        >>> ds_with_flag = ds.with_column("is_adult", where(col("age") > 21))
-        >>> ds_with_complex_flag = ds.with_column(
-        ...     "eligible",
-        ...     where((col("age") > 21) & (col("country") == "USA"))
-        ... )
-    """
-    return PredicateExpr(condition)
-
-
 @DeveloperAPI(stability="alpha")
 def download(uri_column_name: str) -> DownloadExpr:
     """
@@ -708,6 +665,5 @@ __all__ = [
     "DownloadExpr",
     "col",
     "lit",
-    "where",
     "download",
 ]
