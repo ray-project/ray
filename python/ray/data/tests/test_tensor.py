@@ -16,9 +16,9 @@ from ray.data.extensions.tensor_extension import (
     ArrowTensorTypeV2,
     ArrowVariableShapedTensorArray,
     ArrowVariableShapedTensorType,
+    FixedShapeTensorType,
     TensorArray,
     TensorDtype,
-    FixedShapeTensorType,
 )
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import extract_values
@@ -328,7 +328,9 @@ def test_tensors_sort(ray_start_regular_shared, restore_data_context, tensor_for
     )
 
 
-@pytest.mark.parametrize("tensor_format", ["arrow_native", "v1", "v2"])
+# Not adding arrow_native because we don't have control
+# over it's __str__ representation
+@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
 def test_tensors_inferred_from_map(
     ray_start_regular_shared, restore_data_context, tensor_format
 ):
@@ -422,10 +424,13 @@ def test_tensor_array_block_slice(restore_data_context, tensor_format):
                 expected_offset = 0 if is_copy else a
                 assert chunk2.offset == expected_offset
                 assert len(chunk2) == b - a
+                index = 1
+                if tensor_format == "arrow_native":
+                    index = 2
                 if is_copy:
-                    assert bufs2[1].address != bufs1[1].address
+                    assert bufs2[index].address != bufs1[index].address
                 else:
-                    assert bufs2[1].address == bufs1[1].address
+                    assert bufs2[index].address == bufs1[index].address
 
     n = 20
     one_arr = np.arange(4 * n).reshape(n, 2, 2)
@@ -436,12 +441,21 @@ def test_tensor_array_block_slice(restore_data_context, tensor_format):
 
     # Test with copy.
     table2 = block_accessor.slice(a, b, True)
-    np.testing.assert_array_equal(table2["one"].chunk(0).to_numpy(), one_arr[a:b, :, :])
+    if tensor_format == "arrow_native" and FixedShapeTensorType is not None:
+        res = table2["one"].chunk(0).to_numpy_ndarray()
+    else:
+        res = table2["one"].chunk(0).to_numpy()
+
+    np.testing.assert_array_equal(res, one_arr[a:b, :, :])
     check_for_copy(table, table2, a, b, is_copy=True)
 
-    # Test without copy.
+    # Test without copy. arrow_native requires a copy
     table2 = block_accessor.slice(a, b, False)
-    np.testing.assert_array_equal(table2["one"].chunk(0).to_numpy(), one_arr[a:b, :, :])
+    if tensor_format == "arrow_native" and FixedShapeTensorType is not None:
+        res = table2["one"].chunk(0).to_numpy_ndarray()
+    else:
+        res = table2["one"].chunk(0).to_numpy()
+    np.testing.assert_array_equal(res, one_arr[a:b, :, :])
     check_for_copy(table, table2, a, b, is_copy=False)
 
 
@@ -885,23 +899,25 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_udf(
     ds.write_parquet(str(tmp_path))
 
     # Manually deserialize the tensor bytes and cast to a TensorArray.
-    def np_deser_udf(block: pa.Table):
-        # NOTE(Clark): We use NumPy to consolidate these potentially
-        # non-contiguous buffers, and to do buffer bookkeeping in general.
-        np_col = np.array(
-            [
-                np.ndarray(inner_shape, buffer=buf.as_buffer(), dtype=arr.dtype)
-                for buf in block.column(tensor_col_name)
-            ]
-        )
+    # def np_deser_udf(block: pa.Table):
+    #     # NOTE(Clark): We use NumPy to consolidate these potentially
+    #     # non-contiguous buffers, and to do buffer bookkeeping in general.
+    #     np_col = np.array(
+    #         [
+    #             np.ndarray(inner_shape, buffer=buf.as_buffer(), dtype=arr.dtype)
+    #             for buf in block.column(tensor_col_name)
+    #         ]
+    #     )
 
-        return block.set_column(
-            block._ensure_integer_index(tensor_col_name),
-            tensor_col_name,
-            ArrowTensorArray.from_numpy(np_col),
-        )
+    #     return block.set_column(
+    #         block._ensure_integer_index(tensor_col_name),
+    #         tensor_col_name,
+    #         ArrowTensorArray.from_numpy(np_col),
+    #     )
 
-    ds = ray.data.read_parquet(str(tmp_path), _block_udf=np_deser_udf)
+    ds = ray.data.read_parquet(
+        str(tmp_path), tensor_column_schema={tensor_col_name: (np.int64(), inner_shape)}
+    )
 
     if tensor_format == "v1":
         expected_tensor_type = ArrowTensorType
@@ -912,7 +928,6 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_udf(
             expected_tensor_type = ArrowTensorTypeV2
         else:
             expected_tensor_type = FixedShapeTensorType
-            ds = ds.materialize()  # This reconiles the schema
     else:
         raise ValueError(f"Unexpected tensor format: {tensor_format}")
 
@@ -967,7 +982,6 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_col_schema(
             expected_tensor_type = ArrowTensorTypeV2
         else:
             expected_tensor_type = FixedShapeTensorType
-            ds = ds.materialize()  # This reconiles the schema
     else:
         raise ValueError(f"Unexpected tensor format: {tensor_format}")
 

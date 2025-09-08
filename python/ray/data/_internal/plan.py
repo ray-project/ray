@@ -175,6 +175,7 @@ class ExecutionPlan:
         # cheap.
         plan_str = ""
         plan_max_depth = 0
+
         if not self.has_computed_output():
             # using dataset as source here, so don't generate source operator in generate_plan_string
             plan_str, plan_max_depth = self.generate_plan_string(
@@ -391,6 +392,7 @@ class ExecutionPlan:
         schema = None
         if self.has_computed_output():
             schema = self._snapshot_bundle.schema
+            print(f"my schema is {schema}")
         else:
             schema = self._logical_plan.dag.infer_schema()
             if schema is None and fetch_if_missing:

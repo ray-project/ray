@@ -18,6 +18,11 @@ import numpy as np
 
 import ray
 import ray.cloudpickle as cloudpickle
+from ray.air.util.tensor_extensions.arrow import (
+    ArrowTensorType,
+    ArrowTensorTypeV2,
+    FixedShapeTensorArray,
+)
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import (
@@ -187,6 +192,9 @@ class ParquetDatasource(Datasource):
         shuffle: Union[Literal["files"], None] = None,
         include_paths: bool = False,
         file_extensions: Optional[List[str]] = None,
+        tensor_column_schema: Optional[
+            Dict[str, Tuple[np.dtype, Tuple[int, ...]]]
+        ] = None,
     ):
         _check_pyarrow_version()
 
@@ -255,7 +263,7 @@ class ParquetDatasource(Datasource):
         # See https://github.com/ray-project/ray/issues/47960 for more context.
         read_schema = schema
         inferred_schema = _infer_schema(
-            pq_ds, schema, columns, partitioning, _block_udf
+            pq_ds, schema, columns, partitioning, tensor_column_schema, _block_udf
         )
 
         # Users can pass both data columns and partition columns in the 'columns'
@@ -743,24 +751,54 @@ def emit_file_extensions_future_warning(future_file_extensions: List[str]):
 
 
 def _infer_schema(
-    parquet_dataset, schema, columns, partitioning, _block_udf
+    parquet_dataset: "pyarrow.dataset.Dataset",
+    schema: Optional["pyarrow.Schema"],
+    columns: Optional[List[str]],
+    partitioning: Optional[Partitioning],
+    tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]],
+    _block_udf,
 ) -> "pyarrow.Schema":
     """Infer the schema of read data using the user-specified parameters."""
     import pyarrow as pa
 
     inferred_schema = schema
+    print(f"1) inferred_schema is {inferred_schema}")
 
     if schema is None:
         inferred_schema = parquet_dataset.schema
         inferred_schema = _add_partition_fields_to_schema(
             partitioning, inferred_schema, parquet_dataset
         )
+    print(f"2) inferred_schema is {inferred_schema}")
 
     if columns:
         inferred_schema = pa.schema(
             [inferred_schema.field(column) for column in columns],
             inferred_schema.metadata,
         )
+    print(f"3) inferred_schema is {inferred_schema}")
+
+    ctx = DataContext.get_current()
+    if tensor_column_schema is not None:
+        for name, (np_dtype, shape) in tensor_column_schema.items():
+            index_of_name: int = inferred_schema.get_field_index(name)
+            pa_dtype: pa.DataType = pa.from_numpy_dtype(np_dtype)
+            # 1) Determine the tensor type
+            if (
+                ctx.use_arrow_native_fixed_shape_tensor_type
+                and FixedShapeTensorArray is not None
+            ):
+                field = pa.field(name, pa.fixed_shape_tensor(pa_dtype, shape))
+            elif ctx.use_arrow_tensor_v2:
+                field = pa.field(name, ArrowTensorTypeV2(shape, pa_dtype))
+            else:
+                field = pa.field(name, ArrowTensorType(shape, pa_dtype))
+
+            # 2) Determine where to add the schema
+            if index_of_name != -1:
+                inferred_schema = inferred_schema.set(index_of_name, field)
+            else:
+                inferred_schema = inferred_schema.append(field)
 
     if _block_udf is not None:
         # Try to infer dataset schema by passing dummy table through UDF.
@@ -777,6 +815,7 @@ def _infer_schema(
             )
 
     check_for_legacy_tensor_type(inferred_schema)
+    print(f"4) inferred_schema is {inferred_schema}")
     return inferred_schema
 
 

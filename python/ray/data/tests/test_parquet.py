@@ -1460,8 +1460,6 @@ def test_tensors_in_tables_parquet(
             expected_tensor_type = ArrowTensorType
         else:
             expected_tensor_type = FixedShapeTensorType
-            # This will reconcile the schemas
-            ds = ds.materialize()
     else:
         expected_tensor_type = ArrowTensorTypeV2
 

@@ -961,6 +961,7 @@ def read_parquet(
         shuffle=shuffle,
         include_paths=include_paths,
         file_extensions=file_extensions,
+        tensor_column_schema=tensor_column_schema,
     )
     return read_datasource(
         datasource,
