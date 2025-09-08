@@ -1,6 +1,7 @@
 """Some utility class for Collectives."""
 import ray
 import logging
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +21,9 @@ class NCCLUniqueIDStore:
     def __init__(self, name):
         self.name = name
         self.nccl_id = None
+        self.condition = asyncio.Condition()
 
-    def set_id(self, uid):
+    async def set_id(self, uid):
         """
         Initialize the NCCL unique ID for this store.
 
@@ -31,16 +33,26 @@ class NCCLUniqueIDStore:
         Returns:
             None
         """
-        self.nccl_id = uid
-        return self.nccl_id
+        async with self.condition:
+            self.nccl_id = uid
+            self.condition.notify_all()
+            return self.nccl_id
 
-    def get_id(self):
+    async def wait_and_get_id(self):
+        """Wait for the NCCL unique ID to be set and return it."""
+        async with self.condition:
+            while not self.nccl_id:
+                await self.condition.wait()
+            return self.nccl_id
+
+    async def get_id(self):
         """Get the NCCL unique ID held in this store."""
-        if not self.nccl_id:
-            logger.warning(
-                "The NCCL ID has not been set yet for store {}.".format(self.name)
-            )
-        return self.nccl_id
+        async with self.condition:
+            if not self.nccl_id:
+                logger.warning(
+                    "The NCCL ID has not been set yet for store {}.".format(self.name)
+                )
+            return self.nccl_id
 
 
 @ray.remote
