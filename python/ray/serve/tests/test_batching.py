@@ -317,6 +317,7 @@ async def wait_for_n_waiters(
 
 def test_batching_request_context(serve_instance):
     """Test that _get_serve_batch_request_context() works correctly with batching.
+
     With 6 requests and max_batch_size=3, Serve should create 2 batches processed in parallel.
     Each batch should have access to the request contexts of all requests in that batch,
     and context should be properly unset after processing.
