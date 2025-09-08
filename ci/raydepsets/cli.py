@@ -149,12 +149,12 @@ class DependencySetManager:
     def compile(
         self,
         constraints: List[str],
-        requirements: List[str],
         name: str,
         output: str,
         append_flags: Optional[List[str]] = None,
         override_flags: Optional[List[str]] = None,
         packages: Optional[List[str]] = None,
+        requirements: Optional[List[str]] = None,
     ):
         """Compile a dependency set."""
         args = DEFAULT_UV_FLAGS.copy()
@@ -239,7 +239,7 @@ class DependencySetManager:
 
 
 def _get_bytes(packages: List[str]) -> bytes:
-    return "\n".join(packages).encode("utf-8")
+    return ("\n".join(packages) + "\n").encode("utf-8")
 
 
 def _get_depset(depsets: List[Depset], name: str) -> Depset:

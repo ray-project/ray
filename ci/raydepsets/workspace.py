@@ -15,11 +15,11 @@ class BuildArgSet:
 class Depset:
     name: str
     operation: str
-    requirements: List[str]
-    constraints: List[str]
     output: str
-    override_flags: List[str]
-    append_flags: List[str]
+    constraints: Optional[List[str]] = None
+    override_flags: Optional[List[str]] = None
+    append_flags: Optional[List[str]] = None
+    requirements: Optional[List[str]] = None
     packages: Optional[List[str]] = None
     source_depset: Optional[str] = None
     depsets: Optional[List[str]] = None

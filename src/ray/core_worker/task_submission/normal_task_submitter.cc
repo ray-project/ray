@@ -22,12 +22,13 @@
 #include <vector>
 
 #include "ray/common/lease/lease_spec.h"
-#include "ray/gcs/pb_util.h"
+#include "ray/common/protobuf_utils.h"
+#include "ray/util/time.h"
 
 namespace ray {
 namespace core {
 
-Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
+void NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_CHECK(task_spec.IsNormalTask());
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
 
@@ -63,14 +64,9 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     const SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
                                        task_spec.GetDependencyIds(),
                                        task_spec.GetRuntimeEnvHash());
-    auto [scheduler_key_entry_iter, new_scheduling_key_entry] =
-        scheduling_key_entries_.try_emplace(scheduling_key, SchedulingKeyEntry{});
-    auto &scheduling_key_entry = scheduler_key_entry_iter->second;
-
-    // Only set lease_spec if this is a new scheduling key entry
-    if (new_scheduling_key_entry) {
-      scheduling_key_entry.lease_spec = LeaseSpecification(task_spec.GetMessage());
-    }
+    // TODO(#56107): Only create the lease spec if this is a new scheduling key entry
+    auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+    scheduling_key_entry.lease_spec = LeaseSpecification(task_spec.GetMessage());
     scheduling_key_entry.task_queue.push_back(std::move(task_spec));
 
     if (!scheduling_key_entry.AllWorkersBusy()) {
@@ -93,7 +89,6 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     }
     RequestNewWorkerIfNeeded(scheduling_key);
   });
-  return Status::OK();
 }
 
 void NormalTaskSubmitter::AddWorkerLeaseClient(
@@ -135,15 +130,8 @@ void NormalTaskSubmitter::ReturnWorkerLease(const rpc::Address &addr,
     scheduling_key_entries_.erase(scheduling_key);
   }
 
-  auto status =
-      lease_entry.raylet_client->ReturnWorkerLease(addr.port(),
-                                                   WorkerID::FromBinary(addr.worker_id()),
-                                                   was_error,
-                                                   error_detail,
-                                                   worker_exiting);
-  if (!status.ok()) {
-    RAY_LOG(ERROR) << "Error returning worker to raylet: " << status.ToString();
-  }
+  lease_entry.raylet_client->ReturnWorkerLease(
+      addr.port(), lease_entry.lease_id, was_error, error_detail, worker_exiting);
   worker_to_lease_entry_.erase(addr);
 }
 

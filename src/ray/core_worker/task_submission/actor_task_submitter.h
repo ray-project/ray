@@ -113,14 +113,10 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
                                 bool owned);
 
   /// Submit a task to an actor for execution.
-  ///
-  /// \param[in] task_spec The task spec to submit.
-  ///
-  /// \return Status::Invalid if the task is not yet supported.
-  Status SubmitTask(TaskSpecification task_spec);
+  void SubmitTask(TaskSpecification task_spec);
 
   /// Submit an actor creation task to an actor via GCS.
-  Status SubmitActorCreationTask(TaskSpecification task_spec);
+  void SubmitActorCreationTask(TaskSpecification task_spec);
 
   /// Create connection to actor and send all pending tasks.
   ///
