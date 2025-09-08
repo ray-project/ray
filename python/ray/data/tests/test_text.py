@@ -12,7 +12,6 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     FastFileMetadataProvider,
-    Partitioning,
     PartitionStyle,
     PathPartitionFilter,
 )
@@ -25,20 +24,6 @@ from ray.tests.conftest import *  # noqa
 
 def _to_lines(rows):
     return [row["text"] for row in rows]
-
-
-def test_read_text_partitioning(ray_start_regular_shared, tmp_path):
-    path = os.path.join(tmp_path, "country=us")
-    os.mkdir(path)
-    with open(os.path.join(path, "file.txt"), "w") as f:
-        f.write("foo\nbar\nbaz")
-
-    ds = ray.data.read_text(path, partitioning=Partitioning("hive"))
-
-    df = ds.to_pandas()
-    assert list(df.columns) == ["text", "country"]
-    assert sorted(df["text"]) == ["bar", "baz", "foo"]
-    assert list(df["country"]) == ["us", "us", "us"]
 
 
 def test_empty_text_files(ray_start_regular_shared, tmp_path):
@@ -67,30 +52,6 @@ def test_read_text(ray_start_regular_shared, tmp_path):
     assert sorted(_to_lines(ds.take())) == ["goodbye", "hello", "ray", "world"]
     ds = ray.data.read_text(path, drop_empty_lines=False)
     assert ds.count() == 4
-
-
-@pytest.mark.parametrize("ignore_missing_paths", [True, False])
-def test_read_text_ignore_missing_paths(
-    ray_start_regular_shared, tmp_path, ignore_missing_paths
-):
-    path = os.path.join(tmp_path, "test_text")
-    os.mkdir(path)
-    with open(os.path.join(path, "file1.txt"), "w") as f:
-        f.write("hello\n")
-        f.write("world")
-
-    paths = [
-        path,
-        "missing.txt",
-    ]
-
-    if ignore_missing_paths:
-        ds = ray.data.read_text(paths, ignore_missing_paths=ignore_missing_paths)
-        assert ds.input_files() == [os.path.join(path, "file1.txt")]
-    else:
-        with pytest.raises(FileNotFoundError):
-            ds = ray.data.read_text(paths, ignore_missing_paths=ignore_missing_paths)
-            ds.materialize()
 
 
 def test_read_text_meta_provider(

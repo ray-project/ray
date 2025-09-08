@@ -12,7 +12,6 @@ from ray.data import Schema
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     FastFileMetadataProvider,
-    Partitioning,
     PartitionStyle,
     PathPartitionFilter,
 )
@@ -21,23 +20,6 @@ from ray.data.tests.mock_http_server import *  # noqa
 from ray.data.tests.test_partitioning import PathPartitionEncoder
 from ray.data.tests.util import extract_values, gen_bin_files
 from ray.tests.conftest import *  # noqa
-
-
-def test_read_binary_files_partitioning(ray_start_regular_shared, tmp_path):
-    os.mkdir(os.path.join(tmp_path, "country=us"))
-    path = os.path.join(tmp_path, "country=us", "file.bin")
-    with open(path, "wb") as f:
-        f.write(b"foo")
-
-    ds = ray.data.read_binary_files(path, partitioning=Partitioning("hive"))
-
-    assert ds.take() == [{"bytes": b"foo", "country": "us"}]
-
-    ds = ray.data.read_binary_files(
-        path, include_paths=True, partitioning=Partitioning("hive")
-    )
-
-    assert ds.take() == [{"bytes": b"foo", "path": path, "country": "us"}]
 
 
 def test_read_binary_files(ray_start_regular_shared):
@@ -50,24 +32,6 @@ def test_read_binary_files(ray_start_regular_shared):
         assert ds.count() == 10
         assert "bytes" in str(ds.schema()), ds
         assert "bytes" in str(ds), ds
-
-
-@pytest.mark.parametrize("ignore_missing_paths", [True, False])
-def test_read_binary_files_ignore_missing_paths(
-    ray_start_regular_shared, ignore_missing_paths
-):
-    with gen_bin_files(1) as (_, paths):
-        paths = paths + ["missing_file"]
-        if ignore_missing_paths:
-            ds = ray.data.read_binary_files(
-                paths, ignore_missing_paths=ignore_missing_paths
-            )
-            assert ds.input_files() == [paths[0]]
-        else:
-            with pytest.raises(FileNotFoundError):
-                ds = ray.data.read_binary_files(
-                    paths, ignore_missing_paths=ignore_missing_paths
-                ).materialize()
 
 
 def test_read_binary_files_with_fs(ray_start_regular_shared):
