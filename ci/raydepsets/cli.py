@@ -5,7 +5,7 @@ from typing import List, Optional
 
 import click
 import runfiles
-from networkx import DiGraph, topological_sort, ancestors as networkx_ancestors
+from networkx import DiGraph, ancestors as networkx_ancestors, topological_sort
 
 from ci.raydepsets.workspace import Depset, Workspace
 
