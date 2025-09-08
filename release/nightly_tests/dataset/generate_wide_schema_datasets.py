@@ -7,13 +7,15 @@ This pre-generates datasets so the actual benchmark only needs to read/process t
 import argparse
 import numpy as np
 import ray
+import pyarrow as pa
+import pandas as pd
 
 
 def generate_long_column_name(col_idx: int, prefix: str = "col") -> str:
     """Generate a 1000-character column name."""
     base_name = f"{prefix}_{col_idx}_"
     # Fill remaining characters with repeating pattern to reach exactly 1000 chars
-    remaining_chars = 1000 - len(base_name)
+    remaining_chars = 500 - len(base_name)
     if remaining_chars > 0:
         # Create a repeating pattern using alphanumeric characters
         pattern = "abcdefghijklmnopqrstuvwxyz0123456789_"
@@ -38,7 +40,7 @@ def create_simple_data(num_rows: int, num_columns: int) -> list:
     
     # Repeat the sample record for all rows
     print(f"Repeating sample record {num_rows:,} times...")
-    return [sample_record.copy() for _ in range(num_rows)]
+    return [sample_record for _ in range(num_rows)]
 
 
 def create_tensor_data(num_rows: int, num_columns: int) -> list:
@@ -145,9 +147,9 @@ def calculate_rows_for_target_size(data_type: str, num_columns: int, target_gb: 
 
 def main():
     parser = argparse.ArgumentParser(description="Generate wide schema datasets for benchmarking")
-    parser.add_argument("--target-size-gb", type=float, default=10.0, help="Target size in GB per dataset")
+    parser.add_argument("--target-size-gb", type=float, default=5.0, help="Target size in GB per dataset")
     parser.add_argument("--num-columns", type=int, default=5000, help="Number of columns per dataset")
-    parser.add_argument("--chunk-size", type=int, default=50000, help="Chunk size for writing")
+    parser.add_argument("--chunk-size", type=int, default=10000, help="Chunk size for writing")
     
     args = parser.parse_args()
     
@@ -189,11 +191,15 @@ def main():
             current_chunk_size = min(args.chunk_size, target_rows - total_rows_written)
             
             print(f"Generating chunk {chunk_num + 1} with {current_chunk_size} rows...")
-            chunk_items = generator_func(current_chunk_size, args.num_columns)
+            data = generator_func(current_chunk_size, args.num_columns)
             
             # Convert to Ray Dataset 
             print(f"Done chunk {chunk_num + 1} with {current_chunk_size} rows...")
-            chunk_ds = ray.data.from_items(chunk_items)
+            df = pd.DataFrame(data)
+
+            print(f"Done Creating DF {chunk_num + 1} with {current_chunk_size} rows...")
+            chunk_ds = ray.data.from_pandas([df])
+            print(f"Done From Pandas {chunk_num + 1} with {current_chunk_size} rows...")
             chunk_datasets.append(chunk_ds)
             
             total_rows_written += current_chunk_size
@@ -209,23 +215,24 @@ def main():
             # Use union to combine datasets
             final_ds = chunk_datasets[0].union(*chunk_datasets[1:])
         
-        # Calculate min_rows_per_file to ensure we get at least 10 files
+        # Calculate max_rows_per_file to ensure we get at least 10 files
         # Target: at least 10 files, so each file should have at most target_rows/10 rows
-        min_rows_per_file = max(1000, target_rows // 20)  # Use //20 to get ~20 files, minimum 1000 rows
+        max_rows_per_file = max(1000, target_rows // 20)  # Use //20 to get ~20 files, minimum 1000 rows
         
-        print(f"Writing to {output_path} with min_rows_per_file={min_rows_per_file:,}...")
+        print(f"Writing to {output_path} with max_rows_per_file={max_rows_per_file:,}...")
         # Write the complete dataset with controlled file sizing
         final_ds.write_parquet(
             output_path,
-            compression="snappy",
-            min_rows_per_file=min_rows_per_file,
+            # compression="snappy",
+            max_rows_per_file=max_rows_per_file,
+            mode="overwrite",
             try_create_dir=True
         )
         
         # Estimate number of files created
-        estimated_files = max(1, target_rows // min_rows_per_file)
+        estimated_files = max(1, target_rows // max_rows_per_file)
         print(f"✅ Completed {data_type} dataset: {output_path}")
-        print(f"   Estimated {estimated_files} parquet files (min_rows_per_file={min_rows_per_file:,})")
+        print(f"   Estimated {estimated_files} parquet files (min_rows_per_file={max_rows_per_file:,})")
     
     print(f"\n🎉 All datasets generated successfully!")
     print(f"Base path: {base_path}")
