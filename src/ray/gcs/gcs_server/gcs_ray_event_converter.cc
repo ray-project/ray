@@ -209,7 +209,7 @@ void GcsRayEventConverter::PopulateTaskRuntimeAndFunctionInfo(
     rpc::TaskInfoEntry *task_info) {
   task_info->set_language(language);
   task_info->mutable_runtime_env_info()->set_serialized_runtime_env(
-      serialized_runtime_env);
+      std::move(serialized_runtime_env));
   switch (language) {
   case rpc::Language::CPP:
     if (function_descriptor.has_cpp_function_descriptor()) {
