@@ -124,19 +124,19 @@ DEFINE_string(
     "",
     "Path of the cgroup that the raylet will take ownership of to create its cgorup "
     "hierarchy. The raylet process must have read, write, and execute permission for "
-    "this path. If enable_resource_isolation is true, then this cannot be empty.");
-DEFINE_int64(
-    system_reserved_cpu_weight,
-    -1,
-    "The amount of cores reserved for ray system processes. It will be applied "
-    "as a cpu.weight constraint to the system cgroup. 10000 - "
-    "system_reserved_cpu_weight will be applied as a constraint to the "
-    "application cgroup. If enable resource isolation is true, then this cannot be -1.");
+    "this path. If enable-resource-isolation is true, then this cannot be empty.");
+DEFINE_int64(system_reserved_cpu_weight,
+             -1,
+             "The amount of cores reserved for ray system processes. It will be applied "
+             "as a cpu.weight constraint to the system cgroup. 10000 - "
+             "system-reserved-cpu-weight will be applied as a constraint to the "
+             "application cgroup. If If enable-resource-isolation is true, then this "
+             "cannot be -1.");
 DEFINE_int64(system_reserved_memory_bytes,
              -1,
              "The amount of memory in bytes reserved for ray system processes. It will "
-             "be applied as a memory.min constraint to the sytem cgroup. If enable "
-             "resource isolation is true, then this cannot be -1");
+             "be applied as a memory.min constraint to the sytem cgroup. If If "
+             "enable-resource-isolation is true, then this cannot be -1");
 
 absl::flat_hash_map<std::string, std::string> parse_node_labels(
     const std::string &labels_json_str) {
@@ -254,6 +254,8 @@ int main(int argc, char *argv[]) {
   RAY_LOG(INFO) << "Setting cluster ID to: " << cluster_id;
   gflags::ShutDownCommandLineFlags();
 
+  std::unique_ptr<ray::CgroupManager> cgroup_manager;
+
   // TODO(#54703): Link OSS documentation once it's available in the error messages.
   if (enable_resource_isolation) {
     RAY_CHECK(!cgroup_path.empty())
@@ -271,20 +273,23 @@ int main(int argc, char *argv[]) {
         << "Resource isolation with cgroups is only supported in linux. Please set "
            "enable_resource_isolation to false. This is likely a misconfiguration.";
 #endif
+
+    std::unique_ptr<ray::SysFsCgroupDriver> cgroup_driver =
+        std::make_unique<ray::SysFsCgroupDriver>();
+    ray::StatusOr<std::unique_ptr<ray::CgroupManager>> cgroup_manager_s =
+        ray::CgroupManager::Create(std::move(cgroup_path),
+                                   node_id,
+                                   system_reserved_cpu_weight,
+                                   system_reserved_memory_bytes,
+                                   std::move(cgroup_driver));
+
+    // TODO(#54703) - Link to OSS documentation once available.
+    RAY_CHECK(cgroup_manager_s.ok())
+        << "Failed to start raylet. Could not create CgroupManager because of "
+        << cgroup_manager_s.ToString();
+
+    cgroup_manager = std::move(cgroup_manager_s.value());
   }
-
-  std::unique_ptr<ray::SysFsCgroupDriver> cgroup_driver;
-  ray::StatusOr<std::unique_ptr<ray::CgroupManager>> cgroup_manager =
-      ray::CgroupManager::Create(std::move(cgroup_path),
-                                 node_id,
-                                 system_reserved_cpu_weight,
-                                 system_reserved_memory_bytes,
-                                 std::move(cgroup_driver));
-
-  // TODO(#54703) - Link to OSS documentation once available.
-  RAY_CHECK(cgroup_manager.ok())
-      << "Failed to start raylet. Could not create CgroupManager because of "
-      << cgroup_manager.ToString();
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
@@ -866,7 +871,8 @@ int main(int argc, char *argv[]) {
             *plasma_client,
             std::move(raylet_client_factory),
             /*check_signals=*/nullptr),
-        shutdown_raylet_gracefully);
+        shutdown_raylet_gracefully,
+        std::move(cgroup_manager));
 
     // Initialize the node manager.
     raylet = std::make_unique<ray::raylet::Raylet>(main_service,

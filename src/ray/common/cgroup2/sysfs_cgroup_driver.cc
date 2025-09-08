@@ -36,9 +36,11 @@
 #include "absl/strings/str_join.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 Status SysFsCgroupDriver::CheckCgroupv2Enabled() {
+  RAY_LOG(INFO) << mount_file_path_;
   FILE *fp = setmntent(mount_file_path_.c_str(), "r");
 
   if (!fp) {
@@ -123,6 +125,7 @@ Status SysFsCgroupDriver::CheckCgroup(const std::string &cgroup_path) {
 }
 
 Status SysFsCgroupDriver::CreateCgroup(const std::string &cgroup_path) {
+  RAY_LOG(INFO) << "Creating " << cgroup_path;
   if (mkdir(cgroup_path.c_str(), S_IRWXU) == -1) {
     if (errno == ENOENT) {
       return Status::NotFound(
@@ -280,7 +283,7 @@ Status SysFsCgroupDriver::EnableController(const std::string &cgroup_path,
   out_file.flush();
   if (out_file.fail()) {
     return Status::Invalid(absl::StrFormat(
-        "Could not open write to cgroup controllers file %s", enabled_ctrls_file));
+        "[Enable] Could not write to cgroup controllers file %s", enabled_ctrls_file));
   }
   return Status::OK();
 }
@@ -319,7 +322,7 @@ Status SysFsCgroupDriver::DisableController(const std::string &cgroup_path,
   out_file.flush();
   if (!out_file.good()) {
     return Status::Invalid(absl::StrFormat(
-        "Could not open write to cgroup controllers file %s", controller_file_path));
+        "[Disable] Could not write to cgroup controllers file %s", controller_file_path));
   }
   return Status::OK();
 }

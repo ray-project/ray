@@ -357,7 +357,7 @@ class Node:
                     raise Exception(
                         "The current node timed out during startup. This "
                         "could happen because some of the raylet failed to "
-                        "startup or the GCS has become overloaded."
+                        f"startup or the GCS has become overloaded. {node_info=}"
                     )
             # Use node info to update port
             if self._ray_params.node_manager_port == 0:

@@ -129,7 +129,10 @@ TEST(CgroupManagerTest, CreateSucceedsWithCleanupInOrder) {
   std::string base_cgroup_path = "/sys/fs/cgroup";
   std::string node_cgroup_path = "/sys/fs/cgroup/ray_node_id_123";
   std::string system_cgroup_path = "/sys/fs/cgroup/ray_node_id_123/system";
+  std::string system_leaf_cgroup_path = "/sys/fs/cgroup/ray_node_id_123/system/leaf";
   std::string application_cgroup_path = "/sys/fs/cgroup/ray_node_id_123/application";
+  std::string application_leaf_cgroup_path =
+      "/sys/fs/cgroup/ray_node_id_123/application/leaf";
   int64_t system_reserved_cpu_weight = 1000;
   int64_t system_reserved_memory_bytes = 1024 * 1024 * 1024;
 
@@ -140,29 +143,32 @@ TEST(CgroupManagerTest, CreateSucceedsWithCleanupInOrder) {
                                                 std::move(owned_driver));
 
   // The cgroup hierarchy was created correctly.
-  ASSERT_EQ(cgroups->size(), 4);
+  ASSERT_EQ(cgroups->size(), 6);
   ASSERT_NE(cgroups->find(base_cgroup_path), cgroups->end());
   ASSERT_NE(cgroups->find(node_cgroup_path), cgroups->end());
   ASSERT_NE(cgroups->find(system_cgroup_path), cgroups->end());
+  ASSERT_NE(cgroups->find(system_leaf_cgroup_path), cgroups->end());
   ASSERT_NE(cgroups->find(application_cgroup_path), cgroups->end());
+  ASSERT_NE(cgroups->find(application_leaf_cgroup_path), cgroups->end());
 
-  std::array<FakeCgroup *, 4> created_cgroups{&cgroups->at(base_cgroup_path),
-                                              &cgroups->at(node_cgroup_path),
-                                              &cgroups->at(system_cgroup_path),
-                                              &cgroups->at(application_cgroup_path)};
+  std::array<FakeCgroup *, 4> controlled_cgroups{&cgroups->at(base_cgroup_path),
+                                                 &cgroups->at(node_cgroup_path),
+                                                 &cgroups->at(system_cgroup_path),
+                                                 &cgroups->at(application_cgroup_path)};
 
   // Controllers are enabled on base, node, application, and system cgroups.
-  for (const FakeCgroup *cg : created_cgroups) {
+  for (const FakeCgroup *cg : controlled_cgroups) {
     ASSERT_EQ(cg->enabled_controllers_.size(), 2);
     ASSERT_NE(cg->enabled_controllers_.find("cpu"), cg->enabled_controllers_.end());
     ASSERT_NE(cg->enabled_controllers_.find("memory"), cg->enabled_controllers_.end());
   }
 
-  // Processes were moved out of the base cgroup into the system cgroup.
+  // Processes were moved out of the base cgroup into the system leaf cgroup.
   const FakeCgroup &base_cgroup = cgroups->find(base_cgroup_path)->second;
   const FakeCgroup &system_cgroup = cgroups->find(system_cgroup_path)->second;
+  const FakeCgroup &system_leaf_cgroup = cgroups->find(system_leaf_cgroup_path)->second;
   ASSERT_TRUE(base_cgroup.processes_.empty());
-  ASSERT_EQ(system_cgroup.processes_.size(), 1);
+  ASSERT_EQ(system_leaf_cgroup.processes_.size(), 1);
 
   // Check to see that the memory and cpu constraints were enabled correctly
   // for the system and application cgroups.
@@ -264,16 +270,18 @@ TEST(CgroupManagerTest, CreateSucceedsWithCleanupInOrder) {
 
   // Processes were moved third.
   ASSERT_EQ(processes_moved->size(), 1);
-  ASSERT_EQ((*processes_moved)[0].second.from_, system_cgroup_path);
+  ASSERT_EQ((*processes_moved)[0].second.from_, system_leaf_cgroup_path);
   ASSERT_EQ((*processes_moved)[0].second.to_, base_cgroup_path);
   ASSERT_LT(constraints_disabled->back().first, processes_moved->front().first);
 
   // Cgroups were deleted last and in reverse order i.e. application, system, node.
-  ASSERT_EQ(deleted_cgroups->size(), 3);
+  ASSERT_EQ(deleted_cgroups->size(), 5);
   ASSERT_LT(processes_moved->back().first, deleted_cgroups->front().first);
-  ASSERT_EQ((*deleted_cgroups)[0].second, application_cgroup_path);
-  ASSERT_EQ((*deleted_cgroups)[1].second, system_cgroup_path);
-  ASSERT_EQ((*deleted_cgroups)[2].second, node_cgroup_path);
+  ASSERT_EQ((*deleted_cgroups)[0].second, application_leaf_cgroup_path);
+  ASSERT_EQ((*deleted_cgroups)[1].second, application_cgroup_path);
+  ASSERT_EQ((*deleted_cgroups)[2].second, system_leaf_cgroup_path);
+  ASSERT_EQ((*deleted_cgroups)[3].second, system_cgroup_path);
+  ASSERT_EQ((*deleted_cgroups)[4].second, node_cgroup_path);
 }
 
 }  // namespace ray

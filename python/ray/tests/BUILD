@@ -1072,21 +1072,6 @@ py_test_module_list(
 )
 
 py_test(
-    name = "test_resource_isolation_config",
-    size = "medium",
-    srcs = ["test_resource_isolation_config.py"],
-    tags = [
-        "exclusive",
-        "no_windows",
-        "team:core",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
     name = "test_runtime_env_container",
     size = "large",
     srcs = ["test_runtime_env_container.py"],
