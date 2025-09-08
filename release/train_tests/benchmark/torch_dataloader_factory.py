@@ -201,17 +201,22 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             f"timeout={timeout}, batch_size={batch_size}"
         )
 
+        multiprocessing_args = {}
+        if num_workers > 0:
+            multiprocessing_args = dict(
+                multiprocessing_context=self._create_multiprocessing_context(),
+                worker_init_fn=self.worker_init_fn,
+                persistent_workers=persistent_workers,
+            )
         dataloader = torch.utils.data.DataLoader(
             dataset=val_ds,
             batch_size=batch_size,
             num_workers=num_workers,
             pin_memory=pin_memory,
-            persistent_workers=persistent_workers,
             prefetch_factor=prefetch_factor,
             timeout=timeout,
             drop_last=False,
-            worker_init_fn=self.worker_init_fn if num_workers > 0 else None,
-            multiprocessing_context=self._create_multiprocessing_context(),
+            **multiprocessing_args,
         )
         dataloader = ray.train.torch.prepare_data_loader(
             dataloader, move_to_device=False
