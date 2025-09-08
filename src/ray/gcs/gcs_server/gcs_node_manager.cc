@@ -81,7 +81,7 @@ void GcsNodeManager::HandleGetClusterId(rpc::GetClusterIdRequest request,
 void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
                                         rpc::RegisterNodeReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
-  absl::ReaderMutexLock lock(&mutex_);
+  absl::MutexLock lock(&mutex_);
   const rpc::GcsNodeInfo &node_info = request.node_info();
   NodeID node_id = NodeID::FromBinary(node_info.node_id());
   RAY_LOG(INFO)
@@ -112,11 +112,11 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
 
     RAY_CHECK_LE(head_nodes.size(), 1UL);
     if (head_nodes.size() == 1) {
-      OnNodeFailure(head_nodes[0],
-                    [this, node_id, node_info, on_done = std::move(on_done)]() {
-                      gcs_table_storage_->NodeTable().Put(
-                          node_id, node_info, {on_done, io_context_});
-                    });
+      InternalOnNodeFailure(head_nodes[0],
+                            [this, node_id, node_info, on_done = std::move(on_done)]() {
+                              gcs_table_storage_->NodeTable().Put(
+                                  node_id, node_info, {on_done, io_context_});
+                            });
     } else {
       gcs_table_storage_->NodeTable().Put(
           node_id, node_info, {std::move(on_done), io_context_});
@@ -389,8 +389,8 @@ rpc::NodeDeathInfo GcsNodeManager::InferDeathInfo(const NodeID &node_id)
   return death_info;
 }
 
-void GcsNodeManager::AddNode(std::shared_ptr<const rpc::GcsNodeInfo> node) {
-  absl::MutexLock lock(&mutex_);
+void GcsNodeManager::AddNode(std::shared_ptr<const rpc::GcsNodeInfo> node)
+    ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
   auto node_id = NodeID::FromBinary(node->node_id());
   auto iter = alive_nodes_.find(node_id);
   if (iter == alive_nodes_.end()) {
@@ -495,14 +495,17 @@ std::shared_ptr<const rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
 void GcsNodeManager::OnNodeFailure(
     const NodeID &node_id, const std::function<void()> &node_table_updated_callback) {
   absl::MutexLock lock(&mutex_);
+  InternalOnNodeFailure(node_id, node_table_updated_callback);
+}
+
+void GcsNodeManager::InternalOnNodeFailure(
+    const NodeID &node_id, const std::function<void()> &node_table_updated_callback) {
   auto maybe_node = GetAliveNodeFromCache(node_id);
   if (maybe_node.has_value()) {
     rpc::NodeDeathInfo death_info = InferDeathInfo(node_id);
-    // writer lock
     auto node =
         RemoveNode(node_id, death_info, rpc::GcsNodeInfo::DEAD, current_sys_time_ms());
 
-    // writer lock
     AddDeadNodeToCache(node);
     rpc::GcsNodeInfo node_info_delta;
     node_info_delta.set_node_id(node->node_id());

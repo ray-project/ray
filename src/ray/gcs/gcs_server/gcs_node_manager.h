@@ -94,11 +94,6 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   void OnNodeFailure(const NodeID &node_id,
                      const std::function<void()> &node_table_updated_callback);
 
-  /// Add an alive node.
-  ///
-  /// \param node The info of the node to be added.
-  void AddNode(std::shared_ptr<const rpc::GcsNodeInfo> node);
-
   /// Set the node to be draining.
   ///
   /// \param node_id The ID of the draining node. This node must already
@@ -198,6 +193,12 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
       const rpc::syncer::ResourceViewSyncMessage &resource_view_sync_message);
 
  private:
+  /// Add an alive node.
+  ///
+  /// \param node The info of the node to be added.
+  void AddNode(std::shared_ptr<const rpc::GcsNodeInfo> node)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   /// Add the dead node to the cache. If the cache is full, the earliest dead node is
   /// evicted.
   ///
@@ -211,6 +212,16 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   /// \return the node if it is alive. Optional empty value if it is not alive.
   std::optional<std::shared_ptr<const rpc::GcsNodeInfo>> GetAliveNodeFromCache(
       const ray::NodeID &node_id) const ABSL_SHARED_LOCKS_REQUIRED(mutex_);
+
+  /// Handle a node failure. This will mark the failed node as dead in gcs
+  /// node table.
+  ///
+  /// \param node_id The ID of the failed node.
+  /// \param node_table_updated_callback The status callback function after
+  /// failed node info is updated to gcs node table.
+  void InternalOnNodeFailure(const NodeID &node_id,
+                             const std::function<void()> &node_table_updated_callback)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Infer death cause of the node based on existing draining requests.
   ///
