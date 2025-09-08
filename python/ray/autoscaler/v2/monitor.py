@@ -22,6 +22,7 @@ from ray._private.ray_logging import setup_component_logger
 from ray._common.usage.usage_lib import record_extra_usage_tag
 from ray._private.worker import SCRIPT_MODE
 from ray._raylet import GcsClient
+from ray._common.network_utils import parse_address, build_address
 from ray.autoscaler._private.constants import (
     AUTOSCALER_METRIC_PORT,
     AUTOSCALER_UPDATE_INTERVAL_S,
@@ -79,14 +80,14 @@ class AutoscalerMonitor:
         self.gcs_client = GcsClient(address=self.gcs_address)
 
         if monitor_ip:
-            monitor_addr = f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"
+            monitor_addr = build_address(monitor_ip, AUTOSCALER_METRIC_PORT)
             self.gcs_client.internal_kv_put(
                 b"AutoscalerMetricsAddress", monitor_addr.encode(), True, None
             )
         self._session_name = self._get_session_name(self.gcs_client)
         logger.info(f"session_name: {self._session_name}")
         worker.set_mode(SCRIPT_MODE)
-        head_node_ip = self.gcs_address.split(":")[0]
+        head_node_ip = parse_address(self.gcs_address)[0]
 
         self.autoscaler = None
         if log_dir:

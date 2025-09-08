@@ -7,7 +7,10 @@ from ray import cloudpickle, serve
 from ray._common.pydantic_compat import ValidationError
 from ray._common.utils import import_attr
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig, _proto_to_dict
-from ray.serve._private.constants import DEFAULT_AUTOSCALING_POLICY, DEFAULT_GRPC_PORT
+from ray.serve._private.constants import (
+    DEFAULT_AUTOSCALING_POLICY_NAME,
+    DEFAULT_GRPC_PORT,
+)
 from ray.serve._private.request_router import PowerOfTwoChoicesRequestRouter
 from ray.serve._private.utils import DEFAULT
 from ray.serve.autoscaling_policy import default_autoscaling_policy
@@ -168,7 +171,9 @@ class TestDeploymentConfig:
             "python.ray.serve.tests.unit.test_config.FakeRequestRouter"
         )
         if sys.platform == "win32":
-            request_router_path = "com_github_ray_project_ray.python.ray.serve.tests.unit.test_config.FakeRequestRouter"
+            request_router_path = (
+                "io_ray.python.ray.serve.tests.unit.test_config.FakeRequestRouter"
+            )
 
         # Passing request_router_class as a class.
         deployment_config = DeploymentConfig.from_default(
@@ -799,7 +804,7 @@ def test_autoscaling_policy_import_fails_for_non_existing_policy():
 
 def test_default_autoscaling_policy_import_path():
     """Test that default autoscaling policy can be imported."""
-    policy = import_attr(DEFAULT_AUTOSCALING_POLICY)
+    policy = import_attr(DEFAULT_AUTOSCALING_POLICY_NAME)
 
     assert policy == default_autoscaling_policy
 

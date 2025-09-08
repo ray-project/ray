@@ -4,10 +4,10 @@ import logging
 import uuid
 from typing import Any, AsyncGenerator, Dict, Union
 
-from pydantic import BaseModel, Field
-from vllm.config import KVTransferConfig
+from pydantic import Field
 
 from ray import serve
+from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 RequestType = Union[ChatCompletionRequest, CompletionRequest]
 
 
-class PDServingArgs(BaseModel):
+class PDServingArgs(BaseModelExtended):
     """Schema for P/D serving args."""
 
     prefill_config: Union[str, LLMConfig]
@@ -184,14 +184,12 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
 
     for config in [pd_config.prefill_config, pd_config.decode_config]:
         if "kv_transfer_config" not in config.engine_kwargs:
-            config.engine_kwargs.update(
-                {
-                    "kv_transfer_config": KVTransferConfig(
-                        kv_connector="NixlConnector",
-                        kv_role="kv_both",
-                        engine_id=str(uuid.uuid4()),
-                    )
-                }
+            config.update_engine_kwargs(
+                kv_transfer_config=dict(
+                    kv_connector="NixlConnector",
+                    kv_role="kv_both",
+                    engine_id=str(uuid.uuid4()),
+                )
             )
 
     prefill_deployment = build_llm_deployment(

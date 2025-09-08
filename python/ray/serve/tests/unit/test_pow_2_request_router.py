@@ -119,7 +119,9 @@ class FakeRunningReplica(RunningReplica):
             self.get_queue_len_was_cancelled = True
             raise
 
-    def send_request(self, pr: PendingRequest) -> ReplicaResult:
+    def try_send_request(
+        self, pr: PendingRequest, with_rejection: bool
+    ) -> ReplicaResult:
         raise NotImplementedError()
 
     def send_request_with_rejection(self, pr: PendingRequest) -> ReplicaResult:

@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import platform
+import shutil
 import signal
 import subprocess
 import sys
@@ -10,34 +11,32 @@ import time
 import urllib
 import urllib.parse
 import warnings
-import shutil
 from datetime import datetime
-from typing import Optional, Set, List, Tuple
-from ray._common.utils import load_class
-from ray.dashboard.modules.metrics import install_and_start_prometheus
-from ray.util.check_open_ports import check_open_ports
-import requests
+from typing import List, Optional, Set, Tuple
 
 import click
 import colorama
-import psutil
+import requests
 import yaml
 
 import ray
+import ray._common.usage.usage_constants as usage_constant
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
+from ray._common.network_utils import build_address, parse_address
+from ray._common.usage import usage_lib
+from ray._common.utils import load_class
+from ray._private.internal_api import memory_summary
 from ray._private.label_utils import (
-    parse_node_labels_json,
     parse_node_labels_from_yaml_file,
+    parse_node_labels_json,
     parse_node_labels_string,
 )
+from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.utils import (
     get_ray_client_dependency_error,
     parse_resources_json,
 )
-from ray._private.internal_api import memory_summary
-from ray._common.usage import usage_lib
-import ray._common.usage.usage_constants as usage_constant
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cli_logger
 from ray.autoscaler._private.commands import (
     RUN_ENV_TYPES,
@@ -56,10 +55,12 @@ from ray.autoscaler._private.commands import (
 )
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
-from ray.util.annotations import PublicAPI
 from ray.core.generated import autoscaler_pb2
-from ray._private.resource_isolation_config import ResourceIsolationConfig
+from ray.dashboard.modules.metrics import install_and_start_prometheus
+from ray.util.annotations import PublicAPI
+from ray.util.check_open_ports import check_open_ports
 
+import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -196,7 +197,7 @@ def continue_debug_session(live_jobs: Set[str]):
                             key, namespace=ray_constants.KV_NAMESPACE_PDB
                         )
                         return
-                    host, port = session["pdb_address"].split(":")
+                    host, port = parse_address(session["pdb_address"])
                     ray.util.rpdb._connect_pdb_client(host, int(port))
                     ray.experimental.internal_kv._internal_kv_del(
                         key, namespace=ray_constants.KV_NAMESPACE_PDB
@@ -337,7 +338,7 @@ def debug(address: str, verbose: bool):
                     active_sessions[index], namespace=ray_constants.KV_NAMESPACE_PDB
                 )
             )
-            host, port = session["pdb_address"].split(":")
+            host, port = parse_address(session["pdb_address"])
             ray.util.rpdb._connect_pdb_client(host, int(port))
 
 
@@ -920,7 +921,7 @@ def start(
 
         # Fail early when starting a new cluster when one is already running
         if address is None:
-            default_address = f"{ray_params.node_ip_address}:{port}"
+            default_address = build_address(ray_params.node_ip_address, port)
             bootstrap_address = services.find_bootstrap_address(temp_dir)
             if (
                 default_address == bootstrap_address
@@ -982,7 +983,7 @@ def start(
                 cli_logger.print("To submit a Ray job using the Ray Jobs CLI:")
                 cli_logger.print(
                     cf.bold(
-                        "  RAY_ADDRESS='http://{}' ray job submit "
+                        "  RAY_API_SERVER_ADDRESS='http://{}' ray job submit "
                         "--working-dir . "
                         "-- python my_script.py"
                     ),
@@ -2724,9 +2725,9 @@ cli.add_command(sanity_check)
 
 try:
     from ray.util.state.state_cli import (
+        logs_state_cli_group,
         ray_get,
         ray_list,
-        logs_state_cli_group,
         summary_state_cli_group,
     )
 

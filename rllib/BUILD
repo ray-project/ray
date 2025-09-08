@@ -1095,6 +1095,57 @@ py_test(
 #    args = ["--as-test", "--num-learners=2", "--num-gpus-per-learner=1"]
 # )
 
+# IQL
+# Pendulum-v1 (enormous)
+py_test(
+    name = "learning_tests_pendulum_iql",
+    size = "large",
+    srcs = ["tuned_examples/iql/pendulum_iql.py"],
+    args = [
+        "--as-test",
+        "--num-cpus=32",
+    ],
+    # Include the offline data files.
+    data = [
+        "tests/data/pendulum/pendulum-v1_enormous",
+    ],
+    main = "tuned_examples/iql/pendulum_iql.py",
+    tags = [
+        "exclusive",
+        "learning_tests",
+        "learning_tests_continuous",
+        "learning_tests_pytorch_use_all_core",
+        "team:rllib",
+        "torch_only",
+    ],
+)
+
+# GPU training.
+py_test(
+    name = "learning_tests_pendulum_iql_gpu",
+    size = "large",
+    srcs = ["tuned_examples/iql/pendulum_iql.py"],
+    args = [
+        "--as-test",
+        "--num-cpus=32",
+        "--num-gpus-per-learner=1",
+    ],
+    # Include the offline data files.
+    data = [
+        "tests/data/pendulum/pendulum-v1_enormous",
+    ],
+    main = "tuned_examples/iql/pendulum_iql.py",
+    tags = [
+        "exclusive",
+        "gpu",
+        "learning_tests",
+        "learning_tests_continuous",
+        "learning_tests_pytorch_use_all_core",
+        "team:rllib",
+        "torch_only",
+    ],
+)
+
 # MARWIL
 # CartPole
 py_test(
@@ -1484,6 +1535,86 @@ py_test(
         "multi_gpu",
         "team:rllib",
         "torch_only",
+    ],
+)
+
+# Footsies
+py_test(
+    name = "learning_tests_multi_agent_footsies_ppo",
+    size = "large",
+    srcs = ["tuned_examples/ppo/multi_agent_footsies_ppo.py"],
+    args = [
+        "--as-test",
+        "--num-env-runners=6",
+        "--evaluation-num-env-runners=2",
+    ],
+    main = "tuned_examples/ppo/multi_agent_footsies_ppo.py",
+    tags = [
+        "exclusive",
+        "learning_tests",
+        "learning_tests_discrete",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "learning_tests_multi_agent_footsies_ppo_gpu",
+    size = "large",
+    srcs = ["tuned_examples/ppo/multi_agent_footsies_ppo.py"],
+    args = [
+        "--as-test",
+        "--num-env-runners=20",
+        "--evaluation-num-env-runners=3",
+        "--num-learners=1",
+        "--num-gpus-per-learner=1",
+    ],
+    main = "tuned_examples/ppo/multi_agent_footsies_ppo.py",
+    tags = [
+        "exclusive",
+        "learning_tests",
+        "learning_tests_discrete",
+        "multi_gpu",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "learning_tests_multi_agent_footsies_ppo_multi_cpu",
+    size = "large",
+    srcs = ["tuned_examples/ppo/multi_agent_footsies_ppo.py"],
+    args = [
+        "--as-test",
+        "--num-env-runners=6",
+        "--evaluation-num-env-runners=2",
+        "--num-learners=2",
+    ],
+    main = "tuned_examples/ppo/multi_agent_footsies_ppo.py",
+    tags = [
+        "exclusive",
+        "learning_tests",
+        "learning_tests_discrete",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "learning_tests_multi_agent_footsies_ppo_multi_gpu",
+    size = "large",
+    srcs = ["tuned_examples/ppo/multi_agent_footsies_ppo.py"],
+    args = [
+        "--as-test",
+        "--num-env-runners=20",
+        "--evaluation-num-env-runners=3",
+        "--num-learners=2",
+        "--num-gpus-per-learner=1",
+    ],
+    main = "tuned_examples/ppo/multi_agent_footsies_ppo.py",
+    tags = [
+        "exclusive",
+        "learning_tests",
+        "learning_tests_discrete",
+        "multi_gpu",
+        "team:rllib",
     ],
 )
 
@@ -3973,6 +4104,26 @@ py_test(
     ],
 )
 
+py_test(
+    name = "examples/curriculum/pong_curriculum_learning",
+    size = "large",
+    srcs = ["examples/curriculum/pong_curriculum_learning.py"],
+    args = [
+        "--as-test",
+        "--num-env-runners=10",
+        "--num-cpus=11",
+        "--num-envs-per-env-runner=5",
+        "--stop-iters=20",
+        "--stop-reward=-21.0",
+    ],
+    main = "examples/curriculum/pong_curriculum_learning.py",
+    tags = [
+        "examples",
+        "exclusive",
+        "team:rllib",
+    ],
+)
+
 # subdirectory: debugging/
 # ....................................
 py_test(
@@ -4013,22 +4164,6 @@ py_test(
 # subdirectory: envs/
 # ....................................
 py_test(
-    name = "examples/envs/agents_act_simultaneously",
-    size = "medium",
-    srcs = ["examples/envs/agents_act_simultaneously.py"],
-    args = [
-        "--num-agents=2",
-        "--stop-iters=3",
-    ],
-    main = "examples/envs/agents_act_simultaneously.py",
-    tags = [
-        "examples",
-        "exclusive",
-        "team:rllib",
-    ],
-)
-
-py_test(
     name = "examples/envs/agents_act_in_sequence",
     size = "medium",
     srcs = ["examples/envs/agents_act_in_sequence.py"],
@@ -4037,6 +4172,22 @@ py_test(
         "--stop-iters=3",
     ],
     main = "examples/envs/agents_act_in_sequence.py",
+    tags = [
+        "examples",
+        "exclusive",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "examples/envs/agents_act_simultaneously",
+    size = "medium",
+    srcs = ["examples/envs/agents_act_simultaneously.py"],
+    args = [
+        "--num-agents=2",
+        "--stop-iters=3",
+    ],
+    main = "examples/envs/agents_act_simultaneously.py",
     tags = [
         "examples",
         "exclusive",
@@ -4112,6 +4263,7 @@ py_test(
     args = [
         "--as-test",
         "--port=12346",
+        "--use-dummy-client",
     ],
     main = "examples/envs/env_connecting_to_rllib_w_tcp_client.py",
     tags = [
@@ -4941,6 +5093,42 @@ py_test(
     ],
 )
 
+py_test(
+    name = "examples/multi_agent/self_play_footsies",
+    size = "large",
+    srcs = ["examples/multi_agent/self_play_footsies.py"],
+    args = [
+        "--as-test",
+        "--num-cpus=4",
+    ],
+    main = "examples/multi_agent/self_play_footsies.py",
+    tags = [
+        "examples",
+        "examples_use_all_core",
+        "exclusive",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "examples/multi_agent/self_play_league_based_with_open_spiel_connect_4_ppo_torch",
+    size = "large",
+    srcs = ["examples/multi_agent/self_play_league_based_with_open_spiel.py"],
+    args = [
+        "--framework=torch",
+        "--env=connect_four",
+        "--win-rate-threshold=0.8",
+        "--num-episodes-human-play=0",
+        "--min-league-size=8",
+    ],
+    main = "examples/multi_agent/self_play_league_based_with_open_spiel.py",
+    tags = [
+        "examples",
+        "exclusive",
+        "team:rllib",
+    ],
+)
+
 # @OldAPIStack
 py_test(
     name = "examples/multi_agent/self_play_with_open_spiel_connect_4_ppo_tf_old_api_stack",
@@ -5003,17 +5191,13 @@ py_test(
 )
 
 py_test(
-    name = "examples/multi_agent/self_play_league_based_with_open_spiel_connect_4_ppo_torch",
-    size = "large",
-    srcs = ["examples/multi_agent/self_play_league_based_with_open_spiel.py"],
+    name = "examples/multi_agent/shared_encoder_cartpole",
+    size = "medium",
+    srcs = ["examples/multi_agent/shared_encoder_cartpole.py"],
     args = [
-        "--framework=torch",
-        "--env=connect_four",
-        "--win-rate-threshold=0.8",
-        "--num-episodes-human-play=0",
-        "--min-league-size=8",
+        "--stop-iter=10",
     ],
-    main = "examples/multi_agent/self_play_league_based_with_open_spiel.py",
+    main = "examples/multi_agent/shared_encoder_cartpole.py",
     tags = [
         "examples",
         "exclusive",

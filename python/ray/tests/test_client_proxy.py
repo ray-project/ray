@@ -4,16 +4,17 @@ import random
 import sys
 import time
 from glob import glob
-from unittest.mock import patch, MagicMock
 from itertools import chain
+from unittest.mock import MagicMock, patch
 
 import grpc
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.util.client.server.proxier as proxier
+from ray._common.network_utils import parse_address
+from ray._common.test_utils import wait_for_condition
 from ray._private.ray_constants import REDIS_DEFAULT_PASSWORD
 from ray._private.test_utils import run_string_as_driver
 from ray.cloudpickle.compat import pickle
@@ -90,7 +91,7 @@ def test_proxy_manager_bad_startup(shutdown_only):
     pm, free_ports = start_ray_and_proxy_manager(n_ports=2)
     client = "client1"
     ctx = ray.init(ignore_reinit_error=True)
-    port_to_conflict = ctx.dashboard_url.split(":")[1]
+    _, port_to_conflict = parse_address(ctx.dashboard_url)
 
     pm.create_specific_server(client)
     # Intentionally bind to the wrong port so that the

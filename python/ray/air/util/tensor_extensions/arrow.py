@@ -574,6 +574,9 @@ class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
             shape = arr_type.shape
         return False
 
+    def __hash__(self) -> int:
+        return hash((type(self), self.extension_name, self.storage_type, self._shape))
+
 
 @PublicAPI(stability="beta")
 class ArrowTensorType(_BaseFixedShapeArrowTensorType):
@@ -584,6 +587,7 @@ class ArrowTensorType(_BaseFixedShapeArrowTensorType):
     """
 
     OFFSET_DTYPE = np.int32
+    __hash__ = _BaseFixedShapeArrowTensorType.__hash__
 
     def __init__(self, shape: Tuple[int, ...], dtype: pa.DataType):
         """
@@ -614,6 +618,7 @@ class ArrowTensorTypeV2(_BaseFixedShapeArrowTensorType):
     """Arrow ExtensionType (v2) for tensors (supporting tensors > 4Gb)."""
 
     OFFSET_DTYPE = np.int64
+    __hash__ = _BaseFixedShapeArrowTensorType.__hash__
 
     def __init__(self, shape: Tuple[int, ...], dtype: pa.DataType):
         """
@@ -1124,6 +1129,9 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
         offset = raw_values.offset
         data_buffer = raw_values.buffers()[1]
         return _to_ndarray_helper(shape, value_type, offset, data_buffer)
+
+    def __hash__(self) -> int:
+        return hash((type(self), self.extension_name, self.storage_type, self._ndim))
 
 
 # NOTE: We need to inherit from the mixin before pa.ExtensionArray to ensure that the

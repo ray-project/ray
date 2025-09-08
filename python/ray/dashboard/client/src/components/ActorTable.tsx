@@ -385,10 +385,10 @@ const ActorTable = ({
           data-testid="nodeIdFilter"
           style={{ margin: 8, width: 150 }}
           options={Array.from(
-            new Set(Object.values(actors).map((e) => e.address?.rayletId)),
+            new Set(Object.values(actors).map((e) => e.address?.nodeId)),
           )}
           onInputChange={(_: any, value: string) => {
-            changeFilter("address.rayletId", value.trim());
+            changeFilter("address.nodeId", value.trim());
           }}
           renderInput={(params: TextFieldProps) => (
             <TextField {...params} label="Node ID" />
@@ -655,19 +655,19 @@ const ActorTable = ({
                       <br />
                       <CpuProfilingLink
                         pid={pid}
-                        ip={address?.ipAddress}
+                        nodeId={address?.nodeId}
                         type=""
                       />
                       <br />
                       <CpuStackTraceLink
                         pid={pid}
-                        ip={address?.ipAddress}
+                        nodeId={address?.nodeId}
                         type=""
                       />
                       <br />
                       <MemoryProfilingButton
                         pid={pid}
-                        ip={address?.ipAddress}
+                        nodeId={address?.nodeId}
                       />
                     </React.Fragment>
                   </TableCell>
@@ -684,14 +684,14 @@ const ActorTable = ({
                     {address?.ipAddress ? address?.ipAddress : "-"}
                   </TableCell>
                   <TableCell align="center">
-                    {address?.rayletId ? (
-                      <Tooltip title={address?.rayletId} arrow>
+                    {address?.nodeId ? (
+                      <Tooltip title={address?.nodeId} arrow>
                         <Box sx={rowStyles.idCol}>
                           <Link
                             component={RouterLink}
-                            to={generateNodeLink(address.rayletId)}
+                            to={generateNodeLink(address.nodeId)}
                           >
-                            {address?.rayletId}
+                            {address?.nodeId}
                           </Link>
                         </Box>
                       </Tooltip>

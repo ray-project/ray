@@ -23,7 +23,6 @@
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 #include "ray/util/process.h"
-#include "ray/util/util.h"
 
 namespace ray {
 
@@ -51,10 +50,10 @@ MemoryMonitor::MemoryMonitor(instrumented_io_context &io_service,
                   << " system memory), total system memory bytes: " << total_memory_bytes;
     runner_->RunFnPeriodically(
         [this] {
-          auto [used_memory_bytes, total_memory_bytes] = GetMemoryBytes();
+          auto [used_mem_bytes, total_mem_bytes] = GetMemoryBytes();
           MemorySnapshot system_memory;
-          system_memory.used_bytes = used_memory_bytes;
-          system_memory.total_bytes = total_memory_bytes;
+          system_memory.used_bytes = used_mem_bytes;
+          system_memory.total_bytes = total_mem_bytes;
 
           bool is_usage_above_threshold =
               IsUsageAboveThreshold(system_memory, computed_threshold_bytes_);

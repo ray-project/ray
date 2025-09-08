@@ -140,6 +140,8 @@ DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION = env_bool(
     "RAY_DATA_ENABLE_PROGRESS_BAR_NAME_TRUNCATION", True
 )
 
+DEFAULT_ENFORCE_SCHEMAS = env_bool("RAY_DATA_ALLOW_ENFORCE_SCHEMAS", False)
+
 DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
 
 
@@ -230,23 +232,24 @@ DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD: float = env_float(
 @DeveloperAPI
 @dataclass
 class AutoscalingConfig:
-    # Actor Pool utilization threshold for upscaling. Once Actor Pool
-    # exceeds this utilization threshold it will start adding new actors.
-    #
-    # NOTE: Actor Pool utilization is defined as ratio of
-    #
-    #   - Number of submitted tasks to
-    #   - Max number of tasks the current set of Actors in the pool could run
-    #     (defined as Ray Actor's `max_concurrency` * `pool.num_running_actors`)
-    #
-    # This utilization value could exceed 100%, when the number of submitted tasks
-    # exceed available concurrency-slots to run them in the current set of actors.
-    #
-    # This is possible when `max_tasks_in_flight_per_actor` (defaults to 2 x
-    # of `max_concurrency`) > Actor's `max_concurrency` and allows to overlap
-    # task execution with the fetching of the blocks for the next task providing
-    # for ability to negotiate a trade-off between autoscaling speed and resource
-    # efficiency (ie making tasks wait instead of immediately triggering execution)
+    """Configuration for autoscaling of Ray Data.
+
+    Args:
+        actor_pool_util_upscaling_threshold: Actor Pool utilization threshold for upscaling.
+            Once Actor Pool exceeds this utilization threshold it will start adding new actors.
+            Actor Pool utilization is defined as ratio of number of submitted tasks to the
+            number of available concurrency-slots to run them in the current set of actors.
+            This utilization value could exceed 100%, when the number of submitted tasks
+            exceed available concurrency-slots to run them in the current set of actors.
+            This is possible when `max_tasks_in_flight_per_actor`
+            (defaults to 2 x of `max_concurrency`) > Actor's `max_concurrency`
+            and allows to overlap task execution with the fetching of the blocks
+            for the next task providing for ability to negotiate a trade-off
+            between autoscaling speed and resource efficiency (i.e.,
+            making tasks wait instead of immediately triggering execution).
+        actor_pool_util_downscaling_threshold: Actor Pool utilization threshold for downscaling.
+    """
+
     actor_pool_util_upscaling_threshold: float = (
         DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD
     )
@@ -532,6 +535,11 @@ class DataContext:
     issue_detectors_config: "IssueDetectorsConfiguration" = field(
         default_factory=_issue_detectors_config_factory
     )
+
+    downstream_capacity_backpressure_ratio: float = None
+    downstream_capacity_backpressure_max_queued_bundles: int = None
+
+    enforce_schemas: bool = DEFAULT_ENFORCE_SCHEMAS
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to

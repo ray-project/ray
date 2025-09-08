@@ -1,25 +1,25 @@
-import click
-from pathlib import Path
-from ci.raydepsets.workspace import Workspace, Depset
-from typing import List
-import subprocess
 import platform
+import subprocess
+from pathlib import Path
+from typing import List, Optional
+
+import click
 import runfiles
-from typing import Optional
-from networkx import DiGraph, topological_sort
+from networkx import DiGraph, topological_sort, ancestors as networkx_ancestors
+
+from ci.raydepsets.workspace import Depset, Workspace
 
 DEFAULT_UV_FLAGS = """
     --generate-hashes
     --strip-extras
-    --no-strip-markers
-    --emit-index-url
-    --emit-find-links
     --unsafe-package ray
-    --unsafe-package grpcio-tools
     --unsafe-package setuptools
     --index-url https://pypi.org/simple
     --extra-index-url https://download.pytorch.org/whl/cpu
     --index-strategy unsafe-best-match
+    --no-strip-markers
+    --emit-index-url
+    --emit-find-links
     --quiet
 """.split()
 
@@ -31,25 +31,36 @@ def cli():
 
 @cli.command()
 @click.argument("config_path", default="ci/raydepsets/ray.depsets.yaml")
-@click.option("--workspace-dir", default=None)
-@click.option("--name", default=None)
-@click.option("--uv-cache-dir", default=None)
-def load(
+@click.option(
+    "--workspace-dir",
+    default=None,
+    help="The path to the workspace directory. If not specified, $BUILD_WORKSPACE_DIRECTORY will be used.",
+)
+@click.option(
+    "--name",
+    default=None,
+    help="The name of the dependency set to load. If not specified, all dependency sets will be loaded.",
+)
+@click.option(
+    "--uv-cache-dir", default=None, help="The directory to cache uv dependencies"
+)
+def build(
     config_path: str,
     workspace_dir: Optional[str],
     name: Optional[str],
     uv_cache_dir: Optional[str],
 ):
-    """Load a dependency sets from a config file."""
+    """
+    Build dependency sets from a config file.
+    Args:
+        config_path: The path to the config file. If not specified, ci/raydepsets/ray.depsets.yaml will be used.
+    """
     manager = DependencySetManager(
         config_path=config_path,
         workspace_dir=workspace_dir,
         uv_cache_dir=uv_cache_dir,
     )
-    if name:
-        manager.execute_single(manager.get_depset(name))
-    else:
-        manager.execute()
+    manager.execute(name)
 
 
 class DependencySetManager:
@@ -86,21 +97,27 @@ class DependencySetManager:
             else:
                 raise ValueError(f"Invalid operation: {depset.operation}")
 
-    def execute(self):
+    def subgraph_dependency_nodes(self, depset_name: str):
+        dependency_nodes = networkx_ancestors(self.build_graph, depset_name)
+        nodes = dependency_nodes | {depset_name}
+        self.build_graph = self.build_graph.subgraph(nodes).copy()
+
+    def execute(self, single_depset_name: Optional[str] = None):
+        if single_depset_name:
+            # check if the depset exists
+            _get_depset(self.config.depsets, single_depset_name)
+            self.subgraph_dependency_nodes(single_depset_name)
+
         for node in topological_sort(self.build_graph):
             depset = self.build_graph.nodes[node]["depset"]
             self.execute_single(depset)
 
-    def get_depset(self, name: str) -> Depset:
-        for depset in self.config.depsets:
-            if depset.name == name:
-                return depset
-        raise KeyError(f"Dependency set {name} not found")
-
-    def exec_uv_cmd(self, cmd: str, args: List[str]) -> str:
+    def exec_uv_cmd(
+        self, cmd: str, args: List[str], stdin: Optional[bytes] = None
+    ) -> str:
         cmd = [self._uv_binary, "pip", cmd, *args]
         click.echo(f"Executing command: {cmd}")
-        status = subprocess.run(cmd, cwd=self.workspace.dir)
+        status = subprocess.run(cmd, cwd=self.workspace.dir, input=stdin)
         if status.returncode != 0:
             raise RuntimeError(f"Failed to execute command: {cmd}")
         return status.stdout
@@ -114,6 +131,7 @@ class DependencySetManager:
                 output=depset.output,
                 append_flags=depset.append_flags,
                 override_flags=depset.override_flags,
+                packages=depset.packages,
             )
         elif depset.operation == "subset":
             self.subset(
@@ -139,29 +157,35 @@ class DependencySetManager:
     def compile(
         self,
         constraints: List[str],
-        requirements: List[str],
         name: str,
         output: str,
         append_flags: Optional[List[str]] = None,
         override_flags: Optional[List[str]] = None,
+        packages: Optional[List[str]] = None,
+        requirements: Optional[List[str]] = None,
     ):
         """Compile a dependency set."""
         args = DEFAULT_UV_FLAGS.copy()
+        stdin = None
         if self._uv_cache_dir:
             args.extend(["--cache-dir", self._uv_cache_dir])
         if override_flags:
             args = _override_uv_flags(override_flags, args)
         if append_flags:
-            args = _append_uv_flags(append_flags, args)
+            args.extend(_flatten_flags(append_flags))
         if constraints:
             for constraint in constraints:
-                args.extend(["-c", self.get_path(constraint)])
+                args.extend(["-c", constraint])
         if requirements:
             for requirement in requirements:
-                args.extend([self.get_path(requirement)])
+                args.extend([requirement])
+        if packages:
+            # need to add a dash to process stdin
+            args.append("-")
+            stdin = _get_bytes(packages)
         if output:
-            args.extend(["-o", self.get_path(output)])
-        self.exec_uv_cmd("compile", args)
+            args.extend(["-o", output])
+        self.exec_uv_cmd("compile", args, stdin)
 
     def subset(
         self,
@@ -173,7 +197,7 @@ class DependencySetManager:
         override_flags: Optional[List[str]] = None,
     ):
         """Subset a dependency set."""
-        source_depset = self.get_depset(source_depset)
+        source_depset = _get_depset(self.config.depsets, source_depset)
         self.check_subset_exists(source_depset, requirements)
         self.compile(
             constraints=[source_depset.output],
@@ -198,7 +222,7 @@ class DependencySetManager:
         # handle both depsets and requirements
         depset_req_list = []
         for depset_name in depsets:
-            depset = self.get_depset(depset_name)
+            depset = _get_depset(self.config.depsets, depset_name)
             depset_req_list.extend(depset.requirements)
         if requirements:
             depset_req_list.extend(requirements)
@@ -220,6 +244,17 @@ class DependencySetManager:
                 raise RuntimeError(
                     f"Requirement {req} is not a subset of {source_depset.name}"
                 )
+
+
+def _get_bytes(packages: List[str]) -> bytes:
+    return ("\n".join(packages) + "\n").encode("utf-8")
+
+
+def _get_depset(depsets: List[Depset], name: str) -> Depset:
+    for depset in depsets:
+        if depset.name == name:
+            return depset
+    raise KeyError(f"Dependency set {name} not found")
 
 
 def _flatten_flags(flags: List[str]) -> List[str]:
@@ -250,16 +285,14 @@ def _override_uv_flags(flags: List[str], args: List[str]) -> List[str]:
     return new_args + _flatten_flags(flags)
 
 
-def _append_uv_flags(flags: List[str], args: List[str]) -> List[str]:
-    args.extend(flags)
-    return args
-
-
 def _uv_binary():
     r = runfiles.Create()
     system = platform.system()
-    if system != "Linux" or platform.processor() != "x86_64":
-        raise RuntimeError(
-            f"Unsupported platform/processor: {system}/{platform.processor()}"
-        )
-    return r.Rlocation("uv_x86_64/uv-x86_64-unknown-linux-gnu/uv")
+    processor = platform.processor()
+
+    if system == "Linux" and processor == "x86_64":
+        return r.Rlocation("uv_x86_64-linux/uv-x86_64-unknown-linux-gnu/uv")
+    elif system == "Darwin" and (processor == "arm" or processor == "aarch64"):
+        return r.Rlocation("uv_aarch64-darwin/uv-aarch64-apple-darwin/uv")
+    else:
+        raise RuntimeError(f"Unsupported platform/processor: {system}/{processor}")

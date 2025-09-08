@@ -876,13 +876,15 @@ def test_usage_lib_get_total_num_running_jobs_to_report(
     ray.shutdown()
 
 
-def test_usage_lib_get_total_num_nodes_to_report(ray_start_cluster, reset_usage_stats):
+def test_usage_lib_get_total_num_alive_nodes_to_report(
+    ray_start_cluster, reset_usage_stats
+):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1)
     ray.init(address=cluster.address)
     worker_node = cluster.add_node(num_cpus=2)
     assert (
-        ray_usage_lib.get_total_num_nodes_to_report(
+        ray_usage_lib.get_total_num_alive_nodes_to_report(
             ray.experimental.internal_kv.internal_kv_get_gcs_client()
         )
         == 2
@@ -890,7 +892,7 @@ def test_usage_lib_get_total_num_nodes_to_report(ray_start_cluster, reset_usage_
     cluster.remove_node(worker_node)
     # Make sure only alive nodes are counted
     assert (
-        ray_usage_lib.get_total_num_nodes_to_report(
+        ray_usage_lib.get_total_num_alive_nodes_to_report(
             ray.experimental.internal_kv.internal_kv_get_gcs_client()
         )
         == 1
@@ -1460,7 +1462,7 @@ def test_usage_stats_gcs_query_failure(
 
         ray.init(address=cluster.address)
         assert (
-            ray_usage_lib.get_total_num_nodes_to_report(
+            ray_usage_lib.get_total_num_alive_nodes_to_report(
                 ray.experimental.internal_kv.internal_kv_get_gcs_client(), timeout=1
             )
             is None

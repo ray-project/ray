@@ -28,8 +28,9 @@
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/reference_count.h"
+#include "ray/ipc/raylet_ipc_client_interface.h"
 #include "ray/object_manager/plasma/client.h"
-#include "ray/raylet_client/raylet_client.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 namespace core {
@@ -95,7 +96,7 @@ class CoreWorkerPlasmaStoreProvider {
  public:
   CoreWorkerPlasmaStoreProvider(
       const std::string &store_socket,
-      const std::shared_ptr<raylet::RayletClient> raylet_client,
+      const std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
       ReferenceCounter &reference_counter,
       std::function<Status()> check_signals,
       bool warmup,
@@ -234,7 +235,7 @@ class CoreWorkerPlasmaStoreProvider {
   /// \return status
   Status WarmupStore();
 
-  const std::shared_ptr<raylet::RayletClient> raylet_client_;
+  const std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client_;
   std::shared_ptr<plasma::PlasmaClient> store_client_;
   /// Used to look up a plasma object's owner.
   ReferenceCounter &reference_counter_;

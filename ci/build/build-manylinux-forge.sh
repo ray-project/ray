@@ -3,6 +3,12 @@
 
 set -exuo pipefail
 
+BAZELISK_VERSION="v1.26.0"
+
+platform="linux"
+
+echo "Architecture(HOSTTYPE) is ${HOSTTYPE}"
+
 if [[ ! -e /usr/bin/nproc ]]; then
   echo -e '#!/bin/bash\necho 10' > "/usr/bin/nproc"
   chmod +x /usr/bin/nproc
@@ -16,7 +22,7 @@ if [[ "${HOSTTYPE-}" == "x86_64" ]]; then
 fi
 
 # Install ray java dependencies.
-if [[ "${RAY_INSTALL_JAVA}" == "1" ]]; then
+if [[ "${RAYCI_DISABLE_JAVA:-false}" != "true" && "${RAY_INSTALL_JAVA:-1}" == "1" ]]; then
   sudo yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel maven
   java -version
   JAVA_BIN="$(readlink -f "$(command -v java)")"
@@ -33,12 +39,22 @@ nvm install "$NODE_VERSION"
 nvm use "$NODE_VERSION"
 
 # Install bazel
-npm install -g @bazel/bazelisk
 mkdir -p "$HOME"/bin
-ln -sf "$(which bazelisk)" "$HOME"/bin/bazel
+if [[ "${HOSTTYPE}" == "aarch64" || "${HOSTTYPE}" = "arm64" ]]; then
+  # architecture is "aarch64", but the bazel tag is "arm64"
+  BAZELISK_URL="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-${platform}-arm64"
+elif [[ "${HOSTTYPE}" == "x86_64" ]]; then
+  BAZELISK_URL="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-${platform}-amd64"
+else
+  echo "Could not found matching bazelisk URL for platform ${platform} and architecture ${HOSTTYPE}"
+  exit 1
+fi
+curl -sSfL -o "$HOME"/bin/bazelisk "${BAZELISK_URL}"
+chmod +x "$HOME"/bin/bazelisk
+sudo ln -sf "$HOME"/bin/bazelisk /usr/local/bin/bazel
 
 # Use python3.9 as default python3
-ln -sf /usr/local/bin/python3.9 /usr/local/bin/python3
+sudo ln -sf /usr/local/bin/python3.9 /usr/local/bin/python3
 
 {
   echo "build --config=ci"

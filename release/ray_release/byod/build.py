@@ -1,11 +1,8 @@
 from typing import List, Optional, Dict
 
-import boto3
-import hashlib
 import os
 import subprocess
 import sys
-import time
 
 from ray_release.config import RELEASE_PACKAGE_DIR
 from ray_release.logger import logger
@@ -15,28 +12,18 @@ from ray_release.test import (
 
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 
-DATAPLANE_S3_BUCKET = "ray-release-automation-results"
-DATAPLANE_FILENAME = "dataplane_20250624.tar.gz"
-DATAPLANE_DIGEST = "3cffb55f1a56f0bc6256cbf1a38bf1e764e202a647a4272b80531760f1250059"
-BASE_IMAGE_WAIT_TIMEOUT = 7200
-BASE_IMAGE_WAIT_DURATION = 30
 RELEASE_BYOD_DIR = (
     os.path.join(bazel_workspace_dir, "release/ray_release/byod")
     if bazel_workspace_dir
     else os.path.join(RELEASE_PACKAGE_DIR, "ray_release/byod")
 )
-REQUIREMENTS_BYOD = "requirements_byod"
-REQUIREMENTS_LLM_BYOD = "requirements_llm_byod"
-REQUIREMENTS_ML_BYOD = "requirements_ml_byod"
 
 
-def build_anyscale_custom_byod_image(test: Test) -> None:
-    if not test.require_custom_byod_image():
-        logger.info(f"Test {test.get_name()} does not require a custom byod image")
-        return
-    byod_image = test.get_anyscale_byod_image()
-    if _image_exist(byod_image):
-        logger.info(f"Image {byod_image} already exists")
+def build_anyscale_custom_byod_image(
+    image: str, base_image: str, post_build_script: str
+) -> None:
+    if _image_exist(image):
+        logger.info(f"Image {image} already exists")
         return
 
     env = os.environ.copy()
@@ -47,11 +34,11 @@ def build_anyscale_custom_byod_image(test: Test) -> None:
             "build",
             "--progress=plain",
             "--build-arg",
-            f"BASE_IMAGE={test.get_anyscale_base_byod_image()}",
+            f"BASE_IMAGE={base_image}",
             "--build-arg",
-            f"POST_BUILD_SCRIPT={test.get_byod_post_build_script()}",
+            f"POST_BUILD_SCRIPT={post_build_script}",
             "-t",
-            byod_image,
+            image,
             "-f",
             os.path.join(RELEASE_BYOD_DIR, "byod.custom.Dockerfile"),
             RELEASE_BYOD_DIR,
@@ -59,88 +46,25 @@ def build_anyscale_custom_byod_image(test: Test) -> None:
         stdout=sys.stderr,
         env=env,
     )
-    _validate_and_push(byod_image)
+    _validate_and_push(image)
 
 
-def build_anyscale_base_byod_images(tests: List[Test]) -> None:
+def build_anyscale_base_byod_images(tests: List[Test]) -> List[str]:
     """
     Builds the Anyscale BYOD images for the given tests.
     """
-    _download_dataplane_build_file()
-    to_be_built = {}
-    built = set()
+    images = set()
     for test in tests:
-        to_be_built[test.get_anyscale_base_byod_image()] = test
+        images.add(test.get_anyscale_base_byod_image())
 
-    env = os.environ.copy()
-    env["DOCKER_BUILDKIT"] = "1"
-    start = int(time.time())
-    # ray images are built on post-merge, so we can wait for them to be available
-    while (
-        len(built) < len(to_be_built)
-        and int(time.time()) - start < BASE_IMAGE_WAIT_TIMEOUT
-    ):
-        for byod_image, test in to_be_built.items():
-            py_version = test.get_python_version()
-            if test.use_byod_ml_image():
-                byod_requirements = f"{REQUIREMENTS_ML_BYOD}_{py_version}.txt"
-            elif test.use_byod_llm_image():
-                byod_requirements = f"{REQUIREMENTS_LLM_BYOD}_{py_version}.txt"
-            else:
-                byod_requirements = f"{REQUIREMENTS_BYOD}_{py_version}.txt"
+    image_list = list(images)
+    image_list.sort()
 
-            if _image_exist(byod_image):
-                logger.info(f"Image {byod_image} already exists")
-                built.add(byod_image)
-                continue
-            ray_image = test.get_ray_image()
-            if not _image_exist(ray_image):
-                # TODO(can): instead of waiting for the base image to be built, we can
-                #  build it ourselves
-                timeout = BASE_IMAGE_WAIT_TIMEOUT - (int(time.time()) - start)
-                logger.info(
-                    f"Image {ray_image} does not exist yet. "
-                    f"Wait for another {timeout}s..."
-                )
-                time.sleep(BASE_IMAGE_WAIT_DURATION)
-                continue
-            logger.info(f"Building {byod_image} from {ray_image}")
-            with open(DATAPLANE_FILENAME, "rb") as build_file:
-                subprocess.check_call(
-                    [
-                        "docker",
-                        "build",
-                        "--progress=plain",
-                        "--build-arg",
-                        f"BASE_IMAGE={ray_image}",
-                        "-t",
-                        byod_image,
-                        "-",
-                    ],
-                    stdin=build_file,
-                    stdout=sys.stderr,
-                    env=env,
-                )
-                subprocess.check_call(
-                    [
-                        "docker",
-                        "build",
-                        "--progress=plain",
-                        "--build-arg",
-                        f"BASE_IMAGE={byod_image}",
-                        "--build-arg",
-                        f"PIP_REQUIREMENTS={byod_requirements}",
-                        "-t",
-                        byod_image,
-                        "-f",
-                        os.path.join(RELEASE_BYOD_DIR, "byod.Dockerfile"),
-                        RELEASE_BYOD_DIR,
-                    ],
-                    stdout=sys.stderr,
-                    env=env,
-                )
-                _validate_and_push(byod_image)
-                built.add(byod_image)
+    for image in image_list:
+        if not _image_exist(image):
+            raise RuntimeError(f"Image {image} not found")
+
+    return image_list
 
 
 def _validate_and_push(byod_image: str) -> None:
@@ -189,21 +113,6 @@ def _get_ray_commit(envs: Optional[Dict[str, str]] = None) -> str:
         if commit:
             return commit
     return ""
-
-
-def _download_dataplane_build_file() -> None:
-    """
-    Downloads the dataplane build file from S3.
-    """
-    s3 = boto3.client("s3")
-    s3.download_file(
-        Bucket=DATAPLANE_S3_BUCKET,
-        Key=DATAPLANE_FILENAME,
-        Filename=DATAPLANE_FILENAME,
-    )
-    with open(DATAPLANE_FILENAME, "rb") as build_context:
-        digest = hashlib.sha256(build_context.read()).hexdigest()
-        assert digest == DATAPLANE_DIGEST, "Mismatched dataplane digest found!"
 
 
 def _image_exist(image: str) -> bool:

@@ -2,6 +2,7 @@
 This file defines the common pytest fixtures used in current directory.
 """
 
+import copy
 import json
 import logging
 import os
@@ -16,33 +17,34 @@ from pathlib import Path
 from tempfile import gettempdir
 from typing import List, Optional
 from unittest import mock
-import psutil
+
 import pytest
-import copy
 
 import ray
-from ray._common.test_utils import wait_for_condition
 import ray._private.ray_constants as ray_constants
+from ray._common.network_utils import build_address
+from ray._common.test_utils import wait_for_condition
 from ray._private.conftest_utils import set_override_dashboard_url  # noqa: F401
 from ray._private.runtime_env import virtualenv_utils
-
 from ray._private.test_utils import (
+    RayletKiller,
+    external_redis_test_enabled,
+    find_free_port,
     get_and_run_resource_killer,
+    get_redis_cli,
     init_error_pubsub,
     init_log_pubsub,
-    setup_tls,
-    teardown_tls,
-    external_redis_test_enabled,
     redis_replicas,
-    get_redis_cli,
+    redis_sentinel_replicas,
+    reset_autoscaler_v2_enabled_cache,
+    setup_tls,
     start_redis_instance,
     start_redis_sentinel_instance,
-    redis_sentinel_replicas,
-    find_free_port,
-    reset_autoscaler_v2_enabled_cache,
-    RayletKiller,
+    teardown_tls,
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
+
+import psutil
 
 # TODO (mengjin) Improve the logging in the conftest files so that the logger can log
 # information in stdout as well as stderr and replace the print statements in the test
@@ -90,8 +92,8 @@ def wait_for_redis_to_start(
         try:
             # Run some random command and see if it worked.
             logger.debug(
-                "Waiting for redis server at {}:{} to respond...".format(
-                    redis_ip_address, redis_port
+                "Waiting for redis server at {} to respond...".format(
+                    build_address(redis_ip_address, redis_port)
                 )
             )
             redis_client.client_list()
@@ -105,14 +107,14 @@ def wait_for_redis_to_start(
         # redis.AuthenticationError isn't trapped here.
         except redis.AuthenticationError as authEx:
             raise RuntimeError(
-                f"Unable to connect to Redis at {redis_ip_address}:{redis_port}."
+                f"Unable to connect to Redis at {build_address(redis_ip_address, redis_port)}."
             ) from authEx
         except redis.ConnectionError as connEx:
             if i >= num_retries - 1:
                 raise RuntimeError(
-                    f"Unable to connect to Redis at {redis_ip_address}:"
-                    f"{redis_port} after {num_retries} retries. Check that "
-                    f"{redis_ip_address}:{redis_port} is reachable from this "
+                    f"Unable to connect to Redis at {build_address(redis_ip_address, redis_port)} "
+                    f"after {num_retries} retries. Check that "
+                    f"{build_address(redis_ip_address, redis_port)} is reachable from this "
                     "machine. If it is not, your firewall may be blocking "
                     "this port. If the problem is a flaky connection, try "
                     "setting the environment variable "
@@ -830,7 +832,7 @@ def call_ray_start_with_external_redis(request):
     for port in port_list:
         temp_dir = ray._common.utils.get_ray_temp_dir()
         start_redis_instance(temp_dir, int(port), password="123")
-    address_str = ",".join(map(lambda x: "localhost:" + x, port_list))
+    address_str = ",".join(map(lambda x: build_address("localhost", x), port_list))
     cmd = f"ray start --head --address={address_str} --redis-password=123"
     subprocess.call(cmd.split(" "))
 
@@ -1465,6 +1467,15 @@ def random_ascii_file(request):
         fp.flush()
 
         yield fp
+
+
+# Clean up Ray address file before the test run starts, since sometimes bazel test times out
+# and kill the test process, without cleaning up the Ray address file.
+def pytest_sessionstart(session):
+    """Called after the Session object has been created and before performing collection and entering the run test loop."""
+
+    # Delete the cluster address file just in case.
+    ray._common.utils.reset_ray_address()
 
 
 """

@@ -6,6 +6,6 @@ diff -u bazel/repositories.bzl /tmp/repositories.bzl
          ],
          build_file = "@com_github_jupp0r_prometheus_cpp//bazel:zlib.BUILD",
 +        patches = [
-+            "@com_github_ray_project_ray//thirdparty/patches:zlib-fdopen.patch",
++            "@io_ray//thirdparty/patches:zlib-fdopen.patch",
 +        ]
      )

@@ -4,12 +4,13 @@ import sys
 import pytest
 
 import ray
-from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
-from ray._private.test_utils import (
-    get_metric_check_condition,
-    MetricSamplePattern,
-)
+from ray._common.network_utils import build_address
 from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._private.test_utils import (
+    MetricSamplePattern,
+    get_metric_check_condition,
+)
+from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.autoscaler.node_launch_exception import NodeLaunchException
 
 
@@ -123,12 +124,15 @@ def test_ray_status_e2e(local_autoscaling_cluster, shutdown_only):
     actor = Actor.remote()
     ray.get(actor.ping.remote())
 
-    assert "Total Demands" in subprocess.check_output("ray status", shell=True).decode()
     assert (
-        "Total Demands" in subprocess.check_output("ray status -v", shell=True).decode()
+        "Pending Demands" in subprocess.check_output("ray status", shell=True).decode()
     )
     assert (
-        "Total Demands"
+        "Pending Demands"
+        in subprocess.check_output("ray status -v", shell=True).decode()
+    )
+    assert (
+        "Pending Demands"
         in subprocess.check_output("ray status --verbose", shell=True).decode()
     )
 
@@ -161,7 +165,7 @@ def test_ray_status_e2e(local_autoscaling_cluster, shutdown_only):
 def test_metrics(local_autoscaling_cluster, shutdown_only):
 
     info = ray.init(address="auto")
-    autoscaler_export_addr = "{}:{}".format(
+    autoscaler_export_addr = build_address(
         info.address_info["node_ip_address"], AUTOSCALER_METRIC_PORT
     )
 
