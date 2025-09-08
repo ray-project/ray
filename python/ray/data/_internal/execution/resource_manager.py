@@ -519,6 +519,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         if len(eligible_ops) == 0:
             return
 
+        # Ineligible operators might still consume resources, we need to subtract their usage from the remaining resources.
+        # We only consider operators that have no eligible upstream operators, because ineligible operators that have eligible upstream operators
+        # will be excluded in https://github.com/ray-project/ray/blob/6b703a8a4d5b761365e05f75a1de61625cab248b/python/ray/data/_internal/execution/resource_manager.py#L667
         for op in self.get_ineligible_ops_without_eligible_upstream():
             remaining = remaining.subtract(self._resource_manager.get_op_usage(op))
 
