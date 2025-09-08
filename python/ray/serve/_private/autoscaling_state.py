@@ -347,7 +347,7 @@ class AutoscalingState:
         for id in self._running_replicas:
             if id in self._replica_requests:
                 total_requests += self._replica_requests[id].aggregated_metrics.get(
-                    RUNNING_REQUESTS_KEY
+                    RUNNING_REQUESTS_KEY, 0
                 )
 
         metrics_collected_on_replicas = total_requests > 0
