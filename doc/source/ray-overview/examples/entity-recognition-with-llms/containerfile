@@ -2,7 +2,7 @@ FROM anyscale/ray-llm:2.49.1-py311-cu128
 
 COPY ./llm_example_py311_cu128.lock .
 
-RUN uv pip sync --no-deps -r llm_example_py311_cu128.lock
+RUN uv pip sync llm_example_py311_cu128.lock
 
 # Fast upload/download
 ENV HF_HUB_ENABLE_HF_TRANSFER=1
