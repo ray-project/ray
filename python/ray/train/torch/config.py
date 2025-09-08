@@ -87,6 +87,7 @@ def _setup_torch_process_group(
     world_size: int,
     init_method: str,
     timeout_s: int = 1800,
+    # coordinator: Optional[str] = None
 ):
     """Connects the distributed PyTorch backend.
 
@@ -108,7 +109,7 @@ def _setup_torch_process_group(
             f"world_size={world_size}]"
         )
     logger.debug(f"using {backend}")
-    logger.info(f"using world_rank={world_rank}, world_size={world_size}, backend={backend}")
+    logger.info(f"using world_rank={world_rank}, world_size={world_size}, backend={backend}, init_method={init_method}")
 
      # Hard guard: if *anything* already initialized the default group, bail out.
     if dist.is_initialized():
@@ -136,16 +137,16 @@ def _setup_torch_process_group(
     elif backend == "hccl":
         register_custom_torch_dist_backend(backend)
     elif backend == "xla":
-        import torch_xla.runtime as xr
+        # import torch_xla.runtime as xr
 
-        logger.info(f">>> XLA runtime info before PG init: is_spmd={xr.is_spmd()}, "
-                   f"proc_index={xr.process_index()}, proc_count={xr.process_count()}, "
-                   f"world_size={xr.world_size()}")
+        # logger.info(f">>> XLA runtime info before PG init: is_spmd={xr.is_spmd()}, "
+        #            f"proc_index={xr.process_index()}, proc_count={xr.process_count()}, "
+        #            f"world_size={xr.world_size()}")
 
         # For XLA backend, use the XLA init method
         dist.init_process_group(
             backend="xla",
-            init_method="env://",  # Use XLA's native init method
+            init_method=init_method,  # Use XLA's native init method
             rank=world_rank,
             world_size=world_size,
             timeout=timedelta(seconds=timeout_s),
@@ -153,6 +154,7 @@ def _setup_torch_process_group(
 
         # Sanity logs
         try:
+            import torch_xla.runtime as xr
             logger.info(
                 f">>> [XLA PG] dist rank/size=({dist.get_rank()}/{dist.get_world_size()}), "
                 f"xr world_size={xr.world_size()}, "
@@ -276,11 +278,11 @@ class _TorchBackend(Backend):
                     # os.environ["XLA_USE_SPMD"] = "1"
 
                     # CRITICAL: Use Ray's world size and rank for consistency
-                    # os.environ["PJRT_WORLD_SIZE"] = str(context.get_world_size())
-                    # os.environ["PJRT_LOCAL_PROCESS_RANK"] = str(context.get_world_rank())
+                    os.environ["PJRT_WORLD_SIZE"] = str(context.get_world_size())
+                    os.environ["PJRT_LOCAL_PROCESS_RANK"] = str(context.get_world_rank())
 
                     # For multi-node setups
-                    # os.environ["PJRT_LOCAL_PROCESS_COUNT"] = str(context.get_local_world_size())
+                    os.environ["PJRT_LOCAL_PROCESS_COUNT"] = str(context.get_local_world_size())
                     os.environ["PJRT_NODE_ID"] = str(context.get_node_rank())
 
                     # Additional XLA settings for GPU
@@ -304,6 +306,7 @@ class _TorchBackend(Backend):
 
             setup_futures = []
             for i in range(len(worker_group)):
+                url = f"xla://{coordinator}"
                 setup_futures.append(
                     worker_group.execute_single_async(
                         i,
