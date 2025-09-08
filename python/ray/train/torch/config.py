@@ -136,22 +136,21 @@ def _setup_torch_process_group(
     elif backend == "hccl":
         register_custom_torch_dist_backend(backend)
     elif backend == "xla":
-        import torch_xla.distributed.xla_backend
         import torch_xla.runtime as xr
-        
+
         logger.info(f">>> XLA runtime info before PG init: is_spmd={xr.is_spmd()}, "
                    f"proc_index={xr.process_index()}, proc_count={xr.process_count()}, "
                    f"world_size={xr.world_size()}")
-        
+
         # For XLA backend, use the XLA init method
         dist.init_process_group(
-            backend='xla',
-            init_method='xla://',  # Use XLA's native init method
+            backend="xla",
+            init_method="env://",  # Use XLA's native init method
             rank=world_rank,
             world_size=world_size,
             timeout=timedelta(seconds=timeout_s),
         )
-        
+
         # Sanity logs
         try:
             logger.info(
@@ -164,7 +163,7 @@ def _setup_torch_process_group(
             )
         except Exception as e:
             logger.warning(f"Failed to log XLA runtime info: {e}")
-        
+
         return
 
 
@@ -249,7 +248,7 @@ class _TorchBackend(Backend):
                 coordinator = f"{master_addr}:{pjrt_port}"
                 def _set_pjrt_envs(coord):
                     context = ray.train.get_context()
-                    
+
                     os.environ["RAY_DISABLE_WORKER_REUSE"] = "1"
                     # debugging logs:
                     os.environ["TF_CPP_MIN_LOG_LEVEL"] = "0"          # verbose TF/XLA logs
@@ -266,7 +265,7 @@ class _TorchBackend(Backend):
                     os.environ.pop("NVIDIA_VISIBLE_DEVICES", None)
                     os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")
                     os.environ["PJRT_DEVICE"] = "CUDA"
-                    
+
                     # PJRT multiprocess rendezvous (new-style names)
                     os.environ["PJRT_COORDINATOR_ADDRESS"] = coord
                     os.environ["PJRT_DIST_SERVICE_ADDR"] = coord
@@ -301,7 +300,7 @@ class _TorchBackend(Backend):
 
             # it might be related since we will need these env var before pjrt init and xla process group init
             worker_group.execute(_set_torch_distributed_env_vars)
-            logger.info(f"set torch distributed envs for c10d")
+            logger.info("set torch distributed envs for c10d")
 
             setup_futures = []
             for i in range(len(worker_group)):
@@ -329,6 +328,6 @@ class _TorchBackend(Backend):
     def on_training_start(
         self, worker_group: WorkerGroup, backend_config: BackendConfig
     ):
-        if backend_config.backend == 'xla':
+        if backend_config.backend == "xla":
             return
         worker_group.execute(_set_torch_distributed_env_vars)
