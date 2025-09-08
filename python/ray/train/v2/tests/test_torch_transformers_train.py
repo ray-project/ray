@@ -12,7 +12,6 @@ from ray.train.v2._internal.constants import is_v2_enabled
 
 assert is_v2_enabled()
 
-
 @pytest.fixture
 def ray_start_6_cpus_2_gpus():
     address_info = ray.init(num_cpus=6, num_gpus=2)
@@ -371,7 +370,6 @@ def test_e2e_dict_eval_ray_data(ray_start_6_cpus_2_gpus, config_id):
 
     # Must specify `max_steps` for Iterable Dataset
     train_loop_config["use_ray_data"] = True
-    train_loop_config["use_dict_eval_datasets"] = True
     train_loop_config["max_steps"] = MAX_STEPS
 
     # Calculate the num of Ray training iterations
@@ -402,9 +400,8 @@ def test_e2e_dict_eval_ray_data(ray_start_6_cpus_2_gpus, config_id):
     assert result.checkpoint
     assert isinstance(result.checkpoint, Checkpoint)
     assert len(result.best_checkpoints) == num_iterations
-    assert "eval_loss_1" in result.metrics
-    assert "eval_loss_2" in result.metrics
-
+    assert "eval_eval_1_loss" in result.metrics
+    assert "eval_eval_2_loss" in result.metrics
 
 if __name__ == "__main__":
     import sys

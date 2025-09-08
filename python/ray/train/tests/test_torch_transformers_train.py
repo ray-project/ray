@@ -214,8 +214,7 @@ def test_e2e_ray_data(ray_start_6_cpus_2_gpus, config_id):
     assert "eval_loss" in result.metrics
 
 
-# @pytest.mark.parametrize("config_id", ["steps_gpu", "steps_cpu"])
-@pytest.mark.parametrize("config_id", ["steps_cpu"])
+@pytest.mark.parametrize("config_id", ["steps_gpu", "steps_cpu"])
 def test_e2e_dict_eval_ray_data(ray_start_6_cpus_2_gpus, config_id):
     train_loop_config = CONFIGURATIONS[config_id]
 
