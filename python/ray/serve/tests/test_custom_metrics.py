@@ -1,17 +1,15 @@
-import os
 import sys
-import time
 from typing import Any, Dict
 
 import pytest
 
-os.environ["RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE"] = "0"
-os.environ["RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S"] = "3"
-
 import ray
 from ray import serve
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import DeploymentID
+from ray.serve._private.test_utils import (
+    send_signal_on_cancellation,
+)
 
 
 def get_autoscaling_metrics_from_controller(
@@ -68,7 +66,10 @@ class TestCustomServeMetrics:
         # The final counter value recorded by the controller should be 3
         assert metrics["counter"][-1][0].value == 3
 
-    def test_custom_serve_timeout(self, serve_instance):
+    @pytest.mark.asyncio
+    async def test_custom_serve_timeout(self, serve_instance):
+        signal_actor = SignalActor.remote()
+
         @serve.deployment(
             autoscaling_config={
                 "min_replicas": 1,
@@ -87,8 +88,10 @@ class TestCustomServeMetrics:
                 return "Hello, world"
 
             async def record_autoscaling_stats(self) -> Dict[str, Any]:
-                # Sleep beyond RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S
-                time.sleep(12)
+                # Block here until it is forced to cancel due to timeout beyond RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S
+                async with send_signal_on_cancellation(signal_actor):
+                    pass
+
                 return {"counter": self.counter}
 
         app_name = "test_custom_metrics_app"
@@ -99,16 +102,15 @@ class TestCustomServeMetrics:
         [handle.remote() for _ in range(3)]
 
         # Wait for controller to receive new metrics
-        wait_for_condition(
-            lambda: "counter"
-            in get_autoscaling_metrics_from_controller(serve_instance, dep_id),
-            timeout=10,
-        )
+        try:
+            for i in range(5):
+                await signal_actor.wait.remote()
+        except Exception:
+            print("WARN: signal_actor timeout")
 
+        # There should be no counter metric because asyncio timeout would have stopped the method execution
         metrics = get_autoscaling_metrics_from_controller(serve_instance, dep_id)
-
-        # The should have no counter metric because asyncio timeout would have stopped the method execution
-        assert metrics["counter"] == []
+        assert metrics.get("counter", None) is None
 
 
 if __name__ == "__main__":

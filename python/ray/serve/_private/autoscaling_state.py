@@ -222,11 +222,11 @@ class AutoscalingState:
     ) -> None:
         """Records average number of ongoing requests at a replica."""
 
-        replica_id = replica_metric_report.replica_id
-        send_timestamp = replica_metric_report.timestamp
-
         if not replica_metric_report or replica_metric_report.metrics.get(RUNNING_REQUESTS_KEY, None) is None:
             return
+
+        replica_id = replica_metric_report.replica_id
+        send_timestamp = replica_metric_report.timestamp
 
         if (
             replica_id not in self._replica_metrics
