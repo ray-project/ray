@@ -278,7 +278,7 @@ class Check(AbstractUDFMap):
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         """Initialize Check logical operator.
-        
+
         Args:
             input_op: The operator preceding this operator in the plan DAG.
             fn: User-defined function that returns True for valid rows.
@@ -301,31 +301,39 @@ class Check(AbstractUDFMap):
         # Ensure exactly one of fn or check_expr is provided
         if not ((fn is None) ^ (check_expr is None)):
             raise ValueError("Exactly one of 'fn' or 'check_expr' must be provided")
-        
+
         # Validate on_violation parameter
         valid_actions = {"warn", "drop", "fail", "quarantine"}
         if on_violation not in valid_actions:
-            raise ValueError(f"on_violation must be one of {valid_actions}, got '{on_violation}'")
-        
+            raise ValueError(
+                f"on_violation must be one of {valid_actions}, got '{on_violation}'"
+            )
+
         # Validate quarantine configuration
         if on_violation == "quarantine" and quarantine_path is None:
-            raise ValueError("quarantine_path must be provided when on_violation='quarantine'")
-        
+            raise ValueError(
+                "quarantine_path must be provided when on_violation='quarantine'"
+            )
+
         valid_formats = {"parquet", "csv", "json"}
         if quarantine_format not in valid_formats:
-            raise ValueError(f"quarantine_format must be one of {valid_formats}, got '{quarantine_format}'")
-        
+            raise ValueError(
+                f"quarantine_format must be one of {valid_formats}, got '{quarantine_format}'"
+            )
+
         # Validate max_failures
-        if max_failures is not None and (not isinstance(max_failures, int) or max_failures < 0):
+        if max_failures is not None and (
+            not isinstance(max_failures, int) or max_failures < 0
+        ):
             raise ValueError("max_failures must be a non-negative integer or None")
-        
+
         # Validate expression or function
         if check_expr is not None:
             # Expression validation will be done during planning when we have the actual string
             pass
         else:
             self._validate_callable(fn)
-        
+
         # Store check-specific parameters
         self._check_expr = check_expr
         self._max_failures = max_failures
@@ -333,9 +341,10 @@ class Check(AbstractUDFMap):
         self._quarantine_path = quarantine_path
         self._quarantine_format = quarantine_format
         self._metadata_path = metadata_path
-        
+
         # Generate unique ID for this check (important for chained checks)
         import uuid
+
         self._check_id = f"check_{uuid.uuid4().hex[:8]}"
 
         super().__init__(
@@ -354,41 +363,46 @@ class Check(AbstractUDFMap):
     def can_modify_num_rows(self) -> bool:
         """Check operator can modify number of rows when dropping violations."""
         return self._on_violation in ("drop", "fail")
-    
+
     def _validate_expression(self, expr: str) -> None:
         """Validate string expression syntax and semantics."""
         if not expr or not isinstance(expr, str):
             raise ValueError("Expression must be a non-empty string")
-        
+
         # Basic syntax validation
         try:
             # Try to compile as Python expression
-            compile(expr, '<string>', 'eval')
+            compile(expr, "<string>", "eval")
         except SyntaxError as e:
             raise ValueError(f"Invalid expression syntax: {e}")
-        
+
         # Check for dangerous operations
-        dangerous_keywords = ['import', '__', 'exec', 'eval', 'open', 'file']
+        dangerous_keywords = ["import", "__", "exec", "eval", "open", "file"]
         for keyword in dangerous_keywords:
             if keyword in expr.lower():
-                raise ValueError(f"Expression contains potentially dangerous operation: {keyword}")
-    
+                raise ValueError(
+                    f"Expression contains potentially dangerous operation: {keyword}"
+                )
+
     def _validate_callable(self, fn: UserDefinedFunction) -> None:
         """Validate callable function for data quality checks."""
         if not callable(fn):
             raise ValueError("Function must be callable")
-        
+
         # Check function signature if possible
         import inspect
+
         try:
             sig = inspect.signature(fn)
             params = list(sig.parameters.keys())
             if len(params) == 0:
-                raise ValueError("Check function must accept at least one parameter (row)")
+                raise ValueError(
+                    "Check function must accept at least one parameter (row)"
+                )
         except (ValueError, TypeError):
             # Can't inspect signature, assume it's valid
             pass
-    
+
     def _get_metadata_info(self) -> Dict[str, Any]:
         """Get metadata information about this check operation."""
         return {

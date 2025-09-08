@@ -16,8 +16,10 @@ logger = logging.getLogger(__name__)
 
 class DataQualityError(Exception):
     """Exception raised for data quality violations."""
-    
-    def __init__(self, message: str, violation_details: Optional[Dict[str, Any]] = None):
+
+    def __init__(
+        self, message: str, violation_details: Optional[Dict[str, Any]] = None
+    ):
         super().__init__(message)
         self.violation_details = violation_details or {}
         self.timestamp = time.time()
@@ -25,29 +27,29 @@ class DataQualityError(Exception):
 
 class ViolationTracker:
     """Thread-safe violation tracker for distributed data quality checks."""
-    
+
     def __init__(self, check_id: str):
         self.check_id = check_id
         self._local_violations = 0
         self._lock = threading.Lock()
         self._global_actor = None
-        
+
     def add_violation(self, count: int = 1):
         """Add violation count to local tracker."""
         with self._lock:
             self._local_violations += count
-    
+
     def get_local_violations(self) -> int:
         """Get local violation count."""
         with self._lock:
             return self._local_violations
-    
+
     def get_total_violations(self) -> int:
         """Get total violations across all workers (may be approximate)."""
         # For now, return local violations
         # In a full implementation, this would query a global actor
         return self.get_local_violations()
-    
+
     def reset(self):
         """Reset local violation count."""
         with self._lock:
@@ -62,8 +64,8 @@ _tracker_lock = threading.Lock()
 def _get_violation_tracker(ctx, check_id: Optional[str] = None) -> ViolationTracker:
     """Get or create violation tracker for a check."""
     if check_id is None:
-        check_id = getattr(ctx, 'check_id', 'default_check')
-    
+        check_id = getattr(ctx, "check_id", "default_check")
+
     with _tracker_lock:
         if check_id not in _violation_trackers:
             _violation_trackers[check_id] = ViolationTracker(check_id)
@@ -75,22 +77,22 @@ def _write_batch_metadata(metadata_path: str, batch_stats: Dict[str, Any], ctx):
     try:
         import json
         import os
-        
+
         # Create metadata entry
         metadata_entry = {
             "timestamp": time.time(),
-            "batch_id": getattr(ctx, 'batch_id', 'unknown'),
-            "worker_id": getattr(ctx, 'worker_id', 'unknown'),
-            "stats": batch_stats
+            "batch_id": getattr(ctx, "batch_id", "unknown"),
+            "worker_id": getattr(ctx, "worker_id", "unknown"),
+            "stats": batch_stats,
         }
-        
+
         # Ensure directory exists
         os.makedirs(os.path.dirname(metadata_path), exist_ok=True)
-        
+
         # Append to metadata file
-        with open(metadata_path, 'a') as f:
-            f.write(json.dumps(metadata_entry) + '\n')
-            
+        with open(metadata_path, "a") as f:
+            f.write(json.dumps(metadata_entry) + "\n")
+
     except Exception as e:
         logger.warning(f"Failed to write batch metadata: {e}")
 
@@ -100,16 +102,16 @@ def validate_quarantine_path(path: str) -> bool:
     try:
         import os
         import tempfile
-        
+
         # Check if directory exists or can be created
         dir_path = os.path.dirname(path)
         if dir_path:
             os.makedirs(dir_path, exist_ok=True)
-        
+
         # Try to create a temporary file to test write permissions
-        with tempfile.NamedTemporaryFile(dir=dir_path or '.', delete=True):
+        with tempfile.NamedTemporaryFile(dir=dir_path or ".", delete=True):
             pass
-        
+
         return True
     except (OSError, PermissionError, IOError):
         return False
@@ -117,7 +119,7 @@ def validate_quarantine_path(path: str) -> bool:
 
 class CheckMetrics:
     """Metrics collector for data quality checks."""
-    
+
     def __init__(self, check_id: str):
         self.check_id = check_id
         self.start_time = time.time()
@@ -126,15 +128,15 @@ class CheckMetrics:
         self.batches_processed = 0
         self.quarantined_rows = 0
         self._lock = threading.Lock()
-    
+
     def update_batch_stats(self, batch_stats: Dict[str, Any]):
         """Update metrics with batch statistics."""
         with self._lock:
-            self.processed_rows += batch_stats.get('processed_rows', 0)
-            self.violations += batch_stats.get('violations', 0)
+            self.processed_rows += batch_stats.get("processed_rows", 0)
+            self.violations += batch_stats.get("violations", 0)
             self.batches_processed += 1
-            self.quarantined_rows += batch_stats.get('quarantined_rows', 0)
-    
+            self.quarantined_rows += batch_stats.get("quarantined_rows", 0)
+
     def get_summary(self) -> Dict[str, Any]:
         """Get metrics summary."""
         with self._lock:
@@ -145,9 +147,15 @@ class CheckMetrics:
                 "violations": self.violations,
                 "quarantined_rows": self.quarantined_rows,
                 "batches_processed": self.batches_processed,
-                "violation_rate": self.violations / self.processed_rows if self.processed_rows > 0 else 0,
+                "violation_rate": (
+                    self.violations / self.processed_rows
+                    if self.processed_rows > 0
+                    else 0
+                ),
                 "processing_time": elapsed_time,
-                "throughput": self.processed_rows / elapsed_time if elapsed_time > 0 else 0
+                "throughput": (
+                    self.processed_rows / elapsed_time if elapsed_time > 0 else 0
+                ),
             }
 
 
@@ -185,13 +193,13 @@ def reset_check_metrics(check_id: Optional[str] = None):
 
 class ExpressionCache:
     """Cache for compiled expressions to improve performance."""
-    
+
     def __init__(self, max_size: int = 1000):
         self.max_size = max_size
         self._cache: Dict[str, Any] = {}
         self._access_times: Dict[str, float] = {}
         self._lock = threading.Lock()
-    
+
     def get(self, expression: str) -> Optional[Any]:
         """Get cached compiled expression."""
         with self._lock:
@@ -199,7 +207,7 @@ class ExpressionCache:
                 self._access_times[expression] = time.time()
                 return self._cache[expression]
             return None
-    
+
     def put(self, expression: str, compiled_expr: Any):
         """Cache compiled expression."""
         with self._lock:
@@ -208,10 +216,10 @@ class ExpressionCache:
                 lru_key = min(self._access_times, key=self._access_times.get)
                 del self._cache[lru_key]
                 del self._access_times[lru_key]
-            
+
             self._cache[expression] = compiled_expr
             self._access_times[expression] = time.time()
-    
+
     def clear(self):
         """Clear the cache."""
         with self._lock:
@@ -229,30 +237,26 @@ def get_expression_cache() -> ExpressionCache:
 
 
 def create_informative_error_message(
-    error: Exception,
-    context: Dict[str, Any],
-    suggestions: Optional[List[str]] = None
+    error: Exception, context: Dict[str, Any], suggestions: Optional[List[str]] = None
 ) -> str:
     """Create an informative error message with context and suggestions."""
     message_parts = [f"Data quality check failed: {str(error)}"]
-    
+
     if context:
         message_parts.append("Context:")
         for key, value in context.items():
             message_parts.append(f"  {key}: {value}")
-    
+
     if suggestions:
         message_parts.append("Suggestions:")
         for suggestion in suggestions:
             message_parts.append(f"  - {suggestion}")
-    
+
     return "\n".join(message_parts)
 
 
 def handle_check_error(
-    error: Exception,
-    on_violation: str,
-    context: Dict[str, Any]
+    error: Exception, on_violation: str, context: Dict[str, Any]
 ) -> Union[Exception, None]:
     """Handle check errors based on violation policy."""
     if on_violation == "fail":
@@ -260,7 +264,7 @@ def handle_check_error(
         suggestions = [
             "Check your data for unexpected values",
             "Verify your check expression is correct",
-            "Consider using 'warn' or 'quarantine' for non-critical checks"
+            "Consider using 'warn' or 'quarantine' for non-critical checks",
         ]
         message = create_informative_error_message(error, context, suggestions)
         return DataQualityError(message, context)
@@ -274,28 +278,33 @@ def handle_check_error(
 
 def graceful_degradation(func, fallback_value=None, error_message="Operation failed"):
     """Decorator for graceful degradation when operations fail."""
+
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
         except Exception as e:
             logger.warning(f"{error_message}: {e}")
             return fallback_value
+
     return wrapper
 
 
 # Security and compliance utilities
 
-def sanitize_quarantine_data(data: Dict[str, Any], gdpr_fields: Optional[List[str]] = None) -> Dict[str, Any]:
+
+def sanitize_quarantine_data(
+    data: Dict[str, Any], gdpr_fields: Optional[List[str]] = None
+) -> Dict[str, Any]:
     """Sanitize quarantine data for compliance (e.g., GDPR)."""
     if not gdpr_fields:
         return data
-    
+
     sanitized = data.copy()
     for field in gdpr_fields:
         if field in sanitized:
             # Replace with placeholder or hash
             sanitized[field] = f"<REDACTED_{field.upper()}>"
-    
+
     return sanitized
 
 
@@ -303,7 +312,7 @@ def audit_log_check_operation(
     check_id: str,
     operation: str,
     details: Dict[str, Any],
-    user_id: Optional[str] = None
+    user_id: Optional[str] = None,
 ):
     """Log check operations for audit trail."""
     audit_entry = {
@@ -311,14 +320,15 @@ def audit_log_check_operation(
         "check_id": check_id,
         "operation": operation,
         "details": details,
-        "user_id": user_id or "system"
+        "user_id": user_id or "system",
     }
-    
+
     # In a full implementation, this would write to a secure audit log
     logger.info(f"AUDIT: {audit_entry}")
 
 
 # Performance optimization utilities
+
 
 @graceful_degradation
 def optimize_batch_size(dataset_size: int, available_memory: int) -> int:

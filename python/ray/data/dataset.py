@@ -1539,33 +1539,39 @@ class Dataset:
         # Validate on_violation
         valid_actions = {"warn", "drop", "fail", "quarantine"}
         if on_violation not in valid_actions:
-            raise ValueError(f"on_violation must be one of {valid_actions}, got '{on_violation}'")
-        
+            raise ValueError(
+                f"on_violation must be one of {valid_actions}, got '{on_violation}'"
+            )
+
         # Validate quarantine configuration
         if on_violation == "quarantine" and not quarantine_path:
-            raise ValueError("quarantine_path must be provided when on_violation='quarantine'")
-        
+            raise ValueError(
+                "quarantine_path must be provided when on_violation='quarantine'"
+            )
+
         # Validate quarantine format
         valid_formats = {"parquet", "csv", "json"}
         if quarantine_format not in valid_formats:
-            raise ValueError(f"quarantine_format must be one of {valid_formats}, got '{quarantine_format}'")
-        
+            raise ValueError(
+                f"quarantine_format must be one of {valid_formats}, got '{quarantine_format}'"
+            )
+
         # Validate max_failures
         if max_failures is not None:
             if not isinstance(max_failures, int) or max_failures < 0:
                 raise ValueError("max_failures must be a non-negative integer or None")
-        
+
         # Validate expression
         if expr is not None:
             if not isinstance(expr, str) or not expr.strip():
                 raise ValueError("Expression must be a non-empty string")
-            
+
             # Basic syntax validation
             try:
-                compile(expr, '<check_expression>', 'eval')
+                compile(expr, "<check_expression>", "eval")
             except SyntaxError as e:
                 raise ValueError(f"Invalid expression syntax: {e}")
-        
+
         # Validate function
         if fn is not None:
             if not callable(fn):
@@ -1594,7 +1600,7 @@ class Dataset:
         """Perform data quality checks on the dataset.
 
         This operator validates data against a predicate and handles violations
-        according to the specified policy. You can use either a function or a 
+        according to the specified policy. You can use either a function or a
         callable class or an expression string to perform the validation.
 
         For functions, Ray Data uses stateless Ray tasks. For classes, Ray Data uses
@@ -1608,14 +1614,14 @@ class Dataset:
         Examples:
 
             Basic null check:
-            
+
             >>> import ray
             >>> ds = ray.data.range(100)
             >>> ds = ds.map(lambda x: {"value": x["id"] if x["id"] < 90 else None})
             >>> checked_ds = ds.check(expr="value is not null", on_violation="warn")
 
             Range validation with quarantine:
-            
+
             >>> ds = ray.data.range(100)
             >>> checked_ds = ds.check(
             ...     expr="id >= 0 and id <= 50",
@@ -1625,7 +1631,7 @@ class Dataset:
             ... )
 
             Custom function validation:
-            
+
             >>> def validate_email(row):
             ...     return "@" in row.get("email", "")
             >>> ds = ray.data.from_items([{"email": "test@example.com"}, {"email": "invalid"}])
@@ -1637,9 +1643,9 @@ class Dataset:
             fn: The predicate to apply to each row, or a class type
                 that can be instantiated to create such a callable. Should return
                 True for valid rows, False for invalid rows.
-            expr: An expression string that evaluates to a boolean. Must be a valid 
+            expr: An expression string that evaluates to a boolean. Must be a valid
                 Python expression that will be converted to a PyArrow expression.
-            max_failures: Maximum number of validation failures allowed before 
+            max_failures: Maximum number of validation failures allowed before
                 stopping execution. If None, no limit is enforced.
             on_violation: Action to take when validation fails:
                 - "warn": Log violations but continue processing
@@ -1701,7 +1707,7 @@ class Dataset:
         self._validate_check_parameters(
             fn, expr, max_failures, on_violation, quarantine_path, quarantine_format
         )
-        
+
         # Ensure exactly one of fn or expr is provided
         resolved_expr = None
         if not ((fn is None) ^ (expr is None)):
@@ -1762,13 +1768,14 @@ class Dataset:
         )
         logical_plan = LogicalPlan(op, self.context)
         new_dataset = Dataset(plan, logical_plan)
-        
+
         # If quarantine is enabled, register the quarantine hook with a unique ID
         if on_violation == "quarantine" and quarantine_path:
             import uuid
+
             check_id = f"check_{uuid.uuid4().hex[:8]}"
             new_dataset = new_dataset._register_quarantine_hook(check_id)
-        
+
         return new_dataset
 
     @PublicAPI(api_group=SSR_API_GROUP)
@@ -3537,10 +3544,10 @@ class Dataset:
 
         # Save the computed stats to the original dataset.
         self._plan._snapshot_stats = limited_ds._plan.stats()
-        
+
         # Run completion hooks
         self._run_completion_hooks()
-        
+
         return output
 
     @ConsumptionAPI
@@ -3583,10 +3590,10 @@ class Dataset:
                     f"The dataset has more than the given limit of {limit} records."
                 )
         self._synchronize_progress_bar()
-        
+
         # Run completion hooks
         self._run_completion_hooks()
-        
+
         return output
 
     @ConsumptionAPI
@@ -6122,9 +6129,9 @@ class Dataset:
         import pyarrow as pa
 
         ref_bundles: Iterator[RefBundle] = self.iter_internal_ref_bundles()
-        block_refs: List[
-            ObjectRef["pyarrow.Table"]
-        ] = _ref_bundles_iterator_to_block_refs_list(ref_bundles)
+        block_refs: List[ObjectRef["pyarrow.Table"]] = (
+            _ref_bundles_iterator_to_block_refs_list(ref_bundles)
+        )
         # Schema is safe to call since we have already triggered execution with
         # iter_internal_ref_bundles.
         schema = self.schema(fetch_if_missing=True)
@@ -6753,7 +6760,7 @@ class MaterializedDataset(Dataset, Generic[T]):
         """
         if not callable(hook):
             raise ValueError("Hook must be callable")
-        
+
         # Create a new dataset with the hook added (maintain immutability)
         new_ds = Dataset.copy(self)
         new_ds._completion_hooks = self._completion_hooks.copy()
@@ -6762,7 +6769,7 @@ class MaterializedDataset(Dataset, Generic[T]):
 
     def _run_completion_hooks(self):
         """Run all registered completion hooks.
-        
+
         This method is called internally after dataset consumption operations.
         """
         for hook in self._completion_hooks:
@@ -6774,23 +6781,33 @@ class MaterializedDataset(Dataset, Generic[T]):
 
     def _register_quarantine_hook(self, check_id: Optional[str] = None):
         """Register the quarantine writing hook for data quality checks.
-        
+
         This is called internally when check operators are added to the dataset.
-        
+
         Args:
             check_id: Optional identifier for this specific check (for chained checks)
         """
+
         def write_quarantine_data():
             try:
-                from ray.data._internal.quarantine_manager import write_all_quarantine_data
+                from ray.data._internal.quarantine_manager import (
+                    write_all_quarantine_data,
+                )
+
                 write_all_quarantine_data()
             except Exception as e:
                 logger = logging.getLogger(__name__)
-                logger.warning(f"Failed to write quarantine data for check {check_id or 'unknown'}: {e}")
-        
+                logger.warning(
+                    f"Failed to write quarantine data for check {check_id or 'unknown'}: {e}"
+                )
+
         # Only add the hook if we don't already have one
         # This prevents duplicate hooks when chaining multiple checks
-        if not any(hook.__name__ == 'write_quarantine_data' for hook in self._completion_hooks if hasattr(hook, '__name__')):
+        if not any(
+            hook.__name__ == "write_quarantine_data"
+            for hook in self._completion_hooks
+            if hasattr(hook, "__name__")
+        ):
             return self.add_completion_hook(write_quarantine_data)
         else:
             return self
