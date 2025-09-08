@@ -20,7 +20,7 @@ from ray.serve.tests.conftest import *  # noqa: F401 F403
 from ray.tests.conftest import *  # noqa: F401 F403
 from ray.util.state import list_actors
 from ray import serve
-from ray.serve._private.test_utils import check_num_replicas_eq
+from ray.serve._private.test_utils import get_num_alive_replicas
 from ray._common.test_utils import Semaphore, SignalActor
 
 
@@ -685,9 +685,8 @@ class TestScaleDeploymentEndpoint:
 
         if verify_actual_replicas:
             wait_for_condition(
-                check_num_replicas_eq(
-                    name=deployment_name, target=target_num_replicas, app_name=app_name
-                ),
+                lambda: get_num_alive_replicas(deployment_name, app_name)
+                == target_num_replicas,
                 timeout=30,
             )
 
@@ -774,9 +773,10 @@ class TestScaleDeploymentEndpoint:
             timeout=30,
         )
 
-        assert check_num_replicas_eq(
-            name="hello_world", target=1, app_name="test_app"
-        )  # Only one replica is running, other two are waiting for semaphore
+        assert (
+            get_num_alive_replicas(deployment_name="hello_world", app_name="test_app")
+            == 1
+        )
 
         self._scale_and_verify_deployment(3, verify_actual_replicas=False)
 
