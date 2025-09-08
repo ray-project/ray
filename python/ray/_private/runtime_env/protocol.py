@@ -51,6 +51,7 @@ class ProtocolsProvider:
         """
         try:
             import boto3
+            from botocore.exceptions import NoCredentialsError
             from smart_open import open as open_file
         except ImportError:
             raise ImportError(
@@ -58,7 +59,27 @@ class ProtocolsProvider:
                 "to fetch URIs in s3 bucket. " + cls._MISSING_DEPENDENCIES_WARNING
             )
 
-        transport_params = {"client": boto3.client("s3")}
+        def create_s3_client_with_fallback():
+            """Create S3 client, falling back to unsigned for public buckets."""
+            # First try with default credentials
+            signed_client = boto3.client("s3")
+
+            # Check if we can use credentials by testing a simple operation
+            try:
+                # This will fail with NoCredentialsError if no credentials are available
+                signed_client._make_api_call("ListBuckets", {})
+                return signed_client
+            except NoCredentialsError:
+                # Fall back to unsigned client for public buckets
+                from botocore import UNSIGNED
+                from botocore.config import Config
+                return boto3.client("s3", config=Config(signature_version=UNSIGNED))
+            except Exception:
+                # For any other error (permissions, network, etc.), still use signed client
+                # The actual error will surface when trying to access the specific bucket
+                return signed_client
+
+        transport_params = {"client": create_s3_client_with_fallback()}
         return open_file, transport_params
 
     @classmethod
