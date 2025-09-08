@@ -341,25 +341,25 @@ def plan_udf_map_op(
         op._fn_constructor_kwargs if udf_is_callable_class else None,
     )
 
-        if isinstance(op, MapBatches):
-            transform_fn = _generate_transform_fn_for_map_batches(fn)
-            map_transformer = _create_map_transformer_for_map_batches_op(
-                transform_fn,
-                op._batch_size,
-                op._batch_format,
-                op._zero_copy_batch,
-                init_fn,
-            )
+    if isinstance(op, MapBatches):
+        transform_fn = _generate_transform_fn_for_map_batches(fn)
+        map_transformer = _create_map_transformer_for_map_batches_op(
+            transform_fn,
+            op._batch_size,
+            op._batch_format,
+            op._zero_copy_batch,
+            init_fn,
+        )
+    else:
+        if isinstance(op, MapRows):
+            transform_fn = _generate_transform_fn_for_map_rows(fn)
+        elif isinstance(op, FlatMap):
+            transform_fn = _generate_transform_fn_for_flat_map(fn)
+        elif isinstance(op, Check):
+            # Check should be handled by plan_check_op, not here
+            raise ValueError(f"Check operator should be handled by plan_check_op, not plan_udf_map_op")
         else:
-            if isinstance(op, MapRows):
-                transform_fn = _generate_transform_fn_for_map_rows(fn)
-            elif isinstance(op, FlatMap):
-                transform_fn = _generate_transform_fn_for_flat_map(fn)
-            elif isinstance(op, Check):
-                # Check should be handled by plan_check_op, not here
-                raise ValueError(f"Check operator should be handled by plan_check_op, not plan_udf_map_op")
-            else:
-                raise ValueError(f"Found unknown logical operator during planning: {op}")
+            raise ValueError(f"Found unknown logical operator during planning: {op}")
 
         map_transformer = _create_map_transformer_for_row_based_map_op(
             transform_fn, init_fn
