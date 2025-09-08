@@ -16,7 +16,7 @@ monitoring, and integration with third-party tools.
 
 .. note:: 
     Ray Event Export is still in alpha. The way to configure event 
-    reporting and the format of the events are subject to change.
+    reporting and the format of the events is subject to change.
 
 Enable event reporting
 ----------------------
