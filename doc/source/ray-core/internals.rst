@@ -10,4 +10,4 @@ For the high level architecture overview, please refer to the `whitepaper <https
     :maxdepth: 1
 
     internals/task-lifecycle.rst
-    internals/autoscaler.rst
+    internals/autoscaler-v2.rst
