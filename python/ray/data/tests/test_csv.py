@@ -1,7 +1,5 @@
-import itertools
 import os
 import shutil
-from functools import partial
 
 import pandas as pd
 import pyarrow as pa
@@ -17,8 +15,6 @@ from ray.data.block import BlockAccessor
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     FastFileMetadataProvider,
-    PartitionStyle,
-    PathPartitionFilter,
 )
 from ray.data.datasource.file_based_datasource import (
     FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
@@ -26,27 +22,11 @@ from ray.data.datasource.file_based_datasource import (
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
-from ray.data.tests.test_partitioning import PathPartitionEncoder
 from ray.tests.conftest import *  # noqa
 
 
 def df_to_csv(dataframe, path, **kwargs):
     dataframe.to_csv(path, **kwargs)
-
-
-def test_csv_read_partitioning(ray_start_regular_shared, tmp_path):
-    path = os.path.join(tmp_path, "country=us", "file.csv")
-    os.mkdir(os.path.dirname(path))
-    df = pd.DataFrame({"numbers": [1, 2, 3], "letters": ["a", "b", "c"]})
-    df.to_csv(path, index=False)
-
-    ds = ray.data.read_csv(path)
-
-    assert ds.take() == [
-        {"numbers": 1, "letters": "a", "country": "us"},
-        {"numbers": 2, "letters": "b", "country": "us"},
-        {"numbers": 3, "letters": "c", "country": "us"},
-    ]
 
 
 @pytest.mark.parametrize(
@@ -311,75 +291,6 @@ def test_csv_read_many_files_basic(
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
     ],
 )
-def test_csv_read_many_files_partitioned(
-    ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
-    write_partitioned_df,
-    assert_base_partitioned_ds,
-):
-    if endpoint_url is None:
-        storage_options = {}
-    else:
-        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
-
-    partition_keys = ["one"]
-    partition_path_encoder = PathPartitionEncoder.of(
-        base_dir=data_path,
-        field_names=partition_keys,
-        filesystem=fs,
-    )
-    paths = []
-    dfs = []
-    num_dfs = FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD
-    num_rows = 6 * num_dfs
-    num_files = 2 * num_dfs
-    for i in range(num_dfs):
-        df = pd.DataFrame(
-            {"one": [1, 1, 1, 3, 3, 3], "two": list(range(6 * i, 6 * (i + 1)))}
-        )
-        df_paths = write_partitioned_df(
-            df,
-            partition_keys,
-            partition_path_encoder,
-            partial(df_to_csv, storage_options=storage_options, index=False),
-            file_name_suffix=i,
-        )
-        dfs.append(df)
-        paths.extend(df_paths)
-
-    ds = ray.data.read_csv(
-        paths,
-        filesystem=fs,
-        partitioning=partition_path_encoder.scheme,
-        override_num_blocks=num_files,
-    )
-
-    assert_base_partitioned_ds(
-        ds,
-        count=num_rows,
-        num_input_files=num_files,
-        schema=Schema(pa.schema([("one", pa.int64()), ("two", pa.int64())])),
-        sorted_values=sorted(
-            itertools.chain.from_iterable(
-                list(
-                    map(list, zip([1, 1, 1, 3, 3, 3], list(range(6 * i, 6 * (i + 1)))))
-                )
-                for i in range(num_dfs)
-            )
-        ),
-    )
-
-
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-    ],
-)
 def test_csv_read_many_files_diff_dirs(
     ray_start_regular_shared,
     fs,
@@ -415,226 +326,6 @@ def test_csv_read_many_files_diff_dirs(
     dsdf = ds.to_pandas().sort_values(by=["one"]).reset_index(drop=True)
     df = pd.concat(dfs).reset_index(drop=True)
     pd.testing.assert_frame_equal(df, dsdf)
-
-
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-        (
-            lazy_fixture("s3_fs_with_anonymous_crendential"),
-            lazy_fixture("s3_path_with_anonymous_crendential"),
-            lazy_fixture("s3_server"),
-        ),
-    ],
-)
-def test_csv_read_partitioned_hive_implicit(
-    ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
-    write_base_partitioned_df,
-    assert_base_partitioned_ds,
-):
-    storage_options = (
-        {}
-        if endpoint_url is None
-        else dict(client_kwargs=dict(endpoint_url=endpoint_url))
-    )
-    partition_keys = ["one"]
-    partition_path_encoder = PathPartitionEncoder.of(
-        base_dir=data_path,
-        field_names=partition_keys,
-        filesystem=fs,
-    )
-    write_base_partitioned_df(
-        partition_keys,
-        partition_path_encoder,
-        partial(df_to_csv, storage_options=storage_options, index=False),
-    )
-    ds = ray.data.read_csv(
-        data_path,
-        partition_filter=PathPartitionFilter.of(None, filesystem=fs),
-        filesystem=fs,
-    )
-    assert_base_partitioned_ds(ds)
-
-
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-        (
-            lazy_fixture("s3_fs_with_anonymous_crendential"),
-            lazy_fixture("s3_path_with_anonymous_crendential"),
-            lazy_fixture("s3_server"),
-        ),
-    ],
-)
-def test_csv_read_partitioned_styles_explicit(
-    ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
-    write_base_partitioned_df,
-    assert_base_partitioned_ds,
-):
-    storage_options = (
-        {}
-        if endpoint_url is None
-        else dict(client_kwargs=dict(endpoint_url=endpoint_url))
-    )
-    partition_keys = ["one"]
-    for style in [PartitionStyle.HIVE, PartitionStyle.DIRECTORY]:
-        base_dir = os.path.join(data_path, style.value)
-        partition_path_encoder = PathPartitionEncoder.of(
-            style=style,
-            base_dir=base_dir,
-            field_names=partition_keys,
-            filesystem=fs,
-        )
-        write_base_partitioned_df(
-            partition_keys,
-            partition_path_encoder,
-            partial(df_to_csv, storage_options=storage_options, index=False),
-        )
-        partition_path_filter = PathPartitionFilter.of(
-            None,
-            style=style,
-            base_dir=base_dir,
-            field_names=partition_keys,
-            filesystem=fs,
-        )
-        ds = ray.data.read_csv(
-            base_dir,
-            partition_filter=partition_path_filter,
-            filesystem=fs,
-        )
-        assert_base_partitioned_ds(ds)
-
-
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-    ],
-)
-@pytest.mark.parametrize("style", [PartitionStyle.HIVE, PartitionStyle.DIRECTORY])
-def test_csv_read_partitioned_with_filter(
-    style,
-    ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
-    write_base_partitioned_df,
-    assert_base_partitioned_ds,
-):
-    storage_options = (
-        {}
-        if endpoint_url is None
-        else dict(client_kwargs=dict(endpoint_url=endpoint_url))
-    )
-    partition_keys = ["one"]
-    file_writer_fn = partial(df_to_csv, storage_options=storage_options, index=False)
-
-    def skip_unpartitioned(kv_dict):
-        return bool(kv_dict)
-
-    base_dir = os.path.join(data_path, style.value)
-    partition_path_encoder = PathPartitionEncoder.of(
-        style=style,
-        base_dir=base_dir,
-        field_names=partition_keys,
-        filesystem=fs,
-    )
-    write_base_partitioned_df(
-        partition_keys,
-        partition_path_encoder,
-        file_writer_fn,
-    )
-    file_writer_fn(pd.DataFrame({"1": [1]}), os.path.join(base_dir, "test.csv"))
-    partition_path_filter = PathPartitionFilter.of(
-        style=style,
-        base_dir=base_dir,
-        field_names=partition_keys,
-        filesystem=fs,
-        filter_fn=skip_unpartitioned,
-    )
-    ds = ray.data.read_csv(
-        base_dir,
-        partition_filter=partition_path_filter,
-        filesystem=fs,
-    )
-    assert_base_partitioned_ds(ds)
-
-
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-    ],
-)
-@pytest.mark.parametrize("style", [PartitionStyle.HIVE, PartitionStyle.DIRECTORY])
-def test_csv_read_partitioned_with_filter_multikey(
-    style,
-    ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
-    write_base_partitioned_df,
-    assert_base_partitioned_ds,
-):
-    storage_options = (
-        {}
-        if endpoint_url is None
-        else dict(client_kwargs=dict(endpoint_url=endpoint_url))
-    )
-    partition_keys = ["one", "two"]
-    file_writer_fn = partial(df_to_csv, storage_options=storage_options, index=False)
-
-    def keep_expected_partitions(kv_dict):
-        keep = bool(kv_dict) and (
-            (kv_dict["one"] == "1" and kv_dict["two"] in {"a", "b", "c"})
-            or (kv_dict["one"] == "3" and kv_dict["two"] in {"e", "f", "g"})
-        )
-        return keep
-
-    base_dir = os.path.join(data_path, style.value)
-    partition_path_encoder = PathPartitionEncoder.of(
-        style=style,
-        base_dir=base_dir,
-        field_names=partition_keys,
-        filesystem=fs,
-    )
-    write_base_partitioned_df(
-        partition_keys,
-        partition_path_encoder,
-        file_writer_fn,
-    )
-    df = pd.DataFrame({"1": [1]})
-    file_writer_fn(df, os.path.join(data_path, "test0.csv"))
-    partition_path_filter = PathPartitionFilter.of(
-        style=style,
-        base_dir=base_dir,
-        field_names=partition_keys,
-        filesystem=fs,
-        filter_fn=keep_expected_partitions,
-    )
-    ds = ray.data.read_csv(
-        data_path,
-        partition_filter=partition_path_filter,
-        filesystem=fs,
-        override_num_blocks=6,
-    )
-    assert_base_partitioned_ds(ds, num_input_files=6)
 
 
 def test_csv_write(

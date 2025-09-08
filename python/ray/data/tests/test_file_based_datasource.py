@@ -1,13 +1,19 @@
 import os
-from typing import Iterator
+from typing import Any, Dict, Iterator, List
 
 import pyarrow
 import pytest
 
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data.block import Block
+from ray.data.block import Block, BlockAccessor
+from ray.data.datasource.datasource import ReadTask
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
+from ray.data.datasource.partitioning import (
+    Partitioning,
+    PartitionStyle,
+    PathPartitionFilter,
+)
 
 
 class MockFileBasedDatasource(FileBasedDatasource):
@@ -15,6 +21,151 @@ class MockFileBasedDatasource(FileBasedDatasource):
         builder = DelegatingBlockBuilder()
         builder.add({"data": f.readall()})
         yield builder.build()
+
+
+def execute_read_tasks(tasks: List[ReadTask]) -> List[Dict[str, Any]]:
+    """Execute the read tasks and return the resulting rows.
+
+    The motivation for this utility function is so that we can test datasources without
+    scheduling Ray tasks.
+    """
+    builder = DelegatingBlockBuilder()
+    for task in tasks:
+        for block in task():
+            builder.add_block(block)
+    block = builder.build()
+
+    block_accessor = BlockAccessor.for_block(block)
+    rows = list(block_accessor.iter_rows(public_row_format=True))
+
+    return rows
+
+
+def test_partitioning_hive(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "country=us")
+    os.mkdir(path)
+    with open(os.path.join(path, "file.txt"), "wb") as file:
+        file.write(b"")
+
+    datasource = MockFileBasedDatasource(tmp_path, partitioning=Partitioning("hive"))
+
+    tasks = datasource.get_read_tasks(1)
+    rows = execute_read_tasks(tasks)
+
+    assert rows == [{"data": b"", "country": "us"}]
+
+
+def test_partition_filter_hive(ray_start_regular_shared, tmp_path):
+    for country in ["us", "jp"]:
+        path = os.path.join(tmp_path, f"country={country}")
+        os.mkdir(path)
+        with open(os.path.join(path, "file.txt"), "wb") as file:
+            file.write(b"")
+
+    filter = PathPartitionFilter.of(
+        style=PartitionStyle.HIVE,
+        filter_fn=lambda partitions: partitions["country"] == "us",
+    )
+    datasource = MockFileBasedDatasource(
+        tmp_path, partitioning=Partitioning("hive"), partition_filter=filter
+    )
+
+    tasks = datasource.get_read_tasks(1)
+    rows = execute_read_tasks(tasks)
+
+    assert rows == [{"data": b"", "country": "us"}]
+
+
+def test_partitioning_dir(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "us")
+    os.mkdir(path)
+    with open(os.path.join(path, "file.txt"), "wb") as file:
+        file.write(b"")
+
+    datasource = MockFileBasedDatasource(
+        tmp_path,
+        partitioning=Partitioning("dir", field_names=["country"], base_dir=tmp_path),
+    )
+
+    tasks = datasource.get_read_tasks(1)
+    rows = execute_read_tasks(tasks)
+
+    assert rows == [{"data": b"", "country": "us"}]
+
+
+def test_partition_filter_dir(ray_start_regular_shared, tmp_path):
+    for country in ["us", "jp"]:
+        path = os.path.join(tmp_path, country)
+        os.mkdir(path)
+        with open(os.path.join(path, "file.txt"), "wb") as file:
+            file.write(b"")
+
+    filter = PathPartitionFilter.of(
+        style=PartitionStyle.DIRECTORY,
+        base_dir=tmp_path,
+        field_names=["country"],
+        filter_fn=lambda partitions: partitions["country"] == "us",
+    )
+    partitioning = Partitioning("dir", field_names=["country"], base_dir=tmp_path)
+    datasource = MockFileBasedDatasource(
+        tmp_path, partitioning=partitioning, partition_filter=filter
+    )
+
+    tasks = datasource.get_read_tasks(1)
+    rows = execute_read_tasks(tasks)
+
+    assert rows == [{"data": b"", "country": "us"}]
+
+
+def test_partitioning_raises_on_mismatch(ray_start_regular_shared, tmp_path):
+    """Test when the partition key already exists in the data."""
+
+    class StubDatasource(FileBasedDatasource):
+        def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
+            builder = DelegatingBlockBuilder()
+            builder.add({"country": f.readall()})
+            yield builder.build()
+
+    path = os.path.join(tmp_path, "country=us")
+    os.mkdir(path)
+    with open(os.path.join(path, "file.txt"), "wb") as file:
+        file.write(b"jp")
+
+    datasource = StubDatasource(tmp_path, partitioning=Partitioning("hive"))
+
+    # The data is `jp`, but the path contains `us`. Since the values are different,
+    # the datasource should raise a ValueError.
+    with pytest.raises(ValueError):
+        tasks = datasource.get_read_tasks(1)
+        execute_read_tasks(tasks)
+
+
+def test_ignore_missing_paths_true(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "file.txt")
+    with open(path, "wb") as file:
+        file.write(b"")
+
+    datasource = MockFileBasedDatasource(
+        [path, "missing.txt"], ignore_missing_paths=True
+    )
+
+    tasks = datasource.get_read_tasks(1)
+    rows = execute_read_tasks(tasks)
+
+    assert rows == [{"data": b""}]
+
+
+def test_ignore_missing_paths_false(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "file.txt")
+    with open(path, "wb") as file:
+        file.write(b"")
+
+    with pytest.raises(FileNotFoundError):
+        datasource = MockFileBasedDatasource(
+            [path, "missing.txt"], ignore_missing_paths=False
+        )
+        tasks = datasource.get_read_tasks(1)
+        execute_read_tasks(tasks)
 
 
 def test_local_paths(ray_start_regular_shared, tmp_path):
