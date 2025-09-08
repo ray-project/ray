@@ -601,6 +601,32 @@ def test_parquet_read_partitioned_explicit(
     ]
 
 
+def test_proper_projection_for_partitioned_datasets(temp_dir):
+    ds = ray.data.read_parquet("example://iris.parquet").materialize()
+
+    partitioned_ds_path = f"{temp_dir}/partitioned_iris"
+    # Write out partitioned dataset
+    ds.write_parquet(partitioned_ds_path, partition_cols=["variety"])
+
+    partitioned_ds = ray.data.read_parquet(
+        partitioned_ds_path, columns=["variety"]
+    ).materialize()
+
+    print(partitioned_ds.schema())
+
+    assert [
+        "sepal.length",
+        "sepal.width",
+        "petal.length",
+        "petal.width",
+        "variety",
+    ] == ds.take_batch(batch_format="pyarrow").column_names
+
+    assert ["variety"] == partitioned_ds.take_batch(batch_format="pyarrow").column_names
+
+    assert ds.count() == partitioned_ds.count()
+
+
 def test_parquet_read_with_udf(
     ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
 ):
@@ -1971,6 +1997,17 @@ def test_parquet_write_parallel_overwrite(
     # Read back and verify
     result = ray.data.read_parquet(path)
     assert result.count() == 1000
+
+
+def test_read_parquet_with_none_partitioning_and_columns(tmp_path):
+    # Test for https://github.com/ray-project/ray/issues/55279.
+    table = pa.table({"column": [42]})
+    path = os.path.join(tmp_path, "file.parquet")
+    pq.write_table(table, path)
+
+    ds = ray.data.read_parquet(path, partitioning=None, columns=["column"])
+
+    assert ds.take_all() == [{"column": 42}]
 
 
 if __name__ == "__main__":
