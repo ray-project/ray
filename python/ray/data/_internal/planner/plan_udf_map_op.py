@@ -24,6 +24,8 @@ import pyarrow as pa
 import ray
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import env_integer
+
+logger = logging.getLogger(__name__)
 from ray.data._expression_evaluator import eval_expr
 from ray.data._internal.compute import get_compute
 from ray.data._internal.execution.interfaces import PhysicalOperator
@@ -43,6 +45,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 from ray.data._internal.execution.util import make_callable_class_concurrent
 from ray.data._internal.logical.operators.map_operator import (
     AbstractUDFMap,
+    Check,
     Filter,
     FlatMap,
     MapBatches,
@@ -242,6 +245,79 @@ def plan_filter_op(
     )
 
 
+def plan_check_op(
+    op: Check,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
+) -> MapOperator:
+    """Plan the Check logical operator into a physical MapOperator.
+    
+    This creates a MapOperator that performs data quality checks and handles
+    violations according to the specified policy. Quarantine data is collected
+    and deferred for writing at the end of dataset execution.
+    """
+    assert len(physical_children) == 1
+    input_physical_dag = physical_children[0]
+
+    expression = op._check_expr
+    compute = get_compute(op._compute)
+    
+    if expression is not None:
+        # Use Arrow expression for optimal performance
+        def check_batch_fn(block: "pa.Table") -> "pa.Table":
+            try:
+                return _process_check_batch_with_expression(
+                    block, 
+                    expression, 
+                    op._on_violation,
+                    op._max_failures,
+                    op._quarantine_path,
+                    op._quarantine_format,
+                    op._metadata_path
+                )
+            except Exception as e:
+                _try_wrap_udf_exception(e)
+
+        transform_fn = _generate_transform_fn_for_map_batches(check_batch_fn)
+        map_transformer = _create_map_transformer_for_map_batches_op(
+            transform_fn,
+            batch_size=None,
+            batch_format="pyarrow",
+            zero_copy_batch=True,
+        )
+    else:
+        # Use callable function
+        udf_is_callable_class = isinstance(op._fn, CallableClass)
+        check_fn, init_fn = _get_udf(
+            op._fn,
+            op._fn_args,
+            op._fn_kwargs,
+            op._fn_constructor_args if udf_is_callable_class else None,
+            op._fn_constructor_kwargs if udf_is_callable_class else None,
+        )
+        transform_fn = _generate_transform_fn_for_check(
+            check_fn,
+            op._on_violation,
+            op._max_failures,
+            op._quarantine_path,
+            op._quarantine_format,
+            op._metadata_path
+        )
+        map_transformer = _create_map_transformer_for_row_based_map_op(
+            transform_fn, init_fn
+        )
+
+    return MapOperator.create(
+        map_transformer,
+        input_physical_dag,
+        data_context,
+        name=op.name,
+        compute_strategy=compute,
+        ray_remote_args=op._ray_remote_args,
+        ray_remote_args_fn=op._ray_remote_args_fn,
+    )
+
+
 def plan_udf_map_op(
     op: AbstractUDFMap,
     physical_children: List[PhysicalOperator],
@@ -265,22 +341,25 @@ def plan_udf_map_op(
         op._fn_constructor_kwargs if udf_is_callable_class else None,
     )
 
-    if isinstance(op, MapBatches):
-        transform_fn = _generate_transform_fn_for_map_batches(fn)
-        map_transformer = _create_map_transformer_for_map_batches_op(
-            transform_fn,
-            op._batch_size,
-            op._batch_format,
-            op._zero_copy_batch,
-            init_fn,
-        )
-    else:
-        if isinstance(op, MapRows):
-            transform_fn = _generate_transform_fn_for_map_rows(fn)
-        elif isinstance(op, FlatMap):
-            transform_fn = _generate_transform_fn_for_flat_map(fn)
+        if isinstance(op, MapBatches):
+            transform_fn = _generate_transform_fn_for_map_batches(fn)
+            map_transformer = _create_map_transformer_for_map_batches_op(
+                transform_fn,
+                op._batch_size,
+                op._batch_format,
+                op._zero_copy_batch,
+                init_fn,
+            )
         else:
-            raise ValueError(f"Found unknown logical operator during planning: {op}")
+            if isinstance(op, MapRows):
+                transform_fn = _generate_transform_fn_for_map_rows(fn)
+            elif isinstance(op, FlatMap):
+                transform_fn = _generate_transform_fn_for_flat_map(fn)
+            elif isinstance(op, Check):
+                # Check should be handled by plan_check_op, not here
+                raise ValueError(f"Check operator should be handled by plan_check_op, not plan_udf_map_op")
+            else:
+                raise ValueError(f"Found unknown logical operator during planning: {op}")
 
         map_transformer = _create_map_transformer_for_row_based_map_op(
             transform_fn, init_fn
@@ -842,3 +921,324 @@ def _generate_transform_fn_for_async_map(
                     yield item
 
     return _transform
+
+
+# Check-specific functions for data quality validation
+
+def _generate_transform_fn_for_check(
+    fn: UserDefinedFunction,
+    on_violation: str,
+    max_failures: Optional[int],
+    quarantine_path: Optional[str],
+    quarantine_format: str,
+    metadata_path: Optional[str],
+) -> MapTransformCallable[Row, Row]:
+    """Generate transform function for row-based check operations."""
+    
+    def transform_fn(rows: Iterable[Row], ctx: TaskContext) -> Iterable[Row]:
+        violation_count = 0
+        quarantine_rows = []
+        processed_count = 0
+        start_time = time.time()
+        
+        # Get or create violation tracker
+        from ray.data._internal.data_quality_utils import _get_violation_tracker, DataQualityError, get_check_metrics
+        violation_tracker = _get_violation_tracker(ctx, getattr(fn, '__name__', 'anonymous_check'))
+        metrics = get_check_metrics(getattr(fn, '__name__', 'anonymous_check'))
+        
+        for row_idx, row in enumerate(rows):
+            processed_count += 1
+            try:
+                # Perform schema validation first
+                validated_row = _validate_row_schema(row, ctx)
+                
+                # Apply the check function
+                is_valid = fn(validated_row)
+                
+                if not is_valid:
+                    violation_count += 1
+                    violation_tracker.add_violation()
+                    
+                    # Check global max failures early
+                    if max_failures is not None and violation_tracker.get_total_violations() >= max_failures:
+                        _handle_quarantine_data(quarantine_rows, quarantine_path, quarantine_format)
+                        raise ValueError(f"Maximum failures ({max_failures}) exceeded globally")
+                    
+                    # Handle violation based on policy
+                    if on_violation == "fail":
+                        violation_details = {
+                            "row_index": row_idx,
+                            "row_data": row,
+                            "check_name": getattr(fn, '__name__', 'anonymous_check'),
+                            "violation_reason": "check_failed"
+                        }
+                        from ray.data._internal.data_quality_utils import DataQualityError
+                        raise DataQualityError(f"Data quality check failed for row {row_idx}", violation_details)
+                    elif on_violation == "warn":
+                        logger.warning(
+                            f"Data quality violation at row {row_idx} "
+                            f"(total violations: {violation_tracker.get_total_violations()}): {row}"
+                        )
+                        yield validated_row
+                    elif on_violation == "drop":
+                        continue  # Skip this row
+                    elif on_violation == "quarantine":
+                        # Add comprehensive metadata to quarantined row
+                        quarantine_row = {
+                            **validated_row,
+                            "_dq_violation_reason": "check_failed",
+                            "_dq_violation_timestamp": time.time(),
+                            "_dq_row_index": row_idx,
+                            "_dq_batch_id": getattr(ctx, 'batch_id', 'unknown'),
+                            "_dq_check_name": getattr(fn, '__name__', 'anonymous_check'),
+                            "_dq_worker_id": getattr(ctx, 'worker_id', 'unknown')
+                        }
+                        quarantine_rows.append(quarantine_row)
+                        continue  # Don't yield to main output
+                else:
+                    yield validated_row
+                    
+            except DataQualityError:
+                # Re-raise data quality errors
+                raise
+            except Exception as e:
+                violation_count += 1
+                violation_tracker.add_violation()
+                
+                if on_violation == "fail":
+                    raise DataQualityError(f"Processing error at row {row_idx}: {str(e)}", {
+                        "row_index": row_idx,
+                        "row_data": row,
+                        "error_type": type(e).__name__,
+                        "error_message": str(e)
+                    })
+                elif on_violation in ["warn", "quarantine"]:
+                    # Handle schema or processing errors
+                    error_row = {
+                        **row,
+                        "_dq_violation_reason": f"processing_error: {str(e)}",
+                        "_dq_violation_timestamp": time.time(),
+                        "_dq_row_index": row_idx,
+                        "_dq_error_type": type(e).__name__,
+                        "_dq_batch_id": getattr(ctx, 'batch_id', 'unknown')
+                    }
+                    if on_violation == "warn":
+                        logger.warning(f"Processing error at row {row_idx}: {e}")
+                        yield row
+                    else:  # quarantine
+                        quarantine_rows.append(error_row)
+                
+                # Check global max failures
+                if max_failures is not None and violation_tracker.get_total_violations() >= max_failures:
+                    _handle_quarantine_data(quarantine_rows, quarantine_path, quarantine_format)
+                    raise ValueError(f"Maximum failures ({max_failures}) exceeded globally")
+        
+        # Record batch statistics
+        end_time = time.time()
+        batch_stats = {
+            "processed_rows": processed_count,
+            "violations": violation_count,
+            "quarantined_rows": len(quarantine_rows),
+            "processing_time": end_time - start_time,
+            "violation_rate": violation_count / processed_count if processed_count > 0 else 0
+        }
+        
+        # Update metrics
+        metrics.update_batch_stats(batch_stats)
+        
+        # Store batch statistics in context for later aggregation
+        if hasattr(ctx, 'batch_stats'):
+            ctx.batch_stats.append(batch_stats)
+        
+        # Handle any remaining quarantine data at end of batch
+        if quarantine_rows and on_violation == "quarantine":
+            check_id = getattr(fn, '__name__', 'anonymous_check')
+            _handle_quarantine_data(quarantine_rows, quarantine_path, quarantine_format, check_id)
+        
+        # Write metadata if path provided
+        if metadata_path and violation_count > 0:
+            from ray.data._internal.data_quality_utils import _write_batch_metadata
+            _write_batch_metadata(metadata_path, batch_stats, ctx)
+
+    return transform_fn
+
+
+def _process_check_batch_with_expression(
+    block: "pa.Table",
+    expression: "pa.dataset.Expression", 
+    on_violation: str,
+    max_failures: Optional[int],
+    quarantine_path: Optional[str],
+    quarantine_format: str,
+    metadata_path: Optional[str]
+) -> "pa.Table":
+    """Process a batch of data using Arrow expression for data quality checks."""
+    import pyarrow as pa
+    import pyarrow.compute as pc
+    
+    # Perform schema validation first
+    validated_block = _validate_block_schema(block)
+    
+    try:
+        # Apply the check expression
+        mask = expression.evaluate(validated_block)
+        valid_mask = pc.is_true(mask)
+        invalid_mask = pc.invert(valid_mask)
+        
+        # Count violations
+        violation_count = pc.sum(pc.cast(invalid_mask, pa.int64())).as_py()
+        
+        if violation_count > 0:
+            if on_violation == "fail":
+                raise ValueError(f"Data quality check failed for {violation_count} rows")
+            elif on_violation == "warn":
+                logger.warning(f"Data quality violations found in {violation_count} rows")
+                return validated_block
+            elif on_violation == "drop":
+                return validated_block.filter(valid_mask)
+            elif on_violation == "quarantine":
+                # Extract violating rows for quarantine
+                invalid_rows = validated_block.filter(invalid_mask)
+                
+                # Add metadata columns
+                metadata_columns = {
+                    "_dq_violation_reason": pa.array(["expression_failed"] * len(invalid_rows)),
+                    "_dq_violation_timestamp": pa.array([time.time()] * len(invalid_rows)),
+                    "_dq_check_expression": pa.array([str(expression)] * len(invalid_rows))
+                }
+                
+                # Combine original data with metadata
+                quarantine_block = invalid_rows
+                for col_name, col_data in metadata_columns.items():
+                    quarantine_block = quarantine_block.append_column(col_name, col_data)
+                
+                # Store quarantine data for deferred writing with check ID
+                check_id = f"expression_check_{hash(str(expression)) % 10000}"
+                _handle_quarantine_block(quarantine_block, quarantine_path, quarantine_format, check_id)
+                
+                # Return only valid rows
+                return validated_block.filter(valid_mask)
+        
+        # Check max failures
+        if max_failures is not None and violation_count >= max_failures:
+            raise ValueError(f"Maximum failures ({max_failures}) exceeded")
+        
+        return validated_block
+        
+    except Exception as e:
+        if on_violation == "fail":
+            raise
+        logger.warning(f"Error processing batch with expression: {e}")
+        return validated_block
+
+
+def _validate_row_schema(row: Row, ctx: TaskContext) -> Row:
+    """Validate and potentially fix row schema issues."""
+    # Get expected schema from context if available
+    expected_schema = getattr(ctx, 'expected_schema', None)
+    
+    if expected_schema is None:
+        return row
+    
+    validated_row = {}
+    schema_violations = []
+    
+    # Check for missing columns
+    for field in expected_schema:
+        field_name = field.name
+        if field_name not in row:
+            if field.nullable:
+                validated_row[field_name] = None
+            else:
+                schema_violations.append(f"Missing required field: {field_name}")
+        else:
+            # Type validation and coercion
+            value = row[field_name]
+            try:
+                # Attempt type coercion if needed
+                validated_row[field_name] = _coerce_value_to_type(value, field.type)
+            except (TypeError, ValueError) as e:
+                schema_violations.append(f"Type mismatch for field {field_name}: {e}")
+                validated_row[field_name] = value  # Keep original value
+    
+    # Check for extra columns
+    for field_name in row:
+        if field_name not in [f.name for f in expected_schema]:
+            validated_row[field_name] = row[field_name]  # Keep extra columns
+    
+    # Add schema violation metadata if any issues found
+    if schema_violations:
+        validated_row["_dq_schema_violations"] = schema_violations
+    
+    return validated_row
+
+
+def _validate_block_schema(block: "pa.Table") -> "pa.Table":
+    """Validate and potentially fix block schema issues."""
+    import pyarrow as pa
+    
+    # For now, return as-is but this could be extended to handle:
+    # - Column type mismatches
+    # - Missing columns
+    # - Schema evolution
+    # - Union of multiple schemas
+    
+    return block
+
+
+def _coerce_value_to_type(value: Any, target_type: "pa.DataType") -> Any:
+    """Attempt to coerce a value to the target PyArrow type."""
+    import pyarrow as pa
+    
+    if value is None:
+        return None
+    
+    # Handle common type coercions
+    if pa.types.is_string(target_type):
+        return str(value)
+    elif pa.types.is_integer(target_type):
+        return int(value)
+    elif pa.types.is_floating(target_type):
+        return float(value)
+    elif pa.types.is_boolean(target_type):
+        if isinstance(value, str):
+            return value.lower() in ('true', '1', 'yes', 'on')
+        return bool(value)
+    else:
+        return value
+
+
+def _handle_quarantine_data(rows: List[Row], quarantine_path: Optional[str], quarantine_format: str, check_id: Optional[str] = None):
+    """Handle quarantine data by storing it for deferred writing."""
+    if not rows or not quarantine_path:
+        return
+    
+    from ray.data._internal.quarantine_manager import get_quarantine_manager
+    
+    manager = get_quarantine_manager()
+    violation_metadata = {
+        "quarantine_reason": "data_quality_violation",
+        "timestamp": time.time(),
+        "check_id": check_id,
+    }
+    
+    manager.add_quarantine_rows(rows, quarantine_path, quarantine_format, violation_metadata, check_id)
+
+
+def _handle_quarantine_block(block: "pa.Table", quarantine_path: Optional[str], quarantine_format: str, check_id: Optional[str] = None):
+    """Handle quarantine block by storing it for deferred writing."""
+    if len(block) == 0 or not quarantine_path:
+        return
+    
+    from ray.data._internal.quarantine_manager import get_quarantine_manager
+    
+    manager = get_quarantine_manager()
+    violation_metadata = {
+        "quarantine_reason": "data_quality_violation",
+        "timestamp": time.time(),
+        "check_id": check_id,
+    }
+    
+    manager.add_quarantine_block(block, quarantine_path, quarantine_format, violation_metadata, check_id)
+
+

@@ -26,6 +26,7 @@ from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.join_operator import Join
 from ray.data._internal.logical.operators.map_operator import (
     AbstractUDFMap,
+    Check,
     Filter,
     Project,
     StreamingRepartition,
@@ -39,6 +40,7 @@ from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
 from ray.data._internal.planner.plan_download_op import plan_download_op
 from ray.data._internal.planner.plan_read_op import plan_read_op
 from ray.data._internal.planner.plan_udf_map_op import (
+    plan_check_op,
     plan_filter_op,
     plan_project_op,
     plan_streaming_repartition_op,
@@ -148,6 +150,7 @@ class Planner:
         Write: plan_write_op,
         AbstractFrom: plan_from_op,
         Filter: plan_filter_op,
+        Check: plan_check_op,
         AbstractUDFMap: plan_udf_map_op,
         AbstractAllToAll: plan_all_to_all_op,
         Union: plan_union_op,

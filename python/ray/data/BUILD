@@ -1585,3 +1585,17 @@ py_test(
         "//:ray_lib",
     ],
 )
+
+py_test(
+    name = "test_check_operator",
+    size = "medium",
+    srcs = ["tests/test_check_operator.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)

@@ -69,6 +69,7 @@ from ray.data._internal.logical.operators.count_operator import Count
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.join_operator import Join
 from ray.data._internal.logical.operators.map_operator import (
+    Check,
     Filter,
     FlatMap,
     MapBatches,
@@ -257,6 +258,9 @@ class Dataset:
         # Handle to currently running executor for this dataset.
         self._current_executor: Optional["Executor"] = None
         self._write_ds = None
+
+        # Completion hooks - functions to run after dataset consumption
+        self._completion_hooks: List[Callable[[], None]] = []
 
         self._set_uuid(StatsManager.get_dataset_id_from_stats_actor())
 
@@ -1521,6 +1525,251 @@ class Dataset:
         )
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
+
+    def _validate_check_parameters(
+        self,
+        fn: Optional[UserDefinedFunction[Dict[str, Any], bool]],
+        expr: Optional[str],
+        max_failures: Optional[int],
+        on_violation: str,
+        quarantine_path: Optional[str],
+        quarantine_format: str,
+    ):
+        """Validate check method parameters."""
+        # Validate on_violation
+        valid_actions = {"warn", "drop", "fail", "quarantine"}
+        if on_violation not in valid_actions:
+            raise ValueError(f"on_violation must be one of {valid_actions}, got '{on_violation}'")
+        
+        # Validate quarantine configuration
+        if on_violation == "quarantine" and not quarantine_path:
+            raise ValueError("quarantine_path must be provided when on_violation='quarantine'")
+        
+        # Validate quarantine format
+        valid_formats = {"parquet", "csv", "json"}
+        if quarantine_format not in valid_formats:
+            raise ValueError(f"quarantine_format must be one of {valid_formats}, got '{quarantine_format}'")
+        
+        # Validate max_failures
+        if max_failures is not None:
+            if not isinstance(max_failures, int) or max_failures < 0:
+                raise ValueError("max_failures must be a non-negative integer or None")
+        
+        # Validate expression
+        if expr is not None:
+            if not isinstance(expr, str) or not expr.strip():
+                raise ValueError("Expression must be a non-empty string")
+            
+            # Basic syntax validation
+            try:
+                compile(expr, '<check_expression>', 'eval')
+            except SyntaxError as e:
+                raise ValueError(f"Invalid expression syntax: {e}")
+        
+        # Validate function
+        if fn is not None:
+            if not callable(fn):
+                raise ValueError("fn must be callable")
+
+    @PublicAPI(api_group=SSR_API_GROUP)
+    def check(
+        self,
+        fn: Optional[UserDefinedFunction[Dict[str, Any], bool]] = None,
+        expr: Optional[str] = None,
+        *,
+        max_failures: Optional[int] = None,
+        on_violation: str = "warn",
+        quarantine_path: Optional[str] = None,
+        quarantine_format: str = "parquet",
+        metadata_path: Optional[str] = None,
+        compute: Union[str, ComputeStrategy] = None,
+        fn_args: Optional[Iterable[Any]] = None,
+        fn_kwargs: Optional[Dict[str, Any]] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
+        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
+        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
+        **ray_remote_args,
+    ) -> "Dataset":
+        """Perform data quality checks on the dataset.
+
+        This operator validates data against a predicate and handles violations
+        according to the specified policy. You can use either a function or a 
+        callable class or an expression string to perform the validation.
+
+        For functions, Ray Data uses stateless Ray tasks. For classes, Ray Data uses
+        stateful Ray actors. For more information, see
+        :ref:`Stateful Transforms <stateful_transforms>`.
+
+        .. tip::
+           If you use the `expr` parameter with a Python expression string, Ray Data
+           optimizes your check with native Arrow interfaces.
+
+        Examples:
+
+            Basic null check:
+            
+            >>> import ray
+            >>> ds = ray.data.range(100)
+            >>> ds = ds.map(lambda x: {"value": x["id"] if x["id"] < 90 else None})
+            >>> checked_ds = ds.check(expr="value is not null", on_violation="warn")
+
+            Range validation with quarantine:
+            
+            >>> ds = ray.data.range(100)
+            >>> checked_ds = ds.check(
+            ...     expr="id >= 0 and id <= 50",
+            ...     on_violation="quarantine",
+            ...     quarantine_path="/tmp/quarantine",
+            ...     max_failures=10
+            ... )
+
+            Custom function validation:
+            
+            >>> def validate_email(row):
+            ...     return "@" in row.get("email", "")
+            >>> ds = ray.data.from_items([{"email": "test@example.com"}, {"email": "invalid"}])
+            >>> checked_ds = ds.check(fn=validate_email, on_violation="drop")
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            fn: The predicate to apply to each row, or a class type
+                that can be instantiated to create such a callable. Should return
+                True for valid rows, False for invalid rows.
+            expr: An expression string that evaluates to a boolean. Must be a valid 
+                Python expression that will be converted to a PyArrow expression.
+            max_failures: Maximum number of validation failures allowed before 
+                stopping execution. If None, no limit is enforced.
+            on_violation: Action to take when validation fails:
+                - "warn": Log violations but continue processing
+                - "drop": Remove invalid rows from the dataset
+                - "fail": Stop execution on first violation
+                - "quarantine": Move invalid rows to quarantine storage
+            quarantine_path: Path where quarantined (invalid) data should be stored.
+                Required when on_violation="quarantine".
+            quarantine_format: Format for quarantined data. One of "parquet", "csv", "json".
+            metadata_path: Optional path to store check metadata and statistics.
+            fn_args: Positional arguments to pass to ``fn`` after the first argument.
+                These arguments are top-level arguments to the underlying Ray task.
+            fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
+                top-level arguments to the underlying Ray task.
+            fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
+                You can only provide this if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
+            fn_constructor_kwargs: Keyword arguments to pass to ``fn``'s constructor.
+                This can only be provided if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
+            compute: This argument is deprecated. Use ``concurrency`` argument.
+            concurrency: The semantics of this argument depend on the type of ``fn``:
+
+                * If ``fn`` is a function and ``concurrency`` isn't set (default), the
+                  actual concurrency is implicitly determined by the available
+                  resources and number of input blocks.
+
+                * If ``fn`` is a function and ``concurrency`` is an  int ``n``, Ray Data
+                  launches *at most* ``n`` concurrent tasks.
+
+                * If ``fn`` is a class and ``concurrency`` is an int ``n``, Ray Data
+                  uses an actor  pool with *exactly* ``n`` workers.
+
+                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n)``, Ray
+                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers.
+
+                * If ``fn`` is a class and ``concurrency`` isn't set (default), this
+                  method raises an error.
+
+            ray_remote_args_fn: A function that returns a dictionary of remote args
+                passed to each map worker. The purpose of this argument is to generate
+                dynamic arguments for each actor/task, and will be called each time
+                prior to initializing the worker. Args returned from this dict will
+                always override the args in ``ray_remote_args``. Note: this is an
+                advanced, experimental feature.
+            ray_remote_args: Additional resource requirements to request from
+                Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
+                :func:`ray.remote` for details.
+
+        Returns:
+            A new Dataset with data quality checks applied.
+
+        Raises:
+            ValueError: If both fn and expr are provided, or if neither is provided.
+            ValueError: If on_violation is not one of the supported actions.
+            ValueError: If quarantine_path is not provided when on_violation="quarantine".
+        """
+        # Validate parameters
+        self._validate_check_parameters(
+            fn, expr, max_failures, on_violation, quarantine_path, quarantine_format
+        )
+        
+        # Ensure exactly one of fn or expr is provided
+        resolved_expr = None
+        if not ((fn is None) ^ (expr is None)):
+            raise ValueError("Exactly one of 'fn' or 'expr' must be provided.")
+        elif expr is not None:
+            if (
+                fn_args is not None
+                or fn_kwargs is not None
+                or fn_constructor_args is not None
+                or fn_constructor_kwargs is not None
+            ):
+                raise ValueError(
+                    "when 'expr' is used, 'fn_args/fn_kwargs' or 'fn_constructor_args/fn_constructor_kwargs' can not be used."
+                )
+            from ray.data._internal.compute import TaskPoolStrategy
+            from ray.data._internal.planner.plan_expression.expression_evaluator import (
+                ExpressionEvaluator,
+            )
+
+            # Convert string expression to PyArrow expression
+            resolved_expr = ExpressionEvaluator.get_filters(expression=expr)
+            compute = TaskPoolStrategy(size=concurrency)
+        else:
+            warnings.warn(
+                "Use 'expr' instead of 'fn' when possible for performant data quality checks."
+            )
+
+            if callable(fn):
+                compute = get_compute_strategy(
+                    fn=fn,
+                    fn_constructor_args=fn_constructor_args,
+                    compute=compute,
+                    concurrency=concurrency,
+                )
+            else:
+                raise ValueError(
+                    f"fn must be a UserDefinedFunction, but got "
+                    f"{type(fn).__name__} instead."
+                )
+
+        plan = self._plan.copy()
+        op = Check(
+            input_op=self._logical_plan.dag,
+            fn=fn,
+            fn_args=fn_args,
+            fn_kwargs=fn_kwargs,
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
+            check_expr=resolved_expr,
+            max_failures=max_failures,
+            on_violation=on_violation,
+            quarantine_path=quarantine_path,
+            quarantine_format=quarantine_format,
+            metadata_path=metadata_path,
+            compute=compute,
+            ray_remote_args_fn=ray_remote_args_fn,
+            ray_remote_args=ray_remote_args,
+        )
+        logical_plan = LogicalPlan(op, self.context)
+        new_dataset = Dataset(plan, logical_plan)
+        
+        # If quarantine is enabled, register the quarantine hook with a unique ID
+        if on_violation == "quarantine" and quarantine_path:
+            import uuid
+            check_id = f"check_{uuid.uuid4().hex[:8]}"
+            new_dataset = new_dataset._register_quarantine_hook(check_id)
+        
+        return new_dataset
 
     @PublicAPI(api_group=SSR_API_GROUP)
     def repartition(
@@ -3288,6 +3537,10 @@ class Dataset:
 
         # Save the computed stats to the original dataset.
         self._plan._snapshot_stats = limited_ds._plan.stats()
+        
+        # Run completion hooks
+        self._run_completion_hooks()
+        
         return output
 
     @ConsumptionAPI
@@ -3330,6 +3583,10 @@ class Dataset:
                     f"The dataset has more than the given limit of {limit} records."
                 )
         self._synchronize_progress_bar()
+        
+        # Run completion hooks
+        self._run_completion_hooks()
+        
         return output
 
     @ConsumptionAPI
@@ -6471,6 +6728,72 @@ class MaterializedDataset(Dataset, Generic[T]):
             The number of blocks of this :class:`Dataset`.
         """
         return self._plan.initial_num_blocks()
+
+    def add_completion_hook(self, hook: Callable[[], None]) -> "Dataset":
+        """Add a completion hook to be executed after dataset consumption.
+
+        Completion hooks are functions that run after the dataset has been consumed
+        (e.g., after take(), take_all(), write(), etc.). This is useful for cleanup
+        operations, writing quarantine data, or other post-processing tasks.
+
+        Args:
+            hook: A callable that takes no arguments and returns None.
+
+        Returns:
+            The dataset with the hook added.
+
+        Examples:
+            >>> import ray
+            >>> def cleanup():
+            ...     print("Dataset processing completed!")
+            >>> ds = ray.data.range(10)
+            >>> ds = ds.add_completion_hook(cleanup)
+            >>> ds.take_all()  # Will print "Dataset processing completed!" after execution
+            [{'id': 0}, {'id': 1}, ...]
+        """
+        if not callable(hook):
+            raise ValueError("Hook must be callable")
+        
+        # Create a new dataset with the hook added (maintain immutability)
+        new_ds = Dataset.copy(self)
+        new_ds._completion_hooks = self._completion_hooks.copy()
+        new_ds._completion_hooks.append(hook)
+        return new_ds
+
+    def _run_completion_hooks(self):
+        """Run all registered completion hooks.
+        
+        This method is called internally after dataset consumption operations.
+        """
+        for hook in self._completion_hooks:
+            try:
+                hook()
+            except Exception as e:
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Completion hook failed: {e}")
+
+    def _register_quarantine_hook(self, check_id: Optional[str] = None):
+        """Register the quarantine writing hook for data quality checks.
+        
+        This is called internally when check operators are added to the dataset.
+        
+        Args:
+            check_id: Optional identifier for this specific check (for chained checks)
+        """
+        def write_quarantine_data():
+            try:
+                from ray.data._internal.quarantine_manager import write_all_quarantine_data
+                write_all_quarantine_data()
+            except Exception as e:
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Failed to write quarantine data for check {check_id or 'unknown'}: {e}")
+        
+        # Only add the hook if we don't already have one
+        # This prevents duplicate hooks when chaining multiple checks
+        if not any(hook.__name__ == 'write_quarantine_data' for hook in self._completion_hooks if hasattr(hook, '__name__')):
+            return self.add_completion_hook(write_quarantine_data)
+        else:
+            return self
 
 
 @PublicAPI(stability="beta")

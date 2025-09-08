@@ -256,6 +256,182 @@ class Filter(AbstractUDFMap):
         return True
 
 
+class Check(AbstractUDFMap):
+    """Logical operator for data quality checks."""
+
+    def __init__(
+        self,
+        input_op: LogicalOperator,
+        fn: Optional[UserDefinedFunction] = None,
+        fn_args: Optional[Iterable[Any]] = None,
+        fn_kwargs: Optional[Dict[str, Any]] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
+        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
+        check_expr: Optional["pa.dataset.Expression"] = None,
+        max_failures: Optional[int] = None,
+        on_violation: str = "warn",
+        quarantine_path: Optional[str] = None,
+        quarantine_format: str = "parquet",
+        metadata_path: Optional[str] = None,
+        compute: Optional[ComputeStrategy] = None,
+        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+    ):
+        """Initialize Check logical operator.
+        
+        Args:
+            input_op: The operator preceding this operator in the plan DAG.
+            fn: User-defined function that returns True for valid rows.
+            fn_args: Arguments to `fn`.
+            fn_kwargs: Keyword arguments to `fn`.
+            fn_constructor_args: Arguments to provide to the initializor of `fn` if
+                `fn` is a callable class.
+            fn_constructor_kwargs: Keyword arguments to provide to the initializor of
+                `fn` if `fn` is a callable class.
+            check_expr: PyArrow expression for data quality check.
+            max_failures: Maximum number of failures before stopping execution.
+            on_violation: Action to take on violations: "warn", "drop", "fail", "quarantine".
+            quarantine_path: Path to store quarantined (invalid) data.
+            quarantine_format: Format for quarantined data (parquet, csv, json).
+            metadata_path: Path to store check metadata and statistics.
+            compute: The compute strategy.
+            ray_remote_args_fn: Function that returns remote args for workers.
+            ray_remote_args: Args to provide to ray.remote.
+        """
+        # Ensure exactly one of fn or check_expr is provided
+        if not ((fn is None) ^ (check_expr is None)):
+            raise ValueError("Exactly one of 'fn' or 'check_expr' must be provided")
+        
+        # Validate on_violation parameter
+        valid_actions = {"warn", "drop", "fail", "quarantine"}
+        if on_violation not in valid_actions:
+            raise ValueError(f"on_violation must be one of {valid_actions}, got '{on_violation}'")
+        
+        # Validate quarantine configuration
+        if on_violation == "quarantine" and quarantine_path is None:
+            raise ValueError("quarantine_path must be provided when on_violation='quarantine'")
+        
+        valid_formats = {"parquet", "csv", "json"}
+        if quarantine_format not in valid_formats:
+            raise ValueError(f"quarantine_format must be one of {valid_formats}, got '{quarantine_format}'")
+        
+        # Validate max_failures
+        if max_failures is not None and (not isinstance(max_failures, int) or max_failures < 0):
+            raise ValueError("max_failures must be a non-negative integer or None")
+        
+        # Validate expression or function
+        if check_expr is not None:
+            # Expression validation will be done during planning when we have the actual string
+            pass
+        else:
+            self._validate_callable(fn)
+        
+        # Store check-specific parameters
+        self._check_expr = check_expr
+        self._max_failures = max_failures
+        self._on_violation = on_violation
+        self._quarantine_path = quarantine_path
+        self._quarantine_format = quarantine_format
+        self._metadata_path = metadata_path
+        
+        # Generate unique ID for this check (important for chained checks)
+        import uuid
+        self._check_id = f"check_{uuid.uuid4().hex[:8]}"
+
+        super().__init__(
+            "Check",
+            input_op,
+            fn=fn,
+            fn_args=fn_args,
+            fn_kwargs=fn_kwargs,
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
+            compute=compute,
+            ray_remote_args_fn=ray_remote_args_fn,
+            ray_remote_args=ray_remote_args,
+        )
+
+    def can_modify_num_rows(self) -> bool:
+        """Check operator can modify number of rows when dropping violations."""
+        return self._on_violation in ("drop", "fail")
+    
+    def _validate_expression(self, expr: str) -> None:
+        """Validate string expression syntax and semantics."""
+        if not expr or not isinstance(expr, str):
+            raise ValueError("Expression must be a non-empty string")
+        
+        # Basic syntax validation
+        try:
+            # Try to compile as Python expression
+            compile(expr, '<string>', 'eval')
+        except SyntaxError as e:
+            raise ValueError(f"Invalid expression syntax: {e}")
+        
+        # Check for dangerous operations
+        dangerous_keywords = ['import', '__', 'exec', 'eval', 'open', 'file']
+        for keyword in dangerous_keywords:
+            if keyword in expr.lower():
+                raise ValueError(f"Expression contains potentially dangerous operation: {keyword}")
+    
+    def _validate_callable(self, fn: UserDefinedFunction) -> None:
+        """Validate callable function for data quality checks."""
+        if not callable(fn):
+            raise ValueError("Function must be callable")
+        
+        # Check function signature if possible
+        import inspect
+        try:
+            sig = inspect.signature(fn)
+            params = list(sig.parameters.keys())
+            if len(params) == 0:
+                raise ValueError("Check function must accept at least one parameter (row)")
+        except (ValueError, TypeError):
+            # Can't inspect signature, assume it's valid
+            pass
+    
+    def _get_metadata_info(self) -> Dict[str, Any]:
+        """Get metadata information about this check operation."""
+        return {
+            "operator_type": "Check",
+            "check_id": self._check_id,
+            "expression_type": "string" if self._check_expr else "callable",
+            "on_violation": self._on_violation,
+            "max_failures": self._max_failures,
+            "quarantine_enabled": self._on_violation == "quarantine",
+            "quarantine_path": self._quarantine_path,
+            "quarantine_format": self._quarantine_format,
+            "has_metadata_path": self._metadata_path is not None,
+        }
+
+    @property
+    def check_expr(self) -> Optional["pa.dataset.Expression"]:
+        return self._check_expr
+
+    @property
+    def max_failures(self) -> Optional[int]:
+        return self._max_failures
+
+    @property
+    def on_violation(self) -> str:
+        return self._on_violation
+
+    @property
+    def quarantine_path(self) -> Optional[str]:
+        return self._quarantine_path
+
+    @property
+    def quarantine_format(self) -> str:
+        return self._quarantine_format
+
+    @property
+    def metadata_path(self) -> Optional[str]:
+        return self._metadata_path
+
+    @property
+    def check_id(self) -> str:
+        return self._check_id
+
+
 class Project(AbstractMap):
     """Logical operator for select_columns."""
 
