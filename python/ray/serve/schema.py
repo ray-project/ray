@@ -1294,6 +1294,6 @@ class TaskResult(BaseModel):
 class ScaleDeploymentRequest(BaseModel):
     """Request schema for scaling a deployment's replicas."""
 
-    num_replicas: NonNegativeInt = Field(
+    target_num_replicas: NonNegativeInt = Field(
         description="The target number of replicas for the deployment."
     )

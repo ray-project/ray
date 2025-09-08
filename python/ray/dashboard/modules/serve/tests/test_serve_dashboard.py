@@ -4,11 +4,11 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Dict
-
+import ray
+import tempfile
 import pytest
 from ray._common.test_utils import wait_for_condition
 import requests
-
 from ray.serve._private.common import (
     DeploymentStatus,
     DeploymentStatusTrigger,
@@ -20,12 +20,25 @@ from ray.serve.tests.conftest import *  # noqa: F401 F403
 from ray.tests.conftest import *  # noqa: F401 F403
 from ray.util.state import list_actors
 from ray import serve
+from ray.serve._private.test_utils import check_num_replicas_eq
+from ray._common.test_utils import Semaphore, SignalActor
+
 
 # For local testing on a Macbook, set `export TEST_ON_DARWIN=1`.
 TEST_ON_DARWIN = os.environ.get("TEST_ON_DARWIN", "0") == "1"
 
 
 SERVE_HEAD_URL = "http://localhost:8265/api/serve/applications/"
+SERVE_HEAD_DEPLOYMENT_SCALE_URL = "http://localhost:8265/api/v1/applications/{app_name}/deployments/{deployment_name}/scale"
+CONFIG_FILE_TEXT = """
+applications:
+  - name: test_app
+    route_prefix: /
+    import_path: ray.dashboard.modules.serve.tests.test_serve_dashboard.deployment_app
+    deployments:
+      - name: hello_world
+        num_replicas: 1
+"""
 
 
 def deploy_config_multi_app(config: Dict, url: str):
@@ -573,88 +586,367 @@ def test_get_serve_instance_details_for_imperative_apps(ray_start_stop):
     print("Finished checking application details.")
 
 
+@serve.deployment(name="hello_world", num_replicas=1)
+class DeploymentClass:
+    def __init__(self):
+        pass
+
+    def __call__(self):
+        return "test"
+
+
+deployment_app = DeploymentClass.bind()
+
+
+@serve.deployment(name="hello_world", num_replicas=2, version="v2")
+class DeploymentClassWithBlockingInit:
+    def __init__(self, semaphore_handle):
+        ray.get(semaphore_handle.acquire.remote())
+        ray.get(semaphore_handle.release.remote())
+
+    def __call__(self):
+        return "test"
+
+
 @pytest.mark.skipif(
     sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
 )
-def test_scale_deployment_endpoint(ray_start_stop):
-    """Test the new scale deployment endpoint."""
+class TestScaleDeploymentEndpoint:
+    def _run_serve_deploy(self, config_path: Path):
+        proc = subprocess.run(
+            [
+                "serve",
+                "deploy",
+                "-a",
+                "http://localhost:8265",
+                str(config_path),
+            ],
+            capture_output=True,
+        )
 
-    # Helper functions to reduce duplication
-    def get_deployment_details(app_name="test_app", deployment_name="hello_world"):
+        assert proc.returncode == 0, proc.stderr.decode("utf-8")
+
+    def _get_deployment_details(
+        self, app_name="test_app", deployment_name="hello_world"
+    ):
         """Get deployment details from serve instance."""
         serve_details = ServeInstanceDetails(**requests.get(SERVE_HEAD_URL).json())
         app_details = serve_details.applications[app_name]
+
         return app_details.deployments[deployment_name]
 
-    # Setup test deployment
-    @serve.deployment(name="hello_world", num_replicas=1)
-    class DeploymentClass:
-        def __init__(self):
-            pass
-
-        def __call__(self):
-            return "test"
-
-    serve.run(DeploymentClass.bind(), name="test_app")
-
-    # Wait for deployment to be healthy
-    wait_for_condition(
-        lambda: get_deployment_details().status == DeploymentStatus.HEALTHY
-    )
-
-    def scale_and_verify_deployment(
-        num_replicas, app_name="test_app", deployment_name="hello_world"
+    def _scale_and_verify_deployment(
+        self,
+        num_replicas,
+        app_name="test_app",
+        deployment_name="hello_world",
+        verify_actual_replicas=True,
     ):
-        """Scale a deployment and verify the target number of replicas."""
-        scale_url = f"http://localhost:8265/api/v1/applications/{app_name}/deployments/{deployment_name}/scale"
+        """Scale a deployment and verify both target and actual replica counts."""
         response = requests.post(
-            scale_url, json={"num_replicas": num_replicas}, timeout=30
+            SERVE_HEAD_DEPLOYMENT_SCALE_URL.format(
+                app_name=app_name, deployment_name=deployment_name
+            ),
+            json={"target_num_replicas": num_replicas},
+            timeout=30,
         )
+
+        response_data = response.json()
 
         assert response.status_code == 200
-        response_data = response.json()
         assert "message" in response_data
-        assert "Deployment scaled successfully" in response_data["message"]
-
-        wait_for_condition(
-            lambda: get_deployment_details(
-                app_name, deployment_name
-            ).target_num_replicas
-            == num_replicas
+        assert (
+            "Scaling request received. Deployment will get scaled asynchronously."
+            in response_data["message"]
         )
 
-    # Test scaling up to 3 replicas
-    scale_and_verify_deployment(3)
+        self._verify_deployment_details(
+            app_name=app_name,
+            deployment_name=deployment_name,
+            target_num_replicas=num_replicas,
+            verify_actual_replicas=verify_actual_replicas,
+        )
 
-    # Test scaling down to 1 replica
-    scale_and_verify_deployment(1)
+    def _verify_deployment_details(
+        self,
+        app_name="test_app",
+        deployment_name="hello_world",
+        target_num_replicas=None,
+        deployment_status=None,
+        verify_actual_replicas=True,
+    ):
+        deployment_details = self._get_deployment_details(app_name, deployment_name)
 
-    def test_error_case(url, expected_status=400, expected_error_contains=None):
-        """Test an error case for the scale endpoint."""
-        error_response = requests.post(url, json={"num_replicas": 2}, timeout=30)
-        assert error_response.status_code == expected_status
-        if expected_error_contains:
-            assert expected_error_contains in error_response.json()["error"].lower()
+        if target_num_replicas is not None:
+            assert deployment_details.target_num_replicas == target_num_replicas
 
-    # Invalid application name
-    test_error_case(
-        "http://localhost:8265/api/v1/applications/nonexistent/deployments/hello_world/scale",
-        expected_error_contains="not found",
-    )
+        if deployment_status is not None:
+            assert deployment_details.status == deployment_status
 
-    # Invalid deployment name
-    test_error_case(
-        "http://localhost:8265/api/v1/applications/test_app/deployments/nonexistent/scale",
-        expected_error_contains="not found",
-    )
+        if verify_actual_replicas:
+            wait_for_condition(
+                check_num_replicas_eq(
+                    name=deployment_name, target=target_num_replicas, app_name=app_name
+                )
+            )
 
-    # Invalid request body
-    error_response = requests.post(
-        "http://localhost:8265/api/v1/applications/test_app/deployments/hello_world/scale",
-        json={"invalid_field": 2},
-        timeout=30,
-    )
-    assert error_response.status_code == 400
+        return True
+
+    def test_scale_deployment_endpoint_comprehensive(self, ray_start_stop):
+        serve.run(DeploymentClass.bind(), name="test_app")
+
+        wait_for_condition(
+            lambda: self._get_deployment_details().status == DeploymentStatus.HEALTHY
+        )  # Wait for deployment to be healthy
+
+        self._scale_and_verify_deployment(
+            3
+        )  # Test 1: Basic scaling up and down with actual replica verification
+
+        self._scale_and_verify_deployment(1)
+
+        self._scale_and_verify_deployment(0)  # Test 2: Scale to zero replicas
+
+        self._scale_and_verify_deployment(2)  # Test 3: Scale from zero replicas
+
+    def test_scale_deployment_during_application_startup(self, ray_start_stop):
+        semaphore = Semaphore.remote(value=0)
+
+        serve._run(
+            DeploymentClassWithBlockingInit.bind(semaphore),
+            name="test_app",
+            _blocking=False,
+        )
+
+        wait_for_condition(
+            self._verify_deployment_details,
+            target_num_replicas=2,
+            deployment_status=DeploymentStatus.UPDATING,
+            verify_actual_replicas=False,
+        )
+
+        self._scale_and_verify_deployment(4, verify_actual_replicas=False)
+
+        wait_for_condition(
+            self._verify_deployment_details,
+            target_num_replicas=4,
+            deployment_status=DeploymentStatus.UPDATING,
+            verify_actual_replicas=False,
+        )
+
+        ray.get(semaphore.release.remote())
+
+        wait_for_condition(
+            self._verify_deployment_details,
+            target_num_replicas=4,
+            deployment_status=DeploymentStatus.HEALTHY,
+            verify_actual_replicas=True,
+        )
+
+    def test_scale_deployment_during_application_upgrade(self, ray_start_stop):
+        semaphore = Semaphore.remote(value=1)
+
+        serve._run(DeploymentClass.bind(), name="test_app", _blocking=False)
+
+        wait_for_condition(
+            self._verify_deployment_details,
+            target_num_replicas=1,
+            deployment_status=DeploymentStatus.HEALTHY,
+            verify_actual_replicas=True,
+        )
+
+        serve._run(
+            DeploymentClassWithBlockingInit.bind(semaphore),
+            name="test_app",
+            _blocking=False,
+        )
+
+        wait_for_condition(
+            self._verify_deployment_details,
+            target_num_replicas=2,
+            deployment_status=DeploymentStatus.UPDATING,
+            verify_actual_replicas=False,
+        )
+
+        assert check_num_replicas_eq(
+            name="hello_world", target=1, app_name="test_app"
+        )  # Only one replica is running, other two are waiting for semaphore
+
+        self._scale_and_verify_deployment(3, verify_actual_replicas=False)
+
+        wait_for_condition(
+            self._verify_deployment_details,
+            target_num_replicas=3,
+            deployment_status=DeploymentStatus.UPDATING,
+            verify_actual_replicas=False,
+        )
+
+        ray.get(
+            semaphore.release.remote()
+        )  # Release the semaphore to allow the second and third replica to start
+
+        wait_for_condition(
+            self._verify_deployment_details,
+            target_num_replicas=3,
+            deployment_status=DeploymentStatus.HEALTHY,
+            verify_actual_replicas=True,
+        )
+
+    def test_scale_deployment_during_application_deletion(self, ray_start_stop):
+        signal_actor = SignalActor.remote()
+
+        @serve.deployment(name="hello_world", num_replicas=1)
+        class DeploymentClassWithBlockingDel:
+            def __init__(self, signal_actor_handle):
+                self.signal_actor_handle = signal_actor_handle
+
+            def __del__(self):
+                ray.get(self.signal_actor_handle.wait.remote())
+
+            def __call__(self):
+                return "test"
+
+        serve._run(
+            DeploymentClassWithBlockingDel.bind(signal_actor),
+            name="test_app",
+            _blocking=False,
+        )
+
+        wait_for_condition(
+            lambda: self._get_deployment_details().status == DeploymentStatus.HEALTHY
+        )  # Wait for deployment to be healthy
+
+        serve.delete("test_app", _blocking=False)
+
+        wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 1)
+
+        response = requests.post(
+            SERVE_HEAD_DEPLOYMENT_SCALE_URL.format(
+                app_name="test_app", deployment_name="hello_world"
+            ),
+            json={"target_num_replicas": 5},
+            timeout=30,
+        )
+
+        assert response.status_code == 412
+        assert (
+            "is being deleted. Scaling operations are not allowed."
+            in response.json()["error"]
+        )
+
+        ray.get(signal_actor.send.remote())
+
+    def test_scale_deployment_retention_across_application_upgrade(
+        self, ray_start_stop
+    ):
+        """Test that replica counts set via /scale are retained across application upgrade."""
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+
+            config_v1_file = tmp_path / "config_v1.yaml"
+            config_v1_file.write_text(CONFIG_FILE_TEXT)
+
+            self._run_serve_deploy(config_v1_file)
+
+            wait_for_condition(
+                self._verify_deployment_details,
+                deployment_status=DeploymentStatus.HEALTHY,
+                target_num_replicas=1,
+            )
+
+            self._scale_and_verify_deployment(
+                3, verify_actual_replicas=False
+            )  # Scale to 3 replicas
+
+            wait_for_condition(
+                self._verify_deployment_details,
+                target_num_replicas=3,
+                deployment_status=DeploymentStatus.HEALTHY,
+                verify_actual_replicas=True,
+            )
+
+            self._run_serve_deploy(config_v1_file)  # Redeploy the application
+
+            wait_for_condition(
+                self._verify_deployment_details,
+                target_num_replicas=3,
+                deployment_status=DeploymentStatus.HEALTHY,
+                verify_actual_replicas=True,
+            )
+
+    def test_scale_deployment_retention_during_serve_controller_restart(
+        self, ray_start_stop
+    ):
+        """Test that replica counts set via /scale are retained after serve controller restart."""
+        serve.start()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+
+            config_v1_file = tmp_path / "config_v1.yaml"
+            config_v1_file.write_text(CONFIG_FILE_TEXT)
+
+            self._run_serve_deploy(config_v1_file)
+
+            wait_for_condition(
+                self._verify_deployment_details,
+                deployment_status=DeploymentStatus.HEALTHY,
+                target_num_replicas=1,
+            )
+
+            self._scale_and_verify_deployment(
+                3, verify_actual_replicas=False
+            )  # Scale to 3 replicas
+
+            wait_for_condition(
+                self._verify_deployment_details,
+                target_num_replicas=3,
+                deployment_status=DeploymentStatus.HEALTHY,
+                verify_actual_replicas=True,
+            )
+
+            ray.kill(serve.context._get_global_client()._controller, no_restart=False)
+
+            wait_for_condition(
+                self._verify_deployment_details,
+                target_num_replicas=1,
+                deployment_status=DeploymentStatus.HEALTHY,
+                verify_actual_replicas=True,
+            )
+
+    def test_error_case(self, ray_start_stop):
+        serve.start()
+
+        error_response = requests.post(
+            SERVE_HEAD_DEPLOYMENT_SCALE_URL.format(
+                app_name="nonexistent", deployment_name="hello_world"
+            ),
+            json={"target_num_replicas": 2},
+            timeout=30,
+        )
+        assert error_response.status_code == 400
+        assert "not found" in error_response.json()["error"].lower()
+
+        error_response = requests.post(
+            SERVE_HEAD_DEPLOYMENT_SCALE_URL.format(
+                app_name="test_app", deployment_name="nonexistent"
+            ),
+            json={"target_num_replicas": 2},
+            timeout=30,
+        )
+        assert error_response.status_code == 400
+        assert "not found" in error_response.json()["error"].lower()
+
+        error_response = requests.post(
+            SERVE_HEAD_DEPLOYMENT_SCALE_URL.format(
+                app_name="test_app", deployment_name="hello_world"
+            ),
+            json={"invalid_field": 2},
+            timeout=30,
+        )
+        assert error_response.status_code == 400
+        assert "invalid request body" in error_response.json()["error"].lower()
 
 
 if __name__ == "__main__":

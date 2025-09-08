@@ -57,3 +57,10 @@ class DeploymentUnavailableError(RayServeException):
     @property
     def message(self) -> str:
         return f"{self._deployment_id} is unavailable because it failed to deploy."
+
+
+@PublicAPI(stability="alpha")
+class DeploymentIsBeingDeletedError(RayServeException):
+    """Raised when an operation is attempted on a deployment that is being deleted."""
+
+    pass

@@ -15,6 +15,7 @@ from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.exceptions import RayTaskError
 from ray.serve._private.common import DeploymentID
+from ray.serve.exceptions import DeploymentIsBeingDeletedError
 from ray.serve.schema import ScaleDeploymentRequest
 
 
@@ -213,21 +214,29 @@ class ServeHead(SubprocessModule):
 
             # Update the target number of replicas
             logger.info(
-                f"Scaling deployment {deployment_name}, application {application_name} to {scale_request.num_replicas} replicas"
+                f"Scaling deployment {deployment_name}, application {application_name} to {scale_request.target_num_replicas} replicas"
             )
             await controller.update_deployment_replicas.remote(
-                deployment_id, scale_request.num_replicas
+                deployment_id, scale_request.target_num_replicas
             )
 
             return self._create_json_response(
-                {"message": "Deployment scaled successfully"}, 200
+                {
+                    "message": "Scaling request received. Deployment will get scaled asynchronously."
+                },
+                200,
             )
         except Exception as e:
+            if isinstance(e.cause, DeploymentIsBeingDeletedError):
+                return self._create_json_response({"error": str(e.cause)}, 412)
             if isinstance(e, ValueError) and "not found" in str(e):
                 return self._create_json_response(
                     {"error": "Application or Deployment not found"}, 400
                 )
             else:
+                logger.error(
+                    f"Got an Internal Server Error while scaling deployment, error: {e}"
+                )
                 return self._create_json_response(
                     {"error": "Internal Server Error"}, 503
                 )

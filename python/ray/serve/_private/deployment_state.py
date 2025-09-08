@@ -3113,6 +3113,19 @@ class DeploymentStateManager:
 
         return False
 
+    def set_target_num_replicas(
+        self, deployment_id: DeploymentID, target_num_replicas: int
+    ):
+        """Set target number of replicas for a deployment."""
+        if deployment_id not in self._deployment_states:
+            raise ValueError(f"Deployment {deployment_id} not found")
+
+        deployment_state = self._deployment_states[deployment_id]
+        current_target_info = deployment_state.target_info
+
+        # Create a new target state with the updated replica count
+        deployment_state._set_target_state(current_target_info, target_num_replicas)
+
     def update(self) -> bool:
         """Updates the state of all deployments to match their goal state.
 

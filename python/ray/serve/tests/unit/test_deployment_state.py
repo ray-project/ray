@@ -4890,5 +4890,39 @@ def test_docs_path_not_updated_for_different_version(mock_deployment_state_manag
     assert ds.docs_path is None
 
 
+def test_set_target_num_replicas_api(mock_deployment_state_manager):
+    """Test the new set_target_num_replicas API for scaling deployments."""
+    # Create deployment state manager
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    # Deploy initial deployment with 1 replica
+    info_1, v1 = deployment_info(version="1", num_replicas=1)
+    dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+    ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.STARTING, 1, v1)])
+    assert ds.target_num_replicas == 1
+
+    # Test scaling up using the new API
+    dsm.set_target_num_replicas(TEST_DEPLOYMENT_ID, 3)
+    assert ds.target_num_replicas == 3
+
+    dsm.update()
+    check_counts(ds, total=3, by_state=[(ReplicaState.STARTING, 3, v1)])
+
+
+def test_set_target_num_replicas_nonexistent_deployment(mock_deployment_state_manager):
+    """Test that scaling nonexistent deployment raises KeyError."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    nonexistent_id = DeploymentID("nonexistent", "test_app")
+
+    with pytest.raises(ValueError, match="Deployment.*not found"):
+        dsm.set_target_num_replicas(nonexistent_id, 3)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

@@ -15,6 +15,7 @@ from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
+    DeploymentStatusTrigger,
     NodeId,
     RequestProtocol,
     RequestRoutingInfo,
@@ -56,6 +57,7 @@ from ray.serve._private.utils import (
     is_grpc_enabled,
 )
 from ray.serve.config import HTTPOptions, ProxyLocation, gRPCOptions
+from ray.serve.exceptions import DeploymentIsBeingDeletedError
 from ray.serve.generated.serve_pb2 import (
     ActorNameList,
     DeploymentArgs,
@@ -912,26 +914,35 @@ class ServeController:
         """Gets the current list of all deployments' identifiers."""
         return self.deployment_state_manager._deployment_states.keys()
 
+    def _validate_deployment_state_for_num_replica_update(
+        self, deployment_id: DeploymentID
+    ):
+        """Validate the state of a deployment for num replica update."""
+        statuses = self.deployment_state_manager.get_deployment_statuses(
+            [deployment_id]
+        )
+
+        if statuses is None or len(statuses) == 0:
+            raise ValueError(f"Deployment {deployment_id} not found")
+        elif statuses[0].status_trigger == DeploymentStatusTrigger.DELETING:
+            raise DeploymentIsBeingDeletedError(
+                f"Deployment {deployment_id} is being deleted. Scaling operations are not allowed."
+            )
+
     def update_deployment_replicas(
-        self, deployment_id: DeploymentID, num_replicas: int
+        self, deployment_id: DeploymentID, target_num_replicas: int
     ) -> None:
         """Update the target number of replicas for a deployment.
 
         Args:
             deployment_id: The deployment to update.
-            num_replicas: The new target number of replicas.
+            target_num_replicas: The new target number of replicas.
         """
-        deployment_state = self.deployment_state_manager._deployment_states.get(
-            deployment_id
+        self._validate_deployment_state_for_num_replica_update(deployment_id)
+
+        self.deployment_state_manager.set_target_num_replicas(
+            deployment_id, target_num_replicas
         )
-        if deployment_state is None:
-            raise ValueError(f"Deployment {deployment_id} not found")
-
-        # Get the current deployment info
-        deployment_info = deployment_state._target_state.info
-
-        # Update the target state
-        deployment_state._set_target_state(deployment_info, num_replicas)
 
     def get_serve_instance_details(self) -> Dict:
         """Gets details on all applications on the cluster and system-level info.
