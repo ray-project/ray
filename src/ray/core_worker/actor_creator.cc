@@ -18,13 +18,11 @@
 #include <utility>
 #include <vector>
 
-#include "ray/gcs/gcs_client/gcs_client.h"
-
 namespace ray {
 namespace core {
 
 Status ActorCreator::RegisterActor(const TaskSpecification &task_spec) const {
-  const auto status = gcs_client_->Actors().SyncRegisterActor(task_spec);
+  const auto status = actor_client_.SyncRegisterActor(task_spec);
   if (status.IsTimedOut()) {
     std::ostringstream stream;
     stream << "There was timeout in registering an actor. It is probably "
@@ -41,7 +39,7 @@ void ActorCreator::AsyncRegisterActor(const TaskSpecification &task_spec,
   if (callback != nullptr) {
     (*registering_actors_)[actor_id].emplace_back(std::move(callback));
   }
-  gcs_client_->Actors().AsyncRegisterActor(task_spec, [actor_id, this](Status status) {
+  actor_client_.AsyncRegisterActor(task_spec, [actor_id, this](Status status) {
     std::vector<ray::gcs::StatusCallback> cbs;
     cbs = std::move((*registering_actors_)[actor_id]);
     registering_actors_->erase(actor_id);
@@ -55,7 +53,7 @@ void ActorCreator::AsyncRestartActorForLineageReconstruction(
     const ActorID &actor_id,
     uint64_t num_restarts_due_to_lineage_reconstructions,
     gcs::StatusCallback callback) {
-  gcs_client_->Actors().AsyncRestartActorForLineageReconstruction(
+  actor_client_.AsyncRestartActorForLineageReconstruction(
       actor_id, num_restarts_due_to_lineage_reconstructions, callback);
 }
 
@@ -63,7 +61,7 @@ void ActorCreator::AsyncReportActorOutOfScope(
     const ActorID &actor_id,
     uint64_t num_restarts_due_to_lineage_reconstruction,
     gcs::StatusCallback callback) {
-  gcs_client_->Actors().AsyncReportActorOutOfScope(
+  actor_client_.AsyncReportActorOutOfScope(
       actor_id, num_restarts_due_to_lineage_reconstruction, callback);
 }
 
@@ -81,7 +79,7 @@ void ActorCreator::AsyncWaitForActorRegisterFinish(const ActorID &actor_id,
 void ActorCreator::AsyncCreateActor(
     const TaskSpecification &task_spec,
     const rpc::ClientCallback<rpc::CreateActorReply> &callback) {
-  gcs_client_->Actors().AsyncCreateActor(task_spec, callback);
+  actor_client_.AsyncCreateActor(task_spec, callback);
 }
 
 }  // namespace core

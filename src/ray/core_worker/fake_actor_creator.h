@@ -24,7 +24,6 @@
 namespace ray {
 namespace core {
 
-
 class FakeActorCreator : public ActorCreatorInterface {
  public:
   Status RegisterActor(const TaskSpecification &task_spec) const override {
