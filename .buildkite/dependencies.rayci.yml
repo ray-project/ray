@@ -32,9 +32,16 @@ steps:
     tags: always
     instance_type: small
     commands:
+      - echo "--- which python ---"
       - which python
-      - uv python list --only-installed
+      - echo "--- python --version ---"
+      - python --version
+      - echo "--- uv python list ---"
+      - uv python list
+      - echo "--- uv venv --python 3.11 ---"
       - uv venv --python 3.11
+      - source .venv/bin/activate
+      - echo "--- ./ci/compile_llm_requirements.sh ---"
       - ./ci/compile_llm_requirements.sh
     job_env: min-allpython
     depends_on: min-allpython
