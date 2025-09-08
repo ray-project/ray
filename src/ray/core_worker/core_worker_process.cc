@@ -532,7 +532,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
         // OBJECT_STORE.
         return rpc::TensorTransport::OBJECT_STORE;
       },
-      boost::asio::steady_timer(io_service_));
+      boost::asio::steady_timer(io_service_),
+      io_service_);
 
   auto report_locality_data_callback = [this](
                                            const ObjectID &object_id,

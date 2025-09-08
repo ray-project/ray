@@ -136,10 +136,7 @@ void LocalDependencyResolver::ResolveDependencies(
     in_memory_store_.GetAsync(
         obj_id, [this, task_id, obj_id](std::shared_ptr<RayObject> obj) {
           RAY_CHECK(obj != nullptr);
-
           std::unique_ptr<TaskState> resolved_task_state = nullptr;
-          std::vector<ObjectID> inlined_dependency_ids;
-          std::vector<ObjectID> contained_ids;
           {
             absl::MutexLock lock(&mu_);
 
@@ -151,11 +148,17 @@ void LocalDependencyResolver::ResolveDependencies(
             auto &state = it->second;
             state->local_dependencies[obj_id] = std::move(obj);
             if (--state->obj_dependencies_remaining == 0) {
+              std::vector<ObjectID> inlined_dependency_ids;
+              std::vector<ObjectID> contained_ids;
               InlineDependencies(state->local_dependencies,
                                  state->task,
                                  &inlined_dependency_ids,
                                  &contained_ids,
                                  tensor_transport_getter_);
+              if (!inlined_dependency_ids.empty()) {
+                task_manager_.OnTaskDependenciesInlined(inlined_dependency_ids,
+                                                        contained_ids);
+              }
               if (state->actor_dependencies_remaining == 0) {
                 resolved_task_state = std::move(state);
                 pending_tasks_.erase(it);
@@ -163,11 +166,7 @@ void LocalDependencyResolver::ResolveDependencies(
             }
           }
 
-          if (!inlined_dependency_ids.empty()) {
-            task_manager_.OnTaskDependenciesInlined(inlined_dependency_ids,
-                                                    contained_ids);
-          }
-          if (resolved_task_state) {
+          if (resolved_task_state != nullptr) {
             resolved_task_state->on_dependencies_resolved_(resolved_task_state->status);
           }
         });
