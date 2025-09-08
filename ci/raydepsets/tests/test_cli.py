@@ -2,10 +2,9 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from pathlib import Path
 from typing import Optional
-
 import pytest
+from pathlib import Path
 import runfiles
 from click.testing import CliRunner
 from networkx import topological_sort
@@ -35,7 +34,7 @@ _runfiles = runfiles.Create()
 
 
 def _create_test_manager(
-    tmpdir: str, config_path: Optional[str] = None
+    tmpdir: str, config_path: Optional[str] = None, check: bool = False
 ) -> DependencySetManager:
     if config_path is None:
         config_path = "test.depsets.yaml"
@@ -44,22 +43,41 @@ def _create_test_manager(
         config_path=config_path,
         workspace_dir=tmpdir,
         uv_cache_dir=uv_cache_dir.as_posix(),
+        check=check,
     )
+
+
+def _overwrite_config_file(tmpdir: str, depset: Depset):
+    with open(Path(tmpdir) / "test.depsets.yaml", "w") as f:
+        f.write(
+            f"""
+depsets:
+    - name: {depset.name}
+      operation: {depset.operation}
+      constraints:
+          - {depset.constraints}
+      requirements:
+          - {depset.requirements}
+      output: {depset.output}
+                """
+        )
 
 
 class TestCli(unittest.TestCase):
     def test_cli_load_fail_no_config(self):
-        result = CliRunner().invoke(
-            build,
-            [
-                "fake_path/test.depsets.yaml",
-                "--workspace-dir",
-                "/ci/raydepsets/test_data",
-            ],
-        )
-        assert result.exit_code == 1
-        assert isinstance(result.exception, FileNotFoundError)
-        assert "No such file or directory" in str(result.exception)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            result = CliRunner().invoke(
+                build,
+                [
+                    "fake_path/test.depsets.yaml",
+                    "--workspace-dir",
+                    tmpdir,
+                ],
+            )
+            assert result.exit_code == 1
+            assert isinstance(result.exception, FileNotFoundError)
+            assert "No such file or directory" in str(result.exception)
 
     def test_dependency_set_manager_init(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -178,7 +196,6 @@ class TestCli(unittest.TestCase):
                     uv_cache_dir.as_posix(),
                 ],
             )
-
             output_fp = Path(tmpdir) / "requirements_compiled.txt"
             assert output_fp.is_file()
             assert result.exit_code == 0
@@ -283,7 +300,7 @@ class TestCli(unittest.TestCase):
             manager = _create_test_manager(tmpdir)
             assert (
                 manager.get_path("requirements_test.txt")
-                == f"{tmpdir}/requirements_test.txt"
+                == Path(tmpdir) / "requirements_test.txt"
             )
 
     def test_append_uv_flags_exist_in_output(self):
@@ -418,17 +435,13 @@ class TestCli(unittest.TestCase):
     def test_build_graph_bad_operation(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
-            with open(Path(tmpdir) / "test.depsets.yaml", "w") as f:
-                f.write(
-                    """
-depsets:
-    - name: invalid_op_depset
-      operation: invalid_op
-      requirements:
-          - requirements_test.txt
-      output: requirements_compiled_invalid_op.txt
-                """
-                )
+            depset = Depset(
+                name="invalid_op_depset",
+                operation="invalid_op",
+                requirements=["requirements_test.txt"],
+                output="requirements_compiled_invalid_op.txt",
+            )
+            _overwrite_config_file(tmpdir, depset)
             with self.assertRaises(ValueError):
                 _create_test_manager(tmpdir)
 
@@ -588,6 +601,85 @@ depsets:
                 manager.execute_pre_hook("pre-hook-test.sh")
                 manager.execute_pre_hook("pre-hook-error-test.sh")
                 manager.execute_pre_hook("pre-hook-test.sh")
+
+    def test_copy_lock_files_to_temp_dir(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            depset = Depset(
+                name="check_depset",
+                operation="compile",
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt"],
+                output="requirements_compiled_test.txt",
+            )
+            _overwrite_config_file(tmpdir, depset)
+            manager = _create_test_manager(tmpdir, check=True)
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt"],
+                append_flags=["--no-annotate", "--no-header"],
+                name="check_depset",
+                output="requirements_compiled_test.txt",
+            )
+            assert (
+                Path(manager.workspace.dir) / "requirements_compiled_test.txt"
+            ).exists()
+            assert (Path(manager.temp_dir) / "requirements_compiled_test.txt").exists()
+
+    def test_diff_lock_files_out_of_date(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            depset = Depset(
+                name="check_depset",
+                operation="compile",
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt"],
+                output="requirements_compiled_test.txt",
+            )
+            _overwrite_config_file(tmpdir, depset)
+            manager = _create_test_manager(tmpdir, check=True)
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt"],
+                append_flags=["--no-annotate", "--no-header"],
+                name="check_depset",
+                output="requirements_compiled_test.txt",
+            )
+            replace_in_file(
+                Path(manager.workspace.dir) / "requirements_compiled_test.txt",
+                "emoji==2.9.0",
+                "emoji==2.8.0",
+            )
+
+            with self.assertRaises(RuntimeError) as e:
+                manager.diff_lock_files()
+            assert (
+                "Lock files are not up to date. Please update lock files and push the changes."
+                in str(e.exception)
+            )
+            assert "+emoji==2.8.0" in str(e.exception)
+            assert "-emoji==2.9.0" in str(e.exception)
+
+    def test_diff_lock_files_up_to_date(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            depset = Depset(
+                name="check_depset",
+                operation="compile",
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt"],
+                output="requirements_compiled_test.txt",
+            )
+            _overwrite_config_file(tmpdir, depset)
+            manager = _create_test_manager(tmpdir, check=True)
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt"],
+                append_flags=["--no-annotate", "--no-header"],
+                name="check_depset",
+                output="requirements_compiled_test.txt",
+            )
+            manager.diff_lock_files()
 
     def test_compile_with_packages(self):
         with tempfile.TemporaryDirectory() as tmpdir:
