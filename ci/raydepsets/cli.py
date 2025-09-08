@@ -135,7 +135,6 @@ class DependencySetManager:
 
     def diff_lock_files(self):
         diffs = self.get_diffs()
-        self.cleanup()
         if len(diffs) > 0:
             raise RuntimeError(
                 "Lock files are not up to date. Please update lock files and push the changes.\n"
