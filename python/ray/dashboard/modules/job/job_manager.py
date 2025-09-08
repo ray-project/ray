@@ -522,7 +522,7 @@ class JobManager:
                 within the same ray cluster.
         """
         if entrypoint_num_cpus is None:
-            entrypoint_num_cpus = 0
+            entrypoint_num_cpus = 2
         if entrypoint_num_gpus is None:
             entrypoint_num_gpus = 0
         if entrypoint_memory is None:
