@@ -190,8 +190,8 @@ void TaskStatusEvent::PopulateRpcRayTaskDefinitionEvent(T &definition_event_data
   definition_event_data.mutable_required_resources()->insert(
       std::make_move_iterator(required_resources.begin()),
       std::make_move_iterator(required_resources.end()));
-  definition_event_data.mutable_runtime_env_info()->CopyFrom(
-      task_spec_->RuntimeEnvInfo());
+  definition_event_data.set_serialized_runtime_env(
+      task_spec_->RuntimeEnvInfo().serialized_runtime_env());
   definition_event_data.set_job_id(job_id_.Binary());
   definition_event_data.set_parent_task_id(task_spec_->ParentTaskId().Binary());
   definition_event_data.set_placement_group_id(

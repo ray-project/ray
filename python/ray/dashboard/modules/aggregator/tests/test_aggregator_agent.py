@@ -476,9 +476,7 @@ def _create_task_definition_event_proto(timestamp):
                 "CPU": 1.0,
                 "GPU": 0.0,
             },
-            runtime_env_info=RuntimeEnvInfo(
-                serialized_runtime_env="{}",
-            ),
+            serialized_runtime_env="{}",
             job_id=b"1",
             parent_task_id=b"1",
             placement_group_id=b"1",
@@ -540,10 +538,7 @@ def _verify_task_definition_event_json(req_json, expected_timestamp):
         "CPU": 1.0,
         "GPU": 0.0,
     }
-    assert (
-        req_json[0]["taskDefinitionEvent"]["runtimeEnvInfo"]["serializedRuntimeEnv"]
-        == "{}"
-    )
+    assert req_json[0]["taskDefinitionEvent"]["serializedRuntimeEnv"] == "{}"
     assert (
         req_json[0]["taskDefinitionEvent"]["jobId"] == base64.b64encode(b"1").decode()
     )
