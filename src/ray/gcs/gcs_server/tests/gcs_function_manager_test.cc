@@ -14,12 +14,11 @@
 
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
 
+#include <gtest/gtest.h>
+
 #include <memory>
 
-// clang-format off
-#include "gtest/gtest.h"
 #include "mock/ray/gcs/gcs_server/gcs_kv_manager.h"
-// clang-format on
 
 namespace ray {
 

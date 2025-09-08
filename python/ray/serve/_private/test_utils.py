@@ -9,6 +9,7 @@ from copy import copy, deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import grpc
+import httpx
 import requests
 from starlette.requests import Request
 
@@ -842,3 +843,22 @@ def get_application_url(
 def check_running(app_name: str = SERVE_DEFAULT_APP_NAME):
     assert serve.status().applications[app_name].status == ApplicationStatus.RUNNING
     return True
+
+
+def request_with_retries(timeout=30, app_name=SERVE_DEFAULT_APP_NAME):
+    result_holder = {"resp": None}
+
+    def _attempt() -> bool:
+        try:
+            url = get_application_url("HTTP", app_name=app_name)
+            result_holder["resp"] = httpx.get(url, timeout=timeout)
+            return True
+        except (httpx.RequestError, IndexError):
+            return False
+
+    try:
+        wait_for_condition(_attempt, timeout=timeout)
+        return result_holder["resp"]
+    except RuntimeError as e:
+        # Preserve previous API by raising TimeoutError on expiry
+        raise TimeoutError from e

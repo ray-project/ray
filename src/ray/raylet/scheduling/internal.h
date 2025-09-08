@@ -17,10 +17,9 @@
 #include <memory>
 #include <utility>
 
+#include "ray/common/lease/lease.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
-#include "ray/common/task/task.h"
-#include "ray/common/task/task_common.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray::raylet::internal {
@@ -51,28 +50,28 @@ enum class UnscheduledWorkCause {
 };
 
 /// Work represents all the information needed to make a scheduling decision.
-/// This includes the task, the information we need to communicate to
+/// This includes the lease, the information we need to communicate to
 /// dispatch/spillback and the callback to trigger it.
 class Work {
  public:
-  RayTask task;
-  bool grant_or_reject;
-  bool is_selected_based_on_locality;
-  rpc::RequestWorkerLeaseReply *reply;
-  std::function<void(void)> callback;
-  std::shared_ptr<TaskResourceInstances> allocated_instances;
-  Work(RayTask task,
+  RayLease lease_;
+  bool grant_or_reject_;
+  bool is_selected_based_on_locality_;
+  rpc::RequestWorkerLeaseReply *reply_;
+  std::function<void(void)> callback_;
+  std::shared_ptr<TaskResourceInstances> allocated_instances_;
+  Work(RayLease lease,
        bool grant_or_reject,
        bool is_selected_based_on_locality,
        rpc::RequestWorkerLeaseReply *reply,
        std::function<void(void)> callback,
        WorkStatus status = WorkStatus::WAITING)
-      : task(std::move(task)),
-        grant_or_reject(grant_or_reject),
-        is_selected_based_on_locality(is_selected_based_on_locality),
-        reply(reply),
-        callback(std::move(callback)),
-        allocated_instances(nullptr),
+      : lease_(std::move(lease)),
+        grant_or_reject_(grant_or_reject),
+        is_selected_based_on_locality_(is_selected_based_on_locality),
+        reply_(reply),
+        callback_(std::move(callback)),
+        allocated_instances_(nullptr),
         status_(status){};
   Work(const Work &Work) = delete;
   Work &operator=(const Work &work) = delete;
@@ -95,7 +94,7 @@ class Work {
   UnscheduledWorkCause GetUnscheduledCause() const { return unscheduled_work_cause_; }
 
   bool PrioritizeLocalNode() const {
-    return grant_or_reject || is_selected_based_on_locality;
+    return grant_or_reject_ || is_selected_based_on_locality_;
   }
 
  private:

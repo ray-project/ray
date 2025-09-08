@@ -29,7 +29,7 @@
 #include "ray/object_manager/object_manager.h"
 #include "ray/object_manager/ownership_object_directory.h"
 #include "ray/util/network_util.h"
-#include "ray/util/util.h"
+#include "ray/util/time.h"
 
 namespace {
 
@@ -158,8 +158,8 @@ void Raylet::HandleAccept(const boost::system::error_code &error) {
   if (!error) {
     ConnectionErrorHandler error_handler = [this](
                                                std::shared_ptr<ClientConnection> client,
-                                               const boost::system::error_code &error) {
-      node_manager_.HandleClientConnectionError(client, error);
+                                               const boost::system::error_code &err) {
+      node_manager_.HandleClientConnectionError(client, err);
     };
 
     MessageHandler message_handler = [this](std::shared_ptr<ClientConnection> client,

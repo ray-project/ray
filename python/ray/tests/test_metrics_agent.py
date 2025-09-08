@@ -1,11 +1,10 @@
-import time
-import signal
 import json
 import os
 import pathlib
-import sys
 import re
-import requests
+import signal
+import sys
+import time
 import warnings
 from collections import defaultdict
 from pprint import pformat
@@ -13,12 +12,25 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
-
+import requests
 from google.protobuf.timestamp_pb2 import Timestamp
+
 import ray
-from ray.dashboard.modules.aggregator.tests.test_aggregator_agent import (
-    get_event_aggregator_grpc_stub,
+from ray._common.network_utils import build_address
+from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._private.metrics_agent import (
+    Gauge as MetricsAgentGauge,
+    PrometheusServiceDiscoveryWriter,
 )
+from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
+from ray._private.test_utils import (
+    fetch_prometheus,
+    fetch_prometheus_metrics,
+    find_free_port,
+    get_log_batch,
+    raw_metrics,
+)
+from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.core.generated.common_pb2 import TaskAttempt
 from ray.core.generated.events_base_event_pb2 import RayEvent
 from ray.core.generated.events_event_aggregator_service_pb2 import (
@@ -26,22 +38,12 @@ from ray.core.generated.events_event_aggregator_service_pb2 import (
     RayEventsData,
     TaskEventsMetadata,
 )
-from ray.util.state import list_nodes
-from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
-from ray._private.metrics_agent import Gauge as MetricsAgentGauge
-from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
-from ray._common.test_utils import SignalActor, wait_for_condition
-from ray._private.test_utils import (
-    fetch_prometheus,
-    fetch_prometheus_metrics,
-    get_log_batch,
-    raw_metrics,
-    find_free_port,
-)
-from ray._common.network_utils import build_address
-from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
+from ray.dashboard.modules.aggregator.tests.test_aggregator_agent import (
+    get_event_aggregator_grpc_stub,
+)
 from ray.util.metrics import Counter, Gauge, Histogram, Metric
+from ray.util.state import list_nodes
 
 os.environ["RAY_event_stats"] = "1"
 
@@ -579,133 +581,68 @@ def test_metrics_export_event_aggregator_agent(
 def test_operation_stats(monkeypatch, shutdown_only):
     # Test operation stats are available when flag is on.
     operation_metrics = [
-        "ray_operation_count",
-        "ray_operation_run_time_ms",
-        "ray_operation_queue_time_ms",
+        "ray_operation_count_total",
+        "ray_operation_run_time_ms_bucket",
+        "ray_operation_queue_time_ms_bucket",
         "ray_operation_active_count",
     ]
-    with monkeypatch.context() as m:
-        m.setenv("RAY_event_stats_metrics", "1")
-        addr = ray.init()
+    addr = ray.init()
+    remote_signal = SignalActor.remote()
 
-        signal = SignalActor.remote()
+    @ray.remote
+    class Actor:
+        def __init__(self, signal):
+            self.signal = signal
 
-        @ray.remote
-        class Actor:
-            def __init__(self, signal):
-                self.signal = signal
+        def get_worker_id(self):
+            return ray.get_runtime_context().get_worker_id()
 
-            def get_worker_id(self):
-                return ray.get_runtime_context().get_worker_id()
+        def wait(self):
+            ray.get(self.signal.wait.remote())
 
-            def wait(self):
-                ray.get(self.signal.wait.remote())
+    actor = Actor.remote(remote_signal)
+    ray.get(actor.get_worker_id.remote())
+    obj_ref = actor.wait.remote()
 
-        actor = Actor.remote(signal)
-        worker_id = ray.get(actor.get_worker_id.remote())
-        obj_ref = actor.wait.remote()
+    ray.get(remote_signal.send.remote())
+    ray.get(obj_ref)
 
-        def verify():
-            metrics = raw_metrics(addr)
-            samples = metrics["ray_operation_count"]
-            found = False
+    def verify():
+        metrics = raw_metrics(addr)
+
+        samples = metrics["ray_operation_active_count"]
+        found = False
+        for sample in samples:
+            if (
+                sample.labels["Name"] == "gcs_server_main_io_context"
+                and sample.labels["Component"] == "gcs_server"
+            ):
+                found = True
+        if not found:
+            return False
+
+        found = False
+        for sample in samples:
+            if (
+                sample.labels["Name"] == "raylet_main_io_context"
+                and sample.labels["Component"] == "raylet"
+            ):
+                found = True
+        if not found:
+            return False
+
+        metric_names = set(metrics.keys())
+        for op_metric in operation_metrics:
+            assert op_metric in metric_names
+            samples = metrics[op_metric]
+            components = set()
+            print(components)
             for sample in samples:
-                if (
-                    sample.labels["Method"] == "CoreWorkerService.grpc_client.PushTask"
-                    and sample.labels["Component"] == "core_worker"
-                    and sample.labels["WorkerId"] == worker_id
-                ):
-                    found = True
-                    assert sample.value == 1
-            if not found:
-                return False
+                components.add(sample.labels["Component"])
+            assert {"raylet", "gcs_server"} == components
+        return True
 
-            samples = metrics["ray_operation_active_count"]
-            found = False
-            for sample in samples:
-                if (
-                    sample.labels["Method"] == "CoreWorkerService.grpc_client.PushTask"
-                    and sample.labels["Component"] == "core_worker"
-                    and sample.labels["WorkerId"] == worker_id
-                ):
-                    found = True
-                    assert sample.value == 1
-            if not found:
-                return False
-
-            return True
-
-        wait_for_condition(verify, timeout=60)
-
-        ray.get(signal.send.remote())
-        ray.get(obj_ref)
-
-        def verify():
-            metrics = raw_metrics(addr)
-
-            samples = metrics["ray_operation_count"]
-            found = False
-            for sample in samples:
-                if (
-                    sample.labels["Method"] == "CoreWorkerService.grpc_client.PushTask"
-                    and sample.labels["Component"] == "core_worker"
-                    and sample.labels["WorkerId"] == worker_id
-                ):
-                    found = True
-                    assert sample.value == 1
-            if not found:
-                return False
-
-            found = False
-            for sample in samples:
-                if (
-                    sample.labels["Method"]
-                    == "CoreWorkerService.grpc_client.PushTask.OnReplyReceived"
-                    and sample.labels["Component"] == "core_worker"
-                    and sample.labels["WorkerId"] == worker_id
-                ):
-                    found = True
-                    assert sample.value == 1
-            if not found:
-                return False
-
-            samples = metrics["ray_operation_active_count"]
-            found = False
-            for sample in samples:
-                if (
-                    sample.labels["Method"] == "CoreWorkerService.grpc_client.PushTask"
-                    and sample.labels["Component"] == "core_worker"
-                    and sample.labels["WorkerId"] == worker_id
-                ):
-                    found = True
-                    assert sample.value == 0
-            if not found:
-                return False
-
-            found = False
-            for sample in samples:
-                if (
-                    sample.labels["Method"]
-                    == "CoreWorkerService.grpc_client.PushTask.OnReplyReceived"
-                    and sample.labels["Component"] == "core_worker"
-                    and sample.labels["WorkerId"] == worker_id
-                ):
-                    found = True
-                    assert sample.value == 0
-            if not found:
-                return False
-
-            metric_names = set(metrics.keys())
-            for op_metric in operation_metrics:
-                assert op_metric in metric_names
-                samples = metrics[op_metric]
-                components = set()
-                for sample in samples:
-                    components.add(sample.labels["Component"])
-            assert {"raylet", "gcs_server", "core_worker"} == components
-            return True
-
-        wait_for_condition(verify, timeout=60)
+        wait_for_condition(verify, timeout=30)
 
 
 @pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
@@ -971,9 +908,10 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
         )
         return node_export_addrs + [autoscaler_export_addr, dashboard_export_addr]
 
-    loaded_json_data = json.loads(writer.get_file_discovery_content())[0]
+    loaded_json_data = json.loads(writer.get_file_discovery_content())
+    assert loaded_json_data == writer.get_latest_service_discovery_content()
     assert set(get_metrics_export_address_from_node(nodes)) == set(
-        loaded_json_data["targets"]
+        loaded_json_data[0]["targets"]
     )
 
     # Let's update nodes.
@@ -981,9 +919,10 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
         nodes.append(cluster.add_node())
 
     # Make sure service discovery file content is correctly updated.
-    loaded_json_data = json.loads(writer.get_file_discovery_content())[0]
+    loaded_json_data = json.loads(writer.get_file_discovery_content())
+    assert loaded_json_data == writer.get_latest_service_discovery_content()
     assert set(get_metrics_export_address_from_node(nodes)) == set(
-        loaded_json_data["targets"]
+        loaded_json_data[0]["targets"]
     )
 
 
