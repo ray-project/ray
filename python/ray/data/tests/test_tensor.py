@@ -898,23 +898,6 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_udf(
     ds = ray.data.from_pandas([df])
     ds.write_parquet(str(tmp_path))
 
-    # Manually deserialize the tensor bytes and cast to a TensorArray.
-    # def np_deser_udf(block: pa.Table):
-    #     # NOTE(Clark): We use NumPy to consolidate these potentially
-    #     # non-contiguous buffers, and to do buffer bookkeeping in general.
-    #     np_col = np.array(
-    #         [
-    #             np.ndarray(inner_shape, buffer=buf.as_buffer(), dtype=arr.dtype)
-    #             for buf in block.column(tensor_col_name)
-    #         ]
-    #     )
-
-    #     return block.set_column(
-    #         block._ensure_integer_index(tensor_col_name),
-    #         tensor_col_name,
-    #         ArrowTensorArray.from_numpy(np_col),
-    #     )
-
     ds = ray.data.read_parquet(
         str(tmp_path), tensor_column_schema={tensor_col_name: (np.int64(), inner_shape)}
     )
