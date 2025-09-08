@@ -173,8 +173,6 @@ class ReplicaMetricsManager:
             SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
         )
         self._num_ongoing_requests = 0
-        # Lock to prevent concurrent autoscaling stats calls
-        self._autoscaling_stats_lock = asyncio.Lock()
         # Store event loop for scheduling async tasks from sync context
         self._event_loop = event_loop or asyncio.get_event_loop()
 
@@ -350,6 +348,7 @@ class ReplicaMetricsManager:
             },
             metrics={
                 RUNNING_REQUESTS_KEY: self._metrics_store.data.get(self._replica_id, [])
+                **self._metrics_store.data
             },
         )
         self._controller_handle.record_autoscaling_metrics_from_replica.remote(
@@ -368,23 +367,18 @@ class ReplicaMetricsManager:
     async def _add_autoscaling_metrics_point_async(self) -> None:
         metrics_dict = self._replica_ongoing_requests()
         if self.user_callable_wrapper._user_autoscaling_stats:
-            # Try to acquire the lock without waiting; skip if already running
-            if self._autoscaling_stats_lock.locked():
-                logger.debug("Previous autoscaling stats call still running, skipping.")
-            else:
-                try:
-                    async with self._autoscaling_stats_lock:
-                        res = await asyncio.wait_for(
-                            self.user_callable_wrapper.call_record_autoscaling_stats(),
-                            timeout=RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
-                        )
-                        metrics_dict.update(res)
-                except asyncio.TimeoutError:
-                    logger.error(
-                        f"Replica autoscaling stats timed out after {RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S}s."
-                    )
-                except Exception as ex:
-                    logger.error(f"Replica autoscaling stats failed. {ex}")
+            try:
+                res = await asyncio.wait_for(
+                    self.user_callable_wrapper.call_record_autoscaling_stats(),
+                    timeout=RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
+                )
+                metrics_dict.update(res)
+            except asyncio.TimeoutError:
+                logger.error(
+                    f"Replica autoscaling stats timed out after {RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S}s."
+                )
+            except Exception as ex:
+                logger.error(f"Replica autoscaling stats failed. {ex}")
 
         self._metrics_store.add_metrics_point(
             metrics_dict,
