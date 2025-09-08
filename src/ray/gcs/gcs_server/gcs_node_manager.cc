@@ -93,6 +93,7 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
   auto on_done = [this, node_id, node_info_copy = node_info, reply, send_reply_callback](
                      const Status &status) mutable {
     RAY_CHECK_OK(status) << "Failed to register node '" << node_id << "'.";
+    absl::MutexLock lock_(&mutex_);
     RAY_LOG(DEBUG).WithField(node_id) << "Finished registering node.";
     AddNode(std::make_shared<rpc::GcsNodeInfo>(node_info_copy));
     WriteNodeExportEvent(node_info_copy);
@@ -334,8 +335,7 @@ std::shared_ptr<const rpc::GcsNodeInfo> GcsNodeManager::SelectNodeRandomly() con
 }
 
 std::optional<std::shared_ptr<const rpc::GcsNodeInfo>>
-GcsNodeManager::GetAliveNodeFromCache(const ray::NodeID &node_id) const
-    ABSL_SHARED_LOCKS_REQUIRED(mutex_) {
+GcsNodeManager::GetAliveNodeFromCache(const ray::NodeID &node_id) const {
   auto iter = alive_nodes_.find(node_id);
   if (iter == alive_nodes_.end()) {
     return {};
@@ -350,18 +350,17 @@ std::optional<std::shared_ptr<const rpc::GcsNodeInfo>> GcsNodeManager::GetAliveN
   return GetAliveNodeFromCache(node_id);
 }
 
-bool GcsNodeManager::isNodeDead(const ray::NodeID &node_id) const {
+bool GcsNodeManager::IsNodeDead(const ray::NodeID &node_id) const {
   absl::ReaderMutexLock lock(&mutex_);
   return dead_nodes_.contains(node_id);
 }
 
-bool GcsNodeManager::isNodeAlive(const ray::NodeID &node_id) const {
+bool GcsNodeManager::IsNodeAlive(const ray::NodeID &node_id) const {
   absl::ReaderMutexLock lock(&mutex_);
   return alive_nodes_.contains(node_id);
 }
 
-rpc::NodeDeathInfo GcsNodeManager::InferDeathInfo(const NodeID &node_id)
-    ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
+rpc::NodeDeathInfo GcsNodeManager::InferDeathInfo(const NodeID &node_id) {
   auto iter = draining_nodes_.find(node_id);
   rpc::NodeDeathInfo death_info;
   bool expect_force_termination;
@@ -389,15 +388,14 @@ rpc::NodeDeathInfo GcsNodeManager::InferDeathInfo(const NodeID &node_id)
   return death_info;
 }
 
-void GcsNodeManager::AddNode(std::shared_ptr<const rpc::GcsNodeInfo> node)
-    ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
+void GcsNodeManager::AddNode(std::shared_ptr<const rpc::GcsNodeInfo> node) {
   auto node_id = NodeID::FromBinary(node->node_id());
   auto iter = alive_nodes_.find(node_id);
   if (iter == alive_nodes_.end()) {
     alive_nodes_.emplace(node_id, node);
     // Notify all listeners by posting back on their io_context
     for (auto &listener : node_added_listeners_) {
-      listener.Post("add_node_callback", node);
+      listener.Post("NodeManager.AddNodeCallback", node);
     }
   }
 }
@@ -431,25 +429,18 @@ std::shared_ptr<const rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     const NodeID &node_id,
     const rpc::NodeDeathInfo &node_death_info,
     const rpc::GcsNodeInfo::GcsNodeState node_state,
-    const int64_t update_time) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
+    const int64_t update_time) {
   std::shared_ptr<const rpc::GcsNodeInfo> removed_node;
   auto iter = alive_nodes_.find(node_id);
   if (iter != alive_nodes_.end()) {
     // Set node death info. For thread safety, we don't update the node info in place (as
     // it's a const) so instead we create a node to return based on the information on
     // hand before removing it from the cache.
-    auto update_node = [](const rpc::GcsNodeInfo &original,
-                          const rpc::NodeDeathInfo &death_info,
-                          const rpc::GcsNodeInfo::GcsNodeState node_state_,
-                          const int64_t update_time_) {
-      const auto updated = std::make_shared<rpc::GcsNodeInfo>(original);
-      *updated->mutable_death_info() = death_info;
-      updated->set_state(node_state_);
-      updated->set_end_time_ms(update_time_);
-      return std::shared_ptr<const rpc::GcsNodeInfo>(updated);
-    };
-
-    removed_node = update_node(*iter->second, node_death_info, node_state, update_time);
+    const auto updated = std::make_shared<rpc::GcsNodeInfo>(*iter->second);
+    *updated->mutable_death_info() = node_death_info;
+    updated->set_state(node_state);
+    updated->set_end_time_ms(update_time);
+    removed_node = std::shared_ptr<const rpc::GcsNodeInfo>(updated);
 
     RAY_LOG(INFO).WithField(node_id).WithField("node_name", removed_node->node_name())
         << ", death reason = " << rpc::NodeDeathInfo_Reason_Name(node_death_info.reason())
@@ -486,7 +477,7 @@ std::shared_ptr<const rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
 
     // Notify all listeners.
     for (auto &listener : node_removed_listeners_) {
-      listener.Post("node_removed_callback", removed_node);
+      listener.Post("NodeManager.RemoveNodeCallback", removed_node);
     }
   }
   return removed_node;
@@ -559,8 +550,7 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
       [](const auto &left, const auto &right) { return left.second < right.second; });
 }
 
-void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<const rpc::GcsNodeInfo> node)
-    ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
+void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<const rpc::GcsNodeInfo> node) {
   if (dead_nodes_.size() >= RayConfig::instance().maximum_gcs_dead_node_cached_count()) {
     const auto &node_id = sorted_dead_node_list_.front().first;
     gcs_table_storage_->NodeTable().Delete(node_id, {[](const auto &) {}, io_context_});
@@ -609,14 +599,10 @@ void GcsNodeManager::UpdateAliveNode(
   // N.B. For thread safety, all updates to alive_nodes_ need to follow a
   // read/modify/write sort of pattern.  This is because the underlying map contains const
   // variables
-  auto update_node = [](const rpc::GcsNodeInfo &original,
-                        const rpc::NodeSnapshot &node_snapshot) {
-    const auto updated = std::make_shared<rpc::GcsNodeInfo>(original);
-    updated->mutable_state_snapshot()->CopyFrom(node_snapshot);
-    return std::shared_ptr<const rpc::GcsNodeInfo>(updated);
-  };
-
-  alive_nodes_.insert_or_assign(node_id, update_node(*maybe_node_info.value(), snapshot));
+  auto new_node_info = *maybe_node_info.value();
+  *new_node_info.mutable_state_snapshot() = std::move(snapshot);
+  alive_nodes_[node_id] =
+      std::make_shared<const rpc::GcsNodeInfo>(std::move(new_node_info));
 }
 
 }  // namespace gcs

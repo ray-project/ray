@@ -462,7 +462,7 @@ void GcsAutoscalerStateManager::HandleDrainNode(
 
   auto maybe_node = gcs_node_manager_.GetAliveNode(node_id);
   if (!maybe_node.has_value()) {
-    if (gcs_node_manager_.isNodeDead(node_id)) {
+    if (gcs_node_manager_.IsNodeDead(node_id)) {
       // The node is dead so treat it as drained.
       reply->set_is_accepted(true);
     } else {

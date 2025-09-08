@@ -115,13 +115,13 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   ///
   /// \param node_id The id of the node.
   /// \return If the node is known to be dead
-  bool isNodeDead(const ray::NodeID &node_id) const;
+  bool IsNodeDead(const ray::NodeID &node_id) const;
 
   /// Check if node is alive by ID.
   ///
   /// \param node_id The id of the node.
   /// \return If the node is known to be dead
-  bool isNodeAlive(const ray::NodeID &node_id) const;
+  bool IsNodeAlive(const ray::NodeID &node_id) const;
 
   /// Get all alive nodes.
   ///
