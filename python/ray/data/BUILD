@@ -123,7 +123,7 @@ py_test(
 
 py_test(
     name = "test_sql",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_sql.py"],
     tags = [
         "exclusive",
@@ -632,7 +632,7 @@ py_test(
 
 py_test(
     name = "test_json",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_json.py"],
     tags = [
         "exclusive",

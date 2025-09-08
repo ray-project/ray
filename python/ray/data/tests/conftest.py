@@ -145,19 +145,36 @@ def _s3_fs(aws_credentials, s3_server, s3_path):
         kwargs["allow_bucket_creation"] = True
         kwargs["allow_bucket_deletion"] = True
 
-    fs = pa.fs.S3FileSystem(
-        region="us-west-2",
-        endpoint_override=s3_server,
-        **kwargs,
-    )
-    if s3_path.startswith("s3://"):
-        if "@" in s3_path:
-            s3_path = s3_path.split("@")[-1]
-        else:
-            s3_path = s3_path[len("s3://") :]
-    s3_path = urllib.parse.quote(s3_path)
-    fs.create_dir(s3_path)
-    yield fs
+    fs = None
+    try:
+        fs = pa.fs.S3FileSystem(
+            region="us-west-2",
+            endpoint_override=s3_server,
+            **kwargs,
+        )
+        if s3_path.startswith("s3://"):
+            if "@" in s3_path:
+                s3_path = s3_path.split("@")[-1]
+            else:
+                s3_path = s3_path[len("s3://") :]
+        s3_path = urllib.parse.quote(s3_path)
+        fs.create_dir(s3_path)
+        yield fs
+
+    finally:
+        # Explicit cleanup for S3FileSystem resources
+        if fs is not None:
+            try:
+                # Clean up any remaining files in the test directory
+                if hasattr(fs, "delete_dir_contents"):
+                    fs.delete_dir_contents(s3_path, missing_ok=True)
+                # Close any open connections
+                if hasattr(fs, "close"):
+                    fs.close()
+            except Exception as e:
+                print(f"Warning: S3 filesystem cleanup error: {e}")
+            finally:
+                fs = None
 
 
 @pytest.fixture(scope="function")
