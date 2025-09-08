@@ -916,7 +916,8 @@ class UnserializableException(RayError):
     the original exception along with its stack trace that was captured at the
     time of serialization.
 
-    reference for more details: https://docs.ray.io/en/latest/ray-core/objects/serialization.html
+    For more details and how to handle this with custom serializers, see:
+    https://docs.ray.io/en/latest/ray-core/objects/serialization.html#custom-serializers-for-exceptions
 
     Args:
         original_stack_trace: The string representation and stack trace of the
@@ -928,12 +929,10 @@ class UnserializableException(RayError):
 
     def __str__(self):
         return (
-            "Failed to deserialize exception. Refer to https://docs.ray.io/en/latest/ray-core/objects/serialization.html#troubleshooting to troubleshoot.\n"
-            "You can register a custom serializer for the exception class to avoid this error, for reference see: https://docs.ray.io/en/latest/ray-core/objects/serialization.html#customized-serialization.\n"
+            "Failed to deserialize exception. Refer to https://docs.ray.io/en/latest/ray-core/objects/serialization.html#custom-serializers-for-exceptions for more information.\n"
             "Original exception:\n"
             f"{self._original_stack_trace}"
         )
-
 
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,

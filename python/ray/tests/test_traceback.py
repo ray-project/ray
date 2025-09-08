@@ -301,8 +301,7 @@ def test_actor_repr_in_traceback(ray_start_regular):
 
 
 def test_unpickleable_stacktrace(shutdown_only):
-    expected_output = """Failed to deserialize exception. Refer to https://docs.ray.io/en/latest/ray-core/objects/serialization.html#troubleshooting to troubleshoot.
-You can register a custom serializer for the exception class to avoid this error, for reference see: https://docs.ray.io/en/latest/ray-core/objects/serialization.html#customized-serialization.
+    expected_output = """Failed to deserialize exception. Refer to https://docs.ray.io/en/latest/ray-core/objects/serialization.html#custom-serializers-for-exceptions for more information.
 Original exception:
 ray.exceptions.RayTaskError: ray::f() (pid=XXX, ip=YYY)
   File "FILE", line ZZ, in f
@@ -340,19 +339,13 @@ def test_exception_with_registered_serializer(shutdown_only):
             return f"message: {self.msg}"
 
     def _serializer(e: NoPickleError):
-        return {"msg": e.msg + "serialized"}
+        return {"msg": e.msg}
 
     def _deserializer(state):
-        return NoPickleError(state["msg"] + "deserialized")
-
-    # Register on the driver side (deserialize site)
-    ray.util.register_serializer(
-        NoPickleError, serializer=_serializer, deserializer=_deserializer
-    )
+        return NoPickleError(state["msg"] + " deserialized")
 
     @ray.remote
     def raise_custom_exception():
-        # Register on the worker side (serialize site)
         ray.util.register_serializer(
             NoPickleError, serializer=_serializer, deserializer=_deserializer
         )
@@ -363,9 +356,12 @@ def test_exception_with_registered_serializer(shutdown_only):
 
     # Ensure dual-typed exception and message propagation
     assert isinstance(exc_info.value, RayTaskError)
-    # if custom serializer was not registered, this would be instance of UnserializableException()
+    # if custom serializer was not registered, this would be an instance of UnserializableException()
     assert isinstance(exc_info.value, NoPickleError)
     assert "message" in str(exc_info.value)
+    # modified message should not be in the exception string, only in the cause
+    assert "deserialized" not in str(exc_info.value)
+    assert "message deserialized" in str(exc_info.value.cause)
 
     # Cleanup to avoid affecting other tests
     ray.util.deregister_serializer(NoPickleError)

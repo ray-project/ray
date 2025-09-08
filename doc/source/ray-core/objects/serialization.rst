@@ -202,6 +202,37 @@ There are at least 3 ways to define your custom serialization process:
      except TypeError:
         pass
 
+Custom Serializers for Exceptions
+----------------------------------
+
+When Ray tasks raise exceptions that cannot be serialized with the default pickle mechanism, you can register custom serializers to handle them.
+
+.. testcode::
+
+    import ray
+
+    class CustomError(Exception):
+        def __init__(self, message, data):
+            self.message = message
+            self.data = data  # This might not be serializable
+
+    def custom_serializer(exc):
+        return {"message": exc.message, "data": str(exc.data)}
+
+    def custom_deserializer(state):
+        return CustomError(state["message"], state["data"])
+
+    # Register the serializer on both driver and worker
+    ray.util.register_serializer(CustomError, custom_serializer, custom_deserializer)
+
+When a custom exception is raised in a remote task, Ray will:
+
+1. Serialize the exception using your custom serializer
+2. Wrap it in a :class:`RayTaskError <ray.exceptions.RayTaskError>`
+3. The deserialized exception will be available as ``ray_task_error.cause``
+
+Whenever serialization fails, Ray throws an :class:`UnserializableException <ray.exceptions.UnserializableException>` containing the string representation of the original stack trace.
+
 
 Troubleshooting
 ---------------
