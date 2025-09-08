@@ -12,6 +12,7 @@ from ray.train.v2._internal.constants import is_v2_enabled
 
 assert is_v2_enabled()
 
+
 @pytest.fixture
 def ray_start_6_cpus_2_gpus():
     address_info = ray.init(num_cpus=6, num_gpus=2)
@@ -402,6 +403,7 @@ def test_e2e_dict_eval_ray_data(ray_start_6_cpus_2_gpus, config_id):
     assert len(result.best_checkpoints) == num_iterations
     assert "eval_eval_1_loss" in result.metrics
     assert "eval_eval_2_loss" in result.metrics
+
 
 if __name__ == "__main__":
     import sys
