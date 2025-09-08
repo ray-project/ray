@@ -32,7 +32,9 @@ steps:
     tags: always
     instance_type: small
     commands:
-      - uv python pin 3.11
+      - which python
+      - uv python list --only-installed
+      - uv venv --python 3.11
       - ./ci/compile_llm_requirements.sh
     job_env: min-allpython
     depends_on: min-allpython
