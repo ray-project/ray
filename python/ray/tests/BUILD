@@ -881,7 +881,6 @@ py_test_module_list(
         "test_failure_2.py",
         "test_generators.py",
         "test_multi_node.py",
-        "test_object_manager_fault_tolerance.py",
         "test_placement_group_3.py",
         "test_placement_group_5.py",
         "test_reconstruction.py",

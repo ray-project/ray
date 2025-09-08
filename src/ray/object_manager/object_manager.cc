@@ -781,10 +781,13 @@ void ObjectManager::RetryFreeObjects(
              node_id,
              attempt_number,
              default_unavailable_timeout_callback,
-             free_objects_request](const Status &, const rpc::FreeObjectsReply &) {
-              default_unavailable_timeout_callback();
-              if (remote_object_manager_clients_.contains(node_id)) {
-                RetryFreeObjects(node_id, attempt_number + 1, free_objects_request);
+             free_objects_request](const Status &status,
+                                   const rpc::FreeObjectsReply &reply) {
+              if (!status.ok()) {
+                default_unavailable_timeout_callback();
+                if (remote_object_manager_clients_.contains(node_id)) {
+                  RetryFreeObjects(node_id, attempt_number + 1, free_objects_request);
+                }
               }
             });
       },
