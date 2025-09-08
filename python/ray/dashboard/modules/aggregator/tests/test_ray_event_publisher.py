@@ -11,7 +11,6 @@ from ray.dashboard.modules.aggregator.publisher.ray_event_publisher import (
     NoopPublisher,
 )
 from ray.dashboard.modules.aggregator.publisher.async_publisher_client import (
-    AsyncHttpPublisherClient,
     PublishStats,
     PublisherClientInterface,
 )

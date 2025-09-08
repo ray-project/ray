@@ -80,7 +80,7 @@ class RayEventPublisher(RayEventPublisherInterface):
         self._started_event: asyncio.Event = asyncio.Event()
 
         # Prometheus metrics (defined per-publisher instance using provided name)
-        metrics_prefix = "event_aggregator_agent"
+        metrics_prefix = "ray_event_aggregator_agent"
         supported_tags = (
             tuple(self._common_metric_tags.keys())
             if self._common_metric_tags is not None

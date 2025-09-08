@@ -34,6 +34,7 @@ class MultiConsumerEventBuffer:
     Arguments:
         max_size: Maximum number of events to store in the buffer.
         max_batch_size: Maximum number of events to return in a batch when calling wait_for_batch.
+        common_metric_tags: Tags to add to all metrics.
     """
 
     def __init__(
@@ -158,6 +159,9 @@ class MultiConsumerEventBuffer:
     async def register_consumer(self, consumer_name: str) -> str:
         """Register a new consumer with a name.
 
+        Arguments:
+            consumer_name: A unique name for the consumer.
+
         Returns:
             Id of the consumer, used to identify the consumer in other methods.
         """
@@ -169,7 +173,7 @@ class MultiConsumerEventBuffer:
                 if self._common_metrics_tags is not None
                 else ("event_type",)
             )
-            metrics_prefix = "event_aggregator_agent"
+            metrics_prefix = "ray_event_aggregator_agent"
             counter = Counter(
                 f"{metrics_prefix}_{consumer_name}_queue_dropped_events_total",
                 "Total number of events dropped because the publish/buffer queue was full.",
