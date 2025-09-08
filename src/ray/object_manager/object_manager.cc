@@ -697,7 +697,7 @@ void ObjectManager::SpreadFreeObjectsRequest(const std::vector<ObjectID> &object
     free_objects_request.add_object_ids(e.Binary());
   }
 
-  for (const auto &[node_id, rpc_client] : remote_object_manager_clients_) {
+  for (auto [node_id, rpc_client] : remote_object_manager_clients_) {
     rpc_client->FreeObjects(
         free_objects_request,
         [this, node_id, free_objects_request](const Status &status,
