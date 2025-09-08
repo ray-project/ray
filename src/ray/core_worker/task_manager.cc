@@ -1537,9 +1537,7 @@ void TaskManager::MarkTaskReturnObjectsFailed(
     const auto object_id = ObjectID::FromIndex(task_id, /*index=*/i + 1);
     if (store_in_plasma_ids.contains(object_id)) {
       Status s = put_in_local_plasma_callback_(error, object_id);
-      if (s.ok()) {
-        in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id);
-      } else {
+      if (!s.ok()) {
         RAY_LOG(WARNING).WithField(object_id)
             << "Failed to put error object in plasma: " << s;
         in_memory_store_.Put(error, object_id);
@@ -1552,10 +1550,7 @@ void TaskManager::MarkTaskReturnObjectsFailed(
     for (const auto &dynamic_return_id : spec.DynamicReturnIds()) {
       if (store_in_plasma_ids.contains(dynamic_return_id)) {
         Status s = put_in_local_plasma_callback_(error, dynamic_return_id);
-        if (s.ok()) {
-          in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                               dynamic_return_id);
-        } else {
+        if (!s.ok()) {
           RAY_LOG(WARNING).WithField(dynamic_return_id)
               << "Failed to put error object in plasma: " << s;
           in_memory_store_.Put(error, dynamic_return_id);
@@ -1585,10 +1580,7 @@ void TaskManager::MarkTaskReturnObjectsFailed(
       const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
       if (store_in_plasma_ids.contains(generator_return_id)) {
         Status s = put_in_local_plasma_callback_(error, generator_return_id);
-        if (s.ok()) {
-          in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                               generator_return_id);
-        } else {
+        if (!s.ok()) {
           RAY_LOG(WARNING).WithField(generator_return_id)
               << "Failed to put error object in plasma: " << s;
           in_memory_store_.Put(error, generator_return_id);
