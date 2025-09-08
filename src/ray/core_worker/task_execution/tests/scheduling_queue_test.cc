@@ -247,8 +247,7 @@ TEST(ActorSchedulingQueueTest, ShutdownCancelsQueuedAndWaitsForRunning) {
 
   // Call Stop() from another thread to avoid blocking this thread before allowing finish.
   std::thread stopper([&]() { queue.Stop(); });
-  // Give Stop a moment to engage, then finish the running task so Stop can join.
-  std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  // Finish the running task so Stop can join.
   allow_finish.set_value();
   stopper.join();
   ASSERT_EQ(n_rejected.load(), 1);
