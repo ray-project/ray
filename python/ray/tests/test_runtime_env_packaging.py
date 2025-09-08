@@ -6,14 +6,14 @@ import string
 import sys
 import tempfile
 import uuid
+import zipfile
 from filecmp import dircmp
 from pathlib import Path
 from shutil import copytree, make_archive, rmtree
-import zipfile
-import ray
 
 import pytest
 
+import ray
 from ray._private.ray_constants import (
     KV_NAMESPACE_PACKAGE,
     RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
@@ -24,12 +24,13 @@ from ray._private.runtime_env.packaging import (
     Protocol,
     _dir_travel,
     _get_excludes,
+    _get_gitignore,
     _store_package_in_gcs,
     download_and_unpack_package,
     get_local_dir_from_uri,
     get_top_level_dir_from_compressed_package,
-    get_uri_for_file,
     get_uri_for_directory,
+    get_uri_for_file,
     get_uri_for_package,
     is_whl_uri,
     is_zip_uri,
@@ -37,7 +38,6 @@ from ray._private.runtime_env.packaging import (
     remove_dir_from_filepaths,
     unzip_package,
     upload_package_if_needed,
-    _get_gitignore,
     upload_package_to_gcs,
 )
 from ray.experimental.internal_kv import (
@@ -633,6 +633,49 @@ class TestParseUri:
         assert package_name == gcs_uri.split("/")[-1]
 
 
+class TestAbfssProtocol:
+    """Test ABFSS protocol implementation."""
+
+    def test_abfss_protocol_handler_with_invalid_uris(self, tmp_path):
+        """Test that ABFSS protocol handler raises ValueError for invalid URIs."""
+        import unittest.mock as mock
+
+        invalid_uris = [
+            "abfss://@account.dfs.core.windows.net/file.zip",  # Empty container name
+            "abfss://container@.dfs.core.windows.net/file.zip",  # Empty account name
+            "abfss://container@account.blob.core.windows.net/file.zip",  # Wrong endpoint
+            "abfss://container@account.core.windows.net/file.zip",  # Missing .dfs
+            "abfss://account.dfs.core.windows.net/file.zip",  # Missing container@
+            "abfss://container",  # Missing @ and hostname
+            "abfss://",  # Empty netloc
+        ]
+
+        dest_file = tmp_path / "test_download.zip"
+
+        # Mock adlfs and azure.identity modules in sys.modules to avoid import errors in CI
+        import sys
+
+        mock_adlfs_module = mock.MagicMock()
+        mock_azure_identity_module = mock.MagicMock()
+
+        with mock.patch.dict(
+            sys.modules,
+            {
+                "adlfs": mock_adlfs_module,
+                "azure": mock.MagicMock(),
+                "azure.identity": mock_azure_identity_module,
+            },
+        ):
+            # Setup the mocks (though they won't be called due to validation failures)
+            mock_filesystem = mock.Mock()
+            mock_adlfs_module.AzureBlobFileSystem.return_value = mock_filesystem
+            mock_filesystem.open.return_value = mock.Mock()
+
+            for invalid_uri in invalid_uris:
+                with pytest.raises(ValueError, match="Invalid ABFSS URI format"):
+                    Protocol.ABFSS.download_remote_uri(invalid_uri, str(dest_file))
+
+
 @pytest.mark.asyncio
 class TestDownloadAndUnpackPackage:
     async def test_download_and_unpack_package_with_gcs_uri_without_gcs_client(
@@ -713,8 +756,8 @@ class TestDownloadAndUnpackPackage:
                 # Add a file to the zip file so we can verify the file was extracted.
                 zip.writestr("file.txt", "Hello, world!")
 
-            from urllib.request import pathname2url
             from urllib.parse import urljoin
+            from urllib.request import pathname2url
 
             # in windows, file_path = ///C:/Users/...
             # in linux, file_path = /tmp/...

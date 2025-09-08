@@ -36,6 +36,7 @@
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/gcs/store_client/store_client.h"
 #include "ray/pubsub/publisher.h"
+#include "ray/rpc/raylet/raylet_client.h"
 #include "ray/stats/stats.h"
 #include "ray/util/network_util.h"
 
@@ -70,7 +71,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                            ClusterID::Nil(),
                            RayConfig::instance().gcs_server_rpc_client_thread_num()),
       raylet_client_pool_([this](const rpc::Address &addr) {
-        return std::make_shared<ray::raylet::RayletClient>(
+        return std::make_shared<ray::rpc::RayletClient>(
             addr,
             this->client_call_manager_,
             /*raylet_unavailable_timeout_callback=*/[this, addr]() {
@@ -112,8 +113,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                   });
             });
       }),
-      pubsub_periodical_runner_(
-          PeriodicalRunner::Create(io_context_provider_.GetIOContext<GcsPublisher>())),
+      pubsub_periodical_runner_(PeriodicalRunner::Create(
+          io_context_provider_.GetIOContext<pubsub::GcsPublisher>())),
       periodical_runner_(
           PeriodicalRunner::Create(io_context_provider_.GetDefaultIOContext())),
       is_started_(false),
@@ -170,7 +171,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
       /*publisher_id=*/NodeID::FromRandom());
 
-  gcs_publisher_ = std::make_unique<GcsPublisher>(std::move(inner_publisher));
+  gcs_publisher_ = std::make_unique<pubsub::GcsPublisher>(std::move(inner_publisher));
   metrics_agent_client_ = std::make_unique<rpc::MetricsAgentClientImpl>(
       "127.0.0.1",
       config_.metrics_agent_port,
@@ -237,7 +238,7 @@ void GcsServer::GetOrGenerateClusterId(
 void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   InitClusterResourceScheduler();
   InitGcsNodeManager(gcs_init_data);
-  InitClusterTaskManager();
+  InitClusterLeaseManager();
   InitGcsResourceManager(gcs_init_data);
   InitGcsHealthCheckManager(gcs_init_data);
   InitRaySyncer(gcs_init_data);
@@ -350,13 +351,13 @@ void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
-  RAY_CHECK(cluster_resource_scheduler_ && cluster_task_manager_);
+  RAY_CHECK(cluster_resource_scheduler_ && cluster_lease_manager_);
   gcs_resource_manager_ = std::make_unique<GcsResourceManager>(
       io_context_provider_.GetDefaultIOContext(),
       cluster_resource_scheduler_->GetClusterResourceManager(),
       *gcs_node_manager_,
       kGCSNodeID,
-      cluster_task_manager_.get());
+      cluster_lease_manager_.get());
 
   // Initialize by gcs tables data.
   gcs_resource_manager_->Initialize(gcs_init_data);
@@ -422,9 +423,9 @@ void GcsServer::InitClusterResourceScheduler() {
       /*is_local_node_with_raylet=*/false);
 }
 
-void GcsServer::InitClusterTaskManager() {
+void GcsServer::InitClusterLeaseManager() {
   RAY_CHECK(cluster_resource_scheduler_);
-  cluster_task_manager_ = std::make_unique<ClusterTaskManager>(
+  cluster_lease_manager_ = std::make_unique<ClusterLeaseManager>(
       kGCSNodeID,
       *cluster_resource_scheduler_,
       /*get_node_info=*/
@@ -433,7 +434,7 @@ void GcsServer::InitClusterTaskManager() {
         return node.has_value() ? node.value().get() : nullptr;
       },
       /*announce_infeasible_task=*/nullptr,
-      /*local_task_manager=*/local_task_manager_);
+      /*local_lease_manager=*/local_lease_manager_);
 }
 
 void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
@@ -473,12 +474,12 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
     gcs_actor_manager_->OnActorCreationSuccess(actor, reply);
   };
 
-  RAY_CHECK(gcs_resource_manager_ && cluster_task_manager_);
+  RAY_CHECK(gcs_resource_manager_ && cluster_lease_manager_);
   scheduler = std::make_unique<GcsActorScheduler>(
       io_context_provider_.GetDefaultIOContext(),
       gcs_table_storage_->ActorTable(),
       *gcs_node_manager_,
-      *cluster_task_manager_,
+      *cluster_lease_manager_,
       schedule_failure_handler,
       schedule_success_handler,
       raylet_client_pool_,
@@ -499,10 +500,11 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
       },
       worker_client_pool_);
 
-  // Initialize by gcs tables data.
   gcs_actor_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::ActorInfoGrpcService>(
-      io_context_provider_.GetDefaultIOContext(), *gcs_actor_manager_));
+      io_context_provider_.GetDefaultIOContext(),
+      *gcs_actor_manager_,
+      RayConfig::instance().gcs_max_active_rpcs_per_handler()));
 }
 
 void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
@@ -624,7 +626,7 @@ void GcsServer::InitKVService() {
 }
 
 void GcsServer::InitPubSubHandler() {
-  auto &io_context = io_context_provider_.GetIOContext<GcsPublisher>();
+  auto &io_context = io_context_provider_.GetIOContext<pubsub::GcsPublisher>();
   pubsub_handler_ = std::make_unique<InternalPubSubHandler>(io_context, *gcs_publisher_);
 
   // This service is used to handle long poll requests, so we don't limit active RPCs.
@@ -730,7 +732,9 @@ void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) 
   gcs_autoscaler_state_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(
       std::make_unique<rpc::autoscaler::AutoscalerStateGrpcService>(
-          io_context_provider_.GetDefaultIOContext(), *gcs_autoscaler_state_manager_));
+          io_context_provider_.GetDefaultIOContext(),
+          *gcs_autoscaler_state_manager_,
+          RayConfig::instance().gcs_max_active_rpcs_per_handler()));
 }
 
 void GcsServer::InitGcsTaskManager() {
@@ -741,7 +745,7 @@ void GcsServer::InitGcsTaskManager() {
       io_context,
       *gcs_task_manager_,
       RayConfig::instance().gcs_max_active_rpcs_per_handler()));
-  rpc_server_.RegisterService(std::make_unique<rpc::RayEventExportGrpcService>(
+  rpc_server_.RegisterService(std::make_unique<rpc::events::RayEventExportGrpcService>(
       io_context,
       *gcs_task_manager_,
       RayConfig::instance().gcs_max_active_rpcs_per_handler()));
@@ -769,7 +773,7 @@ void GcsServer::InstallEventListeners() {
           RAY_CHECK(channel != nullptr);
           gcs_healthcheck_manager_->AddNode(node_id, channel);
         }
-        cluster_task_manager_->ScheduleAndDispatchTasks();
+        cluster_lease_manager_->ScheduleAndGrantLeases();
       });
   gcs_node_manager_->AddNodeRemovedListener(
       [this](const std::shared_ptr<rpc::GcsNodeInfo> &node) {
@@ -826,7 +830,7 @@ void GcsServer::InstallEventListeners() {
             // Because resources have been changed, we need to try to schedule the
             // pending placement groups and actors.
             gcs_placement_group_manager_->SchedulePendingPlacementGroups();
-            cluster_task_manager_->ScheduleAndDispatchTasks();
+            cluster_lease_manager_->ScheduleAndGrantLeases();
           },
           "GcsServer.SchedulePendingActors");
     });
@@ -837,7 +841,7 @@ void GcsServer::InstallEventListeners() {
             // Because some placement group resources have been committed or deleted, we
             // need to try to schedule the pending placement groups and actors.
             gcs_placement_group_manager_->SchedulePendingPlacementGroups();
-            cluster_task_manager_->ScheduleAndDispatchTasks();
+            cluster_lease_manager_->ScheduleAndGrantLeases();
           },
           "GcsServer.SchedulePendingPGActors");
     });
@@ -898,7 +902,7 @@ void GcsServer::PrintAsioStats() {
 }
 
 void GcsServer::TryGlobalGC() {
-  if (cluster_task_manager_->GetPendingQueueSize() == 0) {
+  if (cluster_lease_manager_->GetPendingQueueSize() == 0) {
     task_pending_schedule_detected_ = 0;
     return;
   }

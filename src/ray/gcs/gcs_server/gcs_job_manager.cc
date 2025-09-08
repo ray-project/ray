@@ -22,8 +22,7 @@
 #include <vector>
 
 #include "absl/strings/match.h"
-#include "ray/gcs/pb_util.h"
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
+#include "ray/common/protobuf_utils.h"
 #include "ray/stats/metric.h"
 #include "ray/util/time.h"
 
@@ -130,8 +129,8 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  RAY_UNUSED(gcs_table_storage_.JobTable().Put(
-      job_id, mutable_job_table_data, {std::move(on_done), io_context_}));
+  gcs_table_storage_.JobTable().Put(
+      job_id, mutable_job_table_data, {std::move(on_done), io_context_});
 }
 
 void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
@@ -173,11 +172,8 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
     done_callback(status);
   };
 
-  Status status =
-      gcs_table_storage_.JobTable().Put(job_id, job_table_data, {on_done, io_context_});
-  if (!status.ok()) {
-    on_done(status);
-  }
+  gcs_table_storage_.JobTable().Put(
+      job_id, job_table_data, {std::move(on_done), io_context_});
 }
 
 void GcsJobManager::HandleMarkJobFinished(rpc::MarkJobFinishedRequest request,
@@ -190,7 +186,7 @@ void GcsJobManager::HandleMarkJobFinished(rpc::MarkJobFinishedRequest request,
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  Status status = gcs_table_storage_.JobTable().Get(
+  gcs_table_storage_.JobTable().Get(
       job_id,
       {[this, job_id, send_reply](Status get_status,
                                   std::optional<rpc::JobTableData> result) {
@@ -211,9 +207,6 @@ void GcsJobManager::HandleMarkJobFinished(rpc::MarkJobFinishedRequest request,
          send_reply(get_status);
        },
        io_context_});
-  if (!status.ok()) {
-    send_reply(status);
-  }
 }
 
 void GcsJobManager::ClearJobInfos(const rpc::JobTableData &job_data) {
@@ -445,10 +438,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
           "job", job_api_data_keys, {kv_multi_get_callback, io_context_});
     }
   };
-  Status status = gcs_table_storage_.JobTable().GetAll({on_done, io_context_});
-  if (!status.ok()) {
-    on_done(absl::flat_hash_map<JobID, rpc::JobTableData>());
-  }
+  gcs_table_storage_.JobTable().GetAll({std::move(on_done), io_context_});
 }
 
 void GcsJobManager::HandleReportJobError(rpc::ReportJobErrorRequest request,
@@ -467,7 +457,7 @@ void GcsJobManager::HandleGetNextJobID(rpc::GetNextJobIDRequest request,
     reply->set_job_id(job_id);
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
-  RAY_CHECK_OK(gcs_table_storage_.AsyncGetNextJobID({std::move(callback), io_context_}));
+  gcs_table_storage_.AsyncGetNextJobID({std::move(callback), io_context_});
 }
 
 std::shared_ptr<rpc::JobConfig> GcsJobManager::GetJobConfig(const JobID &job_id) const {
@@ -499,7 +489,7 @@ void GcsJobManager::OnNodeDead(const NodeID &node_id) {
     }
   };
 
-  RAY_CHECK_OK(gcs_table_storage_.JobTable().GetAll({on_done, io_context_}));
+  gcs_table_storage_.JobTable().GetAll({std::move(on_done), io_context_});
 }
 
 void GcsJobManager::RecordMetrics() {
