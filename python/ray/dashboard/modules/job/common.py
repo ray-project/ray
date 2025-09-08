@@ -272,6 +272,7 @@ class JobInfoStorageClient:
             job_id: The job id.
             job_info: The job info.
             overwrite: Whether to overwrite the existing job info.
+            timeout: The timeout in seconds for the GCS operation.
 
         Returns:
             True if a new key is added.

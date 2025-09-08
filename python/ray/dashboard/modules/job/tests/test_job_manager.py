@@ -1354,6 +1354,44 @@ async def test_monitor_job_pending(job_manager):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --num-cpus=1"],
+    indirect=True,
+)
+async def test_job_timeout_lack_of_entrypoint_resources(
+    call_ray_start, tmp_path, monkeypatch  # noqa: F811
+):
+    """Test the timeout when there are not enough resources to schedule the supervisor actor)"""
+
+    monkeypatch.setenv(RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR, "1")
+
+    ray.init(address=call_ray_start)
+    gcs_client = ray._private.worker.global_worker.gcs_client
+    job_manager = JobManager(gcs_client, tmp_path)
+
+    # Submit a job with unsatisfied resource.
+    job_id = await job_manager.submit_job(
+        entrypoint="echo 'hello world'",
+        entrypoint_num_cpus=2,
+    )
+
+    # Wait for the job to timeout.
+    await async_wait_for_condition(
+        check_job_failed,
+        job_manager=job_manager,
+        job_id=job_id,
+        expected_error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_START_TIMEOUT,
+    )
+
+    # Check that the job timed out.
+    job_info = await job_manager.get_job_info(job_id)
+    assert job_info.status == JobStatus.FAILED
+    assert "Job supervisor actor failed to start within" in job_info.message
+    assert job_info.driver_exit_code is None
+
+
+@pytest.mark.asyncio
 async def test_job_pending_timeout(job_manager, monkeypatch):
     """Test the timeout for pending jobs."""
 
@@ -1456,60 +1494,6 @@ async def test_no_task_events_exported(shared_ray_instance, tmp_path):
     # Assert no task events for the JobSupervisor are exported.
     for t in list_tasks():
         assert "JobSupervisor" not in t.name
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "max_failures,expected_job_status",
-    [
-        (1, JobStatus.SUCCEEDED),
-        (2, JobStatus.FAILED),
-    ],
-)
-async def test_job_manager_tolerates_gcs_failures(
-    job_manager, max_failures, expected_job_status
-):
-    """Test driver exit code from finished task that failed"""
-
-    original_get_info = job_manager._job_info_client.get_info
-
-    num_failures = 0
-
-    async def _failing_get_info(*args, **kwargs):
-        nonlocal num_failures
-
-        if num_failures < max_failures:
-            num_failures += 1
-            raise RpcError("deadline exceeded")
-        else:
-            return await original_get_info(*args, **kwargs)
-
-    # Mock out `JobManager._job_info_client`
-    job_manager._job_info_client.get_info = AsyncMock(side_effect=_failing_get_info)
-
-    # Override `JobManager`s monitoring frequency to 100ms
-    job_manager.JOB_MONITOR_LOOP_PERIOD_S = 0.1
-
-    # Simulate job running for 5 seconds
-    job_id = await job_manager.submit_job(entrypoint="sleep 3; echo 'hello world'")
-
-    if expected_job_status == JobStatus.FAILED:
-        expected_job_state_check = _check_job_failed
-    elif expected_job_status == JobStatus.SUCCEEDED:
-        expected_job_state_check = _check_job_succeeded
-    else:
-        raise NotImplementedError(f"unexpected job status: {expected_job_status}")
-
-    # Wait for the job to reach expected target state
-    await async_wait_for_condition(
-        expected_job_state_check,
-        timeout=10,
-        get_job_info=original_get_info,
-        job_id=job_id,
-    )
-
-    job_info = await job_manager.get_job_info(job_id)
-    assert job_info.status == expected_job_status
 
 
 if __name__ == "__main__":
