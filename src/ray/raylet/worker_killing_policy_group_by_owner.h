@@ -32,7 +32,8 @@ namespace ray {
 
 namespace raylet {
 
-/// Key groups on its owner id.
+/// Key groups on its owner id. For non-retriable lease the owner id is Nil,
+/// Since non-retriable lease forms its own group.
 struct GroupKey {
   explicit GroupKey(const TaskID &owner_id) : owner_id_(owner_id) {}
   const TaskID &owner_id_;
@@ -40,17 +41,21 @@ struct GroupKey {
 
 struct Group {
  public:
-  explicit Group(const TaskID &owner_id) : owner_id_(owner_id) {}
+  Group(const TaskID &owner_id, bool retriable)
+      : owner_id_(owner_id), retriable_(retriable) {}
 
   /// The parent task id of the leases belonging to this group
   const TaskID &OwnerId() const;
+
+  /// Whether leases in this group are retriable.
+  const bool IsRetriable() const;
 
   /// Gets the assigned lease time of the earliest lease of this group, to be
   /// used for group priority.
   const absl::Time GetGrantedLeaseTime() const;
 
   /// Returns the worker to be killed in this group, in LIFO order.
-  std::shared_ptr<WorkerInterface> SelectWorkerToKill() const;
+  const std::shared_ptr<WorkerInterface> SelectWorkerToKill() const;
 
   /// Leases belonging to this group.
   const std::vector<std::shared_ptr<WorkerInterface>> GetAllWorkers() const;
@@ -67,18 +72,25 @@ struct Group {
 
   /// The owner id shared by leases of this group.
   TaskID owner_id_;
+
+  /// Whether the leases are retriable.
+  bool retriable_;
 };
 
-/// Groups leases by its owner id. Prioritizes killing the largest groups first else it
-/// picks the newest group. The "age" of a group is based on the time of its earliest
-/// granted leases. When a group is selected for killing it selects the last submitted
-/// task.
+/// Groups leases by its owner id. Non-retriable leases (whether it be task or actor)
+/// forms its own group. Prioritizes killing groups that are retriable first, else it
+/// picks the largest group, else it picks the newest group. The "age" of a group is based
+/// on the time of its earliest granted leases. When a group is selected for killing it
+/// selects the last submitted task.
+///
+/// When selecting a worker / task to be killed, it will set the task to-be-killed to be
+/// non-retriable if it is the last member of the group, and is retriable otherwise.
 class GroupByOwnerIdWorkerKillingPolicy : public WorkerKillingPolicy {
  public:
-  GroupByOwnerIdWorkerKillingPolicy() = default;
-  std::shared_ptr<WorkerInterface> SelectWorkerToKill(
+  GroupByOwnerIdWorkerKillingPolicy();
+  std::pair<std::shared_ptr<WorkerInterface>, bool> SelectWorkerToKill(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
-      const MemorySnapshot &system_memory) const override;
+      const MemorySnapshot &system_memory) const;
 
  private:
   /// Creates the debug string of the groups created by the policy.

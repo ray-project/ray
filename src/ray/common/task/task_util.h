@@ -35,9 +35,12 @@ struct TaskFailureEntry {
   /// The creation time of this entry.
   std::chrono::steady_clock::time_point creation_time_;
 
-  TaskFailureEntry(const rpc::RayErrorInfo &ray_error_info)
+  /// Whether this task should be retried.
+  bool should_retry_;
+  TaskFailureEntry(const rpc::RayErrorInfo &ray_error_info, bool should_retry)
       : ray_error_info_(ray_error_info),
-        creation_time_(std::chrono::steady_clock::now()) {}
+        creation_time_(std::chrono::steady_clock::now()),
+        should_retry_(should_retry) {}
 };
 
 /// Argument of a task.

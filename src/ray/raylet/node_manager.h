@@ -700,12 +700,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Creates the suggestion message for the worker that is killed due to memory running
   /// low.
   const std::string CreateOomKillMessageSuggestions(
-      const std::shared_ptr<WorkerInterface> &worker) const;
+      const std::shared_ptr<WorkerInterface> &worker, bool should_retry = true) const;
 
   /// Stores the failure reason for the task. The entry will be cleaned up by a periodic
   /// function post TTL.
   void SetWorkerFailureReason(const LeaseID &lease_id,
-                              const rpc::RayErrorInfo &failure_reason);
+                              const rpc::RayErrorInfo &failure_reason,
+                              bool should_retry);
 
   /// Checks the expiry time of the worker failures and garbage collect them.
   void GCWorkerFailureReason();

@@ -51,10 +51,14 @@ LeaseSpecification::LeaseSpecification(const rpc::TaskSpec &task_spec)
   if (IsActorCreationTask()) {
     message_->set_actor_id(task_spec.actor_creation_task_spec().actor_id());
     message_->set_is_detached_actor(task_spec.actor_creation_task_spec().is_detached());
+    message_->set_max_actor_restarts(
+        task_spec.actor_creation_task_spec().max_actor_restarts());
     for (const auto &option :
          task_spec.actor_creation_task_spec().dynamic_worker_options()) {
       message_->add_dynamic_worker_options(option);
     }
+  } else {
+    message_->set_max_retries(task_spec.max_retries());
   }
   ComputeResources();
 }
@@ -130,7 +134,29 @@ BundleID LeaseSpecification::PlacementGroupBundleId() const {
                         pg.placement_group_bundle_index());
 }
 
-bool LeaseSpecification::IsRetry() const { return message_->attempt_number() > 0; }
+int64_t LeaseSpecification::MaxActorRestarts() const {
+  RAY_CHECK(IsActorCreationTask());
+  return message_->max_actor_restarts();
+}
+
+int32_t LeaseSpecification::MaxRetries() const {
+  RAY_CHECK(IsNormalTask());
+  return message_->max_retries();
+}
+
+bool LeaseSpecification::IsRetriable() const {
+  if (IsActorCreationTask() && MaxActorRestarts() == 0) {
+    return false;
+  }
+  if (IsNormalTask() && MaxRetries() == 0) {
+    return false;
+  }
+  return true;
+}
+
+int32_t LeaseSpecification::AttemptNumber() const { return message_->attempt_number(); }
+
+bool LeaseSpecification::IsRetry() const { return AttemptNumber() > 0; }
 
 std::string LeaseSpecification::GetTaskName() const { return message_->task_name(); }
 
@@ -188,12 +214,16 @@ std::string LeaseSpecification::DebugString() const {
   stream << FunctionDescriptor()->ToString();
 
   stream << ", lease_id=" << LeaseId() << ", task_name=" << GetTaskName()
-         << ", job_id=" << JobId() << ", depth=" << GetDepth();
+         << ", job_id=" << JobId() << ", depth=" << GetDepth()
+         << ", attempt_number=" << AttemptNumber();
 
   if (IsActorCreationTask()) {
     // Print actor creation task spec.
     stream << ", actor_creation_task_spec={actor_id=" << ActorId()
+           << ", max_restarts=" << MaxActorRestarts()
            << ", is_detached=" << IsDetachedActor() << "}";
+  } else {
+    stream << ", normal_task_spec={max_retries=" << MaxRetries() << "}";
   }
 
   // Print non-sensitive runtime env info.
