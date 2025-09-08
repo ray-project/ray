@@ -273,11 +273,8 @@ class ReplicaMetricsManager:
         await self._metrics_pusher.graceful_shutdown()
 
     def should_collect_metrics(self) -> bool:
-
-        return (
-            not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
-            and self._autoscaling_config
-        )
+        # At this time self.user_callable_wrapper._user_autoscaling_stats is not initialized yet, must check during runtime
+        return self._autoscaling_config is not None
 
     def set_autoscaling_config(self, autoscaling_config: Optional[AutoscalingConfig]):
         """Dynamically update autoscaling config."""
@@ -337,19 +334,20 @@ class ReplicaMetricsManager:
     def _push_autoscaling_metrics(self) -> Dict[str, Any]:
         look_back_period = self._autoscaling_config.look_back_period_s
         self._metrics_store.prune_keys_and_compact_data(time.time() - look_back_period)
+
+        new_aggregated_metrics = {}
+        new_metrics = {**self._metrics_store.data}
+        
+        if not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+            # Keep the legacy window_avg ongoing requests in the merged metrics dict
+            window_avg = self._metrics_store.aggregate_avg([self._replica_id])[0] or 0.0
+            new_aggregated_metrics.update({RUNNING_REQUESTS_KEY: window_avg})
+
         replica_metric_report = ReplicaMetricReport(
             replica_id=self._replica_id,
             timestamp=time.time(),
-            aggregated_metrics={
-                RUNNING_REQUESTS_KEY: self._metrics_store.aggregate_avg(
-                    [self._replica_id]
-                )[0]
-                or 0.0
-            },
-            metrics={
-                RUNNING_REQUESTS_KEY: self._metrics_store.data.get(self._replica_id, [])
-                **self._metrics_store.data
-            },
+            aggregated_metrics=new_aggregated_metrics,
+            metrics=new_metrics
         )
         self._controller_handle.record_autoscaling_metrics_from_replica.remote(
             replica_metric_report
@@ -365,7 +363,11 @@ class ReplicaMetricsManager:
         )
 
     async def _add_autoscaling_metrics_point_async(self) -> None:
-        metrics_dict = self._replica_ongoing_requests()
+        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+            metrics_dict = {}
+        else:
+            metrics_dict = self._replica_ongoing_requests()
+
         if self.user_callable_wrapper._user_autoscaling_stats:
             try:
                 res = await asyncio.wait_for(
