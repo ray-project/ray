@@ -179,11 +179,11 @@ namespace gcs {
 bool is_uuid(const std::string &str) {
   static const boost::regex e(
       "[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89aAbB][a-f0-9]{3}-[a-f0-9]{12}");
-  return regex_match(str, e);  // note: case sensitive now
+  return regex_match(str, e);  // note: case-sensitive now
 }
 
 const ray::rpc::ActorDeathCause GcsActorManager::GenNodeDiedCause(
-    const ray::gcs::GcsActor *actor, std::shared_ptr<rpc::GcsNodeInfo> node) {
+    const ray::gcs::GcsActor *actor, std::shared_ptr<const rpc::GcsNodeInfo> node) {
   ray::rpc::ActorDeathCause death_cause;
 
   auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
@@ -1202,7 +1202,7 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
   RestartActor(actor_id, /*need_reschedule=*/need_reconstruct, death_cause);
 }
 
-void GcsActorManager::OnNodeDead(std::shared_ptr<rpc::GcsNodeInfo> node,
+void GcsActorManager::OnNodeDead(std::shared_ptr<const rpc::GcsNodeInfo> node,
                                  const std::string node_ip_address) {
   const auto node_id = NodeID::FromBinary(node->node_id());
   RAY_LOG(INFO).WithField(node_id) << "Node is dead, reconstructing actors.";
@@ -1386,7 +1386,7 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
         *mutable_actor_table_data,
         {[this, actor, actor_id, mutable_actor_table_data, death_cause, done_callback](
              Status status) {
-           // If actor was an detached actor, make sure to destroy it.
+           // If actor was a detached actor, make sure to destroy it.
            // We need to do this because detached actors are not destroyed
            // when its owners are dead because it doesn't have owners.
            if (actor->IsDetached()) {

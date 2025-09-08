@@ -754,7 +754,7 @@ void GcsServer::InitGcsTaskManager() {
 void GcsServer::InstallEventListeners() {
   // Install node event listeners.
   gcs_node_manager_->AddNodeAddedListener(
-      [this](const std::shared_ptr<rpc::GcsNodeInfo> &node) {
+      [this](const std::shared_ptr<const rpc::GcsNodeInfo> &node) {
         // Because a new node has been added, we need to try to schedule the pending
         // placement groups and the pending actors.
         auto node_id = NodeID::FromBinary(node->node_id());
@@ -774,9 +774,10 @@ void GcsServer::InstallEventListeners() {
           gcs_healthcheck_manager_->AddNode(node_id, channel);
         }
         cluster_lease_manager_->ScheduleAndGrantLeases();
-      });
+      },
+      io_context_provider_.GetDefaultIOContext());
   gcs_node_manager_->AddNodeRemovedListener(
-      [this](const std::shared_ptr<rpc::GcsNodeInfo> &node) {
+      [this](const std::shared_ptr<const rpc::GcsNodeInfo> &node) {
         auto node_id = NodeID::FromBinary(node->node_id());
         const auto node_ip_address = node->node_manager_address();
         // All of the related placement groups and actors should be reconstructed when a
@@ -790,7 +791,8 @@ void GcsServer::InstallEventListeners() {
         gcs_healthcheck_manager_->RemoveNode(node_id);
         pubsub_handler_->AsyncRemoveSubscriberFrom(node_id.Binary());
         gcs_autoscaler_state_manager_->OnNodeDead(node_id);
-      });
+      },
+      io_context_provider_.GetDefaultIOContext());
 
   // Install worker event listener.
   gcs_worker_manager_->AddWorkerDeadListener(

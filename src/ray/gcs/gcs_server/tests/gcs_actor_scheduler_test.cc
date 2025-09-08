@@ -158,7 +158,8 @@ class GcsActorSchedulerTest : public ::testing::Test {
           auto resource_map = MapFromProtobuf(node->resources_total());
           auto node_resources = ResourceMapToNodeResources(resource_map, resource_map);
           cluster_resource_manager.AddOrUpdateNode(node_id, node_resources);
-        });
+        },
+        io_context_->GetIoService());
   }
 
   void TearDown() override { io_context_->Stop(); }
