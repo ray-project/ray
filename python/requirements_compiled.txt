@@ -34,12 +34,6 @@ aimrecords==0.0.7
     # via aim
 aimrocks==0.5.2
     # via aim
-aioboto3==11.3.0
-    # via -r python/requirements/ml/data-requirements.txt
-aiobotocore==2.6.0
-    # via
-    #   aioboto3
-    #   s3fs
 aiofiles==22.1.0
     # via
     #   aim
@@ -1967,8 +1961,6 @@ ruamel-yaml-clib==0.2.8
     # via ruamel-yaml
 s3fs==2023.12.1
     # via -r python/requirements/ml/core-requirements.txt
-s3transfer==0.6.2
-    # via boto3
 safetensors==0.4.3
     # via
     #   accelerate
