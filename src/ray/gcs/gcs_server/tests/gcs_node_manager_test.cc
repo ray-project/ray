@@ -76,10 +76,10 @@ TEST_F(GcsNodeManagerTest, TestListener) {
   std::condition_variable callback_cv;
   size_t callbacks_remaining = node_count;
 
-  std::vector<std::shared_ptr<rpc::GcsNodeInfo>> added_nodes;
+  std::vector<std::shared_ptr<const rpc::GcsNodeInfo>> added_nodes;
   node_manager.AddNodeAddedListener(
       [&added_nodes, &callback_mutex, &callbacks_remaining, &callback_cv](
-          std::shared_ptr<rpc::GcsNodeInfo> node) {
+          std::shared_ptr<const rpc::GcsNodeInfo> node) {
         added_nodes.emplace_back(std::move(node));
         {
           std::lock_guard<std::mutex> lock(callback_mutex);
@@ -115,10 +115,10 @@ TEST_F(GcsNodeManagerTest, TestListener) {
 
   // reset the counter
   callbacks_remaining = node_count;
-  std::vector<std::shared_ptr<rpc::GcsNodeInfo>> removed_nodes;
+  std::vector<std::shared_ptr<const rpc::GcsNodeInfo>> removed_nodes;
   node_manager.AddNodeRemovedListener(
       [&removed_nodes, &callback_mutex, &callback_cv, &callbacks_remaining](
-          std::shared_ptr<rpc::GcsNodeInfo> node) {
+          std::shared_ptr<const rpc::GcsNodeInfo> node) {
         removed_nodes.emplace_back(std::move(node));
         {
           std::lock_guard<std::mutex> lock(callback_mutex);

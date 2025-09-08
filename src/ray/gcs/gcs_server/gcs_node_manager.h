@@ -340,7 +340,7 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
     GET_ALL_NODE_INFO_REQUEST = 2,
     CountType_MAX = 3,
   };
-  uint64_t counts_[CountType::CountType_MAX] = {0};
+  std::atomic<uint64_t> counts_[CountType::CountType_MAX] = {0};
 
   /// If true, node events are exported for Export API
   bool export_event_write_enabled_ = false;
