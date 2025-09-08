@@ -35,6 +35,7 @@
 #include "ray/common/buffer.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/object_manager/plasma/client.h"
+#include "ray/observability/fake_metric.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/tests/util.h"
@@ -395,6 +396,7 @@ class NodeManagerTest : public ::testing::Test {
     core_worker_subscriber_ = std::make_unique<pubsub::FakeSubscriber>();
     mock_object_directory_ = std::make_unique<MockObjectDirectory>();
     mock_object_manager_ = std::make_unique<MockObjectManager>();
+    fake_task_by_state_counter_ = ray::observability::FakeMetric();
 
     EXPECT_CALL(*mock_object_manager_, GetMemoryCapacity()).WillRepeatedly(Return(0));
 
@@ -418,8 +420,8 @@ class NodeManagerTest : public ::testing::Test {
     local_object_manager_ =
         std::make_unique<FakeLocalObjectManager>(objects_pending_deletion_);
 
-    lease_dependency_manager_ =
-        std::make_unique<LeaseDependencyManager>(*mock_object_manager_);
+    lease_dependency_manager_ = std::make_unique<LeaseDependencyManager>(
+        *mock_object_manager_, fake_task_by_state_counter_);
 
     cluster_resource_scheduler_ = std::make_unique<ClusterResourceScheduler>(
         io_service_,
@@ -527,6 +529,7 @@ class NodeManagerTest : public ::testing::Test {
   MockWorkerPool mock_worker_pool_;
   absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::shared_ptr<absl::flat_hash_set<ObjectID>> objects_pending_deletion_;
+  ray::observability::FakeMetric fake_task_by_state_counter_;
 };
 
 TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
@@ -998,6 +1001,80 @@ TEST_P(NodeManagerReturnWorkerLeaseIdempotentTest, TestDifferentRequestArgs) {
 INSTANTIATE_TEST_SUITE_P(NodeManagerReturnWorkerLeaseIdempotentVariations,
                          NodeManagerReturnWorkerLeaseIdempotentTest,
                          testing::Combine(testing::Bool(), testing::Bool()));
+
+size_t GetPendingLeaseWorkerCount(const LocalLeaseManager &local_lease_manager) {
+  return local_lease_manager.waiting_lease_queue_.size() +
+         local_lease_manager.leases_to_grant_.size();
+}
+
+TEST_F(NodeManagerTest, RetryHandleCancelWorkerLeaseWhenHasLeaseRequest) {
+  auto lease_spec = BuildLeaseSpec({});
+  rpc::RequestWorkerLeaseRequest request_worker_lease_request;
+  rpc::RequestWorkerLeaseReply request_worker_lease_reply;
+  LeaseID lease_id = LeaseID::FromRandom();
+  lease_spec.GetMutableMessage().set_lease_id(lease_id.Binary());
+  request_worker_lease_request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
+  request_worker_lease_request.set_backlog_size(1);
+  request_worker_lease_request.set_grant_or_reject(true);
+  request_worker_lease_request.set_is_selected_based_on_locality(true);
+  node_manager_->HandleRequestWorkerLease(
+      request_worker_lease_request,
+      &request_worker_lease_reply,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(GetPendingLeaseWorkerCount(*local_lease_manager_), 1);
+  rpc::CancelWorkerLeaseRequest cancel_worker_lease_request;
+  cancel_worker_lease_request.set_lease_id(lease_id.Binary());
+  rpc::CancelWorkerLeaseReply cancel_worker_lease_reply1;
+  rpc::CancelWorkerLeaseReply cancel_worker_lease_reply2;
+  node_manager_->HandleCancelWorkerLease(
+      cancel_worker_lease_request,
+      &cancel_worker_lease_reply1,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(GetPendingLeaseWorkerCount(*local_lease_manager_), 0);
+  node_manager_->HandleCancelWorkerLease(
+      cancel_worker_lease_request,
+      &cancel_worker_lease_reply2,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(GetPendingLeaseWorkerCount(*local_lease_manager_), 0);
+  ASSERT_EQ(cancel_worker_lease_reply1.success(), true);
+  // Due to the message reordering case where the cancel worker lease request
+  // arrives at the raylet before the worker lease request has been received, we
+  // cannot return true on the retry since from the raylet perspective both situations are
+  // equivalent. Even if this returns false, the first request to HandleCancelWorkerLease
+  // will trigger the callback for HandleRequestWorkerLease and remove the pending lease
+  // request which prevents the CancelWorkerLease loop.
+  ASSERT_EQ(cancel_worker_lease_reply2.success(), false);
+}
+
+TEST_F(NodeManagerTest, TestHandleCancelWorkerLeaseNoLeaseIdempotent) {
+  LeaseID lease_id = LeaseID::FromRandom();
+  rpc::CancelWorkerLeaseRequest request;
+  request.set_lease_id(lease_id.Binary());
+  rpc::CancelWorkerLeaseReply reply1;
+  rpc::CancelWorkerLeaseReply reply2;
+  node_manager_->HandleCancelWorkerLease(
+      request,
+      &reply1,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(GetPendingLeaseWorkerCount(*local_lease_manager_), 0);
+  node_manager_->HandleCancelWorkerLease(
+      request,
+      &reply2,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(GetPendingLeaseWorkerCount(*local_lease_manager_), 0);
+  ASSERT_EQ(reply1.success(), false);
+  ASSERT_EQ(reply2.success(), false);
+}
 
 }  // namespace ray::raylet
 

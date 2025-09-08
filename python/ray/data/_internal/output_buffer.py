@@ -90,7 +90,7 @@ class BlockOutputBuffer:
                 self._exceeded_buffer_row_limit() or self._exceeded_buffer_size_limit()
             )
 
-    def _exceeded_block_size_slice_limit(self, block: Block) -> bool:
+    def _exceeded_block_size_slice_limit(self, block: BlockAccessor) -> bool:
         # Slice a block to respect the target max block size. We only do this if we are
         # more than 50% above the target block size, because this ensures that the last
         # block produced will be at least half the target block size.
@@ -101,7 +101,7 @@ class BlockOutputBuffer:
             * self._output_block_size_option.target_max_block_size
         )
 
-    def _exceeded_block_row_slice_limit(self, block: Block) -> bool:
+    def _exceeded_block_row_slice_limit(self, block: BlockAccessor) -> bool:
         # Slice a block to respect the target max rows per block. We only do this if we
         # are more than 50% above the target rows per block, because this ensures that
         # the last block produced will be at least half the target row count.
