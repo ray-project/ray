@@ -165,12 +165,14 @@ def _s3_fs(aws_credentials, s3_server, s3_path):
         # Explicit cleanup for S3FileSystem resources
         if fs is not None:
             try:
-                # Clean up any remaining files in the test directory
-                if hasattr(fs, "delete_dir_contents"):
-                    fs.delete_dir_contents(s3_path, missing_ok=True)
-                # Close any open connections
-                if hasattr(fs, "close"):
-                    fs.close()
+                # Clean up test directory if it exists
+                try:
+                    file_info = fs.get_file_info(s3_path)
+                    if file_info.type != pa.fs.FileType.NotFound:
+                        fs.delete_dir(s3_path)
+                except (OSError, pa.lib.ArrowIOError):
+                    # Directory doesn't exist or can't be deleted, that's fine
+                    pass
             except Exception as e:
                 print(f"Warning: S3 filesystem cleanup error: {e}")
             finally:
