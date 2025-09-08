@@ -28,7 +28,6 @@ from ray.dashboard.consts import (
 )
 from ray.dashboard.modules.job.common import JOB_ID_METADATA_KEY, JOB_NAME_METADATA_KEY
 from ray.dashboard.modules.job.job_manager import (
-    RAY_JOB_MANAGER_MONITOR_MAX_CONSECUTIVE_FAILURES,
     JobLogStorageClient,
     JobManager,
     JobSupervisor,
@@ -1459,11 +1458,12 @@ async def test_no_task_events_exported(shared_ray_instance, tmp_path):
         assert "JobSupervisor" not in t.name
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "max_failures,expected_job_status",
     [
-        (RAY_JOB_MANAGER_MONITOR_MAX_CONSECUTIVE_FAILURES - 1, JobStatus.SUCCEEDED),
-        (RAY_JOB_MANAGER_MONITOR_MAX_CONSECUTIVE_FAILURES + 1, JobStatus.FAILED),
+        (1, JobStatus.SUCCEEDED),
+        (2, JobStatus.FAILED),
     ],
 )
 async def test_job_manager_tolerates_gcs_failures(
@@ -1508,9 +1508,7 @@ async def test_job_manager_tolerates_gcs_failures(
         job_id=job_id,
     )
 
-    # Check that the job failed
     job_info = await job_manager.get_job_info(job_id)
-
     assert job_info.status == expected_job_status
 
 

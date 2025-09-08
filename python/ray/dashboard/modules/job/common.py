@@ -260,7 +260,11 @@ class JobInfoStorageClient:
             )
 
     async def put_info(
-        self, job_id: str, job_info: JobInfo, overwrite: bool = True
+        self,
+        job_id: str,
+        job_info: JobInfo,
+        overwrite: bool = True,
+        timeout: Optional[int] = None,
     ) -> bool:
         """Put job info to the internal kv store.
 
@@ -277,6 +281,7 @@ class JobInfoStorageClient:
             json.dumps(job_info.to_json()).encode(),
             overwrite,
             namespace=ray_constants.KV_NAMESPACE_JOB,
+            timeout=timeout,
         )
         if added_num == 1 or overwrite:
             # Write export event if data was updated in the KV store
@@ -353,10 +358,11 @@ class JobInfoStorageClient:
         driver_exit_code: Optional[int] = None,
         error_type: Optional[JobErrorType] = None,
         jobinfo_replace_kwargs: Optional[Dict[str, Any]] = None,
+        timeout: Optional[int] = None,
     ):
         """Puts or updates job status.  Sets end_time if status is terminal."""
 
-        old_info = await self.get_info(job_id)
+        old_info = await self.get_info(job_id, timeout=timeout)
 
         if jobinfo_replace_kwargs is None:
             jobinfo_replace_kwargs = dict()
@@ -378,10 +384,10 @@ class JobInfoStorageClient:
         if status.is_terminal():
             new_info.end_time = int(time.time() * 1000)
 
-        await self.put_info(job_id, new_info)
+        await self.put_info(job_id, new_info, timeout=timeout)
 
-    async def get_status(self, job_id: str) -> Optional[JobStatus]:
-        job_info = await self.get_info(job_id)
+    async def get_status(self, job_id: str, timeout: int = 30) -> Optional[JobStatus]:
+        job_info = await self.get_info(job_id, timeout)
         if job_info is None:
             return None
         else:
