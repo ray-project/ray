@@ -32,7 +32,7 @@ class ActorCreatorTest : public ::testing::Test {
   ActorCreatorTest() {}
   void SetUp() override {
     gcs_client = std::make_shared<ray::gcs::MockGcsClient>();
-    actor_creator = std::make_unique<ActorCreator>(gcs_client);
+    actor_creator = std::make_unique<ActorCreator>(gcs_client->Actors());
   }
   TaskSpecification GetTaskSpec(const ActorID &actor_id) {
     rpc::TaskSpec task_spec;
