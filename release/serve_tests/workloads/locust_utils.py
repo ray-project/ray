@@ -127,6 +127,10 @@ class LocustWorker(LocustClient):
         master_address: str,
         data: Dict[str, Any] = None,
     ):
+        import os
+
+        os.environ["LOCUST_SKIP_MONKEY_PATCH"] = "1"
+
         # NOTE(zcin): We need to lazily import locust because the driver
         # script won't connect to ray properly otherwise.
         import locust
@@ -156,6 +160,10 @@ class LocustMaster(LocustClient):
         stages: List[LocustStage],
         wait_for_workers_timeout_s: float,
     ):
+        import os
+
+        os.environ["LOCUST_SKIP_MONKEY_PATCH"] = "1"
+
         # NOTE(zcin): We need to lazily import locust because the driver
         # script won't connect to ray properly otherwise.
         import locust
