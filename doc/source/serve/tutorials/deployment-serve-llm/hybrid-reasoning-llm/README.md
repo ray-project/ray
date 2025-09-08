@@ -27,7 +27,7 @@ This tutorial deploys a hybrid reasoning LLM using Ray Serve LLM.
 <!-- vale Google.Acronyms = YES -->
 **Note:** Reasoning often benefits from long context windows (32K up to +1M tokens), high token throughput, low-temperature decoding (greedy sampling), and strong instruction tuning or scratchpad-style reasoning.
 
-To see an example of deploying a purely reasoning model like *QwQ-32&nbsp;B*, see [Deploying a reasoning LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/reasoning-llm/notebook.html).
+To see an example of deploying a purely reasoning model like *QwQ-32&nbsp;B*, see [Deploying a reasoning LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/reasoning-llm/README.html).
 
 ---
 
@@ -156,7 +156,7 @@ app = build_openai_app({"llm_configs": [llm_config]})
 **Prerequisites**
 
 * Access to GPU compute.
-* (Optional) A **Hugging Face token** if using gated models like Meta’s Llama. Store it in `export HF_TOKEN=<YOUR-TOKEN-HERE>`.
+* (Optional) A **Hugging Face token** if using gated models like. Store it in `export HF_TOKEN=<YOUR-TOKEN-HERE>`.
 
 **Note:** Depending on the organization, you can usually request access on the model's Hugging Face page. For example, Meta’s Llama models approval can take anywhere from a few hours to several weeks.
 
@@ -191,7 +191,7 @@ Use the `model_id` defined in your config (here, `my-qwen-3-32b`) to query your 
 
 You can disable thinking in Qwen-3 by either adding a `/no_think` tag in the prompt or by forwarding `enable_thinking: False` to the vLLM inference engine.  
 
-Example curl with `/no_think`
+Example curl with `/no_think`:
 
 
 ```bash
@@ -199,10 +199,7 @@ Example curl with `/no_think`
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer FAKE_KEY" \
-  -d '{ \
-        "model": "my-qwen-3-32b", \
-        "messages": [{"role": "user", "content": "What is greater between 7.8 and 7.11 ? /no_think"}] \
-      }'
+  -d '{ "model": "my-qwen-3-32b", "messages": [{"role": "user", "content": "What is greater between 7.8 and 7.11 ? /no_think"}] }'
 ```
 
 Example Python with `enable_thinking: False`:
@@ -240,7 +237,7 @@ Notice the `reasoning_content` is empty here.
  
 You can enable thinking in Qwen-3 by either adding a `/think` tag in the prompt or by forwarding `enable_thinking: True` to the vLLM inference engine.  
 
-Example curl with `/think`
+Example curl with `/think`:
 
 
 ```bash
@@ -248,10 +245,7 @@ Example curl with `/think`
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer FAKE_KEY" \
-  -d '{ \
-        "model": "my-qwen-3-32b", \
-        "messages": [{"role": "user", "content": "What is greater between 7.8 and 7.11 ? /think"}] \
-      }'
+  -d '{ "model": "my-qwen-3-32b", "messages": [{"role": "user", "content": "What is greater between 7.8 and 7.11 ? /think"}] }'
 ```
 
  Example Python with `enable_thinking: True`:
@@ -299,7 +293,7 @@ serve shutdown -y
 
 ## Deploy to production with Anyscale services
 
-For production, it's recommended to use Anyscale services to deploy your Ray Serve app on a dedicated cluster without any code changes. Anyscale provides scalability, fault tolerance, and load balancing, ensuring resilience against node failures, high traffic, and rolling updates. See [Deploying a medium-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html#production-deployment-with-anyscale-service) for an example with a medium-sized model like the *Qwen-32b* from this tutorial.
+For production, it's recommended to use Anyscale services to deploy your Ray Serve app on a dedicated cluster without any code changes. Anyscale provides scalability, fault tolerance, and load balancing, ensuring resilience against node failures, high traffic, and rolling updates. See [Deploying a medium-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html#deploy-to-production-with-anyscale-services) for an example with a medium-sized model like the *Qwen-32b* from this tutorial.
 
 ---
 

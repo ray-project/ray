@@ -131,7 +131,7 @@ app = build_openai_app({"llm_configs": [llm_config]})
 **Prerequisites**
 
 * Access to GPU compute.
-* (Optional) A **Hugging Face token** if using gated models like Meta’s Llama. Store it in `export HF_TOKEN=<YOUR-TOKEN-HERE>`
+* (Optional) A **Hugging Face token** if using gated models. Store it in `export HF_TOKEN=<YOUR-TOKEN-HERE>`
 
 **Note:** Depending on the organization, you can usually request access on the model's Hugging Face page. For example, Meta’s Llama models approval can take anywhere from a few hours to several weeks.
 
@@ -170,13 +170,10 @@ Example curl:
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Authorization: Bearer FAKE_KEY" \
   -H "Content-Type: application/json" \
-  -d '{ \
-        "model": "my-qwq-32B", \
-        "messages": [{"role": "user", "content": "Pick three random words with 3 syllables each and count the number of R'\''s in each of them"}] \
-      }'
+  -d '{ "model": "my-qwq-32B", "messages": [{"role": "user", "content": "Pick three random words with 3 syllables each and count the number of R'\''s in each of them"}] }'
 ```
 
-Example python:
+Example Python:
 
 
 ```python
@@ -219,7 +216,7 @@ serve shutdown -y
 
 ## Deploy to production with Anyscale services
 
-For production, use Anyscale services to deploy your Ray Serve app on a dedicated cluster without code changes. Anyscale provides scalability, fault tolerance, and load balancing, ensuring resilience against node failures, high traffic, and rolling updates. See [Deploying a medium size LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html#deploy-to-production-with-anyscale-services) for an example with a medium-sized model like the *QwQ-32&nbsp;B* used here.
+For production, use Anyscale services to deploy your Ray Serve app on a dedicated cluster without code changes. Anyscale provides scalability, fault tolerance, and load balancing, ensuring resilience against node failures, high traffic, and rolling updates. See [Deploying a medium-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html#deploy-to-production-with-anyscale-services) for an example with a medium-sized model like the *QwQ-32&nbsp;B* used here.
 
 ---
 
