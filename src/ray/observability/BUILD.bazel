@@ -31,7 +31,7 @@ ray_cc_library(
         "ray_event_interface.h",
     ],
     deps = [
-        "//src/ray/protobuf:events_base_event_cc_proto",
+        "//src/ray/protobuf/public:events_base_event_cc_proto",
     ],
 )
 
@@ -74,6 +74,34 @@ ray_cc_library(
     deps = [
         ":ray_event",
         "//src/ray/protobuf/public:events_driver_job_execution_event_cc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "ray_actor_definition_event",
+    srcs = [
+        "ray_actor_definition_event.cc",
+    ],
+    hdrs = [
+        "ray_actor_definition_event.h",
+    ],
+    deps = [
+        ":ray_event",
+        "//src/ray/protobuf/public:events_actor_definition_event_cc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "ray_actor_lifecycle_event",
+    srcs = [
+        "ray_actor_lifecycle_event.cc",
+    ],
+    hdrs = [
+        "ray_actor_lifecycle_event.h",
+    ],
+    deps = [
+        ":ray_event",
+        "//src/ray/protobuf/public:events_actor_lifecycle_event_cc_proto",
     ],
 )
 

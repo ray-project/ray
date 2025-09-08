@@ -23,7 +23,7 @@
 #include "ray/observability/ray_event_recorder_interface.h"
 #include "ray/rpc/event_aggregator_client.h"
 #include "ray/util/logging.h"
-#include "src/ray/protobuf/events_base_event.pb.h"
+#include "src/ray/protobuf/public/events_base_event.pb.h"
 
 namespace ray {
 namespace observability {

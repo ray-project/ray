@@ -18,7 +18,7 @@
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/observability/ray_event_interface.h"
-#include "src/ray/protobuf/events_base_event.pb.h"
+#include "src/ray/protobuf/public/events_base_event.pb.h"
 
 namespace ray {
 namespace observability {
