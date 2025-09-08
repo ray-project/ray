@@ -69,6 +69,7 @@ class ProtocolsProvider:
                 # No credentials found, fall back to an unsigned client for public buckets.
                 from botocore import UNSIGNED
                 from botocore.config import Config
+
                 return boto3.client("s3", config=Config(signature_version=UNSIGNED))
 
         transport_params = {"client": create_s3_client_with_fallback()}
