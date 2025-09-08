@@ -28,9 +28,7 @@
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
-#include <iterator>
 #include <string>
-#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -297,61 +295,28 @@ Status SysFsCgroupDriver::DisableController(const std::string &cgroup_path,
   return Status::OK();
 }
 
-Status SysFsCgroupDriver::AddConstraint(const std::string &cgroup,
+Status SysFsCgroupDriver::AddConstraint(const std::string &cgroup_path,
+                                        const std::string &controller,
                                         const std::string &constraint,
                                         const std::string &constraint_value) {
-  RAY_RETURN_NOT_OK(CheckCgroup(cgroup));
-  auto constraint_it = supported_constraints_.find(constraint);
-  if (constraint_it == supported_constraints_.end()) {
-    std::string supported_constraint_names("[");
-    for (auto it = supported_constraints_.begin(); it != supported_constraints_.end();
-         ++it) {
-      supported_constraint_names.append(it->first);
-      if (std::next(it) != supported_constraints_.end()) {
-        supported_constraint_names.append(", ");
-      }
-    }
-    supported_constraint_names.append("]");
-    return Status::InvalidArgument(absl::StrFormat(
-        "Failed to apply constraint %s to cgroup %s. Ray only supports %s",
-        constraint,
-        cgroup,
-        supported_constraint_names));
-  }
-
-  // Check if the constraint value is out of range and therefore invalid.
-  auto [low, high] = constraint_it->second.range;
-  size_t value = static_cast<size_t>(std::stoi(constraint_value));
-  if (value < low || value > high) {
-    return Status::InvalidArgument(absl::StrFormat(
-        "Failed to apply constraint %s=%s to cgroup %s. %s can only have values "
-        "in the range[%i, %i].",
-        constraint,
-        constraint_value,
-        cgroup,
-        constraint,
-        low,
-        high));
-  }
-
+  RAY_RETURN_NOT_OK(CheckCgroup(cgroup_path));
   // Check if the required controller for the constraint is enabled.
-  const std::string &controller = constraint_it->second.controller;
   StatusOr<std::unordered_set<std::string>> available_controllers_s =
-      GetEnabledControllers(cgroup);
+      GetEnabledControllers(cgroup_path);
   RAY_RETURN_NOT_OK(available_controllers_s.status());
   const auto &controllers = available_controllers_s.value();
   if (controllers.find(controller) == controllers.end()) {
     return Status::InvalidArgument(absl::StrFormat(
         "Failed to apply %s to cgroup %s. To use %s, enable the %s controller.",
         constraint,
-        cgroup,
+        cgroup_path,
         constraint,
         controller));
   }
 
   // Try to apply the constraint and propagate the appropriate failure error.
   std::string file_path =
-      cgroup + std::filesystem::path::preferred_separator + constraint;
+      cgroup_path + std::filesystem::path::preferred_separator + constraint;
 
   int fd = open(file_path.c_str(), O_RDWR);
 
@@ -361,7 +326,7 @@ Status SysFsCgroupDriver::AddConstraint(const std::string &cgroup,
                         "Error: %s",
                         constraint,
                         constraint_value,
-                        cgroup,
+                        cgroup_path,
                         strerror(errno)));
   }
 
@@ -374,7 +339,7 @@ Status SysFsCgroupDriver::AddConstraint(const std::string &cgroup,
                         "Error: %s",
                         constraint,
                         constraint_value,
-                        cgroup,
+                        cgroup_path,
                         strerror(errno)));
   }
   close(fd);
