@@ -681,8 +681,8 @@ class TestS3Protocol:
 
     def test_s3_client_creation_with_credentials(self):
         """Test S3 client creation when credentials are available."""
-        import unittest.mock as mock
         import sys
+        import unittest.mock as mock
 
         # Mock boto3 and smart_open modules
         mock_boto3 = mock.MagicMock()
@@ -720,8 +720,8 @@ class TestS3Protocol:
 
     def test_s3_client_creation_without_credentials(self):
         """Test S3 client creation falls back to unsigned when no credentials."""
-        import unittest.mock as mock
         import sys
+        import unittest.mock as mock
 
         # Mock boto3 and botocore modules
         mock_boto3 = mock.MagicMock()
