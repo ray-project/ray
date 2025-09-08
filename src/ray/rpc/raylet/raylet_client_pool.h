@@ -24,7 +24,7 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
-#include "ray/raylet_client/raylet_client_interface.h"
+#include "ray/rpc/raylet/raylet_client_interface.h"
 
 namespace ray {
 namespace rpc {
