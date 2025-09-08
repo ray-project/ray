@@ -55,6 +55,7 @@ CONFIGURATIONS = {
         "save_steps": None,
         "logging_steps": None,
         "no_cuda": False,
+        "use_dict_eval_datasets": False
     },
     "steps_gpu": {
         "evaluation_strategy": "steps",
@@ -64,6 +65,7 @@ CONFIGURATIONS = {
         "save_steps": STEPS_PER_EPOCH * 2,
         "logging_steps": 1,
         "no_cuda": False,
+        "use_dict_eval_datasets": False
     },
     "steps_cpu": {
         "evaluation_strategy": "steps",
@@ -73,6 +75,7 @@ CONFIGURATIONS = {
         "save_steps": STEPS_PER_EPOCH,
         "logging_steps": 1,
         "no_cuda": True,
+        "use_dict_eval_datasets": False
     },
 }
 
