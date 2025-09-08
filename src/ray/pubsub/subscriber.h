@@ -70,11 +70,11 @@ class SubscriberChannel {
   ///
   /// \param publisher_address Address of the publisher to subscribe the object.
   /// \param message id The message id to subscribe from the publisher.
-  /// \param subscription_callback A callback that is invoked whenever the given object
-  /// information is published.
-  /// \param subscription_failure_callback A callback that is
-  /// invoked whenever the publisher is dead (or failed).
-  bool Subscribe(const rpc::Address &publisher_address,
+  /// \param subscription_item_callback A callback that is invoked whenever the given
+  /// object information is published.
+  /// \param subscription_failure_callback A callback that is invoked whenever the
+  /// publisher is dead (or failed).
+  void Subscribe(const rpc::Address &publisher_address,
                  const std::optional<std::string> &key_id,
                  SubscriptionItemCallback subscription_item_callback,
                  SubscriptionFailureCallback subscription_failure_callback);
@@ -129,7 +129,7 @@ class SubscriberChannel {
   }
 
   /// Return the channel type of this subscribe channel.
-  const rpc::ChannelType GetChannelType() const { return channel_type_; }
+  rpc::ChannelType GetChannelType() const { return channel_type_; }
 
   /// Return the statistics of the specific channel.
   std::string DebugString() const;
@@ -149,14 +149,14 @@ class SubscriberChannel {
     const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
     auto subscription_it = subscription_map_.find(publisher_id);
     if (subscription_it == subscription_map_.end()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     if (subscription_it->second.all_entities_subscription != nullptr) {
       return subscription_it->second.all_entities_subscription->item_cb;
     }
     auto callback_it = subscription_it->second.per_entity_subscription.find(key_id);
     if (callback_it == subscription_it->second.per_entity_subscription.end()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     return callback_it->second.item_cb;
   }
@@ -168,14 +168,14 @@ class SubscriberChannel {
     const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
     auto subscription_it = subscription_map_.find(publisher_id);
     if (subscription_it == subscription_map_.end()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     if (subscription_it->second.all_entities_subscription != nullptr) {
       return subscription_it->second.all_entities_subscription->failure_cb;
     }
     auto callback_it = subscription_it->second.per_entity_subscription.find(key_id);
     if (callback_it == subscription_it->second.per_entity_subscription.end()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     return callback_it->second.failure_cb;
   }
@@ -223,39 +223,26 @@ class Subscriber : public SubscriberInterface {
       instrumented_io_context *callback_service)
       : subscriber_id_(subscriber_id),
         max_command_batch_size_(max_command_batch_size),
-        get_client_(get_client) {
+        get_client_(std::move(get_client)) {
     for (auto type : channels) {
       channels_.emplace(type,
                         std::make_unique<SubscriberChannel>(type, callback_service));
     }
   }
 
-  ~Subscriber();
-
-  bool Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
-                 const rpc::ChannelType channel_type,
+  void Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
+                 rpc::ChannelType channel_type,
                  const rpc::Address &publisher_address,
-                 const std::string &key_id,
+                 const std::optional<std::string> &key_id,
                  SubscribeDoneCallback subscribe_done_callback,
                  SubscriptionItemCallback subscription_callback,
                  SubscriptionFailureCallback subscription_failure_callback) override;
 
-  bool SubscribeChannel(
-      std::unique_ptr<rpc::SubMessage> sub_message,
-      rpc::ChannelType channel_type,
-      const rpc::Address &publisher_address,
-      SubscribeDoneCallback subscribe_done_callback,
-      SubscriptionItemCallback subscription_callback,
-      SubscriptionFailureCallback subscription_failure_callback) override;
-
-  bool Unsubscribe(const rpc::ChannelType channel_type,
+  bool Unsubscribe(rpc::ChannelType channel_type,
                    const rpc::Address &publisher_address,
-                   const std::string &key_id) override;
+                   const std::optional<std::string> &key_id) override;
 
-  bool UnsubscribeChannel(const rpc::ChannelType channel_type,
-                          const rpc::Address &publisher_address) override;
-
-  bool IsSubscribed(const rpc::ChannelType channel_type,
+  bool IsSubscribed(rpc::ChannelType channel_type,
                     const rpc::Address &publisher_address,
                     const std::string &key_id) const override;
 
@@ -277,7 +264,6 @@ class Subscriber : public SubscriberInterface {
   ///
 
   FRIEND_TEST(IntegrationTest, SubscribersToOneIDAndAllIDs);
-  FRIEND_TEST(IntegrationTest, GcsFailsOver);
   FRIEND_TEST(SubscriberTest, TestBasicSubscription);
   FRIEND_TEST(SubscriberTest, TestSingleLongPollingWithMultipleSubscriptions);
   FRIEND_TEST(SubscriberTest, TestMultiLongPollingWithTheSameSubscription);
@@ -289,18 +275,6 @@ class Subscriber : public SubscriberInterface {
   FRIEND_TEST(SubscriberTest, TestCommandsCleanedUponPublishFailure);
   // Testing only. Check if there are leaks.
   bool CheckNoLeaks() const ABSL_LOCKS_EXCLUDED(mutex_);
-
-  ///
-  /// Private fields
-  ///
-
-  bool SubscribeInternal(std::unique_ptr<rpc::SubMessage> sub_message,
-                         const rpc::ChannelType channel_type,
-                         const rpc::Address &publisher_address,
-                         const std::optional<std::string> &key_id,
-                         SubscribeDoneCallback subscribe_done_callback,
-                         SubscriptionItemCallback subscription_callback,
-                         SubscriptionFailureCallback subscription_failure_callback);
 
   /// Create a long polling connection to the publisher for receiving the published
   /// messages.

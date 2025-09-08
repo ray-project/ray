@@ -30,8 +30,9 @@
 
 #include "ray/common/event_stats.h"
 #include "ray/common/ray_config.h"
+#include "ray/util/network_util.h"
 #include "ray/util/process.h"
-#include "ray/util/util.h"
+#include "ray/util/time.h"
 
 #if defined(_WIN32)
 #include <Windows.h>
@@ -249,8 +250,8 @@ void ServerConnection::DoAsyncWrites() {
   }
 
   // Helper function to call all handlers with the input status.
-  auto call_handlers = [this](const ray::Status &status, int num_messages) {
-    for (int i = 0; i < num_messages; i++) {
+  auto call_handlers = [this](const ray::Status &status, int num_msgs) {
+    for (int i = 0; i < num_msgs; i++) {
       auto write_buffer = std::move(async_write_queue_.front());
       write_buffer->handler(status);
       async_write_queue_.pop_front();
@@ -359,6 +360,12 @@ void ClientConnection::Register() {
   registered_ = true;
 }
 
+void ClientConnection::Close() {
+  closed_ = true;
+  boost::system::error_code ec;
+  socket_.close(ec);
+}
+
 void ClientConnection::ProcessMessages() {
   // Wait for a message header from the client. The message header includes the
   // protocol version, the message type, and the length of the message.
@@ -398,9 +405,16 @@ void ClientConnection::ProcessMessageHeader(const boost::system::error_code &err
     return;
   }
 
-  // If there was no error, make sure the ray cookie matches.
+  if (closed_) {
+    // In most cases all outstanding reads will have been canceled when the socket was.
+    // closed. However, if the boost async_read call has already received data into its
+    // buffer from the poll syscall, it may succeed. If this happens, drop the message.
+    return;
+  }
+
   if (!CheckRayCookie()) {
-    ServerConnection::Close();
+    RAY_LOG(WARNING) << "Mismatched Ray cookie, closing client connection.";
+    Close();
     return;
   }
 
@@ -467,6 +481,13 @@ void ClientConnection::ProcessMessage(const boost::system::error_code &error) {
   auto this_ptr = shared_ClientConnection_from_this();
   if (error) {
     return connection_error_handler_(std::move(this_ptr), error);
+  }
+
+  if (closed_) {
+    // In most cases all outstanding reads will have been canceled when the socket was.
+    // closed. However, if the boost async_read call has already received data into its
+    // buffer from the poll syscall, it may succeed. If this happens, drop the message.
+    return;
   }
 
   int64_t start_ms = current_time_ms();

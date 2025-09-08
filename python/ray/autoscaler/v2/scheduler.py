@@ -161,6 +161,8 @@ class SchedulingNode:
     # The node's current resource capacity.
     total_resources: Dict[str, float] = field(default_factory=dict)
     # Node's labels, including static or dynamic labels.
+    # Note that dynamic labels are a deprecated feature. And it is only used for the
+    # autoscaler’s strict-spread placement group scheduling (antiaffinity)
     labels: Dict[str, str] = field(default_factory=dict)
     # Observability descriptive message for why the node was launched in the
     # first place.
@@ -278,6 +280,9 @@ class SchedulingNode:
                 available_resources=dict(instance.ray_node.available_resources),
                 labels={
                     **(instance.ray_node.labels or {}),
+                    # DEPRECATED: Dynamic labels are a deprecated feature. This field
+                    # is used here only for the autoscaler’s strict-spread placement
+                    # group scheduling (antiaffinity).
                     **(instance.ray_node.dynamic_labels or {}),
                 },
                 status=SchedulingNodeStatus.SCHEDULABLE,
@@ -606,7 +611,7 @@ class SchedulingNode:
         # Add the request to the node.
         self.add_sched_request(request, resource_request_source)
 
-        # Update the dynamic labels if there's any
+        # Update the placement group in labels if there's any
         for constraint in request.placement_constraints:
             # We don't need to check for affinity constraints here since
             # we have already combined resource requests with the affinity
@@ -825,6 +830,26 @@ class ResourceDemandScheduler(IResourceScheduler):
                 cluster_shape[node.node_type] += 1
             return cluster_shape
 
+        def get_cluster_resources(self) -> Dict[str, float]:
+            """
+            Aggregate total cluster resources.
+
+            Sums each node's `total_resources` across the current context,
+            excluding nodes marked `TO_TERMINATE`.
+
+            Returns:
+                A dict mapping resource names to their summed resources.
+            """
+            cluster_resources = defaultdict(float)
+            for node in self._nodes:
+                if node.status == SchedulingNodeStatus.TO_TERMINATE:
+                    # Skip the nodes that are to be terminated.
+                    continue
+
+                for key, value in node.total_resources.items():
+                    cluster_resources[key] += value
+            return cluster_resources
+
         def get_idle_timeout_s(self) -> Optional[float]:
             return self._idle_timeout_s
 
@@ -949,8 +974,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                     infeasible_requests=infeasible_requests,
                     infeasible_gang_requests=infeasible_gang_requests,
                     infeasible_cluster_resource_constraints=infeasible_constraints,
-                    cluster_shape=ctx.get_cluster_shape(),
-                    node_type_configs=ctx.get_node_type_configs(),
+                    cluster_resources=ctx.get_cluster_resources(),
                 )
             except Exception:
                 logger.exception("Failed to emit event logs.")

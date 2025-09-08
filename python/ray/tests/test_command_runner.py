@@ -4,14 +4,14 @@ from getpass import getuser
 
 import pytest
 
-from ray.tests.test_autoscaler import MockProvider, MockProcessRunner
-from ray.autoscaler.command_runner import CommandRunnerInterface
 from ray.autoscaler._private.command_runner import (
-    SSHCommandRunner,
     DockerCommandRunner,
+    SSHCommandRunner,
     _with_environment_variables,
 )
+from ray.autoscaler.command_runner import CommandRunnerInterface
 from ray.autoscaler.sdk import get_docker_host_mount_location
+from ray.tests.test_autoscaler import MockProcessRunner, MockProvider
 
 auth_config = {
     "ssh_user": "ray",

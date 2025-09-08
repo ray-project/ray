@@ -32,7 +32,7 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
-from ray.serve._private.utils import DEFAULT
+from ray.serve._private.utils import DEFAULT, validate_ssl_config
 from ray.serve.config import ProxyLocation, RequestRouterConfig
 from ray.util.annotations import PublicAPI
 
@@ -713,6 +713,31 @@ class HTTPOptionsSchema(BaseModel):
         "before closing them when no requests are ongoing. Defaults to "
         f"{DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S} seconds.",
     )
+    ssl_keyfile: Optional[str] = Field(
+        default=None,
+        description="Path to the SSL key file for HTTPS. If provided with ssl_certfile, "
+        "the HTTP server will use HTTPS. Cannot be updated once Serve has started.",
+    )
+    ssl_certfile: Optional[str] = Field(
+        default=None,
+        description="Path to the SSL certificate file for HTTPS. If provided with "
+        "ssl_keyfile, the HTTP server will use HTTPS. Cannot be updated once Serve "
+        "has started.",
+    )
+    ssl_keyfile_password: Optional[str] = Field(
+        default=None,
+        description="Password for the SSL key file, if encrypted.",
+    )
+    ssl_ca_certs: Optional[str] = Field(
+        default=None,
+        description="Path to the CA certificate file for verifying client certificates.",
+    )
+
+    @validator("ssl_certfile")
+    def validate_ssl_certfile(cls, v, values):
+        ssl_keyfile = values.get("ssl_keyfile")
+        validate_ssl_config(v, ssl_keyfile)
+        return v
 
 
 @PublicAPI(stability="stable")
@@ -953,6 +978,63 @@ class ReplicaDetails(ServeActorDetails, frozen=True):
     )
 
 
+@PublicAPI(stability="alpha")
+class AutoscalingMetricsHealth(str, Enum):
+    HEALTHY = "healthy"
+    DELAYED = "delayed"
+    UNAVAILABLE = "unavailable"
+
+
+@PublicAPI(stability="alpha")
+class AutoscalingStatus(str, Enum):
+    UPSCALING = "UPSCALING"
+    DOWNSCALING = "DOWNSCALING"
+    STABLE = "STABLE"
+
+
+@PublicAPI(stability="alpha")
+class ScalingDecision(BaseModel):
+    """One autoscaling decision with minimal provenance."""
+
+    timestamp_s: float = Field(
+        ..., description="Unix time (seconds) when the decision was made."
+    )
+    reason: str = Field(
+        ..., description="Short, human-readable reason for the decision."
+    )
+    prev_num_replicas: int = Field(
+        ..., ge=0, description="Replica count before the decision."
+    )
+    curr_num_replicas: int = Field(
+        ..., ge=0, description="Replica count after the decision."
+    )
+    policy: Optional[str] = Field(
+        None, description="Policy name or identifier (if applicable)."
+    )
+
+
+@PublicAPI(stability="alpha")
+class DeploymentAutoscalingDetail(BaseModel):
+    """Deployment-level autoscaler observability."""
+
+    scaling_status: AutoscalingStatus = Field(
+        ..., description="Current scaling direction or stability."
+    )
+    decisions: List[ScalingDecision] = Field(
+        default_factory=list, description="Recent scaling decisions."
+    )
+    metrics: Optional[Dict[str, Any]] = Field(
+        None, description="Aggregated metrics for this deployment."
+    )
+    metrics_health: AutoscalingMetricsHealth = Field(
+        AutoscalingMetricsHealth.HEALTHY,
+        description="Health of metrics collection pipeline.",
+    )
+    errors: List[str] = Field(
+        default_factory=list, description="Recent errors/abnormal events."
+    )
+
+
 @PublicAPI(stability="stable")
 class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
     """
@@ -991,6 +1073,11 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
     )
     replicas: List[ReplicaDetails] = Field(
         description="Details about the live replicas of this deployment."
+    )
+
+    autoscaling_detail: Optional[DeploymentAutoscalingDetail] = Field(
+        default=None,
+        description="[EXPERIMENTAL] Deployment-level autoscaler observability for this deployment.",
     )
 
 
