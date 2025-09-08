@@ -125,7 +125,7 @@ An example of a Task Definition Event and a Task Execution Event:
 High-level Architecture
 -----------------------
 
-The following diagram shows the high-level architecture of Ray event export.
+The following diagram shows the high-level architecture of Ray Event Export.
 
 .. image:: ../images/ray-event-export.png
 
