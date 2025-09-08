@@ -22,6 +22,7 @@ from ray.serve._private.test_utils import (
     check_num_replicas_eq,
     check_running,
     get_application_url,
+    wait_for_target_groups,
 )
 from ray.serve.schema import (
     ApplicationStatus,
