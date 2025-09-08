@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
 # TODO (ahao): Ray core should inherit deprecation utility.
-from ray.llm._internal.common.utils.deprecation import Deprecated
+from ray._common.deprecation import Deprecated
 from ray.llm._internal.serve.configs.server_models import (
     CloudMirrorConfig as _CloudMirrorConfig,
     LLMConfig as _LLMConfig,
