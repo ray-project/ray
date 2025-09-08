@@ -4,7 +4,7 @@ import os
 import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional, Set
 
 from ray._private.ray_constants import env_float
 from ray.data._internal.execution.interfaces.execution_options import (
@@ -493,6 +493,20 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             op for op in self._resource_manager._topology if self._is_op_eligible(op)
         ]
 
+    def get_ineligible_ops_without_eligible_upstream(self) -> Set[PhysicalOperator]:
+        """Get the ineligible operators that have no eligible upstream operators."""
+        all_ops = set(self._resource_manager._topology.keys())
+        eligible_ops = self._get_eligible_ops()
+        ops_to_explore = eligible_ops
+        visited = set()
+        while len(ops_to_explore) > 0:
+            op = ops_to_explore.pop()
+            visited.add(op)
+            for downstream_op in op.output_dependencies:
+                if downstream_op not in visited:
+                    ops_to_explore.append(downstream_op)
+        return all_ops - visited
+
     def _update_reservation(self):
         global_limits = self._resource_manager.get_global_limits()
         eligible_ops = self._get_eligible_ops()
@@ -504,6 +518,11 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
         if len(eligible_ops) == 0:
             return
+
+        for op in self.get_ineligible_ops_without_eligible_upstream():
+            remaining = remaining.subtract(self._resource_manager.get_op_usage(op))
+
+        remaining = remaining.max(ExecutionResources.zero())
 
         # Reserve `reservation_ratio * global_limits / num_ops` resources for each
         # operator.
