@@ -255,7 +255,6 @@ ray_cc_library(
 
 ray_cc_library(
     name = "object_manager_plasma_common",
-    srcs = ["plasma.cc"],
     hdrs = [
         "common.h",
         "plasma.h",
@@ -265,8 +264,6 @@ ray_cc_library(
         "//src/ray/common:id",
         "//src/ray/object_manager:object_manager_common",
         "//src/ray/util:compat",
-        "//src/ray/util:macros",
-        "@boost//:asio",
         "@com_google_googletest//:gtest_prod",
     ],
 )
