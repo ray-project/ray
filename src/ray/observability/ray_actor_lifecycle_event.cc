@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/observability/ray_actor_execution_event.h"
+#include "ray/observability/ray_actor_lifecycle_event.h"
 
 namespace ray {
 namespace observability {
 
-RayActorExecutionEvent::RayActorExecutionEvent(const rpc::ActorTableData &data,
+RayActorLifecycleEvent::RayActorLifecycleEvent(const rpc::ActorTableData &data,
                                                rpc::ActorExecutionEvent::State state,
+                                               const std::string &worker_id,
                                                const std::string &session_name)
     : RayEvent<rpc::ActorExecutionEvent>(session_name) {
   event_type_ = rpc::events::RayEvent::ACTOR_EXECUTION_EVENT;
@@ -32,8 +33,7 @@ RayActorExecutionEvent::RayActorExecutionEvent(const rpc::ActorTableData &data,
     if (data.has_node_id()) {
       state_transition.set_node_id(data.node_id());
     }
-    state_transition.set_pid(data.pid());
-    state_transition.set_repr_name(data.repr_name());
+    state_transition.set_worker_id(worker_id);
   }
 
   if (state == rpc::ActorExecutionEvent::DEAD) {
@@ -46,16 +46,16 @@ RayActorExecutionEvent::RayActorExecutionEvent(const rpc::ActorTableData &data,
   data_.mutable_states()->Add(std::move(state_transition));
 }
 
-std::string RayActorExecutionEvent::GetResourceId() const { return data_.actor_id(); }
+std::string RayActorLifecycleEvent::GetResourceId() const { return data_.actor_id(); }
 
-void RayActorExecutionEvent::Merge(RayEvent<rpc::ActorExecutionEvent> &&other) {
-  auto &&other_event = static_cast<RayActorExecutionEvent &&>(other);
+void RayActorLifecycleEvent::Merge(RayEvent<rpc::ActorExecutionEvent> &&other) {
+  auto &&other_event = static_cast<RayActorLifecycleEvent &&>(other);
   for (auto &state : *other_event.data_.mutable_states()) {
     data_.mutable_states()->Add(std::move(state));
   }
 }
 
-ray::rpc::events::RayEvent RayActorExecutionEvent::SerializeData() const {
+ray::rpc::events::RayEvent RayActorLifecycleEvent::SerializeData() const {
   ray::rpc::events::RayEvent event;
   event.set_source_type(rpc::events::RayEvent::GCS);
   event.set_severity(rpc::events::RayEvent::INFO);

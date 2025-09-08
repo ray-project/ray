@@ -14,7 +14,7 @@
 
 #include "ray/common/grpc_util.h"
 #include "ray/observability/ray_event.h"
-#include "src/ray/protobuf/events_base_event.pb.h"
+#include "src/ray/protobuf//public/events_base_event.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -22,10 +22,11 @@ namespace observability {
 
 template class RayEvent<rpc::ActorExecutionEvent>;
 
-class RayActorExecutionEvent : public RayEvent<rpc::ActorExecutionEvent> {
+class RayActorLifecycleEvent : public RayEvent<rpc::ActorExecutionEvent> {
  public:
-  RayActorExecutionEvent(const rpc::ActorTableData &data,
+  RayActorLifecycleEvent(const rpc::ActorTableData &data,
                          rpc::ActorExecutionEvent::State state,
+                         const std::string &worker_id,
                          const std::string &session_name);
 
   std::string GetResourceId() const override;

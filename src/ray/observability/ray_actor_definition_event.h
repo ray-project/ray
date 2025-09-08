@@ -15,8 +15,8 @@
 #include <map>
 
 #include "ray/observability/ray_event.h"
-#include "src/ray/protobuf/events_base_event.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/public/events_base_event.pb.h"
 
 namespace ray {
 namespace observability {
@@ -26,7 +26,6 @@ template class RayEvent<rpc::ActorDefinitionEvent>;
 class RayActorDefinitionEvent : public RayEvent<rpc::ActorDefinitionEvent> {
  public:
   RayActorDefinitionEvent(const rpc::ActorTableData &data,
-                          const std::map<std::string, std::string> &labels,
                           const std::string &session_name);
 
   std::string GetResourceId() const override;

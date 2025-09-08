@@ -17,10 +17,8 @@
 namespace ray {
 namespace observability {
 
-RayActorDefinitionEvent::RayActorDefinitionEvent(
-    const rpc::ActorTableData &data,
-    const std::map<std::string, std::string> &labels,
-    const std::string &session_name)
+RayActorDefinitionEvent::RayActorDefinitionEvent(const rpc::ActorTableData &data,
+                                                 const std::string &session_name)
     : RayEvent<rpc::ActorDefinitionEvent>(session_name) {
   event_type_ = rpc::events::RayEvent::ACTOR_DEFINITION_EVENT;
 
@@ -36,7 +34,6 @@ RayActorDefinitionEvent::RayActorDefinitionEvent(
   if (data.has_placement_group_id()) {
     data_.set_placement_group_id(data.placement_group_id());
   }
-  data_.mutable_labels()->insert(labels.begin(), labels.end());
   data_.mutable_label_selector()->insert(data.label_selector().begin(),
                                          data.label_selector().end());
 }
