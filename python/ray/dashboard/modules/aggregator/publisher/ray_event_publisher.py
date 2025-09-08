@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 import asyncio
 import logging
 import random
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 from ray.dashboard.modules.aggregator.task_metadata_buffer import TaskMetadataBuffer
 
@@ -20,6 +20,8 @@ from ray.dashboard.modules.aggregator.publisher.async_publisher_client import (
     PublisherClientInterface,
 )
 
+from ray.util.metrics import Counter, Gauge, Histogram
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,17 +34,12 @@ class RayEventPublisherInterface(ABC):
         pass
 
     @abstractmethod
-    async def get_and_reset_metrics(self) -> Dict[str, int]:
-        """Return a snapshot of internal metrics since last call and reset them."""
-        pass
-
-    @abstractmethod
     async def wait_until_running(self, timeout: Optional[float] = None) -> bool:
         """Wait until the publisher has started."""
         pass
 
 
-class RayEventsPublisher(RayEventPublisherInterface):
+class RayEventPublisher(RayEventPublisherInterface):
     """RayEvents publisher that publishes batches of events to a destination by running a worker loop.
 
     The worker loop continuously pulls batches from the event buffer and publishes them to the destination.
@@ -53,6 +50,7 @@ class RayEventsPublisher(RayEventPublisherInterface):
         name: str,
         publish_client: PublisherClientInterface,
         event_buffer: MultiConsumerEventBuffer,
+        common_metric_tags: Dict[str, str] = {},
         task_metadata_buffer: Optional[TaskMetadataBuffer] = None,
         max_retries: int = PUBLISHER_MAX_RETRIES,
         initial_backoff: float = PUBLISHER_INITIAL_BACKOFF_SECONDS,
@@ -65,6 +63,7 @@ class RayEventsPublisher(RayEventPublisherInterface):
             name: Name identifier for this publisher instance
             publish_client: Client for publishing events to the destination
             event_buffer: Buffer for reading batches of events
+            common_metric_labels: Common labels for all prometheus metrics
             task_metadata_buffer: Buffer for reading a batch of droppedtask metadata
             max_retries: Maximum number of retries for failed publishes
             initial_backoff: Initial backoff time between retries in seconds
@@ -72,6 +71,7 @@ class RayEventsPublisher(RayEventPublisherInterface):
             jitter_ratio: Random jitter ratio to add to backoff times
         """
         self._name = name
+        self._common_metric_tags = common_metric_tags
         self._max_retries = int(max_retries)
         self._initial_backoff = float(initial_backoff)
         self._max_backoff = float(max_backoff)
@@ -81,24 +81,71 @@ class RayEventsPublisher(RayEventPublisherInterface):
         self._task_metadata_buffer = task_metadata_buffer
         self._event_buffer_consumer_id = None
 
-        # Internal metrics (since last get_and_reset_metrics call)
-        self._metrics_lock = asyncio.Lock()
-        self._metric_events_published_since_last: int = 0
-        self._metric_events_filtered_out_since_last: int = 0
-        self._metric_events_publish_failures_since_last: int = 0
-        self._metric_success_latency_seconds_since_last: List[float] = []
-        self._metric_failure_latency_seconds_since_last: List[float] = []
-        self._metric_num_failed_attempts_since_last_success: int = 0
-        self._metric_last_publish_success_timestamp: Optional[float] = None
         # Event set once the publisher has registered as a consumer and is ready to publish events
         self._started_event: asyncio.Event = asyncio.Event()
+
+        # Prometheus metrics (defined per-publisher instance using provided name)
+        metrics_prefix = "ray_event_aggregator_agent"
+        supported_tags = (
+            tuple(self._common_metric_tags.keys())
+            if self._common_metric_tags is not None
+            else ()
+        )
+
+        self._published_counter = Counter(
+            f"{metrics_prefix}_{self._name}_published_events_total",
+            "Total number of events successfully published to the destination.",
+            tag_keys=supported_tags,
+        )
+        self._published_counter.set_default_tags(self._common_metric_tags)
+
+        self._filtered_counter = Counter(
+            f"{metrics_prefix}_{self._name}_filtered_events_total",
+            "Total number of events filtered out before publishing to the destination.",
+            tag_keys=supported_tags,
+        )
+        self._filtered_counter.set_default_tags(self._common_metric_tags)
+
+        self._failed_counter = Counter(
+            f"{metrics_prefix}_{self._name}_failures_total",
+            "Total number of events that failed to publish after retries.",
+            tag_keys=supported_tags,
+        )
+        self._failed_counter.set_default_tags(self._common_metric_tags)
+
+        # Latency histogram buckets (s), fine-grained <100ms, moderate up to 2s,
+        # and a final 5s bucket to capture slower outliers.
+        buckets = [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5]
+        self._publish_latency_hist = Histogram(
+            f"{metrics_prefix}_{self._name}_publish_duration_seconds",
+            "Duration of publish calls in seconds.",
+            boundaries=buckets,
+            tag_keys=supported_tags + ("Outcome",),
+        )
+        self._publish_latency_hist.set_default_tags(self._common_metric_tags)
+
+        self._consecutive_failures_gauge = Gauge(
+            f"{metrics_prefix}_{self._name}_consecutive_failures_since_last_success",
+            "Number of consecutive failed publish attempts since the last success.",
+            tag_keys=supported_tags,
+        )
+        self._consecutive_failures_gauge.set_default_tags(self._common_metric_tags)
+
+        self._time_since_last_success_gauge = Gauge(
+            f"{metrics_prefix}_{self._name}_time_since_last_success_seconds",
+            "Seconds since the last successful publish to the destination.",
+            tag_keys=supported_tags,
+        )
+        self._time_since_last_success_gauge.set_default_tags(self._common_metric_tags)
 
     async def run_forever(self) -> None:
         """Run the publisher forever until cancellation or process death.
 
         Registers as a consumer, starts the worker loop, and handles cleanup on cancellation.
         """
-        self._event_buffer_consumer_id = await self._event_buffer.register_consumer()
+        self._event_buffer_consumer_id = await self._event_buffer.register_consumer(
+            self._name
+        )
 
         # Signal that the publisher is ready to publish events
         self._started_event.set()
@@ -125,61 +172,6 @@ class RayEventsPublisher(RayEventPublisherInterface):
             await self._publish_client.close()
             raise
 
-    async def get_and_reset_metrics(self) -> Dict[str, int]:
-        """Return a snapshot of internal metrics since last call and reset them.
-
-        Returns a dict with the following keys:
-            published: Number of events successfully published since last call
-            filtered_out: Number of events filtered out before publishing since last call
-            failed: Number of events that failed to publish since last call
-            success_latency_seconds: List of publish latencies for successful attempts since last call
-            failure_latency_seconds: List of publish latencies for failed attempts since last call
-            failed_attempts_since_last_success: Number of consecutive failed publish attempts since last successful publish
-            time_since_last_success_seconds: Time elapsed since last successful publish, or None if never succeeded
-            dropped_events: Dict mapping event types to counts of events dropped from buffer
-        """
-        async with self._metrics_lock:
-            if self._metric_last_publish_success_timestamp is None:
-                time_since_last_success_seconds = None
-            else:
-                time_since_last_success_seconds = max(
-                    0.0,
-                    asyncio.get_running_loop().time()
-                    - self._metric_last_publish_success_timestamp,
-                )
-            publisher_metrics = {
-                "published": self._metric_events_published_since_last,
-                "filtered_out": self._metric_events_filtered_out_since_last,
-                "failed": self._metric_events_publish_failures_since_last,
-                "success_latency_seconds": list(
-                    self._metric_success_latency_seconds_since_last
-                ),
-                "failure_latency_seconds": list(
-                    self._metric_failure_latency_seconds_since_last
-                ),
-                "failed_attempts_since_last_success": self._metric_num_failed_attempts_since_last_success,
-                "time_since_last_success_seconds": time_since_last_success_seconds,
-            }
-
-            # Include dropped events by type from the event buffer
-            if self._event_buffer_consumer_id is not None:
-                dropped_by_type = (
-                    await self._event_buffer.get_and_reset_evicted_events_count(
-                        self._event_buffer_consumer_id
-                    )
-                )
-                publisher_metrics["dropped_events"] = dropped_by_type
-            else:
-                publisher_metrics["dropped_events"] = {}
-
-            # Reset counters
-            self._metric_events_published_since_last = 0
-            self._metric_events_filtered_out_since_last = 0
-            self._metric_events_publish_failures_since_last = 0
-            self._metric_success_latency_seconds_since_last = []
-            self._metric_failure_latency_seconds_since_last = []
-            return publisher_metrics
-
     async def wait_until_running(self, timeout: Optional[float] = None) -> bool:
         """Wait until the publisher has started.
 
@@ -205,48 +197,41 @@ class RayEventsPublisher(RayEventPublisherInterface):
         Will retry failed publishes up to max_retries times with increasing delays.
         """
         num_events_in_batch = self._publish_client.count_num_events_in_batch(batch)
+        failed_attempts_since_last_success = 0
         while True:
             start = asyncio.get_running_loop().time()
             result = await self._publish_client.publish(batch)
             duration = asyncio.get_running_loop().time() - start
 
             if result.is_publish_successful:
-                async with self._metrics_lock:
-                    self._metric_events_published_since_last += int(
-                        result.num_events_published
-                    )
-                    self._metric_events_filtered_out_since_last += int(
-                        result.num_events_filtered_out
-                    )
-                    self._metric_num_failed_attempts_since_last_success = 0
-                    self._metric_last_publish_success_timestamp = (
-                        asyncio.get_running_loop().time()
-                    )
-                    self._metric_success_latency_seconds_since_last.append(
-                        float(duration)
-                    )
+                await self._record_success(
+                    num_published=int(result.num_events_published),
+                    num_filtered=int(result.num_events_filtered_out),
+                    duration=float(duration),
+                )
+                failed_attempts_since_last_success = 0
                 return
 
-            async with self._metrics_lock:
-                # if max retries are exhausted mark as failed and break out, retry indefinitely if max_retries is less than 0
-                if (
-                    self._max_retries >= 0
-                    and self._metric_num_failed_attempts_since_last_success
-                    >= self._max_retries
-                ):
-                    self._metric_events_publish_failures_since_last += int(
-                        num_events_in_batch
-                    )
-                    self._metric_num_failed_attempts_since_last_success = 0
-                    return
+            # Failed attempt
+            # case 1: if max retries are exhausted mark as failed and break out, retry indefinitely if max_retries is less than 0
+            if (
+                self._max_retries >= 0
+                and failed_attempts_since_last_success >= self._max_retries
+            ):
+                await self._record_final_failure(
+                    num_failed_events=int(num_events_in_batch),
+                    duration=float(duration),
+                )
+                return
 
-                # max retries not exhausted, increment failed attempts counter and add latency to failure list, retry publishing batch with backoff
-                self._metric_num_failed_attempts_since_last_success += 1
-                self._metric_failure_latency_seconds_since_last.append(float(duration))
-
-            await self._async_sleep_with_backoff(
-                self._metric_num_failed_attempts_since_last_success
+            # case 2: max retries not exhausted, increment failed attempts counter and add latency to failure list, retry publishing batch with backoff
+            failed_attempts_since_last_success += 1
+            await self._record_retry_failure(
+                duration=float(duration),
+                failed_attempts=int(failed_attempts_since_last_success),
             )
+
+            await self._async_sleep_with_backoff(failed_attempts_since_last_success)
 
     async def _async_sleep_with_backoff(self, attempt: int) -> None:
         """Sleep with exponential backoff and optional jitter.
@@ -263,6 +248,34 @@ class RayEventsPublisher(RayEventPublisherInterface):
             delay = max(0.0, random.uniform(delay - jitter, delay + jitter))
         await asyncio.sleep(delay)
 
+    async def _record_success(
+        self, num_published: int, num_filtered: int, duration: float
+    ) -> None:
+        """Update in-memory stats and Prometheus metrics for a successful publish."""
+        if num_published > 0:
+            self._published_counter.inc(int(num_published))
+        if num_filtered > 0:
+            self._filtered_counter.inc(int(num_filtered))
+        self._consecutive_failures_gauge.set(0)
+        self._time_since_last_success_gauge.set(0)
+        self._publish_latency_hist.observe(float(duration), tags={"Outcome": "success"})
+
+    async def _record_retry_failure(
+        self, duration: float, failed_attempts: int
+    ) -> None:
+        """Update Prometheus metrics for a retryable failure attempt."""
+        self._consecutive_failures_gauge.set(int(failed_attempts))
+        self._publish_latency_hist.observe(float(duration), tags={"Outcome": "failure"})
+
+    async def _record_final_failure(
+        self, num_failed_events: int, duration: float
+    ) -> None:
+        """Update in-memory stats and Prometheus metrics for a final (non-retryable) failure."""
+        if num_failed_events > 0:
+            self._failed_counter.inc(int(num_failed_events))
+        self._consecutive_failures_gauge.set(0)
+        self._publish_latency_hist.observe(float(duration), tags={"Outcome": "failure"})
+
 
 class NoopPublisher(RayEventPublisherInterface):
     """A no-op publisher that adheres to the minimal interface used by AggregatorAgent.
@@ -277,9 +290,6 @@ class NoopPublisher(RayEventPublisherInterface):
         except asyncio.CancelledError:
             logger.info("NoopPublisher cancelled")
             raise
-
-    async def get_and_reset_metrics(self) -> Dict[str, int]:
-        return {"published": 0, "filtered_out": 0, "failed": 0, "queue_dropped": 0}
 
     async def wait_until_running(self, timeout: Optional[float] = None) -> bool:
         return True

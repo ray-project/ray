@@ -145,6 +145,8 @@ def test_aggregator_agent_http_target_not_enabled(
     dashboard_agent = MagicMock()
     dashboard_agent.events_export_addr = export_addr
     dashboard_agent.gcs_address = "127.0.0.1:8000"
+    dashboard_agent.session_name = "test_session"
+    dashboard_agent.ip = "127.0.0.1"
     agent = AggregatorAgent(dashboard_agent)
     assert agent._event_processing_enabled == expected_event_processing_enabled
 
@@ -922,8 +924,8 @@ def test_aggregator_agent_http_svc_publish_disabled(
     with pytest.raises(
         RuntimeError, match="The condition wasn't met before the timeout expired."
     ):
-        # Wait for up to 3 seconds to ensure that the event is never published to the external HTTP service
-        wait_for_condition(lambda: len(httpserver.log) > 0, 3)
+        # Wait for up to 2 seconds (publish interval + 1second buffer) to ensure that the event is never published to the external HTTP service
+        wait_for_condition(lambda: len(httpserver.log) > 0, 2)
 
     assert len(httpserver.log) == 0
 

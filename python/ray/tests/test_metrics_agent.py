@@ -555,7 +555,8 @@ def test_metrics_export_event_aggregator_agent(
             "ray_event_aggregator_agent_events_received_total": 3.0,
             "ray_event_aggregator_agent_events_buffer_add_failures_total": 0.0,
             "ray_event_aggregator_agent_http_publisher_published_events_total": 1.0,
-            "ray_event_aggregator_agent_http_publisher_filtered_events_total": 1.0,  # Profile event is filtered out
+            "ray_event_aggregator_agent_http_publisher_filtered_events_total": 1.0,
+            "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total": 1.0,
             "ray_event_aggregator_agent_http_publisher_failures_total": 0.0,
             "ray_event_aggregator_agent_http_publisher_queue_dropped_events_total": 1.0,  # dropped due to max buffer size
             "ray_event_aggregator_agent_gcs_publisher_events_published_total": 2.0,

@@ -20,5 +20,5 @@ PUBLISHER_MAX_BACKOFF_SECONDS = ray_constants.env_float(
 PUBLISHER_JITTER_RATIO = ray_constants.env_float(f"{env_var_prefix}_JITTER_RATIO", 0.1)
 # Maximum sleep time between sending batches of events to the destination, should be greater than 0.0 to avoid busy looping
 PUBLISHER_MAX_BUFFER_SEND_INTERVAL_SECONDS = ray_constants.env_float(
-    f"{env_var_prefix}_MAX_BUFFER_SEND_INTERVAL_SECONDS", 0.1
+    f"{env_var_prefix}_MAX_BUFFER_SEND_INTERVAL_SECONDS", 1
 )
