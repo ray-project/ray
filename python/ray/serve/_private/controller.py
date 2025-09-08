@@ -389,8 +389,8 @@ class ServeController:
         new_proxy_nodes.add(self._controller_node_id)
         self._proxy_nodes = new_proxy_nodes
 
-    def _iter_autoscaled_deployments(self):
-        """Yield (app_name, dep_name, details, autoscaling_config) for autoscaled deployments."""
+    def _list_deployments_for_autoscaling(self):
+        """List (app_name, dep_name, details, autoscaling_config) for deployments with autoscaling enabled."""
         app_statuses = self.application_state_manager.list_app_statuses()
         for app_name in app_statuses.keys():
             deployment_details = self.application_state_manager.list_deployment_details(
@@ -402,7 +402,10 @@ class ServeController:
                     continue
                 yield app_name, dep_name, details, autoscaling_config
 
-    def _record_decision(self, dep_id, current_replicas, target_replicas, policy_name):
+    def _append_autoscaling_decision(
+        self, dep_id, current_replicas, target_replicas, policy_name
+    ):
+        """Append a scaling decision to history and enforce history size limit."""
         decision = ScalingDecision(
             timestamp_s=time.time(),
             reason=f"current={current_replicas}, target={target_replicas}",
@@ -427,7 +430,7 @@ class ServeController:
             dep_name,
             details,
             autoscaling_config,
-        ) in self._iter_autoscaled_deployments():
+        ) in self._list_deployments_for_autoscaling():
             norm_cfg = normalize_autoscaling_config(autoscaling_config)
             current_target = int(details.target_num_replicas)
             dep_id = DeploymentID(name=dep_name, app_name=app_name)
@@ -450,7 +453,7 @@ class ServeController:
             else:
                 scaling_status = "STABLE"
 
-            self._record_decision(
+            self._append_autoscaling_decision(
                 dep_id, current_replicas, target_replicas, policy_name
             )
             key = dep_id
