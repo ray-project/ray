@@ -46,7 +46,7 @@ We test out the performance across different cluster sizes and data sizes.
 
 .. _pytorch-training-parity:
 
-PyTorch Training Parity
+PyTorch training parity
 -----------------------
 
 This task checks the performance parity between native PyTorch Distributed and
@@ -84,7 +84,7 @@ overhead of a few seconds for both methods that is negligible for longer trainin
 
 .. _tf-training-parity:
 
-TensorFlow Training Parity
+TensorFlow training parity
 --------------------------
 
 This task checks the performance parity between native TensorFlow Distributed and
@@ -110,15 +110,15 @@ overhead of a few seconds for both methods that is negligible for longer trainin
       - **Command**
     * - 4 m5.2xlarge nodes (4 workers)
       - FashionMNIST
-      - 78.81 s (vs 79.67 s TensorFlow)
+      - 78.81 s (versus 79.67 s TensorFlow)
       - `python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 8`
     * - 4 m5.2xlarge nodes (16 workers)
       - FashionMNIST
-      - 64.57 s (vs 67.45 s TensorFlow)
+      - 64.57 s (versus 67.45 s TensorFlow)
       - `python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 2`
     * - 4 g4dn.12xlarge nodes (16 workers)
       - FashionMNIST
-      - 465.16 s (vs 461.74 s TensorFlow)
+      - 465.16 s (versus 461.74 s TensorFlow)
       - `python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 200 --num-workers 16 --cpus-per-worker 4 --batch-size 64 --use-gpu`
 
 .. _xgboost-benchmark:
