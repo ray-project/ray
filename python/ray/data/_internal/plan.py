@@ -392,7 +392,6 @@ class ExecutionPlan:
         schema = None
         if self.has_computed_output():
             schema = self._snapshot_bundle.schema
-            print(f"my schema is {schema}")
         else:
             schema = self._logical_plan.dag.infer_schema()
             if schema is None and fetch_if_missing:
