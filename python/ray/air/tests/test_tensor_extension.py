@@ -888,7 +888,9 @@ def test_large_arrow_tensor_array(restore_data_context, tensor_format):
 
     test_arr = np.ones((1000, 550), dtype=np.uint8)
 
-    if tensor_format == "v1" or FixedShapeTensorType is None:
+    if tensor_format == "v1" or (
+        tensor_format == "arrow_native" and FixedShapeTensorType is None
+    ):
         with pytest.raises(ArrowConversionError) as exc_info:
             ta = ArrowTensorArray.from_numpy([test_arr] * 4000)
 
