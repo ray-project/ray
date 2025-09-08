@@ -945,6 +945,3 @@ RAY_CONFIG(int32_t, raylet_rpc_server_reconnect_timeout_s, 60)
 // process getting spawned.  Setting to zero or less maintains the default
 // number of threads grpc will spawn.
 RAY_CONFIG(int64_t, worker_num_grpc_internal_threads, 0)
-
-/// Max retries for object manager free objects.
-RAY_CONFIG(uint32_t, object_manager_free_objects_max_retries, 5)

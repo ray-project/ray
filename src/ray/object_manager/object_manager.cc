@@ -15,18 +15,19 @@
 #include "ray/object_manager/object_manager.h"
 
 #include <algorithm>
+#include <chrono>
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
+#include "ray/common/asio/asio_util.h"
 #include "ray/object_manager/plasma/store_runner.h"
 #include "ray/object_manager/spilled_object_reader.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/exponential_backoff.h"
-
-namespace asio = boost::asio;
 
 namespace ray {
 
@@ -117,8 +118,7 @@ ObjectManager::ObjectManager(
       get_spilled_object_url_(std::move(get_spilled_object_url)),
       pull_retry_timer_(*main_service_,
                         boost::posix_time::milliseconds(config.timer_freq_ms)),
-      push_manager_(std::make_unique<PushManager>(config_.max_bytes_in_flight)),
-      periodical_runner_(PeriodicalRunner::Create(main_service)) {
+      push_manager_(std::make_unique<PushManager>(config_.max_bytes_in_flight)) {
   RAY_CHECK_GT(config_.rpc_service_threads_number, 0);
 
   pull_retry_timer_.async_wait([this](const boost::system::error_code &e) { Tick(e); });
@@ -154,9 +154,6 @@ ObjectManager::ObjectManager(
 
   // Start object manager rpc server and send & receive request threads
   StartRpcService();
-
-  periodical_runner_->RunFnPeriodically(
-      [this]() { RetryFreeObjects(); }, 1000, "ObjectManager.RetryFreeObjects");
 }
 
 ObjectManager::~ObjectManager() { Stop(); }
@@ -702,18 +699,17 @@ void ObjectManager::SpreadFreeObjectsRequest(const std::vector<ObjectID> &object
 
   for (const auto &[node_id, rpc_client] : remote_object_manager_clients_) {
     rpc_client->FreeObjects(
-        std::move(free_objects_request),
+        free_objects_request,
         [&](const Status &status, const rpc::FreeObjectsReply &reply) {
           if (!status.ok()) {
-            free_objects_to_retry_.emplace(
-                node_id, rpc_client, absl::Now(), std::move(free_objects_request), 0);
+            RetryFreeObjects(node_id, 0, free_objects_request);
           }
         });
   }
 }
 
-void ObjectManager::RetryFreeObjects() {
-  auto default_unavailable_timeout_callback = [this](const NodeID &node_id) {
+void ObjectManager::RetryFreeObjects(const NodeID &node_id, uint32_t attempt_number, const rpc::FreeObjectsRequest &free_objects_request) {
+  auto default_unavailable_timeout_callback = [this, node_id]() {
     auto gcs_check_node_alive = [node_id, this]() {
       this->gcs_client_.Nodes().AsyncGetAll(
           [node_id, this](const Status &status, std::vector<rpc::GcsNodeInfo> &&nodes) {
@@ -762,41 +758,21 @@ void ObjectManager::RetryFreeObjects() {
     gcs_check_node_alive();
   };
 
-  std::vector<FreeObjectsToRetry> requests_to_retry;
-  absl::Time current_time = absl::Now();
-  while (!free_objects_to_retry_.empty() &&
-         free_objects_to_retry_.top().retry_time_ < current_time) {
-    auto request_to_retry = free_objects_to_retry_.top();
-    free_objects_to_retry_.pop();
-    if (request_to_retry.attempt_number_ ==
-        RayConfig::instance().object_manager_free_objects_max_retries()) {
-      RAY_LOG(WARNING) << "Max retries reached for sending free objects request to node "
-                       << request_to_retry.node_id_ << ", skipping free objects retry";
-    } else if (remote_object_manager_clients_.find(request_to_retry.node_id_) ==
-               remote_object_manager_clients_.end()) {
-      RAY_LOG(WARNING).WithField(request_to_retry.node_id_)
-          << "Node is dead skipping free objects retry";
-    } else {
-      requests_to_retry.emplace_back(request_to_retry);
-    }
+  auto delay_ms = ExponentialBackoff::GetBackoffMs(attempt_number, 1000);
+  execute_after(rpc_service_, [this, node_id, attempt_number, default_unavailable_timeout_callback, free_objects_request] {
+  auto it = remote_object_manager_clients_.find(node_id);
+  if (it == remote_object_manager_clients_.end()) {
+    return;
   }
-  for (const auto &request_to_retry : requests_to_retry) {
-    request_to_retry.rpc_client_->FreeObjects(
-        request_to_retry.free_objects_request_,
-        [&](const Status &status, const rpc::FreeObjectsReply &reply) {
-          if (!status.ok()) {
-            uint32_t delay_ms = ExponentialBackoff::GetBackoffMs(
-                request_to_retry.attempt_number_ + 1, 1000);
-            free_objects_to_retry_.emplace(
-                request_to_retry.node_id_,
-                request_to_retry.rpc_client_,
-                absl::Now() + absl::Milliseconds(delay_ms),
-                std::move(request_to_retry.free_objects_request_),
-                request_to_retry.attempt_number_ + 1);
-            default_unavailable_timeout_callback(request_to_retry.node_id_);
-          }
-        });
-  }
+
+  it->second->FreeObjects(free_objects_request,
+    [this, node_id, attempt_number, default_unavailable_timeout_callback, free_objects_request](const Status&, const rpc::FreeObjectsReply&) {
+      default_unavailable_timeout_callback();
+      if (remote_object_manager_clients_.contains(node_id)) {
+        RetryFreeObjects(node_id, attempt_number + 1, free_objects_request);
+      }
+    });
+  }, std::chrono::milliseconds(delay_ms));
 }
 
 std::shared_ptr<rpc::ObjectManagerClient> ObjectManager::GetRpcClient(

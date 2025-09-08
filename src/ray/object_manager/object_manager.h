@@ -395,7 +395,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param client_id Remote server client id
   void SendPullRequest(const ObjectID &object_id, const NodeID &client_id);
 
-  void RetryFreeObjects();
+  void RetryFreeObjects(const NodeID &node_id, uint32_t attempt_number, const rpc::FreeObjectsRequest &free_objects_request);
 
   /// Get the rpc client according to the node ID
   ///
@@ -476,56 +476,6 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// Object pull manager.
   std::unique_ptr<PullManager> pull_manager_;
-
-  std::shared_ptr<PeriodicalRunner> periodical_runner_;
-
-  struct FreeObjectsToRetry {
-    /// The node id of the object manager client.
-    NodeID node_id_;
-
-    /// The object manager client.
-    std::shared_ptr<rpc::ObjectManagerClient> rpc_client_;
-
-    /// Time when the free objects request should be retried.
-    absl::Time retry_time_;
-
-    /// The details of the free objects request.
-    rpc::FreeObjectsRequest free_objects_request_;
-
-    /// The attempt number of the free objects request.
-    uint32_t attempt_number_;
-
-    /// Constructor for FreeObjectsToRetry
-    FreeObjectsToRetry(const NodeID &node_id,
-                       const std::shared_ptr<rpc::ObjectManagerClient> &rpc_client,
-                       const absl::Time &retry_time,
-                       rpc::FreeObjectsRequest free_objects_request,
-                       uint32_t attempt_number)
-        : node_id_(node_id),
-          rpc_client_(rpc_client),
-          retry_time_(retry_time),
-          free_objects_request_(std::move(free_objects_request)),
-          attempt_number_(attempt_number) {}
-  };
-
-  /// Sorts FreeObjectsToRetry in descending order of the retry time.
-  /// Priority queue naturally sorts elements in descending order,
-  /// in order to have the tasks ordered by retry time in
-  /// ascending order we use a comparator that sorts elements in
-  /// descending order. Per docs "Priority queues are a type of container
-  /// adaptors, specifically designed such that its first element is always
-  /// the greatest of the elements it contains".
-  class FreeObjectsToRetryDescComparator {
-   public:
-    bool operator()(const FreeObjectsToRetry &left, const FreeObjectsToRetry &right) {
-      return left.retry_time_ > right.retry_time_;
-    }
-  };
-
-  std::priority_queue<FreeObjectsToRetry,
-                      std::vector<FreeObjectsToRetry>,
-                      FreeObjectsToRetryDescComparator>
-      free_objects_to_retry_;
 
   /// Running sum of the amount of memory used in the object store.
   int64_t used_memory_ = 0;
