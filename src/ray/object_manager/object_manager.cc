@@ -700,7 +700,8 @@ void ObjectManager::SpreadFreeObjectsRequest(const std::vector<ObjectID> &object
   for (const auto &[node_id, rpc_client] : remote_object_manager_clients_) {
     rpc_client->FreeObjects(
         free_objects_request,
-        [&](const Status &status, const rpc::FreeObjectsReply &reply) {
+        [node_id, free_objects_request](const Status &status,
+                                        const rpc::FreeObjectsReply &reply) {
           if (!status.ok()) {
             RetryFreeObjects(node_id, 0, free_objects_request);
           }
