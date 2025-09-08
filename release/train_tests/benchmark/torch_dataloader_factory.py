@@ -1,7 +1,6 @@
 from typing import Dict, Iterator, Tuple
 import logging
 from abc import ABC, abstractmethod
-import sys
 import multiprocessing
 
 import torch
@@ -100,10 +99,10 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
 
     def _create_multiprocessing_context(self):
         # Importing libs in torch dataloader worker subprocesses is very slow.
-        # Preload all imported modules to speed up subprocess forking.
-        imported_modules = list(sys.modules.keys())
+        # Preload some modules to speed up subprocess forking.
         ctx = multiprocessing.get_context("forkserver")
-        ctx.set_forkserver_preload(imported_modules)
+        modules = ["torch", "torchvision", "pandas", "numpy", "boto3", "fsspec"]
+        ctx.set_forkserver_preload(modules)
         return ctx
 
     def get_train_dataloader(self) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
