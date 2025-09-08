@@ -1,4 +1,4 @@
-// Copyright 2017 The Ray Authors.
+// Copyright 2025 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,22 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "io_ray_runtime_task_NativeTaskExecutor.h"
+syntax = "proto3";
 
-#include <jni.h>
+package ray.rpc;
 
-#include "jni_utils.h"  // NOLINT(build/include_subdir)
-#include "ray/common/id.h"
-#include "ray/core_worker/common.h"
-#include "ray/core_worker/core_worker.h"
-#include "ray/rpc/raylet/raylet_client_interface.h"
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-using ray::NodeID;
-
-#ifdef __cplusplus
+// Message containing the definition of a node, as observed via GCS.
+// The message is expected to be emitted once per node creation.
+//
+// For runtime information associated with this event, see NodeLifecycleEvent.
+message NodeDefinitionEvent {
+  bytes node_id = 1;
+  string node_ip_address = 2;
+  map<string, string> labels = 3;
 }
-#endif
