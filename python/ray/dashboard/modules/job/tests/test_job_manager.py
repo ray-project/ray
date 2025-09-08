@@ -5,7 +5,6 @@ import sys
 import tempfile
 import time
 import urllib.request
-from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -38,7 +37,6 @@ from ray.dashboard.modules.job.tests.conftest import (
     create_job_manager,
     create_ray_cluster,
 )
-from ray.exceptions import RpcError
 from ray.job_submission import JobStatus, JobErrorType
 from ray.tests.conftest import call_ray_start  # noqa: F401
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy  # noqa: F401
