@@ -339,7 +339,7 @@ def test_batching_request_context(serve_instance):
             }
             self.batch_results.append(batch_result)
 
-            return [f"ok" for _ in range(len(batch))]
+            return ["ok" for _ in range(len(batch))]
 
         async def __call__(self, request):
             return await self.handle_batch(1)
