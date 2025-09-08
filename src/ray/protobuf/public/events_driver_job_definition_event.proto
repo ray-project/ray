@@ -15,7 +15,6 @@
 
 syntax = "proto3";
 
-import "google/protobuf/timestamp.proto";
 import "src/ray/protobuf/public/runtime_environment.proto";
 
 package ray.rpc.events;
@@ -26,8 +25,9 @@ package ray.rpc.events;
 // For runtime information associated with this event, see DriverJobExecutionEvent.
 message DriverJobDefinitionEvent {
   message Config {
-    RuntimeEnvInfo runtime_env_info = 1;
+    RuntimeEnvInfo runtime_env_info = 1 [deprecated = true];
     map<string, string> metadata = 2;
+    string serialized_runtime_env = 3;
   }
 
   bytes job_id = 1;

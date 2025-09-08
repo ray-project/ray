@@ -761,18 +761,7 @@ def test_aggregator_agent_receive_driver_job_definition_event(
                     driver_job_definition_event=DriverJobDefinitionEvent(
                         job_id=b"1",
                         config=DriverJobDefinitionEvent.Config(
-                            runtime_env_info=RuntimeEnvInfo(
-                                serialized_runtime_env="{}",
-                                uris=RuntimeEnvUris(
-                                    working_dir_uri="file:///tmp/ray/runtime_env",
-                                    py_modules_uris=[],
-                                ),
-                                runtime_env_config=RuntimeEnvConfig(
-                                    setup_timeout_seconds=10,
-                                    eager_install=True,
-                                    log_files=[],
-                                ),
-                            ),
+                            serialized_runtime_env="{}",
                             metadata={},
                         ),
                     ),
@@ -789,22 +778,8 @@ def test_aggregator_agent_receive_driver_job_definition_event(
     req_json = json.loads(req.data)
     assert req_json[0]["message"] == "driver job event"
     assert (
-        req_json[0]["driverJobDefinitionEvent"]["config"]["runtimeEnvInfo"][
-            "serializedRuntimeEnv"
-        ]
+        req_json[0]["driverJobDefinitionEvent"]["config"]["serializedRuntimeEnv"]
         == "{}"
-    )
-    assert (
-        req_json[0]["driverJobDefinitionEvent"]["config"]["runtimeEnvInfo"]["uris"][
-            "workingDirUri"
-        ]
-        == "file:///tmp/ray/runtime_env"
-    )
-    assert (
-        req_json[0]["driverJobDefinitionEvent"]["config"]["runtimeEnvInfo"][
-            "runtimeEnvConfig"
-        ]["setupTimeoutSeconds"]
-        == 10.0
     )
 
 
