@@ -676,6 +676,149 @@ class TestAbfssProtocol:
                     Protocol.ABFSS.download_remote_uri(invalid_uri, str(dest_file))
 
 
+class TestS3Protocol:
+    """Test S3 protocol implementation with public bucket fallback."""
+
+    def test_s3_client_creation_with_credentials(self):
+        """Test S3 client creation when credentials are available."""
+        import unittest.mock as mock
+        import sys
+
+        # Mock boto3 and botocore modules
+        mock_boto3 = mock.MagicMock()
+        mock_botocore = mock.MagicMock()
+        mock_smart_open = mock.MagicMock()
+
+        # Setup successful credential scenario
+        mock_s3_client = mock.MagicMock()
+        mock_boto3.client.return_value = mock_s3_client
+        # Simulate successful ListBuckets call (no exception)
+        mock_s3_client._make_api_call.return_value = {"Buckets": []}
+
+        with mock.patch.dict(
+            sys.modules,
+            {
+                "boto3": mock_boto3,
+                "botocore.exceptions": mock_botocore,
+                "smart_open": mock_smart_open,
+            },
+        ):
+            # Import the NoCredentialsError after mocking
+            mock_botocore.NoCredentialsError = Exception
+            mock_smart_open.open = mock.MagicMock()
+
+            from ray._private.runtime_env.protocol import ProtocolsProvider
+
+            open_file, transport_params = ProtocolsProvider._handle_s3_protocol()
+
+            # Verify that boto3.client was called to create S3 client
+            mock_boto3.client.assert_called_with("s3")
+            # Verify that ListBuckets was called to test credentials
+            mock_s3_client._make_api_call.assert_called_with("ListBuckets", {})
+            # Verify that the signed client is returned (not unsigned)
+            assert transport_params["client"] == mock_s3_client
+
+    def test_s3_client_creation_without_credentials(self):
+        """Test S3 client creation falls back to unsigned when no credentials."""
+        import unittest.mock as mock
+        import sys
+
+        # Mock boto3 and botocore modules
+        mock_boto3 = mock.MagicMock()
+        mock_botocore = mock.MagicMock()
+        mock_smart_open = mock.MagicMock()
+
+        # Setup no credentials scenario
+        mock_signed_client = mock.MagicMock()
+        mock_unsigned_client = mock.MagicMock()
+        mock_boto3.client.side_effect = [mock_signed_client, mock_unsigned_client]
+
+        # Create a custom NoCredentialsError
+        class MockNoCredentialsError(Exception):
+            pass
+
+        mock_botocore.NoCredentialsError = MockNoCredentialsError
+        # Simulate NoCredentialsError on ListBuckets call
+        mock_signed_client._make_api_call.side_effect = MockNoCredentialsError()
+
+        # Mock Config and UNSIGNED
+        mock_config_class = mock.MagicMock()
+        mock_config = mock.MagicMock()
+        mock_config_class.return_value = mock_config
+        mock_botocore.config.Config = mock_config_class
+        mock_botocore.UNSIGNED = "UNSIGNED"
+
+        with mock.patch.dict(
+            sys.modules,
+            {
+                "boto3": mock_boto3,
+                "botocore.exceptions": mock_botocore,
+                "botocore": mock_botocore,
+                "botocore.config": mock_botocore.config,
+                "smart_open": mock_smart_open,
+            },
+        ):
+            mock_smart_open.open = mock.MagicMock()
+
+            from ray._private.runtime_env.protocol import ProtocolsProvider
+
+            open_file, transport_params = ProtocolsProvider._handle_s3_protocol()
+
+            # Verify that boto3.client was called twice (signed, then unsigned)
+            assert mock_boto3.client.call_count == 2
+            # First call should be for signed client
+            mock_boto3.client.assert_any_call("s3")
+            # Second call should be for unsigned client with config
+            mock_boto3.client.assert_any_call("s3", config=mock_config)
+            # Verify Config was created with UNSIGNED signature
+            mock_config_class.assert_called_with(signature_version="UNSIGNED")
+            # Verify that the unsigned client is returned
+            assert transport_params["client"] == mock_unsigned_client
+
+    def test_s3_client_creation_with_other_errors(self):
+        """Test S3 client creation handles other errors gracefully."""
+        import unittest.mock as mock
+        import sys
+
+        # Mock boto3 and botocore modules
+        mock_boto3 = mock.MagicMock()
+        mock_botocore = mock.MagicMock()
+        mock_smart_open = mock.MagicMock()
+
+        # Setup other error scenario (e.g., network error)
+        mock_s3_client = mock.MagicMock()
+        mock_boto3.client.return_value = mock_s3_client
+        # Simulate other error (not NoCredentialsError)
+        mock_s3_client._make_api_call.side_effect = ConnectionError("Network error")
+
+        # Create a custom NoCredentialsError
+        class MockNoCredentialsError(Exception):
+            pass
+
+        mock_botocore.NoCredentialsError = MockNoCredentialsError
+
+        with mock.patch.dict(
+            sys.modules,
+            {
+                "boto3": mock_boto3,
+                "botocore.exceptions": mock_botocore,
+                "smart_open": mock_smart_open,
+            },
+        ):
+            mock_smart_open.open = mock.MagicMock()
+
+            from ray._private.runtime_env.protocol import ProtocolsProvider
+
+            open_file, transport_params = ProtocolsProvider._handle_s3_protocol()
+
+            # Verify that boto3.client was called only once (no fallback for other errors)
+            mock_boto3.client.assert_called_once_with("s3")
+            # Verify that ListBuckets was called and failed
+            mock_s3_client._make_api_call.assert_called_with("ListBuckets", {})
+            # Verify that the signed client is still returned (error will surface later)
+            assert transport_params["client"] == mock_s3_client
+
+
 @pytest.mark.asyncio
 class TestDownloadAndUnpackPackage:
     async def test_download_and_unpack_package_with_gcs_uri_without_gcs_client(
