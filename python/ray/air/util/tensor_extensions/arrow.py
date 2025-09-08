@@ -36,6 +36,10 @@ PYARROW_VERSION = get_pyarrow_version()
 MIN_PYARROW_VERSION_SCALAR_SUBCLASS = parse_version("9.0.0")
 # Minimum version supporting `zero_copy_only` flag in `ChunkedArray.to_numpy`
 MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
+# Minimum version supporting Arrow's native FixedShapeTensorArray
+MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY = parse_version("12.0.0")
+# Minimum version supporting FixedShapeTensorScalar and FixedShapeTensorType
+MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALARS = parse_version("18.0.0")
 
 NUM_BYTES_PER_UNICODE_CHAR = 4
 
@@ -51,6 +55,41 @@ ARROW_EXTENSION_SERIALIZATION_FORMAT = _SerializationFormat(
     _SerializationFormat.JSON  # legacy
     if env_integer("RAY_DATA_ARROW_EXTENSION_SERIALIZATION_LEGACY_JSON_FORMAT", 0) == 1
     else _SerializationFormat.CLOUDPICKLE  # default
+)
+
+# Conditional imports for PyArrow features that are only available in newer versions
+# FixedShapeTensorArray was introduced in PyArrow 12.0.0
+if (
+    PYARROW_VERSION is None
+    or PYARROW_VERSION >= MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY
+):
+    from pyarrow import FixedShapeTensorArray, FixedShapeTensorType
+else:
+    FixedShapeTensorArray = None
+    FixedShapeTensorType = None
+
+# FixedShapeTensorScalar and FixedShapeTensorType were introduced in PyArrow 18.0.0
+if (
+    PYARROW_VERSION is None
+    or PYARROW_VERSION >= MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALARS
+):
+    from pyarrow import FixedShapeTensorScalar
+else:
+    FixedShapeTensorScalar = None
+
+
+# List of scalar types supported by Arrow's FixedShapeTensorArray
+_FIXED_SHAPE_TENSOR_ARRAY_SUPPORTED_SCALAR_TYPES = (
+    pa.int8(),
+    pa.uint8(),
+    pa.int16(),
+    pa.uint32(),
+    pa.int32(),
+    pa.uint64(),
+    pa.int64(),
+    pa.float16(),
+    pa.float32(),
+    pa.float64(),
 )
 
 
@@ -425,7 +464,10 @@ def get_arrow_extension_fixed_shape_tensor_types():
     """Returns list of Arrow extension types holding multidimensional
     tensors of *fixed* shape
     """
-    return ArrowTensorType, ArrowTensorTypeV2
+    types = (ArrowTensorType, ArrowTensorTypeV2)
+    if FixedShapeTensorType is not None:
+        types = types + (FixedShapeTensorType,)
+    return types
 
 
 @DeveloperAPI
@@ -515,12 +557,7 @@ class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
         """
         Convert an ExtensionScalar to a tensor element.
         """
-        raw_values = scalar.value.values
-        shape = scalar.type.shape
-        value_type = raw_values.type
-        offset = raw_values.offset
-        data_buffer = raw_values.buffers()[1]
-        return _to_ndarray_helper(shape, value_type, offset, data_buffer)
+        return _fixed_shape_extension_scalar_to_ndarray(scalar)
 
     def __str__(self) -> str:
         return (
@@ -576,6 +613,20 @@ class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
 
     def __hash__(self) -> int:
         return hash((type(self), self.extension_name, self.storage_type, self._shape))
+
+
+def _fixed_shape_extension_scalar_to_ndarray(
+    scalar: "pa.ExtensionScalar",
+) -> np.ndarray:
+    """
+    Convert an ExtensionScalar to a tensor element.
+    """
+    raw_values = scalar.value.values
+    shape = scalar.type.shape
+    value_type = raw_values.type
+    offset = raw_values.offset
+    data_buffer = raw_values.buffers()[1]
+    return _to_ndarray_helper(shape, value_type, offset, data_buffer)
 
 
 @PublicAPI(stability="beta")
@@ -648,11 +699,14 @@ if _arrow_extension_scalars_are_subclassable():
     # TODO(Clark): Remove this version guard once we only support Arrow 9.0.0+.
     @PublicAPI(stability="beta")
     class ArrowTensorScalar(pa.ExtensionScalar):
-        def as_py(self, **kwargs) -> np.ndarray:
+        def to_numpy(self):
             return self.type._extension_scalar_to_ndarray(self)
 
+        def as_py(self, **kwargs) -> np.ndarray:
+            return self.to_numpy()
+
         def __array__(self) -> np.ndarray:
-            return self.as_py()
+            return self.to_numpy()
 
 
 # TODO(Clark): Remove this mixin once we only support Arrow 9.0.0+.
@@ -784,14 +838,18 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
         if len(arr) > 0 and np.isscalar(arr[0]):
             # Elements are scalar so a plain Arrow Array will suffice.
             return pa.array(arr)
+
         if _is_ndarray_variable_shaped_tensor(arr):
             # Tensor elements have variable shape, so we delegate to
             # ArrowVariableShapedTensorArray.
             return ArrowVariableShapedTensorArray.from_numpy(arr)
+
         if not arr.flags.c_contiguous:
             # We only natively support C-contiguous ndarrays.
             arr = np.ascontiguousarray(arr)
-        scalar_dtype = pa.from_numpy_dtype(arr.dtype)
+
+        scalar_dtype: pa.DataType = pa.from_numpy_dtype(arr.dtype)
+
         if pa.types.is_string(scalar_dtype):
             if arr.dtype.byteorder == ">" or (
                 arr.dtype.byteorder == "=" and sys.byteorder == "big"
@@ -801,45 +859,55 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
                     f"but got: {arr.dtype}",
                 )
             scalar_dtype = pa.binary(arr.dtype.itemsize)
+
         outer_len = arr.shape[0]
         element_shape = arr.shape[1:]
         total_num_items = arr.size
         num_items_per_element = np.prod(element_shape) if element_shape else 1
 
-        # Data buffer.
-        if pa.types.is_boolean(scalar_dtype):
-            # NumPy doesn't represent boolean arrays as bit-packed, so we manually
-            # bit-pack the booleans before handing the buffer off to Arrow.
-            # NOTE: Arrow expects LSB bit-packed ordering.
-            # NOTE: This creates a copy.
-            arr = np.packbits(arr, bitorder="little")
-        data_buffer = pa.py_buffer(arr)
-        data_array = pa.Array.from_buffers(
-            scalar_dtype, total_num_items, [None, data_buffer]
-        )
-
         from ray.data import DataContext
 
-        if DataContext.get_current().use_arrow_tensor_v2:
-            pa_type_ = ArrowTensorTypeV2(element_shape, scalar_dtype)
+        ctx = DataContext.get_current()
+        if (
+            ctx.use_arrow_native_fixed_shape_tensor_type
+            and scalar_dtype in _FIXED_SHAPE_TENSOR_ARRAY_SUPPORTED_SCALAR_TYPES
+            and FixedShapeTensorArray is not None
+        ):
+            return FixedShapeTensorArray.from_numpy_ndarray(arr)
         else:
-            pa_type_ = ArrowTensorType(element_shape, scalar_dtype)
+            if ctx.use_arrow_tensor_v2:
+                tensor_type = ArrowTensorTypeV2(element_shape, scalar_dtype)
+            else:
+                tensor_type = ArrowTensorType(element_shape, scalar_dtype)
 
-        # Create Offset buffer
-        offset_buffer = pa.py_buffer(
-            pa_type_.OFFSET_DTYPE(
-                [i * num_items_per_element for i in range(outer_len + 1)]
+            # Data buffer.
+            if pa.types.is_boolean(scalar_dtype):
+                # NumPy doesn't represent boolean arrays as bit-packed, so we manually
+                # bit-pack the booleans before handing the buffer off to Arrow.
+                # NOTE: Arrow expects LSB bit-packed ordering.
+                # NOTE: This creates a copy.
+                arr = np.packbits(arr, bitorder="little")
+
+            data_buffer = pa.py_buffer(arr)
+            data_array = pa.Array.from_buffers(
+                scalar_dtype, total_num_items, [None, data_buffer]
             )
-        )
 
-        storage = pa.Array.from_buffers(
-            pa_type_.storage_type,
-            outer_len,
-            [None, offset_buffer],
-            children=[data_array],
-        )
+            # Create offsets buffer
+            offset_buffer = pa.py_buffer(
+                tensor_type.OFFSET_DTYPE(
+                    [i * num_items_per_element for i in range(outer_len + 1)]
+                )
+            )
 
-        return pa.ExtensionArray.from_storage(pa_type_, storage)
+            storage = pa.Array.from_buffers(
+                tensor_type.storage_type,
+                outer_len,
+                [None, offset_buffer],
+                children=[data_array],
+            )
+
+            return pa.ExtensionArray.from_storage(tensor_type, storage)
 
     def _to_numpy(self, index: Optional[int] = None, zero_copy_only: bool = False):
         """
@@ -927,6 +995,13 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             )
         return np.ndarray(shape, dtype=ext_dtype, buffer=data_buffer, offset=offset)
 
+    def to_numpy_ndarray(self):
+        """Converts array into fixed-shape multi-dimensional ndarray.
+
+        NOTE: This conversion is zero-copy
+        """
+        return self._to_numpy(zero_copy_only=True)
+
     def to_numpy(self, zero_copy_only: bool = True):
         """
         Convert the entire array of tensors into a single ndarray.
@@ -947,10 +1022,16 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
     def _concat_same_type(
         cls,
         to_concat: Sequence[
-            Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]
+            Union[
+                "ArrowTensorArray",
+                "FixedShapeTensorArray",
+                "ArrowVariableShapedTensorArray",
+            ]
         ],
         ensure_copy: bool = False,
-    ) -> Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]:
+    ) -> Union[
+        "ArrowTensorArray", "FixedShapeTensorArray", "ArrowVariableShapedTensorArray"
+    ]:
         """
         Concatenate multiple tensor arrays.
 
@@ -977,9 +1058,10 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             # Skip copying
             return to_concat[0]
         else:
+            array_class = to_concat[0].type.__arrow_ext_class__()
             storage = pa.concat_arrays([c.storage for c in to_concat])
 
-        return ArrowTensorArray.from_storage(to_concat[0].type, storage)
+            return array_class.from_storage(to_concat[0].type, storage)
 
     @classmethod
     def _chunk_tensor_arrays(
@@ -993,25 +1075,11 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             new_arrs = []
             for a in arrs:
                 if isinstance(a.type, get_arrow_extension_fixed_shape_tensor_types()):
-                    a = a.to_variable_shaped_tensor_array()
+                    a = ArrowVariableShapedTensorArray.from_numpy(a.to_numpy_ndarray())
                 assert isinstance(a.type, ArrowVariableShapedTensorType)
                 new_arrs.append(a)
             arrs = new_arrs
         return pa.chunked_array(arrs)
-
-    def to_variable_shaped_tensor_array(self) -> "ArrowVariableShapedTensorArray":
-        """
-        Convert this tensor array to a variable-shaped tensor array.
-
-        This is primarily used when concatenating multiple chunked tensor arrays where
-        at least one chunked array is already variable-shaped and/or the shapes of the
-        chunked arrays differ, in which case the resulting concatenated tensor array
-        will need to be in the variable-shaped representation.
-        """
-        # TODO(Clark): Eliminate this NumPy roundtrip by directly constructing the
-        # underlying storage array buffers (NumPy roundtrip will not be zero-copy for
-        # e.g. boolean arrays).
-        return ArrowVariableShapedTensorArray.from_numpy(self.to_numpy())
 
 
 @PublicAPI(stability="alpha")
@@ -1156,7 +1224,7 @@ class ArrowVariableShapedTensorArray(
 
     @classmethod
     def from_numpy(
-        cls, arr: Union[np.ndarray, List[np.ndarray], Tuple[np.ndarray]]
+        cls, arr: Union[ArrayLike, List[ArrayLike], Tuple[ArrayLike]]
     ) -> "ArrowVariableShapedTensorArray":
         """
         Convert an ndarray or an iterable of heterogeneous-shaped ndarrays to an array
@@ -1191,7 +1259,18 @@ class ArrowVariableShapedTensorArray(
         shapes, sizes, raveled = [], [], []
         ndim = None
         for a in arr:
-            a = np.asarray(a)
+            # Convert into ndarray view
+            #
+            # NOTE: While `ArrowTensorScalar` implements ndarray protocol,
+            #       `FixedShapeTensorScalar` is not and hence have to be handled
+            #       explicitly
+            if FixedShapeTensorScalar is not None and isinstance(
+                a, FixedShapeTensorScalar
+            ):
+                a = a.to_numpy()
+            else:
+                a = np.asarray(a)
+
             if ndim is not None and a.ndim != ndim:
                 raise ValueError(
                     "ArrowVariableShapedTensorArray only supports tensor elements that "
