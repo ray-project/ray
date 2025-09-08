@@ -1,0 +1,15 @@
+vllm==0.10.0
+# For json mode
+jsonref>=1.1.0
+jsonschema
+ninja
+# async-timeout is a backport of asyncio.timeout for python < 3.11
+async-timeout; python_version < '3.11'
+typer
+hf_transfer
+xgrammar==0.1.21
+pynvml==12.0.0
+hf_transfer==0.1.9
+tensorboard==2.19.0
+llamafactory==0.9.3
+transformers==4.52.4
