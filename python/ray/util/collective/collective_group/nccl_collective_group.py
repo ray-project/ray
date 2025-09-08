@@ -114,7 +114,7 @@ class Rendezvous:
         except ray.exceptions.GetTimeoutError:
             raise RuntimeError(
                 f"Unable to get the NCCLUniqueID from the store within {timeout_s} seconds."
-            )
+            ) from None
         return uid
 
 

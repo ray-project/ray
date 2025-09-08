@@ -21,7 +21,7 @@ class NCCLUniqueIDStore:
     def __init__(self, name):
         self.name = name
         self.nccl_id = None
-        self.condition = asyncio.Condition()
+        self.event = asyncio.Event()
 
     async def set_id(self, uid):
         """
@@ -31,28 +31,24 @@ class NCCLUniqueIDStore:
             uid: the unique ID generated via the NCCL generate_communicator_id API.
 
         Returns:
-            None
+            The NCCL unique ID set.
         """
-        async with self.condition:
-            self.nccl_id = uid
-            self.condition.notify_all()
-            return self.nccl_id
+        self.nccl_id = uid
+        self.event.set()
+        return uid
 
     async def wait_and_get_id(self):
         """Wait for the NCCL unique ID to be set and return it."""
-        async with self.condition:
-            while not self.nccl_id:
-                await self.condition.wait()
-            return self.nccl_id
+        await self.event.wait()
+        return self.nccl_id
 
-    async def get_id(self):
+    def get_id(self):
         """Get the NCCL unique ID held in this store."""
-        async with self.condition:
-            if not self.nccl_id:
-                logger.warning(
-                    "The NCCL ID has not been set yet for store {}.".format(self.name)
-                )
-            return self.nccl_id
+        if not self.nccl_id:
+            logger.warning(
+                "The NCCL ID has not been set yet for store {}.".format(self.name)
+            )
+        return self.nccl_id
 
 
 @ray.remote
