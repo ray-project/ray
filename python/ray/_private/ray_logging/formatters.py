@@ -63,6 +63,7 @@ class AbstractFormatter(logging.Formatter, ABC):
                     LogKey.MESSAGE.value: record.getMessage(),
                     LogKey.FILENAME.value: record.filename,
                     LogKey.LINENO.value: record.lineno,
+                    LogKey.PROCESS.value: record.process,
                 }
             )
             if record.exc_info:
