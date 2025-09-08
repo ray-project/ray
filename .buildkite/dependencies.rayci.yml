@@ -23,10 +23,6 @@ steps:
     key: raydepsets_compile_llm_dependencies
     tags: always
     instance_type: small
-    commands:
-      - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/rayllm.depsets.yaml --check
-      - chown -R 2000:100 /artifact-mount
-      - cp python/deplocks/llm/* /artifact-mount/
-
+    command: ./ci/test_compile_llm_requirements.sh
     job_env: oss-ci-base_test-py3.11
     depends_on: oss-ci-base_test-multipy
