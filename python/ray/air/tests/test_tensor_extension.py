@@ -880,7 +880,7 @@ def test_variable_shaped_tensor_array_uniform_dim(restore_data_context, tensor_f
         np.testing.assert_array_equal(a, expected)
 
 
-@pytest.mark.parametrize("tensor_format", ["arrow_native"])
+@pytest.mark.parametrize("tensor_format", ["arrow_native", "v1", "v2"])
 def test_large_arrow_tensor_array(restore_data_context, tensor_format):
     ctx = DataContext.get_current()
     ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == "arrow_native"
