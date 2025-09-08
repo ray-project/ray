@@ -188,42 +188,54 @@ void NormalTaskSubmitter::OnWorkerIdle(
   RequestNewWorkerIfNeeded(scheduling_key);
 }
 
-void NormalTaskSubmitter::CancelWorkerLeaseIfNeeded(const SchedulingKey &scheduling_key) {
+void NormalTaskSubmitter::CancelWorkerLeaseIfNeeded(
+    const SchedulingKey &scheduling_key,
+    const absl::optional<TaskID>& specific_task_id) {
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
   auto &task_queue = scheduling_key_entry.task_queue;
-  if (!task_queue.empty()) {
-    // There are still pending tasks so let the worker lease request succeed.
+
+  // If no specific task is specified and there are still pending tasks, don't cancel
+  if (!specific_task_id.has_value() && !task_queue.empty()) {
     return;
   }
 
-  RAY_LOG(DEBUG) << "Task queue is empty; canceling lease request";
+  RAY_LOG(DEBUG) << "Canceling lease request for task: "
+                 << (specific_task_id.has_value() ? specific_task_id->Hex() : "all");
 
-  for (auto &pending_lease_request : scheduling_key_entry.pending_lease_requests) {
-    // There is an in-flight lease request. Cancel it.
-    auto raylet_client =
-        raylet_client_pool_->GetOrConnectByAddress(pending_lease_request.second);
-    const auto &lease_id = pending_lease_request.first;
-    RAY_LOG(DEBUG) << "Canceling lease request " << lease_id;
-    raylet_client->CancelWorkerLease(
-        lease_id,
-        [this, scheduling_key](const Status &status,
-                               const rpc::CancelWorkerLeaseReply &reply) {
-          absl::MutexLock lock(&mu_);
-          if (status.ok() && !reply.success()) {
-            // The cancellation request can fail if the raylet does not have
-            // the request queued. This can happen if: a) due to message
-            // reordering, the raylet has not yet received the worker lease
-            // request, b) we have already returned the worker lease
-            // request, or c) the current request is a retry and the server response to
-            // the initial request was lost after cancelling the lease. In case a), we
-            // should try the cancellation request again. In case b), the in-flight lease
-            // request should already have been removed from our local state, so we no
-            // longer need to cancel. In case c), the response for ReturnWorkerLease
-            // should have already been triggered and the pending lease request will be
-            // cleaned up.
-            CancelWorkerLeaseIfNeeded(scheduling_key);
-          }
-        });
+  // Create a list of leases to cancel
+  std::vector<TaskID> leases_to_cancel;
+
+  if (specific_task_id.has_value()) {
+    // Only cancel the specific task's lease
+    if (scheduling_key_entry.pending_lease_requests.find(specific_task_id.value())
+        != scheduling_key_entry.pending_lease_requests.end()) {
+      leases_to_cancel.push_back(specific_task_id.value());
+    }
+  } else {
+    // Cancel all leases (when task queue is empty)
+    for (const auto& pending_lease_request : scheduling_key_entry.pending_lease_requests) {
+      leases_to_cancel.push_back(pending_lease_request.first);
+    }
+  }
+
+  // Execute cancellation
+  for (const auto& task_id : leases_to_cancel) {
+    auto it = scheduling_key_entry.pending_lease_requests.find(task_id);
+    if (it != scheduling_key_entry.pending_lease_requests.end()) {
+      auto lease_client = raylet_client_pool_->GetOrConnectByAddress(&it->second);
+      RAY_LOG(DEBUG) << "Canceling lease request " << task_id;
+
+      lease_client->CancelWorkerLease(
+          task_id,
+          [this, scheduling_key, task_id](const Status &status,
+                                         const rpc::CancelWorkerLeaseReply &reply) {
+            absl::MutexLock lock(&mu_);
+            if (status.ok() && !reply.success()) {
+              // Retry cancellation for the specific task
+              CancelWorkerLeaseIfNeeded(scheduling_key, task_id);
+            }
+          });
+    }
   }
 }
 
@@ -703,7 +715,7 @@ void NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
       for (auto spec = scheduling_tasks.begin(); spec != scheduling_tasks.end(); spec++) {
         if (spec->TaskId() == task_id) {
           scheduling_tasks.erase(spec);
-          CancelWorkerLeaseIfNeeded(scheduling_key);
+          CancelWorkerLeaseIfNeeded(scheduling_key, task_spec.TaskId());
           task_manager_.FailPendingTask(task_id, rpc::ErrorType::TASK_CANCELLED);
           return;
         }

@@ -188,7 +188,8 @@ class NormalTaskSubmitter {
   /// (i.e., the raylet drops the request). This should be called when there
   /// are no more tasks queued with the given scheduling key and there is an
   /// in-flight lease request for that key.
-  void CancelWorkerLeaseIfNeeded(const SchedulingKey &scheduling_key)
+  void CancelWorkerLeaseIfNeeded(const SchedulingKey &scheduling_key,
+      const absl::optional<TaskID>& specific_task_id = absl::nullopt)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Set up client state for newly granted worker lease.
