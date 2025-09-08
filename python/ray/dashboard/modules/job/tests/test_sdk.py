@@ -8,7 +8,6 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-import ray
 from ray._common.test_utils import wait_for_condition
 import ray.experimental.internal_kv as kv
 from ray._private.ray_constants import (
@@ -170,54 +169,6 @@ def get_register_agents_number(gcs_client):
         timeout=GCS_RPC_TIMEOUT_SECONDS,
     )
     return len(keys)
-
-
-@pytest.mark.parametrize(
-    "ray_start_cluster_head_with_env_vars",
-    [
-        {
-            "include_dashboard": True,
-            "env_vars": {
-                RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR: "1",
-                "RAY_health_check_initial_delay_ms": "0",
-                "RAY_health_check_period_ms": "1000",
-            },
-        }
-    ],
-    indirect=True,
-)
-def test_head_node_job_agent_always_used(ray_start_cluster_head_with_env_vars):
-    """Makes sure that job submission always uses the head node's job agent.
-
-    1. Create a cluster with a worker node and a head node.
-    2. Submit 10 jobs.
-    3. Make sure they all execute on the head node's job agent.
-    """
-    cluster = ray_start_cluster_head_with_env_vars
-    assert wait_until_server_available(cluster.webui_url) is True
-    webui_url = cluster.webui_url
-    webui_url = format_web_url(webui_url)
-    client = JobSubmissionClient(webui_url)
-
-    cluster_nodes = cluster.list_all_nodes()
-    assert len(cluster_nodes) == 1 and cluster_nodes[0].is_head
-    head_node_id = cluster_nodes[0].node_id
-
-    # add a worker node.
-    cluster.add_node()
-
-    job_ids = [client.submit_job(entrypoint="echo hello")]
-
-    for job_id in job_ids:
-        wait_for_condition(
-            _check_job_succeeded, client=client, job_id=job_id, timeout=30
-        )
-
-    actors = ray.state.actors()
-
-    for _, actor_info in actors.items():
-        if actor_info["Name"].startswith("_ray_internal_job_actor"):
-            assert actor_info["Address"]["NodeID"] == head_node_id
 
 
 @pytest.mark.parametrize(

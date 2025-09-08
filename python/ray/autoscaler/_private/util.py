@@ -756,7 +756,7 @@ def get_constraint_report(request_demand: List[DictCount]):
     if len(constraint_lines) > 0:
         constraints_report = "\n".join(constraint_lines)
     else:
-        constraints_report = " (no request_resources() constraints)"
+        constraints_report = " (none)"
     return constraints_report
 
 
@@ -948,9 +948,9 @@ Resources
 {separator}
 Total Usage:
 {usage_report}
-Total Constraints:
+From request_resources:
 {constraints_report}
-Total Demands:
+Pending Demands:
 {demand_report}"""
 
     if verbose:
