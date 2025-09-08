@@ -17,7 +17,6 @@ if TYPE_CHECKING:
 # GPUObjectMeta is a named tuple containing the source actor, tensor transport
 # backend, tensor metadata, and other information that needs to be recorded.
 # - The tensor transport backend is the backend used to transport the tensors.
-#   Currently, the supported backends are "nccl" and "torch_gloo".
 # - The tensor metadata is a list of tuples, each containing the shape and dtype
 #   of a tensor in the GPU object store.
 class GPUObjectMeta(NamedTuple):

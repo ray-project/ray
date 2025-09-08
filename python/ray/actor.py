@@ -847,8 +847,11 @@ class ActorMethod:
                     "Lost reference to actor. Actor handles must be stored as variables, e.g. `actor = MyActor.remote()` before calling methods."
                 )
 
-            gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-            gpu_object_manager.trigger_out_of_band_tensor_transfer(dst_actor, args)
+            if tensor_transport != TensorTransportEnum.OBJECT_STORE:
+                gpu_object_manager = (
+                    ray._private.worker.global_worker.gpu_object_manager
+                )
+                gpu_object_manager.trigger_out_of_band_tensor_transfer(dst_actor, args)
 
             return dst_actor._actor_method_call(
                 self._method_name,
