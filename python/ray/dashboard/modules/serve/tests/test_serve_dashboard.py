@@ -687,7 +687,8 @@ class TestScaleDeploymentEndpoint:
             wait_for_condition(
                 check_num_replicas_eq(
                     name=deployment_name, target=target_num_replicas, app_name=app_name
-                )
+                ),
+                timeout=30,
             )
 
         return True
@@ -723,6 +724,7 @@ class TestScaleDeploymentEndpoint:
             target_num_replicas=2,
             deployment_status=DeploymentStatus.UPDATING,
             verify_actual_replicas=False,
+            timeout=30,
         )
 
         self._scale_and_verify_deployment(4, verify_actual_replicas=False)
@@ -732,6 +734,7 @@ class TestScaleDeploymentEndpoint:
             target_num_replicas=4,
             deployment_status=DeploymentStatus.UPDATING,
             verify_actual_replicas=False,
+            timeout=30,
         )
 
         ray.get(semaphore.release.remote())
@@ -741,6 +744,7 @@ class TestScaleDeploymentEndpoint:
             target_num_replicas=4,
             deployment_status=DeploymentStatus.HEALTHY,
             verify_actual_replicas=True,
+            timeout=30,
         )
 
     def test_scale_deployment_during_application_upgrade(self, ray_start_stop):
@@ -753,6 +757,7 @@ class TestScaleDeploymentEndpoint:
             target_num_replicas=1,
             deployment_status=DeploymentStatus.HEALTHY,
             verify_actual_replicas=True,
+            timeout=30,
         )
 
         serve._run(
@@ -766,6 +771,7 @@ class TestScaleDeploymentEndpoint:
             target_num_replicas=2,
             deployment_status=DeploymentStatus.UPDATING,
             verify_actual_replicas=False,
+            timeout=30,
         )
 
         assert check_num_replicas_eq(
@@ -779,6 +785,7 @@ class TestScaleDeploymentEndpoint:
             target_num_replicas=3,
             deployment_status=DeploymentStatus.UPDATING,
             verify_actual_replicas=False,
+            timeout=30,
         )
 
         ray.get(
@@ -790,6 +797,7 @@ class TestScaleDeploymentEndpoint:
             target_num_replicas=3,
             deployment_status=DeploymentStatus.HEALTHY,
             verify_actual_replicas=True,
+            timeout=30,
         )
 
     def test_scale_deployment_during_application_deletion(self, ray_start_stop):
@@ -853,6 +861,7 @@ class TestScaleDeploymentEndpoint:
                 self._verify_deployment_details,
                 deployment_status=DeploymentStatus.HEALTHY,
                 target_num_replicas=1,
+                timeout=30,
             )
 
             self._scale_and_verify_deployment(
@@ -864,6 +873,7 @@ class TestScaleDeploymentEndpoint:
                 target_num_replicas=3,
                 deployment_status=DeploymentStatus.HEALTHY,
                 verify_actual_replicas=True,
+                timeout=30,
             )
 
             self._run_serve_deploy(config_v1_file)  # Redeploy the application
@@ -873,6 +883,7 @@ class TestScaleDeploymentEndpoint:
                 target_num_replicas=3,
                 deployment_status=DeploymentStatus.HEALTHY,
                 verify_actual_replicas=True,
+                timeout=30,
             )
 
     def test_scale_deployment_retention_during_serve_controller_restart(
@@ -893,6 +904,7 @@ class TestScaleDeploymentEndpoint:
                 self._verify_deployment_details,
                 deployment_status=DeploymentStatus.HEALTHY,
                 target_num_replicas=1,
+                timeout=30,
             )
 
             self._scale_and_verify_deployment(
@@ -904,6 +916,7 @@ class TestScaleDeploymentEndpoint:
                 target_num_replicas=3,
                 deployment_status=DeploymentStatus.HEALTHY,
                 verify_actual_replicas=True,
+                timeout=30,
             )
 
             ray.kill(serve.context._get_global_client()._controller, no_restart=False)
@@ -913,6 +926,7 @@ class TestScaleDeploymentEndpoint:
                 target_num_replicas=1,
                 deployment_status=DeploymentStatus.HEALTHY,
                 verify_actual_replicas=True,
+                timeout=30,
             )
 
     def test_error_case(self, ray_start_stop):
