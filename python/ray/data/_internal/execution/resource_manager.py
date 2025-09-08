@@ -508,7 +508,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         return all_ops - visited
 
     def _update_reservation(self):
-        global_limits = self._resource_manager.get_global_limits()
+        global_limits = self._resource_manager.get_global_limits().copy()
         eligible_ops = self._get_eligible_ops()
 
         self._op_reserved.clear()
