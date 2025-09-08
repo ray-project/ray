@@ -1,8 +1,8 @@
 import asyncio
+import math
 from collections.abc import Callable
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
-import math
 from threading import Thread
 from typing import List, Optional
 
