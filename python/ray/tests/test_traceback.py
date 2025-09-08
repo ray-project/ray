@@ -363,7 +363,6 @@ def test_exception_with_registered_serializer(shutdown_only):
     assert "deserialized" not in str(exc_info.value)
     assert "message deserialized" in str(exc_info.value.cause)
 
-    # Cleanup to avoid affecting other tests
     ray.util.deregister_serializer(NoPickleError)
 
 

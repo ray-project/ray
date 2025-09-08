@@ -222,7 +222,6 @@ When Ray tasks raise exceptions that cannot be serialized with the default pickl
     def custom_deserializer(state):
         return CustomError(state["message"], state["data"])
 
-    # Register the serializer on both driver and worker
     ray.util.register_serializer(CustomError, custom_serializer, custom_deserializer)
 
 When a custom exception is raised in a remote task, Ray will:
