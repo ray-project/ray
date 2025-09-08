@@ -1905,6 +1905,125 @@ TEST(LeaseRequestRateLimiterTest, ClusterSizeBasedLeaseRequestRateLimiter) {
   }
 }
 
+TEST_F(NormalTaskSubmitterTest, TestSelectiveLeaseCancellationWithTaskId) {
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(2));
+  TaskSpecification task1 = BuildEmptyTaskSpec();
+  TaskSpecification task2 = BuildEmptyTaskSpec();
+  TaskSpecification task3 = BuildEmptyTaskSpec();
+
+  // Submit three tasks with the same scheduling key
+  submitter.SubmitTask(task1);
+  submitter.SubmitTask(task2);
+  submitter.SubmitTask(task3);
+  
+  // All tasks should share the same scheduling key
+  ASSERT_EQ(raylet_client->num_workers_requested, 1);
+  
+  // Grant lease for task1
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil()));
+  ASSERT_EQ(worker_client->callbacks.size(), 1);
+  
+  // Task1 finishes, task2 should be scheduled on the same worker
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+  ASSERT_EQ(worker_client->callbacks.size(), 1);
+  
+  // Task2 finishes, task3 should be scheduled on the same worker
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+  ASSERT_EQ(worker_client->callbacks.size(), 1);
+  
+  // Now we have pending lease requests for the same scheduling key
+  // Test selective cancellation with task_id
+  auto scheduling_key = BuildSchedulingKey(task1);
+  
+  // Cancel lease for task3 specifically
+  submitter.CancelWorkerLeaseIfNeeded(scheduling_key, task3.TaskId());
+  
+  // Should only cancel lease for task3, not affecting other tasks
+  ASSERT_EQ(raylet_client->num_leases_canceled, 1);
+  ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease());
+  
+  // Task3 should still be able to run after cancellation
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+  ASSERT_EQ(raylet_client->num_workers_returned, 1);
+  
+  // Check that there are no entries left in the scheduling_key_entries_ hashmap
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
+}
+
+TEST_F(NormalTaskSubmitterTest, TestSelectiveLeaseCancellationWithoutTaskId) {
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(2));
+  TaskSpecification task1 = BuildEmptyTaskSpec();
+  TaskSpecification task2 = BuildEmptyTaskSpec();
+
+  // Submit two tasks with the same scheduling key
+  submitter.SubmitTask(task1);
+  submitter.SubmitTask(task2);
+  
+  ASSERT_EQ(raylet_client->num_workers_requested, 1);
+  
+  // Grant lease for task1
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil()));
+  ASSERT_EQ(worker_client->callbacks.size(), 1);
+  
+  // Task1 finishes, task2 should be scheduled on the same worker
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+  ASSERT_EQ(worker_client->callbacks.size(), 1);
+  
+  // Test cancellation without task_id (backward compatibility)
+  auto scheduling_key = BuildSchedulingKey(task1);
+  submitter.CancelWorkerLeaseIfNeeded(scheduling_key);
+  
+  // Should cancel all pending leases for the scheduling key
+  ASSERT_EQ(raylet_client->num_leases_canceled, 1);
+  ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease());
+  
+  // Task2 should still be able to run after cancellation
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+  ASSERT_EQ(raylet_client->num_workers_returned, 1);
+  
+  // Check that there are no entries left in the scheduling_key_entries_ hashmap
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
+}
+
+TEST_F(NormalTaskSubmitterTest, TestSelectiveLeaseCancellationWithNonExistentTaskId) {
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
+  TaskSpecification task1 = BuildEmptyTaskSpec();
+  TaskSpecification task2 = BuildEmptyTaskSpec();
+  
+  // Create a non-existent task ID
+  TaskID non_existent_task_id = TaskID::FromRandom(JobID::Nil());
+
+  submitter.SubmitTask(task1);
+  submitter.SubmitTask(task2);
+  
+  ASSERT_EQ(raylet_client->num_workers_requested, 1);
+  
+  // Grant lease for task1
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil()));
+  ASSERT_EQ(worker_client->callbacks.size(), 1);
+  
+  // Task1 finishes, task2 should be scheduled on the same worker
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+  ASSERT_EQ(worker_client->callbacks.size(), 1);
+  
+  // Test cancellation with non-existent task_id
+  auto scheduling_key = BuildSchedulingKey(task1);
+  submitter.CancelWorkerLeaseIfNeeded(scheduling_key, non_existent_task_id);
+  
+  // Should not cancel any leases since task_id doesn't exist
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  
+  // Both tasks should complete normally
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+  ASSERT_EQ(raylet_client->num_workers_returned, 1);
+  
+  // Check that there are no entries left in the scheduling_key_entries_ hashmap
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
+}
+
 }  // namespace core
 }  // namespace ray
 

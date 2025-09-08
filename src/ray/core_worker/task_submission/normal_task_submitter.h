@@ -29,8 +29,9 @@
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_manager_interface.h"
 #include "ray/core_worker/task_submission/dependency_resolver.h"
-#include "ray/raylet_client/raylet_client_interface.h"
-#include "ray/raylet_client/raylet_client_pool.h"
+#include "ray/common/lease/lease_task_mapping.h"
+#include "ray/rpc/raylet/raylet_client_interface.h"
+#include "ray/rpc/raylet/raylet_client_pool.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 
@@ -188,7 +189,9 @@ class NormalTaskSubmitter {
   /// (i.e., the raylet drops the request). This should be called when there
   /// are no more tasks queued with the given scheduling key and there is an
   /// in-flight lease request for that key.
-  void CancelWorkerLeaseIfNeeded(const SchedulingKey &scheduling_key)
+  /// If task_id is provided, only cancel leases associated with that specific task.
+  void CancelWorkerLeaseIfNeeded(const SchedulingKey &scheduling_key,
+                                 const absl::optional<TaskID> &task_id = absl::nullopt)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Set up client state for newly granted worker lease.
@@ -363,6 +366,9 @@ class NormalTaskSubmitter {
 
   // Retries cancelation requests if they were not successful.
   boost::asio::steady_timer cancel_retry_timer_ ABSL_GUARDED_BY(mu_);
+
+  // Mapping between lease IDs and task IDs to track task execution on leased workers.
+  LeaseTaskMapping lease_task_mapping_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace core
