@@ -64,7 +64,6 @@ def build(
     Args:
         config_path: The path to the config file. If not specified, ci/raydepsets/ray.depsets.yaml will be used.
     """
-    # try:
     manager = DependencySetManager(
         config_path=config_path,
         workspace_dir=workspace_dir,
