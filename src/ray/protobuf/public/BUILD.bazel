@@ -84,8 +84,8 @@ cc_proto_library(
 )
 
 proto_library(
-    name = "events_actor_execution_event_proto",
-    srcs = ["events_actor_execution_event.proto"],
+    name = "events_actor_lifecycle_event_proto",
+    srcs = ["events_actor_lifecycle_event.proto"],
     deps = [
        "//src/ray/protobuf:common_proto",
        "@com_google_protobuf//:timestamp_proto",
@@ -93,8 +93,8 @@ proto_library(
 )
 
 cc_proto_library(
-    name = "events_actor_execution_event_cc_proto",
-    deps = [":events_actor_execution_event_proto"],
+    name = "events_actor_lifecycle_event_cc_proto",
+    deps = [":events_actor_lifecycle_event_proto"],
 )
 
 proto_library(

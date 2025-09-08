@@ -38,8 +38,6 @@ message ActorDefinitionEvent {
   map<string, double> required_resources = 8;
   // Placement group ID if the actor requires a placement group.
   bytes placement_group_id = 9;
-  // The key-value labels for task and actor.
-  map<string, string> labels = 10;
   // The label selector for the actor.
   map<string, string> label_selector = 11;
 }

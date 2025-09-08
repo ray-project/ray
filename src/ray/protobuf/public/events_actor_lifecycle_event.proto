@@ -19,7 +19,7 @@ package ray.rpc;
 import "src/ray/protobuf/common.proto";
 import "google/protobuf/timestamp.proto";
 
-message ActorExecutionEvent {
+message ActorLifecycleEvent {
   enum State{
     // Actor info is registered in GCS. But its dependencies are not ready.
     DEPENDENCIES_UNREADY = 0;
@@ -43,11 +43,6 @@ message ActorExecutionEvent {
     // The worker id of the worker on which this actor is running. available when state is ALIVE.
     // The worker id can change when the actor is restarted.
     bytes worker_id = 4;
-    // The repr name of the actor if specified with a customized repr method, e.g. __repr__
-    // This field is only available after the actor creation task has been run since it
-    // might depend on actor fields to be initialized in __init__.
-    // Default to empty string if no customized repr is defined.
-    string repr_name = 5;
     // Contains metadata about why the actor is dead. available when state is DEAD.
     ActorDeathCause death_cause = 6;
   }
