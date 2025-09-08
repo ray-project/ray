@@ -18,7 +18,7 @@ Total Usage:
  0.+
  0.+
 
-Total Constraints:
- \(no request_resources\(\) constraints\)
-Total Demands:
+From request_resources:
+ \(none\)
+Pending Demands:
  \(no resource demands\)

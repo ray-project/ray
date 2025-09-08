@@ -69,7 +69,7 @@ Backend event stats
 -------------------
 The ``raylet`` process also periodically dumps event stats to the ``debug_state.txt`` log
 file if the ``RAY_event_stats=1`` environment variable is set. To also enable regular
-printing of the stats to log files, you can additional set ``RAY_event_stats_print_interval_ms=1000``.
+printing of the stats to log files, you can additionally set ``RAY_event_stats_print_interval_ms=1000``.
 
 Event stats include ASIO event handlers, periodic timers, and RPC handlers. Here is a sample
 of what the event stats look like:
