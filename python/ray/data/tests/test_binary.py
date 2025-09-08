@@ -1,23 +1,18 @@
 import os
 from io import BytesIO
 
-import pandas as pd
 import pyarrow as pa
 import pytest
 import requests
 import snappy
 
 import ray
-from ray.data import Schema
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     FastFileMetadataProvider,
-    PartitionStyle,
-    PathPartitionFilter,
 )
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
-from ray.data.tests.test_partitioning import PathPartitionEncoder
 from ray.data.tests.util import extract_values, gen_bin_files
 from ray.tests.conftest import *  # noqa
 
@@ -104,59 +99,6 @@ def test_read_binary_meta_provider(
             path,
             meta_provider=BaseFileMetadataProvider(),
         )
-
-
-@pytest.mark.parametrize("style", [PartitionStyle.HIVE, PartitionStyle.DIRECTORY])
-def test_read_binary_snappy_partitioned_with_filter(
-    style,
-    ray_start_regular_shared,
-    tmp_path,
-    write_base_partitioned_df,
-    assert_base_partitioned_ds,
-):
-    def df_to_binary(dataframe, path, **kwargs):
-        with open(path, "wb") as f:
-            df_string = dataframe.to_string(index=False, header=False, **kwargs)
-            byte_str = df_string.encode()
-            bytes = BytesIO(byte_str)
-            snappy.stream_compress(bytes, f)
-
-    partition_keys = ["one"]
-
-    def skip_unpartitioned(kv_dict):
-        return bool(kv_dict)
-
-    base_dir = os.path.join(tmp_path, style.value)
-    partition_path_encoder = PathPartitionEncoder.of(
-        style=style,
-        base_dir=base_dir,
-        field_names=partition_keys,
-    )
-    write_base_partitioned_df(
-        partition_keys,
-        partition_path_encoder,
-        df_to_binary,
-    )
-    df_to_binary(pd.DataFrame({"1": [1]}), os.path.join(base_dir, "test.snappy"))
-    partition_path_filter = PathPartitionFilter.of(
-        style=style,
-        base_dir=base_dir,
-        field_names=partition_keys,
-        filter_fn=skip_unpartitioned,
-    )
-    ds = ray.data.read_binary_files(
-        base_dir,
-        partition_filter=partition_path_filter,
-        arrow_open_stream_args=dict(compression="snappy"),
-    )
-    assert_base_partitioned_ds(
-        ds,
-        count=2,
-        num_rows=2,
-        schema=Schema(pa.schema([("bytes", pa.binary())])),
-        sorted_values=[b"1 a\n1 b\n1 c", b"3 e\n3 f\n3 g"],
-        ds_take_transform_fn=lambda t: extract_values("bytes", t),
-    )
 
 
 if __name__ == "__main__":

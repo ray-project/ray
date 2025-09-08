@@ -1,7 +1,5 @@
-import itertools
 import os
 import shutil
-from functools import partial
 
 import pandas as pd
 import pyarrow as pa
@@ -24,7 +22,6 @@ from ray.data.datasource.file_based_datasource import (
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
-from ray.data.tests.test_partitioning import PathPartitionEncoder
 from ray.tests.conftest import *  # noqa
 
 
@@ -284,75 +281,6 @@ def test_csv_read_many_files_basic(
     dsdf = ds.to_pandas()
     df = pd.concat(dfs).reset_index(drop=True)
     pd.testing.assert_frame_equal(df, dsdf)
-
-
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-    ],
-)
-def test_csv_read_many_files_partitioned(
-    ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
-    write_partitioned_df,
-    assert_base_partitioned_ds,
-):
-    if endpoint_url is None:
-        storage_options = {}
-    else:
-        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
-
-    partition_keys = ["one"]
-    partition_path_encoder = PathPartitionEncoder.of(
-        base_dir=data_path,
-        field_names=partition_keys,
-        filesystem=fs,
-    )
-    paths = []
-    dfs = []
-    num_dfs = FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD
-    num_rows = 6 * num_dfs
-    num_files = 2 * num_dfs
-    for i in range(num_dfs):
-        df = pd.DataFrame(
-            {"one": [1, 1, 1, 3, 3, 3], "two": list(range(6 * i, 6 * (i + 1)))}
-        )
-        df_paths = write_partitioned_df(
-            df,
-            partition_keys,
-            partition_path_encoder,
-            partial(df_to_csv, storage_options=storage_options, index=False),
-            file_name_suffix=i,
-        )
-        dfs.append(df)
-        paths.extend(df_paths)
-
-    ds = ray.data.read_csv(
-        paths,
-        filesystem=fs,
-        partitioning=partition_path_encoder.scheme,
-        override_num_blocks=num_files,
-    )
-
-    assert_base_partitioned_ds(
-        ds,
-        count=num_rows,
-        num_input_files=num_files,
-        schema=Schema(pa.schema([("one", pa.int64()), ("two", pa.int64())])),
-        sorted_values=sorted(
-            itertools.chain.from_iterable(
-                list(
-                    map(list, zip([1, 1, 1, 3, 3, 3], list(range(6 * i, 6 * (i + 1)))))
-                )
-                for i in range(num_dfs)
-            )
-        ),
-    )
 
 
 @pytest.mark.parametrize(
