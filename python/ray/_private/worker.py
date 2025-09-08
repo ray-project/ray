@@ -894,27 +894,23 @@ class Worker:
     ):
         gpu_objects: Dict[str, List["torch.Tensor"]] = {}
         for obj_ref, (_, _, tensor_transport) in zip(object_refs, serialized_objects):
-            # The `tensor_transport_hint` has the highest priority, so if it's `OBJECT_STORE`,
-            # we will use the object store to fetch the GPU object. If it's None, we will decide
-            # based on the `tensor_transport` in the serialized objects, which is set by the
-            # `put_object` function.
-            tensor_transport_hint_val = (
-                tensor_transport_hint.value
-                if tensor_transport_hint is not None
-                else obj_ref.tensor_transport()
-            )
-            # 1. If it's a ray.put/get pattern, tensor_transport will be None, then we
-            # will use the `tensor_transport_hint_val` to decide whether to use the
-            # object store to fetch the GPU object.
-            # 2. If it's not a ray.put/get pattern, tensor_transport_hint_val will be
-            # 'object_store', then we will use `tensor_transport` to decide whether to use the
-            # object store to fetch the GPU object.
+            if (
+                tensor_transport is None
+                or tensor_transport == TensorTransportEnum.OBJECT_STORE
+            ) and (
+                obj_ref is None
+                or obj_ref.tensor_transport() == TensorTransportEnum.OBJECT_STORE.value
+            ):
+                # The object is not a gpu object, so we cannot use other external transport to
+                # fetch it.
+                continue
+
+            # If the object is a gpu object, we can choose to use the object store or other external
+            # transport to fetch it. The `tensor_transport_hint` has the highest priority, so if it's
+            # `OBJECT_STORE`, we will use the object store to fetch the GPU object.
             use_object_store = (
-                tensor_transport_hint_val == TensorTransportEnum.OBJECT_STORE.value
-                and (
-                    tensor_transport is None
-                    or tensor_transport == TensorTransportEnum.OBJECT_STORE
-                )
+                tensor_transport_hint is not None
+                and tensor_transport_hint == TensorTransportEnum.OBJECT_STORE
             )
 
             object_id = obj_ref.hex()
