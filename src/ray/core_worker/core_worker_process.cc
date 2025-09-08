@@ -35,7 +35,7 @@
 #include "ray/core_worker/core_worker_rpc_proxy.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/ipc/raylet_ipc_client.h"
-#include "ray/raylet_client/raylet_client.h"
+#include "ray/rpc/raylet/raylet_client.h"
 #include "ray/stats/stats.h"
 #include "ray/util/container_util.h"
 #include "ray/util/env.h"
@@ -237,10 +237,10 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   // instead of crashing.
   auto raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
       local_node_id, options.node_ip_address, options.node_manager_port);
-  auto local_raylet_rpc_client = std::make_shared<raylet::RayletClient>(
-      std::move(raylet_address),
-      *client_call_manager,
-      /*raylet_unavailable_timeout_callback=*/[] {});
+  auto local_raylet_rpc_client =
+      std::make_shared<rpc::RayletClient>(std::move(raylet_address),
+                                          *client_call_manager,
+                                          /*raylet_unavailable_timeout_callback=*/[] {});
   auto core_worker_server =
       std::make_unique<rpc::GrpcServer>(WorkerTypeString(options.worker_type),
                                         assigned_port,
@@ -277,7 +277,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto raylet_client_pool =
       std::make_shared<rpc::RayletClientPool>([&](const rpc::Address &addr) {
         auto core_worker = GetCoreWorker();
-        return std::make_shared<ray::raylet::RayletClient>(
+        return std::make_shared<ray::rpc::RayletClient>(
             addr,
             *core_worker->client_call_manager_,
             rpc::RayletClientPool::GetDefaultUnavailableTimeoutCallback(
@@ -449,7 +449,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
         RAY_CHECK(addr.has_value()) << "Actor address not found for actor " << actor_id;
         return core_worker->core_worker_client_pool_->GetOrConnect(addr.value());
       },
-      gcs_client);
+      gcs_client,
+      task_by_state_counter_);
 
   auto on_excess_queueing = [this](const ActorID &actor_id, uint64_t num_queued) {
     auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(
@@ -653,7 +654,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    std::move(actor_manager),
                                    task_execution_service_,
                                    std::move(task_event_buffer),
-                                   pid);
+                                   pid,
+                                   task_by_state_counter_);
   return core_worker;
 }
 
@@ -834,8 +836,7 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
     // TODO(joshlee): This local raylet client has a custom retry policy below since its
     // likely the driver can start up before the raylet is ready. We want to move away
     // from this and will be fixed in https://github.com/ray-project/ray/issues/55200
-    raylet::RayletClient local_raylet_rpc_client(
-        raylet_address, client_call_manager, [] {});
+    rpc::RayletClient local_raylet_rpc_client(raylet_address, client_call_manager, [] {});
 
     std::function<void(int64_t)> get_once = [this,
                                              &get_once,
