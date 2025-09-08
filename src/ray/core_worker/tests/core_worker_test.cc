@@ -41,6 +41,7 @@
 #include "ray/core_worker/task_submission/actor_task_submitter.h"
 #include "ray/core_worker/task_submission/normal_task_submitter.h"
 #include "ray/ipc/fake_raylet_ipc_client.h"
+#include "ray/observability/fake_metric.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 
 namespace ray {
@@ -160,7 +161,8 @@ class CoreWorkerTest : public ::testing::Test {
         [](const ActorID &actor_id) {
           return std::make_shared<rpc::CoreWorkerClientInterface>();
         },
-        mock_gcs_client);
+        mock_gcs_client,
+        fake_task_by_state_counter_);
 
     auto object_recovery_manager = std::make_unique<ObjectRecoveryManager>(
         rpc_address_,
@@ -245,7 +247,8 @@ class CoreWorkerTest : public ::testing::Test {
                                                 std::move(actor_manager),
                                                 task_execution_service_,
                                                 std::move(task_event_buffer),
-                                                getpid());
+                                                getpid(),
+                                                fake_task_by_state_counter_);
   }
 
  protected:
@@ -263,6 +266,7 @@ class CoreWorkerTest : public ::testing::Test {
   ActorTaskSubmitter *actor_task_submitter_;
   std::shared_ptr<TaskManager> task_manager_;
   std::shared_ptr<CoreWorker> core_worker_;
+  ray::observability::FakeMetric fake_task_by_state_counter_;
 };
 
 std::shared_ptr<RayObject> MakeRayObject(const std::string &data_str,
@@ -276,6 +280,22 @@ std::shared_ptr<RayObject> MakeRayObject(const std::string &data_str,
       metadata_str.size(),
       true);
   return std::make_shared<RayObject>(data, metadata, std::vector<rpc::ObjectReference>());
+}
+
+TEST_F(CoreWorkerTest, RecordMetrics) {
+  std::vector<std::shared_ptr<RayObject>> results;
+  auto status = core_worker_->Get({}, -1, results);
+  ASSERT_TRUE(status.ok());
+  // disconnect to trigger metric recording
+  core_worker_->Disconnect(rpc::WorkerExitType::SYSTEM_ERROR, "test", nullptr);
+  auto tag_to_value = fake_task_by_state_counter_.GetTagToValue();
+  // 4 states: RUNNING, SUBMITTED_TO_WORKER, RUNNING_IN_RAY_GET and RUNNING_IN_RAY_WAIT
+  ASSERT_EQ(tag_to_value.size(), 4);
+  for (auto &[key, value] : tag_to_value) {
+    ASSERT_EQ(key.at("Name"), "Unknown task");
+    ASSERT_EQ(key.at("Source"), "executor");
+    ASSERT_EQ(key.at("IsRetry"), "0");
+  }
 }
 
 TEST_F(CoreWorkerTest, HandleGetObjectStatusIdempotency) {

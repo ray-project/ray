@@ -35,6 +35,7 @@
 #include "ray/common/buffer.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/object_manager/plasma/client.h"
+#include "ray/observability/fake_metric.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/tests/util.h"
@@ -395,6 +396,7 @@ class NodeManagerTest : public ::testing::Test {
     core_worker_subscriber_ = std::make_unique<pubsub::FakeSubscriber>();
     mock_object_directory_ = std::make_unique<MockObjectDirectory>();
     mock_object_manager_ = std::make_unique<MockObjectManager>();
+    fake_task_by_state_counter_ = ray::observability::FakeMetric();
 
     EXPECT_CALL(*mock_object_manager_, GetMemoryCapacity()).WillRepeatedly(Return(0));
 
@@ -418,8 +420,8 @@ class NodeManagerTest : public ::testing::Test {
     local_object_manager_ =
         std::make_unique<FakeLocalObjectManager>(objects_pending_deletion_);
 
-    lease_dependency_manager_ =
-        std::make_unique<LeaseDependencyManager>(*mock_object_manager_);
+    lease_dependency_manager_ = std::make_unique<LeaseDependencyManager>(
+        *mock_object_manager_, fake_task_by_state_counter_);
 
     cluster_resource_scheduler_ = std::make_unique<ClusterResourceScheduler>(
         io_service_,
@@ -527,6 +529,7 @@ class NodeManagerTest : public ::testing::Test {
   MockWorkerPool mock_worker_pool_;
   absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::shared_ptr<absl::flat_hash_set<ObjectID>> objects_pending_deletion_;
+  ray::observability::FakeMetric fake_task_by_state_counter_;
 };
 
 TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {

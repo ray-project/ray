@@ -283,6 +283,7 @@ ray_cc_binary(
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
         "//src/ray/common/cgroup:cgroup_manager",
+        "//src/ray/core_worker:metrics",
         "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//src/ray/object_manager:ownership_object_directory",
         "//src/ray/raylet/scheduling:cluster_lease_manager",

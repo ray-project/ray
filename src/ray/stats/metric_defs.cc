@@ -37,24 +37,6 @@ namespace ray::stats {
 /// =========== PUBLIC METRICS; keep in sync with ray-metrics.rst =================
 /// ===============================================================================
 
-/// Tracks tasks by state, including pending, running, and finished tasks.
-/// This metric may be recorded from multiple components processing the task in Ray,
-/// including the submitting core worker, executor core worker, and pull manager.
-///
-/// To avoid metric collection conflicts between components reporting on the same task,
-/// we use the "Source" required label.
-DEFINE_stats(
-    tasks,
-    "Current number of tasks currently in a particular state.",
-    // State: the task state, as described by rpc::TaskState proto in common.proto.
-    // Name: the name of the function called (Keep in sync with the
-    // TASK_OR_ACTOR_NAME_TAG_KEY in python/ray/_private/telemetry/metric_cardinality.py)
-    // Source: component reporting, e.g., "core_worker", "executor", or "pull_manager".
-    // IsRetry: whether this task is a retry.
-    ("State", "Name", "Source", "IsRetry", "JobId"),
-    (),
-    ray::stats::GAUGE);
-
 /// Tracks actors by state, including pending, running, and idle actors.
 ///
 /// To avoid metric collection conflicts between components reporting on the same task,
