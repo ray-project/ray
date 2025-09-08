@@ -434,9 +434,6 @@ class ObjectManager : public ObjectManagerInterface,
   /// Multi-thread asio service, deal with all outgoing and incoming RPC request.
   instrumented_io_context &rpc_service_;
 
-  /// Keep rpc service running when no task in rpc service.
-  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> rpc_work_;
-
   /// The thread pool used for running `rpc_service`.
   /// Data copy operations during request are done in this thread pool.
   std::vector<std::thread> rpc_threads_;

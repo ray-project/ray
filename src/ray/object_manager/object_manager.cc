@@ -85,7 +85,6 @@ ObjectManager::ObjectManager(
       buffer_pool_store_client_(buffer_pool_store_client),
       buffer_pool_(buffer_pool_store_client_, config_.object_chunk_size),
       rpc_service_(rpc_service),
-      rpc_work_(rpc_service_.get_executor()),
       rpc_threads_(std::move(rpc_threads)),
       object_manager_server_("ObjectManager",
                              config_.object_manager_port,

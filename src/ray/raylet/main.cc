@@ -247,6 +247,11 @@ int main(int argc, char *argv[]) {
       /*running_on_single_thread=*/true,
       "raylet_main_io_context"};
 
+  instrumented_io_context object_manager_rpc_service{/*emit_metrics=*/false,
+                                                     /*running_on_single_thread=*/false,
+                                                     "object_manager_rpc_io_context"};
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
+      object_manager_rpc_work(object_manager_rpc_service.get_executor());
   // Ensure that the IO service keeps running. Without this, the service will exit as soon
   // as there is no more work to be processed.
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
@@ -616,39 +621,29 @@ int main(int argc, char *argv[]) {
         },
         /*add_object_callback=*/
         [&](const ray::ObjectInfo &object_info) {
-          auto add_object_callback = [&](const ray::ObjectInfo &obj_info) {
-            node_manager->HandleObjectLocal(obj_info);
-          };
           main_service.post(
-              [&]() {
+              [&object_manager, &node_manager, object_info]() {
                 object_manager->HandleObjectAdded(object_info);
-                add_object_callback(object_info);
+                node_manager->HandleObjectLocal(object_info);
               },
               "ObjectManager.ObjectAdded");
         },
         /*delete_object_callback=*/
         [&](const ray::ObjectID &object_id) {
-          auto delete_object_callback = [&](const ray::ObjectID &obj_id) {
-            node_manager->HandleObjectMissing(obj_id);
-          };
           main_service.post(
-              [&]() {
+              [&object_manager, &node_manager, object_id]() {
                 object_manager->HandleObjectDeleted(object_id);
-                delete_object_callback(object_id);
+                node_manager->HandleObjectMissing(object_id);
               },
               "ObjectManager.ObjectDeleted");
         });
 
-    instrumented_io_context rpc_service{/*enable_metrics=*/false,
-                                        /*running_on_single_thread=*/true};
-    boost::asio::executor_work_guard<boost::asio::io_context::executor_type> rpc_work(
-        rpc_service.get_executor());
     std::vector<std::thread> rpc_threads(
         object_manager_config.rpc_service_threads_number);
     for (int i = 0; i < object_manager_config.rpc_service_threads_number; i++) {
-      rpc_threads[i] = std::thread([&rpc_service, i] {
+      rpc_threads[i] = std::thread([&object_manager_rpc_service, i] {
         SetThreadName(absl::StrFormat("rpc.obj.mgr.%d", i));
-        rpc_service.run();
+        object_manager_rpc_service.run();
       });
     }
 
@@ -695,7 +690,7 @@ int main(int argc, char *argv[]) {
           return std::make_shared<ray::rpc::ObjectManagerClient>(
               address, port, call_manager);
         },
-        rpc_service,
+        object_manager_rpc_service,
         std::move(rpc_threads));
 
     local_object_manager = std::make_unique<ray::raylet::LocalObjectManager>(
