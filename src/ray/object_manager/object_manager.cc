@@ -708,7 +708,10 @@ void ObjectManager::SpreadFreeObjectsRequest(const std::vector<ObjectID> &object
   }
 }
 
-void ObjectManager::RetryFreeObjects(const NodeID &node_id, uint32_t attempt_number, const rpc::FreeObjectsRequest &free_objects_request) {
+void ObjectManager::RetryFreeObjects(
+    const NodeID &node_id,
+    uint32_t attempt_number,
+    const rpc::FreeObjectsRequest &free_objects_request) {
   auto default_unavailable_timeout_callback = [this, node_id]() {
     auto gcs_check_node_alive = [node_id, this]() {
       this->gcs_client_.Nodes().AsyncGetAll(
@@ -759,20 +762,32 @@ void ObjectManager::RetryFreeObjects(const NodeID &node_id, uint32_t attempt_num
   };
 
   auto delay_ms = ExponentialBackoff::GetBackoffMs(attempt_number, 1000);
-  execute_after(rpc_service_, [this, node_id, attempt_number, default_unavailable_timeout_callback, free_objects_request] {
-  auto it = remote_object_manager_clients_.find(node_id);
-  if (it == remote_object_manager_clients_.end()) {
-    return;
-  }
+  execute_after(
+      rpc_service_,
+      [this,
+       node_id,
+       attempt_number,
+       default_unavailable_timeout_callback,
+       free_objects_request] {
+        auto it = remote_object_manager_clients_.find(node_id);
+        if (it == remote_object_manager_clients_.end()) {
+          return;
+        }
 
-  it->second->FreeObjects(free_objects_request,
-    [this, node_id, attempt_number, default_unavailable_timeout_callback, free_objects_request](const Status&, const rpc::FreeObjectsReply&) {
-      default_unavailable_timeout_callback();
-      if (remote_object_manager_clients_.contains(node_id)) {
-        RetryFreeObjects(node_id, attempt_number + 1, free_objects_request);
-      }
-    });
-  }, std::chrono::milliseconds(delay_ms));
+        it->second->FreeObjects(
+            free_objects_request,
+            [this,
+             node_id,
+             attempt_number,
+             default_unavailable_timeout_callback,
+             free_objects_request](const Status &, const rpc::FreeObjectsReply &) {
+              default_unavailable_timeout_callback();
+              if (remote_object_manager_clients_.contains(node_id)) {
+                RetryFreeObjects(node_id, attempt_number + 1, free_objects_request);
+              }
+            });
+      },
+      std::chrono::milliseconds(delay_ms));
 }
 
 std::shared_ptr<rpc::ObjectManagerClient> ObjectManager::GetRpcClient(

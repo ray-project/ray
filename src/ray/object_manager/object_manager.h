@@ -395,7 +395,9 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param client_id Remote server client id
   void SendPullRequest(const ObjectID &object_id, const NodeID &client_id);
 
-  void RetryFreeObjects(const NodeID &node_id, uint32_t attempt_number, const rpc::FreeObjectsRequest &free_objects_request);
+  void RetryFreeObjects(const NodeID &node_id,
+                        uint32_t attempt_number,
+                        const rpc::FreeObjectsRequest &free_objects_request);
 
   /// Get the rpc client according to the node ID
   ///
