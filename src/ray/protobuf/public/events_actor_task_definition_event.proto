@@ -40,7 +40,5 @@ message ActorTaskDefinitionEvent {
   bytes parent_task_id = 10;
   bytes placement_group_id = 11;
   map<string, bytes> ref_ids = 12;
-  
-  // The serialized runtime env passed from the user.
   string serialized_runtime_env = 13;
 }
