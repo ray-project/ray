@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional, List, Tuple
 
 from ray_release.aws import RELEASE_AWS_BUCKET
 from ray_release.buildkite.concurrency import get_concurrency_group
+from ray_release.configs.global_config import get_global_config
 from ray_release.test import Test, TestState
 from ray_release.config import (
     DEFAULT_ANYSCALE_PROJECT,
@@ -113,7 +114,7 @@ def get_step(
     global_config: Optional[str] = None,
 ):
     env = env or {}
-
+    config = get_global_config()
     step = copy.deepcopy(DEFAULT_STEP_TEMPLATE)
 
     cmd = [
@@ -199,10 +200,10 @@ def get_step(
         )
     else:
         if "ray-ml" in image:
-            step["depends_on"] = "anyscalemlbuild"
+            step["depends_on"] = config["image_build_step_ml"]
         elif "ray-llm" in image:
-            step["depends_on"] = "anyscalellmbuild"
+            step["depends_on"] = config["image_build_step_llm"]
         else:
-            step["depends_on"] = "anyscalebuild"
+            step["depends_on"] = config["image_build_step"]
 
     return step
