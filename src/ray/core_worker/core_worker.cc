@@ -54,6 +54,8 @@ using MessageType = ray::protocol::MessageType;
 
 namespace ray::core {
 
+using std::literals::operator""sv;
+
 namespace {
 // Default capacity for serialization caches.
 constexpr size_t kDefaultSerializationCacheCap = 500;
@@ -166,7 +168,8 @@ JobID GetProcessJobID(const CoreWorkerOptions &options) {
   return options.job_id;
 }
 
-TaskCounter::TaskCounter() {
+TaskCounter::TaskCounter(ray::observability::MetricInterface &task_by_state_counter)
+    : task_by_state_counter_(task_by_state_counter) {
   counter_.SetOnChangeCallback(
       [this](const std::tuple<std::string, TaskStatusType, bool>
                  &key) ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) mutable {
@@ -181,37 +184,37 @@ TaskCounter::TaskCounter() {
         const auto is_retry_label = is_retry ? "1" : "0";
         // RUNNING_IN_RAY_GET/WAIT are sub-states of RUNNING, so we need to subtract
         // them out to avoid double-counting.
-        ray::stats::STATS_tasks.Record(
+        task_by_state_counter_.Record(
             running_total - num_in_get - num_in_wait,
-            {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
-             {"Name", func_name},
-             {"IsRetry", is_retry_label},
-             {"JobId", job_id_},
-             {"Source", "executor"}});
+            {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
+             {"Name"sv, func_name},
+             {"IsRetry"sv, is_retry_label},
+             {"JobId"sv, job_id_},
+             {"Source"sv, "executor"}});
         // Negate the metrics recorded from the submitter process for these tasks.
-        ray::stats::STATS_tasks.Record(
+        task_by_state_counter_.Record(
             -running_total,
-            {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::SUBMITTED_TO_WORKER)},
-             {"Name", func_name},
-             {"IsRetry", is_retry_label},
-             {"JobId", job_id_},
-             {"Source", "executor"}});
+            {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::SUBMITTED_TO_WORKER)},
+             {"Name"sv, func_name},
+             {"IsRetry"sv, is_retry_label},
+             {"JobId"sv, job_id_},
+             {"Source"sv, "executor"}});
         // Record sub-state for get.
-        ray::stats::STATS_tasks.Record(
+        task_by_state_counter_.Record(
             num_in_get,
-            {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_GET)},
-             {"Name", func_name},
-             {"IsRetry", is_retry_label},
-             {"JobId", job_id_},
-             {"Source", "executor"}});
+            {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_GET)},
+             {"Name"sv, func_name},
+             {"IsRetry"sv, is_retry_label},
+             {"JobId"sv, job_id_},
+             {"Source"sv, "executor"}});
         // Record sub-state for wait.
-        ray::stats::STATS_tasks.Record(
+        task_by_state_counter_.Record(
             num_in_wait,
-            {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_WAIT)},
-             {"Name", func_name},
-             {"IsRetry", is_retry_label},
-             {"JobId", job_id_},
-             {"Source", "executor"}});
+            {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_WAIT)},
+             {"Name"sv, func_name},
+             {"IsRetry"sv, is_retry_label},
+             {"JobId"sv, job_id_},
+             {"Source"sv, "executor"}});
       });
 }
 
@@ -318,7 +321,8 @@ CoreWorker::CoreWorker(
     std::unique_ptr<ActorManager> actor_manager,
     instrumented_io_context &task_execution_service,
     std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
-    uint32_t pid)
+    uint32_t pid,
+    ray::observability::MetricInterface &task_by_state_counter)
     : options_(std::move(options)),
       get_call_site_(RayConfig::instance().record_ref_creation_sites()
                          ? options_.get_lang_stack
@@ -357,6 +361,7 @@ CoreWorker::CoreWorker(
       task_execution_service_(task_execution_service),
       exiting_detail_(std::nullopt),
       max_direct_call_object_size_(RayConfig::instance().max_direct_call_object_size()),
+      task_counter_(task_by_state_counter),
       task_event_buffer_(std::move(task_event_buffer)),
       pid_(pid),
       actor_shutdown_callback_(std::move(options_.actor_shutdown_callback)),
