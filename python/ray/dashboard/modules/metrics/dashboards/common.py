@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 
 @dataclass
@@ -104,6 +104,15 @@ HEATMAP_TEMPLATE = {
             "show": True,
         },
     ],
+    "yAxis": {
+        "show": True,
+        "format": "short",
+        "decimals": None,
+        "logBase": 1,
+        "splitFactor": None,
+        "min": None,
+        "max": None
+    },
 }
 
 GRAPH_PANEL_TEMPLATE = {
@@ -368,6 +377,23 @@ class PanelTemplate(Enum):
     GAUGE = GAUGE_PANEL_TEMPLATE
 
 
+LEGACY_COLOR_BLUES = {
+    "mode": "opacity",
+    "cardColor": "#5794F2",
+    "colorScale": "sqrt",
+    "exponent": 0.5,
+    "colorScheme": "interpolateBlues"
+}
+
+@dataclass
+class Color:
+    mode: str
+    scheme: str
+
+@dataclass
+class PanelOptions:
+    color: Color
+
 @dataclass
 class Panel:
     """Defines a Grafana panel (graph) for the Ray dashboard page.
@@ -395,6 +421,12 @@ class Panel:
     linewidth: int = 1
     grid_pos: Optional[GridPos] = None
     template: Optional[PanelTemplate] = PanelTemplate.GRAPH
+    interval: Optional[str] = None
+    options: Optional[PanelOptions] = None
+    # Legacy color field for Grafana 7
+    color: Optional[Dict[str, Any]] = None
+    # Legacy dataFormat field for heatmaps in Grafana 7
+    dataFormat: Optional[str] = None
 
 
 @dataclass

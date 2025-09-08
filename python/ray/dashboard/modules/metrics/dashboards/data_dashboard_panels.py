@@ -5,6 +5,11 @@ from ray.dashboard.modules.metrics.dashboards.common import (
     Panel,
     Target,
     Row,
+    TargetTemplate,
+    PanelTemplate,
+    PanelOptions,
+    Color,
+    LEGACY_COLOR_BLUES,
 )
 
 # When adding a new panels for an OpRuntimeMetric, follow this format:
@@ -448,7 +453,7 @@ BLOCK_GENERATION_TIME_PANEL = Panel(
     id=8,
     title="Block Generation Time",
     description="Time spent generating blocks in tasks.",
-    unit="seconds",
+    unit="s",
     targets=[
         Target(
             expr='sum(ray_data_block_generation_time{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
@@ -463,7 +468,7 @@ TASK_SUBMISSION_BACKPRESSURE_PANEL = Panel(
     id=37,
     title="Task Submission Backpressure Time",
     description="Time spent in task submission backpressure.",
-    unit="seconds",
+    unit="s",
     targets=[
         Target(
             expr='sum(ray_data_task_submission_backpressure_time{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
@@ -477,24 +482,113 @@ TASK_SUBMISSION_BACKPRESSURE_PANEL = Panel(
 # Task Completion Time Percentiles
 TASK_COMPLETION_TIME_PANEL = Panel(
     id=38,
-    title="Task Completion Time",
-    description="Time spent running tasks to completion w/ backpressure.",
-    unit="seconds",
+    title="Task Completion Time Heatmap",
+    description="Time (in seconds) spent (including backpressure) running tasks to completion. Brighter colors indicate more tasks finished within that duration range.",
+    unit="s",
     targets=[
         Target(
-            expr='increase(ray_data_task_completion_time{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_tasks_finished{{{global_filters}, operator=~"$Operator"}}[5m])',
-            legend="Task Completion Time: {{dataset}}, {{operator}}",
+            expr='sum by (le) (increase(ray_data_task_completion_time_bucket{{{global_filters}, operator=~\"$Operator\", le!=\"+Inf\"}}[$__interval]))',
+            legend="{{le}}",
+            template=TargetTemplate.HEATMAP,
         ),
     ],
     fill=0,
     stack=False,
+    interval="30s",
+    template=PanelTemplate.HEATMAP,
+    options=PanelOptions(
+        color=Color(
+            mode="scheme",
+            scheme="Blues",
+        ),
+    ),
+    color=LEGACY_COLOR_BLUES,
+    dataFormat="tsbuckets",
+)
+
+BLOCK_COMPLETION_TIME_PANEL = Panel(
+    id=57,
+    title="Block Completion Time Heatmap",
+    description="Time (in seconds) spent processing blocks to completion. If multiple blocks are generated per task, this is approximated by assuming each block took an equal amount of time to process. Brighter colors indicate more blocks finished within that duration range.",
+    unit="s",
+    targets=[
+        Target(
+            expr='sum by (le) (increase(ray_data_block_completion_time_bucket{{{global_filters}, operator=~\"$Operator\", le!=\"+Inf\"}}[$__interval]))',
+            legend="{{le}}",
+            template=TargetTemplate.HEATMAP,
+        ),
+    ],
+    fill=0,
+    stack=False,
+    interval="30s",
+    template=PanelTemplate.HEATMAP,
+    options=PanelOptions(
+        color=Color(
+            mode="scheme",
+            scheme="Blues",
+        ),
+    ),
+    color=LEGACY_COLOR_BLUES,
+    dataFormat="tsbuckets",
+)
+
+BLOCK_SIZE_BYTES_PANEL = Panel(
+    id=58,
+    title="Block Size (Bytes) Heatmap",
+    description="Size (in bytes) per block. Brighter colors indicate more blocks are within that size range.",
+    unit="bytes",
+    targets=[
+        Target(
+            expr='sum by (le) (increase(ray_data_block_size_bytes_bucket{{{global_filters}, operator=~\"$Operator\", le!=\"+Inf\"}}[$__interval]))',
+            legend="{{le}}",
+            template=TargetTemplate.HEATMAP,
+        ),
+    ],
+    fill=0,
+    stack=False,
+    interval="30s",
+    template=PanelTemplate.HEATMAP,
+    options=PanelOptions(
+        color=Color(
+            mode="scheme",
+            scheme="Blues",
+        ),
+    ),
+    color=LEGACY_COLOR_BLUES,
+    dataFormat="tsbuckets",
+)
+
+BLOCK_SIZE_ROWS_PANEL = Panel(
+    id=59,
+    title="Block Size (Rows) Heatmap",
+    description="Number of rows per block. Brighter colors indicate more blocks are within that number of rows range.",
+    unit="rows",
+    targets=[
+        Target(
+            expr='sum by (le) (increase(ray_data_block_size_rows_bucket{{{global_filters}, operator=~\"$Operator\", le!=\"+Inf\"}}[$__interval]))',
+            legend="{{le}}",
+            template=TargetTemplate.HEATMAP,
+        ),
+    ],
+    fill=0,
+    stack=False,
+    interval="30s",
+    template=PanelTemplate.HEATMAP,
+    options=PanelOptions(
+        color=Color(
+            mode="scheme",
+            scheme="Blues",
+        ),
+    ),
+    color=LEGACY_COLOR_BLUES,
+    dataFormat="tsbuckets",
 )
 
 TASK_OUTPUT_BACKPRESSURE_TIME_PANEL = Panel(
     id=39,
     title="Task Output Backpressure Time",
     description="Time spent in output backpressure.",
-    unit="seconds",
+    unit="s",
     targets=[
         Target(
             expr='increase(ray_data_task_output_backpressure_time{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_tasks_finished{{{global_filters}, operator=~"$Operator"}}[5m])',
@@ -509,7 +603,7 @@ TASK_COMPLETION_TIME_WITHOUT_BACKPRESSURE_PANEL = Panel(
     id=40,
     title="Task Completion Time Without Backpressure",
     description="Time spent running tasks to completion w/o backpressure.",
-    unit="seconds",
+    unit="s",
     targets=[
         Target(
             expr='increase(ray_data_task_completion_time_without_backpressure{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_tasks_finished{{{global_filters}, operator=~"$Operator"}}[5m])',
@@ -677,7 +771,7 @@ ITERATION_INITIALIZATION_PANEL = Panel(
     id=12,
     title="Iteration Initialization Time",
     description="Seconds spent in iterator initialization code",
-    unit="seconds",
+    unit="s",
     targets=[
         Target(
             expr='sum(ray_data_iter_initialize_seconds{{{global_filters}, operator=~"$Operator"}}) by (dataset)',
@@ -692,7 +786,7 @@ ITERATION_BLOCKED_PANEL = Panel(
     id=9,
     title="Iteration Blocked Time",
     description="Seconds user thread is blocked by iter_batches()",
-    unit="seconds",
+    unit="s",
     targets=[
         Target(
             expr='sum(ray_data_iter_total_blocked_seconds{{{global_filters}, operator=~"$Operator"}}) by (dataset)',
@@ -707,7 +801,7 @@ ITERATION_USER_PANEL = Panel(
     id=10,
     title="Iteration User Time",
     description="Seconds spent in user code",
-    unit="seconds",
+    unit="s",
     targets=[
         Target(
             expr='sum(ray_data_iter_user_seconds{{{global_filters}, operator=~"$Operator"}}) by (dataset)',
@@ -723,7 +817,7 @@ SCHEDULING_LOOP_DURATION_PANEL = Panel(
     id=47,
     title="Scheduling Loop Duration",
     description=("Duration of the scheduling loop in seconds."),
-    unit="seconds",
+    unit="s",
     targets=[
         Target(
             expr='sum(ray_data_sched_loop_duration_s{{{global_filters}, operator=~"$Operator"}}) by (dataset)',
@@ -867,6 +961,8 @@ DATA_GRAFANA_ROWS = [
         title="Outputs",
         id=103,
         panels=[
+            BLOCK_SIZE_BYTES_PANEL,
+            BLOCK_SIZE_ROWS_PANEL,
             OUTPUT_BLOCKS_TAKEN_PANEL,
             OUTPUT_BYTES_TAKEN_PANEL,
             OUTPUT_BYTES_BY_NODE_PANEL,
@@ -885,6 +981,7 @@ DATA_GRAFANA_ROWS = [
         id=104,
         panels=[
             TASK_COMPLETION_TIME_PANEL,
+            BLOCK_COMPLETION_TIME_PANEL,
             TASK_COMPLETION_TIME_WITHOUT_BACKPRESSURE_PANEL,
             TASK_OUTPUT_BACKPRESSURE_TIME_PANEL,
             TASK_SUBMISSION_BACKPRESSURE_PANEL,
