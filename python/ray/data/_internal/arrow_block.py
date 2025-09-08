@@ -460,7 +460,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
                         column = transform_pyarrow.to_numpy(
                             combined_array, zero_copy_only=False
                         )
-                        col_values.append(column.tolist())
+                        col_values.append(column)
                     else:
                         col_values.append(column.to_pylist())
                 for i in range(len(table)):

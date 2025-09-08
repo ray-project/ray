@@ -18,6 +18,7 @@ from ray.data.extensions.tensor_extension import (
     ArrowVariableShapedTensorType,
     TensorArray,
     TensorDtype,
+    FixedShapeTensorType,
 )
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import extract_values
@@ -938,6 +939,12 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_col_schema(
         expected_tensor_type = ArrowTensorType
     elif tensor_format == "v2":
         expected_tensor_type = ArrowTensorTypeV2
+    elif tensor_format == "arrow_native":
+        if FixedShapeTensorType is None:
+            expected_tensor_type = ArrowTensorTypeV2
+        else:
+            expected_tensor_type = FixedShapeTensorType
+            ds = ds.materialize() # This reconiles the schema
     else:
         raise ValueError(f"Unexpected tensor format: {tensor_format}")
 

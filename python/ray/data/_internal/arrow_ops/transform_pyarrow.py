@@ -258,7 +258,7 @@ def unify_schemas(
                 new_type = tensor_array_types[0]
             elif isinstance(tensor_array_types[0], arrow_fixed_shape_tensor_types):
                 new_type = ArrowVariableShapedTensorType(
-                    dtype=tensor_array_types[0].scalar_type,
+                    dtype=tensor_array_types[0].storage_type.value_type,
                     ndim=len(tensor_array_types[0].shape),
                 )
             else:
