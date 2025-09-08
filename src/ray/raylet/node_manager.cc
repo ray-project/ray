@@ -2929,13 +2929,15 @@ const std::string NodeManager::CreateOomKillMessageDetails(
 const std::string NodeManager::CreateOomKillMessageSuggestions(
     const std::shared_ptr<WorkerInterface> &worker) const {
   std::stringstream retry_recommendation_ss;
-  retry_recommendation_ss << "Set ";
-  if (worker->GetGrantedLease().GetLeaseSpecification().IsNormalTask()) {
-    retry_recommendation_ss << "max_retries";
-  } else {
-    retry_recommendation_ss << "max_restarts and max_task_retries";
+  if (worker) {
+    retry_recommendation_ss << "Set ";
+    if (worker->GetGrantedLease().GetLeaseSpecification().IsNormalTask()) {
+      retry_recommendation_ss << "max_retries";
+    } else {
+      retry_recommendation_ss << "max_restarts and max_task_retries";
+    }
+    retry_recommendation_ss << " to enable retry when the task crashes due to OOM. ";
   }
-  retry_recommendation_ss << " to enable retry when the task crashes due to OOM. ";
   std::stringstream deadlock_recommendation;
   deadlock_recommendation
       << "The node has insufficient memory to execute this workload. ";
