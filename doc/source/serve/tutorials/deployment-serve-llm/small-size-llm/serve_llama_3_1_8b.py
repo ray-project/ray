@@ -15,7 +15,7 @@ llm_config = LLMConfig(
             max_replicas=2,
         )
     ),
-    ### If your model isn't gated, you can skip `hf_token`
+    ### If your model isn't gated, you can skip `HF_TOKEN`
     # Share your Hugging Face token with the vllm engine so it can access the gated Llama 3
     # Type `export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>` in a terminal
     runtime_env=dict(env_vars={"HF_TOKEN": os.environ.get("HF_TOKEN")}),
