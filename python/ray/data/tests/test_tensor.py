@@ -730,19 +730,36 @@ def test_tensors_in_tables_parquet_with_schema(
     ds = ray.data.from_pandas([df])
     ds.write_parquet(str(tmp_path))
 
+    schema = None
     if tensor_format == "v1":
         tensor_type_class = tensor_type
     elif tensor_format == "v2":
         tensor_type_class = ArrowTensorTypeV2
+    elif tensor_format == "arrow_native":
+        if FixedShapeTensorType is None:
+            tensor_type_class = ArrowTensorTypeV2
+        else:
+            schema = pa.schema(
+                [
+                    ("one", pa.int32()),
+                    (
+                        "two",
+                        pa.fixed_shape_tensor(
+                            pa.from_numpy_dtype(arr.dtype), inner_shape
+                        ),
+                    ),
+                ]
+            )
     else:
         raise ValueError(f"unexpected format: {tensor_format}")
 
-    schema = pa.schema(
-        [
-            ("one", pa.int32()),
-            ("two", tensor_type_class(inner_shape, pa.from_numpy_dtype(arr.dtype))),
-        ]
-    )
+    if schema is None:
+        schema = pa.schema(
+            [
+                ("one", pa.int32()),
+                ("two", tensor_type_class(inner_shape, pa.from_numpy_dtype(arr.dtype))),
+            ]
+        )
     ds = ray.data.read_parquet(str(tmp_path), schema=schema)
     values = [[s["one"], s["two"]] for s in ds.take()]
     expected = list(zip(list(range(outer_dim)), arr))
@@ -890,6 +907,12 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_udf(
         expected_tensor_type = ArrowTensorType
     elif tensor_format == "v2":
         expected_tensor_type = ArrowTensorTypeV2
+    elif tensor_format == "arrow_native":
+        if FixedShapeTensorType is None:
+            expected_tensor_type = ArrowTensorTypeV2
+        else:
+            expected_tensor_type = FixedShapeTensorType
+            ds = ds.materialize()  # This reconiles the schema
     else:
         raise ValueError(f"Unexpected tensor format: {tensor_format}")
 
@@ -927,7 +950,7 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_col_schema(
     def _block_udf(block: pa.Table):
         df = block.to_pandas()
         df[tensor_col_name] += 1
-        return pa.Table.from_pandas(df)
+        return pa.Table.from_pandas(df, schema=block.schema)
 
     ds = ray.data.read_parquet(
         str(tmp_path),
@@ -944,7 +967,7 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_col_schema(
             expected_tensor_type = ArrowTensorTypeV2
         else:
             expected_tensor_type = FixedShapeTensorType
-            ds = ds.materialize() # This reconiles the schema
+            ds = ds.materialize()  # This reconiles the schema
     else:
         raise ValueError(f"Unexpected tensor format: {tensor_format}")
 
