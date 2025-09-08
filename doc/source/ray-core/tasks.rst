@@ -287,6 +287,8 @@ You can change this behavior by setting
 in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.remote_function.RemoteFunction.options>`.
 See :ref:`Ray fault tolerance <fault-tolerance>` for more details.
 
+.. _task-events:
+
 Task Events
 -----------
 
