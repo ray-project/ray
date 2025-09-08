@@ -294,7 +294,9 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
                                       const rpc::FreeActorObjectReply &reply) {
                   if (!status.ok()) {
                     RAY_LOG(INFO).WithField(object_id).WithField(actor_id)
-                        << "Failed to free actor object, the actor may already be dead, status: " << status;
+                        << "Failed to free actor object, the actor may already be dead, "
+                           "status: "
+                        << status;
                   }
                 });
           });
