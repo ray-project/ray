@@ -740,6 +740,106 @@ class TestReservationOpResourceAllocator:
 
         assert allocator._op_budgets[o2].gpu == 0
 
+    def test_get_ineligible_ops_without_eligible_upstream(self, restore_data_context):
+        """Test identifying ineligible ops."""
+        DataContext.get_current().op_resource_reservation_enabled = True
+
+        # Create pipeline with branches:
+        # input -> limit1 -> map1 -> limit2
+        o1 = InputDataBuffer(DataContext.get_current(), [])  # ineligible
+        o2 = LimitOperator(
+            10, o1, DataContext.get_current()
+        )  # ineligible, no eligible upstream
+        o3 = mock_map_op(
+            o2, incremental_resource_usage=ExecutionResources(1, 0, 10)
+        )  # eligible
+        o4 = LimitOperator(
+            5, o3, DataContext.get_current()
+        )  # ineligible, has eligible upstream o4
+
+        # Build topology with o6 as final operator
+        topo, _ = build_streaming_topology(o4, ExecutionOptions())
+
+        resource_manager = ResourceManager(
+            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+        )
+
+        allocator = resource_manager._op_resource_allocator
+
+        ineligible_without_upstream = (
+            allocator.get_ineligible_ops_without_eligible_upstream()
+        )
+
+        assert o1 in ineligible_without_upstream  # input, no eligible upstream
+        assert o2 in ineligible_without_upstream  # limit, no eligible upstream
+        assert o3 not in ineligible_without_upstream  # eligible
+        assert o4 not in ineligible_without_upstream  # has eligible upstream o3
+
+    def test_reservation_accounts_for_ineligible_ops_without_upstream(
+        self, restore_data_context
+    ):
+        """Test that resource reservation properly accounts for ineligible ops without eligible upstream."""
+        DataContext.get_current().op_resource_reservation_enabled = True
+        DataContext.get_current().op_resource_reservation_ratio = 0.5
+
+        # Create pipeline: input -> limit1 -> map1 -> map2
+        o1 = InputDataBuffer(DataContext.get_current(), [])  # ineligible
+        o2 = LimitOperator(
+            10, o1, DataContext.get_current()
+        )  # ineligible, no eligible upstream
+        o3 = mock_map_op(
+            o2, incremental_resource_usage=ExecutionResources(1, 0, 10)
+        )  # eligible
+        o4 = mock_map_op(
+            o3, incremental_resource_usage=ExecutionResources(1, 0, 10)
+        )  # eligible
+
+        # Set up resource usage - o2 (limit) consumes some resources
+        op_usages = {
+            o1: ExecutionResources.zero(),
+            o2: ExecutionResources(
+                cpu=2, object_store_memory=50
+            ),  # limit uses resources
+            o3: ExecutionResources.zero(),
+            o4: ExecutionResources.zero(),
+        }
+        op_internal_usage = dict.fromkeys([o1, o2, o3, o4], 0)
+        op_outputs_usages = dict.fromkeys([o1, o2, o3, o4], 0)
+
+        topo, _ = build_streaming_topology(o4, ExecutionOptions())
+
+        global_limits = ExecutionResources(cpu=10, object_store_memory=250)
+
+        resource_manager = ResourceManager(
+            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+        )
+        resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
+        resource_manager._mem_op_internal = op_internal_usage
+        resource_manager._mem_op_outputs = op_outputs_usages
+        resource_manager.get_global_limits = MagicMock(return_value=global_limits)
+
+        allocator = resource_manager._op_resource_allocator
+        allocator.update_usages()
+
+        # Check that o2's usage was subtracted from remaining resources
+        # global_limits (10 CPU, 250 mem) - o1 usage (0) - o2 usage (2 CPU, 50 mem) = remaining (8 CPU, 200 mem)
+        # With 2 eligible ops (o3, o4) and 50% reservation ratio:
+        # Each op gets reserved: (8 CPU, 200 mem) * 0.5 / 2 = (2 CPU, 50 mem)
+
+        # Verify that reservations are calculated correctly
+        assert allocator._op_reserved[o3].cpu == 2.0
+        assert allocator._op_reserved[o4].cpu == 2.0
+
+        # The total reserved memory should account for o2's usage being subtracted
+        total_reserved_memory = (
+            allocator._op_reserved[o3].object_store_memory
+            + allocator._reserved_for_op_outputs[o3]
+            + allocator._op_reserved[o4].object_store_memory
+            + allocator._reserved_for_op_outputs[o4]
+        )
+
+        assert abs(total_reserved_memory - 100) < 1.0
+
 
 if __name__ == "__main__":
     import sys

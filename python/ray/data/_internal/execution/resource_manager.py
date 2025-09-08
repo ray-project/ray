@@ -514,7 +514,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         self._op_reserved.clear()
         self._reserved_for_op_outputs.clear()
         self._reserved_min_resources.clear()
-        remaining = global_limits.copy()
 
         if len(eligible_ops) == 0:
             return
@@ -523,9 +522,12 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # We only consider operators that have no eligible upstream operators, because ineligible operators that have eligible upstream operators
         # will be excluded in https://github.com/ray-project/ray/blob/6b703a8a4d5b761365e05f75a1de61625cab248b/python/ray/data/_internal/execution/resource_manager.py#L667
         for op in self.get_ineligible_ops_without_eligible_upstream():
-            remaining = remaining.subtract(self._resource_manager.get_op_usage(op))
+            global_limits = global_limits.subtract(
+                self._resource_manager.get_op_usage(op)
+            )
 
-        remaining = remaining.max(ExecutionResources.zero())
+        global_limits = global_limits.max(ExecutionResources.zero())
+        remaining = global_limits.copy()
 
         # Reserve `reservation_ratio * global_limits / num_ops` resources for each
         # operator.
