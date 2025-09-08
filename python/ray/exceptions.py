@@ -934,6 +934,7 @@ class UnserializableException(RayError):
             f"{self._original_stack_trace}"
         )
 
+
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,
