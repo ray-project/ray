@@ -487,15 +487,20 @@ def test_deploy_does_not_affect_dynamic_apps(serve_instance):
     ray.kill(client._controller, no_restart=False)
 
     wait_for_condition(check_running, app_name="declarative-app-1")
-    url = get_application_url(app_name="declarative-app-1")
+    # It takes some time for the target groups to be ready after controller recovery.
+    # So we make sure the target groups are ready before obtaining the URL.
+    target_groups = wait_for_target_groups(client, "declarative-app-1")
+    url = get_application_url(app_name="declarative-app-1", target_groups=target_groups)
     assert httpx.post(url).text == "wonderful world"
 
     wait_for_condition(check_running, app_name="dynamic-app")
-    url = get_application_url(app_name="dynamic-app")
+    target_groups = wait_for_target_groups(client, "dynamic-app")
+    url = get_application_url(app_name="dynamic-app", target_groups=target_groups)
     assert httpx.post(url).text == "Hello!"
 
     wait_for_condition(check_running, app_name="declarative-app-2")
-    url = get_application_url(app_name="declarative-app-2")
+    target_groups = wait_for_target_groups(client, "declarative-app-2")
+    url = get_application_url(app_name="declarative-app-2", target_groups=target_groups)
     assert httpx.post(url).text == "Hello!"
 
     # Now overwrite the dynamic app with a declarative one and check that it gets
