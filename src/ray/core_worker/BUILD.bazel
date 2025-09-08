@@ -166,6 +166,15 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "fake_actor_creator",
+    hdrs = ["fake_actor_creator.h"],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":actor_creator",
+    ],
+)
+
+ray_cc_library(
     name = "actor_manager",
     srcs = ["actor_manager.cc"],
     hdrs = ["actor_manager.h"],
