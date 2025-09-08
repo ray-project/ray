@@ -21,7 +21,6 @@ Public API
     lit
     udf
     download
-    where
 
 Expression Classes
 ------------------
