@@ -20,7 +20,7 @@ This tutorial provides a comprehensive, step-by-step guide on integrating PyTorc
 
 **Anyscale Specific Configuration**
 
-Note: This tutorial is optimized for the Anyscale platform. When running on open source Ray, additional configuration is required. For example, you will need to manually:
+Note: This tutorial is optimized for the Anyscale platform. When running on open source Ray, additional configuration is required. For example, you would need to manually:
 
 - **Configure your Ray Cluster**: Set up your multi-node environment and manage resource allocation without Anyscale's automation.
 - **Manage Dependencies**: Manually install and manage dependencies on each node.
@@ -30,9 +30,9 @@ Note: This tutorial is optimized for the Anyscale platform. When running on open
 
 ## Example Overview
 
-For demonstration purposes, we will integrate Ray Train with FSDP2 using a **Vision Transformer (ViT)** trained on the FashionMNIST dataset. We chose ViT because it has clear, repeatable block structures (transformer blocks) that are ideal for demonstrating FSDP2's sharding capabilities. 
+For demonstration purposes, this tutorial integrates Ray Train with FSDP2 using a **Vision Transformer (ViT)** trained on the FashionMNIST dataset. ViT was chosen because it has clear, repeatable block structures (transformer blocks) that are ideal for demonstrating FSDP2's sharding capabilities. 
 
-While this is a relatively simple example, FSDP's complexity can lead to common challenges during training, such as out-of-memory (OOM) errors. Throughout this guide, we'll address these common issues by providing practical tips for improving performance and reducing memory utilization based on your specific use case. 
+While this is a relatively simple example, FSDP's complexity can lead to common challenges during training, such as out-of-memory (OOM) errors. Throughout this guide, these common issues will be addressed by providing practical tips for improving performance and reducing memory utilization based on your specific use case. 
 
 ## 1. Package Setup
 
@@ -99,13 +99,13 @@ logger = logging.getLogger(__name__)
 
 ## 2. Define the Training Function
 
-Below is the main training function that orchestrates the FSDP2 training process. In the following sections, we'll implement each of the helper functions used within this training loop.
+Below is the main training function that orchestrates the FSDP2 training process. In the following sections, each of the helper functions used within this training loop will be implemented.
 
 ### 2a. GPU Memory Profiling
 
-GPU memory profiling is an useful tool for monitoring and analyzing memory usage during model training. It helps identify bottlenecks, optimize resource allocation, and prevent out-of-memory errors. We configure PyTorch's GPU memory profiler within the training function.
+GPU memory profiling is an useful tool for monitoring and analyzing memory usage during model training. It helps identify bottlenecks, optimize resource allocation, and prevent out-of-memory errors. PyTorch's GPU memory profiler is configured within the training function.
 
-In this demo, we configure the profiler to generate a profiling file for each worker accessible from the Anyscale Files tab under cluster storage. To inspect a worker's memory profile, download the corresponding HTML file and open it in your browser. The profiler configuration and export path can be customized within the training function.  For more details on PyTorch's memory profiler, see the [PyTorch blog](https://pytorch.org/blog/understanding-gpu-memory-1/).
+In this demo, the profiler is configured to generate a profiling file for each worker accessible from the Anyscale Files tab under cluster storage. To inspect a worker's memory profile, download the corresponding HTML file and open it in your browser. The profiler configuration and export path can be customized within the training function.  For more details on PyTorch's memory profiler, see the [PyTorch blog](https://pytorch.org/blog/understanding-gpu-memory-1/).
 
 <div style="display: flex; gap: 40px; align-items: flex-start;">
   <div style="text-align: center;">
@@ -116,7 +116,7 @@ In this demo, we configure the profiler to generate a profiling file for each wo
 
 ### 2b. Storage Configuration
 
-In this demo, we use cluster storage to allow for quick iteration and development, but this may not be suitable in production environments or at high scale. In such cases, object storage should be used instead. For more information about how to select your storage type, see the [Anyscale storage configuration docs](https://docs.anyscale.com/configuration/storage).
+In this demo, cluster storage is used to allow for quick iteration and development, but this may not be suitable in production environments or at high scale. In such cases, object storage should be used instead. For more information about how to select your storage type, see the [Anyscale storage configuration docs](https://docs.anyscale.com/configuration/storage).
 
 
 ```python
@@ -259,7 +259,7 @@ def init_model() -> torch.nn.Module:
 
 ## 3. Model Sharding with FSDP2
 
-PyTorch's `fully_shard` enables sharding at various granularities. At the most granular level, every layer can be sharded, but this increases communication costs between Ray Train workers. Experiment with different sharding granularities to find the optimal balance for your use case. In this demo, we shard only the encoder blocks—the largest layers in the Vision Transformer.
+PyTorch's `fully_shard` enables sharding at various granularities. At the most granular level, every layer can be sharded, but this increases communication costs between Ray Train workers. Experiment with different sharding granularities to find the optimal balance for your use case. In this demo, only the encoder blocks are sharded—the largest layers in the Vision Transformer.
 
 Beyond sharding granularity, FSDP2 offers several configuration options to optimize performance and mitigate out-of-memory (OOM) errors:
 
@@ -274,7 +274,7 @@ CPU offloading reduces GPU memory footprint by storing model components in the C
 
 **When to use CPU offloading:**
 - When GPU memory is constrained
-- For very large models that don't fit in GPU memory
+- For very large models that do not fit in GPU memory
 
 **When not to use CPU offloading:**
 - When CPU memory is limited (can cause CPU crashes)
@@ -310,11 +310,11 @@ Learn more about CPU offloading on the [PyTorch documentation](https://docs.pyto
   </div>
 </div>
 
-With `reshard_after_forward=True`, we see that the memory allocated to model parameters drop after the forward step whereas it peaks without `reshard_after_forward=False`. This difference is not significant as we are using a small model where the activations are much larger than the model parmeters. The memory savings are more noticeable in settings with larger models. 
+With `reshard_after_forward=True`, the memory allocated to model parameters drops after the forward step whereas it peaks without `reshard_after_forward=False`. This difference is not significant as this example uses a small model where the activations are much larger than the model parameters. The memory savings are more noticeable in settings with larger models. 
 
 ### 3c. Mixed Precision
 
-Enabling mixed precision accelerates training and reduces GPU memory usage with minimal accuracy impact. Unlike other distributed approaches like DDP, FSDP2 already maintains high-precision copies of sharded parameters, so mixed precision requires no additional memory overhead. It is also important to note that in this demo, we use PyTorch's `float16` dtype for lower precision computation because we are utilizing older T4 GPUs that do not support the more stable `bfloat16` dtype. `bfloat16` is the more stable option over `float16` as its wider dynamic range avoids the need to ensure loss and gradient values are properly scaled in cases of underflow or overflow.
+Enabling mixed precision accelerates training and reduces GPU memory usage with minimal accuracy impact. Unlike other distributed approaches like DDP, FSDP2 already maintains high-precision copies of sharded parameters, so mixed precision requires no additional memory overhead. It is also important to note that in this demo, PyTorch's `float16` dtype is used for lower precision computation because older T4 GPUs are being utilized that do not support the more stable `bfloat16` dtype. `bfloat16` is the more stable option over `float16` as its wider dynamic range avoids the need to ensure loss and gradient values are properly scaled in cases of underflow or overflow.
 
 **Benefits of mixed precision with FSDP2:**
 - Reduced memory usage for activations and intermediate computations
@@ -391,7 +391,7 @@ def shard_model(model: torch.nn.Module):
 
 ## 4. Distributed Checkpoint Wrapper Setup
 
-We create a checkpointing wrapper using PyTorch's `Stateful` API to simplify distributed checkpoint management. From the PyTorch docs, this basic wrapper handles the complexities of saving and loading FSDP2 model states across multiple workers.
+This section creates a checkpointing wrapper using PyTorch's `Stateful` API to simplify distributed checkpoint management. From the PyTorch docs, this basic wrapper handles the complexities of saving and loading FSDP2 model states across multiple workers.
 
 
 ```python
@@ -400,7 +400,7 @@ class AppState(Stateful):
     with the Stateful protocol, PyTorch DCP will automatically call state_dict/load_stat_dict as needed in the
     dcp.save/load APIs.
 
-    Note: We take advantage of this wrapper to handle calling distributed state dict methods on the model
+    Note: This wrapper is used to handle calling distributed state dict methods on the model
     and optimizer.
     """
 
@@ -417,7 +417,7 @@ class AppState(Stateful):
         }
 
     def load_state_dict(self, state_dict):
-        # sets our state dicts on the model and optimizer, now that we've loaded
+        # sets our state dicts on the model and optimizer, now that loading is complete
         set_state_dict(
             self.model,
             self.optimizer,
@@ -427,9 +427,9 @@ class AppState(Stateful):
 
 ```
 
-## 5. Loading Distrbuted Model from Checkpoint
+## 5. Loading Distributed Model from Checkpoint
 
-Distributed checkpoints can be loaded using `dcp.load`, which automatically handles resharding when the number of workers changes between training runs. This flexibility allows you to resume training with different resource configurations. 
+Distributed checkpoints are loaded using `dcp.load`, which automatically handles resharding when the number of workers changes between training runs. This flexibility allows you to resume training with different resource configurations. 
 
 
 ```python
@@ -501,7 +501,7 @@ def report_metrics_and_save_fsdp_checkpoint(
 
 ## 7. Saving Model for Inference
 
-After training completes, we need to save the final model in an unsharded format for inference. This differs from regular checkpointing as it consolidates the model checkpoint into one file that is compatible with `torch.load`. The `get_model_state_dict` function performs an all-gather operation to reconstruct the complete model state on rank 0, which then saves and reports the full model checkpoint.
+After training completes, the final model needs to be saved in an unsharded format for inference. This differs from regular checkpointing as it consolidates the model checkpoint into one file that is compatible with `torch.load`. The `get_model_state_dict` function performs an all-gather operation to reconstruct the complete model state on rank 0, which then saves and reports the full model checkpoint.
 
 
 ```python
@@ -551,7 +551,7 @@ def save_model_for_inference(model: FSDPModule, world_rank: int) -> None:
 
 ## 8. Launching the Distributed Training Job
 
-Now we'll configure and launch the distributed training job using Ray Train's TorchTrainer:
+This section configures and launches the distributed training job using Ray Train's TorchTrainer:
 
 
 ```python
@@ -597,7 +597,7 @@ print("Training completed successfully!")
 
 ## 9. Loading the Trained Model for Inference
 
-After training completes, we can load the saved model for inference on new data. The model is loaded in its unsharded form, ready for standard PyTorch inference.
+After training completes, the saved model can be loaded for inference on new data. The model is loaded in its unsharded form, ready for standard PyTorch inference.
 
 
 ```python

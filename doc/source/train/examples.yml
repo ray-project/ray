@@ -3,6 +3,13 @@ columns_to_show:
   - frameworks
 groupby: skill_level
 examples:
+  - title: Getting Started with PyTorch Fully Sharded Data Parallel (FSDP2) and Ray Train
+    skill_level: intermediate 
+    frameworks:
+      - pytorch
+    use_cases:
+      - computer vision
+    link: examples/pytorch/pytorch-fsdp/README
   - title: Distributing your PyTorch Training Code with Ray Train and Ray Data
     skill_level: beginner
     frameworks:
