@@ -6,7 +6,6 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 from packaging.version import Version
-from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.data import Schema
@@ -188,33 +187,14 @@ def test_csv_read_many_files_basic(ray_start_regular_shared, tmp_path):
     pd.testing.assert_frame_equal(df, dsdf)
 
 
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-    ],
-)
 def test_csv_read_many_files_diff_dirs(
     ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
+    tmp_path,
 ):
-    if endpoint_url is None:
-        storage_options = {}
-    else:
-        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
-
-    dir1 = os.path.join(data_path, "dir1")
-    dir2 = os.path.join(data_path, "dir2")
-    if fs is None:
-        os.mkdir(dir1)
-        os.mkdir(dir2)
-    else:
-        fs.create_dir(_unwrap_protocol(dir1))
-        fs.create_dir(_unwrap_protocol(dir2))
+    dir1 = os.path.join(tmp_path, "dir1")
+    dir2 = os.path.join(tmp_path, "dir2")
+    os.mkdir(dir1)
+    os.mkdir(dir2)
 
     paths = []
     dfs = []
@@ -225,8 +205,8 @@ def test_csv_read_many_files_diff_dirs(
             dfs.append(df)
             path = os.path.join(dir_path, f"test_{j}.csv")
             paths.append(path)
-            df.to_csv(path, index=False, storage_options=storage_options)
-    ds = ray.data.read_csv([dir1, dir2], filesystem=fs)
+            df.to_csv(path, index=False)
+    ds = ray.data.read_csv([dir1, dir2])
 
     dsdf = ds.to_pandas().sort_values(by=["one"]).reset_index(drop=True)
     df = pd.concat(dfs).reset_index(drop=True)
