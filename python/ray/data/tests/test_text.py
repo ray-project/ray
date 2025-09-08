@@ -80,6 +80,7 @@ def test_read_text_remote_args(ray_start_cluster, tmp_path):
     )
     cluster.add_node(resources={"bar": 100}, num_cpus=1)
 
+    ray.shutdown()
     ray.init(cluster.address)
 
     @ray.remote
