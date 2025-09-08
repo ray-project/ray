@@ -240,6 +240,25 @@
       --join_type {{join_type}}
       --num_partitions 50
 
+###############
+# Wide Schema tests
+###############
+
+- name: wide_schema_pipeline
+
+  cluster:
+    cluster_compute: fixed_size_cpu_compute.yaml
+
+  matrix:
+    setup:
+      data_type: [primitives, tensors, objects, nested_structs]
+
+  run:
+    timeout: 3600
+    script: >
+      python wide_schema_pipeline_benchmark.py
+      --data-type {{data_type}}
+
 #######################
 # Streaming split tests
 #######################
