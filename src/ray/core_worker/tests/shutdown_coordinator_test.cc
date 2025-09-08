@@ -24,6 +24,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/synchronization/mutex.h"
 #include "ray/common/buffer.h"
 #include "src/ray/protobuf/common.pb.h"
 
@@ -41,26 +42,46 @@ class FakeShutdownExecutor : public ShutdownExecutorInterface {
 
   std::string last_exit_type;
   std::string last_detail;
+  mutable absl::Mutex mu_;
+
+  std::string GetLastExitType() const {
+    absl::MutexLock lk(&mu_);
+    return last_exit_type;
+  }
+
+  std::string GetLastDetail() const {
+    absl::MutexLock lk(&mu_);
+    return last_detail;
+  }
 
   void ExecuteGracefulShutdown(std::string_view exit_type,
                                std::string_view detail,
                                std::chrono::milliseconds timeout_ms) override {
     graceful_calls++;
-    last_exit_type = std::string(exit_type);
-    last_detail = std::string(detail);
+    {
+      absl::MutexLock lk(&mu_);
+      last_exit_type = std::string(exit_type);
+      last_detail = std::string(detail);
+    }
   }
   void ExecuteForceShutdown(std::string_view exit_type,
                             std::string_view detail) override {
     force_calls++;
-    last_exit_type = std::string(exit_type);
-    last_detail = std::string(detail);
+    {
+      absl::MutexLock lk(&mu_);
+      last_exit_type = std::string(exit_type);
+      last_detail = std::string(detail);
+    }
   }
   void ExecuteWorkerExit(std::string_view exit_type,
                          std::string_view detail,
                          std::chrono::milliseconds timeout_ms) override {
     worker_exit_calls++;
-    last_exit_type = std::string(exit_type);
-    last_detail = std::string(detail);
+    {
+      absl::MutexLock lk(&mu_);
+      last_exit_type = std::string(exit_type);
+      last_detail = std::string(detail);
+    }
   }
   void ExecuteExit(std::string_view exit_type,
                    std::string_view detail,
@@ -68,15 +89,21 @@ class FakeShutdownExecutor : public ShutdownExecutorInterface {
                    const std::shared_ptr<::ray::LocalMemoryBuffer>
                        &creation_task_exception_pb_bytes) override {
     worker_exit_calls++;
-    last_exit_type = std::string(exit_type);
-    last_detail = std::string(detail);
+    {
+      absl::MutexLock lk(&mu_);
+      last_exit_type = std::string(exit_type);
+      last_detail = std::string(detail);
+    }
   }
   void ExecuteHandleExit(std::string_view exit_type,
                          std::string_view detail,
                          std::chrono::milliseconds timeout_ms) override {
     handle_exit_calls++;
-    last_exit_type = std::string(exit_type);
-    last_detail = std::string(detail);
+    {
+      absl::MutexLock lk(&mu_);
+      last_exit_type = std::string(exit_type);
+      last_detail = std::string(detail);
+    }
   }
   void KillChildProcessesImmediately() override {}
   bool ShouldWorkerIdleExit() const override { return idle_exit_allowed.load(); }
@@ -366,7 +393,8 @@ TEST_F(ShutdownCoordinatorTest, Concurrent_DoubleForce_ForceExecutesOnce) {
   // Verify that only one forced shutdown was called
   EXPECT_EQ(fake_ptr->force_calls.load(), 1);
   EXPECT_EQ(fake_ptr->graceful_calls.load(), 0);
-  EXPECT_TRUE(fake_ptr->last_detail == "force1" || fake_ptr->last_detail == "force2");
+  EXPECT_TRUE(fake_ptr->GetLastDetail() == "force1" ||
+              fake_ptr->GetLastDetail() == "force2");
 }
 
 }  // namespace core
