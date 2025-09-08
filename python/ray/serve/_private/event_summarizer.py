@@ -17,7 +17,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class ServeAutoscalingEventSummarizer:
-    """Serve-specific wrapper around Ray's EventSummarizer.
+    """Serve-specific autoscaling event summarizer.
 
     Centralizes autoscaling snapshot formatting, decision summarization,
     throttled note emission, and change-signature calculation so controller logic

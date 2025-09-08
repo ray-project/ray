@@ -431,14 +431,16 @@ class ServeController:
             norm_cfg = normalize_autoscaling_config(autoscaling_config)
             current_target = int(details.target_num_replicas)
             dep_id = DeploymentID(name=dep_name, app_name=app_name)
-            snapshot = self.autoscaling_state_manager.get_snapshot(
-                dep_id, current_target
+            deployment_snapshot = (
+                self.autoscaling_state_manager.get_deployment_snapshot(
+                    dep_id, current_target
+                )
             )
-            current_replicas = snapshot["current_replicas"]
-            target_replicas = snapshot["target_replicas"]
-            min_repl_adj = snapshot["min_replicas"]
-            max_repl_adj = snapshot["max_replicas"]
-            total_requests = snapshot["total_requests"]
+            current_replicas = deployment_snapshot["current_replicas"]
+            target_replicas = deployment_snapshot["target_replicas"]
+            min_repl_adj = deployment_snapshot["min_replicas"]
+            max_repl_adj = deployment_snapshot["max_replicas"]
+            total_requests = deployment_snapshot["total_requests"]
             policy_name = norm_cfg.name
             look_back_period_s = norm_cfg.look_back_period_s
             if target_replicas > current_replicas:
@@ -477,10 +479,10 @@ class ServeController:
                 scaling_status=scaling_status,
                 policy_name=policy_name,
                 look_back_period_s=look_back_period_s,
-                queued_requests=snapshot.get("queued_requests"),
+                queued_requests=deployment_snapshot.get("queued_requests"),
                 total_requests=total_requests,
-                last_metrics_age_s=snapshot.get("last_metrics_age_s"),
-                errors=snapshot.get("errors", []),
+                last_metrics_age_s=deployment_snapshot.get("last_metrics_age_s"),
+                errors=deployment_snapshot.get("errors", []),
                 recent_decisions=decisions_summary,
             )
             self._last_autoscaling_snapshots[key] = signature

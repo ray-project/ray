@@ -366,8 +366,8 @@ class AutoscalingState:
 
         return total_requests
 
-    def get_snapshot(self, curr_target_num_replicas: int) -> Dict[str, Any]:
-        """Return a compact snapshot for observability/logging to avoid recomputing in controller.
+    def get_deployment_snapshot(self, curr_target_num_replicas: int) -> Dict[str, Any]:
+        """Return a compact per-deployment snapshot for observability/logging to avoid recomputing in controller.
 
         Includes:
         - current_replicas: number of currently running replicas
@@ -526,10 +526,10 @@ class AutoscalingStateManager:
         for autoscaling_state in self._autoscaling_states.values():
             autoscaling_state.drop_stale_handle_metrics(alive_serve_actor_ids)
 
-    def get_snapshot(
+    def get_deployment_snapshot(
         self, deployment_id: DeploymentID, curr_target_num_replicas: int
     ) -> Dict[str, Any]:
         """Expose a per-deployment snapshot so controller doesn't duplicate computations."""
-        return self._autoscaling_states[deployment_id].get_snapshot(
+        return self._autoscaling_states[deployment_id].get_deployment_snapshot(
             curr_target_num_replicas=curr_target_num_replicas
         )
