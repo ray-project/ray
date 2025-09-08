@@ -4,6 +4,7 @@ import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from threading import RLock
+from typing import List, Optional
 from uuid import uuid4
 
 from azure.core.exceptions import ResourceNotFoundError
@@ -189,12 +190,47 @@ class AzureNodeProvider(NodeProvider):
             )
             return []
 
+    def _parse_availability_zones(
+        self, availability_zone_config: Optional[str]
+    ) -> Optional[List[str]]:
+        """Parse availability_zone configuration from comma-separated string format.
+
+        Args:
+            availability_zone_config: Can be:
+                - String: comma-separated zones like "1,2,3"
+                - "none": explicitly disable zones
+                - "" (empty string): let Azure automatically pick zones
+                - None: no zones specified (defaults to letting Azure pick)
+
+        Returns:
+            List of zone strings, or None if zones explicitly disabled, or [] if auto/unspecified
+        """
+        if availability_zone_config is None:
+            return []  # Auto - let Azure pick
+
+        # Handle string format (AWS-style comma-separated)
+        if isinstance(availability_zone_config, str):
+            # Handle empty string
+            if not availability_zone_config.strip():
+                return []  # Auto - let Azure pick
+            # Strip whitespace and split by comma
+            zones = [zone.strip() for zone in availability_zone_config.split(",")]
+            # Handle "none" case (case-insensitive)
+            if len(zones) == 1 and zones[0].lower() in ["none", "null"]:
+                return None  # Explicitly disabled
+            return zones
+
+        # Unsupported format
+        raise ValueError(
+            f"availability_zone must be a string, got {type(availability_zone_config).__name__}: {availability_zone_config!r}"
+        )
+
     def _validate_zones_for_node_pool(self, zones, location, vm_size):
         """Validate that the specified zones are available for the given VM size in the location."""
-        # Special case: zones: ["None"] explicitly disables availability zones
-        if zones and len(zones) == 1 and str(zones[0]).lower() in ["none", "null"]:
+        # Special case: zones=None means explicitly disabled availability zones
+        if zones is None:
             logger.info(
-                "Zones explicitly disabled with ['None'] - will create VM without an availability zone"
+                "Zones explicitly disabled with 'none' - will create VM without an availability zone"
             )
             return None  # Special return value to indicate "no zones by choice"
 
@@ -304,8 +340,27 @@ class AzureNodeProvider(NodeProvider):
         resource_group = self.provider_config["resource_group"]
         location = self.provider_config["location"]
         vm_size = node_config["azure_arm_parameters"]["vmSize"]
-        requested_zones = node_config.get("azure_arm_parameters", {}).get("zones", [])
-        logger.info(f"Requested zones from config: {requested_zones}")
+
+        # Determine availability zones with precedence: node-level > provider-level
+        # Check for "availability_zone" field in node config first
+        node_availability_zone = node_config.get("azure_arm_parameters", {}).get(
+            "availability_zone"
+        )
+        # Then check provider-level "availability_zone"
+        provider_availability_zone = self.provider_config.get("availability_zone")
+
+        requested_zones = []
+        zone_source = "default"
+
+        # Precedence: node availability_zone > provider availability_zone
+        if node_availability_zone is not None:
+            requested_zones = self._parse_availability_zones(node_availability_zone)
+            zone_source = "node config availability_zone"
+        elif provider_availability_zone is not None:
+            requested_zones = self._parse_availability_zones(provider_availability_zone)
+            zone_source = "provider availability_zone"
+
+        logger.info(f"Requested zones from {zone_source}: {requested_zones}")
 
         # Get actually available zones for this VM size
         available_zones = self._validate_zones_for_node_pool(
@@ -339,6 +394,8 @@ class AzureNodeProvider(NodeProvider):
         )[:VM_NAME_MAX_LEN]
 
         template_params = node_config["azure_arm_parameters"].copy()
+        # Remove availability_zone from template params since ARM template expects "zones"
+        template_params.pop("availability_zone", None)
         # Use deployment_name for the vmName template parameter since
         # the template will append copyIndex() for each VM that gets created
         # to guarantee uniqueness.

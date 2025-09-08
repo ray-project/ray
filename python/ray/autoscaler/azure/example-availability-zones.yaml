@@ -10,6 +10,9 @@ provider:
   location: westus2
   resource_group: ray-zones
   cache_stopped_nodes: False
+  # Provider-level availability zone configuration (comma-separated)
+  # This will be used as default for all node types unless overridden
+  availability_zone: "1,2,3"
 
 auth:
   ssh_user: ubuntu
@@ -26,8 +29,8 @@ available_node_types:
         imageOffer: ubuntu-2004
         imageSku: 2004-gen2
         imageVersion: latest
-        # Nodes will not be assigned availability zones
-        zones: ["None"]
+        # Head node: explicitly disable availability zones
+        availability_zone: "none"
   ray.worker.default:
     min_workers: 0
     max_workers: 2
@@ -39,9 +42,8 @@ available_node_types:
         imageOffer: ubuntu-2004
         imageSku: 2004-gen2
         imageVersion: latest
-        # Workers will be assigned to availability zones 2 and 3 in a round-robin manner.
-        zones: ["2", "3"]
-  ray.worker.any_zone:
+        # Workers will use provider specified availability zones
+  ray.worker.specific_zone:
     min_workers: 0
     max_workers: 2
     resources: {"CPU": 2}
@@ -52,8 +54,8 @@ available_node_types:
         imageOffer: ubuntu-2004
         imageSku: 2004-gen2
         imageVersion: latest
-        # Workers will be assigned to availability zones by Azure
-        zones: []
+        # Workers will use availability zone 2 only (overrides provider setting)
+        availability_zone: "2"
 
 # Note: The Ubuntu 20.04 dsvm image has a few venvs already configured but
 # they all contain python modules that are not compatible with Ray at the moment.
