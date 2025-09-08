@@ -762,21 +762,18 @@ def _infer_schema(
     import pyarrow as pa
 
     inferred_schema = schema
-    print(f"1) inferred_schema is {inferred_schema}")
 
     if schema is None:
         inferred_schema = parquet_dataset.schema
         inferred_schema = _add_partition_fields_to_schema(
             partitioning, inferred_schema, parquet_dataset
         )
-    print(f"2) inferred_schema is {inferred_schema}")
 
     if columns:
         inferred_schema = pa.schema(
             [inferred_schema.field(column) for column in columns],
             inferred_schema.metadata,
         )
-    print(f"3) inferred_schema is {inferred_schema}")
 
     ctx = DataContext.get_current()
     if tensor_column_schema is not None:
@@ -802,8 +799,8 @@ def _infer_schema(
 
     if _block_udf is not None:
         # Try to infer dataset schema by passing dummy table through UDF.
-        dummy_table = inferred_schema.empty_table()
         try:
+            dummy_table = inferred_schema.empty_table()
             inferred_schema = _block_udf(dummy_table).schema.with_metadata(
                 inferred_schema.metadata
             )
@@ -815,7 +812,6 @@ def _infer_schema(
             )
 
     check_for_legacy_tensor_type(inferred_schema)
-    print(f"4) inferred_schema is {inferred_schema}")
     return inferred_schema
 
 

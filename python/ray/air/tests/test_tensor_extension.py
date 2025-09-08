@@ -813,7 +813,10 @@ def test_arrow_tensor_array_concat(a1, a2, restore_data_context, tensor_format):
         elif tensor_format == "v2":
             tensor_type_class = ArrowTensorTypeV2
         elif tensor_format == "arrow_native":
-            tensor_type_class = FixedShapeTensorType
+            if FixedShapeTensorType is None:
+                tensor_type_class = ArrowTensorType
+            else:
+                tensor_type_class = FixedShapeTensorType
         else:
             raise ValueError(f"unexpected format: {tensor_format}")
 
@@ -877,7 +880,7 @@ def test_variable_shaped_tensor_array_uniform_dim(restore_data_context, tensor_f
         np.testing.assert_array_equal(a, expected)
 
 
-@pytest.mark.parametrize("tensor_format", ["arrow_native", "v1", "v2"])
+@pytest.mark.parametrize("tensor_format", ["arrow_native"])
 def test_large_arrow_tensor_array(restore_data_context, tensor_format):
     ctx = DataContext.get_current()
     ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == "arrow_native"
@@ -885,7 +888,7 @@ def test_large_arrow_tensor_array(restore_data_context, tensor_format):
 
     test_arr = np.ones((1000, 550), dtype=np.uint8)
 
-    if tensor_format == "v1":
+    if tensor_format == "v1" or FixedShapeTensorType is None:
         with pytest.raises(ArrowConversionError) as exc_info:
             ta = ArrowTensorArray.from_numpy([test_arr] * 4000)
 

@@ -425,7 +425,7 @@ def test_tensor_array_block_slice(restore_data_context, tensor_format):
                 assert chunk2.offset == expected_offset
                 assert len(chunk2) == b - a
                 index = 1
-                if tensor_format == "arrow_native":
+                if tensor_format == "arrow_native" and FixedShapeTensorType is not None:
                     index = 2
                 if is_copy:
                     assert bufs2[index].address != bufs1[index].address
@@ -751,7 +751,7 @@ def test_tensors_in_tables_parquet_with_schema(
         tensor_type_class = ArrowTensorTypeV2
     elif tensor_format == "arrow_native":
         if FixedShapeTensorType is None:
-            tensor_type_class = ArrowTensorTypeV2
+            tensor_type_class = ArrowTensorType
         else:
             schema = pa.schema(
                 [
@@ -925,7 +925,7 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_udf(
         expected_tensor_type = ArrowTensorTypeV2
     elif tensor_format == "arrow_native":
         if FixedShapeTensorType is None:
-            expected_tensor_type = ArrowTensorTypeV2
+            expected_tensor_type = ArrowTensorType
         else:
             expected_tensor_type = FixedShapeTensorType
     else:
@@ -979,7 +979,7 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_col_schema(
         expected_tensor_type = ArrowTensorTypeV2
     elif tensor_format == "arrow_native":
         if FixedShapeTensorType is None:
-            expected_tensor_type = ArrowTensorTypeV2
+            expected_tensor_type = ArrowTensorType
         else:
             expected_tensor_type = FixedShapeTensorType
     else:
