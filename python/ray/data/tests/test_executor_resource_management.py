@@ -581,6 +581,16 @@ def test_output_splitter_resource_reporting(ray_start_10_cpus_shared):
     assert op.metrics.obj_store_mem_internal_outqueue == 0
 
 
+def test_execution_resources_to_resource_dict():
+    resources = ExecutionResources(cpu=1, gpu=2, object_store_memory=3, memory=4)
+    assert resources.to_resource_dict() == {
+        "CPU": 1,
+        "GPU": 2,
+        "object_store_memory": 3,
+        "memory": 4,
+    }
+
+
 if __name__ == "__main__":
     import sys
 
