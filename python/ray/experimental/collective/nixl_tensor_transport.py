@@ -78,7 +78,7 @@ class NixlTensorTransport(TensorTransportManager):
                 for t in gpu_object:
                     if t.device.type != device.type:
                         raise ValueError(
-                            "All tensors in one GPU object must be the same device type."
+                            "All tensors in an RDT object must be on the same device."
                         )
                     tensor_meta.append((t.shape, t.dtype))
             else:
