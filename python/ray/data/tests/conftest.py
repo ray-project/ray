@@ -16,7 +16,6 @@ from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
-from ray.data import Schema
 from ray.data.block import BlockExecStats, BlockMetadata
 from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext, ShuffleStrategy
 from ray.data.tests.mock_server import *  # noqa
@@ -211,65 +210,6 @@ def write_partitioned_df():
         return paths
 
     yield _write_partitioned_df
-
-
-@pytest.fixture(scope="function")
-def write_base_partitioned_df(base_partitioned_df, write_partitioned_df):
-    def _write_base_partitioned_df(
-        partition_keys,
-        partition_path_encoder,
-        file_writer_fn,
-    ):
-        write_partitioned_df(
-            base_partitioned_df,
-            partition_keys,
-            partition_path_encoder,
-            file_writer_fn,
-        )
-
-    yield _write_base_partitioned_df
-
-
-@pytest.fixture(scope="function")
-def assert_base_partitioned_ds():
-    def _assert_base_partitioned_ds(
-        ds,
-        count=6,
-        num_input_files=2,
-        num_rows=6,
-        schema=Schema(pa.schema([("one", pa.int64()), ("two", pa.string())])),
-        sorted_values=None,
-        ds_take_transform_fn=None,
-        sorted_values_transform_fn=None,
-    ):
-        if ds_take_transform_fn is None:
-            ds_take_transform_fn = lambda taken: [  # noqa: E731
-                [s["one"], s["two"]] for s in taken
-            ]
-
-        if sorted_values_transform_fn is None:
-            sorted_values_transform_fn = (  # noqa: E731
-                lambda sorted_values: sorted_values
-            )
-
-        if sorted_values is None:
-            sorted_values = [[1, "a"], [1, "b"], [1, "c"], [3, "e"], [3, "f"], [3, "g"]]
-        # Test metadata ops.
-        assert not ds._plan.has_started_execution
-        assert ds.count() == count, f"{ds.count()} != {count}"
-        assert ds.size_bytes() > 0, f"{ds.size_bytes()} <= 0"
-        assert ds.schema() == schema
-        actual_input_files = ds.input_files()
-        assert len(actual_input_files) == num_input_files, actual_input_files
-
-        # Force a data read.
-        values = ds_take_transform_fn(ds.take_all())
-        actual_sorted_values = sorted_values_transform_fn(sorted(values))
-        assert (
-            actual_sorted_values == sorted_values
-        ), f"{actual_sorted_values} != {sorted_values}"
-
-    yield _assert_base_partitioned_ds
 
 
 @pytest.fixture

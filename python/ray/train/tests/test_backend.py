@@ -28,6 +28,7 @@ from ray.train.backend import Backend, BackendConfig
 from ray.train.constants import (
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
     ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
+    TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
 )
 from ray.train.torch import TorchConfig
@@ -362,6 +363,24 @@ def test_torch_start_shutdown(ray_start_2_cpus, init_method):
 
     _start_training(e, check_process_group)
     assert not any(e.finish_training())
+
+
+@pytest.mark.parametrize(
+    "init_method, timeout_s", [("env", 5), ("tcp", 5), ("env", 0), ("tcp", 0)]
+)
+def test_torch_process_group_shutdown_timeout(
+    ray_start_2_cpus, monkeypatch, init_method, timeout_s
+):
+    monkeypatch.setenv(TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S, timeout_s)
+    torch_config = TorchConfig(backend="gloo", init_method=init_method)
+    e = BackendExecutor(torch_config, num_workers=2)
+    e.start()
+
+    _start_training(e, lambda: 1)
+    assert e.finish_training() == [1, 1]
+
+    # Verify that we do not raise an exception even if we time out
+    e._backend.on_shutdown(e.worker_group, e._backend_config)
 
 
 @pytest.mark.parametrize(

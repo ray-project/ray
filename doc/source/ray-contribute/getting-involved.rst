@@ -25,7 +25,7 @@ researchers, and folks that love machine learning.
   community is extremely active in helping people succeed in building their
   Ray applications.
 
-You can join (and Star!) us on `on GitHub`_.
+You can join (and Star!) us `on GitHub`_.
 
 .. _`on GitHub`: https://github.com/ray-project/ray
 

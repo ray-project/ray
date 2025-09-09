@@ -400,9 +400,9 @@ class ClusterStatusFormatter:
             separator,
             "Total Usage:",
             cluster_usage_report,
-            "Total Constraints:",
+            "From request_resources:",
             constraints_report,
-            "Total Demands:",
+            "Pending Demands:",
             demand_report,
             node_usage_report,
         ]
@@ -631,7 +631,7 @@ class ClusterStatusFormatter:
             constraint_lines.append(f" {bundle}: {count} from request_resources()")
         if constraint_lines:
             return "\n".join(constraint_lines)
-        return " (no request_resources() constraints)"
+        return " (none)"
 
     @staticmethod
     def _demand_report(data: ClusterStatus) -> str:

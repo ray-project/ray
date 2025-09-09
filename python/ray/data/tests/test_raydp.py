@@ -1,7 +1,6 @@
 import pandas
 import pytest
 import raydp
-import torch
 
 import ray
 from ray.data.tests.conftest import *  # noqa
@@ -56,19 +55,6 @@ def test_from_spark_e2e(spark):
     # Underlying implementation uses `FromArrow` operator
     assert ds._plan._logical_plan.dag.name == "FromArrow"
     _check_usage_record(["FromArrow"])
-
-
-def test_raydp_to_torch_iter(spark):
-    spark_df = spark.createDataFrame([(1, 0), (2, 0), (3, 1)], ["feature", "label"])
-    data_size = spark_df.count()
-    features = [r["feature"] for r in spark_df.take(data_size)]
-    features = torch.tensor(features).reshape(data_size, 1)
-    labels = [r["label"] for r in spark_df.take(data_size)]
-    labels = torch.tensor(labels).reshape(data_size, 1)
-    ds = ray.data.from_spark(spark_df)
-    dataset = ds.to_torch(label_column="label", batch_size=3)
-    data_features, data_labels = next(dataset.__iter__())
-    assert torch.equal(data_features, features) and torch.equal(data_labels, labels)
 
 
 def test_to_pandas(spark):

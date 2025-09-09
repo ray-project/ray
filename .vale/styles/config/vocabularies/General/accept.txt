@@ -33,6 +33,7 @@ autoscales
 bool
 breakpoint
 BTS
+bursty
 chatbot
 CLI
 configs
@@ -45,8 +46,10 @@ deserialize
 deserializes
 dev
 dev to prod
-disable
+[d|D]isable[d]
+[d|D]isable
 DLinear
+Dockerfile
 DPO
 EKS
 ETDataset
@@ -69,6 +72,7 @@ LMs
 LSH
 MCP
 Megatron
+Mixtral
 MLflow
 MLOps
 namespace
@@ -76,6 +80,7 @@ NER
 Nsight
 NumPy
 NVIDIA
+NVLink
 OOM
 open-source
 PACK
@@ -86,6 +91,8 @@ pretraining
 productionize
 Pythonic
 QPS
+Qwen
+Quantizing
 retrigger
 RISECamp
 RLHF
@@ -104,6 +111,7 @@ teardown
 uncaptured
 URI(s)?
 UUID
+USD
 uv
 verl
 VM(s)?
