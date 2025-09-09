@@ -14,6 +14,7 @@ py_library(
 py_test_module_list(
     size = "small",
     files = [
+        "test_deprecation.py",
         "test_filters.py",
         "test_formatters.py",
         "test_network_utils.py",

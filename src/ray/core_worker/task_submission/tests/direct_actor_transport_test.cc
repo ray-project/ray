@@ -33,7 +33,7 @@ class DirectTaskTransportTest : public ::testing::Test {
 
   void SetUp() override {
     gcs_client = std::make_shared<ray::gcs::MockGcsClient>();
-    actor_creator = std::make_unique<DefaultActorCreator>(gcs_client);
+    actor_creator = std::make_unique<ActorCreator>(gcs_client->Actors());
 
     task_manager = std::make_shared<MockTaskManagerInterface>();
     client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
@@ -83,7 +83,7 @@ class DirectTaskTransportTest : public ::testing::Test {
   std::shared_ptr<rpc::CoreWorkerClientPool> client_pool;
   std::unique_ptr<CoreWorkerMemoryStore> memory_store;
   std::shared_ptr<MockTaskManagerInterface> task_manager;
-  std::unique_ptr<DefaultActorCreator> actor_creator;
+  std::unique_ptr<ActorCreator> actor_creator;
   std::shared_ptr<ray::gcs::MockGcsClient> gcs_client;
   std::shared_ptr<MockReferenceCounter> reference_counter;
 };
