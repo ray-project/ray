@@ -40,11 +40,6 @@ from ray.core.generated.events_driver_job_definition_event_pb2 import (
 from ray.core.generated.events_driver_job_execution_event_pb2 import (
     DriverJobExecutionEvent,
 )
-from ray.core.generated.runtime_environment_pb2 import (
-    RuntimeEnvInfo,
-    RuntimeEnvUris,
-    RuntimeEnvConfig,
-)
 from ray.core.generated.common_pb2 import (
     TaskType,
     Language,
@@ -476,9 +471,7 @@ def _create_task_definition_event_proto(timestamp):
                 "CPU": 1.0,
                 "GPU": 0.0,
             },
-            runtime_env_info=RuntimeEnvInfo(
-                serialized_runtime_env="{}",
-            ),
+            serialized_runtime_env="{}",
             job_id=b"1",
             parent_task_id=b"1",
             placement_group_id=b"1",
@@ -540,10 +533,7 @@ def _verify_task_definition_event_json(req_json, expected_timestamp):
         "CPU": 1.0,
         "GPU": 0.0,
     }
-    assert (
-        req_json[0]["taskDefinitionEvent"]["runtimeEnvInfo"]["serializedRuntimeEnv"]
-        == "{}"
-    )
+    assert req_json[0]["taskDefinitionEvent"]["serializedRuntimeEnv"] == "{}"
     assert (
         req_json[0]["taskDefinitionEvent"]["jobId"] == base64.b64encode(b"1").decode()
     )
@@ -766,18 +756,7 @@ def test_aggregator_agent_receive_driver_job_definition_event(
                     driver_job_definition_event=DriverJobDefinitionEvent(
                         job_id=b"1",
                         config=DriverJobDefinitionEvent.Config(
-                            runtime_env_info=RuntimeEnvInfo(
-                                serialized_runtime_env="{}",
-                                uris=RuntimeEnvUris(
-                                    working_dir_uri="file:///tmp/ray/runtime_env",
-                                    py_modules_uris=[],
-                                ),
-                                runtime_env_config=RuntimeEnvConfig(
-                                    setup_timeout_seconds=10,
-                                    eager_install=True,
-                                    log_files=[],
-                                ),
-                            ),
+                            serialized_runtime_env="{}",
                             metadata={},
                         ),
                     ),
@@ -794,22 +773,8 @@ def test_aggregator_agent_receive_driver_job_definition_event(
     req_json = json.loads(req.data)
     assert req_json[0]["message"] == "driver job event"
     assert (
-        req_json[0]["driverJobDefinitionEvent"]["config"]["runtimeEnvInfo"][
-            "serializedRuntimeEnv"
-        ]
+        req_json[0]["driverJobDefinitionEvent"]["config"]["serializedRuntimeEnv"]
         == "{}"
-    )
-    assert (
-        req_json[0]["driverJobDefinitionEvent"]["config"]["runtimeEnvInfo"]["uris"][
-            "workingDirUri"
-        ]
-        == "file:///tmp/ray/runtime_env"
-    )
-    assert (
-        req_json[0]["driverJobDefinitionEvent"]["config"]["runtimeEnvInfo"][
-            "runtimeEnvConfig"
-        ]["setupTimeoutSeconds"]
-        == 10.0
     )
 
 
