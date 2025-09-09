@@ -14,12 +14,13 @@
 
 #pragma once
 
-#include "ray/rpc/client_call.h"
 #include "src/ray/protobuf/object_manager.pb.h"
 
 namespace ray {
 namespace rpc {
 
+template <class Reply>
+using ClientCallback = std::function<void(const Status &status, Reply &&reply)>;
 /// Abstract client interface for object manager clients.
 class ObjectManagerClientInterface {
  public:

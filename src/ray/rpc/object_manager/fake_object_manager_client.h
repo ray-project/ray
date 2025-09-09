@@ -20,6 +20,7 @@
 #include <list>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "ray/common/status.h"
 #include "ray/rpc/object_manager/object_manager_client_interface.h"

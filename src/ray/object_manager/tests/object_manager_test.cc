@@ -23,8 +23,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "fakes/ray/object_manager/plasma/client.h"
-#include "fakes/ray/rpc/object_manager/object_manager_client.h"
+#include "fakes/ray/object_manager/plasma/fake_plasma_client.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
@@ -35,6 +34,7 @@
 #include "ray/common/ray_object.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/common.h"
+#include "ray/rpc/object_manager/fake_object_manager_client.h"
 #include "ray/util/temporary_directory.h"
 
 namespace ray {
@@ -58,7 +58,7 @@ class ObjectManagerTest : public ::testing::Test {
     local_node_id_ = NodeID::FromRandom();
     mock_gcs_client_ = std::make_unique<gcs::MockGcsClient>();
     mock_object_directory_ = std::make_unique<MockObjectDirectory>();
-    fake_plasma_client_ = std::make_shared<ray::fakes::FakePlasmaClient>();
+    fake_plasma_client_ = std::make_shared<plasma::FakePlasmaClient>();
 
     object_manager_ = std::make_unique<ObjectManager>(
         io_context_,
@@ -94,7 +94,7 @@ class ObjectManagerTest : public ::testing::Test {
   std::unique_ptr<gcs::MockGcsClient> mock_gcs_client_;
   std::unique_ptr<MockObjectDirectory> mock_object_directory_;
   std::unique_ptr<ObjectManager> object_manager_;
-  std::shared_ptr<ray::fakes::FakePlasmaClient> fake_plasma_client_;
+  std::shared_ptr<plasma::FakePlasmaClient> fake_plasma_client_;
 
   instrumented_io_context io_context_{/*enable_lag_probe=*/false,
                                       /*running_on_single_thread=*/true};
