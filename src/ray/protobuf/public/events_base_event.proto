@@ -56,8 +56,8 @@ message RayEvent {
     DRIVER_JOB_EXECUTION_EVENT = 6;
     ACTOR_DEFINITION_EVENT = 7;
     ACTOR_LIFECYCLE_EVENT = 8;
-    NODE_DEFINITION_EVENT = 7;
-    NODE_LIFECYCLE_EVENT = 8;
+    NODE_DEFINITION_EVENT = 9;
+    NODE_LIFECYCLE_EVENT = 10;
   }
 
   // The severities of events that can be generated.
