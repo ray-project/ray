@@ -81,7 +81,7 @@ void GcsNodeManager::HandleGetClusterId(rpc::GetClusterIdRequest request,
 void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
                                         rpc::RegisterNodeReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
-  absl::MutexLock lock(&mutex_);
+  // This function invokes a read lock
   const rpc::GcsNodeInfo &node_info = request.node_info();
   NodeID node_id = NodeID::FromBinary(node_info.node_id());
   RAY_LOG(INFO)
@@ -105,9 +105,12 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
     // 1. should never happen when HA is not used
     // 2. happens when a new head node is started
     std::vector<NodeID> head_nodes;
-    for (auto &node : alive_nodes_) {
-      if (node.second->is_head_node()) {
-        head_nodes.push_back(node.first);
+    {
+      absl::ReaderMutexLock lock(&mutex_);
+      for (auto &node : alive_nodes_) {
+        if (node.second->is_head_node()) {
+          head_nodes.push_back(node.first);
+        }
       }
     }
 
