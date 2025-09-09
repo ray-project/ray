@@ -34,6 +34,12 @@ aimrecords==0.0.7
     # via aim
 aimrocks==0.5.2
     # via aim
+aioboto3==12.1.0
+    # via -r python/requirements/ml/data-requirements.txt
+aiobotocore==2.8.0
+    # via
+    #   aioboto3
+    #   s3fs
 aiofiles==22.1.0
     # via
     #   aim
@@ -225,7 +231,7 @@ boltons==21.0.0
     #   semgrep
 boto==2.49.0
     # via gcs-oauth2-boto-plugin
-boto3==1.28.17
+boto3==1.29.7
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -235,7 +241,7 @@ boto3==1.28.17
     #   moto
     #   smart-open
     #   snowflake-connector-python
-botocore==1.31.17
+botocore==1.32.7
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   aiobotocore
@@ -1961,6 +1967,8 @@ ruamel-yaml-clib==0.2.8
     # via ruamel-yaml
 s3fs==2023.12.1
     # via -r python/requirements/ml/core-requirements.txt
+s3transfer==0.8.0
+    # via boto3
 safetensors==0.4.3
     # via
     #   accelerate
