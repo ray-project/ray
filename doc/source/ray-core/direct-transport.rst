@@ -112,7 +112,7 @@ RDT also supports passing tensors nested inside Python data structures, as well 
    :start-after: __gloo_multiple_tensors_example_start__
    :end-before: __gloo_multiple_tensors_example_end__
 
-Passing GPU objects to the actor that produced them
+Passing RDT objects to the actor that produced them
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 RDT :class:`ray.ObjectRefs <ray.ObjectRef>` can also be passed to the actor that produced them.
