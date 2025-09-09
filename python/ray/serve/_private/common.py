@@ -824,28 +824,3 @@ class DeploymentSnapshot:
                 for d in self.decisions
             ],
         }
-
-
-@dataclass(frozen=True)
-class InternalAutoscalingConfig:
-    """Normalized, typed view for autoscaling config used by the controller.
-
-    This removes the need for dual dict vs. object access patterns.
-    Only the fields needed by the controller are exposed here.
-    """
-
-    name: str = "default"
-    look_back_period_s: Optional[float] = None
-
-
-def normalize_autoscaling_config(cfg: Any) -> Optional[InternalAutoscalingConfig]:
-    """Normalize autoscaling config into a typed view.
-
-    If cfg is falsy, returns InternalAutoscalingConfig(name=None, look_back_period_s=None).
-    Otherwise, gets name from cfg["policy"] or cfg["name"] or "default", and look_back_period_s from cfg["look_back_period_s"].
-    """
-    if not cfg:
-        return InternalAutoscalingConfig(name=None, look_back_period_s=None)
-    name = cfg.get("policy") or cfg.get("name") or "default"
-    look_back_period_s = cfg.get("look_back_period_s")
-    return InternalAutoscalingConfig(name=name, look_back_period_s=look_back_period_s)

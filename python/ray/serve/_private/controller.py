@@ -21,7 +21,6 @@ from ray.serve._private.common import (
     RequestRoutingInfo,
     RunningReplicaInfo,
     TargetCapacityDirection,
-    normalize_autoscaling_config,
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
@@ -429,7 +428,6 @@ class ServeController:
             details,
             autoscaling_config,
         ) in self._list_deployments_for_autoscaling():
-            norm_cfg = normalize_autoscaling_config(autoscaling_config)
             dep_id = DeploymentID(name=dep_name, app_name=app_name)
             deployment_snapshot = (
                 self.autoscaling_state_manager.get_deployment_snapshot(
@@ -441,8 +439,8 @@ class ServeController:
             min_repl_adj = deployment_snapshot["min_replicas"]
             max_repl_adj = deployment_snapshot["max_replicas"]
             total_requests = deployment_snapshot["total_requests"]
-            policy_name = norm_cfg.name
-            look_back_period_s = norm_cfg.look_back_period_s
+            policy_name = getattr(autoscaling_config, "name", None)
+            look_back_period_s = getattr(autoscaling_config, "look_back_period_s", None)
             if target_replicas > current_replicas:
                 scaling_status = "UPSCALING"
             elif target_replicas < current_replicas:
