@@ -114,6 +114,7 @@ proto_library(
         "@com_google_protobuf//:timestamp_proto",
     ],
 )
+
 proto_library(
     name = "events_node_definition_event_proto",
     srcs = ["events_node_definition_event.proto"],
@@ -136,6 +137,7 @@ cc_proto_library(
     name = "events_actor_lifecycle_event_cc_proto",
     deps = [":events_actor_lifecycle_event_proto"],
 )
+
 cc_proto_library(
     name = "events_node_lifecycle_event_cc_proto",
     deps = [":events_node_lifecycle_event_proto"],
