@@ -1361,7 +1361,7 @@ class ActorClass(Generic[T]):
                 This is a dictionary mapping strings (resource names) to floats.
             label_selector (Dict[str, str]): If specified, requires that the actor run
                 on a node which meets the specified label conditions (equals, in, not in, etc.).
-            fallback_strategy: (List[Dict[str, str]]) If specified, expresses soft constraints
+            fallback_strategy (List[Dict[str, str]]): If specified, expresses soft constraints
                 through a list of label selectors to fall back on when scheduling on a node.
             accelerator_type: If specified, requires that the task or actor run
                 on a node with the specified type of accelerator.
