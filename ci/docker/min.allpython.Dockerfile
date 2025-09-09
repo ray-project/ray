@@ -8,8 +8,6 @@ ARG UV_BIN=/usr/local/bin/uv
 
 ARG UV_PYTHON_INSTALL_DIR=/usr/local/uv/python
 
-RUN chmod +x /usr/local
-
 RUN mkdir -p "${UV_PYTHON_INSTALL_DIR}"
 
 SHELL ["/bin/bash", "-ice"]

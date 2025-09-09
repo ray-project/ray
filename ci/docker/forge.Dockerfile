@@ -62,9 +62,6 @@ usermod -a -G docker0 forge
 usermod -a -G docker1 forge
 usermod -a -G docker forge
 
-echo 'forge ALL=(root) NOPASSWD:/usr/local/bin/uv' > /etc/sudoers.d/uv
-chmod 0440 /etc/sudoers.d/uv
-
 if [[ "$(uname -i)" == "x86_64" ]]; then
   bash install-k8s-tools.sh
 fi
