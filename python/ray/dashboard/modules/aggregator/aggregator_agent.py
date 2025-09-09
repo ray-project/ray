@@ -141,6 +141,7 @@ class AggregatorAgent(
         self._ip = dashboard_agent.ip
         self._pid = os.getpid()
         self._event_buffer = queue.Queue(maxsize=MAX_EVENT_BUFFER_SIZE)
+        self._event_ids = set()  # to avoid duplicate events in the buffer
         self._grpc_executor = ThreadPoolExecutor(
             max_workers=GRPC_TPE_MAX_WORKERS,
             thread_name_prefix="event_aggregator_agent_grpc_executor",
@@ -218,17 +219,25 @@ class AggregatorAgent(
         events_data = request.events_data
         for event in events_data.events:
             with self._lock:
+                if event.event_id in self._event_ids:
+                    # If the client sends duplicate events, we skip them. This might happen
+                    # if the client is retrying the request due to a network error.
+                    continue
                 self._events_received_since_last_metrics_update += 1
             try:
                 self._event_buffer.put_nowait(event)
+                with self._lock:
+                    self._event_ids.add(event.event_id)
             except queue.Full:
                 # Remove the oldest event to make room for the new event.
-                self._event_buffer.get_nowait()
-                self._event_buffer.put_nowait(event)
+                old_event = self._event_buffer.get_nowait()
                 with self._lock:
+                    self._event_ids.remove(old_event.event_id)
+                    self._event_ids.add(event.event_id)
                     self._events_dropped_at_event_aggregator_since_last_metrics_update += (
                         1
                     )
+                self._event_buffer.put_nowait(event)
             except Exception as e:
                 logger.error(
                     f"Failed to add event with id={event.event_id.decode()} to buffer. "
@@ -303,6 +312,8 @@ class AggregatorAgent(
                 try:
                     event_proto = self._event_buffer.get(block=False)
                     event_batch.append(event_proto)
+                    with self._lock:
+                        self._event_ids.add(event_proto.event_id)
                 except queue.Empty:
                     break
 
@@ -393,6 +404,8 @@ class AggregatorAgent(
         event_batch = []
         while True:
             try:
+                with self._lock:
+                    self._event_ids.remove(event_proto.event_id)
                 event_proto = self._event_buffer.get(block=False)
                 event_batch.append(event_proto)
             except:  # noqa: E722

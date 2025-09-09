@@ -70,6 +70,7 @@ ray_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":grpc_client",
+        ":retryable_grpc_client",
         "//src/ray/protobuf:events_event_aggregator_service_cc_grpc",
         "//src/ray/util:logging",
         "@com_github_grpc_grpc//:grpc++",
