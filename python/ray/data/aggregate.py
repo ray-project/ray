@@ -1064,7 +1064,7 @@ class Lead(AggregateFnV2):
         >>> from ray.data.aggregate import Lead
         >>> from ray.data.window import lead_window
 
-        ds = ray.data.read_parquet("data.parquet)
+        ds = ray.data.read_parquet("data.parquet")
         result = ds.window(
             lead_window("amount", 1, partition_by=["user_id"], order_by=["timestamp"]),
             Lead("amount")

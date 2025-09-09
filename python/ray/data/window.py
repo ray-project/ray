@@ -110,6 +110,25 @@ class SlidingWindow(WindowSpec):
         if self.alignment == "CENTERED" and size == "UNBOUNDED":
             raise ValueError("Cannot have unbounded centered windows")
 
+        # Validate size parameter
+        if isinstance(size, int) and size <= 0:
+            raise ValueError(f"Window size must be positive, got {size}")
+
+        # Validate offset parameter
+        if offset is not None:
+            if isinstance(offset, int) and offset < 0:
+                raise ValueError(f"Window offset must be non-negative, got {offset}")
+
+        # Validate column name
+        if not isinstance(on, str) or not on:
+            raise ValueError("Window column 'on' must be a non-empty string")
+
+        # Validate partition_by and order_by
+        if partition_by and not isinstance(partition_by, list):
+            raise TypeError("partition_by must be a list of strings")
+        if order_by and not isinstance(order_by, list):
+            raise TypeError("order_by must be a list of strings")
+
     def _parse_time_interval(self, interval: Union[str, timedelta]) -> timedelta:
         """Parse a time interval string or timedelta into a timedelta.
 
@@ -172,6 +191,55 @@ class SlidingWindow(WindowSpec):
 
         raise ValueError(f"Invalid time interval type: {type(interval)}")
 
+    def _get_window_bounds(self, current_value, is_time_based: bool = True):
+        """Calculate window bounds for the current value.
+
+        Args:
+            current_value: The current timestamp or row value.
+            is_time_based: Whether this is a time-based or row-based window.
+
+        Returns:
+            Tuple of (start_bound, end_bound).
+        """
+        if isinstance(self.size, int) or not is_time_based:
+            # Row-based window
+            window_size = (
+                self.size if isinstance(self.size, int) else int(current_value)
+            )
+
+            if self.alignment == "TRAILING":
+                start = current_value - window_size + 1
+                end = current_value
+            elif self.alignment == "LEADING":
+                start = current_value
+                end = current_value + window_size - 1
+            elif self.alignment == "CENTERED":
+                half_size = window_size // 2
+                start = current_value - half_size
+                end = current_value + half_size
+            else:
+                raise ValueError(f"Invalid alignment: {self.alignment}")
+
+            return (start, end)
+        else:
+            # Time-based window
+            window_delta = self._parse_time_interval(self.size)
+
+            if self.alignment == "TRAILING":
+                end = current_value
+                start = current_value - window_delta
+            elif self.alignment == "LEADING":
+                start = current_value
+                end = current_value + window_delta
+            elif self.alignment == "CENTERED":
+                half_delta = window_delta / 2
+                start = current_value - half_delta
+                end = current_value + half_delta
+            else:
+                raise ValueError(f"Invalid alignment: {self.alignment}")
+
+            return (start, end)
+
 
 class TumblingWindow(WindowSpec):
     """Specification for tumbling windows.
@@ -206,6 +274,55 @@ class TumblingWindow(WindowSpec):
         self.size = size
         self.step = step or size
         self.start = start
+
+        # Validate size parameter
+        if isinstance(size, int) and size <= 0:
+            raise ValueError(f"Window size must be positive, got {size}")
+
+        # Validate step parameter
+        if isinstance(self.step, int) and self.step <= 0:
+            raise ValueError(f"Window step must be positive, got {self.step}")
+
+        # Validate column name
+        if not isinstance(on, str) or not on:
+            raise ValueError("Window column 'on' must be a non-empty string")
+
+        # Validate partition_by and order_by
+        if partition_by and not isinstance(partition_by, list):
+            raise TypeError("partition_by must be a list of strings")
+        if order_by and not isinstance(order_by, list):
+            raise TypeError("order_by must be a list of strings")
+
+    def _get_window_id(self, value):
+        """Calculate the window ID for a given value.
+
+        Args:
+            value: The timestamp or row value.
+
+        Returns:
+            The window ID (integer).
+        """
+        if isinstance(self.size, int):
+            # Row-based window
+            return int(value) // self.size
+        else:
+            # Time-based window
+            if isinstance(value, str):
+                value = datetime.fromisoformat(value)
+            elif not isinstance(value, datetime):
+                # Assume it's a timestamp
+                value = datetime.fromtimestamp(value)
+
+            # Calculate window ID based on time since epoch
+            epoch = datetime(1970, 1, 1)
+            time_delta = value - epoch
+            window_delta = self._parse_time_interval(self.size)
+
+            # Convert to seconds for calculation
+            time_seconds = time_delta.total_seconds()
+            window_seconds = window_delta.total_seconds()
+
+            return int(time_seconds // window_seconds)
 
     def _parse_time_interval(self, interval: Union[str, timedelta]) -> timedelta:
         """Parse a time interval string or timedelta into a timedelta."""
@@ -248,6 +365,20 @@ class SessionWindow(WindowSpec):
         super().__init__(on, partition_by, order_by, compute_strategy, ray_remote_args)
         self.gap = gap
 
+        # Validate gap parameter
+        if isinstance(gap, int) and gap <= 0:
+            raise ValueError(f"Session gap must be positive, got {gap}")
+
+        # Validate column name
+        if not isinstance(on, str) or not on:
+            raise ValueError("Window column 'on' must be a non-empty string")
+
+        # Validate partition_by and order_by
+        if partition_by and not isinstance(partition_by, list):
+            raise TypeError("partition_by must be a list of strings")
+        if order_by and not isinstance(order_by, list):
+            raise TypeError("order_by must be a list of strings")
+
     def _parse_time_interval(self, interval: Union[str, timedelta]) -> timedelta:
         """Parse a time interval string or timedelta into a timedelta."""
         if isinstance(interval, timedelta):
@@ -262,6 +393,95 @@ class SessionWindow(WindowSpec):
 
 
 # Convenience constructors for common window types
+
+
+@PublicAPI
+def window(
+    on: str,
+    size: Union[str, timedelta, int],
+    window_type: str = "sliding",
+    gap: Optional[Union[str, timedelta, int]] = None,
+    step: Optional[Union[str, timedelta, int]] = None,
+    start: Optional[Union[str, datetime]] = None,
+    offset: Optional[Union[str, timedelta, int]] = None,
+    alignment: str = "TRAILING",
+    partition_by: Optional[List[str]] = None,
+    order_by: Optional[List[str]] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+) -> WindowSpec:
+    """Create a window specification.
+
+    This is a convenience function that creates different types of windows
+    based on the window_type parameter.
+
+    Args:
+        on: The column name to use for windowing
+        size: The size of the window
+        window_type: Type of window ("sliding", "tumbling", "session")
+        gap: The gap for session windows
+        step: The step size for tumbling windows
+        start: The start time for tumbling windows
+        offset: The offset for sliding windows
+        alignment: The alignment for sliding windows
+        partition_by: Columns to partition by before applying windows
+        order_by: Columns to order by within each partition
+        ray_remote_args: Additional resource requirements for Ray tasks/actors
+
+    Returns:
+        A WindowSpec of the appropriate type
+
+    Raises:
+        ValueError: If window_type is not supported or required parameters are missing
+
+    Examples:
+        >>> from ray.data.window import window
+
+        # Create a sliding window
+        >>> win = window("timestamp", "1 hour", window_type="sliding")
+
+        # Create a tumbling window
+        >>> win = window("timestamp", "1 day", window_type="tumbling")
+
+        # Create a session window
+        >>> win = window("timestamp", gap="15 minutes", window_type="session")
+    """
+    # Automatically select optimal compute strategy
+    compute_strategy = None  # Let Ray Data choose the best strategy
+
+    if window_type == "sliding":
+        return SlidingWindow(
+            on,
+            size,
+            offset,
+            alignment,
+            partition_by,
+            order_by,
+            compute_strategy,
+            ray_remote_args,
+        )
+    elif window_type == "tumbling":
+        return TumblingWindow(
+            on,
+            size,
+            step,
+            start,
+            partition_by,
+            order_by,
+            compute_strategy,
+            ray_remote_args,
+        )
+    elif window_type == "session":
+        if gap is None:
+            raise ValueError("Session windows require a 'gap' parameter")
+        return SessionWindow(
+            on, gap, partition_by, order_by, compute_strategy, ray_remote_args
+        )
+    else:
+        raise ValueError(
+            f"Unknown window type: {window_type}. Supported types: 'sliding', 'tumbling', 'session'"
+        )
+
+
 def sliding_window(
     on: str,
     size: Union[str, timedelta, int],
@@ -269,7 +489,6 @@ def sliding_window(
     alignment: str = "TRAILING",
     partition_by: Optional[List[str]] = None,
     order_by: Optional[List[str]] = None,
-    compute_strategy: Optional[ComputeStrategy] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> SlidingWindow:
     """Create a sliding window specification.
@@ -281,7 +500,6 @@ def sliding_window(
         alignment: How to align the window
         partition_by: Columns to partition by before applying windows
         order_by: Columns to order by within each partition
-        compute_strategy: The compute strategy to use (TaskPoolStrategy or ActorPoolStrategy)
         ray_remote_args: Additional resource requirements for Ray tasks/actors
 
     Returns:
@@ -299,12 +517,12 @@ def sliding_window(
         # GPU-accelerated sliding window
         >>> win = sliding_window("timestamp", "1 hour", ray_remote_args={"num_gpus": 1})
 
-        # Stateful sliding window with actor pool
-        >>> win = sliding_window("timestamp", "1 hour", compute_strategy=ActorPoolStrategy(size=2))
-
         # Partitioned sliding window
         >>> win = sliding_window("timestamp", "1 hour", partition_by=["user_id"], order_by=["timestamp"])
     """
+    # Automatically select optimal compute strategy
+    compute_strategy = None  # Let Ray Data choose the best strategy
+
     return SlidingWindow(
         on,
         size,
@@ -324,7 +542,6 @@ def tumbling_window(
     start: Optional[Union[str, datetime]] = None,
     partition_by: Optional[List[str]] = None,
     order_by: Optional[List[str]] = None,
-    compute_strategy: Optional[ComputeStrategy] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> TumblingWindow:
     """Create a tumbling window specification.
@@ -336,7 +553,6 @@ def tumbling_window(
         start: The start time for the first window
         partition_by: Columns to partition by before applying windows
         order_by: Columns to order by within each partition
-        compute_strategy: The compute strategy to use (TaskPoolStrategy or ActorPoolStrategy)
         ray_remote_args: Additional resource requirements for Ray tasks/actors
 
     Returns:
@@ -360,6 +576,9 @@ def tumbling_window(
         # Partitioned tumbling window
         >>> win = tumbling_window("timestamp", "1 day", partition_by=["region"], order_by=["timestamp"])
     """
+    # Automatically select optimal compute strategy
+    compute_strategy = None  # Let Ray Data choose the best strategy
+
     return TumblingWindow(
         on, size, step, start, partition_by, order_by, compute_strategy, ray_remote_args
     )
@@ -370,7 +589,6 @@ def session_window(
     gap: Union[str, timedelta, int],
     partition_by: Optional[List[str]] = None,
     order_by: Optional[List[str]] = None,
-    compute_strategy: Optional[ComputeStrategy] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> SessionWindow:
     """Create a session window specification.
@@ -380,7 +598,6 @@ def session_window(
         gap: The maximum gap between events to be considered in the same session
         partition_by: Columns to partition by before applying windows
         order_by: Columns to order by within each partition
-        compute_strategy: The compute strategy to use (TaskPoolStrategy or ActorPoolStrategy)
         ray_remote_args: Additional resource requirements for Ray tasks/actors
 
     Returns:
@@ -401,6 +618,9 @@ def session_window(
         # Partitioned session window
         >>> win = session_window("timestamp", "15 minutes", partition_by=["user_id"], order_by=["timestamp"])
     """
+    # Automatically select optimal compute strategy
+    compute_strategy = None  # Let Ray Data choose the best strategy
+
     return SessionWindow(
         on, gap, partition_by, order_by, compute_strategy, ray_remote_args
     )
@@ -410,7 +630,6 @@ def session_window(
 def rank_window(
     partition_by: Optional[List[str]] = None,
     order_by: Optional[List[str]] = None,
-    compute_strategy: Optional[ComputeStrategy] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> "RankWindowSpec":
     """Create a rank window specification for ranking functions.
@@ -420,7 +639,6 @@ def rank_window(
     Args:
         partition_by: Columns to partition by before applying ranking
         order_by: Columns to order by within each partition
-        compute_strategy: The compute strategy to use
         ray_remote_args: Additional resource requirements for Ray tasks/actors
 
     Returns:
@@ -435,6 +653,9 @@ def rank_window(
         # Rank all rows by timestamp
         >>> rank_win = rank_window(order_by=["timestamp"])
     """
+    # Automatically select optimal compute strategy
+    compute_strategy = None  # Let Ray Data choose the best strategy
+
     return RankWindowSpec(partition_by, order_by, compute_strategy, ray_remote_args)
 
 
@@ -443,7 +664,6 @@ def lag_window(
     offset: int = 1,
     partition_by: Optional[List[str]] = None,
     order_by: Optional[List[str]] = None,
-    compute_strategy: Optional[ComputeStrategy] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> "LagWindowSpec":
     """Create a lag window specification for accessing previous row values.
@@ -455,7 +675,6 @@ def lag_window(
         offset: Number of rows to look back (default: 1)
         partition_by: Columns to partition by before applying lag
         order_by: Columns to order by within each partition
-        compute_strategy: The compute strategy to use
         ray_remote_args: Additional resource requirements for Ray tasks/actors
 
     Returns:
@@ -470,6 +689,9 @@ def lag_window(
         # Get value from 3 rows ago
         >>> lag_win = lag_window("price", 3, order_by=["row_id"])
     """
+    # Automatically select optimal compute strategy
+    compute_strategy = None  # Let Ray Data choose the best strategy
+
     return LagWindowSpec(
         column, offset, partition_by, order_by, compute_strategy, ray_remote_args
     )
@@ -480,7 +702,6 @@ def lead_window(
     offset: int = 1,
     partition_by: Optional[List[str]] = None,
     order_by: Optional[List[str]] = None,
-    compute_strategy: Optional[ComputeStrategy] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> "LeadWindowSpec":
     """Create a lead window specification for accessing future row values.
@@ -492,7 +713,6 @@ def lead_window(
         offset: Number of rows to look forward (default: 1)
         partition_by: Columns to partition by before applying lead
         order_by: Columns to order by within each partition
-        compute_strategy: The compute strategy to use
         ray_remote_args: Additional resource requirements for Ray tasks/actors
 
     Returns:
@@ -507,6 +727,9 @@ def lead_window(
         # Get value from 2 rows ahead
         >>> lead_win = lead_window("price", 2, order_by=["row_id"])
     """
+    # Automatically select optimal compute strategy
+    compute_strategy = None  # Let Ray Data choose the best strategy
+
     return LeadWindowSpec(
         column, offset, partition_by, order_by, compute_strategy, ray_remote_args
     )

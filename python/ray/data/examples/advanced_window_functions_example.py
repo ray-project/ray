@@ -187,13 +187,12 @@ def demonstrate_advanced_sliding_windows(ds):
 
     print(f"   Result count: {result.count()}")
 
-    # 3. Stateful sliding window with actor pool
-    print("\n3. Stateful sliding window with actor pool:")
+    # 3. Sliding window with custom resource allocation
+    print("\n3. Sliding window with custom resource allocation:")
     result = ds.window(
         sliding_window("timestamp", "2 hours", partition_by=["user_id"]),
         Sum("amount"),
-        compute_strategy=ActorPoolStrategy(size=2),
-        ray_remote_args={"num_cpus": 1},
+        ray_remote_args={"num_cpus": 2, "memory": 2000000000},
     )
 
     print(f"   Result count: {result.count()}")

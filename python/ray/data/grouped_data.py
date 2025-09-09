@@ -1,8 +1,23 @@
 from functools import partial
-from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+    TYPE_CHECKING,
+)
 
 from ray.data._internal.compute import ComputeStrategy
+
 from ray.data._internal.logical.interfaces import LogicalPlan
+
+if TYPE_CHECKING:
+    from ray.data.window import WindowSpec
 from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
 from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
 from ray.data.block import (
@@ -128,11 +143,45 @@ class GroupedData:
                 "Use Dataset.slide_over() for SlidingWindow."
             )
 
+        # Validate aggregation functions
+        if not aggs:
+            raise ValueError("At least one aggregation function must be provided")
+
+        for agg in aggs:
+            if not hasattr(agg, "_key"):
+                raise TypeError(f"Invalid aggregation function: {agg}")
+
+        # Modify window_spec to include group-by columns as partition_by
+        # This ensures windows are computed within each group
+        group_partition_by = list(self._key_columns) + (window_spec.partition_by or [])
+
+        # Create a modified window spec with the group columns
+        if isinstance(window_spec, TumblingWindow):
+            modified_window_spec = TumblingWindow(
+                window_spec.on,
+                window_spec.size,
+                window_spec.step,
+                window_spec.start,
+                group_partition_by,
+                window_spec.order_by,
+                window_spec.compute_strategy,
+                window_spec.ray_remote_args,
+            )
+        else:  # SessionWindow
+            modified_window_spec = SessionWindow(
+                window_spec.on,
+                window_spec.gap,
+                group_partition_by,
+                window_spec.order_by,
+                window_spec.compute_strategy,
+                window_spec.ray_remote_args,
+            )
+
         # Create a window operator that works within groups
         plan = self._dataset._plan.copy()
         op = Window(
             self._dataset._logical_plan.dag,
-            window_spec=window_spec,
+            window_spec=modified_window_spec,
             aggs=list(aggs),
             num_partitions=self._num_partitions,
         )

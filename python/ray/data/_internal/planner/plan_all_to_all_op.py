@@ -86,6 +86,7 @@ def _plan_window_operation(
         data_context,
         window_spec=logical_op.window_spec,
         aggregation_fns=logical_op.aggs,
+        custom_fns=getattr(logical_op, "custom_fns", []),
         num_partitions=logical_op.num_partitions,
         batch_format=logical_op.batch_format,
         ray_remote_args=getattr(logical_op, "_ray_remote_args", None),

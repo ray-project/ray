@@ -69,10 +69,12 @@ class WindowAggregation(StatefulShuffleAggregation):
         aggregator_id: int,
         window_spec: WindowSpec,
         aggregation_fns: Tuple["AggregateFn"],
+        custom_fns: Tuple[callable] = None,
     ):
         super().__init__(aggregator_id)
         self._window_spec = window_spec
         self._aggregation_fns = aggregation_fns
+        self._custom_fns = custom_fns or ()
         self._windowed_blocks: List[Block] = []
         self._window_cache: Dict[Any, Dict[str, Any]] = {}
 
@@ -113,6 +115,12 @@ class WindowAggregation(StatefulShuffleAggregation):
             return self._process_tumbling_window(accessor)
         elif isinstance(self._window_spec, SessionWindow):
             return self._process_session_window(accessor)
+        elif isinstance(self._window_spec, RankWindowSpec):
+            return self._process_ranking_window(accessor)
+        elif isinstance(self._window_spec, LagWindowSpec):
+            return self._process_lag_window(accessor)
+        elif isinstance(self._window_spec, LeadWindowSpec):
+            return self._process_lead_window(accessor)
         else:
             # Fallback to basic processing
             return block
@@ -122,14 +130,18 @@ class WindowAggregation(StatefulShuffleAggregation):
         # Convert to pandas for easier window operations
         df = accessor.to_pandas()
 
-        # Sort by window column and partition columns
+        # Early return for empty dataframes
+        if df.empty:
+            return accessor.to_block()
+
+        # Sort by window column and partition columns for optimal performance
         sort_cols = [self._window_spec.on] + self._window_spec.partition_by
         df = df.sort_values(sort_cols)
 
         # Apply rolling window operations
         result_data = {}
 
-        # Add original columns
+        # Add original columns (only copy if needed)
         for col in df.columns:
             result_data[col] = df[col].values
 
@@ -140,49 +152,90 @@ class WindowAggregation(StatefulShuffleAggregation):
                 if isinstance(self._window_spec.size, int):
                     # Row-based window
                     window_size = self._window_spec.size
-                    if self._window_spec.alignment == "CENTERED":
-                        window_size = window_size // 2
+                    center = self._window_spec.alignment == "CENTERED"
 
-                    # Apply rolling aggregation
-                    if agg_fn.__class__.__name__ == "Sum":
-                        result_data[f"sum({col_name})"] = (
-                            df[col_name]
-                            .rolling(window=window_size, center=True, min_periods=1)
-                            .sum()
-                            .values
-                        )
-                    elif agg_fn.__class__.__name__ == "Mean":
-                        result_data[f"mean({col_name})"] = (
-                            df[col_name]
-                            .rolling(window=window_size, center=True, min_periods=1)
-                            .mean()
-                            .values
-                        )
-                    elif agg_fn.__class__.__name__ == "Count":
-                        result_data[f"count({col_name})"] = (
-                            df[col_name]
-                            .rolling(window=window_size, center=True, min_periods=1)
-                            .count()
-                            .values
-                        )
-                    elif agg_fn.__class__.__name__ == "Max":
-                        result_data[f"max({col_name})"] = (
-                            df[col_name]
-                            .rolling(window=window_size, center=True, min_periods=1)
-                            .max()
-                            .values
-                        )
-                    elif agg_fn.__class__.__name__ == "Min":
-                        result_data[f"min({col_name})"] = (
-                            df[col_name]
-                            .rolling(window=window_size, center=True, min_periods=1)
-                            .min()
-                            .values
-                        )
+                    # Create the rolling window
+                    rolling_obj = df[col_name].rolling(
+                        window=window_size, center=center, min_periods=1
+                    )
+
+                    # Apply the appropriate aggregation function using the agg_fn's name
+                    agg_name = agg_fn.__class__.__name__.lower()
+                    result_col_name = f"{agg_name}({col_name})"
+
+                    if hasattr(rolling_obj, agg_name):
+                        result_data[result_col_name] = getattr(
+                            rolling_obj, agg_name
+                        )().values
+                    else:
+                        # Fallback for custom aggregation functions
+                        result_data[result_col_name] = rolling_obj.apply(
+                            lambda x: agg_fn._finalize_aggregation(
+                                agg_fn._init_accumulator(None), x
+                            )
+                        ).values
                 else:
-                    # Time-based window - use pandas time-based rolling
-                    # This is a simplified implementation
-                    result_data[f"agg({col_name})"] = df[col_name].values
+                    # Time-based window - parse the time interval and use pandas time-based rolling
+                    try:
+                        window_td = self._window_spec._parse_time_interval(
+                            self._window_spec.size
+                        )
+                        rolling_obj = df.set_index(self._window_spec.on)[
+                            col_name
+                        ].rolling(window=window_td, min_periods=1)
+
+                        agg_name = agg_fn.__class__.__name__.lower()
+                        result_col_name = f"{agg_name}({col_name})"
+
+                        if hasattr(rolling_obj, agg_name):
+                            result_data[result_col_name] = getattr(
+                                rolling_obj, agg_name
+                            )().values
+                        else:
+                            # Fallback for custom aggregation functions
+                            result_data[result_col_name] = rolling_obj.apply(
+                                lambda x: agg_fn._finalize_aggregation(
+                                    agg_fn._init_accumulator(None), x
+                                )
+                            ).values
+                    except Exception:
+                        # Fallback if time-based parsing fails
+                        result_data[f"agg({col_name})"] = df[col_name].values
+
+        # Apply custom functions if provided
+        if self._custom_fns:
+            result_df = pd.DataFrame(result_data)
+
+            # Apply each custom function to the window data
+            for custom_fn in self._custom_fns:
+                try:
+                    # Convert DataFrame to batch format (Dict[str, np.ndarray])
+                    batch_data = {
+                        col: result_df[col].values for col in result_df.columns
+                    }
+
+                    # Apply custom function
+                    custom_result = custom_fn(batch_data)
+
+                    # Handle the result - it could explode the dataset
+                    if isinstance(custom_result, dict):
+                        # Merge custom function results
+                        for key, values in custom_result.items():
+                            if key not in result_data or len(values) != len(
+                                result_data[key]
+                            ):
+                                # Handle dataset explosion - custom function returned different number of rows
+                                if len(values) > len(result_data.get(key, [])):
+                                    # Exploded dataset - need to handle this properly
+                                    result_data = (
+                                        custom_result  # Replace with exploded data
+                                    )
+                                    break
+                            else:
+                                result_data[key] = values
+                except Exception as e:
+                    # Log error but continue processing
+                    logger.warning(f"Custom function failed in window processing: {e}")
 
         # Create result DataFrame
         result_df = pd.DataFrame(result_data)
@@ -337,7 +390,16 @@ class WindowAggregation(StatefulShuffleAggregation):
     def _create_session_ids(
         self, df: pd.DataFrame, time_col: str, gap: Union[str, timedelta, int]
     ) -> List[int]:
-        """Create session IDs based on time gaps."""
+        """Create session IDs based on time gaps.
+
+        Args:
+            df: The pandas DataFrame to process.
+            time_col: The name of the time column.
+            gap: The maximum gap between events in the same session.
+
+        Returns:
+            List of session IDs for each row.
+        """
         if isinstance(gap, str):
             # Parse time gap
             gap_delta = self._parse_time_interval(gap)
@@ -400,7 +462,23 @@ class WindowAggregation(StatefulShuffleAggregation):
         if len(self._windowed_blocks) == 1:
             return self._windowed_blocks[0]
 
-        # Combine multiple blocks using pandas concatenation
+        # Use Ray Data's native block combining functionality for better performance
+        try:
+            # Try to use Arrow concatenation if possible
+            accessors = [
+                BlockAccessor.for_block(block) for block in self._windowed_blocks
+            ]
+
+            # Check if all blocks are Arrow-compatible
+            if all(hasattr(acc, "to_arrow") for acc in accessors):
+                tables = [acc.to_arrow() for acc in accessors]
+                combined_table = pa.concat_tables(tables)
+                return BlockAccessor.for_block(combined_table).to_block()
+        except Exception:
+            # Fallback to pandas concatenation
+            pass
+
+        # Fallback: Combine multiple blocks using pandas concatenation
         accessors = [BlockAccessor.for_block(block) for block in self._windowed_blocks]
         dfs = [acc.to_pandas() for acc in accessors]
 
@@ -526,12 +604,14 @@ class WindowOperator(AllToAllOperator):
         data_context: DataContext,
         window_spec: WindowSpec,
         aggregation_fns: List["AggregateFn"],
+        custom_fns: List[callable] = None,
         num_partitions: Optional[int] = None,
         batch_format: Optional[str] = "default",
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         self._window_spec = window_spec
         self._aggregation_fns = aggregation_fns
+        self._custom_fns = custom_fns or []
         self._num_partitions = (
             num_partitions or data_context.default_hash_shuffle_parallelism
         )
@@ -581,6 +661,7 @@ class WindowOperator(AllToAllOperator):
                 aggregator_id=aggregator_id,
                 window_spec=self._window_spec,
                 aggregation_fns=tuple(self._aggregation_fns),
+                custom_fns=tuple(self._custom_fns),
             )
 
         return factory

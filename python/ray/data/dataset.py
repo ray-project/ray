@@ -5,6 +5,7 @@ import itertools
 import logging
 import time
 import warnings
+from datetime import timedelta
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -131,6 +132,7 @@ if TYPE_CHECKING:
     import torch
     import torch.utils.data
     from tensorflow_metadata.proto.v0 import schema_pb2
+    from ray.data.window import WindowSpec
 
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data.grouped_data import GroupedData
@@ -3090,177 +3092,280 @@ class Dataset:
     @PublicAPI(api_group=GGA_API_GROUP)
     def window(
         self,
-        window_spec: "WindowSpec",
-        *aggs: "AggregateFn",
+        time_column: str,
+        window_size: Union[str, int, timedelta],
+        window_type: str = "sliding",
+        *,
+        step: Optional[Union[str, int, timedelta]] = None,
+        gap: Optional[Union[str, int, timedelta]] = None,
+        alignment: str = "trailing",
+        partition_by: Optional[Union[str, List[str]]] = None,
+        order_by: Optional[Union[str, List[str]]] = None,
         num_partitions: Optional[int] = None,
-        compute_strategy: Optional[ComputeStrategy] = None,
-        ray_remote_args: Optional[Dict[str, Any]] = None,
-    ) -> "Dataset":
-        """Apply window functions to the dataset.
+    ) -> "WindowedDataset":
+        """Create windowed views of the dataset for time-series operations.
 
-        This method applies window-based aggregations to the dataset, supporting
-        sliding windows, tumbling windows, and session windows. It supports both
-        stateless and stateful operations, with GPU acceleration capabilities.
+        This method creates windowed views of the dataset that can be used with
+        the :meth:`~WindowedDataset.aggregate` method, similar to Ray Data's
+        :meth:`~Dataset.groupby` pattern. It supports sliding windows (rolling),
+        tumbling windows (fixed intervals), and session windows (gap-based).
+
+        The API is designed to be as clean and intuitive as pandas' rolling windows
+        while providing the distributed processing power of Ray Data.
+
+        .. tip::
+            This follows the same pattern as :meth:`~Dataset.groupby`: create a
+            windowed view, then call :meth:`~WindowedDataset.aggregate` with your
+            aggregation functions.
+
+        .. tip::
+            Use natural language time expressions like "1 hour", "30 minutes",
+            "2 days" for intuitive window sizing.
+
+        .. warning::
+            Window operations require data shuffling and sorting, which can be
+            memory-intensive for large datasets. Consider using ``num_partitions``
+            to control parallelism and memory usage.
 
         Examples:
-            >>> import ray
-            >>> from ray.data.window import window, sliding_window, tumbling_window, session_window
-            >>> from ray.data.aggregate import Sum, Mean, Count
-            >>> from ray.data._internal.compute import ActorPoolStrategy
 
-            # Sliding window with trailing 1-hour average
-            >>> ds = ray.data.read_parquet("data.parquet")
-            >>> result = ds.window(
-            ...     sliding_window("timestamp", "1 hour"),
-            ...     Sum("value")
-            ... )
+            **Clean API following Ray Data patterns** - Like groupby().aggregate():
 
-            # Tumbling window with 1-day aggregation
-            >>> result = ds.window(
-            ...     tumbling_window("timestamp", "1 day"),
-            ...     Mean("value")
-            ... )
+            .. testcode::
 
-            # Session window with 15-minute gap
-            >>> result = ds.window(
-            ...     session_window("timestamp", "15 minutes"),
-            ...     Count("value")
-            ... )
+                import ray
+                from ray.data.aggregate import Mean, Sum, Count, Max, Min
 
-            # Row-based sliding window
-            >>> result = ds.window(
-            ...     sliding_window("row_id", 100, alignment="CENTERED"),
-            ...     Mean("value")
-            ... )
+                # Create sample time series data
+                data = [
+                    {"timestamp": "2023-01-01T09:00:00", "sales": 100, "user_id": "user_1"},
+                    {"timestamp": "2023-01-01T09:05:00", "sales": 150, "user_id": "user_1"},
+                    {"timestamp": "2023-01-01T09:10:00", "sales": 200, "user_id": "user_2"},
+                ]
+                ds = ray.data.from_items(data)
 
-            # GPU-accelerated window operation
-            >>> result = ds.window(
-            ...     sliding_window("timestamp", "1 hour"),
-            ...     Mean("value"),
-            ...     ray_remote_args={"num_gpus": 1}
-            ... )
+                # Rolling windows (like pandas df.rolling())
+                rolling_avg = ds.window("timestamp", "1 hour").aggregate(Mean("sales"))
 
-            # Stateful window operation with actor pool
-            >>> result = ds.window(
-            ...     sliding_window("timestamp", "1 hour"),
-            ...     Sum("value"),
-            ...     compute_strategy=ActorPoolStrategy(size=2),
-            ...     ray_remote_args={"num_cpus": 2}
-            ... )
+                # Daily summaries (tumbling windows)
+                daily_totals = ds.window("timestamp", "1 day", window_type="tumbling").aggregate(
+                    Sum("sales"), Count("user_id")
+                )
+
+                # User sessions (session windows)
+                sessions = ds.window("timestamp", gap="30 minutes", window_type="session").aggregate(
+                    Count("sales")
+                )
+
+            **Partitioned windows** - Windows within groups (like pandas groupby + rolling):
+
+            .. testcode::
+
+                # Rolling metrics per user (most common pattern)
+                user_metrics = ds.window(
+                    "timestamp", "1 hour", partition_by=["user_id"]
+                ).aggregate(Mean("sales"), Sum("sales"))
+
+                # Multi-level partitioning
+                regional_metrics = ds.window(
+                    "timestamp", "1 hour", partition_by=["region", "category"]
+                ).aggregate(Mean("sales"))
+
+                # Equivalent to: ds.groupby(["user_id"]).rolling("timestamp", "1 hour").aggregate(...)
+
+            **Custom transformations** - Use map_batches for user-defined functions:
+
+            .. testcode::
+
+                from typing import Dict
+                import numpy as np
+
+                def detect_anomalies(window_batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+                    \"\"\"Detect statistical anomalies in sales data.\"\"\"
+                    sales = window_batch["sales"]
+                    mean_sales = np.mean(sales)
+                    std_sales = np.std(sales)
+
+                    result = window_batch.copy()
+                    result["is_anomaly"] = (np.abs(sales - mean_sales) > 2 * std_sales).astype(int)
+                    result["anomaly_score"] = np.abs(sales - mean_sales) / std_sales
+                    return result
+
+                # Clean separation: aggregations vs transformations
+                aggregated = ds.window("timestamp", "2 hours", partition_by=["user_id"]).aggregate(
+                    Sum("sales"), Mean("sales")  # Pure aggregations
+                )
+
+                enriched = ds.window("timestamp", "2 hours", partition_by=["user_id"]).map_batches(
+                    detect_anomalies  # Custom transformations
+                )
+
+            **Different window types** - All use the same clean pattern:
+
+            .. testcode::
+
+                # Sliding windows (default) - rolling aggregations
+                hourly_rolling = ds.window("timestamp", "1 hour").aggregate(Mean("sales"))
+
+                # Tumbling windows - fixed intervals
+                daily_summaries = ds.window("timestamp", "1 day", window_type="tumbling").aggregate(
+                    Sum("sales"), Count("transactions")
+                )
+
+                # Session windows - gap-based grouping
+                user_sessions = ds.window("timestamp", gap="15 minutes", window_type="session").aggregate(
+                    Count("events"), Sum("duration")
+                )
+
+                # Row-based windows (non-time-series)
+                moving_average = ds.window("row_id", 5, alignment="centered").aggregate(Mean("price"))
+
+            **Real-world patterns** - Common time-series use cases:
+
+            .. testcode::
+
+                # Financial analysis (Point72 style)
+                financial_metrics = ds.window("timestamp", "1 hour", partition_by=["symbol"]).aggregate(
+                    Mean("price"), Sum("volume"), Max("high"), Min("low")
+                )
+
+                # IoT sensor monitoring
+                sensor_alerts = ds.window("timestamp", "5 minutes", partition_by=["device_id"]).aggregate(
+                    Mean("temperature"), Max("humidity")
+                )
+
+                # User behavior analytics
+                user_engagement = ds.window("timestamp", "1 day", partition_by=["user_id"]).aggregate(
+                    Count("page_views"), Sum("time_spent")
+                )
+
+            **Dataset explosion** - Custom functions that generate multiple outputs:
+
+            .. testcode::
+
+                def generate_forecasts(window_batch):
+                    \"\"\"Generate multiple forecast points (explodes dataset).\"\"\"
+                    sales = window_batch["sales"]
+                    timestamps = window_batch["timestamp"]
+
+                    # Generate 3 forecast points per window
+                    forecasts = []
+                    for i, (ts, value) in enumerate(zip(timestamps, sales)):
+                        for horizon in [1, 7, 30]:  # 1-day, 1-week, 1-month
+                            forecasts.append({
+                                "source_timestamp": ts,
+                                "forecast_value": value * (1 + 0.02 * horizon),
+                                "forecast_horizon_days": horizon
+                            })
+
+                    return {k: np.array([f[k] for f in forecasts]) for k in forecasts[0].keys()}
+
+                # Dataset explosion with map_batches
+                forecasts = ds.window("timestamp", "1 day", window_type="tumbling").map_batches(
+                    generate_forecasts  # Dataset explodes 3x automatically
+                )
+
+        Time complexity: O(dataset size * log(dataset size / parallelism))
 
         Args:
-            window_spec: The window specification defining the window type and parameters
-            *aggs: Aggregation functions to apply within each window
-            num_partitions: Number of partitions for the operation
-            compute_strategy: The compute strategy to use (TaskPoolStrategy or ActorPoolStrategy).
-                If None, defaults to TaskPoolStrategy. Use ActorPoolStrategy for stateful operations.
-            ray_remote_args: Additional resource requirements for Ray tasks/actors.
-                Common options include:
-                - num_cpus: Number of CPUs per task/actor
-                - num_gpus: Number of GPUs per task/actor
-                - memory: Memory requirements per task/actor
-                - resources: Custom resource requirements
+            time_column: The column to use for windowing (usually a timestamp column).
+            window_size: The size of the window. Supports natural language expressions
+                like "1 hour", "30 minutes", "2 days", or integer values for row-based
+                windows. Examples: "1 hour", "30 minutes", "2 days", "1 week", 5 (rows).
+            window_type: Type of window to create. Options:
+
+                - ``"sliding"`` (default): Rolling windows that move with each row
+                - ``"tumbling"``: Fixed, non-overlapping time intervals
+                - ``"session"``: Gap-based windows (requires ``gap`` parameter)
+            step: Step size for tumbling windows (enables overlapping). Only used
+                when ``window_type="tumbling"``. Defaults to ``window_size``.
+            gap: Maximum gap for session windows. Required when ``window_type="session"``.
+            alignment: How to align sliding windows relative to each row:
+
+                - ``"trailing"`` (default): Window extends into the past
+                - ``"leading"``: Window extends into the future
+                - ``"centered"``: Window is centered on the current row
+            partition_by: Column(s) to partition by before windowing. Creates separate
+                windows for each partition (like pandas ``groupby().rolling()``).
+                Can be a string for single column or list for multiple columns.
+            order_by: Column(s) to order by within each partition. Defaults to
+                ``time_column`` if not specified.
+            num_partitions: Number of output partitions for parallelism control.
+                Higher values increase parallelism but may increase overhead.
+                Defaults to cluster parallelism settings.
 
         Returns:
-            A new Dataset with window aggregations applied
-
-        Note:
-            - For GPU acceleration, specify num_gpus in ray_remote_args
-            - For stateful operations, use ActorPoolStrategy with compute_strategy
-            - Window operations automatically handle data shuffling and sorting
-            - Time-based windows assume data is sorted by the timestamp column
-        """
-        from ray.data._internal.logical.operators.window_operator import Window
-
-        # Merge ray_remote_args from window_spec if provided
-        if window_spec.ray_remote_args:
-            if ray_remote_args is None:
-                ray_remote_args = {}
-            ray_remote_args = {**window_spec.ray_remote_args, **ray_remote_args}
-
-        # Use compute strategy from window_spec if not explicitly provided
-        if compute_strategy is None:
-            compute_strategy = window_spec.compute_strategy
-
-        plan = self._plan.copy()
-        op = Window(
-            self._logical_plan.dag,
-            window_spec=window_spec,
-            aggs=list(aggs),
-            num_partitions=num_partitions,
-            compute_strategy=compute_strategy,
-            ray_remote_args=ray_remote_args,
-        )
-
-        logical_plan = LogicalPlan(op, self.context)
-        return Dataset(plan, logical_plan)
-
-    @AllToAllAPI
-    @PublicAPI(api_group=GGA_API_GROUP)
-    def slide_over(
-        self,
-        window_spec: "WindowSpec",
-        sharded_by: Optional[List[str]] = None,
-        num_partitions: Optional[int] = None,
-    ) -> "GroupedData":
-        """Create sliding windows over the dataset.
-
-        This method creates sliding windows and returns a GroupedData object
-        that can be used with the existing aggregation methods. It's designed
-        to be similar to Pandas' rolling() functionality.
-
-        Examples:
-            >>> import ray
-            >>> from ray.data.window import sliding_window
-            >>> from ray.data.aggregate import Sum, Mean
-
-            # Create trailing 1-hour windows sharded by user_id
-            >>> ds = ray.data.read_parquet("data.parquet")
-            >>> grouped = ds.slide_over(
-            ...     sliding_window("timestamp", "1 hour"),
-            ...     sharded_by=["user_id"]
-            ... )
-            >>> result = grouped.aggregate(Sum("value"))
-
-            # Create centered 5-row windows
-            >>> grouped = ds.slide_over(
-            ...     sliding_window("row_id", 5, alignment="CENTERED")
-            ... )
-            >>> result = grouped.aggregate(Mean("value"))
-
-            # Create expanding windows (unbounded trailing)
-            >>> grouped = ds.slide_over(
-            ...     sliding_window("timestamp", "UNBOUNDED", alignment="TRAILING")
-            ... )
-            >>> result = grouped.aggregate(Sum("value"))
-
-        Args:
-            window_spec: The window specification (must be a SlidingWindow)
-            sharded_by: Columns to partition by before applying windows
-            num_partitions: Number of partitions for the operation
-
-        Returns:
-            A GroupedData object that can be used with aggregation methods
+            A :class:`WindowedDataset` that supports the :meth:`~WindowedDataset.aggregate`
+            method, following the same pattern as :meth:`~Dataset.groupby` which returns
+            a :class:`GroupedData` object.
 
         Raises:
-            ValueError: If window_spec is not a SlidingWindow
+            ValueError: If ``time_column`` is not a valid column name.
+            ValueError: If ``window_type="session"`` but no ``gap`` is provided.
+
+        .. seealso::
+
+            :meth:`~ray.data.grouped_data.GroupedData.window`
+                Apply windows within groups created by :meth:`~Dataset.groupby`.
+            :func:`~ray.data.window.sliding_window`
+                Create sliding window specifications.
+            :func:`~ray.data.window.tumbling_window`
+                Create tumbling window specifications.
+            :func:`~ray.data.window.session_window`
+                Create session window specifications.
         """
-        from ray.data.window import SlidingWindow
-        from ray.data.grouped_data import GroupedData
+        # Validate inputs
+        if not isinstance(time_column, str) or not time_column:
+            raise ValueError("time_column must be a non-empty string")
 
-        if not isinstance(window_spec, SlidingWindow):
-            raise ValueError("slide_over only supports SlidingWindow specifications")
+        if window_type == "session" and gap is None:
+            raise ValueError("Session windows require a 'gap' parameter")
 
-        # Override sharded_by if specified in window_spec
-        if window_spec.partition_by:
-            sharded_by = window_spec.partition_by
+        # Normalize partition_by to list
+        if isinstance(partition_by, str):
+            partition_by = [partition_by]
+        elif partition_by is None:
+            partition_by = []
 
-        # For now, we'll use the regular groupby with window information
-        # TODO: Implement SlidingWindowGroupedData for better performance
-        if sharded_by:
-            return self.groupby(sharded_by, num_partitions=num_partitions)
+        # Normalize order_by to list, default to time_column
+        if isinstance(order_by, str):
+            order_by = [order_by]
+        elif order_by is None:
+            order_by = [time_column]
+
+        # Create window specification based on type
+        if window_type == "sliding":
+            from ray.data.window import SlidingWindow
+
+            window_spec = SlidingWindow(
+                time_column,
+                window_size,
+                None,
+                alignment.upper(),
+                partition_by,
+                order_by,
+                None,
+                {},
+            )
+        elif window_type == "tumbling":
+            from ray.data.window import TumblingWindow
+
+            window_spec = TumblingWindow(
+                time_column, window_size, step, None, partition_by, order_by, None, {}
+            )
+        elif window_type == "session":
+            from ray.data.window import SessionWindow
+
+            window_spec = SessionWindow(
+                time_column, gap, partition_by, order_by, None, {}
+            )
         else:
-            return self.groupby(None, num_partitions=num_partitions)
+            raise ValueError(
+                f"Invalid window_type: {window_type}. Must be 'sliding', 'tumbling', or 'session'"
+            )
+
+        # Return a WindowedDataset that follows the groupby().aggregate() pattern
+        return WindowedDataset(self, window_spec, num_partitions)
 
     @PublicAPI(api_group=SMJ_API_GROUP)
     def zip(self, other: "Dataset") -> "Dataset":
@@ -6720,3 +6825,213 @@ def _block_to_ndarray(block: Block, column: Optional[str]):
 def _block_to_arrow(block: Block):
     block = BlockAccessor.for_block(block)
     return block.to_arrow()
+
+
+class WindowedDataset:
+    """A windowed view of a dataset for time-series operations.
+
+    This class follows the same pattern as :class:`GroupedData` - you create
+    a windowed view with :meth:`Dataset.window`, then call :meth:`aggregate`
+    with your aggregation functions or custom functions.
+
+    Examples:
+        >>> import ray
+        >>> from ray.data.aggregate import Mean, Sum
+
+        >>> ds = ray.data.read_parquet("timeseries.parquet")
+        >>> windowed = ds.window("timestamp", "1 hour", partition_by=["user_id"])
+        >>> result = windowed.aggregate(Mean("sales"), Sum("volume"))
+    """
+
+    def __init__(
+        self,
+        dataset: Dataset,
+        window_spec: "WindowSpec",
+        num_partitions: Optional[int] = None,
+    ):
+        """Initialize a WindowedDataset.
+
+        Args:
+            dataset: The underlying dataset.
+            window_spec: The window specification.
+            num_partitions: Number of partitions for the operation.
+        """
+        self._dataset = dataset
+        self._window_spec = window_spec
+        self._num_partitions = num_partitions
+
+    def aggregate(self, *aggs: "AggregateFn") -> Dataset:
+        """Apply aggregation functions to the windowed data.
+
+        This method applies window-based aggregations, following the same
+        pattern as :meth:`GroupedData.aggregate`. Use this for operations
+        that reduce the data (sum, mean, count, etc.).
+
+        Args:
+            *aggs: Aggregation functions to apply within each window.
+                Common functions: :class:`~ray.data.aggregate.Sum`,
+                :class:`~ray.data.aggregate.Mean`, :class:`~ray.data.aggregate.Count`,
+                :class:`~ray.data.aggregate.Max`, :class:`~ray.data.aggregate.Min`,
+                :class:`~ray.data.aggregate.Std`.
+
+        Returns:
+            A new :class:`Dataset` with window aggregations applied.
+
+        Examples:
+            >>> # Standard window aggregations
+            >>> result = windowed.aggregate(Sum("sales"), Mean("price"))
+
+            >>> # Rolling financial metrics
+            >>> metrics = ds.window("timestamp", "1 hour", partition_by=["symbol"]).aggregate(
+            ...     Mean("price"), Sum("volume"), Max("high"), Min("low")
+            ... )
+        """
+        from ray.data._internal.logical.operators.window_operator import Window
+
+        # Validate inputs
+        if not aggs:
+            raise ValueError("At least one aggregation function must be provided")
+
+        for agg in aggs:
+            if not hasattr(agg, "_key"):
+                raise TypeError(f"Invalid aggregation function: {agg}")
+
+        plan = self._dataset._plan.copy()
+        op = Window(
+            self._dataset._logical_plan.dag,
+            window_spec=self._window_spec,
+            aggs=list(aggs),
+            custom_fns=[],
+            num_partitions=self._num_partitions,
+            compute_strategy=self._window_spec.compute_strategy,
+            ray_remote_args=self._window_spec.ray_remote_args,
+        )
+
+        logical_plan = LogicalPlan(op, self._dataset.context)
+        return Dataset(plan, logical_plan)
+
+    def map_batches(
+        self,
+        fn: UserDefinedFunction[DataBatch, DataBatch],
+        *,
+        batch_size: Union[int, None, Literal["default"]] = None,
+        batch_format: Optional[str] = "default",
+        zero_copy_batch: bool = False,
+        fn_args: Optional[Iterable[Any]] = None,
+        fn_kwargs: Optional[Dict[str, Any]] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
+        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
+        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        **ray_remote_args,
+    ) -> Dataset:
+        """Apply a user-defined function to windowed batches of data.
+
+        This method applies custom transformations to windowed data, following
+        the same pattern as :meth:`Dataset.map_batches`. Use this for operations
+        that transform the data (add columns, detect anomalies, generate forecasts, etc.).
+
+        The function receives window batches where each batch contains all rows
+        within a window. This enables powerful window-based transformations that
+        can access the full context of each window.
+
+        Args:
+            fn: The user-defined function to apply to each window batch.
+                Function signature: ``Callable[[Dict[str, np.ndarray]], Dict[str, np.ndarray]]``
+                The function can return the same number of rows (transformation) or
+                different number of rows (dataset explosion/reduction).
+            batch_size: Target batch size for processing. Defaults to Ray Data's
+                automatic batch sizing.
+            batch_format: The format of batches provided to ``fn``. Defaults to "default"
+                (dict of numpy arrays).
+            zero_copy_batch: Whether to use zero-copy batch creation for performance.
+            fn_args: Positional arguments to pass to ``fn``.
+            fn_kwargs: Keyword arguments to pass to ``fn``.
+            fn_constructor_args: Positional arguments to pass to ``fn``'s constructor
+                if ``fn`` is a callable class.
+            fn_constructor_kwargs: Keyword arguments to pass to ``fn``'s constructor
+                if ``fn`` is a callable class.
+            num_cpus: Number of CPUs to allocate for each task.
+            num_gpus: Number of GPUs to allocate for each task.
+            memory: Memory allocation for each task (in bytes).
+            concurrency: Maximum number of concurrent tasks.
+            **ray_remote_args: Additional Ray task arguments.
+
+        Returns:
+            A new :class:`Dataset` with window transformations applied.
+
+        Examples:
+            >>> # Anomaly detection on windowed data
+            >>> def detect_anomalies(window_batch):
+            ...     sales = window_batch["sales"]
+            ...     mean_sales = np.mean(sales)
+            ...     std_sales = np.std(sales)
+            ...
+            ...     result = window_batch.copy()
+            ...     result["is_anomaly"] = (np.abs(sales - mean_sales) > 2 * std_sales).astype(int)
+            ...     return result
+            >>>
+            >>> anomalies = ds.window("timestamp", "1 hour").map_batches(detect_anomalies)
+
+            >>> # Generate forecasts (dataset explosion)
+            >>> def generate_forecasts(window_batch):
+            ...     # Generate 3 forecast points per window
+            ...     # Returns 3x more rows than input
+            ...     return forecast_data
+            >>>
+            >>> forecasts = ds.window("timestamp", "1 day", window_type="tumbling").map_batches(
+            ...     generate_forecasts
+            ... )
+
+            >>> # Feature engineering with GPU acceleration
+            >>> def extract_features(window_batch):
+            ...     # Complex ML feature extraction
+            ...     return enhanced_batch
+            >>>
+            >>> features = ds.window("timestamp", "1 hour", partition_by=["user_id"]).map_batches(
+            ...     extract_features,
+            ...     num_gpus=1
+            ... )
+        """
+        # Create a dataset with window context, then apply map_batches
+        # This is a more complex operation that requires special window-aware map_batches
+
+        # For now, we'll use the existing window operator with custom functions
+        from ray.data._internal.logical.operators.window_operator import Window
+
+        # Convert the map_batches function to a custom window function
+        custom_fns = [fn]
+
+        plan = self._dataset._plan.copy()
+        op = Window(
+            self._dataset._logical_plan.dag,
+            window_spec=self._window_spec,
+            aggs=[],
+            custom_fns=custom_fns,
+            num_partitions=self._num_partitions,
+            compute_strategy=self._window_spec.compute_strategy,
+            ray_remote_args={
+                "num_cpus": num_cpus,
+                "num_gpus": num_gpus,
+                "memory": memory,
+                **ray_remote_args,
+            },
+        )
+
+        logical_plan = LogicalPlan(op, self._dataset.context)
+        return Dataset(plan, logical_plan)
+
+    @property
+    def dataset(self) -> Dataset:
+        """Get the underlying dataset."""
+        return self._dataset
+
+    @property
+    def window_spec(self) -> "WindowSpec":
+        """Get the window specification."""
+        return self._window_spec
+
+    def __repr__(self) -> str:
+        return f"WindowedDataset(window={self._window_spec}, partitions={self._num_partitions})"

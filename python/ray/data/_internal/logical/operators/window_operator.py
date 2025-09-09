@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from ray.data.block import BlockMetadata
     from ray.data import Schema
     from ray.data.aggregate import AggregateFn
+    from ray.data._internal.compute import ComputeStrategy
 
 
 class Window(AbstractAllToAll):
@@ -22,6 +23,7 @@ class Window(AbstractAllToAll):
         input_op: LogicalOperator,
         window_spec: WindowSpec,
         aggs: List["AggregateFn"],
+        custom_fns: List[callable] = None,
         num_partitions: Optional[int] = None,
         batch_format: Optional[str] = "default",
         compute_strategy: Optional["ComputeStrategy"] = None,
@@ -38,6 +40,7 @@ class Window(AbstractAllToAll):
         )
         self._window_spec = window_spec
         self._aggs = aggs
+        self._custom_fns = custom_fns or []
         self._num_partitions = num_partitions
         self._batch_format = batch_format
         self._compute_strategy = compute_strategy
@@ -54,6 +57,11 @@ class Window(AbstractAllToAll):
         return self._aggs
 
     @property
+    def custom_fns(self) -> List[callable]:
+        """Get the custom functions."""
+        return self._custom_fns
+
+    @property
     def num_partitions(self) -> Optional[int]:
         """Get the number of partitions."""
         return self._num_partitions
@@ -62,16 +70,6 @@ class Window(AbstractAllToAll):
     def batch_format(self) -> Optional[str]:
         """Get the batch format."""
         return self._batch_format
-
-    @property
-    def compute_strategy(self) -> Optional["ComputeStrategy"]:
-        """Get the compute strategy."""
-        return self._compute_strategy
-
-    @property
-    def ray_remote_args(self) -> Dict[str, Any]:
-        """Get the Ray remote arguments."""
-        return self._ray_remote_args
 
     @property
     def compute_strategy(self) -> Optional["ComputeStrategy"]:
