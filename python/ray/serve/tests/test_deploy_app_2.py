@@ -616,6 +616,7 @@ def test_num_replicas_auto_api(serve_instance):
         "downscaling_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
+        "policy": {"name": "ray.serve.autoscaling_policy:default_autoscaling_policy"},
     }
 
 
