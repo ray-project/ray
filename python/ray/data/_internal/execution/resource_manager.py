@@ -493,14 +493,33 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             op for op in self._resource_manager._topology if self._is_op_eligible(op)
         ]
 
-    def find_the_last_completed_ops(self) -> List[PhysicalOperator]:
+    def find_the_ops_to_exclude_from_reservation(self) -> List[PhysicalOperator]:
+        """
+        Resource reservation is based on the number of eligible operators.
+        However, there might be completed operators that still have blocks in their output queue, we should exclude them from the reservation.
+        And we also need to exclude the downstream ineligible operators.
+
+        E.g., for the following pipeline:
+        ```
+        map1 (completed, but still has blocks in its output queue) -> limit1 (ineligible, not completed) -> map2 (not completed) -> limit2 -> map3
+        ```
+
+        The reservation is based on the number of eligible operators (map2 and map3), but we need to exclude map1 and limit1 from the reservation.
+        """
         last_completed_ops = []
+        ops_to_exclude_from_reservation = []
         for op in self._resource_manager._topology:
             if not op.execution_finished():
                 for dep in op.input_dependencies:
                     if dep.execution_finished():
                         last_completed_ops.append(dep)
-        return last_completed_ops
+
+        for op in last_completed_ops:
+            ops_to_exclude_from_reservation.extend(
+                list(self._get_downstream_ineligible_ops(op))
+            )
+            ops_to_exclude_from_reservation.append(op)
+        return list(set(ops_to_exclude_from_reservation))
 
     def _update_reservation(self):
         global_limits = self._resource_manager.get_global_limits().copy()
@@ -513,8 +532,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         if len(eligible_ops) == 0:
             return
 
-        last_completed_ops = self.find_the_last_completed_ops()
-        for completed_op in last_completed_ops:
+        op_to_exclude_from_reservation = self.find_the_ops_to_exclude_from_reservation()
+        for completed_op in op_to_exclude_from_reservation:
             global_limits = global_limits.subtract(
                 self._resource_manager.get_op_usage(completed_op)
             )

@@ -10,8 +10,10 @@ from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionResources,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.join import JoinOperator
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.resource_manager import (
     ReservationOpResourceAllocator,
     ResourceManager,
@@ -740,24 +742,24 @@ class TestReservationOpResourceAllocator:
 
         assert allocator._op_budgets[o2].gpu == 0
 
-    def test_find_the_last_completed_ops(self, restore_data_context):
+    def test_find_the_ops_to_exclude_from_reservation(self, restore_data_context):
         DataContext.get_current().op_resource_reservation_enabled = True
 
-        # Create pipeline with branches:
         o1 = InputDataBuffer(DataContext.get_current(), [])
         o2 = mock_map_op(
             o1,
         )
-        o3 = mock_map_op(
-            o2,
-        )
+        o3 = LimitOperator(1, o2, DataContext.get_current())
         o4 = mock_map_op(
             o3,
+        )
+        o5 = mock_map_op(
+            o4,
         )
         o1.mark_execution_finished()
         o2.mark_execution_finished()
 
-        topo, _ = build_streaming_topology(o4, ExecutionOptions())
+        topo, _ = build_streaming_topology(o5, ExecutionOptions())
 
         resource_manager = ResourceManager(
             topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
@@ -765,10 +767,73 @@ class TestReservationOpResourceAllocator:
 
         allocator = resource_manager._op_resource_allocator
 
-        last_completed_ops = allocator.find_the_last_completed_ops()
+        ops_to_exclude = allocator.find_the_ops_to_exclude_from_reservation()
+        assert len(ops_to_exclude) == 2
+        assert set(ops_to_exclude) == {o2, o3}
 
-        assert len(last_completed_ops) == 1
-        assert last_completed_ops[0] == o2
+    def test_find_the_ops_to_exclude_from_reservation_complex_graph(
+        self, restore_data_context
+    ):
+        """
+        o1 (InputDataBuffer)
+                |
+                v
+                o2 (MapOperator, completed)
+                |
+                v
+                o3 (LimitOperator)
+                |
+                v                    o4 (InputDataBuffer)
+                |                    |
+                |                    v
+                |                    o5 (MapOperator, completed)
+                |                    |
+                v                    v
+                o6 (UnionOperator) <--
+                |
+                v
+                o8 (JoinOperator) <-- o7 (InputDataBuffer, completed)
+        """
+        DataContext.get_current().op_resource_reservation_enabled = True
+
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(
+            o1,
+        )
+        o3 = LimitOperator(1, o2, DataContext.get_current())
+        o4 = InputDataBuffer(DataContext.get_current(), [])
+        o5 = mock_map_op(
+            o4,
+        )
+        o6 = UnionOperator(DataContext.get_current(), o3, o5)
+        o7 = InputDataBuffer(DataContext.get_current(), [])
+        o8 = JoinOperator(
+            DataContext.get_current(),
+            o7,
+            o6,
+            ("id",),
+            ("id",),
+            "inner",
+            num_partitions=1,
+        )
+
+        o1.mark_execution_finished()
+        o2.mark_execution_finished()
+        o4.mark_execution_finished()
+        o5.mark_execution_finished()
+        o7.mark_execution_finished()
+
+        topo, _ = build_streaming_topology(o8, ExecutionOptions())
+
+        resource_manager = ResourceManager(
+            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+        )
+
+        allocator = resource_manager._op_resource_allocator
+
+        ops_to_exclude = allocator.find_the_ops_to_exclude_from_reservation()
+        assert len(ops_to_exclude) == 4
+        assert set(ops_to_exclude) == {o2, o3, o5, o7}
 
     def test_reservation_accounts_for_completed_ops(self, restore_data_context):
         """Test that resource reservation properly accounts for completed ops."""
