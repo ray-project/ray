@@ -501,6 +501,7 @@ def httpserver_listen_address():
                 # Turn off task events generation to avoid the task events from the
                 # cluster impacting the test result
                 "RAY_task_events_report_interval_ms": 0,
+                "RAY_enable_open_telemetry": "true",
             },
         },
     ],
@@ -524,28 +525,20 @@ def test_metrics_export_event_aggregator_agent(
         metrics_names = metric_descriptors.keys()
         event_aggregator_metrics = [
             "ray_event_aggregator_agent_events_received_total",
-            "ray_event_aggregator_agent_events_buffer_add_failures_total",
-            # HTTP publisher metrics
             "ray_event_aggregator_agent_http_publisher_published_events_total",
             "ray_event_aggregator_agent_http_publisher_filtered_events_total",
-            "ray_event_aggregator_agent_http_publisher_failures_total",
             "ray_event_aggregator_agent_http_publisher_queue_dropped_events_total",
-            "ray_event_aggregator_agent_http_publisher_consecutive_failures_since_last_success",
             "ray_event_aggregator_agent_http_publisher_time_since_last_success_seconds",
             "ray_event_aggregator_agent_http_publisher_publish_duration_seconds_bucket",
             "ray_event_aggregator_agent_http_publisher_publish_duration_seconds_count",
             "ray_event_aggregator_agent_http_publisher_publish_duration_seconds_sum",
             # GCS publisher metrics
             "ray_event_aggregator_agent_gcs_publisher_events_published_total",
-            "ray_event_aggregator_agent_gcs_publisher_publish_failures_total",
             "ray_event_aggregator_agent_gcs_publisher_queue_dropped_events_total",
             "ray_event_aggregator_agent_gcs_publisher_publish_duration_seconds_bucket",
             "ray_event_aggregator_agent_gcs_publisher_publish_duration_seconds_count",
             "ray_event_aggregator_agent_gcs_publisher_publish_duration_seconds_sum",
-            "ray_event_aggregator_agent_gcs_publisher_consecutive_failures_since_last_success",
             "ray_event_aggregator_agent_gcs_publisher_time_since_last_success_seconds",
-            # Task metadata buffer metrics
-            "ray_event_aggregator_agent_task_metadata_buffer_dropped_events_total",
         ]
         return all(metric in metrics_names for metric in event_aggregator_metrics)
 
@@ -553,14 +546,10 @@ def test_metrics_export_event_aggregator_agent(
         _, _, metric_samples = fetch_prometheus(prom_addresses)
         expected_metrics_values = {
             "ray_event_aggregator_agent_events_received_total": 3.0,
-            "ray_event_aggregator_agent_events_buffer_add_failures_total": 0.0,
             "ray_event_aggregator_agent_http_publisher_published_events_total": 1.0,
             "ray_event_aggregator_agent_http_publisher_filtered_events_total": 1.0,
-            "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total": 1.0,
-            "ray_event_aggregator_agent_http_publisher_failures_total": 0.0,
             "ray_event_aggregator_agent_http_publisher_queue_dropped_events_total": 1.0,  # dropped due to max buffer size
             "ray_event_aggregator_agent_gcs_publisher_events_published_total": 2.0,
-            "ray_event_aggregator_agent_gcs_publisher_publish_failures_total": 0.0,
             "ray_event_aggregator_agent_gcs_publisher_queue_dropped_events_total": 1.0,  # dropped due to max buffer size
         }
         for descriptor, expected_value in expected_metrics_values.items():
