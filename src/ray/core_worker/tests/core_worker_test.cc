@@ -24,11 +24,16 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "fakes/ray/common/asio/fake_periodical_runner.h"
+#include "fakes/ray/object_manager/plasma/fake_plasma_client.h"
 #include "fakes/ray/pubsub/publisher.h"
 #include "fakes/ray/pubsub/subscriber.h"
 #include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
+#include "mock/ray/object_manager/plasma/client.h"
+#include "ray/common/buffer.h"
+#include "ray/common/ray_config.h"
 #include "ray/core_worker/actor_creator.h"
 #include "ray/core_worker/actor_manager.h"
 #include "ray/core_worker/context.h"
@@ -38,6 +43,7 @@
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/task_submission/actor_task_submitter.h"
 #include "ray/core_worker/task_submission/normal_task_submitter.h"
 #include "ray/ipc/fake_raylet_ipc_client.h"
@@ -566,6 +572,73 @@ TEST_F(CoreWorkerTest, ActorTaskCancelDuringDepResolution) {
 
   while (io_service_.poll_one() > 0) {
   }
+}
+
+TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
+  auto fake_raylet = std::make_shared<ipc::FakeRayletIpcClient>();
+  // Build a ReferenceCounter with minimal dependencies.
+  rpc::Address addr;
+  addr.set_ip_address("127.0.0.1");
+  auto is_node_dead = [](const NodeID &) { return false; };
+  ReferenceCounter ref_counter(addr,
+                               /*object_info_publisher=*/nullptr,
+                               /*object_info_subscriber=*/nullptr,
+                               is_node_dead);
+
+  // Fake plasma client that records Get calls.
+  std::vector<std::vector<ObjectID>> observed_batches;
+  class RecordingPlasmaGetClient : public plasma::FakePlasmaClient {
+   public:
+    explicit RecordingPlasmaGetClient(std::vector<std::vector<ObjectID>> *observed)
+        : observed_(observed) {}
+    Status Get(const std::vector<ObjectID> &object_ids,
+               int64_t timeout_ms,
+               std::vector<plasma::ObjectBuffer> *object_buffers) override {
+      if (observed_ != nullptr) {
+        observed_->push_back(object_ids);
+      }
+      object_buffers->resize(object_ids.size());
+      for (size_t i = 0; i < object_ids.size(); i++) {
+        uint8_t byte = 0;
+        auto parent = std::make_shared<LocalMemoryBuffer>(&byte, 1, /*copy_data=*/true);
+        (*object_buffers)[i].data = SharedMemoryBuffer::Slice(parent, 0, 1);
+        (*object_buffers)[i].metadata = SharedMemoryBuffer::Slice(parent, 0, 1);
+      }
+      return Status::OK();
+    }
+
+   private:
+    std::vector<std::vector<ObjectID>> *observed_;
+  };
+
+  auto fake_plasma = std::make_shared<RecordingPlasmaGetClient>(&observed_batches);
+
+  CoreWorkerPlasmaStoreProvider provider(
+      /*store_socket=*/"",
+      fake_raylet,
+      ref_counter,
+      /*check_signals=*/[] { return Status::OK(); },
+      /*warmup=*/false,
+      /*store_client=*/fake_plasma,
+      /*fetch_batch_size=*/2,
+      /*get_current_call_site=*/nullptr);
+
+  // Build a set of 5 object ids.
+  std::vector<ObjectID> ids;
+  for (int i = 0; i < 5; i++) ids.push_back(ObjectID::FromRandom());
+  absl::flat_hash_set<ObjectID> idset(ids.begin(), ids.end());
+
+  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> results;
+  bool got_exception = false;
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+
+  ASSERT_TRUE(provider.Get(idset, /*timeout_ms=*/-1, ctx, &results, &got_exception).ok());
+
+  // Assert: batches seen by plasma Get are [2,2,1].
+  ASSERT_EQ(observed_batches.size(), 3U);
+  EXPECT_EQ(observed_batches[0].size(), 2U);
+  EXPECT_EQ(observed_batches[1].size(), 2U);
+  EXPECT_EQ(observed_batches[2].size(), 1U);
 }
 
 }  // namespace core
