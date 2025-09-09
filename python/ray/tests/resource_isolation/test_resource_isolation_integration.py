@@ -17,7 +17,7 @@ from ray._private.resource_isolation_config import ResourceIsolationConfig
 def test_resource_isolation_enabled_creates_cgroup_hierarchy(ray_start_cluster):
     cluster = ray_start_cluster
     # change this to /sys/fs/cgroup/resource_isolation_test if running locally.
-    base_cgroup = "/sys/fs/cgroup/resource_isolation_test"
+    base_cgroup = "/sys/fs/cgroup"
     resource_isolation_config = ResourceIsolationConfig(
         enable_resource_isolation=True,
         cgroup_path=base_cgroup,
