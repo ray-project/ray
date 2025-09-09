@@ -67,23 +67,21 @@ class ObjectManagerTest : public ::testing::Test {
         *mock_gcs_client_,
         mock_object_directory_.get(),
         // RestoreSpilledObjectCallback
-        [this](const ObjectID &object_id,
-               int64_t object_size,
-               const std::string &object_url,
-               std::function<void(const Status &)> callback) {},
+        [](const ObjectID &object_id,
+           int64_t object_size,
+           const std::string &object_url,
+           std::function<void(const Status &)> callback) {},
         // get_spilled_object_url
-        [this](const ObjectID &object_id) -> std::string { return ""; },
+        [](const ObjectID &object_id) -> std::string { return ""; },
         // pin_object
-        [this](const ObjectID &object_id) -> std::unique_ptr<RayObject> {
-          return nullptr;
-        },
+        [](const ObjectID &object_id) -> std::unique_ptr<RayObject> { return nullptr; },
         // fail_pull_request
-        [this](const ObjectID &object_id, rpc::ErrorType error_type) {},
+        [](const ObjectID &object_id, rpc::ErrorType error_type) {},
         fake_plasma_client_,
         nullptr,
-        [&](const std::string &address,
-            const int port,
-            ray::rpc::ClientCallManager &client_call_manager) {
+        [](const std::string &address,
+           const int port,
+           ray::rpc::ClientCallManager &client_call_manager) {
           return std::make_shared<ray::rpc::FakeObjectManagerClient>(
               address, port, client_call_manager);
         },
