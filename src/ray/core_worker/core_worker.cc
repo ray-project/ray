@@ -4545,10 +4545,10 @@ void CoreWorker::UpdateTaskIsDebuggerPaused(const TaskID &task_id,
 
 void CoreWorker::QueueRetryCallback(TaskSpecification &spec, uint32_t delay_ms) {
   spec.GetMutableMessage().set_attempt_number(spec.AttemptNumber() + 1);
-  RAY_LOG(INFO) << "Will resubmit task after a " << delay_ms
-                << "ms delay: " << spec.DebugString();
   absl::MutexLock lock(&mutex_);
   TaskToRetry task_to_retry{current_time_ms() + delay_ms, spec};
+  RAY_LOG(INFO) << "Will resubmit task after a " << delay_ms
+                << "ms delay: " << spec.DebugString();
   to_resubmit_.push(std::move(task_to_retry));
 }
 
