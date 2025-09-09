@@ -2,7 +2,7 @@
 
 FROM cr.ray.io/rayproject/forge
 
-ARG DEFAULT_PYTHON_VERSION=3.9
+ARG DEFAULT_PYTHON_VERSION=3.9.23
 
 ARG UV_BIN=/usr/local/bin/uv
 
