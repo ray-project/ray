@@ -162,12 +162,12 @@ class ReplicaMetricsManager:
         event_loop: asyncio.BaseEventLoop,
         autoscaling_config: Optional[AutoscalingConfig],
         ingress: bool,
-        user_callable_wrapper: Optional,
+        user_callable_wrapper: Optional["UserCallableWrapper"],
     ):
         self._replica_id = replica_id
         self._metrics_pusher = MetricsPusher()
         self._metrics_store = InMemoryMetricsStore()
-        self._autoscaling_config = autoscaling_config
+        self.user_callable_wrapper = user_callable_wrapper
         self._ingress = ingress
         self._controller_handle = ray.get_actor(
             SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
@@ -220,6 +220,7 @@ class ReplicaMetricsManager:
         )
         if self._cached_metrics_enabled:
             self._cached_latencies = defaultdict(deque)
+            self._event_loop.create_task(self._report_cached_metrics_forever())
 
         self._num_ongoing_requests_gauge = metrics.Gauge(
             "serve_replica_processing_queries",
@@ -227,10 +228,6 @@ class ReplicaMetricsManager:
         )
 
         self.set_autoscaling_config(autoscaling_config)
-        self.user_callable_wrapper = user_callable_wrapper
-
-        if self._cached_metrics_enabled:
-            self._event_loop.create_task(self._report_cached_metrics_forever())
 
     def _report_cached_metrics(self):
         for route, count in self._cached_request_counter.items():
@@ -273,7 +270,6 @@ class ReplicaMetricsManager:
         await self._metrics_pusher.graceful_shutdown()
 
     def should_collect_metrics(self) -> bool:
-        # At this time self.user_callable_wrapper._user_autoscaling_stats is not initialized yet, must check during runtime
         return self._autoscaling_config is not None
 
     def set_autoscaling_config(self, autoscaling_config: Optional[AutoscalingConfig]):
@@ -293,7 +289,7 @@ class ReplicaMetricsManager:
             # Collect autoscaling metrics locally periodically.
             self._metrics_pusher.register_or_update_task(
                 self.RECORD_METRICS_TASK_NAME,
-                self._add_autoscaling_metrics_point,
+                self._add_autoscaling_metrics_point_async,
                 min(
                     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
                     self._autoscaling_config.metrics_interval_s,
@@ -356,19 +352,14 @@ class ReplicaMetricsManager:
     def _replica_ongoing_requests(self) -> Dict[ReplicaID, int]:
         return {self._replica_id: self._num_ongoing_requests}
 
-    def _add_autoscaling_metrics_point(self) -> None:
-        # Schedule the async method on the event loop
-        asyncio.run_coroutine_threadsafe(
-            self._add_autoscaling_metrics_point_async(), self._event_loop
-        )
-
     async def _add_autoscaling_metrics_point_async(self) -> None:
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
             metrics_dict = {}
         else:
             metrics_dict = self._replica_ongoing_requests()
 
-        if self.user_callable_wrapper._user_autoscaling_stats:
+        # TODO(arcyleung): at this time self.user_callable_wrapper might not initialized yet, must do runtime check
+        if hasattr(self.user_callable_wrapper, "_user_autoscaling_stats"):
             try:
                 res = await asyncio.wait_for(
                     self.user_callable_wrapper.call_record_autoscaling_stats(),
