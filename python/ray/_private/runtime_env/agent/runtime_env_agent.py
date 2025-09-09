@@ -3,7 +3,7 @@ import logging
 import os
 import time
 import traceback
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Set, Tuple
 
@@ -162,6 +162,102 @@ class ReferenceTable:
         return self._runtime_env_reference
 
 
+class LRULoggerCache:
+    def __init__(self, maxsize=128):
+        self.maxsize = maxsize
+        self.cache = OrderedDict()
+
+    def get(
+        self, job_id: str, create_func: Callable[[], logging.Logger]
+    ) -> logging.Logger:
+        """Retrieve or create a logger and update the access order"""
+        if job_id in self.cache:
+            # Move to Recently Used
+            self.cache.move_to_end(job_id)
+            return self.cache[job_id]
+        # Create a new recorder
+        logger = create_func()
+        self.cache[job_id] = logger
+        # Check and eliminate the oldest entries
+        if len(self.cache) > self.maxsize:
+            self._evict_oldest()
+        return logger
+
+    def _cleanup_logger(self, logger: logging.Logger) -> List[str]:
+        """
+        Internal helper to close logger handlers and return associated file paths.
+        Args:
+            logger: The logger object to be cleaned up.
+        Returns:
+            A list of file paths for log files that can be deleted.
+        """
+        pending_files = []
+        for handler in logger.handlers[:]:
+            if isinstance(handler, logging.FileHandler):
+                try:
+                    filepath = handler.baseFilename
+                    handler.close()
+                    pending_files.append(filepath)
+                except Exception as e:
+                    default_logger.error(f"Failed to close handler: {str(e)}")
+            logger.removeHandler(handler)
+        return pending_files
+
+    async def _async_delete_files(self, filepaths: List[str]):
+        """Asynchronous file deletion"""
+        for filepath in filepaths:
+            try:
+                if os.path.exists(filepath):
+                    await asyncio.to_thread(os.unlink, filepath)
+            except Exception as e:
+                default_logger.warning(f"Async delete failed for {filepath}: {str(e)}")
+
+    def _sync_delete_files(self, filepaths: List[str]):
+        """Synchronize file deletion (for non asynchronous contexts)"""
+        for filepath in filepaths:
+            try:
+                if os.path.exists(filepath):
+                    os.unlink(filepath)
+            except Exception as e:
+                default_logger.warning(f"Sync delete failed for {filepath}: {str(e)}")
+
+    def remove(self, job_id: str, async_cleanup: bool = True) -> bool:
+        """Remove the specified logger from the cache and clean up its resources.
+        Args:
+            job_id: The ID of the job whose logger should be removed.
+            async_cleanup: Whether to clean up associated files asynchronously.
+        Returns:
+            True if the logger was found and removed, False otherwise.
+        """
+        if job_id not in self.cache:
+            return False
+
+        logger = self.cache.pop(job_id)
+        pending_files = self._cleanup_logger(logger)
+        del logger
+
+        if pending_files:
+            if async_cleanup and asyncio.get_event_loop().is_running():
+                asyncio.create_task(self._async_delete_files(pending_files))
+            else:
+                self._sync_delete_files(pending_files)
+
+        return True
+
+    def _evict_oldest(self):
+        """Eliminate the oldest unused recorder"""
+        if not self.cache:
+            return
+
+        _, oldest_logger = self.cache.popitem(last=False)
+        pending_files = self._cleanup_logger(oldest_logger)
+        del oldest_logger
+
+        if pending_files:
+            # LRU elimination usually occurs during cache operations, and synchronous deletion is used by default to avoid delays
+            self._sync_delete_files(pending_files)
+
+
 class RuntimeEnvAgent:
     """An RPC server to create and delete runtime envs.
 
@@ -194,7 +290,9 @@ class RuntimeEnvAgent:
         self._logger.info(f"Parent raylet pid is {os.environ.get('RAY_RAYLET_PID')}")
 
         self._runtime_env_dir = runtime_env_dir
-        self._per_job_logger_cache = dict()
+        self._per_job_logger_cache = LRULoggerCache(
+            maxsize=int(os.environ.get("RAY_RUNTIME_ENV_LOG_CACHE_SIZE", 128)),
+        )
         # Cache the results of creating envs to avoid repeatedly calling into
         # conda and other slow calls.
         self._env_cache: Dict[str, CreatedEnvResult] = dict()
@@ -286,14 +384,22 @@ class RuntimeEnvAgent:
 
     def get_or_create_logger(self, job_id: bytes, log_files: List[str]):
         job_id = job_id.decode()
-        if job_id not in self._per_job_logger_cache:
-            params = self._logging_params.copy()
-            params["filename"] = [f"runtime_env_setup-{job_id}.log", *log_files]
-            params["logger_name"] = f"runtime_env_{job_id}"
-            params["propagate"] = False
-            per_job_logger = setup_component_logger(**params)
-            self._per_job_logger_cache[job_id] = per_job_logger
-        return self._per_job_logger_cache[job_id]
+        # Using LRU cache to retrieve or create a logger
+        return self._per_job_logger_cache.get(
+            job_id, lambda: self._create_logger(job_id, log_files)
+        )
+
+    def _create_logger(self, job_id: str, log_files: List[str]):
+        params = self._logging_params.copy()
+        params["filename"] = [f"runtime_env_setup-{job_id}.log", *log_files]
+        params["logger_name"] = f"runtime_env_{job_id}"
+        params["propagate"] = False
+        return setup_component_logger(**params)
+
+    # Optional: Add explicit cleanup method (for possible future Job lifecycle management)
+    async def handle_job_terminated(self, job_id: str):
+        """Explicitly clean up job log resources"""
+        self._per_job_logger_cache.remove(job_id)
 
     async def GetOrCreateRuntimeEnv(self, request):
         self._logger.debug(
