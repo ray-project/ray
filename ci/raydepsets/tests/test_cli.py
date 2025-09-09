@@ -2,9 +2,10 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from typing import Optional
-import pytest
 from pathlib import Path
+from typing import Optional
+
+import pytest
 import runfiles
 from click.testing import CliRunner
 from networkx import topological_sort
