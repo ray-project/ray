@@ -466,7 +466,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
         RAY_CHECK(addr.has_value()) << "Actor address not found for actor " << actor_id;
         return core_worker->core_worker_client_pool_->GetOrConnect(addr.value());
       },
-      gcs_client);
+      gcs_client,
+      task_by_state_counter_);
 
   auto on_excess_queueing = [this](const ActorID &actor_id, uint64_t num_queued) {
     auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(
@@ -670,7 +671,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    std::move(actor_manager),
                                    task_execution_service_,
                                    std::move(task_event_buffer),
-                                   pid);
+                                   pid,
+                                   task_by_state_counter_);
   return core_worker;
 }
 
