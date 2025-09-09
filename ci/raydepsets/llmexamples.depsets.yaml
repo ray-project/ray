@@ -1,0 +1,39 @@
+build_arg_sets:
+  cu128:
+    PYTHON_VERSION: py311
+    CUDA_CODE: cu128
+
+
+depsets:
+########## LLM EXAMPLES ##########
+# Subset (compile) from RayLLM dependencies. (to get rid of vllm constraint)
+  - name: subset_llm_example_${PYTHON_VERSION}_${CUDA_CODE}
+    operation: compile
+    constraints:
+      - python/deplocks/llm/rayllm_${PYTHON_VERSION}_${CUDA_CODE}.lock
+    requirements:
+      - python/requirements.txt
+    output: python/deplocks/llm/llm_subset_${PYTHON_VERSION}_${CUDA_CODE}.lock
+    override_flags:
+      - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
+    append_flags:
+      - --python-version=3.11
+      - --python-platform=linux
+    build_arg_sets:
+      - cu128
+
+# Entity recognition with LLMs example depset - expanded from subset of RayLLM dependencies.
+  - name: entity_recognition_with_llms_${PYTHON_VERSION}_${CUDA_CODE}
+    depsets:
+      - subset_llm_example_${PYTHON_VERSION}_${CUDA_CODE}
+    operation: expand
+    requirements:
+      - doc/source/ray-overview/examples/entity-recognition-with-llms/requirements.txt
+    output: doc/source/ray-overview/examples/entity-recognition-with-llms/llm_example_${PYTHON_VERSION}_${CUDA_CODE}.lock
+    override_flags:
+      - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
+    append_flags:
+      - --python-version=3.11
+      - --python-platform=linux
+    build_arg_sets:
+      - cu128
