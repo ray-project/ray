@@ -483,13 +483,7 @@ class ActorPoolMapOperator(MapOperator):
     ) -> ExecutionResources:
         max_concurrency = self._ray_remote_args.get("max_concurrency", 1)
         per_actor_resource_usage = self._actor_pool.per_actor_resource_usage()
-        return ExecutionResources(
-            cpu=per_actor_resource_usage.cpu / max_concurrency,
-            gpu=per_actor_resource_usage.gpu / max_concurrency,
-            memory=per_actor_resource_usage.memory / max_concurrency,
-            object_store_memory=per_actor_resource_usage.object_store_memory
-            / max_concurrency,
-        )
+        return per_actor_resource_usage.scale(1 / max_concurrency)
 
     def max_task_concurrency(self: "PhysicalOperator") -> Optional[int]:
         max_concurrency = self._ray_remote_args.get("max_concurrency", 1)
