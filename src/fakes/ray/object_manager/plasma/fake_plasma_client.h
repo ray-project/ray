@@ -55,7 +55,8 @@ class FakePlasmaClient : public PlasmaClientInterface {
     object_buffers->resize(object_ids.size());
     for (size_t i = 0; i < object_ids.size(); i++) {
       uint8_t byte = 0;
-      auto parent = std::make_shared<ray::LocalMemoryBuffer>(&byte, 1, /*copy_data=*/true);
+      auto parent =
+          std::make_shared<ray::LocalMemoryBuffer>(&byte, 1, /*copy_data=*/true);
       (*object_buffers)[i].data = SharedMemoryBuffer::Slice(parent, 0, 1);
       (*object_buffers)[i].metadata = SharedMemoryBuffer::Slice(parent, 0, 1);
     }

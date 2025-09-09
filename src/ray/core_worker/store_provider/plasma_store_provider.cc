@@ -73,7 +73,8 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     : raylet_ipc_client_(raylet_ipc_client),
       store_client_(std::move(store_client)),
       reference_counter_(reference_counter),
-      check_signals_(std::move(check_signals)) {
+      check_signals_(std::move(check_signals)),
+      fetch_batch_size_(fetch_batch_size) {
   if (get_current_call_site != nullptr) {
     get_current_call_site_ = get_current_call_site;
   } else {
@@ -81,7 +82,6 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
   }
   object_store_full_delay_ms_ = RayConfig::instance().object_store_full_delay_ms();
   buffer_tracker_ = std::make_shared<BufferTracker>();
-  fetch_batch_size_ = fetch_batch_size;
   if (!store_socket.empty()) {
     RAY_CHECK(store_client_ != nullptr) << "Plasma client must be provided";
     RAY_CHECK_OK(store_client_->Connect(store_socket));
@@ -276,16 +276,15 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     const WorkerContext &ctx,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
     bool *got_exception) {
-  int64_t batch_size = fetch_batch_size_;
   std::vector<ObjectID> batch_ids;
   absl::flat_hash_set<ObjectID> remaining(object_ids.begin(), object_ids.end());
 
   // Send initial requests to pull all objects in parallel.
   std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
   int64_t total_size = static_cast<int64_t>(object_ids.size());
-  for (int64_t start = 0; start < total_size; start += batch_size) {
+  for (int64_t start = 0; start < total_size; start += fetch_batch_size_) {
     batch_ids.clear();
-    for (int64_t i = start; i < start + batch_size && i < total_size; i++) {
+    for (int64_t i = start; i < start + fetch_batch_size_ && i < total_size; i++) {
       batch_ids.push_back(id_vector[i]);
     }
     RAY_RETURN_NOT_OK(
@@ -313,7 +312,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   while (!remaining.empty() && !should_break) {
     batch_ids.clear();
     for (const auto &id : remaining) {
-      if (static_cast<int64_t>(batch_ids.size()) == batch_size) {
+      if (static_cast<int64_t>(batch_ids.size()) == fetch_batch_size_) {
         break;
       }
       batch_ids.push_back(id);

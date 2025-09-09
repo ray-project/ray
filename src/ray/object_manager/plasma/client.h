@@ -233,7 +233,7 @@ class PlasmaClientInterface {
   /// Get the current debug string from the plasma store server.
   ///
   /// \return the debug string if successful, otherwise return an error status.
-  virtual StatusOr<std::string> GetMemoryUsage() { return std::string(); }
+  virtual StatusOr<std::string> GetMemoryUsage() = 0;
 };
 
 class PlasmaClient : public PlasmaClientInterface {
