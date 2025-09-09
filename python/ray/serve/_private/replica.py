@@ -176,6 +176,9 @@ class ReplicaMetricsManager:
         # Store event loop for scheduling async tasks from sync context
         self._event_loop = event_loop or asyncio.get_event_loop()
 
+        # Cache whether user autoscaling stats are available to avoid repeated runtime checks
+        self._user_autoscaling_stats_available = False
+
         # If the interval is set to 0, eagerly sets all metrics.
         self._cached_metrics_enabled = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS != 0
         self._cached_metrics_interval_s = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS / 1000
@@ -296,6 +299,14 @@ class ReplicaMetricsManager:
                 ),
             )
 
+    def update_user_autoscaling_stats_availability(self):
+        """Runs after the user callable wrapper is initialized to enable autoscaling metrics collection."""
+        if self.user_callable_wrapper is not None:
+            self._user_autoscaling_stats_available = (
+                hasattr(self.user_callable_wrapper, "_user_autoscaling_stats")
+                and self.user_callable_wrapper._user_autoscaling_stats is not None
+            )
+
     def inc_num_ongoing_requests(self, request_metadata: RequestMetadata) -> int:
         """Increment the current total queue length of requests for this replica."""
         self._num_ongoing_requests += 1
@@ -358,8 +369,8 @@ class ReplicaMetricsManager:
         else:
             metrics_dict = self._replica_ongoing_requests()
 
-        # TODO(arcyleung): at this time self.user_callable_wrapper might not initialized yet, must do runtime check
-        if hasattr(self.user_callable_wrapper, "_user_autoscaling_stats"):
+        # Use cached availability flag to avoid repeated runtime checks
+        if self._user_autoscaling_stats_available:
             try:
                 res = await asyncio.wait_for(
                     self.user_callable_wrapper.call_record_autoscaling_stats(),
@@ -786,6 +797,7 @@ class ReplicaBase(ABC):
                         )
                     await self._on_initialized()
                     self._user_callable_initialized = True
+                    self._metrics_manager.update_user_autoscaling_stats_availability()
 
                 if deployment_config:
                     await self._user_callable_wrapper.set_sync_method_threadpool_limit(
