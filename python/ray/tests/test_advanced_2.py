@@ -10,8 +10,8 @@ import pytest
 import ray
 import ray.cluster_utils
 from ray._common.test_utils import wait_for_condition
-from ray.util.placement_group import placement_group
 from ray.util.accelerators import AWS_NEURON_CORE
+from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)

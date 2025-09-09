@@ -1,62 +1,58 @@
-import sys
-import json
 import base64
+import json
+import sys
 from unittest.mock import MagicMock
 
 import pytest
 from google.protobuf.timestamp_pb2 import Timestamp
 
-from ray.dashboard.tests.conftest import *  # noqa
-
-from ray._private import ray_constants
-from ray._private.utils import init_grpc_channel
-from ray._private.test_utils import wait_for_condition
-from ray._raylet import GcsClient
 import ray.dashboard.consts as dashboard_consts
+from ray._private import ray_constants
 from ray._private.test_utils import (
     find_free_port,
+    wait_for_condition,
 )
-
-from ray.core.generated.events_event_aggregator_service_pb2_grpc import (
-    EventAggregatorServiceStub,
-)
-from ray.core.generated.events_event_aggregator_service_pb2 import (
-    AddEventsRequest,
-    RayEventsData,
-    TaskEventsMetadata,
+from ray._private.utils import init_grpc_channel
+from ray._raylet import GcsClient
+from ray.core.generated.common_pb2 import (
+    ErrorType,
+    FunctionDescriptor,
+    Language,
+    PythonFunctionDescriptor,
+    RayErrorInfo,
+    TaskStatus,
+    TaskType,
 )
 from ray.core.generated.events_base_event_pb2 import RayEvent
-from ray.core.generated.events_task_definition_event_pb2 import (
-    TaskDefinitionEvent,
-)
-from ray.core.generated.events_task_execution_event_pb2 import (
-    TaskExecutionEvent,
-)
-from ray.core.generated.profile_events_pb2 import ProfileEvents, ProfileEventEntry
-from ray.core.generated.events_task_profile_events_pb2 import TaskProfileEvents
 from ray.core.generated.events_driver_job_definition_event_pb2 import (
     DriverJobDefinitionEvent,
 )
 from ray.core.generated.events_driver_job_execution_event_pb2 import (
     DriverJobExecutionEvent,
 )
-from ray.core.generated.runtime_env_common_pb2 import (
+from ray.core.generated.events_event_aggregator_service_pb2 import (
+    AddEventsRequest,
+    RayEventsData,
+    TaskEventsMetadata,
+)
+from ray.core.generated.events_event_aggregator_service_pb2_grpc import (
+    EventAggregatorServiceStub,
+)
+from ray.core.generated.events_task_definition_event_pb2 import (
+    TaskDefinitionEvent,
+)
+from ray.core.generated.events_task_execution_event_pb2 import (
+    TaskExecutionEvent,
+)
+from ray.core.generated.events_task_profile_events_pb2 import TaskProfileEvents
+from ray.core.generated.profile_events_pb2 import ProfileEventEntry, ProfileEvents
+from ray.core.generated.runtime_environment_pb2 import (
+    RuntimeEnvConfig,
     RuntimeEnvInfo,
     RuntimeEnvUris,
-    RuntimeEnvConfig,
 )
-from ray.core.generated.common_pb2 import (
-    TaskType,
-    Language,
-    FunctionDescriptor,
-    PythonFunctionDescriptor,
-    TaskStatus,
-    ErrorType,
-    RayErrorInfo,
-)
-
 from ray.dashboard.modules.aggregator.aggregator_agent import AggregatorAgent
-
+from ray.dashboard.tests.conftest import *  # noqa
 
 _EVENT_AGGREGATOR_AGENT_TARGET_PORT = find_free_port()
 _EVENT_AGGREGATOR_AGENT_TARGET_IP = "127.0.0.1"

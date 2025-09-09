@@ -609,9 +609,9 @@ py_test_module_list(
 )
 
 py_test_module_list(
-    size = "medium",
+    size = "large",
     files = [
-        "test_gpu_objects_gloo.py",
+        "gpu_objects/test_gpu_objects_gloo.py",
     ],
     tags = [
         "exclusive",
@@ -629,8 +629,8 @@ py_test_module_list(
     size = "medium",
     env = {"RAY_PYTEST_USE_GPU": "1"},
     files = [
-        "test_gpu_objects_nccl.py",
-        "test_gpu_objects_nixl.py",
+        "gpu_objects/test_gpu_objects_nccl.py",
+        "gpu_objects/test_gpu_objects_nixl.py",
     ],
     tags = [
         "exclusive",
@@ -731,6 +731,7 @@ py_test_module_list(
     size = "medium",
     files = [
         "test_autoscaler.py",
+        "test_symmetric_run.py",
     ],
     tags = [
         "exclusive",
@@ -882,6 +883,7 @@ py_test_module_list(
         "test_multi_node.py",
         "test_placement_group_3.py",
         "test_placement_group_5.py",
+        "test_raylet_fault_tolerance.py",
         "test_reconstruction.py",
         "test_reconstruction_2.py",
         "test_runtime_env_working_dir_uri.py",
