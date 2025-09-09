@@ -281,4 +281,7 @@ TEST(CgroupManagerTest, CreateSucceedsWithCleanupInOrder) {
   ASSERT_EQ((*deleted_cgroups)[4].second, node_cgroup_path);
 }
 
+// TEST(CgroupManagerTest, AddProcessToSystemCgroupFailsWithXError);
+// TEST(CgroupManagerTest, AddProcessToSystemCgroupSucceeds);
+
 }  // namespace ray

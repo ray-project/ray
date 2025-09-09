@@ -262,6 +262,9 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
                        const std::string &constraint,
                        const std::string &constraint_value) override;
 
+  Status AddProcessToCgroup(const std::string &cgroup,
+                            const std::string &process) override;
+
  private:
   /**
     @param controller_file_path the absolute path of the controller file to read which is

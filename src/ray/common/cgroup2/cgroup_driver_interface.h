@@ -206,5 +206,10 @@ class CgroupDriverInterface {
     */
   virtual StatusOr<std::unordered_set<std::string>> GetEnabledControllers(
       const std::string &cgroup) = 0;
+
+  /**
+   */
+  virtual Status AddProcessToCgroup(const std::string &cgroup,
+                                    const std::string &process) = 0;
 };
 }  // namespace ray

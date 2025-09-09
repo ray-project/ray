@@ -291,4 +291,8 @@ Status CgroupManager::Initialize(int64_t system_reserved_cpu_weight,
 
   return Status::OK();
 }
+
+Status CgroupManager::AddProcessToSystemCgroup(const std::string &pid) {
+  return cgroup_driver_->AddProcessToCgroup(system_leaf_cgroup_, pid);
+}
 }  // namespace ray

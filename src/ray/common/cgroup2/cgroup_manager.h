@@ -69,6 +69,8 @@ class CgroupManager : public CgroupManagerInterface {
   CgroupManager(CgroupManager &&);
   CgroupManager &operator=(CgroupManager &&);
 
+  Status AddProcessToSystemCgroup(const std::string &pid) override;
+
   /**
     Performs cleanup in reverse order from the Initialize function:
       1. remove resource constraints to the system and application cgroups.

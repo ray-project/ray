@@ -45,7 +45,7 @@ class CgroupManagerInterface {
   // TODO(#54703): These will be implemented in a later PR to move processes
   // into a cgroup.
   // virtual Status AddProcessToApplicationCgroup(int) = 0;
-  // virtual Status AddProcessToSystemCgroup(int) = 0;
+  virtual Status AddProcessToSystemCgroup(const std::string &pid) = 0;
 
   /**
     Cleans up the cgroup hierarchy, disables all controllers and removes all
