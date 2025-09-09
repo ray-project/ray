@@ -1,0 +1,28 @@
+build_arg_sets:
+  cpu:
+    PYTHON_VERSION: py312
+
+.common_settings: &common_settings
+  override_flags:
+    - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
+  append_flags:
+    - --python-version=3.12
+    - --python-platform=linux
+  build_arg_sets:
+    - cpu
+    - cu121
+    - cu128
+
+depsets:
+# First, extract base test dependencies from the current compiled mono repo one.
+# This also expands to the indirect dependencies for this Python version & platform.
+  - name: ray_base_test_depset_${PYTHON_VERSION}_${CUDA_CODE}
+    operation: compile
+    <<: *common_settings
+    requirements:
+      - python/requirements.txt
+      - python/requirements/cloud-requirements.txt
+      - python/requirements/base-test-requirements.txt
+    constraints:
+      - python/deplocks/llm/ray_${PYTHON_VERSION}_${CUDA_CODE}.lock
+    output: python/deplocks/llm/ray_test_${PYTHON_VERSION}_${CUDA_CODE}.lock

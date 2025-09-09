@@ -1,0 +1,3 @@
+mcp==1.11.0
+asyncio==3.4.3
+pydantic==2.9.2
