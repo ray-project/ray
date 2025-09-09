@@ -16,16 +16,12 @@
 
 #include <gtest/gtest_prod.h>
 
-#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/asio/periodical_runner.h"
 #include "ray/raylet/worker.h"
-#include "ray/raylet/worker_killing_policy_group_by_owner.h"
 #include "ray/raylet/worker_pool.h"
 
 namespace ray {
@@ -60,11 +56,6 @@ std::string WorkerKillingPolicy::WorkersDebugString(
     }
   }
   return result.str();
-}
-
-std::shared_ptr<WorkerKillingPolicy> CreateWorkerKillingPolicy() {
-  RAY_LOG(INFO) << "Running GroupByOwner policy.";
-  return std::make_shared<GroupByOwnerIdWorkerKillingPolicy>();
 }
 
 }  // namespace raylet

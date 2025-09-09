@@ -186,12 +186,8 @@ ray_cc_library(
     deps = [
         ":worker",
         ":worker_pool",
-        "//src/ray/common:asio",
         "//src/ray/common:memory_monitor",
-        "@boost//:container_hash",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/time",
-        "@com_google_googletest//:gtest_prod",
     ],
 )
 

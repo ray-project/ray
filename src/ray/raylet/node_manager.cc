@@ -42,7 +42,7 @@
 #include "ray/flatbuffers/node_manager_generated.h"
 #include "ray/ipc/client_connection.h"
 #include "ray/raylet/local_object_manager_interface.h"
-#include "ray/raylet/worker_killing_policy.h"
+#include "ray/raylet/worker_killing_policy_group_by_owner.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/cmd_line_utils.h"
@@ -158,7 +158,7 @@ NodeManager::NodeManager(
       record_metrics_period_ms_(config.record_metrics_period_ms),
       next_resource_seq_no_(0),
       ray_syncer_(io_service_, self_node_id_.Binary()),
-      worker_killing_policy_(std::make_shared<GroupByOwnerWorkerKillingPolicy>()),
+      worker_killing_policy_(std::make_shared<GroupByOwnerIdWorkerKillingPolicy>()),
       memory_monitor_(std::make_unique<MemoryMonitor>(
           io_service,
           RayConfig::instance().memory_usage_threshold(),
