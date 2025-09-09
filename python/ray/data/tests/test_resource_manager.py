@@ -740,24 +740,23 @@ class TestReservationOpResourceAllocator:
 
         assert allocator._op_budgets[o2].gpu == 0
 
-    def test_get_ineligible_ops_without_eligible_upstream(self, restore_data_context):
-        """Test identifying ineligible ops."""
+    def test_find_the_last_completed_ops(self, restore_data_context):
         DataContext.get_current().op_resource_reservation_enabled = True
 
         # Create pipeline with branches:
-        # input -> limit1 -> map1 -> limit2
-        o1 = InputDataBuffer(DataContext.get_current(), [])  # ineligible
-        o2 = LimitOperator(
-            10, o1, DataContext.get_current()
-        )  # ineligible, no eligible upstream
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(
+            o1,
+        )
         o3 = mock_map_op(
-            o2, incremental_resource_usage=ExecutionResources(1, 0, 10)
-        )  # eligible
-        o4 = LimitOperator(
-            5, o3, DataContext.get_current()
-        )  # ineligible, has eligible upstream o4
+            o2,
+        )
+        o4 = mock_map_op(
+            o3,
+        )
+        o1.mark_execution_finished()
+        o2.mark_execution_finished()
 
-        # Build topology with o6 as final operator
         topo, _ = build_streaming_topology(o4, ExecutionOptions())
 
         resource_manager = ResourceManager(
@@ -766,40 +765,26 @@ class TestReservationOpResourceAllocator:
 
         allocator = resource_manager._op_resource_allocator
 
-        ineligible_without_upstream = (
-            allocator.get_ineligible_ops_without_eligible_upstream()
-        )
+        last_completed_ops = allocator.find_the_last_completed_ops()
 
-        assert o1 in ineligible_without_upstream  # input, no eligible upstream
-        assert o2 in ineligible_without_upstream  # limit, no eligible upstream
-        assert o3 not in ineligible_without_upstream  # eligible
-        assert o4 not in ineligible_without_upstream  # has eligible upstream o3
+        assert len(last_completed_ops) == 1
+        assert last_completed_ops[0] == o2
 
-    def test_reservation_accounts_for_ineligible_ops_without_upstream(
-        self, restore_data_context
-    ):
-        """Test that resource reservation properly accounts for ineligible ops without eligible upstream."""
+    def test_reservation_accounts_for_completed_ops(self, restore_data_context):
+        """Test that resource reservation properly accounts for completed ops."""
         DataContext.get_current().op_resource_reservation_enabled = True
         DataContext.get_current().op_resource_reservation_ratio = 0.5
 
-        # Create pipeline: input -> limit1 -> map1 -> map2
-        o1 = InputDataBuffer(DataContext.get_current(), [])  # ineligible
-        o2 = LimitOperator(
-            10, o1, DataContext.get_current()
-        )  # ineligible, no eligible upstream
-        o3 = mock_map_op(
-            o2, incremental_resource_usage=ExecutionResources(1, 0, 10)
-        )  # eligible
-        o4 = mock_map_op(
-            o3, incremental_resource_usage=ExecutionResources(1, 0, 10)
-        )  # eligible
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1, incremental_resource_usage=ExecutionResources(1, 0, 10))
+        o3 = mock_map_op(o2, incremental_resource_usage=ExecutionResources(1, 0, 10))
+        o4 = mock_map_op(o3, incremental_resource_usage=ExecutionResources(1, 0, 10))
+        o1.mark_execution_finished()
+        o2.mark_execution_finished()
 
-        # Set up resource usage - o2 (limit) consumes some resources
         op_usages = {
             o1: ExecutionResources.zero(),
-            o2: ExecutionResources(
-                cpu=2, object_store_memory=50
-            ),  # limit uses resources
+            o2: ExecutionResources(cpu=2, object_store_memory=50),
             o3: ExecutionResources.zero(),
             o4: ExecutionResources.zero(),
         }

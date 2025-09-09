@@ -4,7 +4,7 @@ import os
 import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional, Set
+from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional
 
 from ray._private.ray_constants import env_float
 from ray.data._internal.execution.interfaces.execution_options import (
@@ -493,19 +493,14 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             op for op in self._resource_manager._topology if self._is_op_eligible(op)
         ]
 
-    def get_ineligible_ops_without_eligible_upstream(self) -> Set[PhysicalOperator]:
-        """Get the ineligible operators that have no eligible upstream operators."""
-        all_ops = set(self._resource_manager._topology.keys())
-        eligible_ops = self._get_eligible_ops()
-        ops_to_explore = eligible_ops
-        visited = set()
-        while len(ops_to_explore) > 0:
-            op = ops_to_explore.pop()
-            visited.add(op)
-            for downstream_op in op.output_dependencies:
-                if downstream_op not in visited:
-                    ops_to_explore.append(downstream_op)
-        return all_ops - visited
+    def find_the_last_completed_ops(self) -> List[PhysicalOperator]:
+        last_completed_ops = []
+        for op in self._resource_manager._topology:
+            if not op.execution_finished():
+                for dep in op.input_dependencies:
+                    if dep.execution_finished():
+                        last_completed_ops.append(dep)
+        return last_completed_ops
 
     def _update_reservation(self):
         global_limits = self._resource_manager.get_global_limits().copy()
@@ -518,15 +513,12 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         if len(eligible_ops) == 0:
             return
 
-        # Ineligible operators might still consume resources, we need to subtract their usage from the remaining resources.
-        # We only consider operators that have no eligible upstream operators, because ineligible operators that have eligible upstream operators
-        # will be excluded in https://github.com/ray-project/ray/blob/6b703a8a4d5b761365e05f75a1de61625cab248b/python/ray/data/_internal/execution/resource_manager.py#L667
-        for op in self.get_ineligible_ops_without_eligible_upstream():
+        last_completed_ops = self.find_the_last_completed_ops()
+        for completed_op in last_completed_ops:
             global_limits = global_limits.subtract(
-                self._resource_manager.get_op_usage(op)
+                self._resource_manager.get_op_usage(completed_op)
             )
-
-        global_limits = global_limits.max(ExecutionResources.zero())
+            global_limits = global_limits.max(ExecutionResources.zero())
         remaining = global_limits.copy()
 
         # Reserve `reservation_ratio * global_limits / num_ops` resources for each
