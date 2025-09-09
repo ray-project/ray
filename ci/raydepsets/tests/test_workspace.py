@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from ci.raydepsets.tests.utils import copy_data_to_tmpdir, get_depset_by_name
-from ci.raydepsets.workspace import Workspace, _substitute_build_args, BuildArgSet
+from ci.raydepsets.workspace import BuildArgSet, Workspace, _substitute_build_args
 
 
 def test_workspace_init():
