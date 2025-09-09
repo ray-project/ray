@@ -284,7 +284,7 @@ class Dataset:
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
-        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":

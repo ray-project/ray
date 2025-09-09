@@ -150,6 +150,7 @@ class ActorPoolMapOperator(MapOperator):
             per_actor_resource_usage,
             min_size=compute_strategy.min_size,
             max_size=compute_strategy.max_size,
+            initial_size=compute_strategy.initial_size,
             max_actor_concurrency=max_actor_concurrency,
             max_tasks_in_flight_per_actor=(
                 # NOTE: Unless explicitly configured by the user, max tasks-in-flight config
@@ -203,7 +204,7 @@ class ActorPoolMapOperator(MapOperator):
         self._actor_cls = ray.remote(**self._ray_remote_args)(self._map_worker_cls)
         self._actor_pool.scale(
             ActorPoolScalingRequest(
-                delta=self._actor_pool.min_size(), reason="scaling to min size"
+                delta=self._actor_pool.initial_size(), reason="scaling to initial size"
             )
         )
 
@@ -713,6 +714,7 @@ class _ActorPool(AutoscalingActorPool):
         *,
         min_size: int,
         max_size: int,
+        initial_size: int,
         max_actor_concurrency: int,
         max_tasks_in_flight_per_actor: int,
         _enable_actor_pool_on_exit_hook: bool = False,
@@ -728,8 +730,9 @@ class _ActorPool(AutoscalingActorPool):
                 in the pool. Note, that this constraint could be violated when
                 no new work is available for scheduling in the actor pool (ie
                 when operator completes execution).
-            max_size: The minimum number of running actors to be maintained
+            max_size: The maximum number of running actors to be maintained
                 in the pool.
+            initial_size: The initial number of actors to start with.
             max_actor_concurrency: The maximum number of concurrent tasks a
                 single actor can execute (derived from `ray_remote_args`
                 passed to the operator).
@@ -741,6 +744,7 @@ class _ActorPool(AutoscalingActorPool):
 
         self._min_size: int = min_size
         self._max_size: int = max_size
+        self._initial_size: int = initial_size
         self._max_actor_concurrency: int = max_actor_concurrency
         self._max_tasks_in_flight: int = max_tasks_in_flight_per_actor
         self._create_actor_fn = create_actor_fn
@@ -748,6 +752,7 @@ class _ActorPool(AutoscalingActorPool):
 
         assert self._min_size >= 1
         assert self._max_size >= self._min_size
+        assert self._initial_size >= self._min_size
         assert self._max_tasks_in_flight >= 1
         assert self._create_actor_fn is not None
 
@@ -803,6 +808,9 @@ class _ActorPool(AutoscalingActorPool):
 
     def num_tasks_in_flight(self) -> int:
         return self._total_num_tasks_in_flight
+
+    def initial_size(self) -> int:
+        return self._initial_size
 
     def _can_apply(self, config: ActorPoolScalingRequest) -> bool:
         """Returns whether Actor Pool is able to execute scaling request"""

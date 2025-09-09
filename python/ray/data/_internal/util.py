@@ -571,7 +571,7 @@ def get_compute_strategy(
     fn: "UserDefinedFunction",
     fn_constructor_args: Optional[Iterable[Any]] = None,
     compute: Optional[Union[str, "ComputeStrategy"]] = None,
-    concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+    concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
 ) -> "ComputeStrategy":
     """Get `ComputeStrategy` based on the function or class, and concurrency
     information.
@@ -638,6 +638,24 @@ def get_compute_strategy(
                 if is_callable_class:
                     return ActorPoolStrategy(
                         min_size=concurrency[0], max_size=concurrency[1]
+                    )
+                else:
+                    raise ValueError(
+                        "``concurrency`` is set as a tuple of integers, but ``fn`` "
+                        f"is not a callable class: {fn}. Use ``concurrency=n`` to "
+                        "control maximum number of workers to use."
+                    )
+            elif (
+                len(concurrency) == 3
+                and isinstance(concurrency[0], int)
+                and isinstance(concurrency[1], int)
+                and isinstance(concurrency[2], int)
+            ):
+                if is_callable_class:
+                    return ActorPoolStrategy(
+                        min_size=concurrency[0],
+                        max_size=concurrency[1],
+                        initial_size=concurrency[2],
                     )
                 else:
                     raise ValueError(
