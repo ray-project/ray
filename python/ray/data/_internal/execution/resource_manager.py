@@ -493,7 +493,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             op for op in self._resource_manager._topology if self._is_op_eligible(op)
         ]
 
-    def find_the_ops_to_exclude_from_reservation(self) -> List[PhysicalOperator]:
+    def _get_ineligible_ops_with_usage(self) -> List[PhysicalOperator]:
         """
         Resource reservation is based on the number of eligible operators.
         However, there might be completed operators that still have blocks in their output queue, which we need to exclude them from the reservation.
@@ -515,6 +515,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                     if dep.execution_finished():
                         last_completed_ops.append(dep)
 
+        # In addition to completed operators,
+        # filter out downstream ineligible operators since they are omitted from reservation calculations.
         for op in last_completed_ops:
             ops_to_exclude_from_reservation.extend(
                 list(self._get_downstream_ineligible_ops(op))
@@ -533,7 +535,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         if len(eligible_ops) == 0:
             return
 
-        op_to_exclude_from_reservation = self.find_the_ops_to_exclude_from_reservation()
+        op_to_exclude_from_reservation = self._get_ineligible_ops_with_usage()
         for completed_op in op_to_exclude_from_reservation:
             global_limits = global_limits.subtract(
                 self._resource_manager.get_op_usage(completed_op)

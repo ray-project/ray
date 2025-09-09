@@ -781,7 +781,7 @@ class TestReservationOpResourceAllocator:
 
         assert allocator._op_budgets[o2].gpu == 0
 
-    def test_find_the_ops_to_exclude_from_reservation(self, restore_data_context):
+    def test_get_ineligible_ops_with_usage(self, restore_data_context):
         DataContext.get_current().op_resource_reservation_enabled = True
 
         o1 = InputDataBuffer(DataContext.get_current(), [])
@@ -806,13 +806,11 @@ class TestReservationOpResourceAllocator:
 
         allocator = resource_manager._op_resource_allocator
 
-        ops_to_exclude = allocator.find_the_ops_to_exclude_from_reservation()
+        ops_to_exclude = allocator._get_ineligible_ops_with_usage()
         assert len(ops_to_exclude) == 2
         assert set(ops_to_exclude) == {o2, o3}
 
-    def test_find_the_ops_to_exclude_from_reservation_complex_graph(
-        self, restore_data_context
-    ):
+    def test_get_ineligible_ops_with_usage_complex_graph(self, restore_data_context):
         """
         o1 (InputDataBuffer)
                 |
@@ -862,7 +860,7 @@ class TestReservationOpResourceAllocator:
 
         allocator = resource_manager._op_resource_allocator
 
-        ops_to_exclude = allocator.find_the_ops_to_exclude_from_reservation()
+        ops_to_exclude = allocator._get_ineligible_ops_with_usage()
         assert len(ops_to_exclude) == 4
         assert set(ops_to_exclude) == {o2, o3, o5, o7}
 
