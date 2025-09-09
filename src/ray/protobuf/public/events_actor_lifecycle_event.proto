@@ -50,5 +50,5 @@ message ActorLifecycleEvent {
   // The ID of the actor that was created.
   bytes actor_id = 1;
   // Current state of this actor.
-  repeated StateTransition states = 2;
+  repeated StateTransition state_transitions = 2;
 }
