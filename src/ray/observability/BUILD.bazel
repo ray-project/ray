@@ -24,3 +24,13 @@ ray_cc_library(
         "@io_opencensus_cpp//opencensus/stats",
     ],
 )
+
+ray_cc_library(
+    name = "fake_metric",
+    hdrs = [
+        "fake_metric.h",
+    ],
+    deps = [
+        ":metric_interface",
+    ],
+)

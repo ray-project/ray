@@ -14,6 +14,8 @@ py_library(
 py_test_module_list(
     size = "small",
     files = [
+        "test_filters.py",
+        "test_formatters.py",
         "test_network_utils.py",
         "test_ray_option_utils.py",
         "test_signal_semaphore_utils.py",
@@ -26,6 +28,7 @@ py_test_module_list(
         "team:core",
     ],
     deps = [
+        ":conftest",
         "//:ray_lib",
     ],
 )
