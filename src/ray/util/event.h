@@ -174,7 +174,8 @@ class EventManager final {
  private:
   EventManager();
 
-  absl::flat_hash_map<std::string, std::shared_ptr<BaseEventReporter>> reporter_map_ ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<std::string, std::shared_ptr<BaseEventReporter>> reporter_map_
+      ABSL_GUARDED_BY(mutex_);
   absl::flat_hash_map<rpc::ExportEvent_SourceType, std::shared_ptr<LogEventReporter>>
       export_log_reporter_map_ ABSL_GUARDED_BY(mutex_);
   mutable absl::Mutex mutex_;
