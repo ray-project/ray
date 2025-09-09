@@ -36,7 +36,7 @@
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/gcs/store_client/store_client.h"
 #include "ray/pubsub/publisher.h"
-#include "ray/raylet_client/raylet_client.h"
+#include "ray/rpc/raylet/raylet_client.h"
 #include "ray/stats/stats.h"
 #include "ray/util/network_util.h"
 
@@ -71,7 +71,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                            ClusterID::Nil(),
                            RayConfig::instance().gcs_server_rpc_client_thread_num()),
       raylet_client_pool_([this](const rpc::Address &addr) {
-        return std::make_shared<ray::raylet::RayletClient>(
+        return std::make_shared<ray::rpc::RayletClient>(
             addr,
             this->client_call_manager_,
             /*raylet_unavailable_timeout_callback=*/[this, addr]() {

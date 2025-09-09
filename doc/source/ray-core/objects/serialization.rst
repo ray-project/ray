@@ -3,7 +3,7 @@
 Serialization
 =============
 
-Since Ray processes do not share memory space, data transferred between workers and nodes will need to **serialized** and **deserialized**. Ray uses the `Plasma object store <https://arrow.apache.org/blog/2017/08/08/plasma-in-memory-object-store/>`_ to efficiently transfer objects across different processes and different nodes. Numpy arrays in the object store are shared between workers on the same node (zero-copy deserialization).
+Since Ray processes do not share memory space, data transferred between workers and nodes will need to be **serialized** and **deserialized**. Ray uses the `Plasma object store <https://arrow.apache.org/blog/2017/08/08/plasma-in-memory-object-store/>`_ to efficiently transfer objects across different processes and different nodes. Numpy arrays in the object store are shared between workers on the same node (zero-copy deserialization).
 
 Overview
 --------
@@ -48,7 +48,7 @@ Numpy Arrays
 Ray optimizes for numpy arrays by using Pickle protocol 5 with out-of-band data.
 The numpy array is stored as a read-only object, and all Ray workers on the same node can read the numpy array in the object store without copying (zero-copy reads). Each numpy array object in the worker process holds a pointer to the relevant array held in shared memory. Any writes to the read-only object will require the user to first copy it into the local process memory.
 
-.. tip:: You can often avoid serialization issues by using only native types (e.g., numpy arrays or lists/dicts of numpy arrays and other primitive types), or by using Actors hold objects that cannot be serialized.
+.. tip:: You can often avoid serialization issues by using only native types (e.g., numpy arrays or lists/dicts of numpy arrays and other primitive types), or by using Actors to hold objects that cannot be serialized.
 
 Fixing "assignment destination is read-only"
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

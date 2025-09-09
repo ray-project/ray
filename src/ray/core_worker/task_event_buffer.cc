@@ -279,8 +279,9 @@ void TaskStatusEvent::PopulateRpcRayEventBaseFields(
   }
 }
 
-void TaskStatusEvent::ToRpcRayEvents(RayEventsPair &ray_events_pair) {
-  auto &[task_definition_event_rpc, task_execution_event_rpc] = ray_events_pair;
+void TaskStatusEvent::ToRpcRayEvents(RayEventsTuple &ray_events_tuple) {
+  auto &[task_definition_event_rpc, task_execution_event_rpc, task_profile_event_rpc] =
+      ray_events_tuple;
 
   google::protobuf::Timestamp timestamp = AbslTimeNanosToProtoTimestamp(timestamp_);
 
@@ -356,16 +357,15 @@ void TaskProfileEvent::PopulateRpcRayEventBaseFields(
   ray_event.set_session_name(session_name_);
 }
 
-void TaskProfileEvent::ToRpcRayEvents(RayEventsPair &ray_events_pair) {
-  auto &[task_profile_Event, null_event] = ray_events_pair;
-  // Second element of the RayEventsPair will always be empty for TaskProfileEvent
-  null_event = std::nullopt;
+void TaskProfileEvent::ToRpcRayEvents(RayEventsTuple &ray_events_tuple) {
+  auto &[task_definition_event, task_execution_event, task_profile_event] =
+      ray_events_tuple;
 
   // Using profile start time as the event generation timestamp
   google::protobuf::Timestamp timestamp = AbslTimeNanosToProtoTimestamp(start_time_);
 
   // Populate Ray event base fields
-  auto &ray_event = task_profile_Event.emplace();
+  auto &ray_event = task_profile_event.emplace();
   PopulateRpcRayEventBaseFields(ray_event, timestamp);
 
   // Populate the task profile event
@@ -622,21 +622,24 @@ std::unique_ptr<rpc::TaskEventData> TaskEventBufferImpl::CreateTaskEventDataToSe
 
 std::unique_ptr<rpc::events::RayEventsData>
 TaskEventBufferImpl::CreateRayEventsDataToSend(
-    absl::flat_hash_map<TaskAttempt, RayEventsPair> &&agg_task_events,
+    absl::flat_hash_map<TaskAttempt, RayEventsTuple> &&agg_task_events,
     const absl::flat_hash_set<TaskAttempt> &dropped_task_attempts_to_send) {
   auto data = std::make_unique<rpc::events::RayEventsData>();
   // Move the ray events.
-  for (auto &[task_attempt, ray_events_pair] : agg_task_events) {
-    // For TaskStatusEvent: first = task definition event, second = task execution event
-    // For TaskProfileEvent: first = task profile event, second = nullopt (empty)
-    auto &[first_event, second_event] = ray_events_pair;
-    if (first_event) {
+  for (auto &[task_attempt, ray_events_tuple] : agg_task_events) {
+    auto &[task_definition_event, task_execution_event, task_profile_event] =
+        ray_events_tuple;
+    if (task_definition_event) {
       auto events = data->add_events();
-      *events = std::move(first_event.value());
+      *events = std::move(task_definition_event.value());
     }
-    if (second_event) {
+    if (task_execution_event) {
       auto events = data->add_events();
-      *events = std::move(second_event.value());
+      *events = std::move(task_execution_event.value());
+    }
+    if (task_profile_event) {
+      auto events = data->add_events();
+      *events = std::move(task_profile_event.value());
     }
   }
 
@@ -657,8 +660,8 @@ TaskEventBuffer::TaskEventDataToSend TaskEventBufferImpl::CreateDataToSend(
     const absl::flat_hash_set<TaskAttempt> &dropped_task_attempts_to_send) {
   // Aggregate the task events by TaskAttempt.
   absl::flat_hash_map<TaskAttempt, rpc::TaskEvents> agg_task_events;
-  // (task_attempt, (task_definition_event, task_execution_events))
-  absl::flat_hash_map<TaskAttempt, RayEventsPair> agg_ray_events;
+  // (task_attempt, (task_definition_event, task_execution_event, task_profile_event))
+  absl::flat_hash_map<TaskAttempt, RayEventsTuple> agg_ray_events;
 
   auto to_rpc_event_fn =
       [this, &agg_task_events, &agg_ray_events, &dropped_task_attempts_to_send](

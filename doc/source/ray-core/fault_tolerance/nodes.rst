@@ -24,6 +24,6 @@ so that when we start a new head node we still have all the cluster-level data.
 Raylet failure
 --------------
 
-When a raylet process fails, the corresponding node will be marked as dead and is treated the same as node failure.
+When a raylet process fails, the corresponding node will be marked as dead and is treated the same as a node failure.
 Each raylet is associated with a unique id, so even if the raylet restarts on the same physical machine,
 it'll be treated as a new raylet/node to the Ray cluster.
