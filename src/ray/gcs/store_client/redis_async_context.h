@@ -43,6 +43,7 @@ void CallbackDelRead(void *);
 void CallbackAddWrite(void *);
 void CallbackDelWrite(void *);
 void CallbackCleanup(void *);
+void CallbackSetTimeout(void *, struct timeval);
 
 struct RedisContextDeleter {
   RedisContextDeleter(){};
@@ -108,6 +109,7 @@ class RedisAsyncContext {
 
   instrumented_io_context &io_service_;
   boost::asio::ip::tcp::socket socket_;
+  std::shared_ptr<boost::asio::steady_timer> timer_;
   // Hiredis wanted to add a read operation to the event loop
   // but the read might not have happened yet
   bool read_requested_{false};
@@ -133,12 +135,14 @@ class RedisAsyncContext {
   void AddWrite();
   void DelWrite();
   void Cleanup();
+  void SetTimeout(boost::asio::steady_timer::duration timeout);
 
   friend void CallbackAddRead(void *);
   friend void CallbackDelRead(void *);
   friend void CallbackAddWrite(void *);
   friend void CallbackDelWrite(void *);
   friend void CallbackCleanup(void *);
+  friend void CallbackSetTimeout(void *, struct timeval);
 };
 }  // namespace gcs
 }  // namespace ray

@@ -302,6 +302,8 @@ RAY_CONFIG(int, worker_niceness, 15)
 /// Allow at least 60 seconds for connecting to Redis.
 RAY_CONFIG(int64_t, redis_db_connect_retries, 120)
 RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 500)
+/// Allow up to 60 seconds to wait for the Redis reply.
+RAY_CONFIG(int64_t, redis_db_reply_wait_seconds, 60)
 
 /// Number of retries for a redis request failure.
 RAY_CONFIG(size_t, num_redis_request_retries, 5)
@@ -311,6 +313,9 @@ RAY_CONFIG(size_t, num_redis_request_retries, 5)
 RAY_CONFIG(int64_t, redis_retry_base_ms, 100)
 RAY_CONFIG(int64_t, redis_retry_multiplier, 2)
 RAY_CONFIG(int64_t, redis_retry_max_ms, 1000)
+
+/// Allow up to 60 seconds to wait for the Redis reply.
+RAY_CONFIG(int64_t, redis_async_request_timeout_seaconds, 60)
 
 /// The object manager's global timer interval in milliseconds.
 RAY_CONFIG(int, object_manager_timer_freq_ms, 100)

@@ -58,9 +58,18 @@ RedisAsyncContext::RedisAsyncContext(
   redis_async_context_->ev.addWrite = CallbackAddWrite;
   redis_async_context_->ev.delWrite = CallbackDelWrite;
   redis_async_context_->ev.cleanup = CallbackCleanup;
+  redis_async_context_->ev.scheduleTimer = CallbackSetTimeout;
 
   // C wrapper functions will use this pointer to call class members.
   redis_async_context_->ev.data = this;
+
+  timer_ = std::make_shared<boost::asio::steady_timer>(io_service_);
+  {
+    const std::lock_guard lock(mutex_);
+    time_t timeout_s = RayConfig::instance().redis_db_reply_wait_seconds();
+    redisAsyncSetTimeout(redis_async_context_.get(),
+                         (struct timeval){.tv_sec = timeout_s, .tv_usec = 0});
+  }
 }
 
 redisAsyncContext *RedisAsyncContext::GetRawRedisAsyncContext() {
@@ -191,6 +200,20 @@ void RedisAsyncContext::Cleanup() {
   DelWrite();
 }
 
+void RedisAsyncContext::SetTimeout(boost::asio::steady_timer::duration timeout) {
+  timer_->cancel();
+  timer_->expires_after(timeout);
+  timer_->async_wait([this, timeout](const boost::system::error_code &ec) {
+    if (ec != boost::asio::error::operation_aborted) {
+      size_t timeout_ms =
+          std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count();
+      RAY_LOG(WARNING) << "Redis reply timeout after " << timeout_ms << " ms.";
+      const std::lock_guard lock(mutex_);
+      redisAsyncHandleTimeout(redis_async_context_.get());
+    }
+  });
+}
+
 void CallbackAddRead(void *private_data) {
   RAY_CHECK(private_data != nullptr);
   static_cast<RedisAsyncContext *>(private_data)->AddRead();
@@ -214,6 +237,14 @@ void CallbackDelWrite(void *private_data) {
 void CallbackCleanup(void *private_data) {
   RAY_CHECK(private_data != nullptr);
   static_cast<RedisAsyncContext *>(private_data)->Cleanup();
+}
+
+void CallbackSetTimeout(void *private_data, struct timeval tv) {
+  RAY_CHECK(private_data != nullptr);
+  using namespace std::chrono;
+  boost::asio::steady_timer::duration timeout =
+      seconds{tv.tv_sec} + microseconds{tv.tv_usec};
+  static_cast<RedisAsyncContext *>(private_data)->SetTimeout(timeout);
 }
 }  // namespace gcs
 }  // namespace ray
