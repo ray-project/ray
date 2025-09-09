@@ -317,7 +317,7 @@ you can use ``list`` or ``get`` APIs to get more details for an individual abnor
 .. note::
 
     By default, objects are summarized by callsite. However, callsite is not recorded by Ray by default.
-    To get callsite info, set env variable `RAY_record_ref_creation_sites=1` when starting the Ray Cluster:
+    To get callsite info, set env variable `RAY_record_ref_creation_sites=1` when starting the Ray cluster:
 
     .. code-block:: bash
 
