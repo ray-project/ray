@@ -7,6 +7,3 @@ worker_node_types:
     name: '1xT4:4CPU-16GB'
     min_workers: 2
     max_workers: 2
-
-flags:
-  allow-cross-zone-autoscaling: true
