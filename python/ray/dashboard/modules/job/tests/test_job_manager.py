@@ -364,7 +364,9 @@ async def test_runtime_env_setup_logged_to_job_driver_logs(
     ],
     indirect=True,
 )
-async def test_job_manager_network_fault_tolerance(call_ray_start, tmp_path):
+async def test_job_manager_network_fault_tolerance(
+    call_ray_start, tmp_path  # noqa: F811
+):
     """Test that the job manager is tolerant to transient network failures
     when making RPCs to GCS and supervisor actor."""
 
