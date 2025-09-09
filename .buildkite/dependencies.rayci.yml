@@ -6,9 +6,6 @@ steps:
   - name: min-allpython
     label: "wanda: min-allpython"
     wanda: ci/docker/min.allpython.wanda.yaml
-    env:
-      DEFAULT_PYTHON_VERSION: "3.9"
-    tags: always
 
   # dependencies
   - label: ":tapioca: build: pip-compile dependencies"
