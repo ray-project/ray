@@ -1,15 +1,14 @@
-from typing import Optional, List, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional
 
 import ray
-from ray.util.collective.types import Backend
 from ray.experimental.collective.tensor_transport_manager import (
-    TensorTransportManager,
     TensorTransportEnum,
+    TensorTransportManager,
 )
-
 from ray.util.collective.types import (
-    CollectiveTransportMetadata,
+    Backend,
     CollectiveCommunicatorMetadata,
+    CollectiveTransportMetadata,
 )
 
 if TYPE_CHECKING:

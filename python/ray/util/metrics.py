@@ -1,15 +1,14 @@
 import logging
+import os
 import re
 import warnings
-import os
-
-from typing import Dict, Any, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ray._raylet import (
     Count as CythonCount,
-    Sum as CythonSum,
-    Histogram as CythonHistogram,
     Gauge as CythonGauge,
+    Histogram as CythonHistogram,
+    Sum as CythonSum,
 )  # noqa: E402
 
 # Sum is used for CythonCount because it allows incrementing by positive
