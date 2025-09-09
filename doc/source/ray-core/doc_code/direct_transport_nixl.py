@@ -4,7 +4,7 @@
 import torch
 import ray
 
-@ray.remote
+@ray.remote(num_gpus=1)
 class MyActor:
    @ray.method(tensor_transport="nixl")
    def random_tensor(self):
