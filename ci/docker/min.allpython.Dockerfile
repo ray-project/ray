@@ -10,6 +10,8 @@ ARG UV_PYTHON_INSTALL_DIR=/usr/local/uv/python
 
 RUN mkdir -p "${UV_PYTHON_INSTALL_DIR}"
 
+RUN chmod +x "${UV_PYTHON_INSTALL_DIR}"
+
 SHELL ["/bin/bash", "-ice"]
 
 RUN <<EOF
