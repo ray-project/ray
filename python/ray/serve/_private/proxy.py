@@ -1142,6 +1142,14 @@ class ProxyActor(ProxyActorInterface):
         logging_config: LoggingConfig,
         long_poll_client: Optional[LongPollClient] = None,
     ):  # noqa: F821
+        super().__init__(
+            http_options,
+            grpc_options,
+            node_id=node_id,
+            node_ip_address=node_ip_address,
+            logging_config=logging_config,
+            long_poll_client=long_poll_client,
+        )
         self._node_id = node_id
         self._node_ip_address = node_ip_address
         self._http_options = configure_http_middlewares(http_options)
