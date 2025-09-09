@@ -25,9 +25,9 @@
 #include <string>
 #include <utility>
 
+#include "ray/common/status.h"
 #include "ray/util/compat.h"
 #include "ray/util/stream_redirection_options.h"
-#include "ray/util/util.h"
 #include "spdlog/logger.h"
 
 namespace ray {

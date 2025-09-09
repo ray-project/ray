@@ -624,6 +624,12 @@ class BasicObject:
             },
             100,
         ),
+        # Test sequence truncation - list longer than truncate_length gets truncated
+        (
+            [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            ["1", "2", "3", "..."],  # Only first 3 elements after truncation + ...
+            3,
+        ),
     ],
 )
 def test_sanitize_for_struct(input_obj, expected_output, truncate_length):

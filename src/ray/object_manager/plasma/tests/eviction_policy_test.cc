@@ -115,17 +115,17 @@ TEST(EvictionPolicyTest, Test) {
   ObjectID key4 = ObjectID::FromRandom();
 
   LocalObject object1{Allocation()};
-  object1.object_info.data_size = 10;
-  object1.object_info.metadata_size = 0;
+  object1.object_info_.data_size = 10;
+  object1.object_info_.metadata_size = 0;
   LocalObject object2{Allocation()};
-  object2.object_info.data_size = 20;
-  object2.object_info.metadata_size = 0;
+  object2.object_info_.data_size = 20;
+  object2.object_info_.metadata_size = 0;
   LocalObject object3{Allocation()};
-  object3.object_info.data_size = 30;
-  object3.object_info.metadata_size = 0;
+  object3.object_info_.data_size = 30;
+  object3.object_info_.metadata_size = 0;
   LocalObject object4{Allocation()};
-  object4.object_info.data_size = 40;
-  object4.object_info.metadata_size = 0;
+  object4.object_info_.data_size = 40;
+  object4.object_info_.metadata_size = 0;
 
   auto init_object_store = [&](EvictionPolicy &policy) {
     EXPECT_CALL(store, GetObject(_))

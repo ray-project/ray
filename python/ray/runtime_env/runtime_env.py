@@ -17,7 +17,7 @@ from ray._private.runtime_env.validation import (
     OPTION_TO_NO_PATH_VALIDATION_FN,
 )
 from ray._private.thirdparty.dacite import from_dict
-from ray.core.generated.runtime_env_common_pb2 import (
+from ray.core.generated.runtime_environment_pb2 import (
     RuntimeEnvConfig as ProtoRuntimeEnvConfig,
 )
 from ray.util.annotations import PublicAPI
