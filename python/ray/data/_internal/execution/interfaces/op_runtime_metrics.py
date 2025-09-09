@@ -524,7 +524,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
     @metric_property(
         description="Average number of blocks generated per task.",
-        metrics_group=MetricsGroup.OUTPUTS,
+        metrics_group=MetricsGroup.INPUTS,
     )
     def average_num_inputs_per_task(self) -> Optional[float]:
         """Average number of input blocks per task, or None if no task has finished."""
