@@ -13,9 +13,6 @@ ray_cc_library(
         "core_worker_rpc_proxy.h",
         "core_worker_shutdown_executor.h",
     ],
-    implementation_deps = [
-        "//src/ray/util:time",
-    ],
     deps = [
         ":actor_handle",
         ":actor_manager",
@@ -60,6 +57,7 @@ ray_cc_library(
         "//src/ray/util:shared_lru",
         "//src/ray/util:stream_redirection",
         "//src/ray/util:stream_redirection_options",
+        "//src/ray/util:time",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_prod",
