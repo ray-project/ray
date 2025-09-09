@@ -1,7 +1,7 @@
-from typing import List, Optional
 import os
 import shutil
 import subprocess
+from typing import List, Optional
 
 import runfiles
 
