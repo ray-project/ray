@@ -1331,7 +1331,7 @@ class CoreWorker {
             const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes =
                 nullptr);
 
-  void QueueRetryCallback(TaskSpecification &spec, uint32_t delay_ms);
+  void AsyncRetryTask(TaskSpecification &spec, uint32_t delay_ms);
 
  private:
   static nlohmann::json OverrideRuntimeEnv(const nlohmann::json &child,

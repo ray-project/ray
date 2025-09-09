@@ -4543,7 +4543,7 @@ void CoreWorker::UpdateTaskIsDebuggerPaused(const TaskID &task_id,
       worker::TaskStatusEvent::TaskStateUpdate(is_debugger_paused)));
 }
 
-void CoreWorker::QueueRetryCallback(TaskSpecification &spec, uint32_t delay_ms) {
+void CoreWorker::AsyncRetryTask(TaskSpecification &spec, uint32_t delay_ms) {
   spec.GetMutableMessage().set_attempt_number(spec.AttemptNumber() + 1);
   absl::MutexLock lock(&mutex_);
   TaskToRetry task_to_retry{current_time_ms() + delay_ms, spec};

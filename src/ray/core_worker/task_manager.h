@@ -45,7 +45,7 @@ class ActorManager;
 using TaskStatusCounter = CounterMap<std::tuple<std::string, rpc::TaskStatus, bool>>;
 using PutInLocalPlasmaCallback =
     std::function<Status(const RayObject &object, const ObjectID &object_id)>;
-using QueueRetryCallback =
+using AsyncRetryTaskCallback =
     std::function<void(TaskSpecification &spec, uint32_t delay_ms)>;
 using ReconstructObjectCallback = std::function<void(const ObjectID &object_id)>;
 using PushErrorCallback = std::function<Status(const JobID &job_id,
@@ -175,7 +175,7 @@ class TaskManager : public TaskManagerInterface {
       CoreWorkerMemoryStore &in_memory_store,
       ReferenceCounter &reference_counter,
       PutInLocalPlasmaCallback put_in_local_plasma_callback,
-      QueueRetryCallback queue_retry_callback,
+      AsyncRetryTaskCallback async_retry_task_callback,
       std::function<bool(const TaskSpecification &spec)> queue_generator_resubmit,
       PushErrorCallback push_error_callback,
       int64_t max_lineage_bytes,
@@ -186,7 +186,7 @@ class TaskManager : public TaskManagerInterface {
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         put_in_local_plasma_callback_(std::move(put_in_local_plasma_callback)),
-        queue_retry_callback_(std::move(queue_retry_callback)),
+        async_retry_task_callback_(std::move(async_retry_task_callback)),
         queue_generator_resubmit_(std::move(queue_generator_resubmit)),
         push_error_callback_(std::move(push_error_callback)),
         max_lineage_bytes_(max_lineage_bytes),
@@ -743,7 +743,7 @@ class TaskManager : public TaskManagerInterface {
   const PutInLocalPlasmaCallback put_in_local_plasma_callback_;
 
   /// Called when a task should be retried.
-  const QueueRetryCallback queue_retry_callback_;
+  const AsyncRetryTaskCallback async_retry_task_callback_;
 
   /// For when a streaming generator task currently in progress needs to be resubmitted.
   std::function<bool(const TaskSpecification &spec)> queue_generator_resubmit_;
