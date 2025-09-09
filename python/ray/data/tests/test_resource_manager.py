@@ -47,6 +47,45 @@ def mock_map_op(
     return op
 
 
+def mock_union_op(
+    input_ops,
+    incremental_resource_usage=None,
+):
+    op = UnionOperator(
+        DataContext.get_current(),
+        *input_ops,
+    )
+    op.start = MagicMock(side_effect=lambda _: None)
+    if incremental_resource_usage is not None:
+        op.incremental_resource_usage = MagicMock(
+            return_value=incremental_resource_usage
+        )
+    return op
+
+
+def mock_join_op(
+    left_input_op,
+    right_input_op,
+    incremental_resource_usage=None,
+):
+    op = JoinOperator(
+        DataContext.get_current(),
+        left_input_op,
+        right_input_op,
+        ("id",),
+        ("id",),
+        "inner",
+        num_partitions=1,
+    )
+
+    op.start = MagicMock(side_effect=lambda _: None)
+    if incremental_resource_usage is not None:
+        op.incremental_resource_usage = MagicMock(
+            return_value=incremental_resource_usage
+        )
+    return op
+
+
 class TestResourceManager:
     """Unit tests for ResourceManager."""
 
@@ -805,17 +844,9 @@ class TestReservationOpResourceAllocator:
         o5 = mock_map_op(
             o4,
         )
-        o6 = UnionOperator(DataContext.get_current(), o3, o5)
+        o6 = mock_union_op([o3, o5])
         o7 = InputDataBuffer(DataContext.get_current(), [])
-        o8 = JoinOperator(
-            DataContext.get_current(),
-            o7,
-            o6,
-            ("id",),
-            ("id",),
-            "inner",
-            num_partitions=1,
-        )
+        o8 = mock_join_op(o7, o6)
 
         o1.mark_execution_finished()
         o2.mark_execution_finished()
@@ -889,6 +920,99 @@ class TestReservationOpResourceAllocator:
         )
 
         assert abs(total_reserved_memory - 100) < 1.0
+
+    def test_reservation_accounts_for_completed_ops_complex_graph(
+        self, restore_data_context
+    ):
+        """
+        o1 (InputDataBuffer)
+                |
+                v
+                o2 (MapOperator, completed)
+                |
+                v
+                o3 (LimitOperator)
+                |
+                v                    o4 (InputDataBuffer)
+                |                    |
+                |                    v
+                |                    o5 (MapOperator, completed)
+                |                    |
+                v                    v
+                o6 (UnionOperator) <--
+                |
+                v
+                o8 (JoinOperator) <-- o7 (InputDataBuffer, completed)
+        """
+        DataContext.get_current().op_resource_reservation_enabled = True
+        DataContext.get_current().op_resource_reservation_ratio = 0.5
+
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1, incremental_resource_usage=ExecutionResources(1, 0, 15))
+        o3 = LimitOperator(1, o2, DataContext.get_current())
+        o4 = InputDataBuffer(DataContext.get_current(), [])
+        o5 = mock_map_op(o4, incremental_resource_usage=ExecutionResources(1, 0, 10))
+        o6 = mock_union_op(
+            [o3, o5], incremental_resource_usage=ExecutionResources(1, 0, 20)
+        )
+        o7 = InputDataBuffer(DataContext.get_current(), [])
+        o8 = mock_join_op(
+            o7, o6, incremental_resource_usage=ExecutionResources(1, 0, 30)
+        )
+
+        o1.mark_execution_finished()
+        o2.mark_execution_finished()
+        o4.mark_execution_finished()
+        o5.mark_execution_finished()
+        o7.mark_execution_finished()
+
+        op_usages = {
+            o1: ExecutionResources.zero(),
+            o2: ExecutionResources(cpu=2, object_store_memory=150),
+            o3: ExecutionResources(cpu=2, object_store_memory=50),
+            o4: ExecutionResources.zero(),
+            o5: ExecutionResources(cpu=3, object_store_memory=100),
+            o6: ExecutionResources.zero(),
+            o7: ExecutionResources(cpu=1, object_store_memory=100),
+            o8: ExecutionResources.zero(),
+        }
+
+        topo, _ = build_streaming_topology(o8, ExecutionOptions())
+
+        global_limits = ExecutionResources.zero()
+
+        def mock_get_global_limits():
+            nonlocal global_limits
+            return global_limits
+
+        resource_manager = ResourceManager(
+            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+        )
+        resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
+        resource_manager.get_global_limits = MagicMock(
+            side_effect=mock_get_global_limits
+        )
+
+        allocator = resource_manager._op_resource_allocator
+        global_limits = ExecutionResources(cpu=20, object_store_memory=2000)
+        allocator.update_usages()
+        """
+        global_limits (20 CPU, 2000 mem) - o2 usage (2 CPU, 150 mem) - o3 usage (2 CPU, 50 mem) - o5 usage (3 CPU, 100 mem) - o7 usage (1 CPU, 100 mem) = remaining (12 CPU, 1600 mem)
+        """
+        assert set(allocator._op_budgets.keys()) == {o6, o8}
+        assert set(allocator._op_reserved.keys()) == {o6, o8}
+        assert allocator._op_reserved[o6] == ExecutionResources(
+            cpu=3, object_store_memory=200
+        )
+        assert allocator._op_reserved[o8] == ExecutionResources(
+            cpu=3, object_store_memory=200
+        )
+        assert allocator._reserved_for_op_outputs[o6] == 200
+        assert allocator._reserved_for_op_outputs[o8] == 200
+        assert allocator._total_shared == ExecutionResources(
+            cpu=6, object_store_memory=800
+        )
+        # TODO: continue adding
 
 
 if __name__ == "__main__":
