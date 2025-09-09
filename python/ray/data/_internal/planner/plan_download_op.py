@@ -1,5 +1,6 @@
 import logging
 import math
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List
 from urllib.parse import urlparse
@@ -43,8 +44,21 @@ def plan_download_op(
         _get_udf,
     )
 
+    partitioner_pool_size = int(
+        os.environ.get("RAY_DATA_DOWNLOAD_PARTITIONER_POOL_SIZE", 1)
+    )
+
+    partitioner_max_tasks_in_flight = os.environ.get(
+        "RAY_DATA_DOWNLOAD_PARTITIONER_MAX_TASKS_IN_FLIGHT", None
+    )
+    if partitioner_max_tasks_in_flight is not None:
+        partitioner_max_tasks_in_flight = int(partitioner_max_tasks_in_flight)
+
     # PartitionActor is a callable class, so we need ActorPoolStrategy
-    partition_compute = ActorPoolStrategy(size=1)  # Use single actor for partitioning
+    partition_compute = ActorPoolStrategy(
+        size=partitioner_pool_size,
+        max_tasks_in_flight_per_actor=partitioner_max_tasks_in_flight,
+    )
 
     fn, init_fn = _get_udf(PartitionActor, (), {}, (uri_column_name, data_context), {})
     block_fn = _generate_transform_fn_for_map_batches(fn)
