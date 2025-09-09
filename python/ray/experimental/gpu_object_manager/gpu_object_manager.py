@@ -168,25 +168,24 @@ class GPUObjectManager:
         from ray.experimental.gpu_object_manager.gpu_object_store import (
             __ray_fetch_gpu_object__,
         )
+        from ray.experimental.collective import get_tensor_transport_manager
 
         if self.gpu_object_store.has_object(obj_id):
             return
         gpu_object_meta = self.managed_gpu_object_metadata[obj_id]
         src_actor = gpu_object_meta.src_actor
-        if use_object_store:
+        tensor_transport_backend = gpu_object_meta.tensor_transport_backend
+        tensor_transport_manager = get_tensor_transport_manager(
+            tensor_transport_backend
+        )
+        if use_object_store or not tensor_transport_manager.is_one_sided():
             tensors = ray.get(
                 src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
                     __ray_fetch_gpu_object__, obj_id
                 )
             )
         else:
-            from ray.experimental.collective import get_tensor_transport_manager
             import torch
-
-            tensor_transport_backend = gpu_object_meta.tensor_transport_backend
-            tensor_transport_manager = get_tensor_transport_manager(
-                tensor_transport_backend
-            )
 
             tensor_transport_meta = gpu_object_meta.tensor_transport_meta
             tensors = []
