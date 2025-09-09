@@ -17,7 +17,6 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -46,7 +45,7 @@ bool ShutdownCoordinator::RequestShutdown(
   bool should_execute = false;
   bool execute_force = force_shutdown;
   {
-    std::lock_guard<std::mutex> lock(mu_);
+    absl::MutexLock lock(&mu_);
     if (state_ == ShutdownState::kShutdown) {
       return false;
     }
@@ -83,7 +82,7 @@ bool ShutdownCoordinator::RequestShutdown(
 }
 
 bool ShutdownCoordinator::TryTransitionToDisconnecting() {
-  std::lock_guard<std::mutex> lock(mu_);
+  absl::MutexLock lock(&mu_);
   if (state_ != ShutdownState::kShuttingDown) {
     return false;
   }
@@ -92,7 +91,7 @@ bool ShutdownCoordinator::TryTransitionToDisconnecting() {
 }
 
 bool ShutdownCoordinator::TryTransitionToShutdown() {
-  std::lock_guard<std::mutex> lock(mu_);
+  absl::MutexLock lock(&mu_);
   if (state_ != ShutdownState::kShuttingDown && state_ != ShutdownState::kDisconnecting) {
     return false;
   }
@@ -101,17 +100,17 @@ bool ShutdownCoordinator::TryTransitionToShutdown() {
 }
 
 ShutdownState ShutdownCoordinator::GetState() const {
-  std::lock_guard<std::mutex> lock(mu_);
+  absl::MutexLock lock(&mu_);
   return state_;
 }
 
 ShutdownReason ShutdownCoordinator::GetReason() const {
-  std::lock_guard<std::mutex> lock(mu_);
+  absl::MutexLock lock(&mu_);
   return reason_;
 }
 
 bool ShutdownCoordinator::ShouldEarlyExit() const {
-  std::lock_guard<std::mutex> lock(mu_);
+  absl::MutexLock lock(&mu_);
   return state_ != ShutdownState::kRunning;
 }
 
@@ -178,7 +177,7 @@ void ShutdownCoordinator::ExecuteForceShutdown(std::string_view detail) {
   // Force shutdown bypasses normal state transitions and terminates immediately
   // This ensures that force shutdowns can interrupt hanging graceful shutdowns
   {
-    std::lock_guard<std::mutex> lock(mu_);
+    absl::MutexLock lock(&mu_);
     if (force_executed_) {
       return;
     }
