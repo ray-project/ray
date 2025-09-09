@@ -47,13 +47,13 @@ class MCAPDatasource(FileBasedDatasource):
 
         >>> import ray
         >>> from ray.data.datasource import MCAPDatasource
-        >>> 
+        >>>
         >>> datasource = MCAPDatasource(
         ...     paths="/path/to/your/data.mcap",
         ...     channels={"camera", "lidar"},
         ...     time_range=(1000000000, 2000000000)
         ... )
-        >>> 
+        >>>
         >>> dataset = ray.data.read_datasource(datasource)
 
         Advanced usage with multiple filters:
@@ -106,7 +106,7 @@ class MCAPDatasource(FileBasedDatasource):
         self._message_types = message_types
         self._include_metadata = include_metadata
         self._include_paths = file_based_datasource_kwargs.get("include_paths", False)
-        
+
         # Cache for filter optimization
         self._filter_cache = {}
         self._message_count_cache = {}
@@ -121,24 +121,26 @@ class MCAPDatasource(FileBasedDatasource):
         if self._time_range is not None:
             start_time, end_time = self._time_range
             if start_time >= end_time:
-                raise ValueError('start_time must be less than end_time')
+                raise ValueError("start_time must be less than end_time")
             if start_time < 0 or end_time < 0:
-                raise ValueError('time values must be non-negative')
+                raise ValueError("time values must be non-negative")
 
         # Check if mcap module is available
         _check_import(self, module="mcap", package="mcap")
-        
+
         # Only call super().__init__ if we're in a proper Ray context
         try:
             super().__init__(paths, **file_based_datasource_kwargs)
         except Exception as e:
             # If Ray initialization fails, set paths manually for standalone testing
-            if 'LabelSelectorConstraint' in str(e) or 'ray.init' in str(e):
+            if "LabelSelectorConstraint" in str(e) or "ray.init" in str(e):
                 self.paths = paths
                 self._standalone_mode = True
                 # Initialize file sizes for standalone mode
                 self._init_file_sizes_standalone()
-                logger.warning('Ray initialization failed, using standalone mode for testing')
+                logger.warning(
+                    "Ray initialization failed, using standalone mode for testing"
+                )
             else:
                 raise
 
@@ -161,7 +163,7 @@ class MCAPDatasource(FileBasedDatasource):
         try:
             paths = self.paths if isinstance(self.paths, list) else [self.paths]
             file_sizes = []
-            
+
             for path in paths:
                 try:
                     # Get file size in bytes
@@ -169,7 +171,7 @@ class MCAPDatasource(FileBasedDatasource):
                     file_sizes.append(size)
                 except OSError:
                     file_sizes.append(None)
-            
+
             # Store file sizes directly (no Ray reference needed in standalone mode)
             self._file_sizes = file_sizes
         except Exception as e:
@@ -201,7 +203,7 @@ class MCAPDatasource(FileBasedDatasource):
         """
         if self._standalone_mode:
             # In standalone mode, _file_sizes is a list attribute
-            if hasattr(self, '_file_sizes') and isinstance(self._file_sizes, list):
+            if hasattr(self, "_file_sizes") and isinstance(self._file_sizes, list):
                 return self._file_sizes
             else:
                 # Fallback: try to get file sizes directly
@@ -219,9 +221,10 @@ class MCAPDatasource(FileBasedDatasource):
                     return []
         else:
             # Use Ray reference if available
-            if hasattr(self, '_file_sizes_ref') and self._file_sizes_ref is not None:
+            if hasattr(self, "_file_sizes_ref") and self._file_sizes_ref is not None:
                 try:
                     import ray
+
                     return ray.get(self._file_sizes_ref)
                 except Exception:
                     pass
@@ -253,9 +256,10 @@ class MCAPDatasource(FileBasedDatasource):
             return self.paths if isinstance(self.paths, list) else [self.paths]
         else:
             # Use Ray reference if available
-            if hasattr(self, '_paths_ref') and self._paths_ref is not None:
+            if hasattr(self, "_paths_ref") and self._paths_ref is not None:
                 try:
                     import ray
+
                     return ray.get(self._paths_ref)
                 except Exception:
                     pass
@@ -282,74 +286,80 @@ class MCAPDatasource(FileBasedDatasource):
         """
         try:
             from mcap.reader import make_reader
-            
+
             paths = self._paths()
             if not paths:
                 return []
-            
+
             # Estimate total messages across all files
             total_messages = 0
             file_message_counts = {}
-            
+
             for path in paths:
                 try:
                     with open(path, "rb") as f:
                         reader = make_reader(f)
                         summary = reader.get_summary()
-                        
+
                         if summary.statistics:
                             message_count = summary.statistics.message_count
                         else:
                             # Count messages manually if statistics not available
                             message_count = sum(1 for _ in reader.iter_messages())
-                        
+
                         file_message_counts[path] = message_count
                         total_messages += message_count
-                        
+
                 except Exception as e:
                     # If we can't read the MCAP file, fail fast - don't mask the error
                     logger.error(f"Failed to read MCAP file {path}: {e}")
                     raise ValueError(f"Failed to read MCAP file {path}: {e}")
-            
+
             if total_messages == 0:
                 # If no messages found, return empty task list
                 return []
-            
+
             # Determine optimal parallelism
-            parallelism = min(parallelism, math.ceil(total_messages / MIN_ROWS_PER_READ_TASK))
+            parallelism = min(
+                parallelism, math.ceil(total_messages / MIN_ROWS_PER_READ_TASK)
+            )
             if parallelism <= 1:
                 # Single task for all files
-                return [ReadTask(
-                    lambda: self._read_all_files(),
-                    BlockMetadata(
-                        num_rows=total_messages,
-                        size_bytes=self.estimate_inmemory_data_size(),
-                        input_files=paths,
-                        exec_stats=None,
+                return [
+                    ReadTask(
+                        lambda: self._read_all_files(),
+                        BlockMetadata(
+                            num_rows=total_messages,
+                            size_bytes=self.estimate_inmemory_data_size(),
+                            input_files=paths,
+                            exec_stats=None,
+                        ),
                     )
-                )]
-            
+                ]
+
             # Create tasks based on file boundaries (simpler than splitting individual files)
             tasks = []
             files_per_task = math.ceil(len(paths) / parallelism)
-            
+
             for i in range(0, len(paths), files_per_task):
-                task_paths = paths[i:i + files_per_task]
+                task_paths = paths[i : i + files_per_task]
                 task_messages = sum(file_message_counts.get(p, 0) for p in task_paths)
-                
+
                 if task_messages > 0:
-                    tasks.append(ReadTask(
-                        lambda p=task_paths: self._read_files(p),
-                        BlockMetadata(
-                            num_rows=task_messages,
-                            size_bytes=None,  # Will be estimated per task
-                            input_files=task_paths,
-                            exec_stats=None,
+                    tasks.append(
+                        ReadTask(
+                            lambda p=task_paths: self._read_files(p),
+                            BlockMetadata(
+                                num_rows=task_messages,
+                                size_bytes=None,  # Will be estimated per task
+                                input_files=task_paths,
+                                exec_stats=None,
+                            ),
                         )
-                    ))
-            
+                    )
+
             return tasks
-            
+
         except Exception as e:
             # Don't mask errors - let them propagate
             logger.error(f"Failed to create read tasks: {e}")
@@ -441,24 +451,26 @@ class MCAPDatasource(FileBasedDatasource):
             # Use MCAP's make_reader which automatically chooses the appropriate reader
             # pyarrow.NativeFile is seekable, so it will use SeekingReader
             reader = make_reader(f)
-            
+
             # Extract filter parameters for MCAP's built-in filtering
-            topics = self._topics or self._channels  # Use topics if specified, otherwise channels
+            topics = (
+                self._topics or self._channels
+            )  # Use topics if specified, otherwise channels
             start_time = self._time_range[0] if self._time_range else None
             end_time = self._time_range[1] if self._time_range else None
-            
+
             # Use MCAP's built-in filtering capabilities
             messages = reader.iter_messages(
                 topics=topics,
                 start_time=start_time,
                 end_time=end_time,
                 log_time_order=True,  # Ensure consistent ordering
-                reverse=False
+                reverse=False,
             )
 
             # Use DelegatingBlockBuilder for efficient block construction
             builder = DelegatingBlockBuilder()
-            
+
             for schema, channel, message in messages:
                 # Apply additional filters that couldn't be pushed down to MCAP level
                 if not self._should_include_message(schema, channel, message):
@@ -468,7 +480,7 @@ class MCAPDatasource(FileBasedDatasource):
                 message_data = self._message_to_dict(schema, channel, message)
 
                 if self._include_paths:
-                    message_data['_file_path'] = path
+                    message_data["_file_path"] = path
 
                 # Add the message to the builder
                 builder.add(message_data)
@@ -481,9 +493,9 @@ class MCAPDatasource(FileBasedDatasource):
         except Exception as e:
             logger.error(f"Error reading MCAP file {path}: {e}")
             raise ValueError(
-                f'Failed to read MCAP file: {path}. '
-                'Please check the MCAP file has correct format. '
-                f'Error: {e}'
+                f"Failed to read MCAP file: {path}. "
+                "Please check the MCAP file has correct format. "
+                f"Error: {e}"
             ) from e
 
     def _should_include_message(self, schema, channel, message) -> bool:
@@ -543,10 +555,12 @@ class MCAPDatasource(FileBasedDatasource):
         }
 
         # Add channel information
-        message_data.update({
-            "topic": channel.topic,
-            "message_encoding": channel.message_encoding,
-        })
+        message_data.update(
+            {
+                "topic": channel.topic,
+                "message_encoding": channel.message_encoding,
+            }
+        )
 
         # Add schema information if requested and available
         if self._include_metadata and schema:
@@ -608,54 +622,58 @@ class MCAPDatasource(FileBasedDatasource):
                 return super().estimate_inmemory_data_size()
             except Exception:
                 pass
-        
+
         # Use our custom estimation logic
         try:
             from mcap.reader import make_reader
-            
+
             total_size = 0
             total_messages = 0
-            
+
             # Sample a few files to estimate size
             paths = self._paths()
-            sample_paths = paths[:min(3, len(paths))]  # Sample up to 3 files
-            
+            sample_paths = paths[: min(3, len(paths))]  # Sample up to 3 files
+
             for path in sample_paths:
                 try:
                     with open(path, "rb") as f:
                         reader = make_reader(f)
                         summary = reader.get_summary()
-                        
+
                         if summary.statistics:
                             # Use MCAP statistics if available
                             file_messages = summary.statistics.message_count
                             total_messages += file_messages
-                            
+
                             # Estimate size per message (rough estimate)
                             # MCAP files are typically compressed, so we estimate expansion
-                            file_size = f.tell() if hasattr(f, 'tell') else 0
+                            file_size = f.tell() if hasattr(f, "tell") else 0
                             if file_size > 0:
-                                size_per_message = (file_size * 3) / file_messages  # 3x expansion estimate
+                                size_per_message = (
+                                    file_size * 3
+                                ) / file_messages  # 3x expansion estimate
                                 total_size += size_per_message * file_messages
                         else:
                             # Fallback: sample messages to estimate size
                             sample_size = min(SAMPLE_SIZE_FOR_ESTIMATION, file_messages)
                             messages = list(reader.iter_messages())[:sample_size]
-                            
+
                             if messages:
-                                sample_data_size = sum(len(msg[2].data) for msg in messages)
+                                sample_data_size = sum(
+                                    len(msg[2].data) for msg in messages
+                                )
                                 avg_message_size = sample_data_size / len(messages)
                                 # Estimate total size with metadata overhead
                                 # 2x for metadata
                                 estimated_total = avg_message_size * 2 * file_messages
                                 total_size += estimated_total
                                 total_messages += file_messages
-                                
+
                 except Exception as e:
                     # If we can't read the MCAP file, fail fast - don't mask the error
-                    logger.error(f'Failed to estimate size for {path}: {e}')
-                    raise ValueError(f'Failed to estimate size for {path}: {e}')
-            
+                    logger.error(f"Failed to estimate size for {path}: {e}")
+                    raise ValueError(f"Failed to estimate size for {path}: {e}")
+
             if total_messages > 0:
                 # Scale up to total files
                 total_files = len(paths)
@@ -663,10 +681,10 @@ class MCAPDatasource(FileBasedDatasource):
                 if sampled_files > 0:
                     scale_factor = total_files / sampled_files
                     return int(total_size * scale_factor)
-            
+
             return None
-            
+
         except Exception as e:
             # Don't mask errors - let them propagate
-            logger.error(f'Failed to estimate MCAP data size: {e}')
+            logger.error(f"Failed to estimate MCAP data size: {e}")
             raise

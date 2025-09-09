@@ -2218,7 +2218,9 @@ def read_mcap(
 
     # Validate that channels and topics are not both specified
     if channels is not None and topics is not None:
-        raise ValueError("Cannot specify both 'channels' and 'topics'. Use one or the other.")
+        raise ValueError(
+            "Cannot specify both 'channels' and 'topics'. Use one or the other."
+        )
 
     datasource = MCAPDatasource(
         paths,

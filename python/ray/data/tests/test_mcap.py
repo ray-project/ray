@@ -44,6 +44,7 @@ class TestMCAPDatasource:
     def teardown_method(self):
         """Clean up test environment."""
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def _create_mock_mcap_file(self):
@@ -109,6 +110,7 @@ class TestMCAPDatasourceReading:
     def teardown_method(self):
         """Clean up test environment."""
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def _create_mock_mcap_file(self):
@@ -124,9 +126,7 @@ class TestMCAPDatasourceReading:
         mock_summary.channels = {}
 
         # Mock the mcap.reader.make_reader function
-        with patch(
-            "mcap.reader.make_reader"
-        ) as mock_make_reader:
+        with patch("mcap.reader.make_reader") as mock_make_reader:
             mock_make_reader.return_value = mock_reader
             mock_reader.iter_messages.return_value = []
 
@@ -149,11 +149,11 @@ class TestMCAPDatasourceReading:
         mock_schema.name = "test_schema"
         mock_schema.encoding = "json"
         mock_schema.data = b"schema_data"
-        
+
         mock_channel = Mock()
         mock_channel.topic = "/test/topic"
         mock_channel.message_encoding = "json"
-        
+
         mock_message = Mock()
         mock_message.data = b"message_data"
         mock_message.log_time = 1500000000
@@ -175,24 +175,30 @@ class TestMCAPDatasourceReading:
         # Mock MCAP message components
         mock_schema = Mock()
         mock_schema.name = "test_schema"
-        
+
         mock_channel = Mock()
         mock_channel.topic = "/test/topic"
-        
+
         mock_message = Mock()
         mock_message.log_time = 1500000000
 
         # Test that message is included by default
-        result = datasource._should_include_message(mock_schema, mock_channel, mock_message)
+        result = datasource._should_include_message(
+            mock_schema, mock_channel, mock_message
+        )
         assert result is True
 
         # Test with channel filtering
         datasource._channels = {"/test/topic"}
-        result = datasource._should_include_message(mock_schema, mock_channel, mock_message)
+        result = datasource._should_include_message(
+            mock_schema, mock_channel, mock_message
+        )
         assert result is True
 
         datasource._channels = {"/other/topic"}
-        result = datasource._should_include_message(mock_schema, mock_channel, mock_message)
+        result = datasource._should_include_message(
+            mock_schema, mock_channel, mock_message
+        )
         assert result is False
 
 
@@ -208,6 +214,7 @@ class TestMCAPDatasourceAdvanced:
     def teardown_method(self):
         """Clean up test environment."""
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def _create_mock_mcap_file(self):
@@ -218,11 +225,11 @@ class TestMCAPDatasourceAdvanced:
     def test_estimate_inmemory_data_size(self):
         """Test in-memory data size estimation."""
         datasource = MCAPDatasource(self.test_file_path)
-        
+
         # Mock the size estimation
-        with patch.object(datasource, '_file_sizes') as mock_file_sizes:
+        with patch.object(datasource, "_file_sizes") as mock_file_sizes:
             mock_file_sizes.return_value = [1000]  # 1KB file
-            
+
             # Mock MCAP reader for estimation
             with patch("mcap.reader.make_reader") as mock_make_reader:
                 mock_reader = Mock()
@@ -230,7 +237,7 @@ class TestMCAPDatasourceAdvanced:
                 mock_summary.statistics.message_count = 100
                 mock_reader.get_summary.return_value = mock_summary
                 mock_make_reader.return_value = mock_reader
-                
+
                 estimated_size = datasource.estimate_inmemory_data_size()
                 assert estimated_size is not None
                 # In standalone mode, size estimation might return 0 for small files
@@ -239,11 +246,11 @@ class TestMCAPDatasourceAdvanced:
     def test_get_read_tasks(self):
         """Test read task creation."""
         datasource = MCAPDatasource(self.test_file_path)
-        
+
         # Mock file sizes
-        with patch.object(datasource, '_file_sizes') as mock_file_sizes:
+        with patch.object(datasource, "_file_sizes") as mock_file_sizes:
             mock_file_sizes.return_value = [1000]  # 1KB file
-            
+
             # Mock MCAP reader for task creation
             with patch("mcap.reader.make_reader") as mock_make_reader:
                 mock_reader = Mock()
@@ -251,7 +258,7 @@ class TestMCAPDatasourceAdvanced:
                 mock_summary.statistics.message_count = 100
                 mock_reader.get_summary.return_value = mock_summary
                 mock_make_reader.return_value = mock_reader
-                
+
                 tasks = datasource.get_read_tasks(parallelism=2)
                 assert len(tasks) > 0
 
@@ -268,4 +275,5 @@ class TestMCAPDatasourceAdvanced:
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))
