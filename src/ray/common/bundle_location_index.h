@@ -44,11 +44,11 @@ class BundleLocationIndex {
   ///
   /// \param bundle_id
   /// \param node_id
-  /// \param bundle_specialication
+  /// \param bundle_specification
   void AddOrUpdateBundleLocation(
       const BundleID &bundle_id,
       const NodeID &node_id,
-      std::shared_ptr<const BundleSpecification> bundle_specialication = nullptr);
+      std::shared_ptr<const BundleSpecification> bundle_specification = nullptr);
 
   /// Erase bundle locations associated with a given node id.
   ///
@@ -66,14 +66,14 @@ class BundleLocationIndex {
   ///
   /// \param placement_group_id Placement group id of this bundle locations.
   /// \return Bundle locations that are associated with a given placement group id.
-  const std::optional<std::shared_ptr<BundleLocations> const> GetBundleLocations(
+  const std::optional<std::shared_ptr<const BundleLocations>> GetBundleLocations(
       const PlacementGroupID &placement_group_id) const;
 
   /// Get BundleLocation of node id.
   ///
   /// \param node_id Node id of this bundle locations.
   /// \return Bundle locations that are associated with a given node id.
-  const std::optional<std::shared_ptr<BundleLocations> const> GetBundleLocationsOnNode(
+  const std::optional<std::shared_ptr<const BundleLocations>> GetBundleLocationsOnNode(
       const NodeID &node_id) const;
 
   std::optional<NodeID> GetBundleLocation(const BundleID &bundle_id) const;

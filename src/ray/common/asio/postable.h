@@ -50,7 +50,8 @@ using ToPostable = typename internal::ToPostableHelper<FuncType>::type;
 /// io_context.
 ///
 /// A Postable can only be Post()ed or Dispatch()ed once. After that, it is moved-from and
-/// a next invocation will fail.
+/// a next invocation will fail unless using an lvalue overload (which may be called many
+/// times)
 template <typename FuncType>
 class Postable {
   static_assert(std::is_void_v<typename function_traits<FuncType>::result_type>,

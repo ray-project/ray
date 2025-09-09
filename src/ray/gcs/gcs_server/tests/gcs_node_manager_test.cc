@@ -59,7 +59,7 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
   ASSERT_EQ(node, node_manager.GetAliveNode(node_id).value());
 
   rpc::NodeDeathInfo death_info;
-  node_manager.RemoveNode(node_id, death_info);
+  node_manager.RemoveNode(node_id, death_info, rpc::GcsNodeInfo::DEAD, 1000);
   ASSERT_TRUE(!node_manager.GetAliveNode(node_id).has_value());
 }
 
@@ -94,12 +94,8 @@ TEST_F(GcsNodeManagerTest, TestListener) {
   }
 
   // Block until all callbacks have processed
-  {
-    std::unique_lock<std::mutex> lock(callback_mutex);
-    ASSERT_TRUE(
-        callback_cv.wait_for(lock, std::chrono::seconds(1), [&callbacks_remaining] {
-          return callbacks_remaining == 0;
-        }));
+  while (callbacks_remaining > 0) {
+    io_context_->GetIoService().run_one();
   }
 
   ASSERT_EQ(node_count, added_nodes.size());
@@ -131,21 +127,21 @@ TEST_F(GcsNodeManagerTest, TestListener) {
       io_context_->GetIoService());
   rpc::NodeDeathInfo death_info;
   for (int i = 0; i < node_count; ++i) {
-    node_manager.RemoveNode(NodeID::FromBinary(added_nodes[i]->node_id()), death_info);
+    node_manager.RemoveNode(NodeID::FromBinary(added_nodes[i]->node_id()),
+                            death_info,
+                            rpc::GcsNodeInfo::DEAD,
+                            1000);
   }
 
   // Block until all callbacks have processed
-  {
-    std::unique_lock<std::mutex> lock(callback_mutex);
-    ASSERT_TRUE(
-        callback_cv.wait_for(lock, std::chrono::seconds(1), [&callbacks_remaining] {
-          return callbacks_remaining == 0;
-        }));
+  while (callbacks_remaining > 0) {
+    io_context_->GetIoService().run_one();
   }
+
   ASSERT_EQ(node_count, removed_nodes.size());
   ASSERT_TRUE(node_manager.GetAllAliveNodes().empty());
   for (int i = 0; i < node_count; ++i) {
-    ASSERT_EQ(added_nodes[i], removed_nodes[i]);
+    ASSERT_EQ(added_nodes[i]->node_id(), removed_nodes[i]->node_id());
   }
 }
 

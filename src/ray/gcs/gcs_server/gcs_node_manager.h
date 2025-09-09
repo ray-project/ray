@@ -192,11 +192,30 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
       const NodeID &node_id,
       const rpc::syncer::ResourceViewSyncMessage &resource_view_sync_message);
 
+  /// Add an alive node.
+  ///
+  /// \param node The info of the node to be added.
+  void AddNode(std::shared_ptr<const rpc::GcsNodeInfo> node);
+
+  /// Remove a node from alive nodes. The node's death information will also be set.
+  ///
+  /// \param node_id The ID of the node to be removed.
+  /// \param node_death_info The node death info to set.
+  /// \param node_state the state to set the node to after it's removed
+  /// \param update_time the update time to be applied to the node info
+  /// \return The removed node, with death info set. If the node is not found, return
+  /// nullptr.
+  std::shared_ptr<const rpc::GcsNodeInfo> RemoveNode(
+      const NodeID &node_id,
+      const rpc::NodeDeathInfo &node_death_info,
+      const rpc::GcsNodeInfo::GcsNodeState node_state,
+      const int64_t update_time);
+
  private:
   /// Add an alive node.
   ///
   /// \param node The info of the node to be added.
-  void AddNode(std::shared_ptr<const rpc::GcsNodeInfo> node)
+  void AddNodeToCache(std::shared_ptr<const rpc::GcsNodeInfo> node)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Add the dead node to the cache. If the cache is full, the earliest dead node is
@@ -205,6 +224,20 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   /// \param node The node which is dead.
   void AddDeadNodeToCache(std::shared_ptr<const rpc::GcsNodeInfo> node)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// Remove a node from alive nodes cache. The node's death information will also be set.
+  ///
+  /// \param node_id The ID of the node to be removed.
+  /// \param node_death_info The node death info to set.
+  /// \param node_state the state to set the node to after it's removed
+  /// \param update_time the update time to be applied to the node info
+  /// \return The removed node, with death info set. If the node is not found, return
+  /// nullptr.
+  std::shared_ptr<const rpc::GcsNodeInfo> RemoveNodeFromCache(
+      const NodeID &node_id,
+      const rpc::NodeDeathInfo &node_death_info,
+      const rpc::GcsNodeInfo::GcsNodeState node_state,
+      const int64_t update_time) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Retrieves the node from the alive_nodes cache without acquiring a lock
   ///
@@ -232,20 +265,6 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void WriteNodeExportEvent(const rpc::GcsNodeInfo &node_info) const;
-
-  /// Remove a node from alive nodes. The node's death information will also be set.
-  ///
-  /// \param node_id The ID of the node to be removed.
-  /// \param node_death_info The node death info to set.
-  /// \param node_state the state to set the node to after it's removed
-  /// \param update_time the update time to be applied to the node info
-  /// \return The removed node, with death info set. If the node is not found, return
-  /// nullptr.
-  std::shared_ptr<const rpc::GcsNodeInfo> RemoveNode(
-      const NodeID &node_id,
-      const rpc::NodeDeathInfo &node_death_info,
-      const rpc::GcsNodeInfo::GcsNodeState node_state,
-      const int64_t update_time) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Verify if export events should be written for EXPORT_NODE source types
   bool IsExportAPIEnabledNode() const {

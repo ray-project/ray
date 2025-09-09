@@ -95,7 +95,7 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
     RAY_CHECK_OK(status) << "Failed to register node '" << node_id << "'.";
     absl::MutexLock lock_(&mutex_);
     RAY_LOG(DEBUG).WithField(node_id) << "Finished registering node.";
-    AddNode(std::make_shared<rpc::GcsNodeInfo>(node_info_copy));
+    AddNodeToCache(std::make_shared<rpc::GcsNodeInfo>(node_info_copy));
     WriteNodeExportEvent(node_info_copy);
     gcs_publisher_->PublishNodeInfo(node_id, std::move(node_info_copy));
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
@@ -152,7 +152,7 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
   absl::MutexLock lock(&mutex_);
   NodeID node_id = NodeID::FromBinary(request.node_id());
   RAY_LOG(DEBUG).WithField(node_id) << "HandleUnregisterNode() for node";
-  auto node = RemoveNode(
+  auto node = RemoveNodeFromCache(
       node_id, request.node_death_info(), rpc::GcsNodeInfo::DEAD, current_sys_time_ms());
   if (!node) {
     RAY_LOG(INFO).WithField(node_id) << "Node is already removed";
@@ -392,6 +392,11 @@ rpc::NodeDeathInfo GcsNodeManager::InferDeathInfo(const NodeID &node_id) {
 }
 
 void GcsNodeManager::AddNode(std::shared_ptr<const rpc::GcsNodeInfo> node) {
+  absl::MutexLock lock(&mutex_);
+  AddNodeToCache(node);
+}
+
+void GcsNodeManager::AddNodeToCache(std::shared_ptr<const rpc::GcsNodeInfo> node) {
   auto node_id = NodeID::FromBinary(node->node_id());
   auto iter = alive_nodes_.find(node_id);
   if (iter == alive_nodes_.end()) {
@@ -429,6 +434,15 @@ void GcsNodeManager::SetNodeDraining(
 }
 
 std::shared_ptr<const rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
+    const NodeID &node_id,
+    const rpc::NodeDeathInfo &node_death_info,
+    const rpc::GcsNodeInfo::GcsNodeState node_state,
+    const int64_t update_time) {
+  absl::MutexLock lock(&mutex_);
+  return RemoveNodeFromCache(node_id, node_death_info, node_state, update_time);
+}
+
+std::shared_ptr<const rpc::GcsNodeInfo> GcsNodeManager::RemoveNodeFromCache(
     const NodeID &node_id,
     const rpc::NodeDeathInfo &node_death_info,
     const rpc::GcsNodeInfo::GcsNodeState node_state,
@@ -497,8 +511,8 @@ void GcsNodeManager::InternalOnNodeFailure(
   auto maybe_node = GetAliveNodeFromCache(node_id);
   if (maybe_node.has_value()) {
     rpc::NodeDeathInfo death_info = InferDeathInfo(node_id);
-    auto node =
-        RemoveNode(node_id, death_info, rpc::GcsNodeInfo::DEAD, current_sys_time_ms());
+    auto node = RemoveNodeFromCache(
+        node_id, death_info, rpc::GcsNodeInfo::DEAD, current_sys_time_ms());
 
     AddDeadNodeToCache(node);
     rpc::GcsNodeInfo node_info_delta;
@@ -529,7 +543,7 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
   absl::MutexLock lock(&mutex_);
   for (const auto &[node_id, node_info] : gcs_init_data.Nodes()) {
     if (node_info.state() == rpc::GcsNodeInfo::ALIVE) {
-      AddNode(std::make_shared<rpc::GcsNodeInfo>(node_info));
+      AddNodeToCache(std::make_shared<rpc::GcsNodeInfo>(node_info));
 
       // Ask the raylet to do initialization in case of GCS restart.
       // The protocol is correct because when a new node joined, Raylet will do:
