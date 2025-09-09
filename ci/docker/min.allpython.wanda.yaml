@@ -1,6 +1,0 @@
-name: "min-allpython"
-froms:
-  - cr.ray.io/rayproject/forge
-dockerfile: ci/docker/min.allpython.Dockerfile
-tags:
-  - cr.ray.io/rayproject/min-allpython
