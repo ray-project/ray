@@ -130,9 +130,6 @@ ray_cc_library(
     # in the subdirectory and exclude it here.
     hdrs = glob(
         ["src/fakes/**/*.h"],
-        exclude = [
-            "src/fake/ray/observability/ray_event_recorder.h",
-        ],
     ),
     deps = [
         "//src/ray/common:asio",

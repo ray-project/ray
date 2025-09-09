@@ -245,10 +245,6 @@ ray_cc_library(
     name = "gcs_job_manager",
     srcs = ["gcs_job_manager.cc"],
     hdrs = ["gcs_job_manager.h"],
-    implementation_deps = [
-        "//src/ray/observability:ray_driver_job_definition_event",
-        "//src/ray/observability:ray_driver_job_execution_event",
-    ],
     deps = [
         ":gcs_function_manager",
         ":gcs_init_data",
