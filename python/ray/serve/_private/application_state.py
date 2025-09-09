@@ -1111,6 +1111,10 @@ class ApplicationStateManager:
             for name in self._application_states
         }
 
+    def list_app_names(self):
+        """Return app names without instantiating status objects."""
+        return self._application_states.keys()
+
     def list_deployment_details(self, name: str) -> Dict[str, DeploymentDetails]:
         """Gets detailed info on all deployments in specified application."""
         if name not in self._application_states:

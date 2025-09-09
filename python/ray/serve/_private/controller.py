@@ -391,8 +391,7 @@ class ServeController:
 
     def _list_deployments_for_autoscaling(self):
         """List (app_name, dep_name, details, autoscaling_config) for deployments with autoscaling enabled."""
-        app_statuses = self.application_state_manager.list_app_statuses()
-        for app_name in app_statuses.keys():
+        for app_name in self.application_state_manager.list_app_names():
             deployment_details = self.application_state_manager.list_deployment_details(
                 app_name
             )
