@@ -12,6 +12,8 @@ proto_library(
         ":events_actor_task_definition_event_proto",
         ":events_driver_job_definition_event_proto",
         ":events_driver_job_execution_event_proto",
+        ":events_node_definition_event_proto",
+        ":events_node_lifecycle_event_proto",
         ":events_task_definition_event_proto",
         ":events_task_execution_event_proto",
         "//src/ray/protobuf:events_task_profile_events_proto",
@@ -95,6 +97,7 @@ cc_proto_library(
 )
 
 proto_library(
+<<<<<<< HEAD
     name = "events_actor_definition_event_proto",
     srcs = ["events_actor_definition_event.proto"],
 )
@@ -109,13 +112,33 @@ proto_library(
     srcs = ["events_actor_lifecycle_event.proto"],
     deps = [
         "//src/ray/protobuf:common_proto",
+=======
+    name = "events_node_definition_event_proto",
+    srcs = ["events_node_definition_event.proto"],
+)
+
+cc_proto_library(
+    name = "events_node_definition_event_cc_proto",
+    deps = [":events_node_definition_event_proto"],
+)
+
+proto_library(
+    name = "events_node_lifecycle_event_proto",
+    srcs = ["events_node_lifecycle_event.proto"],
+    deps = [
+>>>>>>> upstream/master
         "@com_google_protobuf//:timestamp_proto",
     ],
 )
 
 cc_proto_library(
+<<<<<<< HEAD
     name = "events_actor_lifecycle_event_cc_proto",
     deps = [":events_actor_lifecycle_event_proto"],
+=======
+    name = "events_node_lifecycle_event_cc_proto",
+    deps = [":events_node_lifecycle_event_proto"],
+>>>>>>> upstream/master
 )
 
 proto_library(

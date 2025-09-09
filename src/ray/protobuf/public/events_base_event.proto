@@ -25,6 +25,8 @@ import "src/ray/protobuf/public/events_driver_job_definition_event.proto";
 import "src/ray/protobuf/public/events_driver_job_execution_event.proto";
 import "src/ray/protobuf/public/events_actor_definition_event.proto";
 import "src/ray/protobuf/public/events_actor_lifecycle_event.proto";
+import "src/ray/protobuf/public/events_node_definition_event.proto";
+import "src/ray/protobuf/public/events_node_lifecycle_event.proto";
 
 // This is the base message for all ray events.
 message RayEvent {
@@ -54,6 +56,8 @@ message RayEvent {
     DRIVER_JOB_EXECUTION_EVENT = 6;
     ACTOR_DEFINITION_EVENT = 7;
     ACTOR_LIFECYCLE_EVENT = 8;
+    NODE_DEFINITION_EVENT = 7;
+    NODE_LIFECYCLE_EVENT = 8;
   }
 
   // The severities of events that can be generated.
@@ -97,4 +101,6 @@ message RayEvent {
   DriverJobExecutionEvent driver_job_execution_event = 13;
   ActorDefinitionEvent actor_definition_event = 14;
   ActorLifecycleEvent actor_lifecycle_event = 15;
+  NodeDefinitionEvent node_definition_event = 16;
+  NodeLifecycleEvent node_lifecycle_event = 17;
 }
