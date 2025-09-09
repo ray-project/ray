@@ -1259,7 +1259,7 @@ class ProxyActor(ProxyActorInterface):
                     enable_so_reuseport=SOCKET_REUSE_PORT_ENABLED,
                 ),
             )
-        # A task that runs the gRPC server until it exits (currently runs forever).l
+        # A task that runs the gRPC server until it exits (currently runs forever).
         # Populated with the result of self._start_grpc_server_task.
         self._running_grpc_server_task: Optional[asyncio.Task] = None
 
