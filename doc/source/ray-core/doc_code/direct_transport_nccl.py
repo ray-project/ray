@@ -5,7 +5,7 @@ import torch
 import ray
 from ray.experimental.collective import create_collective_group
 
-@ray.remote
+@ray.remote(num_gpus=1)
 class MyActor:
    @ray.method(tensor_transport="nccl")
    def random_tensor(self):
