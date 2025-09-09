@@ -454,9 +454,6 @@ class ServeController:
             else:
                 scaling_status = "STABLE"
 
-            self._append_autoscaling_decision(
-                dep_id, current_replicas, target_replicas, policy_name
-            )
             key = dep_id
             signature = self._serve_event_summarizer.compute_signature(
                 current_replicas=current_replicas,
@@ -468,6 +465,9 @@ class ServeController:
             )
             if self._last_autoscaling_snapshots.get(key) == signature:
                 continue
+            self._append_autoscaling_decision(
+                dep_id, current_replicas, target_replicas, policy_name
+            )
             recent_decisions = self._scaling_decisions.get(dep_id, [])
             decisions_summary = self._serve_event_summarizer.summarize_recent_decisions(
                 recent_decisions

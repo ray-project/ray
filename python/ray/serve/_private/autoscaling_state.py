@@ -137,6 +137,7 @@ class AutoscalingState:
         self._running_replicas: List[ReplicaID] = []
         self._target_capacity: Optional[float] = None
         self._target_capacity_direction: Optional[TargetCapacityDirection] = None
+        self._cached_deployment_snapshot: Optional[Dict[str, Any]] = None
 
     def register(self, info: DeploymentInfo, curr_target_num_replicas: int) -> int:
         """Registers an autoscaling deployment's info.
@@ -309,6 +310,8 @@ class AutoscalingState:
         `_skip_bound_check` is True, then the bounds are not applied.
         """
 
+        self._cached_deployment_snapshot = None
+        total_requests = self.get_total_num_requests()
         autoscaling_context: AutoscalingContext = AutoscalingContext(
             deployment_id=self._deployment_id,
             deployment_name=self._deployment_id.name,
@@ -316,7 +319,7 @@ class AutoscalingState:
             current_num_replicas=len(self._running_replicas),
             target_num_replicas=curr_target_num_replicas,
             running_replicas=self._running_replicas,
-            total_num_requests=self.get_total_num_requests(),
+            total_num_requests=total_requests,
             capacity_adjusted_min_replicas=self.get_num_replicas_lower_bound(),
             capacity_adjusted_max_replicas=self.get_num_replicas_upper_bound(),
             policy_state=self._policy_state.copy(),
@@ -335,7 +338,12 @@ class AutoscalingState:
         if _skip_bound_check:
             return decision_num_replicas
 
-        return self.apply_bounds(decision_num_replicas)
+        bounded_decision = self.apply_bounds(decision_num_replicas)
+        self._cache_deployment_snapshot(
+            target_replicas=bounded_decision,
+            total_requests=total_requests,
+        )
+        return bounded_decision
 
     def get_total_num_requests(self) -> float:
         """Get average total number of requests aggregated over the past
@@ -366,27 +374,22 @@ class AutoscalingState:
 
         return total_requests
 
-    def get_deployment_snapshot(self, curr_target_num_replicas: int) -> Dict[str, Any]:
-        """Return a compact per-deployment snapshot for observability/logging to avoid recomputing in controller.
+    def _cache_deployment_snapshot(
+        self,
+        *,
+        target_replicas: int,
+        total_requests: float,
+    ) -> None:
+        """Build and cache a compact per-deployment snapshot for observability/logging.
 
-        Includes:
-        - current_replicas: number of currently running replicas
-        - target_replicas: target number of replicas
-        - min_replicas / max_replicas: capacity-adjusted bounds
-        - total_requests: total number of requests across all replicas
-        - queued_requests: total number of queued requests across all handles
-        - time_since_last_collected_metrics_s: age (in seconds) of the freshest metric we've seen (best-effort)
+        This avoids repeating aggregation work in the controller loop by
+        reusing the values computed during policy evaluation.
         """
         current_replicas = len(self._running_replicas)
-        target_replicas = self.get_decision_num_replicas(
-            curr_target_num_replicas=curr_target_num_replicas
-        )
-
         min_replicas = self.get_num_replicas_lower_bound()
         max_replicas = self.get_num_replicas_upper_bound()
 
-        total_requests = self.get_total_num_requests()
-
+        # Aggregate queued requests (best-effort)
         if self._handle_requests:
             queued_requests = sum(
                 h.queued_requests for h in self._handle_requests.values()
@@ -403,7 +406,7 @@ class AutoscalingState:
         else:
             time_since_last_collected_metrics_s = None
 
-        return {
+        self._cached_deployment_snapshot = {
             "current_replicas": int(current_replicas),
             "target_replicas": int(target_replicas),
             "min_replicas": int(min_replicas) if min_replicas is not None else None,
@@ -413,6 +416,28 @@ class AutoscalingState:
             "time_since_last_collected_metrics_s": None
             if time_since_last_collected_metrics_s is None
             else float(time_since_last_collected_metrics_s),
+            "errors": [],
+        }
+
+    def get_deployment_snapshot(self, curr_target_num_replicas: int) -> Dict[str, Any]:
+        """
+        Return a compact per-deployment snapshot for observability/logging, using a cached value if available.
+        If cache is empty, triggers a policy evaluation to populate it.
+        """
+        if self._cached_deployment_snapshot is not None:
+            return self._cached_deployment_snapshot
+        _ = self.get_decision_num_replicas(
+            curr_target_num_replicas=curr_target_num_replicas
+        )
+        return self._cached_deployment_snapshot or {
+            "current_replicas": len(self._running_replicas),
+            "target_replicas": curr_target_num_replicas,
+            "min_replicas": self.get_num_replicas_lower_bound(),
+            "max_replicas": self.get_num_replicas_upper_bound(),
+            "total_requests": self.get_total_num_requests(),
+            "queued_requests": 0.0,
+            "time_since_last_collected_metrics_s": None,
+            "errors": [],
         }
 
 
