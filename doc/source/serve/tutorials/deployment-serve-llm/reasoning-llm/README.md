@@ -43,7 +43,7 @@ If your input is clear and complete, a standard model is usually faster and more
 
 Reasoning models often separate *reasoning* from the *final answer* using tags like `<think>...</think>`. Without a proper parser, this reasoning may end up in the `content` field instead of the dedicated `reasoning_content` field.
 
-To extract reasoning correctly, configure a `reasoning_parser` in your Ray Serve deployment. This tells vLLM how to isolate the model’s thought process from the rest of the output.
+To extract reasoning correctly, configure a `reasoning_parser` in your Ray Serve deployment. This tells vLLM how to isolate the model’s thought process from the rest of the output.  
 **Note:** For example, *QwQ* uses the `deepseek-r1` parser. Other models may require different parsers. See the [vLLM docs](https://docs.vllm.ai/en/stable/features/reasoning_outputs.html#supported-models) or your model's documentation to find a supported parser, or [build your own](https://docs.vllm.ai/en/stable/features/reasoning_outputs.html#how-to-support-a-new-reasoning-model) if needed.
 
 ```yaml
@@ -122,7 +122,7 @@ app = build_openai_app({"llm_configs": [llm_config]})
 
 ```
 
-**Note:** Before moving to a production setup, migrate to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html) to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. See [Serving LLMs: production guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.
+**Note:** Before moving to a production setup, migrate to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html) to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. See [Serving LLMs - Quickstart Examples: Production Guide](https://docs.ray.io/en/latest/serve/llm/quick-start.html#production-deployment) for an example.
 
 ---
 
@@ -170,10 +170,7 @@ Example curl:
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Authorization: Bearer FAKE_KEY" \
   -H "Content-Type: application/json" \
-  -d '{ \
-        "model": "my-qwq-32B", \
-        "messages": [{"role": "user", "content": "Pick three random words with 3 syllables each and count the number of R'\''s in each of them"}] \
-      }'
+  -d '{ "model": "my-qwq-32B", "messages": [{"role": "user", "content": "Pick three random words with 3 syllables each and count the number of R'\''s in each of them"}] }'
 ```
 
 Example python:
@@ -233,8 +230,8 @@ Reasoning models may take longer to begin generating the main content. You can s
 from urllib.parse import urljoin
 from openai import OpenAI
 
-api_key = <YOUR-TOKEN-HERE>
-base_url = <YOUR-ENDPOINT-HERE>
+api_key = "FAKE_KEY"
+base_url = "http://localhost:8000"
 
 client = OpenAI(base_url=urljoin(base_url, "v1"), api_key=api_key)
 

@@ -70,7 +70,7 @@ See [Send request with thinking enabled](#send-request-with-thinking-enabled) or
 
 In thinking mode, hybrid models often separate _reasoning_ from the _final answer_ using tags like `<think>...</think>`. Without a proper parser, this reasoning may end up in the `content` field instead of the dedicated `reasoning_content` field.  
 
-To ensure that Ray Serve LLM correctly parses the reasoning output, configure a `reasoning_parser` in your Ray Serve LLM deployment. This tells vLLM how to isolate the model’s thought process from the rest of the output.
+To ensure that Ray Serve LLM correctly parses the reasoning output, configure a `reasoning_parser` in your Ray Serve LLM deployment. This tells vLLM how to isolate the model’s thought process from the rest of the output.  
 **Note:** For example, *Qwen-3* uses the `qwen3` parser. See the [vLLM docs](https://docs.vllm.ai/en/stable/features/reasoning_outputs.html#supported-models) or your model's documentation to find a supported parser, or [build your own](https://docs.vllm.ai/en/stable/features/reasoning_outputs.html#how-to-support-a-new-reasoning-model) if needed.
 
 ```yaml
@@ -147,7 +147,7 @@ app = build_openai_app({"llm_configs": [llm_config]})
 
 ```
 
-**Note:** Before moving to a production setup, migrate your settings to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html) to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. See [Serving LLMs: Production Guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.
+**Note:** Before moving to a production setup, migrate your settings to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html) to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. See [Serving LLMs - Quickstart Examples: Production Guide](https://docs.ray.io/en/latest/serve/llm/quick-start.html#production-deployment) for an example.
 
 ---
 
@@ -248,10 +248,7 @@ Example curl with `/think`
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer FAKE_KEY" \
-  -d '{ \
-        "model": "my-qwen-3-32b", \
-        "messages": [{"role": "user", "content": "What is greater between 7.8 and 7.11 ? /think"}] \
-      }'
+  -d '{ "model": "my-qwen-3-32b", "messages": [{"role": "user", "content": "What is greater between 7.8 and 7.11 ? /think"}] }'
 ```
 
  Example Python with `enable_thinking: True`:
@@ -310,25 +307,6 @@ In thinking mode, hybrid reasoning models may take longer to begin generating th
 
 ```python
 #client_streaming.py
-from urllib.parse import urljoin
-from openai import OpenAI
-
-api_key = "FAKE_KEY"
-base_url = "http://localhost:8000"
-
-client = OpenAI(base_url=urljoin(base_url, "v1"), api_key=api_key)
-
-# Example: Complex query with thinking process
-response = client.chat.completions.create(
-    model="my-qwen-3-32b",
-    messages=[
-        {"role": "user", "content": "What's the capital of France ?"}
-    ],
-    extra_body={"chat_template_kwargs": {"enable_thinking": True}}
-)
-
-print(f"Reasoning: \n{response.choices[0].message.reasoning_content}\n\n")
-print(f"Answer: \n {response.choices[0].message.content}")
 from urllib.parse import urljoin
 from openai import OpenAI
 
