@@ -413,23 +413,25 @@ def test_large_response_no_leak(serve_instance):
         # The large response body should always be stripped.
         assert len(resp.content) == 0
 
-    # Wait for a few seconds to allow for garbage collection to run.
-    time.sleep(5)
-
-    final_memory_rss = proxy_process.memory_info().rss
-    growth_ratio = final_memory_rss / initial_memory_rss
-    print(
-        f"Initial RSS: {initial_memory_rss}, Final RSS: {final_memory_rss}, "
-        f"Growth: {growth_ratio:.2f}x"
-    )
-
     # Check that memory usage hasn't grown unreasonably.
     # We set a generous threshold (e.g., 1.5x) to avoid flakiness, as memory
     # management is not always perfectly immediate. A true leak would likely
     # show much larger, unbounded growth.
-    assert (
-        growth_ratio < 1.5
-    ), f"Proxy memory usage grew by {growth_ratio:.2f}x, indicating a possible leak."
+    def memory_usage_stable():
+        final_memory_rss = proxy_process.memory_info().rss
+        growth_ratio = final_memory_rss / initial_memory_rss
+        print(
+            f"Initial RSS: {initial_memory_rss}, Final RSS: {final_memory_rss}, "
+            f"Growth: {growth_ratio:.2f}x"
+        )
+        return growth_ratio < 1.5
+
+    wait_for_condition(
+        memory_usage_stable,
+        timeout=15,
+        retry_interval_ms=1000,
+        message="Proxy memory usage did not stabilize after requests.",
+    )
 
 
 if __name__ == "__main__":

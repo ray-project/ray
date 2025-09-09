@@ -975,8 +975,8 @@ class HTTPProxy(GenericProxy):
                     yield asgi_message
                     response_started = True
 
-                    if len(asgi_message.get("body", "")) > MAX_RESPONSE_SIZE_IN_BYTES:
-                        asgi_message["body"] = b""
+                    # if len(asgi_message.get("body", "")) > MAX_RESPONSE_SIZE_IN_BYTES:
+                    #     asgi_message["body"] = b""
 
         except BaseException as e:
             status = get_http_response_status(e, self.request_timeout_s, request_id)
