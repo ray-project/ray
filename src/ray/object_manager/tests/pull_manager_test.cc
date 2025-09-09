@@ -183,6 +183,59 @@ TEST_P(PullManagerTest, TestStaleSubscription) {
   AssertNoLeaks();
 }
 
+TEST_F(PullManagerWithAdmissionControlTest,
+       TestDeactivateTaskArgsAndActivateGetDoesNotCancelTheSameObject) {
+  // Use 6 so with capacity=10: A active => remaining quota=4, margin_required for B=6.
+  // This forces deactivation of the TASK_ARGS bundle and immediate promotion of the GET.
+  int object_size = 6;
+
+  // Submit a TASK_ARGS request for object A and activate it.
+  auto refs_a = CreateObjectRefs(1);
+  auto oid_a = ObjectRefsToIds(refs_a)[0];
+  std::vector<rpc::ObjectReference> objects_to_locate;
+  auto task_req_id = pull_manager_.Pull(
+      refs_a, BundlePriority::TASK_ARGS, {"", false}, &objects_to_locate);
+  ASSERT_EQ(ObjectRefsToIds(objects_to_locate), ObjectRefsToIds(refs_a));
+  // Mark object A as pullable.
+  std::unordered_set<NodeID> client_ids;
+  client_ids.insert(NodeID::FromRandom());
+  pull_manager_.OnLocationChange(
+      oid_a, client_ids, "", NodeID::Nil(), false, object_size);
+  AssertNumActiveRequestsEquals(1);
+  AssertNumActiveBundlesEquals(1);
+  ASSERT_TRUE(pull_manager_.IsObjectActive(oid_a));
+
+  // Submit a GET request for objects {A, B}. B becomes pullable after this call when
+  // its location/size is reported, which triggers admission logic that first
+  // deactivates the lower-priority TASK_ARGS bundle (adding A to the cancel set), then
+  // immediately reselects A for the GET bundle and removes it from the cancel set.
+  auto refs_b = CreateObjectRefs(1);
+  auto oid_b = ObjectRefsToIds(refs_b)[0];
+  objects_to_locate.clear();
+  auto get_req_id =
+      pull_manager_.Pull(std::vector<rpc::ObjectReference>{refs_a[0], refs_b[0]},
+                         BundlePriority::GET_REQUEST,
+                         {"", false},
+                         &objects_to_locate);
+  ASSERT_EQ(ObjectRefsToIds(objects_to_locate), ObjectRefsToIds(refs_b));
+
+  // Mark object B as pullable; this should trigger the promotion flow described above.
+  pull_manager_.OnLocationChange(
+      oid_b, client_ids, "", NodeID::Nil(), false, object_size);
+
+  // Both A and B should be active under the GET bundle, and A should not have been
+  // cancelled despite being deactivated earlier in the same cycle.
+  AssertNumActiveRequestsEquals(2);
+  AssertNumActiveBundlesEquals(1);
+  ASSERT_TRUE(pull_manager_.IsObjectActive(oid_a));
+  ASSERT_TRUE(pull_manager_.IsObjectActive(oid_b));
+  ASSERT_EQ(num_abort_calls_[oid_a], 0);
+
+  pull_manager_.CancelPull(get_req_id);
+  pull_manager_.CancelPull(task_req_id);
+  AssertNoLeaks();
+}
+
 TEST_P(PullManagerWithAdmissionControlTest, TestPullObjectPendingCreation) {
   BundlePriority prio = GetParam();
   if (GetParam() == BundlePriority::GET_REQUEST) {
