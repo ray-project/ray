@@ -21,7 +21,7 @@ namespace ray {
 namespace gcs {
 
 InternalPubSubHandler::InternalPubSubHandler(instrumented_io_context &io_service,
-                                             gcs::GcsPublisher &gcs_publisher)
+                                             pubsub::GcsPublisher &gcs_publisher)
     : io_service_(io_service), gcs_publisher_(gcs_publisher) {}
 
 void InternalPubSubHandler::HandleGcsPublish(rpc::GcsPublishRequest request,

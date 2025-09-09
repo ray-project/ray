@@ -1,14 +1,27 @@
 import asyncio
 import bisect
 import logging
+import statistics
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Callable, DefaultDict, Dict, Hashable, List, Optional
+from itertools import chain
+from typing import (
+    Callable,
+    DefaultDict,
+    Dict,
+    Hashable,
+    Iterable,
+    List,
+    Optional,
+    Tuple,
+)
 
 from ray.serve._private.constants import (
     METRICS_PUSHER_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
+
+QUEUED_REQUESTS_KEY = "queued"
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -152,7 +165,7 @@ class InMemoryMetricsStore:
 
     def _get_datapoints(
         self, key: Hashable, window_start_timestamp_s: float
-    ) -> List[float]:
+    ) -> List[TimeStampedValue]:
         """Get all data points given key after window_start_timestamp_s"""
 
         datapoints = self.data[key]
@@ -165,52 +178,205 @@ class InMemoryMetricsStore:
         )
         return datapoints[idx:]
 
-    def window_average(
-        self, key: Hashable, window_start_timestamp_s: float, do_compact: bool = True
+    def _aggregate_reduce(
+        self,
+        keys: Iterable[Hashable],
+        aggregate_fn: Callable[[Iterable[float]], float],
+    ) -> Tuple[Optional[float], int]:
+        """Reduce the entire set of timeseries values across the specified keys.
+
+        Args:
+            keys: Iterable of keys to aggregate across.
+            aggregate_fn: Function to apply across all float values, e.g., sum, max.
+
+        Returns:
+            A tuple of (float, int) where the first element is the aggregated value
+            and the second element is the number of valid keys used.
+            Returns (None, 0) if no valid keys have data.
+
+        Example:
+        Suppose the store contains:
+        >>> store = InMemoryMetricsStore()
+        >>> store.data.update({
+        ...     "a": [TimeStampedValue(0, 1.0), TimeStampedValue(1, 2.0)],
+        ...     "b": [],
+        ...     "c": [TimeStampedValue(0, 10.0)],
+        ... })
+
+        Using sum across keys:
+
+        >>> store._aggregate_reduce(keys=["a", "b", "c"], aggregate_fn=sum)
+        (13.0, 2)
+
+        Here:
+        - The aggregated value is 1.0 + 2.0 + 10.0 = 13.0
+        - Only keys "a" and "c" contribute values, so report_count = 2
+        """
+        valid_key_count = 0
+
+        def _values_generator():
+            """Generator that yields values from valid keys without storing them all in memory."""
+            nonlocal valid_key_count
+            for key in keys:
+                series = self.data.get(key, [])
+                if not series:
+                    continue
+
+                valid_key_count += 1
+                for timestamp_value in series:
+                    yield timestamp_value.value
+
+        # Create the generator and check if it has any values
+        values_gen = _values_generator()
+        try:
+            first_value = next(values_gen)
+        except StopIteration:
+            # No valid data found
+            return None, 0
+
+        # Apply aggregation to the generator (memory efficient)
+        aggregated_result = aggregate_fn(chain([first_value], values_gen))
+        return aggregated_result, valid_key_count
+
+    def get_latest(
+        self,
+        key: Hashable,
     ) -> Optional[float]:
-        """Perform a window average operation for metric `key`
+        """Get the latest value for a given key."""
+        if not self.data.get(key, None):
+            return None
+        return self.data[key][-1].value
+
+    def aggregate_min(
+        self,
+        keys: Iterable[Hashable],
+    ) -> Tuple[Optional[float], int]:
+        """Find the min value across all timeseries values at the specified keys.
 
         Args:
-            key: the metric name.
-            window_start_timestamp_s: the unix epoch timestamp for the
-              start of the window. The computed average will use all datapoints
-              from this timestamp until now.
-            do_compact: whether or not to delete the datapoints that's
-              before `window_start_timestamp_s` to save memory. Default is
-              true.
+            keys: Iterable of keys to aggregate across.
         Returns:
-            The average of all the datapoints for the key on and after time
-            window_start_timestamp_s, or None if there are no such points.
+            A tuple of (float, int) where the first element is the min across
+            all values found at `keys`, and the second is the number of valid
+            keys used to compute the min.
+            Returns (None, 0) if no valid keys have data.
         """
-        points_after_idx = self._get_datapoints(key, window_start_timestamp_s)
+        return self._aggregate_reduce(keys, min)
 
-        if do_compact:
-            self.data[key] = points_after_idx
-
-        if len(points_after_idx) == 0:
-            return
-        return sum(point.value for point in points_after_idx) / len(points_after_idx)
-
-    def max(
-        self, key: Hashable, window_start_timestamp_s: float, do_compact: bool = True
-    ):
-        """Perform a max operation for metric `key`.
+    def aggregate_max(
+        self,
+        keys: Iterable[Hashable],
+    ) -> Tuple[Optional[float], int]:
+        """Find the max value across all timeseries values at the specified keys.
 
         Args:
-            key: the metric name.
-            window_start_timestamp_s: the unix epoch timestamp for the
-              start of the window. The computed average will use all datapoints
-              from this timestamp until now.
-            do_compact: whether or not to delete the datapoints that's
-              before `window_start_timestamp_s` to save memory. Default is
-              true.
+            keys: Iterable of keys to aggregate across.
         Returns:
-            Max value of the data points for the key on and after time
-            window_start_timestamp_s, or None if there are no such points.
+            A tuple of (float, int) where the first element is the max across
+            all values found at `keys`, and the second is the number of valid
+            keys used to compute the max.
+            Returns (None, 0) if no valid keys have data.
         """
-        points_after_idx = self._get_datapoints(key, window_start_timestamp_s)
+        return self._aggregate_reduce(keys, max)
 
-        if do_compact:
-            self.data[key] = points_after_idx
+    def aggregate_sum(
+        self,
+        keys: Iterable[Hashable],
+    ) -> Tuple[Optional[float], int]:
+        """Sum the entire set of timeseries values across the specified keys.
 
-        return max((point.value for point in points_after_idx), default=None)
+        Args:
+            keys: Iterable of keys to aggregate across.
+        Returns:
+            A tuple of (float, int) where the first element is the sum across
+            all values found at `keys`, and the second is the number of valid
+            keys used to compute the sum.
+            Returns (None, 0) if no valid keys have data.
+        """
+        return self._aggregate_reduce(keys, sum)
+
+    def aggregate_avg(
+        self,
+        keys: Iterable[Hashable],
+    ) -> Tuple[Optional[float], int]:
+        """Average the entire set of timeseries values across the specified keys.
+
+        Args:
+            keys: Iterable of keys to aggregate across.
+        Returns:
+            A tuple of (float, int) where the first element is the mean across
+            all values found at `keys`, and the second is the number of valid
+            keys used to compute the mean.
+            Returns (None, 0) if no valid keys have data.
+        """
+        return self._aggregate_reduce(keys, statistics.mean)
+
+
+def _bucket_latest_by_window(
+    series: List[TimeStampedValue],
+    start: float,
+    window_s: float,
+) -> Dict[int, float]:
+    """
+    Map each window index -> latest value seen in that window.
+    Assumes series is sorted by timestamp ascending.
+    """
+    buckets: Dict[int, float] = {}
+    for p in series:
+        w = int((p.timestamp - start) // window_s)
+        buckets[w] = p.value  # overwrite keeps the latest within the window
+    return buckets
+
+
+def _merge_two_timeseries(
+    t1: List[TimeStampedValue], t2: List[TimeStampedValue], window_s: float
+) -> List[TimeStampedValue]:
+    """
+    Merge two ascending time series by summing values within a specified time window.
+    If multiple values fall within the same window in a series, the latest value is used.
+    The output contains one point per window that had at least one value, timestamped
+    at the window center.
+    """
+    if window_s <= 0:
+        raise ValueError(f"window_s must be positive, got {window_s}")
+
+    if not t1 and not t2:
+        return []
+
+    # Align windows so each output timestamp sits at the start of its window.
+    # start is snapped to window_s boundary for binning stability
+    earliest = min(x[0].timestamp for x in (t1, t2) if x)
+    start = earliest // window_s * window_s
+
+    b1 = _bucket_latest_by_window(t1, start, window_s)
+    b2 = _bucket_latest_by_window(t2, start, window_s)
+
+    windows = sorted(set(b1.keys()) | set(b2.keys()))
+
+    merged: List[TimeStampedValue] = []
+    for w in windows:
+        v = b1.get(w, 0.0) + b2.get(w, 0.0)
+        ts_start = start + w * window_s
+        merged.append(TimeStampedValue(timestamp=ts_start, value=v))
+    return merged
+
+
+def merge_timeseries_dicts(
+    *timeseries_dicts: DefaultDict[Hashable, List[TimeStampedValue]],
+    window_s: float,
+) -> DefaultDict[Hashable, List[TimeStampedValue]]:
+    """
+    Merge multiple time-series dictionaries, typically contained within
+    InMemoryMetricsStore().data. For the same key across stores, time series
+    are merged with a windowed sum, where each series keeps only its latest
+    value per window before summing.
+    """
+    merged: DefaultDict[Hashable, List[TimeStampedValue]] = defaultdict(list)
+    for timeseries_dict in timeseries_dicts:
+        for key, ts in timeseries_dict.items():
+            if key in merged:
+                merged[key] = _merge_two_timeseries(merged[key], ts, window_s)
+            else:
+                # Window the data, even if the key is unique.
+                merged[key] = _merge_two_timeseries(ts, [], window_s)
+    return merged
