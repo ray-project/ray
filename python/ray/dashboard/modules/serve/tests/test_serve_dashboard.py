@@ -923,7 +923,7 @@ class TestScaleDeploymentEndpoint:
 
             wait_for_condition(
                 self._verify_deployment_details,
-                target_num_replicas=1,
+                target_num_replicas=3,
                 deployment_status=DeploymentStatus.HEALTHY,
                 verify_actual_replicas=True,
                 timeout=30,

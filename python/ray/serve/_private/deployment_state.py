@@ -65,6 +65,7 @@ from ray.serve._private.utils import (
     msgpack_serialize,
 )
 from ray.serve._private.version import DeploymentVersion
+from ray.serve.exceptions import DeploymentIsBeingDeletedError
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.schema import (
     DeploymentDetails,
@@ -3113,18 +3114,38 @@ class DeploymentStateManager:
 
         return False
 
+    def _validate_deployment_state_for_num_replica_update(
+        self, deployment_id: DeploymentID
+    ):
+        """Validate the state of a deployment for num replica update."""
+        statuses = self.get_deployment_statuses([deployment_id])
+
+        if statuses is None or len(statuses) == 0:
+            raise ValueError(f"Deployment {deployment_id} not found")
+        elif statuses[0].status_trigger == DeploymentStatusTrigger.DELETING:
+            raise DeploymentIsBeingDeletedError(
+                f"Deployment {deployment_id} is being deleted. Scaling operations are not allowed."
+            )
+
     def set_target_num_replicas(
         self, deployment_id: DeploymentID, target_num_replicas: int
     ):
         """Set target number of replicas for a deployment."""
-        if deployment_id not in self._deployment_states:
-            raise ValueError(f"Deployment {deployment_id} not found")
+        self._validate_deployment_state_for_num_replica_update(deployment_id)
 
         deployment_state = self._deployment_states[deployment_id]
         current_target_info = deployment_state.target_info
 
-        # Create a new target state with the updated replica count
-        deployment_state._set_target_state(current_target_info, target_num_replicas)
+        if target_num_replicas != deployment_state.target_num_replicas:
+            logger.info(
+                f"Target number of replicas changed from {deployment_state.target_num_replicas} to {target_num_replicas} for deployment {deployment_id}"
+            )
+            deployment_state._set_target_state(current_target_info, target_num_replicas)
+            self.save_checkpoint()
+        else:
+            logger.info(
+                f"Skipping updating target number of replicas as it did not change for deployment {deployment_id}"
+            )
 
     def update(self) -> bool:
         """Updates the state of all deployments to match their goal state.
