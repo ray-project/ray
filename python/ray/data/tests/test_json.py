@@ -8,7 +8,6 @@ import pyarrow as pa
 import pyarrow.fs as fs
 import pyarrow.json as pajson
 import pytest
-from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.data import Schema
@@ -23,7 +22,6 @@ from ray.data.datasource import (
 from ray.data.datasource.file_based_datasource import (
     FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
 )
-from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -31,42 +29,26 @@ from ray.tests.conftest import *  # noqa
 pytestmark = pytest.mark.timeout(360)
 
 
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-    ],
-)
 def test_json_read(
-    ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
-    target_max_block_size_infinite_or_default,
+    ray_start_regular_shared, target_max_block_size_infinite_or_default, tmp_path
 ):
-    if endpoint_url is None:
-        storage_options = {}
-    else:
-        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
     # Single file.
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    path1 = os.path.join(data_path, "test1.json")
-    df1.to_json(path1, orient="records", lines=True, storage_options=storage_options)
+    path1 = os.path.join(tmp_path, "test1.json")
+    df1.to_json(path1, orient="records", lines=True)
     ds = ray.data.read_json(path1, filesystem=fs)
     dsdf = ds.to_pandas()
     assert df1.equals(dsdf)
     # Test metadata ops.
     assert ds.count() == 3
-    assert ds.input_files() == [_unwrap_protocol(path1)]
+    assert ds.input_files() == [path1]
     assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
 
     # Two files, override_num_blocks=2.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    path2 = os.path.join(data_path, "test2.json")
-    df2.to_json(path2, orient="records", lines=True, storage_options=storage_options)
-    ds = ray.data.read_json([path1, path2], override_num_blocks=2, filesystem=fs)
+    path2 = os.path.join(tmp_path, "test2.json")
+    df2.to_json(path2, orient="records", lines=True)
+    ds = ray.data.read_json([path1, path2], override_num_blocks=2)
     dsdf = ds.to_pandas()
     df = pd.concat([df1, df2], ignore_index=True)
     assert df.equals(dsdf)
@@ -76,102 +58,74 @@ def test_json_read(
 
     # Three files, override_num_blocks=2.
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
-    path3 = os.path.join(data_path, "test3.json")
-    df3.to_json(path3, orient="records", lines=True, storage_options=storage_options)
+    path3 = os.path.join(tmp_path, "test3.json")
+    df3.to_json(path3, orient="records", lines=True)
     ds = ray.data.read_json([path1, path2, path3], override_num_blocks=2, filesystem=fs)
     df = pd.concat([df1, df2, df3], ignore_index=True)
     dsdf = ds.to_pandas()
     assert df.equals(dsdf)
 
     # Directory, two files.
-    path = os.path.join(data_path, "test_json_dir")
-    if fs is None:
-        os.mkdir(path)
-    else:
-        fs.create_dir(_unwrap_protocol(path))
+    path = os.path.join(tmp_path, "test_json_dir")
+    os.mkdir(path)
+
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     path1 = os.path.join(path, "data0.json")
-    df1.to_json(path1, orient="records", lines=True, storage_options=storage_options)
+    df1.to_json(path1, orient="records", lines=True)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     path2 = os.path.join(path, "data1.json")
-    df2.to_json(path2, orient="records", lines=True, storage_options=storage_options)
+    df2.to_json(path2, orient="records", lines=True)
     ds = ray.data.read_json(path, filesystem=fs)
     df = pd.concat([df1, df2], ignore_index=True)
     dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
-    if fs is None:
-        shutil.rmtree(path)
-    else:
-        fs.delete_dir(_unwrap_protocol(path))
+    shutil.rmtree(path)
 
     # Two directories, three files.
-    path1 = os.path.join(data_path, "test_json_dir1")
-    path2 = os.path.join(data_path, "test_json_dir2")
-    if fs is None:
-        os.mkdir(path1)
-        os.mkdir(path2)
-    else:
-        fs.create_dir(_unwrap_protocol(path1))
-        fs.create_dir(_unwrap_protocol(path2))
+    path1 = os.path.join(tmp_path, "test_json_dir1")
+    path2 = os.path.join(tmp_path, "test_json_dir2")
+    os.mkdir(path1)
+    os.mkdir(path2)
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     file_path1 = os.path.join(path1, "data0.json")
-    df1.to_json(
-        file_path1, orient="records", lines=True, storage_options=storage_options
-    )
+    df1.to_json(file_path1, orient="records", lines=True)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     file_path2 = os.path.join(path2, "data1.json")
-    df2.to_json(
-        file_path2, orient="records", lines=True, storage_options=storage_options
-    )
+    df2.to_json(file_path2, orient="records", lines=True)
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
     file_path3 = os.path.join(path2, "data2.json")
-    df3.to_json(
-        file_path3, orient="records", lines=True, storage_options=storage_options
-    )
-    ds = ray.data.read_json([path1, path2], filesystem=fs)
+    df3.to_json(file_path3, orient="records", lines=True)
+    ds = ray.data.read_json([path1, path2])
     df = pd.concat([df1, df2, df3], ignore_index=True)
     dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
-    if fs is None:
-        shutil.rmtree(path1)
-        shutil.rmtree(path2)
-    else:
-        fs.delete_dir(_unwrap_protocol(path1))
-        fs.delete_dir(_unwrap_protocol(path2))
+    shutil.rmtree(path1)
+    shutil.rmtree(path2)
 
     # Directory and file, two files.
-    dir_path = os.path.join(data_path, "test_json_dir")
-    if fs is None:
-        os.mkdir(dir_path)
-    else:
-        fs.create_dir(_unwrap_protocol(dir_path))
+    dir_path = os.path.join(tmp_path, "test_json_dir")
+    os.mkdir(dir_path)
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     path1 = os.path.join(dir_path, "data0.json")
-    df1.to_json(path1, orient="records", lines=True, storage_options=storage_options)
+    df1.to_json(path1, orient="records", lines=True)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    path2 = os.path.join(data_path, "data1.json")
-    df2.to_json(path2, orient="records", lines=True, storage_options=storage_options)
+    path2 = os.path.join(tmp_path, "data1.json")
+    df2.to_json(path2, orient="records", lines=True)
     ds = ray.data.read_json([dir_path, path2], filesystem=fs)
     df = pd.concat([df1, df2], ignore_index=True)
     dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
-    if fs is None:
-        shutil.rmtree(dir_path)
-    else:
-        fs.delete_dir(_unwrap_protocol(dir_path))
+    shutil.rmtree(dir_path)
 
     # Directory, two files and non-json file (test default extension-based filtering).
-    path = os.path.join(data_path, "test_json_dir")
-    if fs is None:
-        os.mkdir(path)
-    else:
-        fs.create_dir(_unwrap_protocol(path))
+    path = os.path.join(tmp_path, "test_json_dir")
+    os.mkdir(path)
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     path1 = os.path.join(path, "data0.json")
-    df1.to_json(path1, orient="records", lines=True, storage_options=storage_options)
+    df1.to_json(path1, orient="records", lines=True)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     path2 = os.path.join(path, "data1.json")
-    df2.to_json(path2, orient="records", lines=True, storage_options=storage_options)
+    df2.to_json(path2, orient="records", lines=True)
 
     # Add a file with a non-matching file extension. This file should be ignored.
     df_txt = pd.DataFrame({"foobar": [1, 2, 3]})
@@ -179,17 +133,13 @@ def test_json_read(
         os.path.join(path, "foo.txt"),
         orient="records",
         lines=True,
-        storage_options=storage_options,
     )
 
-    ds = ray.data.read_json(path, filesystem=fs)
+    ds = ray.data.read_json(path)
     df = pd.concat([df1, df2], ignore_index=True)
     dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
-    if fs is None:
-        shutil.rmtree(path)
-    else:
-        fs.delete_dir(_unwrap_protocol(path))
+    shutil.rmtree(path)
 
 
 def test_zipped_json_read(
@@ -254,118 +204,71 @@ def test_read_json_fallback_from_pyarrow_failure(
     assert ds.take_all() == data
 
 
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-    ],
-)
 def test_json_read_meta_provider(
     ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
+    tmp_path,
     target_max_block_size_infinite_or_default,
 ):
-    if endpoint_url is None:
-        storage_options = {}
-    else:
-        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
-
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    path1 = os.path.join(data_path, "test1.json")
-    df1.to_json(path1, orient="records", lines=True, storage_options=storage_options)
+    path1 = os.path.join(tmp_path, "test1.json")
+    df1.to_json(path1, orient="records", lines=True)
     ds = ray.data.read_json(
         path1,
-        filesystem=fs,
         meta_provider=FastFileMetadataProvider(),
     )
 
     # Expect to lazily compute all metadata correctly.
     assert ds.count() == 3
-    assert ds.input_files() == [_unwrap_protocol(path1)]
+    assert ds.input_files() == [path1]
     assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
 
     with pytest.raises(NotImplementedError):
         ray.data.read_json(
             path1,
-            filesystem=fs,
             meta_provider=BaseFileMetadataProvider(),
         )
 
 
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-    ],
-)
 def test_json_read_with_read_options(
     ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
+    tmp_path,
     target_max_block_size_infinite_or_default,
 ):
     # Arrow's JSON ReadOptions isn't serializable in pyarrow < 8.0.0, so this test
     # covers our custom ReadOptions serializer.
     # TODO(Clark): Remove this test and our custom serializer once we require
     # pyarrow >= 8.0.0.
-    if endpoint_url is None:
-        storage_options = {}
-    else:
-        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
 
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    path1 = os.path.join(data_path, "test1.json")
-    df1.to_json(path1, orient="records", lines=True, storage_options=storage_options)
+    path1 = os.path.join(tmp_path, "test1.json")
+    df1.to_json(path1, orient="records", lines=True)
     ds = ray.data.read_json(
         path1,
-        filesystem=fs,
         read_options=pajson.ReadOptions(use_threads=False, block_size=2**30),
     )
     dsdf = ds.to_pandas()
     assert df1.equals(dsdf)
     # Test metadata ops.
     assert ds.count() == 3
-    assert ds.input_files() == [_unwrap_protocol(path1)]
+    assert ds.input_files() == [path1]
     assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
 
 
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-    ],
-)
 def test_json_read_with_parse_options(
     ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
+    tmp_path,
     target_max_block_size_infinite_or_default,
 ):
     # Arrow's JSON ParseOptions isn't serializable in pyarrow < 8.0.0, so this test
     # covers our custom ParseOptions serializer, similar to ReadOptions in above test.
     # TODO(chengsu): Remove this test and our custom serializer once we require
     # pyarrow >= 8.0.0.
-    if endpoint_url is None:
-        storage_options = {}
-    else:
-        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
 
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    path1 = os.path.join(data_path, "test1.json")
-    df1.to_json(path1, orient="records", lines=True, storage_options=storage_options)
+    path1 = os.path.join(tmp_path, "test1.json")
+    df1.to_json(path1, orient="records", lines=True)
     ds = ray.data.read_json(
         path1,
-        filesystem=fs,
         parse_options=pajson.ParseOptions(
             explicit_schema=pa.schema([("two", pa.string())]),
             unexpected_field_behavior="ignore",
@@ -376,7 +279,7 @@ def test_json_read_with_parse_options(
     assert (df1["two"]).equals(dsdf["two"])
     # Test metadata ops.
     assert ds.count() == 3
-    assert ds.input_files() == [_unwrap_protocol(path1)]
+    assert ds.input_files() == [path1]
     assert ds.schema() == Schema(pa.schema([("two", pa.string())]))
 
 
@@ -469,62 +372,31 @@ def test_json_roundtrip(
         assert BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-    ],
-)
 def test_json_read_small_file_unit_block_size(
     ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
+    tmp_path,
     target_max_block_size_infinite_or_default,
 ):
     """Test reading a small JSON file with unit block_size."""
-    if endpoint_url is None:
-        storage_options = {}
-    else:
-        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
 
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    path1 = os.path.join(data_path, "test1.json")
-    df1.to_json(path1, orient="records", lines=True, storage_options=storage_options)
-    ds = ray.data.read_json(
-        path1, filesystem=fs, read_options=pajson.ReadOptions(block_size=1)
-    )
+    path1 = os.path.join(tmp_path, "test1.json")
+    df1.to_json(path1, orient="records", lines=True)
+    ds = ray.data.read_json(path1, read_options=pajson.ReadOptions(block_size=1))
     dsdf = ds.to_pandas()
     assert df1.equals(dsdf)
     # Test metadata ops.
     assert ds.count() == 3
-    assert ds.input_files() == [_unwrap_protocol(path1)]
+    assert ds.input_files() == [path1]
     assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
 
 
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-    ],
-)
 def test_json_read_file_larger_than_block_size(
     ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
+    tmp_path,
     target_max_block_size_infinite_or_default,
 ):
     """Test reading a JSON file larger than the block size."""
-    if endpoint_url is None:
-        storage_options = {}
-    else:
-        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
-
     block_size = 1024
     num_chars = 2500
     num_rows = 3
@@ -534,84 +406,48 @@ def test_json_read_file_larger_than_block_size(
             "two": ["b" * num_chars for _ in range(num_rows)],
         }
     )
-    path2 = os.path.join(data_path, "test2.json")
-    df2.to_json(path2, orient="records", lines=True, storage_options=storage_options)
+    path2 = os.path.join(tmp_path, "test2.json")
+    df2.to_json(path2, orient="records", lines=True)
     ds = ray.data.read_json(
-        path2, filesystem=fs, read_options=pajson.ReadOptions(block_size=block_size)
+        path2, read_options=pajson.ReadOptions(block_size=block_size)
     )
     dsdf = ds.to_pandas()
     assert df2.equals(dsdf)
     # Test metadata ops.
     assert ds.count() == num_rows
-    assert ds.input_files() == [_unwrap_protocol(path2)]
+    assert ds.input_files() == [path2]
     assert ds.schema() == Schema(
         pa.schema([("one", pa.string()), ("two", pa.string())])
     )
 
 
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-    ],
-)
 def test_json_read_negative_block_size_fallback(
-    ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
-    target_max_block_size_infinite_or_default,
+    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
 ):
     """Test reading JSON with negative block_size triggers fallback to json.load()."""
-    if endpoint_url is None:
-        storage_options = {}
-    else:
-        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
 
     df3 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    path3 = os.path.join(data_path, "test3.json")
-    df3.to_json(path3, orient="records", lines=True, storage_options=storage_options)
+    path3 = os.path.join(tmp_path, "test3.json")
+    df3.to_json(path3, orient="records", lines=True)
 
     # Negative Buffer Size, fails with arrow but succeeds in fallback to json.load()
-    ds = ray.data.read_json(
-        path3, filesystem=fs, read_options=pajson.ReadOptions(block_size=-1)
-    )
+    ds = ray.data.read_json(path3, read_options=pajson.ReadOptions(block_size=-1))
     dsdf = ds.to_pandas()
     assert df3.equals(dsdf)
 
 
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-    ],
-)
 def test_json_read_zero_block_size_failure(
-    ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
-    target_max_block_size_infinite_or_default,
+    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
 ):
     """Test reading JSON with zero block_size fails in both arrow and fallback."""
-    if endpoint_url is None:
-        storage_options = {}
-    else:
-        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
 
     df3 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    path3 = os.path.join(data_path, "test3.json")
-    df3.to_json(path3, orient="records", lines=True, storage_options=storage_options)
+    path3 = os.path.join(tmp_path, "test3.json")
+    df3.to_json(path3, orient="records", lines=True)
 
     # Zero Buffer Size, fails with arrow and fails in fallback to json.load()
     with pytest.raises(json.decoder.JSONDecodeError, match="Extra data"):
-        ds = ray.data.read_json(
-            path3, filesystem=fs, read_options=pajson.ReadOptions(block_size=0)
-        )
+        ds = ray.data.read_json(path3, read_options=pajson.ReadOptions(block_size=0))
         dsdf = ds.to_pandas()
         assert dsdf.equals(df3)
 
