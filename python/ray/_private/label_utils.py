@@ -2,6 +2,7 @@ import json
 import re
 from typing import (
     Dict,
+    List,
     Optional,
 )
 
@@ -189,3 +190,17 @@ def validate_node_label_syntax(labels: Dict[str, str]):
             raise ValueError(possible_error_message)
         if value is not None:
             validate_label_value(value)
+
+
+def validate_fallback_strategy(
+    fallback_strategy: Optional[List[Dict[str, str]]]
+) -> Optional[str]:
+    if fallback_strategy is None:
+        return None
+
+    for label_selector in fallback_strategy:
+        if not isinstance(label_selector, dict):
+            return "Each element in fallback_strategy must be a dictionary."
+        possible_error_message = validate_label_selector(label_selector)
+        if possible_error_message:
+            return possible_error_message

@@ -754,6 +754,60 @@ def test_decorator_label_selector_args(
                 pass
 
 
+@pytest.mark.parametrize(
+    "fallback_strategy, expected_error",
+    [
+        (  # Valid: single selector in the list
+            [{"ray.io/accelerator-type": "H100"}],
+            None,
+        ),
+        (  # Valid: multiple selectors in the list
+            [
+                {"market-type": "spot"},
+                {"region": "in(us-west-1, us-east-1)"},
+            ],
+            None,
+        ),
+        (  # Invalid: not a list
+            {"market-type": "spot"},
+            TypeError,
+        ),
+        (  # Invalid: list contains a non-dict element
+            ["not-a-dict"],
+            ValueError,
+        ),
+        (  # Invalid: contains a dict with a bad key
+            [{"-bad-key-": "value"}],
+            ValueError,
+        ),
+        (  # Invalid: contains a dict with a bad value
+            [{"key": "-bad-value-"}],
+            ValueError,
+        ),
+    ],
+)
+def test_decorator_fallback_strategy_args(
+    ray_start_regular_shared, fallback_strategy, expected_error
+):
+    """
+    Tests that the fallback_strategy actor option is validated correctly.
+    """
+    if expected_error:
+        with pytest.raises(expected_error):
+
+            @ray.remote(fallback_strategy=fallback_strategy)
+            class Actor:
+                def __init__(self):
+                    pass
+
+    else:
+
+        @ray.remote(fallback_strategy=fallback_strategy)
+        class Actor:
+            def __init__(self):
+                pass
+
+
 def test_random_id_generation(ray_start_regular_shared):
     @ray.remote
     class Foo:

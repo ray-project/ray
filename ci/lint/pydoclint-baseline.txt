@@ -166,10 +166,6 @@ python/ray/_private/runtime_env/setup_hook.py
 python/ray/_private/runtime_env/utils.py
     DOC103: Function `check_output_cmd`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: ]. Arguments in the docstring but not in the function signature: [kwargs: ].
 --------------------
-python/ray/_private/serialization.py
-    DOC106: Function `_gpu_object_ref_deserializer`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Function `_gpu_object_ref_deserializer`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
---------------------
 python/ray/_private/services.py
     DOC201: Function `_build_python_executable_command_memory_profileable` does not have a return section in docstring
     DOC101: Function `get_ray_address_from_environment`: Docstring contains fewer arguments than in function signature.
@@ -296,7 +292,7 @@ python/ray/_private/worker.py
     DOC102: Function `remote`: Docstring contains more arguments than in function signature.
     DOC106: Function `remote`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
     DOC111: Function `remote`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
-    DOC103: Function `remote`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: , *args: ]. Arguments in the docstring but not in the function signature: [_labels: , _metadata: , accelerator_type: , allow_out_of_order_execution: , label_selector: Dict[str, str], max_calls: , max_restarts: , max_retries: , max_task_retries: , memory: , num_cpus: , num_gpus: , num_returns: , resources: Dict[str, float], retry_exceptions: , runtime_env: Dict[str, Any], scheduling_strategy: ].
+    DOC103: Function `remote`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: , *args: ]. Arguments in the docstring but not in the function signature: [_labels: , _metadata: , accelerator_type: , allow_out_of_order_execution: , fallback_strategy: , label_selector: , max_calls: , max_restarts: , max_retries: , max_task_retries: , memory: , num_cpus: , num_gpus: , num_returns: , resources: Dict[str, float], retry_exceptions: , runtime_env: Dict[str, Any], scheduling_strategy: ].
     DOC201: Function `remote` does not have a return section in docstring
 --------------------
 python/ray/actor.py
@@ -311,7 +307,7 @@ python/ray/actor.py
     DOC201: Method `ActorMethod.options` does not have a return section in docstring
     DOC101: Method `_ActorClassMetadata.__init__`: Docstring contains fewer arguments than in function signature.
     DOC107: Method `_ActorClassMetadata.__init__`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC103: Method `_ActorClassMetadata.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [accelerator_type: , actor_creation_function_descriptor: , class_id: , concurrency_groups: , enable_tensor_transport: bool, label_selector: , language: , max_restarts: , max_task_retries: , memory: , method_meta: , modified_class: , num_cpus: , num_gpus: , object_store_memory: , resources: , runtime_env: , scheduling_strategy: SchedulingStrategyT].
+    DOC103: Method `_ActorClassMetadata.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [accelerator_type: , actor_creation_function_descriptor: , class_id: , concurrency_groups: , enable_tensor_transport: bool, fallback_strategy: , label_selector: , language: , max_restarts: , max_task_retries: , memory: , method_meta: , modified_class: , num_cpus: , num_gpus: , object_store_memory: , resources: , runtime_env: , scheduling_strategy: SchedulingStrategyT].
     DOC101: Method `ActorClass.__init__`: Docstring contains fewer arguments than in function signature.
     DOC106: Method `ActorClass.__init__`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
     DOC107: Method `ActorClass.__init__`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
@@ -324,7 +320,7 @@ python/ray/actor.py
     DOC102: Method `ActorClass.options`: Docstring contains more arguments than in function signature.
     DOC106: Method `ActorClass.options`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
     DOC111: Method `ActorClass.options`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
-    DOC103: Method `ActorClass.options`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**actor_options: ]. Arguments in the docstring but not in the function signature: [_metadata: , accelerator_type: , allow_out_of_order_execution: , enable_task_events: , label_selector: Dict[str, str], lifetime: , max_concurrency: , max_pending_calls: , max_restarts: , max_task_retries: , memory: , name: , namespace: , num_cpus: , num_gpus: , object_store_memory: , resources: Dict[str, float], runtime_env: Dict[str, Any], scheduling_strategy: ].
+    DOC103: Method `ActorClass.options`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**actor_options: ]. Arguments in the docstring but not in the function signature: [_metadata: , accelerator_type: , allow_out_of_order_execution: , enable_task_events: , fallback_strategy: , label_selector: Dict[str, str], lifetime: , max_concurrency: , max_pending_calls: , max_restarts: , max_task_retries: , memory: , name: , namespace: , num_cpus: , num_gpus: , object_store_memory: , resources: Dict[str, float], runtime_env: Dict[str, Any], scheduling_strategy: ].
     DOC201: Method `ActorClass.options` does not have a return section in docstring
     DOC106: Method `ActorClass._remote`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
     DOC107: Method `ActorClass._remote`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
@@ -1527,9 +1523,9 @@ python/ray/remote_function.py
     DOC107: Method `RemoteFunction.__init__`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
     DOC103: Method `RemoteFunction.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [function: , function_descriptor: , language: , task_options: ].
     DOC102: Method `RemoteFunction.options`: Docstring contains more arguments than in function signature.
+    DOC103: Method `RemoteFunction.options`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**task_options: ]. Arguments in the docstring but not in the function signature: [_labels: , _metadata: , accelerator_type: , enable_task_events: , fallback_strategy: , label_selector: Dict[str, str], max_calls: , max_retries: , memory: , num_cpus: , num_gpus: , num_returns: , object_store_memory: , resources: Dict[str, float], retry_exceptions: , runtime_env: Dict[str, Any], scheduling_strategy: ].
     DOC106: Method `RemoteFunction.options`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
     DOC111: Method `RemoteFunction.options`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
-    DOC103: Method `RemoteFunction.options`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**task_options: ]. Arguments in the docstring but not in the function signature: [_labels: , _metadata: , accelerator_type: , enable_task_events: , label_selector: Dict[str, str], max_calls: , max_retries: , memory: , num_cpus: , num_gpus: , num_returns: , object_store_memory: , resources: Dict[str, float], retry_exceptions: , runtime_env: Dict[str, Any], scheduling_strategy: ].
     DOC201: Method `RemoteFunction.options` does not have a return section in docstring
 --------------------
 python/ray/runtime_context.py
@@ -2436,59 +2432,6 @@ python/ray/util/collective/collective_group/base_collective_group.py
 python/ray/util/collective/collective_group/cuda_stream.py
     DOC106: Method `StreamPool.__init__`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
     DOC107: Method `StreamPool.__init__`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
---------------------
-python/ray/util/collective/collective_group/gloo_collective_group.py
-    DOC101: Method `Rendezvous.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC106: Method `Rendezvous.__init__`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Method `Rendezvous.__init__`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC103: Method `Rendezvous.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [context: , device_type: , store_type: ].
-    DOC106: Method `Rendezvous.meet`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Method `Rendezvous.meet`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC106: Method `GLOOGroup.__init__`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Method `GLOOGroup.__init__`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC106: Method `GLOOGroup.allreduce`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Method `GLOOGroup.allreduce`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC103: Method `GLOOGroup.allreduce`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [tensors: ]. Arguments in the docstring but not in the function signature: [tensor: ].
-    DOC202: Method `GLOOGroup.allreduce` has a return section in docstring, but there are no return statements or annotations
-    DOC106: Method `GLOOGroup.barrier`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Method `GLOOGroup.barrier`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC202: Method `GLOOGroup.barrier` has a return section in docstring, but there are no return statements or annotations
-    DOC106: Method `GLOOGroup.reduce`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Method `GLOOGroup.reduce`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC202: Method `GLOOGroup.reduce` has a return section in docstring, but there are no return statements or annotations
-    DOC106: Method `GLOOGroup.broadcast`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Method `GLOOGroup.broadcast`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC202: Method `GLOOGroup.broadcast` has a return section in docstring, but there are no return statements or annotations
-    DOC106: Method `GLOOGroup.allgather`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Method `GLOOGroup.allgather`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC111: Method `GLOOGroup.allgather`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
-    DOC202: Method `GLOOGroup.allgather` has a return section in docstring, but there are no return statements or annotations
-    DOC106: Method `GLOOGroup.reducescatter`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Method `GLOOGroup.reducescatter`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC111: Method `GLOOGroup.reducescatter`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
-    DOC202: Method `GLOOGroup.reducescatter` has a return section in docstring, but there are no return statements or annotations
-    DOC106: Method `GLOOGroup.send`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Method `GLOOGroup.send`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC202: Method `GLOOGroup.send` has a return section in docstring, but there are no return statements or annotations
-    DOC106: Method `GLOOGroup.recv`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Method `GLOOGroup.recv`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC202: Method `GLOOGroup.recv` has a return section in docstring, but there are no return statements or annotations
-    DOC106: Method `GLOOGroup._collective`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Method `GLOOGroup._collective`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC202: Method `GLOOGroup._collective` has a return section in docstring, but there are no return statements or annotations
-    DOC107: Method `GLOOGroup._point2point`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC202: Method `GLOOGroup._point2point` has a return section in docstring, but there are no return statements or annotations
-    DOC106: Function `_flatten_for_scatter_gather`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Function `_flatten_for_scatter_gather`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
---------------------
-python/ray/util/collective/collective_group/gloo_util.py
-    DOC106: Function `create_gloo_context`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Function `create_gloo_context`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC106: Function `get_gloo_reduce_op`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Function `get_gloo_reduce_op`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC106: Function `copy_tensor`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
-    DOC107: Function `copy_tensor`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC202: Function `copy_tensor` has a return section in docstring, but there are no return statements or annotations
 --------------------
 python/ray/util/collective/collective_group/nccl_collective_group.py
     DOC106: Method `Rendezvous.__init__`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
