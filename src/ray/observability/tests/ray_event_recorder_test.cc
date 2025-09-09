@@ -72,11 +72,6 @@ class RayEventRecorderTest : public ::testing::Test {
     recorder_->StartExportingEvents();
   }
 
-  FakeEventAggregatorClient *GetFakeClient() {
-    return static_cast<FakeEventAggregatorClient *>(
-        recorder_->event_aggregator_client_.get());
-  }
-
   instrumented_io_context io_service_;
   std::unique_ptr<FakeEventAggregatorClient> fake_client_;
   std::unique_ptr<FakeCounter> fake_dropped_events_counter_;
