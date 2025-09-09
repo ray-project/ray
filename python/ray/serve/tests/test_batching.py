@@ -219,7 +219,7 @@ def test_batching_client_dropped_streaming(serve_instance):
 @pytest.mark.parametrize("max_batch_size", [1, 10])
 @pytest.mark.parametrize("n_requests", [1, 10])
 async def test_observability_helpers(
-    n_requests: int, max_batch_size: int, max_concurrent_batches: int
+    serve_instance, n_requests: int, max_batch_size: int, max_concurrent_batches: int
 ) -> None:
     """Checks observability helper methods that are used for batching.
 
