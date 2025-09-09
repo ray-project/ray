@@ -16,7 +16,7 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.debug import summarize
-from ray.rllib.utils.deprecation import (
+from ray._common.deprecation import (
     deprecation_warning,
     DEPRECATED_VALUE,
 )

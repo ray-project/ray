@@ -8,7 +8,7 @@ import tree  # pip install dm_tree
 
 import ray
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
-from ray.rllib.utils.deprecation import Deprecated
+from ray._common.deprecation import Deprecated
 from ray.rllib.utils.typing import (
     TensorShape,
     TensorStructType,

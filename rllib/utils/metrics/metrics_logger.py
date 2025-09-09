@@ -4,7 +4,7 @@ import tree  # pip install dm_tree
 
 from ray.rllib.utils import force_tuple, deep_update
 from ray.rllib.utils.metrics.stats import Stats, merge_stats
-from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
+from ray._common.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.util.annotations import PublicAPI
 from ray.util import log_once
