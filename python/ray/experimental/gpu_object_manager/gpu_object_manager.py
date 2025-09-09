@@ -157,7 +157,11 @@ class GPUObjectManager:
         obj_id = obj_ref.hex()
         return self.managed_gpu_object_metadata[obj_id]
 
-    def fetch_object(self, obj_id: str, use_object_store: bool = True):
+    def fetch_object(
+        self,
+        obj_id: str,
+        tensor_transport: TensorTransportEnum = TensorTransportEnum.OBJECT_STORE,
+    ):
         """
         Fetches the GPU object from the source actor's GPU object store via the object store
         instead of out-of-band tensor transfer and stores the tensors in the local GPU object store.
@@ -168,7 +172,7 @@ class GPUObjectManager:
 
         Args:
             obj_id: The object ID of the GPU object.
-            use_object_store: Whether to use the object store to fetch the GPU object.
+            tensor_transport: The tensor transport to use to fetch the GPU object.
 
         Returns:
             None
@@ -186,33 +190,27 @@ class GPUObjectManager:
         tensor_transport_manager = get_tensor_transport_manager(
             tensor_transport_backend
         )
-        if use_object_store or not tensor_transport_manager.is_one_sided():
+        tensor_transport_meta = gpu_object_meta.tensor_transport_meta
+        use_object_store = (
+            tensor_transport == TensorTransportEnum.OBJECT_STORE
+            or isinstance(tensor_transport_meta, ObjectRef)
+        )
+        if use_object_store:
             tensors = ray.get(
                 src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
                     __ray_fetch_gpu_object__, obj_id
                 )
             )
+            self.gpu_object_store.add_object(obj_id, tensors)
         else:
-            import torch
+            from ray.experimental.gpu_object_manager.gpu_object_store import (
+                __ray_recv__,
+            )
 
-            tensor_transport_meta = gpu_object_meta.tensor_transport_meta
-            tensors = []
-
-            for meta in tensor_transport_meta.tensor_meta:
-                shape, dtype = meta
-                tensor = torch.zeros(
-                    shape,
-                    dtype=dtype,
-                    device=tensor_transport_meta.tensor_device,
-                )
-                tensors.append(tensor)
             communicator_meta = tensor_transport_manager.get_communicator_metadata(
                 None, None, tensor_transport_backend
             )
-            tensor_transport_manager.recv_multiple_tensors(
-                tensors, tensor_transport_meta, communicator_meta
-            )
-        self.gpu_object_store.add_object(obj_id, tensors)
+            __ray_recv__(None, obj_id, tensor_transport_meta, communicator_meta)
 
     def trigger_out_of_band_tensor_transfer(
         self, dst_actor: "ray.actor.ActorHandle", task_args: Tuple[Any, ...]
@@ -311,21 +309,23 @@ class GPUObjectManager:
             )
 
     def get_gpu_object(
-        self, object_id: str, use_object_store: bool = True
+        self,
+        object_id: str,
+        tensor_transport: TensorTransportEnum = TensorTransportEnum.OBJECT_STORE,
     ) -> List["torch.Tensor"]:
         """
         Get the GPU object for a given object ID.
 
         Args:
             object_id: The object ID of the GPU object.
-            use_object_store: Whether to use the object store to fetch the GPU object.
+            tensor_transport: The tensor transport to use to fetch the GPU object.
 
         Returns:
             The GPU object.
         """
         gpu_object_store = self.gpu_object_store
         if self.is_managed_object(object_id):
-            self.fetch_object(object_id, use_object_store)
+            self.fetch_object(object_id, tensor_transport)
 
         # If the GPU object is the primary copy, it means the transfer is intra-actor.
         # In this case, we should not remove the GPU object after it is consumed once,

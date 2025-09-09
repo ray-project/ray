@@ -19,7 +19,7 @@ class GPUTestActor:
     def produce(self, tensors):
         refs = []
         for t in tensors:
-            refs.append(ray.put(t, tensor_transport="nixl"))
+            refs.append(ray.put(t, _tensor_transport="nixl"))
         return refs
 
     def consume_with_nixl(self, refs):
@@ -31,7 +31,7 @@ class GPUTestActor:
         return sum
 
     def consume_with_object_store(self, refs):
-        tensors = [ray.get(ref, tensor_transport="object_store") for ref in refs]
+        tensors = [ray.get(ref, _tensor_transport="object_store") for ref in refs]
         sum = 0
         for t in tensors:
             assert t.device.type == "cuda"
@@ -40,7 +40,7 @@ class GPUTestActor:
 
     def gc(self):
         tensor = torch.tensor([1, 2, 3]).to("cuda")
-        ref = ray.put(tensor, tensor_transport="nixl")
+        ref = ray.put(tensor, _tensor_transport="nixl")
         gpu_manager = ray._private.worker.global_worker.gpu_object_manager
         assert gpu_manager.gpu_object_store.has_tensor(tensor)
         del ref
@@ -66,12 +66,12 @@ def test_p2p(ray_start_regular):
 
     # Trigger tensor transfer from src to dst actor
     result = dst_actor.sum.remote(ref, "cuda")
-    assert tensor.sum().item() == ray.get(result)
+    assert tensor.sum().item() == ray.get(result, _tensor_transport="object_store")
 
     # Test CPU to CPU transfer
     ref1 = src_actor.echo.remote(tensor1, "cpu")
     result1 = dst_actor.sum.remote(ref1, "cpu")
-    assert tensor1.sum().item() == ray.get(result1)
+    assert tensor1.sum().item() == ray.get(result1, _tensor_transport="object_store")
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
@@ -83,7 +83,7 @@ def test_intra_gpu_tensor_transfer(ray_start_regular):
     # Intra-actor communication for pure GPU tensors
     ref = actor.echo.remote(tensor, "cuda")
     result = actor.sum.remote(ref, "cuda")
-    assert tensor.sum().item() == ray.get(result)
+    assert tensor.sum().item() == ray.get(result, _tensor_transport="object_store")
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
