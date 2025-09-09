@@ -97,7 +97,7 @@ async def test_save_load_state_equivalence(
     # Mock the delete function as we don't want report checkpoints to be deleted.
     monkeypatch.setattr(
         ray.train.v2._internal.execution.checkpoint.checkpoint_manager,
-        "_delete_fs_path",
+        "delete_fs_path",
         lambda *args, **kwargs: None,
     )
     exp_name = f"checkpoint_manager_test-{uuid.uuid4().hex}"

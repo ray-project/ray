@@ -15,7 +15,7 @@ from ray.train.v2._internal.execution.callback import (
     WorkerGroupCallback,
 )
 from ray.train.v2._internal.execution.context import StorageContext
-from ray.train.v2._internal.execution.storage import _delete_fs_path, _exists_at_fs_path
+from ray.train.v2._internal.execution.storage import _exists_at_fs_path, delete_fs_path
 from ray.train.v2._internal.execution.worker_group import Worker
 from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
@@ -145,7 +145,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         for checkpoint_result in results_to_delete:
             checkpoint = checkpoint_result.checkpoint
             logger.debug("Deleting checkpoint: ", checkpoint)
-            _delete_fs_path(fs=checkpoint.filesystem, fs_path=checkpoint.path)
+            delete_fs_path(fs=checkpoint.filesystem, fs_path=checkpoint.path)
 
         self._current_report_index += 1
 

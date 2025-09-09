@@ -38,6 +38,7 @@ class TrainFnUtils(ABC):
         checkpoint: Optional["Checkpoint"] = None,
         checkpoint_dir_name: Optional[str] = None,
         checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
+        delete_checkpoint_after_upload: Optional[bool] = None,
     ) -> None:
         """Upload checkpoint to remote storage and put a training result on the result queue.
 
@@ -49,8 +50,10 @@ class TrainFnUtils(ABC):
                 be stored in the default storage path. If set, make sure
                 this value is unique for each iteration.
             checkpoint_upload_mode: The manner in which we want to upload the checkpoint.
-                If not provided, the checkpoint will be uploaded synchronously.
+                Defaults to uploading the checkpoint synchronously.
                 This works when no checkpoint is provided but is not useful in that case.
+            delete_checkpoint_after_upload: Whether to delete the checkpoint after it is uploaded.
+                Defaults to False for SYNC and True for ASYNC.
         """
         pass
 
@@ -127,9 +130,14 @@ class DistributedTrainFnUtils(TrainFnUtils):
         checkpoint: Optional["Checkpoint"] = None,
         checkpoint_dir_name: Optional[str] = None,
         checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
+        delete_checkpoint_after_upload: Optional[bool] = None,
     ) -> None:
         return get_internal_train_context().report(
-            metrics, checkpoint, checkpoint_dir_name, checkpoint_upload_mode
+            metrics,
+            checkpoint,
+            checkpoint_dir_name,
+            checkpoint_upload_mode,
+            delete_checkpoint_after_upload,
         )
 
     def get_checkpoint(self):
@@ -173,6 +181,7 @@ class LocalTrainFnUtils(TrainFnUtils):
         checkpoint: Optional["Checkpoint"] = None,
         checkpoint_dir_name: Optional[str] = None,
         checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
+        delete_checkpoint_after_upload: Optional[bool] = None,
     ) -> None:
         self._last_metrics = metrics
         self._last_checkpoint = checkpoint

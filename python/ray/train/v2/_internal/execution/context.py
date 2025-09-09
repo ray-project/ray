@@ -13,7 +13,7 @@ from ray.data import DataIterator, Dataset
 from ray.train._internal import session
 from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
-from ray.train.v2._internal.execution.storage import StorageContext
+from ray.train.v2._internal.execution.storage import StorageContext, delete_fs_path
 from ray.train.v2._internal.util import (
     _copy_doc,
     construct_user_exception_with_traceback,
@@ -219,6 +219,7 @@ class TrainContext:
         checkpoint_dir_name: str,
         metrics: Dict[str, Any],
         checkpoint: Optional["Checkpoint"] = None,
+        delete_checkpoint_after_upload: bool = False,
     ) -> _TrainingResult:
         """Save the checkpoint to remote storage.
 
@@ -226,6 +227,7 @@ class TrainContext:
             checkpoint_dir_name: The checkpoint dir to persist to.
             metrics: The metrics to report.
             checkpoint: The checkpoint to report.
+            delete_checkpoint_after_upload: Whether to delete the checkpoint after it is uploaded.
 
         Returns:
             The training result object containing the persisted checkpoint.
@@ -238,6 +240,16 @@ class TrainContext:
         persisted_checkpoint = self.storage_context.persist_current_checkpoint(
             checkpoint, checkpoint_dir_name
         )
+        # TODO: fix unlikely corner case where 2 workers have same local checkpoint path
+        if delete_checkpoint_after_upload:
+            try:
+                delete_fs_path(checkpoint.filesystem, checkpoint.path)
+            except FileNotFoundError:
+                logger.exception(
+                    f"Failed to find checkpoint {checkpoint} when attempting to delete "
+                    "it after successfulupload. Continuing training."
+                )
+
         # Update latest checkpoint as the persisted checkpoint.
         self.checkpoint = persisted_checkpoint
 
@@ -270,6 +282,7 @@ class TrainContext:
         checkpoint: Optional["Checkpoint"] = None,
         checkpoint_dir_name: Optional[str] = None,
         checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
+        delete_checkpoint_after_upload: Optional[bool] = None,
     ) -> None:
         """
         Upload checkpoint to remote storage and put a training
@@ -285,6 +298,8 @@ class TrainContext:
             checkpoint_upload_mode: The manner in which we want to upload the checkpoint.
                 Defaults to uploading the checkpoint synchronously.
                 This works when no checkpoint is provided but is not useful in that case.
+            delete_checkpoint_after_upload: Whether to delete the checkpoint after it is uploaded.
+                Defaults to False for SYNC and True for ASYNC.
 
         TODO: the report function should be implemented in the worker instead
         of in the train context. The train context should only keep the train
@@ -320,7 +335,10 @@ class TrainContext:
             # Upload checkpoint, wait for turn, and report.
             if checkpoint_upload_mode == CheckpointUploadMode.SYNC:
                 training_result = self._upload_checkpoint(
-                    checkpoint_dir_name, metrics, checkpoint
+                    checkpoint_dir_name,
+                    metrics,
+                    checkpoint,
+                    delete_checkpoint_after_upload,
                 )
                 self._wait_then_report(training_result, report_call_index)
 
@@ -340,7 +358,10 @@ class TrainContext:
                 ) -> None:
                     try:
                         training_result = self._upload_checkpoint(
-                            checkpoint_dir_name, metrics, checkpoint
+                            checkpoint_dir_name,
+                            metrics,
+                            checkpoint,
+                            delete_checkpoint_after_upload,
                         )
                         self._wait_then_report(training_result, report_call_index)
                     except Exception as e:

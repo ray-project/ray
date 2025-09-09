@@ -210,7 +210,9 @@ def test_report_mixed_checkpoint_upload_modes(tmp_path):
 
                 # Upload to local directory which gets uploaded to storage path
                 else:
-                    local_checkpoint_dir = os.path.join(tmpdir, checkpoint_dir_name)
+                    local_checkpoint_dir = os.path.join(
+                        tmpdir, checkpoint_dir_name, f"_{rank}"
+                    )
                     os.makedirs(local_checkpoint_dir, exist_ok=True)
                     with open(
                         os.path.join(local_checkpoint_dir, f"shard_{rank}"), "wb"

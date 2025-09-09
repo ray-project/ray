@@ -18,6 +18,7 @@ def report(
     checkpoint: Optional["Checkpoint"] = None,
     checkpoint_dir_name: Optional[str] = None,
     checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
+    delete_checkpoint_after_upload: Optional[bool] = None,
 ):
     """Report metrics and optionally save a checkpoint.
 
@@ -93,13 +94,20 @@ def report(
         checkpoint_upload_mode: The manner in which we want to upload the checkpoint.
             Defaults to uploading the checkpoint synchronously.
             This works when no checkpoint is provided but is not useful in that case.
+        delete_checkpoint_after_upload: Whether to delete the checkpoint after it is uploaded.
+            Defaults to False for SYNC and True for ASYNC.
     """
+    if delete_checkpoint_after_upload is None:
+        delete_checkpoint_after_upload = (
+            checkpoint_upload_mode == CheckpointUploadMode.ASYNC
+        )
 
     get_train_fn_utils().report(
         metrics=metrics,
         checkpoint=checkpoint,
         checkpoint_dir_name=checkpoint_dir_name,
         checkpoint_upload_mode=checkpoint_upload_mode,
+        delete_checkpoint_after_upload=delete_checkpoint_after_upload,
     )
 
 
