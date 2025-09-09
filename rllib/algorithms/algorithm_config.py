@@ -48,7 +48,7 @@ from ray.rllib.utils.annotations import (
     OldAPIStack,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
-from ray.rllib.utils.deprecation import (
+from ray._common.deprecation import (
     DEPRECATED_VALUE,
     Deprecated,
     deprecation_warning,

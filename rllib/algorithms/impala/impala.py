@@ -21,7 +21,7 @@ from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import concat_samples
 from ray.rllib.utils.annotations import OldAPIStack, override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray._common.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.metrics import (
     AGGREGATOR_ACTOR_RESULTS,
     ALL_MODULES,

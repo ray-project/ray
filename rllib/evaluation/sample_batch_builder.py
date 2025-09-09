@@ -8,7 +8,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.debug import summarize
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray._common.deprecation import deprecation_warning
 from ray.rllib.utils.typing import PolicyID, AgentID
 from ray.util.debug import log_once
 
