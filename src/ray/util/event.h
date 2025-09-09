@@ -150,7 +150,7 @@ class EventManager final {
 
   ~EventManager() = default;
 
-  bool IsEmpty();
+  bool IsEmpty() const;
 
   // We added `const json &custom_fields` here because we need to support typed custom
   // fields.
@@ -174,9 +174,10 @@ class EventManager final {
  private:
   EventManager();
 
-  absl::flat_hash_map<std::string, std::shared_ptr<BaseEventReporter>> reporter_map_;
+  absl::flat_hash_map<std::string, std::shared_ptr<BaseEventReporter>> reporter_map_ ABSL_GUARDED_BY(mutex_);
   absl::flat_hash_map<rpc::ExportEvent_SourceType, std::shared_ptr<LogEventReporter>>
-      export_log_reporter_map_;
+      export_log_reporter_map_ ABSL_GUARDED_BY(mutex_);
+  mutable absl::Mutex mutex_;
 };
 
 // store the event context. Different workers of a process in core_worker have different
