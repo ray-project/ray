@@ -134,14 +134,14 @@ Status SysFsCgroupDriver::CreateCgroup(const std::string &cgroup_path) {
                           strerror(errno)));
     }
     if (errno == EACCES) {
-      return Status::PermissionDenied(absl::StrFormat(
-          "Failed to create cgroup at path %s with permissions %#o. "
-          "The current user does not have read, write, execute permissions "
-          "for the parent cgroup.\n"
-          "Error: %s.",
-          cgroup_path,
-          S_IRWXU,
-          strerror(errno)));
+      return Status::PermissionDenied(
+          absl::StrFormat("Failed to create cgroup at path %s with permissions %#o. "
+                          "The process does not have read, write, execute permissions "
+                          "for the parent cgroup.\n"
+                          "Error: %s.",
+                          cgroup_path,
+                          S_IRWXU,
+                          strerror(errno)));
     }
     if (errno == EEXIST) {
       return Status::AlreadyExists(
@@ -157,6 +157,35 @@ Status SysFsCgroupDriver::CreateCgroup(const std::string &cgroup_path) {
                         "Error: %s.",
                         cgroup_path,
                         S_IRWXU,
+                        strerror(errno)));
+  }
+  return Status::OK();
+}
+
+Status SysFsCgroupDriver::DeleteCgroup(const std::string &cgroup_path) {
+  RAY_RETURN_NOT_OK(CheckCgroup(cgroup_path));
+  if (rmdir(cgroup_path.c_str()) == -1) {
+    if (errno == ENOENT) {
+      return Status::NotFound(absl::StrFormat(
+          "Failed to delete cgroup at path %s. The parent cgroup does not exist.\n"
+          "Error: %s.",
+          cgroup_path,
+          strerror(errno)));
+    }
+    if (errno == EACCES) {
+      return Status::PermissionDenied(
+          absl::StrFormat("Failed to delete cgroup at path %s. "
+                          "The process does not have read, write, execute permissions "
+                          "for the parent cgroup.\n"
+                          "Error: %s.",
+                          cgroup_path,
+                          strerror(errno)));
+    }
+    return Status::InvalidArgument(
+        absl::StrFormat("Failed to delete cgroup at path %s. To delete a cgroup, it must "
+                        "have no children and it must not have any processes.\n"
+                        "Error: %s.",
+                        cgroup_path,
                         strerror(errno)));
   }
   return Status::OK();
