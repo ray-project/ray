@@ -137,13 +137,8 @@ def _setup_torch_process_group(
     elif backend == "hccl":
         register_custom_torch_dist_backend(backend)
     elif backend == "xla":
-        # import torch_xla.runtime as xr
-
-        # logger.info(f">>> XLA runtime info before PG init: is_spmd={xr.is_spmd()}, "
-        #            f"proc_index={xr.process_index()}, proc_count={xr.process_count()}, "
-        #            f"world_size={xr.world_size()}")
-
         # For XLA backend, use the XLA init method
+        import torch_xla.distributed.xla_backend
         dist.init_process_group(
             backend="xla",
             init_method=init_method,  # Use XLA's native init method
@@ -225,8 +220,6 @@ class _TorchBackend(Backend):
             master_addr, master_port = worker_group.execute_single(
                 0, get_address_and_port
             )
-            # if backend_config.backend == 'xla':
-            #     import torch_xla.distributed.xla_backend
             if backend_config.init_method == "env":
 
                 def set_env_vars(addr, port):
@@ -300,13 +293,32 @@ class _TorchBackend(Backend):
                 import time
                 time.sleep(1)
 
-            # it might be related since we will need these env var before pjrt init and xla process group init
-            worker_group.execute(_set_torch_distributed_env_vars)
-            logger.info("set torch distributed envs for c10d")
+                # it might be related since we will need these env var before pjrt init and xla process group init
+                worker_group.execute(_set_torch_distributed_env_vars)
+                logger.info("set torch distributed envs for c10d")
+
+
+                
+                url = f"xla://{coordinator}"
+                logger.info(f"set torch distributed init method for xla url: {url}")
+                setup_futures = []
+                for i in range(len(worker_group)):
+                    setup_futures.append(
+                        worker_group.execute_single_async(
+                            i,
+                            _setup_torch_process_group,
+                            backend=backend,
+                            world_rank=i,
+                            world_size=len(worker_group),
+                            init_method=url,
+                            timeout_s=backend_config.timeout_s,
+                        )
+                    )
+                ray.get(setup_futures)
+                return
 
             setup_futures = []
             for i in range(len(worker_group)):
-                url = f"xla://{coordinator}"
                 setup_futures.append(
                     worker_group.execute_single_async(
                         i,
