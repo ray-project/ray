@@ -357,9 +357,6 @@ ray_cc_library(
     hdrs = [
         "gcs_actor.h",
     ],
-    implementation_deps = [
-        "//src/ray/util:logging",
-    ],
     deps = [
         "//src/ray/common:id",
         "//src/ray/common:lease",
@@ -369,6 +366,7 @@ ray_cc_library(
         "//src/ray/protobuf:gcs_service_cc_proto",
         "//src/ray/util:counter_map",
         "//src/ray/util:event",
+        "//src/ray/util:logging",
     ],
 )
 
@@ -380,22 +378,20 @@ ray_cc_library(
     hdrs = [
         "gcs_actor_scheduler.h",
     ],
-    implementation_deps = [
-        "//src/ray/common:ray_config",
-        "//src/ray/util:time",
-    ],
     deps = [
         ":gcs_actor",
         ":gcs_node_manager",
         ":gcs_table_storage",
         "//src/ray/common:asio",
         "//src/ray/common:id",
+        "//src/ray/common:ray_config",
         "//src/ray/common:task_common",
         "//src/ray/protobuf:gcs_service_cc_proto",
         "//src/ray/raylet/scheduling:cluster_lease_manager",
         "//src/ray/rpc:core_worker_client",
         "//src/ray/rpc:raylet_client_interface",
         "//src/ray/util:logging",
+        "//src/ray/util:time",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest",
@@ -410,14 +406,6 @@ ray_cc_library(
     hdrs = [
         "gcs_actor_manager.h",
     ],
-    implementation_deps = [
-        "//src/ray/common:protobuf_utils",
-        "//src/ray/common:ray_config",
-        "//src/ray/common:task_common",
-        "//src/ray/stats:stats_lib",
-        "//src/ray/util:logging",
-        "//src/ray/util:time",
-    ],
     deps = [
         ":gcs_actor",
         ":gcs_actor_scheduler",
@@ -428,12 +416,17 @@ ray_cc_library(
         ":grpc_service_interfaces",
         "//src/ray/common:asio",
         "//src/ray/common:id",
+        "//src/ray/common:protobuf_utils",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:task_common",
         "//src/ray/protobuf:gcs_service_cc_proto",
         "//src/ray/pubsub:gcs_publisher",
         "//src/ray/rpc:core_worker_client",
+        "//src/ray/stats:stats_lib",
         "//src/ray/util:counter_map",
         "//src/ray/util:logging",
         "//src/ray/util:thread_checker",
+        "//src/ray/util:time",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest",
@@ -448,13 +441,6 @@ ray_cc_library(
     hdrs = [
         "gcs_autoscaler_state_manager.h",
     ],
-    implementation_deps = [
-        "//src/ray/common:protobuf_utils",
-        "//src/ray/common:ray_config",
-        "//src/ray/util:logging",
-        "//src/ray/util:string_utils",
-        "//src/ray/util:time",
-    ],
     deps = [
         ":gcs_actor_manager",
         ":gcs_init_data",
@@ -465,9 +451,14 @@ ray_cc_library(
         ":grpc_service_interfaces",
         "//src/ray/common:asio",
         "//src/ray/common:id",
+        "//src/ray/common:protobuf_utils",
+        "//src/ray/common:ray_config",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/pubsub:gcs_publisher",
+        "//src/ray/util:logging",
+        "//src/ray/util:string_utils",
         "//src/ray/util:thread_checker",
+        "//src/ray/util:time",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_googletest//:gtest",
     ],

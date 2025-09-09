@@ -1,8 +1,10 @@
 import os
 from typing import Any, Dict, Iterator, List
+from urllib.parse import urlparse
 
 import pyarrow
 import pytest
+from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -39,6 +41,53 @@ def execute_read_tasks(tasks: List[ReadTask]) -> List[Dict[str, Any]]:
     rows = list(block_accessor.iter_rows(public_row_format=True))
 
     return rows
+
+
+def strip_scheme(uri):
+    """Remove scheme from a URI, if it exists."""
+    parsed = urlparse(uri)
+    if parsed.scheme:
+        return uri.split("://", 1)[1]  # remove scheme
+    return uri  # no scheme, return as-is
+
+
+@pytest.mark.parametrize(
+    "filesystem,dir_path,endpoint_url",
+    [
+        (None, lazy_fixture("local_path"), None),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (
+            lazy_fixture("s3_fs_with_space"),
+            lazy_fixture("s3_path_with_space"),
+            lazy_fixture("s3_server"),
+        ),
+        (
+            lazy_fixture("s3_fs_with_special_chars"),
+            lazy_fixture("s3_path_with_special_chars"),
+            lazy_fixture("s3_server"),
+        ),
+    ],
+)
+def test_read_single_file(ray_start_regular_shared, filesystem, dir_path, endpoint_url):
+    # `FileBasedDatasource` should read from the local filesystem if you don't specify
+    # one.
+    write_filesystem = filesystem
+    if write_filesystem is None:
+        write_filesystem = pyarrow.fs.LocalFileSystem()
+
+    # PyArrow filesystems expect paths without schemes. `FileBasedDatasource` handles
+    # this internally, but we need to manually strip the scheme for the test setup.
+    write_path = strip_scheme(os.path.join(dir_path, "file.txt"))
+    with write_filesystem.open_output_stream(write_path) as f:
+        f.write(b"spam")
+
+    datasource = MockFileBasedDatasource(dir_path, filesystem=filesystem)
+    tasks = datasource.get_read_tasks(1)
+
+    rows = execute_read_tasks(tasks)
+
+    assert rows == [{"data": b"spam"}]
 
 
 def test_partitioning_hive(ray_start_regular_shared, tmp_path):
