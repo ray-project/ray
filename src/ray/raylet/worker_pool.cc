@@ -29,10 +29,10 @@
 #include "absl/strings/str_split.h"
 #include "ray/common/constants.h"
 #include "ray/common/lease/lease_spec.h"
+#include "ray/common/protobuf_utils.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/status.h"
-#include "ray/gcs/pb_util.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 #include "ray/util/network_util.h"
@@ -461,6 +461,7 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     // Support forking in gRPC.
     env.insert({"GRPC_ENABLE_FORK_SUPPORT", "True"});
     env.insert({"GRPC_POLL_STRATEGY", "poll"});
+    env.insert({"RAY_start_python_gc_manager_thread", "0"});
   }
 
   return {std::move(worker_command_args), std::move(env)};

@@ -23,8 +23,8 @@
 
 #include "absl/strings/match.h"
 #include "ray/common/buffer.h"
+#include "ray/common/protobuf_utils.h"
 #include "ray/core_worker/actor_manager.h"
-#include "ray/gcs/pb_util.h"
 #include "ray/util/exponential_backoff.h"
 #include "ray/util/time.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -37,6 +37,31 @@ constexpr int64_t kTaskFailureThrottlingThreshold = 50;
 
 // Throttle task failure logs to once this interval.
 constexpr int64_t kTaskFailureLoggingFrequencyMillis = 5000;
+
+namespace {
+
+rpc::ErrorType MapPlasmaPutStatusToErrorType(const Status &status) {
+  // Only the following should be returned from plasma put paths today.
+  RAY_DCHECK(status.IsObjectStoreFull() || status.IsTransientObjectStoreFull() ||
+             status.IsOutOfDisk() || status.IsIOError())
+      << "Unexpected status from plasma put: " << status;
+
+  if (status.IsObjectStoreFull() || status.IsTransientObjectStoreFull()) {
+    // TODO(codope): add a dedicated OBJECT_STORE_FULL error type and map to it.
+    // https://github.com/ray-project/ray/pull/56070
+    return rpc::ErrorType::OUT_OF_MEMORY;
+  }
+  if (status.IsOutOfDisk()) {
+    return rpc::ErrorType::OUT_OF_DISK_ERROR;
+  }
+  if (status.IsIOError()) {
+    // Local IPC failure to plasma/raylet; attribute to local control-plane failure.
+    return rpc::ErrorType::LOCAL_RAYLET_DIED;
+  }
+  return rpc::ErrorType::WORKER_DIED;
+}
+
+}  // namespace
 
 absl::flat_hash_set<ObjectID> ObjectRefStream::GetItemsUnconsumed() const {
   absl::flat_hash_set<ObjectID> result;
@@ -580,11 +605,6 @@ StatusOr<bool> TaskManager::HandleTaskReturn(const ObjectID &object_id,
                      tensor_transport.value_or(rpc::TensorTransport::OBJECT_STORE));
     if (store_in_plasma) {
       Status s = put_in_local_plasma_callback_(object, object_id);
-      int retry_count = 0;
-      while (!s.ok() && s.IsTransientObjectStoreFull() && retry_count < 3) {
-        retry_count++;
-        s = put_in_local_plasma_callback_(object, object_id);
-      }
       if (!s.ok()) {
         return s;
       }
@@ -922,10 +942,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
         RAY_LOG(WARNING).WithField(object_id)
             << "Failed to handle dynamic task return: " << direct_or.status();
         Status st = direct_or.status();
-        rpc::ErrorType err_type = rpc::ErrorType::WORKER_DIED;
-        if (st.IsObjectStoreFull() || st.IsTransientObjectStoreFull()) {
-          err_type = rpc::ErrorType::OUT_OF_MEMORY;
-        }
+        rpc::ErrorType err_type = MapPlasmaPutStatusToErrorType(st);
         rpc::RayErrorInfo err_info;
         err_info.set_error_message(st.ToString());
         FailOrRetryPendingTask(task_id,
@@ -953,10 +970,13 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
       // If storing return in plasma failed, treat as system failure for this attempt.
       // Do not proceed with normal completion. Mark task failed immediately.
       Status st = direct_or.status();
+      rpc::ErrorType err_type = MapPlasmaPutStatusToErrorType(st);
+      rpc::RayErrorInfo err_info;
+      err_info.set_error_message(st.ToString());
       FailOrRetryPendingTask(task_id,
-                             rpc::ErrorType::WORKER_DIED,
+                             err_type,
                              &st,
-                             /*ray_error_info=*/nullptr,
+                             /*ray_error_info=*/&err_info,
                              /*mark_task_object_failed=*/true,
                              /*fail_immediately=*/true);
       return;
@@ -1093,6 +1113,17 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
             RAY_LOG(WARNING).WithField(generator_return_id)
                 << "Failed to handle generator return during app error propagation: "
                 << res.status();
+            Status st = res.status();
+            rpc::ErrorType err_type = MapPlasmaPutStatusToErrorType(st);
+            rpc::RayErrorInfo err_info;
+            err_info.set_error_message(st.ToString());
+            FailOrRetryPendingTask(spec.TaskId(),
+                                   err_type,
+                                   &st,
+                                   /*ray_error_info=*/&err_info,
+                                   /*mark_task_object_failed=*/true,
+                                   /*fail_immediately=*/true);
+            return;
           }
         }
       }
@@ -1504,26 +1535,28 @@ void TaskManager::MarkTaskReturnObjectsFailed(
   int64_t num_returns = spec.NumReturns();
   for (int i = 0; i < num_returns; i++) {
     const auto object_id = ObjectID::FromIndex(task_id, /*index=*/i + 1);
-    // Always place an error marker in local memory to unblock waiters quickly.
-    in_memory_store_.Put(error, object_id);
-    // Best-effort plasma put if the object was meant to be in plasma.
     if (store_in_plasma_ids.contains(object_id)) {
       Status s = put_in_local_plasma_callback_(error, object_id);
       if (!s.ok()) {
         RAY_LOG(WARNING).WithField(object_id)
             << "Failed to put error object in plasma: " << s;
+        in_memory_store_.Put(error, object_id);
       }
+    } else {
+      in_memory_store_.Put(error, object_id);
     }
   }
   if (spec.ReturnsDynamic()) {
     for (const auto &dynamic_return_id : spec.DynamicReturnIds()) {
-      in_memory_store_.Put(error, dynamic_return_id);
       if (store_in_plasma_ids.contains(dynamic_return_id)) {
         Status s = put_in_local_plasma_callback_(error, dynamic_return_id);
         if (!s.ok()) {
           RAY_LOG(WARNING).WithField(dynamic_return_id)
               << "Failed to put error object in plasma: " << s;
+          in_memory_store_.Put(error, dynamic_return_id);
         }
+      } else {
+        in_memory_store_.Put(error, dynamic_return_id);
       }
     }
   }
@@ -1550,6 +1583,7 @@ void TaskManager::MarkTaskReturnObjectsFailed(
         if (!s.ok()) {
           RAY_LOG(WARNING).WithField(generator_return_id)
               << "Failed to put error object in plasma: " << s;
+          in_memory_store_.Put(error, generator_return_id);
         }
       } else {
         in_memory_store_.Put(error, generator_return_id);
