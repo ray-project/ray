@@ -376,16 +376,16 @@ bleach==6.1.0 \
     # via
     #   -c python/deplocks/llm/ray_test_py311_cu128.lock
     #   nbconvert
-boto3==1.28.17 \
-    --hash=sha256:90f7cfb5e1821af95b1fc084bc50e6c47fa3edc99f32de1a2591faa0c546bea7 \
-    --hash=sha256:bca0526f819e0f19c0f1e6eba3e2d1d6b6a92a45129f98c0d716e5aab6d9444b
+boto3==1.29.7 \
+    --hash=sha256:1eb4c548118b5fc5e018dee956fd33e6fb249cd1f2def85f1bba816aef4d9f3e \
+    --hash=sha256:96e9890ebe7cd823b5f4976dd676e112c000c6528c28e20a2f274590589dd18b
     # via
     #   -c python/deplocks/llm/ray_test_py311_cu128.lock
     #   -r python/requirements/cloud-requirements.txt
     #   smart-open
-botocore==1.31.17 \
-    --hash=sha256:396459065dba4339eb4da4ec8b4e6599728eb89b7caaceea199e26f7d824a41c \
-    --hash=sha256:6ac34a1d34aa3750e78b77b8596617e2bab938964694d651939dba2cbde2c12b
+botocore==1.32.7 \
+    --hash=sha256:58b33d02cafa23461c8a9d211b30e8cded992380a84de409379fd02811fa3e11 \
+    --hash=sha256:c6795c731b04c8e3635588c44cfd1a4462fc5987859195522c96812cf3eceff9
     # via
     #   -c python/deplocks/llm/ray_test_py311_cu128.lock
     #   -r python/requirements/cloud-requirements.txt
@@ -3920,9 +3920,9 @@ rsa==4.7.2 \
     #   -c python/deplocks/llm/ray_test_py311_cu128.lock
     #   google-auth
     #   oauth2client
-s3transfer==0.6.2 \
-    --hash=sha256:b014be3a8a2aab98cfe1abc7229cc5a9a0cf05eb9c1f2b86b230fd8df3f78084 \
-    --hash=sha256:cab66d3380cca3e70939ef2255d01cd8aece6a4907a9528740f668c4b0611861
+s3transfer==0.8.0 \
+    --hash=sha256:baa479dc2e63e5c2ed51611b4d46cdf0295e2070d8d0b86b22f335ee5b954986 \
+    --hash=sha256:e8d6bd52ffd99841e3a57b34370a54841f12d3aab072af862cdcc50955288002
     # via
     #   -c python/deplocks/llm/ray_test_py311_cu128.lock
     #   boto3
