@@ -192,7 +192,7 @@ ray_cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":client_call",
+        "//src/ray/common:status",
         "//src/ray/protobuf:autoscaler_cc_proto",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:node_manager_cc_proto",
@@ -220,8 +220,8 @@ ray_cc_library(
     deps = [
         ":raylet_client_interface",
         ":retryable_grpc_client",
+        "//src/ray/common:bundle_spec",
         "//src/ray/common:ray_config",
-        "//src/ray/common:task_common",
         "//src/ray/protobuf:node_manager_cc_grpc",
         "//src/ray/util:logging",
     ],

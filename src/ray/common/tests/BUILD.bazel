@@ -8,7 +8,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:task_common",
+        "//src/ray/common:cluster_resource_data",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -21,7 +21,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:task_common",
+        "//src/ray/common:resource_set",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -34,7 +34,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:task_common",
+        "//src/ray/common:resource_instance_set",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -143,7 +143,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:task_common",
+        "//src/ray/common:bundle_location_index",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -212,7 +212,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:task_common",
+        "//src/ray/common:scheduling_ids",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -239,7 +239,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:task_common",
+        "//src/ray/common:label_selector",
         "@com_google_googletest//:gtest_main",
     ],
 )
