@@ -399,9 +399,8 @@ class ServeController:
             )
             for dep_name, details in deployment_details.items():
                 autoscaling_config = details.deployment_config.autoscaling_config
-                if not autoscaling_config:
-                    continue
-                yield app_name, dep_name, details, autoscaling_config
+                if autoscaling_config:
+                    yield app_name, dep_name, details, autoscaling_config
 
     def _append_autoscaling_decision(
         self, dep_id, current_replicas, target_replicas, policy_name
