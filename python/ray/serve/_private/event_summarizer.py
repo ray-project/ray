@@ -97,13 +97,13 @@ class ServeAutoscalingEventSummarizer:
     def format_metrics_health_text(
         self,
         *,
-        last_metrics_age_s: Optional[float],
+        time_since_last_collected_metrics_s: Optional[float],
         look_back_period_s: Optional[float],
     ) -> str:
         """Return the age of the last metrics update as a string, or 'unknown'."""
-        if last_metrics_age_s is None:
+        if time_since_last_collected_metrics_s is None:
             return "unknown"
-        return f"{int(last_metrics_age_s)}s"
+        return f"{int(time_since_last_collected_metrics_s)}s"
 
     def log_snapshot(self, snapshot: DeploymentSnapshot) -> None:
         """Emit the canonical one-line JSON snapshot from typed object."""
@@ -126,7 +126,7 @@ class ServeAutoscalingEventSummarizer:
         look_back_period_s: Optional[float],
         queued_requests: Optional[float],
         total_requests: float,
-        last_metrics_age_s: Optional[float],
+        time_since_last_collected_metrics_s: Optional[float],
         errors: List[str],
         recent_decisions: List[AutoscalingDecisionSummary],
     ) -> None:
@@ -135,7 +135,8 @@ class ServeAutoscalingEventSummarizer:
         scaling_status = self.format_scaling_status(scaling_status)
         timestamp_s = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         health_text = self.format_metrics_health_text(
-            last_metrics_age_s=last_metrics_age_s, look_back_period_s=look_back_period_s
+            time_since_last_collected_metrics_s=time_since_last_collected_metrics_s,
+            look_back_period_s=look_back_period_s,
         )
         snapshot = DeploymentSnapshot(
             timestamp_s=timestamp_s,

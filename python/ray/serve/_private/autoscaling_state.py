@@ -371,11 +371,11 @@ class AutoscalingState:
 
         Includes:
         - current_replicas: number of currently running replicas
-        - target_replicas: bounded decision from policy
+        - target_replicas: target number of replicas
         - min_replicas / max_replicas: capacity-adjusted bounds
-        - total_requests: aggregated request pressure
-        - queued_requests: aggregated queued requests reported by handles (best-effort)
-        - last_metrics_age_s: age (in seconds) of the freshest metric we've seen (best-effort)
+        - total_requests: total number of requests across all replicas
+        - queued_requests: total number of queued requests across all handles
+        - time_since_last_collected_metrics_s: age (in seconds) of the freshest metric we've seen (best-effort)
         """
         current_replicas = len(self._running_replicas)
         target_replicas = self.get_decision_num_replicas(
@@ -399,9 +399,9 @@ class AutoscalingState:
         latest_ts = max(timestamps) if timestamps else None
 
         if latest_ts is not None:
-            last_metrics_age_s = max(0.0, time.time() - latest_ts)
+            time_since_last_collected_metrics_s = max(0.0, time.time() - latest_ts)
         else:
-            last_metrics_age_s = None
+            time_since_last_collected_metrics_s = None
 
         return {
             "current_replicas": int(current_replicas),
@@ -410,9 +410,9 @@ class AutoscalingState:
             "max_replicas": int(max_replicas) if max_replicas is not None else None,
             "total_requests": total_requests,
             "queued_requests": float(queued_requests),
-            "last_metrics_age_s": None
-            if last_metrics_age_s is None
-            else float(last_metrics_age_s),
+            "time_since_last_collected_metrics_s": None
+            if time_since_last_collected_metrics_s is None
+            else float(time_since_last_collected_metrics_s),
         }
 
 

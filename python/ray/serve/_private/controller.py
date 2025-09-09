@@ -484,7 +484,9 @@ class ServeController:
                 look_back_period_s=look_back_period_s,
                 queued_requests=deployment_snapshot.get("queued_requests"),
                 total_requests=total_requests,
-                last_metrics_age_s=deployment_snapshot.get("last_metrics_age_s"),
+                time_since_last_collected_metrics_s=deployment_snapshot.get(
+                    "time_since_last_collected_metrics_s"
+                ),
                 errors=deployment_snapshot.get("errors", []),
                 recent_decisions=decisions_summary,
             )
