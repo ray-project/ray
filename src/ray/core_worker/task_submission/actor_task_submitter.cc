@@ -229,7 +229,7 @@ void ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
                   }
 
                   if (fail_or_retry_task) {
-                    GetTaskManagerWithoutMu().FailOrRetryPendingTask(
+                    task_manager_.FailOrRetryPendingTask(
                         task_id, rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status);
                   }
                 });
@@ -255,12 +255,12 @@ void ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
         error_info.has_actor_died_error() &&
         error_info.actor_died_error().has_oom_context() &&
         error_info.actor_died_error().oom_context().fail_immediately();
-    GetTaskManagerWithoutMu().FailOrRetryPendingTask(task_id,
-                                                     error_type,
-                                                     &status,
-                                                     &error_info,
-                                                     /*mark_task_object_failed*/ true,
-                                                     fail_immediately);
+    task_manager_.FailOrRetryPendingTask(task_id,
+                                         error_type,
+                                         &status,
+                                         &error_info,
+                                         /*mark_task_object_failed*/ true,
+                                         fail_immediately);
   }
 }
 
@@ -280,8 +280,8 @@ void ActorTaskSubmitter::FailInflightTasksOnRestart(
     const absl::flat_hash_map<TaskAttempt, rpc::ClientCallback<rpc::PushTaskReply>>
         &inflight_task_callbacks) {
   // NOTE(kfstorm): We invoke the callbacks with a bad status to act like there's a
-  // network issue. We don't call `task_manager_.FailOrRetryPendingTask` directly because
-  // there's much more work to do in the callback.
+  // network issue. We don't call `task_manager_.FailOrRetryPendingTask` directly
+  // because there's much more work to do in the callback.
   auto status = Status::IOError("The actor was restarted");
   for (const auto &[_, callback] : inflight_task_callbacks) {
     callback(status, rpc::PushTaskReply());
@@ -456,18 +456,18 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
           error_info.has_actor_died_error() &&
           error_info.actor_died_error().has_oom_context() &&
           error_info.actor_died_error().oom_context().fail_immediately();
-      GetTaskManagerWithoutMu().FailOrRetryPendingTask(task_id,
-                                                       error_type,
-                                                       &status,
-                                                       &error_info,
-                                                       /*mark_task_object_failed*/ true,
-                                                       fail_immediatedly);
+      task_manager_.FailOrRetryPendingTask(task_id,
+                                           error_type,
+                                           &status,
+                                           &error_info,
+                                           /*mark_task_object_failed*/ true,
+                                           fail_immediatedly);
     }
     if (!wait_for_death_info_tasks.empty()) {
       RAY_LOG(DEBUG).WithField(actor_id) << "Failing tasks waiting for death info, size="
                                          << wait_for_death_info_tasks.size();
       for (auto &task : wait_for_death_info_tasks) {
-        GetTaskManagerWithoutMu().FailPendingTask(
+        task_manager_.FailPendingTask(
             task->task_spec_.TaskId(), error_type, &task->status_, &error_info);
       }
     }
@@ -495,15 +495,15 @@ void ActorTaskSubmitter::FailTaskWithError(const PendingTaskWaitingForDeathInfo 
     error_info.set_error_type(rpc::ErrorType::ACTOR_DIED);
     error_info.set_error_message("Actor died by preemption.");
   }
-  GetTaskManagerWithoutMu().FailPendingTask(
+  task_manager_.FailPendingTask(
       task.task_spec_.TaskId(), error_info.error_type(), &task.status_, &error_info);
 }
 
 void ActorTaskSubmitter::CheckTimeoutTasks() {
   // For each task in `wait_for_death_info_tasks`, if it times out, fail it with
   // timeout_error_info. But operating on the queue requires the mu_ lock; while calling
-  // FailPendingTask requires the opposite. So we copy the tasks out from the queue within
-  // the lock. This requires putting the data into shared_ptr.
+  // FailPendingTask requires the opposite. So we copy the tasks out from the queue
+  // within the lock. This requires putting the data into shared_ptr.
   std::vector<std::shared_ptr<PendingTaskWaitingForDeathInfo>> timeout_tasks;
   int64_t now = current_time_ms();
   {
@@ -655,7 +655,7 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
     }
   }
   if (resubmit_generator) {
-    GetTaskManagerWithoutMu().MarkGeneratorFailedAndResubmit(task_id);
+    task_manager_.MarkGeneratorFailedAndResubmit(task_id);
     return;
   }
 
@@ -676,10 +676,10 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
     rpc::RayErrorInfo error_info;
     error_info.set_error_message(msg);
     error_info.set_error_type(rpc::ErrorType::TASK_CANCELLED);
-    GetTaskManagerWithoutMu().FailPendingTask(task_spec.TaskId(),
-                                              rpc::ErrorType::TASK_CANCELLED,
-                                              /*status*/ nullptr,
-                                              &error_info);
+    task_manager_.FailPendingTask(task_spec.TaskId(),
+                                  rpc::ErrorType::TASK_CANCELLED,
+                                  /*status*/ nullptr,
+                                  &error_info);
   } else {
     bool is_actor_dead = false;
     bool fail_immediately = false;
@@ -698,8 +698,8 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
       auto &queue = queue_pair->second;
 
       // If the actor is already dead, immediately mark the task object as failed.
-      // Otherwise, start the grace period, waiting for the actor death reason. Before the
-      // deadline:
+      // Otherwise, start the grace period, waiting for the actor death reason. Before
+      // the deadline:
       // - If we got the death reason: mark the object as failed with that reason.
       // - If we did not get the death reason: raise ACTOR_UNAVAILABLE with the status.
       // - If we did not get the death reason, but *the actor is preempted*: raise
@@ -712,8 +712,8 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
                            error_info.actor_died_error().has_oom_context() &&
                            error_info.actor_died_error().oom_context().fail_immediately();
       } else {
-        // The actor may or may not be dead, but the request failed. Consider the failure
-        // temporary. May recognize retry, so fail_immediately = false.
+        // The actor may or may not be dead, but the request failed. Consider the
+        // failure temporary. May recognize retry, so fail_immediately = false.
         error_info.set_error_message("The actor is temporarily unavailable: " +
                                      status.ToString());
         error_info.set_error_type(rpc::ErrorType::ACTOR_UNAVAILABLE);
@@ -725,25 +725,25 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
     // this first.
     CancelDependencyResolution(task_id);
 
-    will_retry = GetTaskManagerWithoutMu().FailOrRetryPendingTask(
-        task_id,
-        error_info.error_type(),
-        &status,
-        &error_info,
-        /*mark_task_object_failed*/ is_actor_dead,
-        fail_immediately);
+    will_retry =
+        task_manager_.FailOrRetryPendingTask(task_id,
+                                             error_info.error_type(),
+                                             &status,
+                                             &error_info,
+                                             /*mark_task_object_failed*/ is_actor_dead,
+                                             fail_immediately);
     if (!is_actor_dead && !will_retry) {
       // Ran out of retries, last failure = either user exception or actor death.
       if (status.ok()) {
         // last failure = user exception, just complete it with failure.
         RAY_CHECK(reply.is_retryable_error());
 
-        GetTaskManagerWithoutMu().CompletePendingTask(
+        task_manager_.CompletePendingTask(
             task_id, reply, addr, reply.is_application_error());
 
       } else if (RayConfig::instance().timeout_ms_task_wait_for_death_info() != 0) {
-        // last failure = Actor death, but we still see the actor "alive" so we optionally
-        // wait for a grace period for the death info.
+        // last failure = Actor death, but we still see the actor "alive" so we
+        // optionally wait for a grace period for the death info.
 
         int64_t death_info_grace_period_ms =
             current_time_ms() +
@@ -767,7 +767,7 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
           auto queue_pair = client_queues_.find(actor_id);
           RAY_CHECK(queue_pair != client_queues_.end());
         }
-        GetTaskManagerWithoutMu().FailPendingTask(
+        task_manager_.FailPendingTask(
             task_spec.TaskId(), error_info.error_type(), &status, &error_info);
       }
     }
@@ -879,8 +879,8 @@ void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive)
 
   // Shouldn't hold a lock while accessing task_manager_.
   // Task is already canceled or finished.
-  GetTaskManagerWithoutMu().MarkTaskCanceled(task_id);
-  if (!GetTaskManagerWithoutMu().IsTaskPending(task_id)) {
+  task_manager_.MarkTaskCanceled(task_id);
+  if (!task_manager_.IsTaskPending(task_id)) {
     RAY_LOG(DEBUG).WithField(task_id) << "Task is already finished or canceled";
     return;
   }
@@ -920,7 +920,7 @@ void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive)
            << " before it executes.";
     error_info.set_error_message(stream.str());
     error_info.set_error_type(rpc::ErrorType::TASK_CANCELLED);
-    GetTaskManagerWithoutMu().FailOrRetryPendingTask(
+    task_manager_.FailOrRetryPendingTask(
         task_id, rpc::ErrorType::TASK_CANCELLED, /*status*/ nullptr, &error_info);
     return;
   }
@@ -958,7 +958,7 @@ void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive)
 
                          // Keep retrying every 2 seconds until a task is officially
                          // finished.
-                         if (!GetTaskManagerWithoutMu().GetTaskSpec(task_id)) {
+                         if (!task_manager_.GetTaskSpec(task_id)) {
                            // Task is already finished.
                            RAY_LOG(DEBUG).WithField(task_spec.TaskId())
                                << "Task is finished. Stop a cancel request.";
