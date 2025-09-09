@@ -15,6 +15,7 @@ from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
+    DeploymentSnapshot,
     NodeId,
     RequestProtocol,
     RequestRoutingInfo,
@@ -472,24 +473,34 @@ class ServeController:
                 recent_decisions
             )
 
-            self._serve_event_summarizer.log_deployment_snapshot(
-                app_name=app_name,
-                deployment_name=dep_name,
+            timestamp_s = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            scaling_status_fmt = self._serve_event_summarizer.format_scaling_status(
+                scaling_status
+            )
+            health_text = self._serve_event_summarizer.format_metrics_health_text(
+                time_since_last_collected_metrics_s=deployment_snapshot.get(
+                    "time_since_last_collected_metrics_s"
+                ),
+                look_back_period_s=look_back_period_s,
+            )
+            snapshot = DeploymentSnapshot(
+                timestamp_s=timestamp_s,
+                app=app_name,
+                deployment=dep_name,
                 current_replicas=current_replicas,
                 target_replicas=target_replicas,
                 min_replicas=min_repl_adj,
                 max_replicas=max_repl_adj,
-                scaling_status=scaling_status,
-                policy_name=policy_name,
+                scaling_status=scaling_status_fmt,
+                policy=policy_name,
                 look_back_period_s=look_back_period_s,
                 queued_requests=deployment_snapshot.get("queued_requests"),
                 total_requests=total_requests,
-                time_since_last_collected_metrics_s=deployment_snapshot.get(
-                    "time_since_last_collected_metrics_s"
-                ),
+                metrics_health=health_text,
                 errors=deployment_snapshot.get("errors", []),
-                recent_decisions=decisions_summary,
+                decisions=decisions_summary,
             )
+            self._serve_event_summarizer.log_snapshot(snapshot)
             self._last_autoscaling_snapshots[key] = signature
 
     async def run_control_loop(self) -> None:
