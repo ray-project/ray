@@ -2,8 +2,6 @@ import uuid
 import pytest
 import sys
 import asyncio
-from unittest.mock import Mock
-from concurrent.futures import ThreadPoolExecutor
 
 from ray._common.test_utils import async_wait_for_condition
 from ray.dashboard.modules.aggregator.publisher.ray_event_publisher import (

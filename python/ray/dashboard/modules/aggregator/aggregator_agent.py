@@ -18,7 +18,6 @@ from ray.dashboard.modules.aggregator.shared import metric_recorder, metric_pref
 import ray
 from ray._private import ray_constants
 import ray.dashboard.utils as dashboard_utils
-import ray.dashboard.consts as dashboard_consts
 from ray.core.generated import (
     events_event_aggregator_service_pb2,
     events_event_aggregator_service_pb2_grpc,
