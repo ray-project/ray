@@ -92,11 +92,13 @@ class TestActorPool(unittest.TestCase):
         self,
         min_size=1,
         max_size=4,
+        initial_size=1,
         max_tasks_in_flight=4,
     ):
         pool = _ActorPool(
             min_size=min_size,
             max_size=max_size,
+            initial_size=initial_size,
             max_actor_concurrency=1,
             max_tasks_in_flight_per_actor=max_tasks_in_flight,
             create_actor_fn=self._create_actor_fn,
