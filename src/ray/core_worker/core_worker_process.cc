@@ -425,14 +425,24 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       /*put_in_local_plasma_callback=*/
       [this](const RayObject &object, const ObjectID &object_id) {
         auto core_worker = GetCoreWorker();
-        auto put_status =
-            core_worker->PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true);
-        if (!put_status.ok()) {
-          RAY_LOG(WARNING).WithField(object_id)
-              << "Failed to put object in plasma store: " << put_status;
-          return put_status;
+        constexpr int max_retries = 3;
+        int attempt = 0;
+        int64_t backoff_ms = 10;
+        Status put_status;
+        while (attempt++ < max_retries) {
+          put_status =
+              core_worker->PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true);
+          if (put_status.ok()) {
+            return Status::OK();
+          }
+          // Backoff before retrying.
+          std::this_thread::sleep_for(std::chrono::milliseconds(backoff_ms));
+          backoff_ms *= 2;
         }
-        return Status::OK();
+        RAY_LOG(WARNING).WithField(object_id)
+            << "Exhausted plasma put retries (attempts=" << attempt
+            << ") with status: " << put_status;
+        return put_status;
       },
       /* retry_task_callback= */
       [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
