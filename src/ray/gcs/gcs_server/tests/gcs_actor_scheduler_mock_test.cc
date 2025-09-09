@@ -22,7 +22,7 @@
 #include "mock/ray/gcs/store_client/store_client.h"
 #include "mock/ray/raylet_client/raylet_client.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
-#include "ray/common/test_util.h"
+#include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server/gcs_actor.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/util/counter_map.h"
@@ -159,8 +159,8 @@ TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak2) {
   std::unique_ptr<Postable<void(bool)>> async_put_with_index_cb;
   // Leasing successfully
   EXPECT_CALL(*store_client, AsyncPut(_, _, _, _, _))
-      .WillOnce(
-          DoAll(SaveArgToUniquePtr<4>(&async_put_with_index_cb), Return(Status::OK())));
+      .WillOnce(DoAll(SaveArgToUniquePtr<4>(&async_put_with_index_cb),
+                      InvokeWithoutArgs([]() {})));
   actor_scheduler->ScheduleByRaylet(actor);
   rpc::RequestWorkerLeaseReply reply;
   reply.mutable_worker_address()->set_node_id(node_id.Binary());

@@ -27,7 +27,7 @@ class BackendConfig:
 
 BACKEND_CONFIG = {
     "gloo": BackendConfig(
-        init_actor_kwargs={"enable_tensor_transport": True},
+        init_actor_kwargs={},
         send_method_kwargs={"tensor_transport": "gloo"},
         device=torch.device("cpu"),
         collective_group_backend="torch_gloo",
@@ -51,7 +51,7 @@ BACKEND_CONFIG = {
 }
 
 
-@ray.remote
+@ray.remote(enable_tensor_transport=True)
 class Actor:
     def __init__(
         self,

@@ -38,20 +38,23 @@
 #include "ray/common/cgroup/cgroup_context.h"
 #include "ray/common/cgroup/cgroup_manager.h"
 #include "ray/common/cgroup/constants.h"
+#include "ray/common/protobuf_utils.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/task/task_util.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
-#include "ray/gcs/pb_util.h"
 #include "ray/rpc/event_aggregator_client.h"
 #include "ray/util/container_util.h"
 #include "ray/util/event.h"
 #include "ray/util/subreaper.h"
+#include "ray/util/time.h"
 
 using json = nlohmann::json;
 using MessageType = ray::protocol::MessageType;
 
 namespace ray::core {
+
+using std::literals::operator""sv;
 
 namespace {
 // Default capacity for serialization caches.
@@ -165,7 +168,8 @@ JobID GetProcessJobID(const CoreWorkerOptions &options) {
   return options.job_id;
 }
 
-TaskCounter::TaskCounter() {
+TaskCounter::TaskCounter(ray::observability::MetricInterface &task_by_state_counter)
+    : task_by_state_counter_(task_by_state_counter) {
   counter_.SetOnChangeCallback(
       [this](const std::tuple<std::string, TaskStatusType, bool>
                  &key) ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) mutable {
@@ -180,37 +184,37 @@ TaskCounter::TaskCounter() {
         const auto is_retry_label = is_retry ? "1" : "0";
         // RUNNING_IN_RAY_GET/WAIT are sub-states of RUNNING, so we need to subtract
         // them out to avoid double-counting.
-        ray::stats::STATS_tasks.Record(
+        task_by_state_counter_.Record(
             running_total - num_in_get - num_in_wait,
-            {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
-             {"Name", func_name},
-             {"IsRetry", is_retry_label},
-             {"JobId", job_id_},
-             {"Source", "executor"}});
+            {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
+             {"Name"sv, func_name},
+             {"IsRetry"sv, is_retry_label},
+             {"JobId"sv, job_id_},
+             {"Source"sv, "executor"}});
         // Negate the metrics recorded from the submitter process for these tasks.
-        ray::stats::STATS_tasks.Record(
+        task_by_state_counter_.Record(
             -running_total,
-            {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::SUBMITTED_TO_WORKER)},
-             {"Name", func_name},
-             {"IsRetry", is_retry_label},
-             {"JobId", job_id_},
-             {"Source", "executor"}});
+            {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::SUBMITTED_TO_WORKER)},
+             {"Name"sv, func_name},
+             {"IsRetry"sv, is_retry_label},
+             {"JobId"sv, job_id_},
+             {"Source"sv, "executor"}});
         // Record sub-state for get.
-        ray::stats::STATS_tasks.Record(
+        task_by_state_counter_.Record(
             num_in_get,
-            {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_GET)},
-             {"Name", func_name},
-             {"IsRetry", is_retry_label},
-             {"JobId", job_id_},
-             {"Source", "executor"}});
+            {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_GET)},
+             {"Name"sv, func_name},
+             {"IsRetry"sv, is_retry_label},
+             {"JobId"sv, job_id_},
+             {"Source"sv, "executor"}});
         // Record sub-state for wait.
-        ray::stats::STATS_tasks.Record(
+        task_by_state_counter_.Record(
             num_in_wait,
-            {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_WAIT)},
-             {"Name", func_name},
-             {"IsRetry", is_retry_label},
-             {"JobId", job_id_},
-             {"Source", "executor"}});
+            {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_WAIT)},
+             {"Name"sv, func_name},
+             {"IsRetry"sv, is_retry_label},
+             {"JobId"sv, job_id_},
+             {"Source"sv, "executor"}});
       });
 }
 
@@ -317,7 +321,8 @@ CoreWorker::CoreWorker(
     std::unique_ptr<ActorManager> actor_manager,
     instrumented_io_context &task_execution_service,
     std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
-    uint32_t pid)
+    uint32_t pid,
+    ray::observability::MetricInterface &task_by_state_counter)
     : options_(std::move(options)),
       get_call_site_(RayConfig::instance().record_ref_creation_sites()
                          ? options_.get_lang_stack
@@ -356,6 +361,7 @@ CoreWorker::CoreWorker(
       task_execution_service_(task_execution_service),
       exiting_detail_(std::nullopt),
       max_direct_call_object_size_(RayConfig::instance().max_direct_call_object_size()),
+      task_counter_(task_by_state_counter),
       task_event_buffer_(std::move(task_event_buffer)),
       pid_(pid),
       actor_shutdown_callback_(std::move(options_.actor_shutdown_callback)),
@@ -777,11 +783,11 @@ void CoreWorker::InternalHeartbeat() {
     if (spec.IsActorTask()) {
       auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
       actor_handle->SetResubmittedActorTaskSpec(spec);
-      RAY_CHECK_OK(actor_task_submitter_->SubmitTask(spec));
+      actor_task_submitter_->SubmitTask(spec);
     } else if (spec.IsActorCreationTask()) {
-      RAY_CHECK_OK(actor_task_submitter_->SubmitActorCreationTask(spec));
+      actor_task_submitter_->SubmitActorCreationTask(spec);
     } else {
-      RAY_CHECK_OK(normal_task_submitter_->SubmitTask(spec));
+      normal_task_submitter_->SubmitTask(spec);
     }
   }
 
@@ -1995,7 +2001,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
 
     io_service_.post(
         [this, task_spec = std::move(task_spec)]() mutable {
-          RAY_UNUSED(normal_task_submitter_->SubmitTask(std::move(task_spec)));
+          normal_task_submitter_->SubmitTask(std::move(task_spec));
         },
         "CoreWorker.SubmitTask");
   }
@@ -2175,7 +2181,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
               task_manager_->FailPendingTask(
                   task_spec.TaskId(), rpc::ErrorType::ACTOR_CREATION_FAILED, &status);
             } else {
-              RAY_UNUSED(actor_task_submitter_->SubmitActorCreationTask(task_spec));
+              actor_task_submitter_->SubmitActorCreationTask(task_spec);
             }
           });
         },
@@ -2190,7 +2196,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
     }
     io_service_.post(
         [this, task_spec = std::move(task_spec)]() {
-          RAY_UNUSED(actor_task_submitter_->SubmitActorCreationTask(task_spec));
+          actor_task_submitter_->SubmitActorCreationTask(task_spec);
         },
         "CoreWorker.SubmitTask");
   }
@@ -2286,7 +2292,6 @@ Status CoreWorker::SubmitActorTask(
     std::string err_msg = absl::StrFormat(
         "Can't find actor %s. It might be dead or it's from a different cluster",
         actor_id.Hex());
-    // TODO(dayshah): make status take by value
     return Status::NotFound(err_msg);
   }
   /// Check whether backpressure may happen at the very beginning of submitting a task.
@@ -2372,7 +2377,7 @@ Status CoreWorker::SubmitActorTask(
     returned_refs = task_manager_->AddPendingTask(
         rpc_address_, task_spec, CurrentCallSite(), max_retries);
 
-    RAY_CHECK_OK(actor_task_submitter_->SubmitTask(task_spec));
+    actor_task_submitter_->SubmitTask(task_spec);
   }
   task_returns = std::move(returned_refs);
   return Status::OK();
@@ -2392,8 +2397,8 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
     RAY_LOG(DEBUG).WithField(object_id)
         << "Request to cancel a task of object to an owner "
         << obj_addr.SerializeAsString();
-    return normal_task_submitter_->CancelRemoteTask(
-        object_id, obj_addr, force_kill, recursive);
+    normal_task_submitter_->CancelRemoteTask(object_id, obj_addr, force_kill, recursive);
+    return Status::OK();
   }
 
   auto task_spec = task_manager_->GetTaskSpec(object_id.TaskId());
@@ -2414,58 +2419,51 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
       return Status::InvalidArgument("force=True is not supported for actor tasks.");
     }
 
-    return actor_task_submitter_->CancelTask(task_spec.value(), recursive);
+    actor_task_submitter_->CancelTask(task_spec.value(), recursive);
   } else {
-    return normal_task_submitter_->CancelTask(task_spec.value(), force_kill, recursive);
+    normal_task_submitter_->CancelTask(task_spec.value(), force_kill, recursive);
   }
+  return Status::OK();
 }
 
 Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {
-  std::vector<std::pair<TaskID, Status>> recursive_cancellation_status;
-  bool recursive_success = true;
-  for (const auto &child_id : task_manager_->GetPendingChildrenTasks(task_id)) {
+  absl::flat_hash_set<TaskID> unknown_child_task_ids;
+  auto child_task_ids = task_manager_->GetPendingChildrenTasks(task_id);
+  for (const auto &child_id : child_task_ids) {
     auto child_spec = task_manager_->GetTaskSpec(child_id);
     if (!child_spec.has_value()) {
-      recursive_success = false;
-      recursive_cancellation_status.emplace_back(
-          child_id,
-          Status::UnknownError(
-              "Recursive task cancellation failed--check warning logs."));
+      unknown_child_task_ids.insert(child_id);
     } else if (child_spec->IsActorTask()) {
-      auto result = actor_task_submitter_->CancelTask(child_spec.value(), true);
-      recursive_cancellation_status.emplace_back(child_id, result);
+      actor_task_submitter_->CancelTask(std::move(*child_spec), true);
     } else {
-      auto result =
-          normal_task_submitter_->CancelTask(child_spec.value(), force_kill, true);
-      recursive_cancellation_status.emplace_back(child_id, result);
+      normal_task_submitter_->CancelTask(std::move(*child_spec), force_kill, true);
     }
   }
 
-  if (recursive_success) {
+  if (unknown_child_task_ids.empty()) {
     return Status::OK();
-  } else {
-    auto kMaxFailedTaskSampleSize = 10;
-    std::ostringstream ostr;
-    ostr << "Failed to cancel all the children tasks of " << task_id << " recursively.\n"
-         << "Here are up to " << kMaxFailedTaskSampleSize
-         << " samples tasks that failed to be canceled\n";
-    auto success = 0;
-    auto failures = 0;
-    for (const auto &[child_id, status] : recursive_cancellation_status) {
-      if (status.ok()) {
-        success += 1;
-      } else {
-        // Only record up to sample sizes.
-        if (failures < kMaxFailedTaskSampleSize) {
-          ostr << "\t" << child_id << ", " << status << "\n";
-        }
-        failures += 1;
-      }
-    }
-    ostr << "Total Recursive cancelation success: " << success
-         << ", failures: " << failures;
-    return Status::UnknownError(ostr.str());
   }
+
+  constexpr size_t kMaxFailedTaskSampleSize = 10;
+  std::ostringstream ostr;
+  ostr << "Failed to cancel all the children tasks of " << task_id << " recursively.\n"
+       << "Here are up to " << kMaxFailedTaskSampleSize
+       << " samples tasks that failed to be canceled\n";
+  const auto failure_status_str =
+      Status::UnknownError("Recursive task cancellation failed--check warning logs.")
+          .ToString();
+  size_t failures = 0;
+  for (const auto &child_id : unknown_child_task_ids) {
+    ostr << "\t" << child_id << ", " << failure_status_str << "\n";
+    failures += 1;
+    if (failures >= kMaxFailedTaskSampleSize) {
+      break;
+    }
+  }
+  ostr << "Total Recursive cancelation success: "
+       << (child_task_ids.size() - unknown_child_task_ids.size())
+       << ", failures: " << unknown_child_task_ids.size();
+  return Status::UnknownError(ostr.str());
 }
 
 Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill, bool no_restart) {
@@ -4566,10 +4564,10 @@ void CoreWorker::TaskManagerRetryTask(TaskSpecification &spec,
     if (spec.IsActorTask()) {
       auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
       actor_handle->SetResubmittedActorTaskSpec(spec);
-      RAY_CHECK_OK(actor_task_submitter_->SubmitTask(spec));
+      actor_task_submitter_->SubmitTask(spec);
     } else {
       RAY_CHECK(spec.IsNormalTask());
-      RAY_CHECK_OK(normal_task_submitter_->SubmitTask(spec));
+      normal_task_submitter_->SubmitTask(spec);
     }
   }
 }

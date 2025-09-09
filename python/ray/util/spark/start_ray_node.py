@@ -1,20 +1,19 @@
-import os.path
-import subprocess
-import sys
-import time
-import shutil
 import fcntl
+import logging
+import os.path
+import shutil
 import signal
 import socket
-import logging
+import subprocess
+import sys
 import threading
+import time
 
+from ray._private.ray_process_reaper import SIGTERM_GRACE_PERIOD_SECONDS
 from ray.util.spark.cluster_init import (
     RAY_ON_SPARK_COLLECT_LOG_TO_PATH,
     RAY_ON_SPARK_START_RAY_PARENT_PID,
 )
-from ray._private.ray_process_reaper import SIGTERM_GRACE_PERIOD_SECONDS
-
 
 # Spark on ray implementation does not directly invoke `ray start ...` script to create
 # ray node subprocess, instead, it creates a subprocess to run this
