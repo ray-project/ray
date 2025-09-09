@@ -48,7 +48,7 @@ class RayEventPublisher(RayEventPublisherInterface):
         name: str,
         publish_client: PublisherClientInterface,
         event_buffer: MultiConsumerEventBuffer,
-        common_metric_tags: Dict[str, str] = {},
+        common_metric_tags: Optional[Dict[str, str]] = None,
         max_retries: int = PUBLISHER_MAX_RETRIES,
         initial_backoff: float = PUBLISHER_INITIAL_BACKOFF_SECONDS,
         max_backoff: float = PUBLISHER_MAX_BACKOFF_SECONDS,
@@ -67,7 +67,7 @@ class RayEventPublisher(RayEventPublisherInterface):
             jitter_ratio: Random jitter ratio to add to backoff times
         """
         self._name = name
-        self._common_metric_tags = common_metric_tags
+        self._common_metric_tags = common_metric_tags or {}
         self._max_retries = int(max_retries)
         self._initial_backoff = float(initial_backoff)
         self._max_backoff = float(max_backoff)

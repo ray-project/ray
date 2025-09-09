@@ -41,7 +41,7 @@ class MultiConsumerEventBuffer:
         self,
         max_size: int,
         max_batch_size: int,
-        common_metric_tags: Dict[str, str] = {},
+        common_metric_tags: Optional[Dict[str, str]] = None,
     ):
         self._buffer = deque(maxlen=max_size)
         self._max_size = max_size
@@ -50,7 +50,7 @@ class MultiConsumerEventBuffer:
 
         self._max_batch_size = max_batch_size
 
-        self._common_metrics_tags = common_metric_tags
+        self._common_metrics_tags = common_metric_tags or {}
         self._metric_recorder = metric_recorder
 
     async def add_event(self, event: events_base_event_pb2.RayEvent) -> None:
