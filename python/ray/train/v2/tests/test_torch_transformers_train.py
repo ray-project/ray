@@ -94,10 +94,6 @@ def train_func(config):
         train_dataset = Dataset.from_pandas(train_df)
         eval_dataset = Dataset.from_pandas(validation_df)
 
-    # Convert eval_dataset to dictionary if specified
-    if config.get("eval_dataset_as_dict", False):
-        eval_dataset = {"eval": eval_dataset}
-
     # Model
     model_config = AutoConfig.from_pretrained(MODEL_NAME)
     model = AutoModelForCausalLM.from_config(model_config)
@@ -158,6 +154,10 @@ def test_e2e_hf_data(ray_start_6_cpus_2_gpus, config_id):
 
             train_dataset = Dataset.from_pandas(train_df)
             eval_dataset = Dataset.from_pandas(validation_df)
+
+    # Convert eval_dataset to dictionary if specified
+    if config.get("eval_dataset_as_dict", False):
+        eval_dataset = {"eval": eval_dataset}
 
         # Model
         model_config = AutoConfig.from_pretrained(MODEL_NAME)
