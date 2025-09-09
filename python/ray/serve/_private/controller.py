@@ -20,7 +20,6 @@ from ray.serve._private.common import (
     RequestProtocol,
     RequestRoutingInfo,
     RunningReplicaInfo,
-    SnapshotSignature,
     TargetCapacityDirection,
     normalize_autoscaling_config,
 )
@@ -235,7 +234,7 @@ class ServeController:
         self._serve_event_summarizer = ServeAutoscalingEventSummarizer()
 
         # Caches for autoscaling observability
-        self._last_autoscaling_snapshots: Dict[DeploymentID, SnapshotSignature] = {}
+        self._last_autoscaling_snapshots: Dict[DeploymentID, DeploymentSnapshot] = {}
         self._scaling_decisions = {}
 
     def reconfigure_global_logging_config(self, global_logging_config: LoggingConfig):
@@ -453,16 +452,6 @@ class ServeController:
                 scaling_status = "STABLE"
 
             key = dep_id
-            signature = self._serve_event_summarizer.compute_signature(
-                current_replicas=current_replicas,
-                target_replicas=target_replicas,
-                min_replicas=min_repl_adj,
-                max_replicas=max_repl_adj,
-                scaling_status=scaling_status,
-                total_requests=total_requests,
-            )
-            if self._last_autoscaling_snapshots.get(key) == signature:
-                continue
             self._append_autoscaling_decision(
                 dep_id, current_replicas, target_replicas, policy_name
             )
@@ -498,8 +487,11 @@ class ServeController:
                 errors=deployment_snapshot.get("errors", []),
                 decisions=decisions_summary,
             )
+            last = self._last_autoscaling_snapshots.get(key)
+            if last is not None and last == snapshot:
+                continue
             self._serve_event_summarizer.log_snapshot(snapshot)
-            self._last_autoscaling_snapshots[key] = signature
+            self._last_autoscaling_snapshots[key] = snapshot
 
     async def run_control_loop(self) -> None:
         # NOTE(edoakes): we catch all exceptions here and simply log them,

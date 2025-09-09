@@ -6,7 +6,6 @@ from typing import Any, List, Optional, Sequence
 from ray.serve._private.common import (
     AutoscalingDecisionSummary,
     DeploymentSnapshot,
-    SnapshotSignature,
 )
 from ray.serve._private.constants import (
     AUTOSCALER_SUMMARIZER_DECISION_LIMIT,
@@ -23,30 +22,6 @@ class ServeAutoscalingEventSummarizer:
     throttled note emission, and change-signature calculation so controller logic
     remains small and consistent.
     """
-
-    def compute_signature(
-        self,
-        *,
-        current_replicas: int,
-        target_replicas: int,
-        min_replicas: Optional[int],
-        max_replicas: Optional[int],
-        scaling_status: str,
-        total_requests: float,
-    ) -> SnapshotSignature:
-        """Return a hashable signature that represents the visible snapshot state.
-
-        The controller uses this to avoid emitting duplicate logs when nothing
-        material changed.
-        """
-        return SnapshotSignature(
-            current_replicas=int(current_replicas),
-            target_replicas=int(target_replicas),
-            min_replicas=None if min_replicas is None else int(min_replicas),
-            max_replicas=None if max_replicas is None else int(max_replicas),
-            scaling_status=str(scaling_status),
-            total_requests=float(total_requests or 0.0),
-        )
 
     def summarize_recent_decisions(
         self,

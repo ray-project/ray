@@ -782,6 +782,20 @@ class DeploymentSnapshot:
     errors: List[str]
     decisions: List[AutoscalingDecisionSummary]
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, DeploymentSnapshot):
+            return False
+        return (
+            self.app == other.app
+            and self.deployment == other.deployment
+            and self.current_replicas == other.current_replicas
+            and self.target_replicas == other.target_replicas
+            and self.min_replicas == other.min_replicas
+            and self.max_replicas == other.max_replicas
+            and self.scaling_status == other.scaling_status
+            and self.total_requests == other.total_requests
+        )
+
     def to_log_dict(self) -> Dict[str, object]:
         return {
             "timestamp_s": self.timestamp_s,
@@ -835,14 +849,3 @@ def normalize_autoscaling_config(cfg: Any) -> Optional[InternalAutoscalingConfig
     name = cfg.get("policy") or cfg.get("name") or "default"
     look_back_period_s = cfg.get("look_back_period_s")
     return InternalAutoscalingConfig(name=name, look_back_period_s=look_back_period_s)
-
-
-# Signature for a snapshot of autoscaling state, used for deduplication.
-@dataclass(frozen=True)
-class SnapshotSignature:
-    current_replicas: int
-    target_replicas: int
-    min_replicas: Optional[int]
-    max_replicas: Optional[int]
-    scaling_status: str
-    total_requests: float
