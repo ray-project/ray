@@ -1070,7 +1070,7 @@ class _ActorClassMetadata:
             are label names and the value are expressions consisting of an operator with label
             values or just a value to indicate equality.
         fallback_strategy: (List[Dict[str, str]]) If specified, expresses soft constraints
-                through a list of label selectors to fall back on when scheduling on a node.
+            through a list of label selectors to fall back on when scheduling on a node.
         accelerator_type: The specified type of accelerator required for the
             node on which this actor runs.
             See :ref:`accelerator types <accelerator_types>`.
