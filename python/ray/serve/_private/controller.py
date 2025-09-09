@@ -433,11 +433,10 @@ class ServeController:
             autoscaling_config,
         ) in self._list_deployments_for_autoscaling():
             norm_cfg = normalize_autoscaling_config(autoscaling_config)
-            current_target = int(details.target_num_replicas)
             dep_id = DeploymentID(name=dep_name, app_name=app_name)
             deployment_snapshot = (
                 self.autoscaling_state_manager.get_deployment_snapshot(
-                    dep_id, current_target
+                    dep_id, details.target_num_replicas
                 )
             )
             current_replicas = deployment_snapshot["current_replicas"]
