@@ -6,7 +6,6 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 from packaging.version import Version
-from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.data import Schema
@@ -29,40 +28,14 @@ def df_to_csv(dataframe, path, **kwargs):
     dataframe.to_csv(path, **kwargs)
 
 
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-        (
-            lazy_fixture("s3_fs_with_space"),
-            lazy_fixture("s3_path_with_space"),
-            lazy_fixture("s3_server"),
-        ),
-        (
-            lazy_fixture("s3_fs_with_special_chars"),
-            lazy_fixture("s3_path_with_special_chars"),
-            lazy_fixture("s3_server"),
-        ),
-    ],
-)
 def test_csv_read(
-    ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
-    target_max_block_size_infinite_or_default,
+    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
 ):
-    if endpoint_url is None:
-        storage_options = {}
-    else:
-        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
     # Single file.
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    path1 = os.path.join(data_path, "test1.csv")
-    df1.to_csv(path1, index=False, storage_options=storage_options)
-    ds = ray.data.read_csv(path1, filesystem=fs, partitioning=None)
+    path1 = os.path.join(tmp_path, "test1.csv")
+    df1.to_csv(path1, index=False)
+    ds = ray.data.read_csv(path1, partitioning=None)
     dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df1.equals(dsdf)
     # Test metadata ops.
@@ -72,11 +45,9 @@ def test_csv_read(
 
     # Two files, override_num_blocks=2.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    path2 = os.path.join(data_path, "test2.csv")
-    df2.to_csv(path2, index=False, storage_options=storage_options)
-    ds = ray.data.read_csv(
-        [path1, path2], override_num_blocks=2, filesystem=fs, partitioning=None
-    )
+    path2 = os.path.join(tmp_path, "test2.csv")
+    df2.to_csv(path2, index=False)
+    ds = ray.data.read_csv([path1, path2], override_num_blocks=2, partitioning=None)
     dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     df = pd.concat([df1, df2], ignore_index=True)
     assert df.equals(dsdf)
@@ -86,12 +57,11 @@ def test_csv_read(
 
     # Three files, override_num_blocks=2.
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
-    path3 = os.path.join(data_path, "test3.csv")
-    df3.to_csv(path3, index=False, storage_options=storage_options)
+    path3 = os.path.join(tmp_path, "test3.csv")
+    df3.to_csv(path3, index=False)
     ds = ray.data.read_csv(
         [path1, path2, path3],
         override_num_blocks=2,
-        filesystem=fs,
         partitioning=None,
     )
     df = pd.concat([df1, df2, df3], ignore_index=True)
@@ -99,136 +69,89 @@ def test_csv_read(
     assert df.equals(dsdf)
 
     # Directory, two files.
-    path = os.path.join(data_path, "test_csv_dir")
-    if fs is None:
-        os.mkdir(path)
-    else:
-        fs.create_dir(_unwrap_protocol(path))
+    path = os.path.join(tmp_path, "test_csv_dir")
+    os.mkdir(path)
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     path1 = os.path.join(path, "data0.csv")
-    df1.to_csv(path1, index=False, storage_options=storage_options)
+    df1.to_csv(path1, index=False)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     path2 = os.path.join(path, "data1.csv")
-    df2.to_csv(path2, index=False, storage_options=storage_options)
-    ds = ray.data.read_csv(path, filesystem=fs, partitioning=None)
+    df2.to_csv(path2, index=False)
+    ds = ray.data.read_csv(path, partitioning=None)
     df = pd.concat([df1, df2], ignore_index=True)
     dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     pd.testing.assert_frame_equal(df, dsdf)
-    if fs is None:
-        shutil.rmtree(path)
-    else:
-        fs.delete_dir(_unwrap_protocol(path))
+    shutil.rmtree(path)
 
     # Two directories, three files.
-    path1 = os.path.join(data_path, "test_csv_dir1")
-    path2 = os.path.join(data_path, "test_csv_dir2")
-    if fs is None:
-        os.mkdir(path1)
-        os.mkdir(path2)
-    else:
-        fs.create_dir(_unwrap_protocol(path1))
-        fs.create_dir(_unwrap_protocol(path2))
+    path1 = os.path.join(tmp_path, "test_csv_dir1")
+    path2 = os.path.join(tmp_path, "test_csv_dir2")
+    os.mkdir(path1)
+    os.mkdir(path2)
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     file_path1 = os.path.join(path1, "data0.csv")
-    df1.to_csv(file_path1, index=False, storage_options=storage_options)
+    df1.to_csv(file_path1, index=False)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     file_path2 = os.path.join(path2, "data1.csv")
-    df2.to_csv(file_path2, index=False, storage_options=storage_options)
+    df2.to_csv(file_path2, index=False)
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
     file_path3 = os.path.join(path2, "data2.csv")
-    df3.to_csv(file_path3, index=False, storage_options=storage_options)
-    ds = ray.data.read_csv([path1, path2], filesystem=fs, partitioning=None)
+    df3.to_csv(file_path3, index=False)
+    ds = ray.data.read_csv([path1, path2], partitioning=None)
     df = pd.concat([df1, df2, df3], ignore_index=True)
     dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
-    if fs is None:
-        shutil.rmtree(path1)
-        shutil.rmtree(path2)
-    else:
-        fs.delete_dir(_unwrap_protocol(path1))
-        fs.delete_dir(_unwrap_protocol(path2))
+    shutil.rmtree(path1)
+    shutil.rmtree(path2)
 
     # Directory and file, two files.
-    dir_path = os.path.join(data_path, "test_csv_dir")
-    if fs is None:
-        os.mkdir(dir_path)
-    else:
-        fs.create_dir(_unwrap_protocol(dir_path))
+    dir_path = os.path.join(tmp_path, "test_csv_dir")
+    os.mkdir(dir_path)
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     path1 = os.path.join(dir_path, "data0.csv")
-    df1.to_csv(path1, index=False, storage_options=storage_options)
+    df1.to_csv(path1, index=False)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    path2 = os.path.join(data_path, "data1.csv")
-    df2.to_csv(path2, index=False, storage_options=storage_options)
-    ds = ray.data.read_csv([dir_path, path2], filesystem=fs, partitioning=None)
+    path2 = os.path.join(tmp_path, "data1.csv")
+    df2.to_csv(path2, index=False)
+    ds = ray.data.read_csv([dir_path, path2], partitioning=None)
     df = pd.concat([df1, df2], ignore_index=True)
     dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
-    if fs is None:
-        shutil.rmtree(dir_path)
-    else:
-        fs.delete_dir(_unwrap_protocol(dir_path))
+    shutil.rmtree(dir_path)
 
     # Directory, two files and non-csv file (test extension-based path filtering).
-    path = os.path.join(data_path, "test_csv_dir")
-    if fs is None:
-        os.mkdir(path)
-    else:
-        fs.create_dir(_unwrap_protocol(path))
+    path = os.path.join(tmp_path, "test_csv_dir")
+    os.mkdir(path)
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     path1 = os.path.join(path, "data0.csv")
-    df1.to_csv(path1, index=False, storage_options=storage_options)
+    df1.to_csv(path1, index=False)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     path2 = os.path.join(path, "data1.csv")
-    df2.to_csv(path2, index=False, storage_options=storage_options)
+    df2.to_csv(path2, index=False)
 
     # Add a file with a non-matching file extension. This file should be ignored.
     df_txt = pd.DataFrame({"foobar": [1, 2, 3]})
     df_txt.to_json(
         os.path.join(path, "foo.txt"),
-        storage_options=storage_options,
     )
 
     ds = ray.data.read_csv(
         path,
-        filesystem=fs,
         file_extensions=["csv"],
         partitioning=None,
     )
     df = pd.concat([df1, df2], ignore_index=True)
     dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
-    if fs is None:
-        shutil.rmtree(path)
-    else:
-        fs.delete_dir(_unwrap_protocol(path))
+    shutil.rmtree(path)
 
 
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-    ],
-)
-def test_csv_read_meta_provider(
-    ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
-):
-    if endpoint_url is None:
-        storage_options = {}
-    else:
-        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
-
+def test_csv_read_meta_provider(ray_start_regular_shared, tmp_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    path1 = os.path.join(data_path, "test1.csv")
-    df1.to_csv(path1, index=False, storage_options=storage_options)
+    path1 = os.path.join(tmp_path, "test1.csv")
+    df1.to_csv(path1, index=False)
     ds = ray.data.read_csv(
         path1,
-        filesystem=fs,
         meta_provider=FastFileMetadataProvider(),
     )
 
@@ -243,73 +166,35 @@ def test_csv_read_meta_provider(
     with pytest.raises(NotImplementedError):
         ray.data.read_csv(
             path1,
-            filesystem=fs,
             meta_provider=BaseFileMetadataProvider(),
         )
 
 
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-    ],
-)
-def test_csv_read_many_files_basic(
-    ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
-):
-    if endpoint_url is None:
-        storage_options = {}
-    else:
-        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
-
+def test_csv_read_many_files_basic(ray_start_regular_shared, tmp_path):
     paths = []
     dfs = []
     num_dfs = 4 * FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD
     for i in range(num_dfs):
         df = pd.DataFrame({"one": list(range(i * 3, (i + 1) * 3))})
         dfs.append(df)
-        path = os.path.join(data_path, f"test_{i}.csv")
+        path = os.path.join(tmp_path, f"test_{i}.csv")
         paths.append(path)
-        df.to_csv(path, index=False, storage_options=storage_options)
-    ds = ray.data.read_csv(paths, filesystem=fs)
+        df.to_csv(path, index=False)
+    ds = ray.data.read_csv(paths)
 
     dsdf = ds.to_pandas()
     df = pd.concat(dfs).reset_index(drop=True)
     pd.testing.assert_frame_equal(df, dsdf)
 
 
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-    ],
-)
 def test_csv_read_many_files_diff_dirs(
     ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
+    tmp_path,
 ):
-    if endpoint_url is None:
-        storage_options = {}
-    else:
-        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
-
-    dir1 = os.path.join(data_path, "dir1")
-    dir2 = os.path.join(data_path, "dir2")
-    if fs is None:
-        os.mkdir(dir1)
-        os.mkdir(dir2)
-    else:
-        fs.create_dir(_unwrap_protocol(dir1))
-        fs.create_dir(_unwrap_protocol(dir2))
+    dir1 = os.path.join(tmp_path, "dir1")
+    dir2 = os.path.join(tmp_path, "dir2")
+    os.mkdir(dir1)
+    os.mkdir(dir2)
 
     paths = []
     dfs = []
@@ -320,8 +205,8 @@ def test_csv_read_many_files_diff_dirs(
             dfs.append(df)
             path = os.path.join(dir_path, f"test_{j}.csv")
             paths.append(path)
-            df.to_csv(path, index=False, storage_options=storage_options)
-    ds = ray.data.read_csv([dir1, dir2], filesystem=fs)
+            df.to_csv(path, index=False)
+    ds = ray.data.read_csv([dir1, dir2])
 
     dsdf = ds.to_pandas().sort_values(by=["one"]).reset_index(drop=True)
     df = pd.concat(dfs).reset_index(drop=True)
