@@ -60,7 +60,7 @@ class RayEventPublisher(RayEventPublisherInterface):
             name: Name identifier for this publisher instance
             publish_client: Client for publishing events to the destination
             event_buffer: Buffer for reading batches of events
-            common_metric_labels: Common labels for all prometheus metrics
+            common_metric_tags: Common labels for all prometheus metrics
             max_retries: Maximum number of retries for failed publishes
             initial_backoff: Initial backoff time between retries in seconds
             max_backoff: Maximum backoff time between retries in seconds
