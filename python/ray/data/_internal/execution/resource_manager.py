@@ -496,7 +496,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
     def find_the_ops_to_exclude_from_reservation(self) -> List[PhysicalOperator]:
         """
         Resource reservation is based on the number of eligible operators.
-        However, there might be completed operators that still have blocks in their output queue, we should exclude them from the reservation.
+        However, there might be completed operators that still have blocks in their output queue, which we need to exclude them from the reservation.
         And we also need to exclude the downstream ineligible operators.
 
         E.g., for the following pipeline:
