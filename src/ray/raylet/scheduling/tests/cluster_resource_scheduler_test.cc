@@ -1876,10 +1876,22 @@ TEST_F(ClusterResourceSchedulerTest, LabelSelectorHardNodeAffinityTest) {
   ClusterResourceScheduler resource_scheduler(
       io_context, local_node_id, {{"CPU", 0}}, is_node_available_fn_);
 
-  auto node_0 = scheduling::NodeID(NodeID::FromRandom().Binary());
-  auto node_1 = scheduling::NodeID(NodeID::FromRandom().Binary());
+  auto node_0_id_obj = NodeID::FromRandom();
+  auto node_1_id_obj = NodeID::FromRandom();
+  auto node_0 = scheduling::NodeID(node_0_id_obj.Binary());
+  auto node_1 = scheduling::NodeID(node_1_id_obj.Binary());
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(node_0, node_resources);
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(node_1, node_resources);
+
+  // Set required node labels.
+  absl::flat_hash_map<std::string, std::string> node_0_labels = {
+      {"ray.io/node-id", node_0_id_obj.Hex()},
+  };
+  absl::flat_hash_map<std::string, std::string> node_1_labels = {
+      {"ray.io/node-id", node_1_id_obj.Hex()},
+  };
+  resource_scheduler.GetClusterResourceManager().SetNodeLabels(node_0, node_0_labels);
+  resource_scheduler.GetClusterResourceManager().SetNodeLabels(node_1, node_1_labels);
 
   ResourceRequest base_resource_request = CreateResourceRequest({{ResourceID::CPU(), 1}});
   int64_t violations;
@@ -1891,7 +1903,7 @@ TEST_F(ClusterResourceSchedulerTest, LabelSelectorHardNodeAffinityTest) {
   {
     LabelSelector selector;
     selector.AddConstraint(LabelConstraint(
-        "ray.io/node-id", LabelSelectorOperator::LABEL_IN, {node_0.Binary()}));
+        "ray.io/node-id", LabelSelectorOperator::LABEL_IN, {node_0_id_obj.Hex()}));
     ResourceRequest request = base_resource_request;
     request.SetLabelSelector(selector);
 
@@ -1911,7 +1923,7 @@ TEST_F(ClusterResourceSchedulerTest, LabelSelectorHardNodeAffinityTest) {
     LabelSelector selector;
     selector.AddConstraint(LabelConstraint("ray.io/node-id",
                                            LabelSelectorOperator::LABEL_IN,
-                                           {node_0.Binary(), node_1.Binary()}));
+                                           {node_0_id_obj.Hex(), node_1_id_obj.Hex()}));
     ResourceRequest request = base_resource_request;
     request.SetLabelSelector(selector);
 
@@ -1937,7 +1949,7 @@ TEST_F(ClusterResourceSchedulerTest, LabelSelectorHardNodeAffinityTest) {
     LabelSelector selector;
     selector.AddConstraint(LabelConstraint("ray.io/node-id",
                                            LabelSelectorOperator::LABEL_IN,
-                                           {node_0.Binary(), node_1.Binary()}));
+                                           {node_0_id_obj.Hex(), node_1_id_obj.Hex()}));
     ResourceRequest request = base_resource_request;
     request.SetLabelSelector(selector);
 
