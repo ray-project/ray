@@ -3246,7 +3246,7 @@ class DeploymentStateManager:
 
         return any_recovering
 
-    def autoscale(self, deployment_id: DeploymentID, target_num_replicas: int):
+    def autoscale(self, deployment_id: DeploymentID, target_num_replicas: int) -> bool:
         if deployment_id not in self._deployment_states:
             return False
         return self._deployment_states[deployment_id].autoscale(

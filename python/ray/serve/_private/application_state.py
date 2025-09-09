@@ -438,13 +438,13 @@ class ApplicationState:
         """
         return self._target_state.deleting and len(self._get_live_deployments()) == 0
 
-    def should_autoscale(self):
+    def should_autoscale(self) -> bool:
         return (
             self._target_state.config is not None
             and self._target_state.config.autoscaling_policy is not None
         )
 
-    def autoscale(self):
+    def autoscale(self) -> bool:
         deployments: Dict[str, DeploymentDetails] = self.list_deployment_details()
         decisions: Dict[
             str, int
@@ -1167,7 +1167,7 @@ class ApplicationStateManager:
         any_target_state_changed = False
         for name, app in self._application_states.items():
             if app.should_autoscale():
-                any_target_state_changed = app.autoscale()
+                any_target_state_changed = app.autoscale() or any_target_state_changed
             ready_to_be_deleted, app_target_state_changed = app.update()
             any_target_state_changed = (
                 any_target_state_changed or app_target_state_changed
