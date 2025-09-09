@@ -202,6 +202,8 @@ There are at least 3 ways to define your custom serialization process:
      except TypeError:
         pass
 
+.. _custom-exception-serializer:
+
 Custom Serializers for Exceptions
 ----------------------------------
 
