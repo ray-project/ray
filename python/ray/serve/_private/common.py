@@ -779,14 +779,11 @@ class HandleMetricReport:
         queued_requests: The current number of queued requests at the
             handle, i.e. requests that haven't been assigned to any
             replica yet.
-        avg_running_requests: A map of replica ID to the average number of
-            requests, assigned through the handle, running at that
-            replica. This is average over the past look_back_period_s seconds.
-            This field will be dropped in the future when fully migrate to
-            doing aggregation on the controller.
-        running_requests: A map of replica ID to the list of number of requests
-            running at that replica over the past look_back_period_s seconds.
-            This is a list because we take multiple measurements over time.
+        aggregated_metrics: A map of metric name to the aggregated value over the past
+            look_back_period_s seconds at the handle for each replica.
+        metrics: A map of metric name to the list of values running at that handle for each replica
+            over the past look_back_period_s seconds. This is a list because
+            we take multiple measurements over time.
         timestamp: The time at which this report was created.
     """
 
