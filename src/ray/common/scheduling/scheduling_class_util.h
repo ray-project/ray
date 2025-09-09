@@ -83,3 +83,88 @@ struct SchedulingClassToIds {
 // "a": 1}' have different hashes.
 int CalculateRuntimeEnvHash(const std::string &serialized_runtime_env);
 }  // namespace ray
+
+// Template specializations for std::hash
+namespace std {
+
+template <>
+struct hash<ray::rpc::LabelOperator> {
+  size_t operator()(const ray::rpc::LabelOperator &label_operator) const {
+    size_t hash_value = std::hash<size_t>()(label_operator.label_operator_case());
+    if (label_operator.has_label_in()) {
+      for (const auto &value : label_operator.label_in().values()) {
+        hash_value ^= std::hash<std::string>()(value);
+      }
+    } else if (label_operator.has_label_not_in()) {
+      for (const auto &value : label_operator.label_not_in().values()) {
+        hash_value ^= std::hash<std::string>()(value);
+      }
+    }
+    return hash_value;
+  }
+};
+
+template <>
+struct hash<ray::rpc::LabelMatchExpression> {
+  size_t operator()(const ray::rpc::LabelMatchExpression &expression) const {
+    size_t hash_val = std::hash<std::string>()(expression.key());
+    hash_val ^= std::hash<ray::rpc::LabelOperator>()(expression.operator_());
+    return hash_val;
+  }
+};
+
+template <>
+struct hash<ray::rpc::LabelMatchExpressions> {
+  size_t operator()(const ray::rpc::LabelMatchExpressions &expressions) const {
+    size_t hash_val = 0;
+    for (const auto &expression : expressions.expressions()) {
+      hash_val ^= std::hash<ray::rpc::LabelMatchExpression>()(expression);
+    }
+    return hash_val;
+  }
+};
+
+template <>
+struct hash<ray::rpc::SchedulingStrategy> {
+  size_t operator()(const ray::rpc::SchedulingStrategy &scheduling_strategy) const {
+    size_t hash_val = std::hash<size_t>()(scheduling_strategy.scheduling_strategy_case());
+    if (scheduling_strategy.scheduling_strategy_case() ==
+        ray::rpc::SchedulingStrategy::kNodeAffinitySchedulingStrategy) {
+      hash_val ^= std::hash<std::string>()(
+          scheduling_strategy.node_affinity_scheduling_strategy().node_id());
+      // soft returns a bool
+      hash_val ^= static_cast<size_t>(
+          scheduling_strategy.node_affinity_scheduling_strategy().soft());
+      hash_val ^= static_cast<size_t>(
+          scheduling_strategy.node_affinity_scheduling_strategy().spill_on_unavailable());
+      hash_val ^= static_cast<size_t>(
+          scheduling_strategy.node_affinity_scheduling_strategy().fail_on_unavailable());
+    } else if (scheduling_strategy.scheduling_strategy_case() ==
+               ray::rpc::SchedulingStrategy::kPlacementGroupSchedulingStrategy) {
+      hash_val ^= std::hash<std::string>()(
+          scheduling_strategy.placement_group_scheduling_strategy().placement_group_id());
+      hash_val ^= scheduling_strategy.placement_group_scheduling_strategy()
+                      .placement_group_bundle_index();
+      // placement_group_capture_child_tasks returns a bool
+      hash_val ^=
+          static_cast<size_t>(scheduling_strategy.placement_group_scheduling_strategy()
+                                  .placement_group_capture_child_tasks());
+    } else if (scheduling_strategy.has_node_label_scheduling_strategy()) {
+      if (scheduling_strategy.node_label_scheduling_strategy().hard().expressions_size() >
+          0) {
+        hash_val ^= std::hash<std::string>()("hard");
+        hash_val ^= std::hash<ray::rpc::LabelMatchExpressions>()(
+            scheduling_strategy.node_label_scheduling_strategy().hard());
+      }
+      if (scheduling_strategy.node_label_scheduling_strategy().soft().expressions_size() >
+          0) {
+        hash_val ^= std::hash<std::string>()("soft");
+        hash_val ^= std::hash<ray::rpc::LabelMatchExpressions>()(
+            scheduling_strategy.node_label_scheduling_strategy().soft());
+      }
+    }
+    return hash_val;
+  }
+};
+
+}  // namespace std

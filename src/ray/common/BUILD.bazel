@@ -17,6 +17,7 @@ ray_cc_library(
     deps = [
         ":asio",
         ":id",
+        ":placement_group",
         ":ray_object",
         ":task_common",
         "//src/ray/protobuf:autoscaler_cc_grpc",

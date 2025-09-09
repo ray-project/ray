@@ -47,6 +47,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
+        "//src/ray/common:ray_config",
         "//src/ray/common/scheduling:scheduling_ids",
         "@com_google_googletest//:gtest_main",
     ],
