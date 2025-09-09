@@ -752,6 +752,7 @@ class _ActorPool(AutoscalingActorPool):
 
         assert self._min_size >= 1
         assert self._max_size >= self._min_size
+        assert self._initial_size <= self._max_size
         assert self._initial_size >= self._min_size
         assert self._max_tasks_in_flight >= 1
         assert self._create_actor_fn is not None

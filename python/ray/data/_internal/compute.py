@@ -156,6 +156,8 @@ class ActorPoolStrategy(ComputeStrategy):
             f"max_size={self.max_size}, "
             f"initial_size={self.initial_size}, "
             f"max_tasks_in_flight_per_actor={self.max_tasks_in_flight_per_actor})"
+            f"num_workers={self.num_workers}, "
+            f"ready_to_total_workers_ratio={self.ready_to_total_workers_ratio})"
         )
 
 
