@@ -508,6 +508,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         """
         last_completed_ops = []
         ops_to_exclude_from_reservation = []
+        # Traverse operator tree collecting all operators that have already finished
         for op in self._resource_manager._topology:
             if not op.execution_finished():
                 for dep in op.input_dependencies:
