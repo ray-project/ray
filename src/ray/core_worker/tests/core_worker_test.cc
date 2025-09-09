@@ -587,7 +587,7 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
 
   // Fake plasma client that records Get calls.
   std::vector<std::vector<ObjectID>> observed_batches;
-  class RecordingPlasmaGetClient : public ray::fakes::FakePlasmaClient {
+  class RecordingPlasmaGetClient : public plasma::FakePlasmaClient {
    public:
     explicit RecordingPlasmaGetClient(std::vector<std::vector<ObjectID>> *observed)
         : observed_(observed) {}

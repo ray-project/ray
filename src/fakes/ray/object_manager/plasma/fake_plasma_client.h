@@ -28,10 +28,9 @@
 #include "ray/common/status.h"
 #include "ray/object_manager/plasma/client.h"
 
-namespace ray {
-namespace fakes {
+namespace plasma {
 
-class FakePlasmaClient : public plasma::PlasmaClientInterface {
+class FakePlasmaClient : public PlasmaClientInterface {
  public:
   FakePlasmaClient(std::vector<std::vector<ObjectID>> *observed_batches = nullptr)
       : observed_batches_(observed_batches) {}
@@ -48,7 +47,7 @@ class FakePlasmaClient : public plasma::PlasmaClientInterface {
 
   Status Get(const std::vector<ObjectID> &object_ids,
              int64_t /*timeout_ms*/,
-             std::vector<plasma::ObjectBuffer> *object_buffers) override {
+             std::vector<ObjectBuffer> *object_buffers) override {
     if (observed_batches_ != nullptr) {
       observed_batches_->push_back(object_ids);
     }
@@ -56,7 +55,7 @@ class FakePlasmaClient : public plasma::PlasmaClientInterface {
     object_buffers->resize(object_ids.size());
     for (size_t i = 0; i < object_ids.size(); i++) {
       uint8_t byte = 0;
-      auto parent = std::make_shared<LocalMemoryBuffer>(&byte, 1, /*copy_data=*/true);
+      auto parent = std::make_shared<ray::LocalMemoryBuffer>(&byte, 1, /*copy_data=*/true);
       (*object_buffers)[i].data = SharedMemoryBuffer::Slice(parent, 0, 1);
       (*object_buffers)[i].metadata = SharedMemoryBuffer::Slice(parent, 0, 1);
     }
@@ -64,7 +63,7 @@ class FakePlasmaClient : public plasma::PlasmaClientInterface {
   }
 
   Status GetExperimentalMutableObject(const ObjectID &,
-                                      std::unique_ptr<plasma::MutableObject> *) override {
+                                      std::unique_ptr<MutableObject> *) override {
     return Status::OK();
   }
 
@@ -73,24 +72,24 @@ class FakePlasmaClient : public plasma::PlasmaClientInterface {
   Status Abort(const ObjectID &) override { return Status::OK(); }
 
   Status CreateAndSpillIfNeeded(const ObjectID &,
-                                const rpc::Address &,
+                                const ray::rpc::Address &,
                                 bool,
                                 int64_t,
                                 const uint8_t *,
                                 int64_t,
                                 std::shared_ptr<Buffer> *,
-                                plasma::flatbuf::ObjectSource,
+                                flatbuf::ObjectSource,
                                 int) override {
     return Status::OK();
   }
 
   Status TryCreateImmediately(const ObjectID &,
-                              const rpc::Address &,
+                              const ray::rpc::Address &,
                               int64_t,
                               const uint8_t *,
                               int64_t,
                               std::shared_ptr<Buffer> *,
-                              plasma::flatbuf::ObjectSource,
+                              flatbuf::ObjectSource,
                               int) override {
     return Status::OK();
   }
@@ -103,5 +102,4 @@ class FakePlasmaClient : public plasma::PlasmaClientInterface {
   std::vector<std::vector<ObjectID>> *observed_batches_;
 };
 
-}  // namespace fakes
-}  // namespace ray
+}  // namespace plasma
