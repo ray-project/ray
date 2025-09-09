@@ -1,18 +1,17 @@
-from dataclasses import dataclass
-from typing import Dict, List, Optional, Set
 import threading
 from collections import defaultdict, deque
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Set
 
 import ray.util.collective as collective
 from ray._private.custom_types import TensorTransportEnum
+from ray.experimental.collective import get_tensor_transport_manager
+from ray.experimental.collective.util import device_match_transport
 from ray.util.collective.types import (
     Backend,
     CommunicatorMetadata,
     TensorTransportMetadata,
 )
-
-from ray.experimental.collective import get_tensor_transport_manager
-from ray.experimental.collective.util import device_match_transport
 
 try:
     import torch

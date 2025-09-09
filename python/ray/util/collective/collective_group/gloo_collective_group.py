@@ -8,11 +8,11 @@ import numpy
 import pygloo
 
 import ray
+from ray._common.network_utils import parse_address
 from ray._private import ray_constants
 from ray.util.collective.collective_group import gloo_util
 from ray.util.collective.collective_group.base_collective_group import BaseGroup
 from ray.util.collective.const import get_store_name
-from ray._common.network_utils import parse_address
 from ray.util.collective.types import (
     AllGatherOptions,
     AllReduceOptions,

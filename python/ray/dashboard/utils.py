@@ -26,9 +26,9 @@ import ray._private.protobuf_compat
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 import ray.experimental.internal_kv as internal_kv
+from ray._common.network_utils import parse_address
 from ray._common.utils import get_or_create_event_loop
 from ray._private.gcs_utils import GcsChannel
-from ray._common.network_utils import parse_address
 from ray._private.utils import (
     get_dashboard_dependency_error,
     split_address,

@@ -1,6 +1,6 @@
 import logging
-from typing import Any, Dict, List, Optional
 import threading
+from typing import Any, Dict, List, Optional
 
 import ray._private.worker
 from ray._private.client_mode_hook import client_mode_hook

@@ -9,22 +9,22 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from ray._common.test_utils import wait_for_condition
 import requests
 from google.protobuf import text_format
 
 import ray
 import ray._common.usage.usage_lib as ray_usage_lib
+from ray._common.network_utils import build_address
+from ray._common.test_utils import wait_for_condition
 from ray._private import ray_constants
 from ray._private.metrics_agent import fix_grpc_metric
-from ray._common.network_utils import build_address
 from ray._private.test_utils import (
     fetch_prometheus,
     format_web_url,
     wait_until_server_available,
 )
 from ray.core.generated.metrics_pb2 import Metric
-from ray.dashboard.modules.reporter.gpu_providers import NvidiaGpuProvider, MB
+from ray.dashboard.modules.reporter.gpu_providers import MB, NvidiaGpuProvider
 from ray.dashboard.modules.reporter.reporter_agent import (
     ReporterAgent,
     TpuUtilizationInfo,

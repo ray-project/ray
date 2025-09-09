@@ -2,34 +2,34 @@ import json
 import os
 import pathlib
 import sys
-import time
 import threading
+import time
 from dataclasses import asdict
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from unittest.mock import Mock, patch
-from ray._common.test_utils import wait_for_condition
-from ray._raylet import GcsClient
-from ray.tests.conftest import *  # noqa: F403
 
-import requests
 import pytest
+import requests
 from jsonschema import validate
-from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import ray
 import ray._common.usage.usage_constants as usage_constants
 import ray._common.usage.usage_lib as ray_usage_lib
+from ray._common.test_utils import wait_for_condition
+from ray._common.usage.usage_lib import ClusterConfigToReport, UsageStatsEnabledness
+from ray._private.accelerators import NvidiaGPUAcceleratorManager
 from ray._private.test_utils import (
     format_web_url,
     run_string_as_driver,
     wait_until_server_available,
 )
-from ray._common.usage.usage_lib import ClusterConfigToReport, UsageStatsEnabledness
+from ray._raylet import GcsClient
 from ray.autoscaler._private.cli_logger import cli_logger
+from ray.tests.conftest import *  # noqa: F403
 from ray.util.placement_group import (
     placement_group,
 )
-from ray._private.accelerators import NvidiaGPUAcceleratorManager
 
 schema = {
     "$schema": "http://json-schema.org/draft-07/schema#",

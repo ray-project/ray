@@ -1,14 +1,15 @@
+import difflib
 import platform
+import shutil
 import subprocess
+import sys
+import tempfile
 from pathlib import Path
 from typing import List, Optional
-import shutil
+
 import click
 import runfiles
-import tempfile
-import difflib
-import sys
-from networkx import DiGraph, topological_sort, ancestors as networkx_ancestors
+from networkx import DiGraph, ancestors as networkx_ancestors, topological_sort
 
 from ci.raydepsets.workspace import Depset, Workspace
 

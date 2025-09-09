@@ -1,18 +1,19 @@
-import warnings
-from typing import TYPE_CHECKING, Any, Dict, NamedTuple, Optional, Tuple, List, Set
 import threading
+import warnings
+from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Set, Tuple
 
 import ray
+from ray._private import ray_constants
 from ray._private.custom_types import TensorTransportEnum
 from ray._raylet import ObjectRef
-from ray._private import ray_constants
 
 if TYPE_CHECKING:
+    import torch
+
     from ray.experimental.gpu_object_manager.gpu_object_store import (
         GPUObjectStore,
     )
     from ray.util.collective.types import TensorTransportMetadata
-    import torch
 
 # GPUObjectMeta is a named tuple containing the source actor, tensor transport
 # backend, tensor metadata, and other information that needs to be recorded.
@@ -110,10 +111,10 @@ class GPUObjectManager:
             src_actor: The actor that executes the task and that creates the GPU object.
             tensor_transport: The tensor transport protocol to use for the GPU object.
         """
+        from ray.experimental.collective import get_tensor_transport_manager
         from ray.experimental.gpu_object_manager.gpu_object_store import (
             _tensor_transport_to_collective_backend,
         )
-        from ray.experimental.collective import get_tensor_transport_manager
 
         tensor_transport_backend = _tensor_transport_to_collective_backend(
             tensor_transport

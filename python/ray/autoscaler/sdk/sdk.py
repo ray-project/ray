@@ -8,8 +8,10 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 
 from ray.autoscaler._private import commands
 from ray.autoscaler._private.cli_logger import cli_logger
-from ray.autoscaler._private.event_system import CreateClusterEvent  # noqa: F401
-from ray.autoscaler._private.event_system import global_event_system  # noqa: F401
+from ray.autoscaler._private.event_system import (
+    CreateClusterEvent,  # noqa: F401
+    global_event_system,  # noqa: F401
+)
 from ray.util.annotations import DeveloperAPI
 
 

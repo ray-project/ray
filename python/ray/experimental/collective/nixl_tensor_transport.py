@@ -1,16 +1,16 @@
-from typing import Optional, List, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional
 
 import ray
-from ray.util.collective.types import Backend
 from ray.experimental.collective.tensor_transport_manager import (
-    TensorTransportManager,
     TensorTransportEnum,
+    TensorTransportManager,
 )
 from ray.util.collective.collective import get_group_handle
 from ray.util.collective.types import (
     NIXL_GROUP_NAME,
-    NixlTransportMetadata,
+    Backend,
     NixlCommunicatorMetadata,
+    NixlTransportMetadata,
 )
 
 if TYPE_CHECKING:
@@ -120,8 +120,8 @@ class NixlTensorTransport(TensorTransportManager):
         tensor_transport_metadata: NixlTransportMetadata,
         communicator_metadata: NixlCommunicatorMetadata,
     ):
-        from ray.util.collective.collective import get_group_handle
         from ray.util.collective import types
+        from ray.util.collective.collective import get_group_handle
 
         if tensors:
             g = get_group_handle(communicator_metadata.communicator_name)

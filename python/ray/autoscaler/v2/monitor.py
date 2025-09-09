@@ -13,16 +13,17 @@ from typing import Optional
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._common.network_utils import build_address, parse_address
 from ray._common.ray_constants import (
-    LOGGING_ROTATE_BYTES,
     LOGGING_ROTATE_BACKUP_COUNT,
+    LOGGING_ROTATE_BYTES,
 )
+from ray._common.usage.usage_lib import record_extra_usage_tag
+from ray._private import logging_utils
 from ray._private.event.event_logger import get_event_logger
 from ray._private.ray_logging import setup_component_logger
-from ray._common.usage.usage_lib import record_extra_usage_tag
 from ray._private.worker import SCRIPT_MODE
 from ray._raylet import GcsClient
-from ray._common.network_utils import parse_address, build_address
 from ray.autoscaler._private.constants import (
     AUTOSCALER_METRIC_PORT,
     AUTOSCALER_UPDATE_INTERVAL_S,
@@ -39,7 +40,6 @@ from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.core.generated.autoscaler_pb2 import AutoscalingState
 from ray.core.generated.event_pb2 import Event as RayEvent
 from ray.core.generated.usage_pb2 import TagKey
-from ray._private import logging_utils
 
 try:
     import prometheus_client

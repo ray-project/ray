@@ -33,7 +33,7 @@ from ray.dashboard.modules.job.job_supervisor import JobSupervisor
 from ray.dashboard.modules.job.utils import get_head_node_id
 from ray.dashboard.utils import close_logger_file_descriptor
 from ray.exceptions import ActorDiedError, ActorUnschedulableError, RuntimeEnvSetupError
-from ray.job_submission import JobStatus, JobErrorType
+from ray.job_submission import JobErrorType, JobStatus
 from ray.runtime_env import RuntimeEnvConfig
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
