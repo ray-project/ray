@@ -205,16 +205,18 @@ There are at least 3 ways to define your custom serialization process:
 Custom Serializers for Exceptions
 ----------------------------------
 
-When Ray tasks raise exceptions that cannot be serialized with the default pickle mechanism, you can register custom serializers to handle them.
+When Ray tasks raise exceptions that cannot be serialized with the default pickle mechanism, you can register custom serializers to handle them (Note: the serializer must be registered in the driver and all workers).
 
 .. testcode::
 
     import ray
+    import threading
 
     class CustomError(Exception):
         def __init__(self, message, data):
             self.message = message
-            self.data = data  # This might not be serializable
+            self.data = data
+            self.lock = threading.Lock() # Cannot be serialized
 
     def custom_serializer(exc):
         return {"message": exc.message, "data": str(exc.data)}
@@ -222,7 +224,30 @@ When Ray tasks raise exceptions that cannot be serialized with the default pickl
     def custom_deserializer(state):
         return CustomError(state["message"], state["data"])
 
-    ray.util.register_serializer(CustomError, serializer=custom_serializer, deserializer=custom_deserializer)
+    # Register in the driver
+    ray.util.register_serializer(
+        CustomError, 
+        serializer=custom_serializer, 
+        deserializer=custom_deserializer
+    )
+
+    @ray.remote
+    def task_that_registers_serializer_and_raises():
+        # Register the custom serializer in the worker
+        ray.util.register_serializer(
+            CustomError, 
+            serializer=custom_serializer, 
+            deserializer=custom_deserializer
+        )
+        
+        # Now raise the custom exception
+        raise CustomError("Something went wrong", {"complex": "data"})
+
+    # The custom exception will be properly serialized across worker boundaries
+    try:
+        ray.get(task_that_registers_serializer_and_raises.remote())
+    except ray.exceptions.RayTaskError as e:
+        print(f"Caught exception: {e.cause}")  # This will be our CustomError
 
 When a custom exception is raised in a remote task, Ray will:
 

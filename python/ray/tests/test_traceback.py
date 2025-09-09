@@ -351,19 +351,20 @@ def test_exception_with_registered_serializer(shutdown_only):
         )
         raise NoPickleError("message")
 
-    with pytest.raises(NoPickleError) as exc_info:
-        ray.get(raise_custom_exception.remote())
+    try:
+        with pytest.raises(NoPickleError) as exc_info:
+            ray.get(raise_custom_exception.remote())
 
-    # Ensure dual-typed exception and message propagation
-    assert isinstance(exc_info.value, RayTaskError)
-    # if custom serializer was not registered, this would be an instance of UnserializableException()
-    assert isinstance(exc_info.value, NoPickleError)
-    assert "message" in str(exc_info.value)
-    # modified message should not be in the exception string, only in the cause
-    assert "deserialized" not in str(exc_info.value)
-    assert "message deserialized" in str(exc_info.value.cause)
-
-    ray.util.deregister_serializer(NoPickleError)
+        # Ensure dual-typed exception and message propagation
+        assert isinstance(exc_info.value, RayTaskError)
+        # if custom serializer was not registered, this would be an instance of UnserializableException()
+        assert isinstance(exc_info.value, NoPickleError)
+        assert "message" in str(exc_info.value)
+        # modified message should not be in the exception string, only in the cause
+        assert "deserialized" not in str(exc_info.value)
+        assert "message deserialized" in str(exc_info.value.cause)
+    finally:
+        ray.util.deregister_serializer(NoPickleError)
 
 
 def test_serialization_error_message(shutdown_only):
