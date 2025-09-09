@@ -252,6 +252,15 @@ Lance
    read_lance
    Dataset.write_lance
 
+MCAP
+----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_mcap
+
 ClickHouse
 ----------
 
