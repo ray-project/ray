@@ -70,17 +70,19 @@ class DropNa(AbstractMap):
             compute=compute,
             ray_remote_args=ray_remote_args,
         )
-        
+
         # Validate parameters
         if how not in ["any", "all"]:
             raise ValueError(f"'how' must be 'any' or 'all', got '{how}'")
-            
+
         if thresh is not None and thresh < 0:
             raise ValueError("'thresh' must be non-negative")
-            
+
         if thresh is not None and subset is not None and thresh > len(subset):
-            raise ValueError("'thresh' cannot be greater than the number of columns in 'subset'")
-            
+            raise ValueError(
+                "'thresh' cannot be greater than the number of columns in 'subset'"
+            )
+
         self._how = how
         self._subset = subset
         self._thresh = thresh

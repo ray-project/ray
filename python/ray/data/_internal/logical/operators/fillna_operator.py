@@ -73,17 +73,19 @@ class FillNa(AbstractMap):
             compute=compute,
             ray_remote_args=ray_remote_args,
         )
-        
+
         # Validate parameters
         if method == "value" and value is None:
             raise ValueError("'value' parameter is required when method='value'")
-        
+
         if method not in ["value", "forward", "backward", "interpolate"]:
-            raise ValueError(f"Unsupported method '{method}'. Must be one of: value, forward, backward, interpolate")
-            
+            raise ValueError(
+                f"Unsupported method '{method}'. Must be one of: value, forward, backward, interpolate"
+            )
+
         if limit is not None and limit < 0:
             raise ValueError("'limit' must be non-negative")
-            
+
         self._value = value
         self._method = method
         self._subset = subset

@@ -133,7 +133,12 @@ class TestFillNa:
         ds = ray.data.from_items(
             [
                 {"int_col": 1, "float_col": 1.5, "str_col": "a", "bool_col": True},
-                {"int_col": None, "float_col": np.nan, "str_col": None, "bool_col": None},
+                {
+                    "int_col": None,
+                    "float_col": np.nan,
+                    "str_col": None,
+                    "bool_col": None,
+                },
                 {"int_col": 3, "float_col": None, "str_col": "c", "bool_col": False},
             ]
         )
@@ -264,7 +269,11 @@ class TestFillNa:
 
         expected = [
             {"a": 1, "b": 2.0, "c": "x"},
-            {"a": -1, "b": np.nan, "c": None},  # b is in subset but not in dict, c not in subset
+            {
+                "a": -1,
+                "b": np.nan,
+                "c": None,
+            },  # b is in subset but not in dict, c not in subset
             {"a": 3, "b": None, "c": "z"},  # b is in subset but not in dict
         ]
 
@@ -280,15 +289,17 @@ class TestFillNa:
 
     def test_fillna_preserves_schema(self, ray_start_regular_shared):
         """Test that fillna preserves the original schema."""
-        original_data = pa.table({
-            "int_col": pa.array([1, None, 3], type=pa.int64()),
-            "float_col": pa.array([1.5, None, 3.5], type=pa.float64()),
-            "str_col": pa.array(["a", None, "c"], type=pa.string()),
-        })
+        original_data = pa.table(
+            {
+                "int_col": pa.array([1, None, 3], type=pa.int64()),
+                "float_col": pa.array([1.5, None, 3.5], type=pa.float64()),
+                "str_col": pa.array(["a", None, "c"], type=pa.string()),
+            }
+        )
         ds = ray.data.from_arrow(original_data)
 
         result = ds.fillna({"int_col": 0, "float_col": 0.0, "str_col": "missing"})
-        
+
         # Check that schema is preserved
         assert result.schema() == ds.schema()
 

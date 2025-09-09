@@ -188,7 +188,9 @@ class TestDropNa:
 
     def test_dropna_single_column(self, ray_start_regular_shared):
         """Test dropna on dataset with single column."""
-        ds = ray.data.from_items([{"a": 1}, {"a": None}, {"a": 3}, {"a": None}, {"a": 5}])
+        ds = ray.data.from_items(
+            [{"a": 1}, {"a": None}, {"a": 3}, {"a": None}, {"a": 5}]
+        )
 
         result = ds.dropna()
         rows = result.take_all()
@@ -224,7 +226,11 @@ class TestDropNa:
         """Test dropna with ignore_values and subset parameters."""
         ds = ray.data.from_items(
             [
-                {"a": 1, "b": "valid", "c": 0},  # c=0 should be ignored but c not in subset
+                {
+                    "a": 1,
+                    "b": "valid",
+                    "c": 0,
+                },  # c=0 should be ignored but c not in subset
                 {"a": 0, "b": "valid", "c": 1},  # a=0 should be treated as missing
                 {"a": 2, "b": "", "c": 2},  # b="" should be ignored but b not in subset
                 {"a": 3, "b": "valid", "c": 3},
@@ -293,20 +299,24 @@ class TestDropNa:
         """Test dropna when thresh exceeds subset length."""
         ds = ray.data.from_items([{"a": 1, "b": 2, "c": 3}])
 
-        with pytest.raises(ValueError, match="'thresh' cannot be greater than the number of columns"):
+        with pytest.raises(
+            ValueError, match="'thresh' cannot be greater than the number of columns"
+        ):
             ds.dropna(thresh=3, subset=["a", "b"])  # thresh=3 > len(subset)=2
 
     def test_dropna_preserves_schema(self, ray_start_regular_shared):
         """Test that dropna preserves the original schema."""
-        original_data = pa.table({
-            "int_col": pa.array([1, None, 3], type=pa.int64()),
-            "float_col": pa.array([1.5, 2.5, None], type=pa.float64()),
-            "str_col": pa.array(["a", "b", None], type=pa.string()),
-        })
+        original_data = pa.table(
+            {
+                "int_col": pa.array([1, None, 3], type=pa.int64()),
+                "float_col": pa.array([1.5, 2.5, None], type=pa.float64()),
+                "str_col": pa.array(["a", "b", None], type=pa.string()),
+            }
+        )
         ds = ray.data.from_arrow(original_data)
 
         result = ds.dropna()
-        
+
         # Check that schema is preserved
         assert result.schema() == ds.schema()
 
@@ -347,7 +357,7 @@ class TestDropNa:
 
         # Should have 20 rows (30 - 10 with None values)
         assert len(rows) == 20
-        
+
         # Check that no None values remain
         for row in rows:
             assert row["a"] is not None

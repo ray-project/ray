@@ -87,7 +87,9 @@ def plan_fillna_op(
                             # Scalar fill value for all columns
                             new_columns[col_name] = _fill_column(column, value)
                     elif method in ["forward", "backward"]:
-                        new_columns[col_name] = _fill_column_directional(column, method, limit)
+                        new_columns[col_name] = _fill_column_directional(
+                            column, method, limit
+                        )
                     elif method == "interpolate":
                         new_columns[col_name] = _fill_column_interpolate(column, limit)
                     else:
@@ -178,31 +180,33 @@ def _fill_column(column: pa.Array, fill_value: Any) -> pa.Array:
         return column
 
 
-def _fill_column_directional(column: pa.Array, method: str, limit: Optional[int] = None) -> pa.Array:
+def _fill_column_directional(
+    column: pa.Array, method: str, limit: Optional[int] = None
+) -> pa.Array:
     """Fill missing values using forward or backward fill.
-    
+
     Args:
         column: The PyArrow array to fill missing values in.
         method: Either "forward" or "backward" fill method.
         limit: Maximum number of consecutive missing values to fill.
-        
+
     Returns:
         A new PyArrow array with missing values filled directionally.
     """
     try:
         # Convert to pandas for easier directional filling
         pd_series = column.to_pandas()
-        
+
         if method == "forward":
             filled_series = pd_series.fillna(method="ffill", limit=limit)
         elif method == "backward":
             filled_series = pd_series.fillna(method="bfill", limit=limit)
         else:
             raise ValueError(f"Invalid directional method: {method}")
-            
+
         # Convert back to PyArrow
         return pa.array(filled_series, type=column.type)
-        
+
     except Exception:
         # If directional fill fails, return original column
         return column
@@ -210,11 +214,11 @@ def _fill_column_directional(column: pa.Array, method: str, limit: Optional[int]
 
 def _fill_column_interpolate(column: pa.Array, limit: Optional[int] = None) -> pa.Array:
     """Fill missing values using linear interpolation.
-    
+
     Args:
         column: The PyArrow array to fill missing values in.
         limit: Maximum number of consecutive missing values to fill.
-        
+
     Returns:
         A new PyArrow array with missing values interpolated.
     """
@@ -222,16 +226,16 @@ def _fill_column_interpolate(column: pa.Array, limit: Optional[int] = None) -> p
         # Only interpolate numeric columns
         if not (pa.types.is_integer(column.type) or pa.types.is_floating(column.type)):
             return column
-            
+
         # Convert to pandas for interpolation
         pd_series = column.to_pandas()
-        
+
         # Perform linear interpolation
         filled_series = pd_series.interpolate(method="linear", limit=limit)
-        
+
         # Convert back to PyArrow, preserving original type
         return pa.array(filled_series, type=column.type)
-        
+
     except Exception:
         # If interpolation fails, return original column
         return column

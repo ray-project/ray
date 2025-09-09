@@ -79,7 +79,9 @@ def plan_dropna_op(
             # Create mask for rows to keep
             if thresh is not None:
                 # Count non-missing values per row
-                mask = _create_thresh_mask(batch, columns_to_check, thresh, ignore_values)
+                mask = _create_thresh_mask(
+                    batch, columns_to_check, thresh, ignore_values
+                )
             else:
                 # Create mask based on how parameter ("any" or "all")
                 mask = _create_how_mask(batch, columns_to_check, how, ignore_values)
