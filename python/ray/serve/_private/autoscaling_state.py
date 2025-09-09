@@ -392,7 +392,7 @@ class ApplicationAutoscalingState:
     def get_deployment_decisions(
         self, deployments: Dict[str, DeploymentDetails], _skip_bound_check: bool = False
     ) -> Dict[str, int]:
-        autoscaling_contexts: list[AutoscalingContext] = []
+        autoscaling_contexts: Dict[str, AutoscalingContext] = {}
         decisions: Dict[str, int] = {}
         for name, deployment_detail in deployments.items():
             deployment_id: DeploymentID = DeploymentID(
@@ -424,7 +424,7 @@ class ApplicationAutoscalingState:
                 last_scale_down_time=None,
             )
 
-            autoscaling_contexts.append(autoscaling_context)
+            autoscaling_contexts[name] = autoscaling_context
 
         decisions, self._policy_state = self._policy(autoscaling_contexts)
 
