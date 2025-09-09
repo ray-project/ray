@@ -267,25 +267,25 @@ int main(int argc, char *argv[]) {
         << "Failed to start up raylet. If enable_resource_isolation is set to true, "
            "system_reserved_memory_byres must be set to a value > 0";
 
+    std::unique_ptr<ray::SysFsCgroupDriver> cgroup_driver;
+    ray::StatusOr<std::unique_ptr<ray::CgroupManager>> cgroup_manager =
+        ray::CgroupManager::Create(std::move(cgroup_path),
+                                   node_id,
+                                   system_reserved_cpu_weight,
+                                   system_reserved_memory_bytes,
+                                   std::move(cgroup_driver));
+
+    // TODO(#54703) - Link to OSS documentation once available.
+    RAY_CHECK(cgroup_manager.ok())
+        << "Failed to start raylet. Could not create CgroupManager because of "
+        << cgroup_manager.ToString();
+
 #ifndef __linux__
     RAY_LOG(WARNING)
         << "Resource isolation with cgroups is only supported in linux. Please set "
            "enable_resource_isolation to false. This is likely a misconfiguration.";
 #endif
   }
-
-  std::unique_ptr<ray::SysFsCgroupDriver> cgroup_driver;
-  ray::StatusOr<std::unique_ptr<ray::CgroupManager>> cgroup_manager =
-      ray::CgroupManager::Create(std::move(cgroup_path),
-                                 node_id,
-                                 system_reserved_cpu_weight,
-                                 system_reserved_memory_bytes,
-                                 std::move(cgroup_driver));
-
-  // TODO(#54703) - Link to OSS documentation once available.
-  RAY_CHECK(cgroup_manager.ok())
-      << "Failed to start raylet. Could not create CgroupManager because of "
-      << cgroup_manager.ToString();
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
