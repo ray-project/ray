@@ -78,7 +78,7 @@ Create a TensorflowTrainer
 --------------------------
 
 ``Trainer``\s are the primary Ray Train classes for managing state and
-execute training. For distributed Tensorflow,
+execute training. For distributed TensorFlow,
 use a :class:`~ray.train.tensorflow.TensorflowTrainer`
 that you can setup like this:
 
