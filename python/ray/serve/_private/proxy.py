@@ -1253,7 +1253,7 @@ class ProxyActor:
 
     def _get_http_options(self) -> HTTPOptions:
         """Internal method to get HTTP options used by the proxy."""
-        return self._http_option
+        return self._http_options
 
 
 def _configure_gc_options():
