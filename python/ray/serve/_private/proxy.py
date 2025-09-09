@@ -1251,9 +1251,9 @@ class ProxyActor:
             await self.http_proxy.receive_asgi_messages(request_metadata)
         )
 
-    def get_http_proxy_options(self) -> HTTPOptions:
-        """Returns the HTTP options of the proxy."""
-        return self.http_proxy.get_http_options()
+    def _get_http_options(self) -> HTTPOptions:
+        """Internal method to get HTTP options used by the proxy."""
+        return self._http_option
 
 
 def _configure_gc_options():
