@@ -74,6 +74,9 @@ ray_cc_library(
         "//src/ray/common:id",
         "//src/ray/common:protobuf_utils",
         "//src/ray/common:ray_config",
+        "//src/ray/observability:ray_event_recorder_interface",
+        "//src/ray/observability:ray_node_definition_event",
+        "//src/ray/observability:ray_node_lifecycle_event",
         "//src/ray/protobuf:autoscaler_cc_proto",
         "//src/ray/protobuf:gcs_service_cc_proto",
         "//src/ray/protobuf:ray_syncer_cc_proto",
@@ -242,10 +245,6 @@ ray_cc_library(
     name = "gcs_job_manager",
     srcs = ["gcs_job_manager.cc"],
     hdrs = ["gcs_job_manager.h"],
-    implementation_deps = [
-        "//src/ray/observability:ray_driver_job_definition_event",
-        "//src/ray/observability:ray_driver_job_execution_event",
-    ],
     deps = [
         ":gcs_function_manager",
         ":gcs_init_data",

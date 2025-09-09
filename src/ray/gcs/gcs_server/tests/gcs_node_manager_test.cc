@@ -22,7 +22,10 @@
 
 #include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "mock/ray/pubsub/publisher.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/test_utils.h"
+#include "ray/gcs/store_client/in_memory_store_client.h"
+#include "ray/observability/fake_ray_event_recorder.h"
 
 namespace ray {
 class GcsNodeManagerTest : public ::testing::Test {
@@ -35,7 +38,10 @@ class GcsNodeManagerTest : public ::testing::Test {
         });
     gcs_publisher_ = std::make_unique<pubsub::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
+    gcs_table_storage_ = std::make_unique<gcs::GcsTableStorage>(
+        std::make_shared<gcs::InMemoryStoreClient>());
     io_context_ = std::make_unique<InstrumentedIOContextWithThread>("GcsNodeManagerTest");
+    fake_ray_event_recorder_ = std::make_unique<observability::FakeRayEventRecorder>();
   }
 
  protected:
@@ -43,14 +49,49 @@ class GcsNodeManagerTest : public ::testing::Test {
   std::unique_ptr<rpc::RayletClientPool> client_pool_;
   std::unique_ptr<pubsub::GcsPublisher> gcs_publisher_;
   std::unique_ptr<InstrumentedIOContextWithThread> io_context_;
+  std::unique_ptr<observability::FakeRayEventRecorder> fake_ray_event_recorder_;
 };
+
+TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
+  RayConfig::instance().initialize(
+      R"(
+{
+"enable_ray_event": true
+}
+)");
+  gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
+                                   gcs_table_storage_.get(),
+                                   io_context_->GetIoService(),
+                                   client_pool_.get(),
+                                   ClusterID::Nil(),
+                                   *fake_ray_event_recorder_,
+                                   "test_session_name");
+  auto node = GenNodeInfo();
+  rpc::RegisterNodeRequest register_request;
+  register_request.mutable_node_info()->CopyFrom(*node);
+  rpc::RegisterNodeReply register_reply;
+  std::promise<bool> promise;
+  auto send_reply_callback =
+      [&promise](ray::Status status, std::function<void()> f1, std::function<void()> f2) {
+        promise.set_value(status.ok());
+      };
+  node_manager.HandleRegisterNode(register_request, &register_reply, send_reply_callback);
+  promise.get_future().get();
+  auto events = fake_ray_event_recorder_->FlushBuffer();
+
+  ASSERT_EQ(events.size(), 2);
+  ASSERT_EQ(events[0]->GetEventType(), rpc::events::RayEvent::NODE_DEFINITION_EVENT);
+  ASSERT_EQ(events[1]->GetEventType(), rpc::events::RayEvent::NODE_LIFECYCLE_EVENT);
+}
 
 TEST_F(GcsNodeManagerTest, TestManagement) {
   gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
                                    gcs_table_storage_.get(),
                                    io_context_->GetIoService(),
                                    client_pool_.get(),
-                                   ClusterID::Nil());
+                                   ClusterID::Nil(),
+                                   *fake_ray_event_recorder_,
+                                   "test_session_name");
   // Test Add/Get/Remove functionality.
   auto node = GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
@@ -68,7 +109,9 @@ TEST_F(GcsNodeManagerTest, TestListener) {
                                    gcs_table_storage_.get(),
                                    io_context_->GetIoService(),
                                    client_pool_.get(),
-                                   ClusterID::Nil());
+                                   ClusterID::Nil(),
+                                   *fake_ray_event_recorder_,
+                                   "test_session_name");
   // Test AddNodeAddedListener.
   int node_count = 1000;
   std::vector<std::shared_ptr<rpc::GcsNodeInfo>> added_nodes;
@@ -111,7 +154,9 @@ TEST_F(GcsNodeManagerTest, TestUpdateAliveNode) {
                                    gcs_table_storage_.get(),
                                    io_context_->GetIoService(),
                                    client_pool_.get(),
-                                   ClusterID::Nil());
+                                   ClusterID::Nil(),
+                                   *fake_ray_event_recorder_,
+                                   "test_session_name");
 
   // Create a test node
   auto node = GenNodeInfo();
