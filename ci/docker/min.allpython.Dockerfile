@@ -6,7 +6,7 @@ ARG DEFAULT_PYTHON_VERSION=3.9
 
 ARG UV_BIN=/usr/local/bin/uv
 
-ARG UV_PYTHON_INSTALL_DIR=/usr/local/uv/python
+ARG UV_PYTHON_INSTALL_DIR=~/.local/bin/uv/python
 
 RUN mkdir -p "${UV_PYTHON_INSTALL_DIR}"
 
