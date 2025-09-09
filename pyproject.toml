@@ -64,6 +64,7 @@ afterray = ["psutil", "setproctitle"]
 "doc/*" = ["I"]
 "python/ray/__init__.py" = ["I"]
 "python/ray/dag/__init__.py" = ["I"]
+"python/ray/air/__init__.py" = ["I"]
 "rllib/*" = ["I"]
 "release/*" = ["I"]
 
