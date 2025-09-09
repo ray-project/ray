@@ -33,7 +33,7 @@ class DirectTaskTransportTest : public ::testing::Test {
 
   void SetUp() override {
     gcs_client = std::make_shared<ray::gcs::MockGcsClient>();
-    actor_creator = std::make_unique<ActorCreator>(gcs_client);
+    actor_creator = std::make_unique<ActorCreator>(gcs_client->Actors());
 
     task_manager = std::make_shared<MockTaskManagerInterface>();
     client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
