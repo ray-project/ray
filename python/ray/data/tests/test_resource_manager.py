@@ -976,6 +976,8 @@ class TestReservationOpResourceAllocator:
             o7: ExecutionResources(cpu=1, object_store_memory=100),
             o8: ExecutionResources.zero(),
         }
+        op_internal_usage = dict.fromkeys([o1, o2, o3, o4, o5, o6, o7, o8], 0)
+        op_outputs_usages = dict.fromkeys([o1, o2, o3, o4, o5, o6, o7, o8], 0)
 
         topo, _ = build_streaming_topology(o8, ExecutionOptions())
 
@@ -992,12 +994,23 @@ class TestReservationOpResourceAllocator:
         resource_manager.get_global_limits = MagicMock(
             side_effect=mock_get_global_limits
         )
+        resource_manager._mem_op_internal = op_internal_usage
+        resource_manager._mem_op_outputs = op_outputs_usages
 
         allocator = resource_manager._op_resource_allocator
         global_limits = ExecutionResources(cpu=20, object_store_memory=2000)
         allocator.update_usages()
         """
         global_limits (20 CPU, 2000 mem) - o2 usage (2 CPU, 150 mem) - o3 usage (2 CPU, 50 mem) - o5 usage (3 CPU, 100 mem) - o7 usage (1 CPU, 100 mem) = remaining (12 CPU, 1600 mem)
+        +-----+------------------+------------------+--------------+
+        |     | _op_reserved     | _reserved_for    | used shared  |
+        |     | (used/remaining) | _op_outputs      | resources    |
+        |     |                  | (used/remaining) |              |
+        +-----+------------------+------------------+--------------+
+        | op6 | 0/200            | 0/200            | 0            |
+        +-----+------------------+------------------+--------------+
+        | op8 | 0/200            | 0/200            | 0            |
+        +-----+------------------+------------------+--------------+
         """
         assert set(allocator._op_budgets.keys()) == {o6, o8}
         assert set(allocator._op_reserved.keys()) == {o6, o8}
@@ -1012,7 +1025,47 @@ class TestReservationOpResourceAllocator:
         assert allocator._total_shared == ExecutionResources(
             cpu=6, object_store_memory=800
         )
-        # TODO: continue adding
+        assert allocator._op_budgets[o6] == ExecutionResources(
+            cpu=6, object_store_memory=600
+        )
+        assert allocator._op_budgets[o8] == ExecutionResources(
+            cpu=6, object_store_memory=600
+        )
+
+        # Test when completed ops update the usage.
+        op_usages[o5] = ExecutionResources.zero()
+        allocator.update_usages()
+        """
+        global_limits (20 CPU, 2000 mem) - o2 usage (2 CPU, 150 mem) - o3 usage (2 CPU, 50 mem) - o5 usage (0 CPU, 0 mem) - o7 usage (1 CPU, 100 mem) = remaining (15 CPU, 1700 mem)
+        +-----+------------------+------------------+--------------+
+        |     | _op_reserved     | _reserved_for    | used shared  |
+        |     | (used/remaining) | _op_outputs      | resources    |
+        |     |                  | (used/remaining) |              |
+        +-----+------------------+------------------+--------------+
+        | op6 | 0/213            | 0/213            | 0            |
+        +-----+------------------+------------------+--------------+
+        | op8 | 0/213            | 0/213            | 0            |
+        +-----+------------------+------------------+--------------+
+        """
+        assert set(allocator._op_budgets.keys()) == {o6, o8}
+        assert set(allocator._op_reserved.keys()) == {o6, o8}
+        assert allocator._op_reserved[o6] == ExecutionResources(
+            cpu=3.75, object_store_memory=213
+        )
+        assert allocator._op_reserved[o8] == ExecutionResources(
+            cpu=3.75, object_store_memory=213
+        )
+        assert allocator._reserved_for_op_outputs[o6] == 212
+        assert allocator._reserved_for_op_outputs[o8] == 212
+        assert allocator._total_shared == ExecutionResources(
+            cpu=7.5, object_store_memory=850
+        )
+        assert allocator._op_budgets[o6] == ExecutionResources(
+            cpu=7.5, object_store_memory=638
+        )
+        assert allocator._op_budgets[o8] == ExecutionResources(
+            cpu=7.5, object_store_memory=638
+        )
 
 
 if __name__ == "__main__":
