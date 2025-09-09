@@ -974,34 +974,30 @@ class Dataset:
     def distinct(
         self,
         keys: Optional[List[str]] = None,
-        keep: Optional[Union[str, bool]] = "first",
-        sort: Optional[bool] = False,
     ) -> "Dataset":
         """
         Remove duplicate rows from the dataset.
 
         This method is useful for preprocessing data by eliminating redundant entries. It can operate
-        on all columns (default) or only on a set of columns specified by ``keys``, supporting flexible
-        deduplication strategies similar to those in pandas.
+        on all columns (default) or only on a set of columns specified by ``keys``. The method keeps
+        the first occurrence of each duplicate row.
 
         The method uses an internal groupby operation to identify and remove duplicates. The 'first'
-        and 'last' options refer to the order of rows within each group after the groupby shuffling,
+        occurrence refers to the order of rows within each group after the groupby shuffling,
         which may not correspond to the original dataset order.
 
         .. tip::
             Setting ``keys`` allows you to find unique values based on one or more chosen columns,
-            while other columns retain their values from the row selected based on ``keep``.
+            while other columns retain their values from the first row in each group.
 
         .. tip::
-            Use ``sort=True`` for predictable ordering semantics based on the deduplication keys:
+            For predictable ordering semantics, sort the dataset before calling distinct:
 
-            - ``ds.distinct(keys=["key", "timestamp"], keep="first", sort=True)`` - earliest by key+timestamp order
-            - ``ds.distinct(keys=["key", "timestamp"], keep="last", sort=True)`` - latest by key+timestamp order
+            ``ds.sort(["timestamp"]).distinct(keys=["user_id"])`` - earliest record per user
 
         .. warning::
             ``distinct`` is an expensive operation that requires shuffling data across the cluster.
-            Large datasets may incur significant computation and memory cost. Using ``sort=True`` adds
-            additional sorting overhead but ensures predictable ordering.
+            Large datasets may incur significant computation and memory cost.
 
         Examples:
 
@@ -1029,28 +1025,7 @@ class Dataset:
 
                 [{'a': 1, 'b': 'x'}, {'a': 2, 'b': 'y'}, {'a': 3, 'b': 'z'}]
 
-            Remove duplicates using the 'last' occurrence for each group:
-
-            .. testcode::
-
-                print(ds.distinct(keys=["a"], keep="last").sort(key=["a"]).take_all())
-
-            .. testoutput::
-
-                [{'a': 1, 'b': 'x'}, {'a': 2, 'b': 'y'}, {'a': 3, 'b': 'z'}]
-
-            Remove all rows that have duplicates (keep only values that appear exactly once in the keys):
-
-            .. testcode::
-
-                ds2 = ray.data.from_arrow(pa.table({"a": [1,1,2,3,3,4], "b": ["x","x","y","z","z","w"]}))
-                print(ds2.distinct(keys=["a"], keep=False).sort(key=["a"]).take_all())
-
-            .. testoutput::
-
-                [{'a': 2, 'b': 'y'}, {'a': 4, 'b': 'w'}]
-
-            For predictable ordering, use the ``sort=True`` parameter:
+            For predictable ordering, sort the dataset before calling distinct:
 
             .. testcode::
 
@@ -1060,21 +1035,9 @@ class Dataset:
                     "value": ["a", "b", "c", "d", "e"]
                 }))
 
-                # Get earliest record by id+timestamp order for each id
-                earliest = ds3.distinct(keys=["id", "timestamp"], keep="first", sort=True)
+                # Get earliest record per id (sort by timestamp first)
+                earliest = ds3.sort(["id", "timestamp"]).distinct(keys=["id"])
                 print(earliest.sort(key=["id"]).take_all())
-
-            .. testoutput::
-
-                [{'id': 1, 'timestamp': 100, 'value': 'a'}, {'id': 1, 'timestamp': 200, 'value': 'b'}, {'id': 1, 'timestamp': 300, 'value': 'c'}, {'id': 2, 'timestamp': 150, 'value': 'd'}, {'id': 2, 'timestamp': 250, 'value': 'e'}]
-
-            Get unique records by id only, with predictable ordering:
-
-            .. testcode::
-
-                # Get one record per id, with predictable timestamp-based ordering
-                unique_by_id = ds3.distinct(keys=["id"], keep="first", sort=True)
-                print(unique_by_id.sort(key=["id"]).take_all())
 
             .. testoutput::
 
@@ -1082,29 +1045,9 @@ class Dataset:
 
         Args:
             keys: List of columns to consider for identifying duplicates. Only the values in these columns are checked for duplication. If None, all columns are used. Defaults to None.
-            keep: Determines which duplicates (if any) to keep.
-                - 'first': Keep the first occurrence of each set of duplicates within each group after groupby shuffling. When ``sort=True``, this keeps the row with the smallest key values.
-                - 'last': Keep the last occurrence of each set of duplicates within each group after groupby shuffling. When ``sort=True``, this keeps the row with the largest key values.
-                - False: Drop all duplicates (only unique rows by ``keys`` are kept).
-            sort: Whether to sort the dataset by the ``keys`` columns before applying distinct. This ensures predictable ordering for 'first' and 'last' semantics. If False, uses the natural groupby order which may not be deterministic across different executions. Defaults to False.
 
         Returns:
-            A new dataset with duplicate rows removed as specified.
-
-        .. note::
-
-            **Ordering Semantics**: The 'first' and 'last' options refer to the order established by the
-            internal groupby operation, not the original dataset insertion order. When ``sort=False`` (default),
-            this order is deterministic for the same dataset but may not match your expectations.
-            For predictable ordering based on the key columns, use ``sort=True``.
-
-            If you use ``keys``, only the specified columns are considered for uniqueness.
-            Non-subset columns retain the value for whichever row is kept (first, last, etc.).
-
-            For very large datasets, this operation will shuffle and regroup the full dataset,
-            which may result in memory pressure or dramatically increased execution time. Using ``sort=True``
-            adds additional sorting overhead.
-
+            A new dataset with duplicate rows removed, keeping the first occurrence of each duplicate.
         """
         all_cols = self.columns()
         if not all_cols:
@@ -1112,37 +1055,11 @@ class Dataset:
 
         subset_cols = keys if keys is not None else all_cols
 
-        if keep not in ("first", "last", False):
-            raise ValueError(f"keep must be 'first', 'last', or False, got {keep}")
-
-        if not isinstance(sort, bool):
-            raise ValueError(f"sort must be a boolean, got {type(sort)}")
-
         def reducer_first(batch: pa.Table) -> pa.Table:
             return batch.slice(0, 1)
 
-        def reducer_last(batch: pa.Table) -> pa.Table:
-            return batch.slice(batch.num_rows - 1, 1)
-
-        def reducer_unique(batch: pa.Table) -> pa.Table:
-            if batch.num_rows == 1:
-                return batch
-            return batch.slice(0, 0)
-
-        if keep == "first":
-            reducer = reducer_first
-        elif keep == "last":
-            reducer = reducer_last
-        elif keep is False:
-            reducer = reducer_unique
-
-        # Apply sorting if sort=True, using the same keys used for deduplication
-        dataset_to_process = self
-        if sort:
-            dataset_to_process = self.sort(key=subset_cols)
-
-        return dataset_to_process.groupby(subset_cols).map_groups(
-            reducer,
+        return self.groupby(subset_cols).map_groups(
+            reducer_first,
             batch_format="pyarrow",
         )
 
@@ -6041,9 +5958,9 @@ class Dataset:
         import pyarrow as pa
 
         ref_bundles: Iterator[RefBundle] = self.iter_internal_ref_bundles()
-        block_refs: List[ObjectRef["pyarrow.Table"]] = (
-            _ref_bundles_iterator_to_block_refs_list(ref_bundles)
-        )
+        block_refs: List[
+            ObjectRef["pyarrow.Table"]
+            ] = _ref_bundles_iterator_to_block_refs_list(ref_bundles)
 
         # Schema is safe to call since we have already triggered execution with
         # iter_internal_ref_bundles.
