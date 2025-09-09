@@ -140,7 +140,7 @@ class RayTrainWorker:
 
         def train_fn_with_final_checkpoint_flush():
             train_fn()
-            get_train_context().checkpoint_uploads_threadpool.shutdown()
+            get_train_context().checkpoint_upload_threadpool.shutdown()
 
         # Create and start the training thread.
         get_train_context().execution_context.training_thread_runner.run(

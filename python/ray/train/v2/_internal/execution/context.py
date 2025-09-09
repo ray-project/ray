@@ -114,10 +114,10 @@ class TrainContext:
 
     # TODO: consolidate into CheckpointContext
     checkpoint: Optional["Checkpoint"] = None
-    num_report_calls: int = 0
-    num_attempted_report_calls: int = 0
+    current_report_index: int = 0
+    report_call_index: int = 0
     report_order_condition: threading.Condition = threading.Condition()
-    checkpoint_uploads_threadpool: ThreadPoolExecutor = ThreadPoolExecutor(
+    checkpoint_upload_threadpool: ThreadPoolExecutor = ThreadPoolExecutor(
         max_workers=MAX_CHECKPOINT_UPLOAD_THREADS
     )
 
@@ -162,7 +162,7 @@ class TrainContext:
     def get_all_reported_checkpoints(self) -> List["ReportedCheckpoint"]:
         return ray.get(
             self.controller_actor.get_all_reported_checkpoints.remote(
-                self.num_report_calls
+                self.current_report_index
             )
         )
 
@@ -244,9 +244,11 @@ class TrainContext:
         return _TrainingResult(checkpoint=persisted_checkpoint, metrics=metrics)
 
     def _wait_then_report(
-        self, training_result: _TrainingResult, current_report_attempt_number: int
+        self, training_result: _TrainingResult, report_call_index: int
     ) -> None:
         """Thread waits for its turn before reporting training result to result queue.
+
+        It does this in order to guarantee the FIFO processing of checkpoints.
 
         The queue size is set to 1 to avoid accumulating unprocessed results.
         If the queue is full, the put operation blocks until a result is consumed.
@@ -256,10 +258,10 @@ class TrainContext:
         """
         with self.report_order_condition:
             self.report_order_condition.wait_for(
-                lambda: self.num_report_calls == current_report_attempt_number - 1
+                lambda: self.current_report_index == report_call_index - 1
             )
             self.get_result_queue().put(training_result)
-            self.num_report_calls += 1
+            self.current_report_index += 1
             self.report_order_condition.notify_all()
 
     def report(
@@ -281,7 +283,8 @@ class TrainContext:
                 be stored in the default storage path. If set, make sure
                 this value is unique for each iteration.
             checkpoint_upload_mode: The manner in which we want to upload the checkpoint.
-                If not provided, the checkpoint will be uploaded synchronously.
+                Defaults to uploading the checkpoint synchronously.
+                This works when no checkpoint is provided but is not useful in that case.
 
         TODO: the report function should be implemented in the worker instead
         of in the train context. The train context should only keep the train
@@ -306,8 +309,8 @@ class TrainContext:
                 for callback in self.execution_context.train_context_callbacks
             ]
         ):
-            self.num_attempted_report_calls += 1
-            current_report_attempt_number = self.num_attempted_report_calls
+            self.report_call_index += 1
+            report_call_index = self.report_call_index
 
             # Sync the checkpoint dir name across ranks.
             checkpoint_dir_name = self._sync_checkpoint_dir_name_across_ranks(
@@ -319,13 +322,13 @@ class TrainContext:
                 training_result = self._upload_checkpoint(
                     checkpoint_dir_name, metrics, checkpoint
                 )
-                self._wait_then_report(training_result, current_report_attempt_number)
+                self._wait_then_report(training_result, report_call_index)
 
             elif checkpoint_upload_mode == CheckpointUploadMode.NO_UPLOAD:
                 training_result = _TrainingResult(
                     checkpoint=checkpoint, metrics=metrics
                 )
-                self._wait_then_report(training_result, current_report_attempt_number)
+                self._wait_then_report(training_result, report_call_index)
 
             elif checkpoint_upload_mode == CheckpointUploadMode.ASYNC:
 
@@ -333,15 +336,13 @@ class TrainContext:
                     checkpoint_dir_name: str,
                     metrics: Dict[str, Any],
                     checkpoint: Optional["Checkpoint"],
-                    current_report_attempt_number: int,
+                    report_call_index: int,
                 ) -> None:
                     try:
                         training_result = self._upload_checkpoint(
                             checkpoint_dir_name, metrics, checkpoint
                         )
-                        self._wait_then_report(
-                            training_result, current_report_attempt_number
-                        )
+                        self._wait_then_report(training_result, report_call_index)
                     except Exception as e:
                         logger.exception(
                             "Async checkpoint upload failed - shutting down workers"
@@ -350,12 +351,12 @@ class TrainContext:
                             construct_user_exception_with_traceback(e)
                         )
 
-                self.checkpoint_uploads_threadpool.submit(
+                self.checkpoint_upload_threadpool.submit(
                     _upload_checkpoint_and_report,
                     checkpoint_dir_name,
                     metrics,
                     checkpoint,
-                    current_report_attempt_number,
+                    report_call_index,
                 )
             else:
                 raise ValueError(

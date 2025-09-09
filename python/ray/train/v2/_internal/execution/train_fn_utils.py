@@ -50,6 +50,7 @@ class TrainFnUtils(ABC):
                 this value is unique for each iteration.
             checkpoint_upload_mode: The manner in which we want to upload the checkpoint.
                 If not provided, the checkpoint will be uploaded synchronously.
+                This works when no checkpoint is provided but is not useful in that case.
         """
         pass
 

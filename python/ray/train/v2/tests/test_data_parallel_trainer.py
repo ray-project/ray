@@ -146,7 +146,7 @@ def test_report_checkpoint_multirank(tmp_path):
 
 
 def test_report_mixed_checkpoint_upload_modes(tmp_path):
-    """Run all 10 possible pairs of checkpoint upload modes."""
+    """Run all 10 possible pairs (e.g. (SYNC, ASYNC)) of checkpoint upload modes between 2 workers."""
 
     def train_fn():
         # When reporting with async checkpointing, write the checkpoint to

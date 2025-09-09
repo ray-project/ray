@@ -91,7 +91,8 @@ def report(
             naming collisions. Consider including identifiers such as the epoch or batch
             index in the name.
         checkpoint_upload_mode: The manner in which we want to upload the checkpoint.
-            If not provided, the checkpoint will be uploaded synchronously.
+            Defaults to uploading the checkpoint synchronously.
+            This works when no checkpoint is provided but is not useful in that case.
     """
 
     get_train_fn_utils().report(
