@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from ray.data._internal.pandas_block import PandasBlockSchema
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
     from ray.data.aggregate import AggregateFn
+    from ray.data.expressions import Expr
 
 
 T = TypeVar("T", contravariant=True)
@@ -636,6 +637,17 @@ class BlockAccessor:
         projected_block = self.to_numpy(keys)
 
         return _get_group_boundaries_sorted_numpy(list(projected_block.values()))
+
+    def filter(self, predicate_expr: "Expr") -> Block:
+        """Filter rows in the block based on a predicate expression.
+
+        Args:
+            predicate_expr: A Ray Data expression that evaluates to a boolean mask
+
+        Returns:
+            A new block containing only the rows where the predicate is True
+        """
+        raise NotImplementedError()
 
 
 @DeveloperAPI(stability="beta")

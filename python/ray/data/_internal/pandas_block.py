@@ -41,6 +41,8 @@ if TYPE_CHECKING:
 
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
     from ray.data.block import BlockMetadataWithSchema
+    from ray.data.expressions import Expr
+
 
 T = TypeVar("T")
 # Max number of samples used to estimate the Pandas block size.
@@ -607,3 +609,13 @@ class PandasBlockAccessor(TableBlockAccessor):
                 yield row.as_pydict()
             else:
                 yield row
+
+    def filter(self, predicate_expr: "Expr") -> "pandas.DataFrame":
+        """Filter rows based on a predicate expression."""
+        from ray.data._expression_evaluator import eval_expr
+
+        # Evaluate the expression to get a boolean mask
+        mask = eval_expr(predicate_expr, self._table)
+
+        # Use pandas boolean indexing
+        return self._table[mask]

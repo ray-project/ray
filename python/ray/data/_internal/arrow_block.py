@@ -50,6 +50,7 @@ if TYPE_CHECKING:
     import pandas
 
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+    from ray.data.expressions import Expr
 
 
 T = TypeVar("T")
@@ -446,6 +447,16 @@ class ArrowBlockAccessor(TableBlockAccessor):
         else:
             for i in range(self.num_rows()):
                 yield self._get_row(i)
+
+    def filter(self, predicate_expr: "Expr") -> "pyarrow.Table":
+        """Filter rows based on a predicate expression."""
+        from ray.data._expression_evaluator import eval_expr
+
+        # Evaluate the expression to get a boolean mask
+        mask = eval_expr(predicate_expr, self._table)
+
+        # Use PyArrow's built-in filter method
+        return self._table.filter(mask)
 
 
 class ArrowBlockColumnAccessor(BlockColumnAccessor):
