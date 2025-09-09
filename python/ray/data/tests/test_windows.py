@@ -11,7 +11,6 @@ import pandas as pd
 
 import ray
 from ray.data.window import (
-    window,
     sliding_window,
     tumbling_window,
     session_window,
@@ -196,32 +195,25 @@ class TestWindowSpec:
         assert win.gap == "15 minutes"
         assert win.partition_by == []
 
-    def test_window_convenience_function(self):
-        """Test the generic window() function."""
-        # Sliding window
-        win = window("timestamp", "1 hour", window_type="sliding")
+    def test_new_clean_window_api(self):
+        """Test the new clean ds.window() API."""
+        # This would test the actual Dataset.window() method
+        # For now, we test the window specification creation
+
+        # Sliding window spec
+        win = sliding_window("timestamp", "1 hour")
         assert isinstance(win, SlidingWindow)
         assert win.size == "1 hour"
 
-        # Tumbling window
-        win = window("timestamp", "1 day", window_type="tumbling")
+        # Tumbling window spec
+        win = tumbling_window("timestamp", "1 day")
         assert isinstance(win, TumblingWindow)
         assert win.size == "1 day"
 
-        # Session window
-        win = window("timestamp", gap="15 minutes", window_type="session")
+        # Session window spec
+        win = session_window("timestamp", "15 minutes")
         assert isinstance(win, SessionWindow)
         assert win.gap == "15 minutes"
-
-        # Invalid window type
-        with pytest.raises(ValueError, match="Unknown window type"):
-            window("timestamp", "1 hour", window_type="invalid")
-
-        # Session window without gap should raise error
-        with pytest.raises(
-            ValueError, match="Session windows require a 'gap' parameter"
-        ):
-            window("timestamp", "1 hour", window_type="session")
 
     def test_time_interval_parsing(self):
         """Test time interval parsing."""

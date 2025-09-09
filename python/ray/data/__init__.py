@@ -40,7 +40,6 @@ from ray.data.aggregate import (
     Lead,
 )
 from ray.data.window import (
-    window,
     sliding_window,
     tumbling_window,
     session_window,
@@ -211,7 +210,6 @@ __all__ = [
     "read_webdataset",
     "Preprocessor",
     "TFXReadOptions",
-    "window",
     "sliding_window",
     "tumbling_window",
     "session_window",

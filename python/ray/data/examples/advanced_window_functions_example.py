@@ -1,11 +1,11 @@
 """
-Advanced Window Functions Example for Ray Data.
+Ray Data Window Functions Example.
 
-This example demonstrates the advanced window functions including:
-- Ranking functions (rank, dense_rank, row_number)
-- Lag and Lead functions
-- Partitioning and ordering
-- GPU acceleration and stateful operations
+This example demonstrates both the new clean window API and advanced window functions:
+- Clean API: ds.window("timestamp", "1 hour").aggregate(Sum("sales"))
+- Advanced functions: ranking, lag, lead with explicit specifications
+- Custom functions with dataset explosion
+- GPU acceleration and performance optimization
 """
 
 import ray
@@ -297,9 +297,60 @@ def demonstrate_performance_features(ds):
     print(f"   Schema: {result.schema().names}")
 
 
+def demonstrate_clean_api(ds):
+    """Demonstrate the new clean window API."""
+    print("\n=== New Clean Window API ===")
+    print("Following Ray Data's ds.groupby().aggregate() pattern")
+
+    # 1. Basic sliding windows (most common)
+    print("1. Rolling averages (sliding windows):")
+    result = ds.window("timestamp", "1 hour").aggregate(Mean("amount"))
+    print(f"   Result count: {result.count()}")
+
+    # 2. Partitioned windows (like pandas groupby + rolling)
+    print("\n2. Per-user rolling metrics:")
+    result = ds.window("timestamp", "1 hour", partition_by=["user_id"]).aggregate(
+        Mean("amount"), Sum("amount")
+    )
+    print(f"   Result count: {result.count()}")
+
+    # 3. Tumbling windows
+    print("\n3. Daily summaries (tumbling windows):")
+    result = ds.window("timestamp", "1 day", window_type="tumbling").aggregate(
+        Sum("amount"), Count("transaction_id")
+    )
+    print(f"   Result count: {result.count()}")
+
+    # 4. Session windows
+    print("\n4. User sessions (session windows):")
+    result = ds.window("timestamp", gap="30 minutes", window_type="session").aggregate(
+        Count("transaction_id"), Sum("amount")
+    )
+    print(f"   Result count: {result.count()}")
+
+    # 5. Custom functions with map_batches
+    print("\n5. Custom anomaly detection:")
+
+    def detect_anomalies(window_batch):
+        import numpy as np
+
+        values = window_batch["amount"]
+        mean_val = np.mean(values)
+        std_val = np.std(values)
+
+        result = window_batch.copy()
+        result["is_anomaly"] = (np.abs(values - mean_val) > 2 * std_val).astype(int)
+        return result
+
+    result = ds.window("timestamp", "2 hours", partition_by=["user_id"]).map_batches(
+        detect_anomalies
+    )
+    print(f"   Result count: {result.count()}")
+
+
 def main():
     """Main function to demonstrate all window functions."""
-    print("Advanced Window Functions Example for Ray Data")
+    print("Ray Data Window Functions Example")
     print("=" * 50)
 
     # Initialize Ray
@@ -312,7 +363,13 @@ def main():
     print(f"Dataset created with {ds.count()} rows")
     print(f"Schema: {ds.schema().names}")
 
-    # Demonstrate all window function types
+    # Demonstrate the new clean API first
+    demonstrate_clean_api(ds)
+
+    # Then demonstrate advanced features
+    print("\n" + "=" * 50)
+    print("ADVANCED FEATURES (for power users)")
+    print("=" * 50)
     demonstrate_ranking_functions(ds)
     demonstrate_lag_lead_functions(ds)
     demonstrate_advanced_sliding_windows(ds)
@@ -321,14 +378,15 @@ def main():
     demonstrate_performance_features(ds)
 
     print("\n" + "=" * 50)
-    print("Advanced Window Functions demonstration completed!")
+    print("Ray Data Window Functions demonstration completed!")
     print("\nKey Features Demonstrated:")
-    print("- Ranking functions: rank(), dense_rank(), row_number()")
-    print("- Lag/Lead functions: lag(), lead() with custom offsets")
-    print("- Advanced partitioning and ordering")
-    print("- GPU acceleration and stateful operations")
-    print("- Custom resource management")
-    print("- Multiple aggregation functions per window")
+    print("- Clean API: ds.window().aggregate() pattern")
+    print("- Custom functions: ds.window().map_batches() for transformations")
+    print("- All window types: sliding, tumbling, session")
+    print("- Partitioned windows: partition_by parameter")
+    print("- Advanced functions: rank(), dense_rank(), row_number(), lag(), lead()")
+    print("- GPU acceleration and resource management")
+    print("- Dataset explosion with custom functions")
 
     # Shutdown Ray
     ray.shutdown()

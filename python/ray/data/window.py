@@ -11,11 +11,7 @@ from typing import Any, List, Optional, Union, Dict, Tuple
 import re
 
 from ray.util.annotations import PublicAPI
-from ray.data._internal.compute import (
-    ComputeStrategy,
-    TaskPoolStrategy,
-    ActorPoolStrategy,
-)
+from ray.data._internal.compute import ComputeStrategy
 
 
 class WindowSpec:
@@ -392,94 +388,8 @@ class SessionWindow(WindowSpec):
         raise ValueError(f"Invalid time interval type: {type(interval)}")
 
 
-# Convenience constructors for common window types
-
-
-@PublicAPI
-def window(
-    on: str,
-    size: Union[str, timedelta, int],
-    window_type: str = "sliding",
-    gap: Optional[Union[str, timedelta, int]] = None,
-    step: Optional[Union[str, timedelta, int]] = None,
-    start: Optional[Union[str, datetime]] = None,
-    offset: Optional[Union[str, timedelta, int]] = None,
-    alignment: str = "TRAILING",
-    partition_by: Optional[List[str]] = None,
-    order_by: Optional[List[str]] = None,
-    ray_remote_args: Optional[Dict[str, Any]] = None,
-) -> WindowSpec:
-    """Create a window specification.
-
-    This is a convenience function that creates different types of windows
-    based on the window_type parameter.
-
-    Args:
-        on: The column name to use for windowing
-        size: The size of the window
-        window_type: Type of window ("sliding", "tumbling", "session")
-        gap: The gap for session windows
-        step: The step size for tumbling windows
-        start: The start time for tumbling windows
-        offset: The offset for sliding windows
-        alignment: The alignment for sliding windows
-        partition_by: Columns to partition by before applying windows
-        order_by: Columns to order by within each partition
-        ray_remote_args: Additional resource requirements for Ray tasks/actors
-
-    Returns:
-        A WindowSpec of the appropriate type
-
-    Raises:
-        ValueError: If window_type is not supported or required parameters are missing
-
-    Examples:
-        >>> from ray.data.window import window
-
-        # Create a sliding window
-        >>> win = window("timestamp", "1 hour", window_type="sliding")
-
-        # Create a tumbling window
-        >>> win = window("timestamp", "1 day", window_type="tumbling")
-
-        # Create a session window
-        >>> win = window("timestamp", gap="15 minutes", window_type="session")
-    """
-    # Automatically select optimal compute strategy
-    compute_strategy = None  # Let Ray Data choose the best strategy
-
-    if window_type == "sliding":
-        return SlidingWindow(
-            on,
-            size,
-            offset,
-            alignment,
-            partition_by,
-            order_by,
-            compute_strategy,
-            ray_remote_args,
-        )
-    elif window_type == "tumbling":
-        return TumblingWindow(
-            on,
-            size,
-            step,
-            start,
-            partition_by,
-            order_by,
-            compute_strategy,
-            ray_remote_args,
-        )
-    elif window_type == "session":
-        if gap is None:
-            raise ValueError("Session windows require a 'gap' parameter")
-        return SessionWindow(
-            on, gap, partition_by, order_by, compute_strategy, ray_remote_args
-        )
-    else:
-        raise ValueError(
-            f"Unknown window type: {window_type}. Supported types: 'sliding', 'tumbling', 'session'"
-        )
+# Window specification classes and convenience constructors
+# Used internally by the clean ds.window() API and for advanced use cases
 
 
 def sliding_window(
