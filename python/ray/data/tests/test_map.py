@@ -714,7 +714,10 @@ def test_filter_mutex(
     parquet_ds = ray.data.read_parquet(str(parquet_file))
 
     # Filter using lambda (UDF)
-    with pytest.raises(ValueError, match="Exactly one of 'fn' or 'expr'"):
+    with pytest.raises(
+        ValueError,
+        match="Exactly one of 'fn', 'expr', or 'predicate' must be provided.",
+    ):
         parquet_ds.filter(
             fn=lambda r: r["sepal.length"] > 5.0, expr="sepal.length > 5.0"
         )
