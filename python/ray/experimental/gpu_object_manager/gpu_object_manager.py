@@ -1,20 +1,22 @@
-from typing import TYPE_CHECKING, Any, Dict, NamedTuple, Optional, Tuple, List
 import threading
+import warnings
+from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Set, Tuple
 
 import ray
+from ray._private import ray_constants
 from ray._private.custom_types import TensorTransportEnum
 from ray._raylet import ObjectRef
-from ray._private import ray_constants
 
 if TYPE_CHECKING:
+    import torch
+
     from ray.experimental.gpu_object_manager.gpu_object_store import (
         GPUObjectStore,
     )
     from ray.util.collective.types import TensorTransportMetadata
-    import torch
 
 # GPUObjectMeta is a named tuple containing the source actor, tensor transport
-# backend, and tensor metadata.
+# backend, tensor metadata, and other information that needs to be recorded.
 # - The tensor transport backend is the backend used to transport the tensors.
 #   Currently, the supported backends are "nccl" and "torch_gloo".
 # - The tensor metadata is a list of tuples, each containing the shape and dtype
@@ -25,6 +27,10 @@ class GPUObjectMeta(NamedTuple):
     # `ray.util.collective.types.Backend`.
     tensor_transport_backend: str
     tensor_transport_meta: "TensorTransportMetadata"
+    # sent_dest_actors tracks the set of actor IDs that this object has been sent to.
+    sent_dest_actors: Set[str]
+    # sent_to_src_actor_and_others_warned indicates whether the object has already triggered a warning about being sent back to the source actor and other actors simultaneously.
+    sent_to_src_actor_and_others_warned: bool
 
 
 # TODO(swang): Uncomment and add an API docs page and example usage.
@@ -121,10 +127,10 @@ class GPUObjectManager:
             tensor_transport: The tensor transport protocol to use for the GPU object.
             tensor_transport_meta: The tensor transport metadata that is pre-computed.
         """
+        from ray.experimental.collective import get_tensor_transport_manager
         from ray.experimental.gpu_object_manager.gpu_object_store import (
             _tensor_transport_to_collective_backend,
         )
-        from ray.experimental.collective import get_tensor_transport_manager
 
         tensor_transport_backend = _tensor_transport_to_collective_backend(
             tensor_transport
@@ -143,6 +149,8 @@ class GPUObjectManager:
             src_actor=src_actor,
             tensor_transport_backend=tensor_transport_backend,
             tensor_transport_meta=tensor_meta,
+            sent_dest_actors=set(),
+            sent_to_src_actor_and_others_warned=False,
         )
 
     def _get_gpu_object_metadata(self, obj_ref: ObjectRef) -> GPUObjectMeta:
@@ -165,10 +173,10 @@ class GPUObjectManager:
         Returns:
             None
         """
+        from ray.experimental.collective import get_tensor_transport_manager
         from ray.experimental.gpu_object_manager.gpu_object_store import (
             __ray_fetch_gpu_object__,
         )
-        from ray.experimental.collective import get_tensor_transport_manager
 
         if self.gpu_object_store.has_object(obj_id):
             return
@@ -248,13 +256,38 @@ class GPUObjectManager:
 
             src_actor = gpu_object_meta.src_actor
             tensor_transport_meta = gpu_object_meta.tensor_transport_meta
+
+            obj_id = obj_ref.hex()
+
+            # Update the set of destination actors for this object
+            # The set inside NamedTuple is mutable, so we can modify it directly
+            gpu_object_meta.sent_dest_actors.add(dst_actor._actor_id)
+            # Check if a warning should be triggered for this object:
+            # 1. object has not triggered a warning yet.
+            # 2. object is sent back to its source actor.
+            # 3. object is also sent to at least one other actor
+            if (
+                not gpu_object_meta.sent_to_src_actor_and_others_warned
+                and src_actor._actor_id in gpu_object_meta.sent_dest_actors
+                and len(gpu_object_meta.sent_dest_actors) > 1
+            ):
+                warnings.warn(
+                    f"GPU ObjectRef({obj_id}) is being passed back to the actor that created it {src_actor}. "
+                    "Note that GPU objects are mutable. If the tensor is modified, Ray's internal copy will also be updated, and subsequent passes to other actors "
+                    "will receive the updated version instead of the original.",
+                    UserWarning,
+                )
+                # Mark the object as warned by creating a new NamedTuple instance
+                self.managed_gpu_object_metadata[obj_id] = gpu_object_meta._replace(
+                    sent_to_src_actor_and_others_warned=True
+                )
+
             if src_actor._actor_id == dst_actor._actor_id:
                 # If the source and destination actors are the same, the tensors can
                 # be transferred intra-process, so we skip the out-of-band tensor
                 # transfer.
                 continue
 
-            obj_id = obj_ref.hex()
             tensor_transport_manager = get_tensor_transport_manager(
                 gpu_object_meta.tensor_transport_backend
             )
@@ -352,10 +385,10 @@ class GPUObjectManager:
             tensors: The tensors to put into the GPU object manager.
 
         """
+        from ray.experimental.collective import get_tensor_transport_manager
         from ray.experimental.gpu_object_manager.gpu_object_store import (
             _tensor_transport_to_collective_backend,
         )
-        from ray.experimental.collective import get_tensor_transport_manager
 
         tensor_transport_backend = _tensor_transport_to_collective_backend(
             tensor_transport

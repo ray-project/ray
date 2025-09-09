@@ -1,8 +1,10 @@
+import time
+from typing import TYPE_CHECKING, List, Tuple
+
 from nixl._api import nixl_agent, nixl_agent_config
+
 import ray
 from ray.util.collective.types import Backend
-from typing import TYPE_CHECKING, List, Tuple
-import time
 
 if TYPE_CHECKING:
     import torch
