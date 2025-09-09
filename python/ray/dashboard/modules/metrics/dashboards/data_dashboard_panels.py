@@ -3,8 +3,8 @@
 from ray.dashboard.modules.metrics.dashboards.common import (
     DashboardConfig,
     Panel,
-    Target,
     Row,
+    Target,
 )
 
 # When adding a new panels for an OpRuntimeMetric, follow this format:
