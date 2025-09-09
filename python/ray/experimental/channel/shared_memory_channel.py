@@ -431,6 +431,8 @@ class Channel(ChannelInterface):
             # self._worker.core_worker.experimental_channel_set_error(
             #     prev_writer_ref
             # )
+            self._writer_registered = False
+            self.ensure_registered_as_writer()
 
     def write(self, value: Any, timeout: Optional[float] = None) -> None:
         self.ensure_registered_as_writer()
