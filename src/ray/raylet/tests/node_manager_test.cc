@@ -178,6 +178,8 @@ class FakePlasmaClient : public plasma::PlasmaClientInterface {
 
   int64_t store_capacity() { return 1; }
 
+  StatusOr<std::string> GetMemoryUsage() override { return std::string("fake"); }
+
  private:
   absl::flat_hash_set<ObjectID> objects_ids_in_plasma_;
   absl::flat_hash_map<ObjectID, std::pair<std::vector<uint8_t>, std::vector<uint8_t>>>
