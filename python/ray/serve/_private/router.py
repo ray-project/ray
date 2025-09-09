@@ -25,6 +25,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.exceptions import ActorDiedError, ActorUnavailableError, RayError
 from ray.serve._private.common import (
+    RUNNING_REQUESTS_KEY,
     DeploymentHandleSource,
     DeploymentID,
     DeploymentTargetInfo,
@@ -385,7 +386,7 @@ class RouterMetricsManager:
         start_timestamp = time.time() - self.autoscaling_config.look_back_period_s
         self.metrics_store.prune_keys_and_compact_data(start_timestamp)
 
-    def _get_metrics_report(self):
+    def _get_metrics_report(self) -> HandleMetricReport:
         running_requests = dict()
         avg_running_requests = dict()
         timestamp = time.time()
@@ -394,7 +395,6 @@ class RouterMetricsManager:
             self.metrics_store.prune_keys_and_compact_data(
                 time.time() - look_back_period
             )
-            # Combine two loops into one for efficiency
             for replica_id, num_requests in self.num_requests_sent_to_replicas.items():
                 # Calculate avg running requests
                 avg_running_requests[replica_id] = (
@@ -414,8 +414,8 @@ class RouterMetricsManager:
             actor_id=self._self_actor_id,
             handle_source=self._handle_source,
             queued_requests=self.num_queued_requests,
-            avg_running_requests=avg_running_requests,
-            running_requests=running_requests,
+            aggregated_metrics={RUNNING_REQUESTS_KEY: avg_running_requests},
+            metrics={RUNNING_REQUESTS_KEY: running_requests},
             timestamp=timestamp,
         )
 

@@ -8,6 +8,7 @@ import pytest
 from ray._common.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
+    RUNNING_REQUESTS_KEY,
     DeploymentHandleSource,
     DeploymentID,
     DeploymentStatus,
@@ -2823,14 +2824,19 @@ class TestAutoscaling:
                 actor_id="actor_id",
                 handle_source=DeploymentHandleSource.UNKNOWN,
                 queued_requests=0,
-                avg_running_requests={
-                    replica._actor.replica_id: req_per_replica for replica in replicas
+                aggregated_metrics={
+                    RUNNING_REQUESTS_KEY: {
+                        replica._actor.replica_id: req_per_replica
+                        for replica in replicas
+                    }
                 },
-                running_requests={
-                    replica._actor.replica_id: [
-                        TimeStampedValue(timer.time(), req_per_replica)
-                    ]
-                    for replica in replicas
+                metrics={
+                    RUNNING_REQUESTS_KEY: {
+                        replica._actor.replica_id: [
+                            TimeStampedValue(timer.time(), req_per_replica)
+                        ]
+                        for replica in replicas
+                    }
                 },
                 timestamp=timer.time(),
             )
@@ -2839,8 +2845,12 @@ class TestAutoscaling:
             for replica in replicas:
                 replica_metric_report = ReplicaMetricReport(
                     replica_id=replica._actor.replica_id,
-                    avg_running_requests=req_per_replica,
-                    running_requests=[TimeStampedValue(timer.time(), req_per_replica)],
+                    aggregated_metrics={RUNNING_REQUESTS_KEY: req_per_replica},
+                    metrics={
+                        RUNNING_REQUESTS_KEY: [
+                            TimeStampedValue(timer.time(), req_per_replica)
+                        ]
+                    },
                     timestamp=timer.time(),
                 )
                 asm.record_request_metrics_for_replica(replica_metric_report)
@@ -2990,12 +3000,16 @@ class TestAutoscaling:
                 actor_id="actor_id",
                 handle_source=DeploymentHandleSource.UNKNOWN,
                 queued_requests=0,
-                avg_running_requests={
-                    replica._actor.replica_id: 2 for replica in replicas
+                aggregated_metrics={
+                    RUNNING_REQUESTS_KEY: {
+                        replica._actor.replica_id: 2 for replica in replicas
+                    }
                 },
-                running_requests={
-                    replica._actor.replica_id: [TimeStampedValue(timer.time(), 2)]
-                    for replica in replicas
+                metrics={
+                    RUNNING_REQUESTS_KEY: {
+                        replica._actor.replica_id: [TimeStampedValue(timer.time(), 2)]
+                        for replica in replicas
+                    }
                 },
                 timestamp=timer.time(),
             )
@@ -3004,8 +3018,8 @@ class TestAutoscaling:
             for replica in replicas:
                 replica_metric_report = ReplicaMetricReport(
                     replica_id=replica._actor.replica_id,
-                    avg_running_requests=2,
-                    running_requests=[TimeStampedValue(timer.time(), 2)],
+                    aggregated_metrics={RUNNING_REQUESTS_KEY: 2},
+                    metrics={RUNNING_REQUESTS_KEY: [TimeStampedValue(timer.time(), 2)]},
                     timestamp=timer.time(),
                 )
                 asm.record_request_metrics_for_replica(replica_metric_report)
@@ -3078,12 +3092,16 @@ class TestAutoscaling:
                 actor_id="actor_id",
                 handle_source=DeploymentHandleSource.UNKNOWN,
                 queued_requests=0,
-                avg_running_requests={
-                    replica._actor.replica_id: 1 for replica in replicas
+                aggregated_metrics={
+                    RUNNING_REQUESTS_KEY: {
+                        replica._actor.replica_id: 1 for replica in replicas
+                    }
                 },
-                running_requests={
-                    replica._actor.replica_id: [TimeStampedValue(timer.time(), 1)]
-                    for replica in replicas
+                metrics={
+                    RUNNING_REQUESTS_KEY: {
+                        replica._actor.replica_id: [TimeStampedValue(timer.time(), 1)]
+                        for replica in replicas
+                    }
                 },
                 timestamp=timer.time(),
             )
@@ -3092,8 +3110,8 @@ class TestAutoscaling:
             for replica in replicas:
                 replica_metric_report = ReplicaMetricReport(
                     replica_id=replica._actor.replica_id,
-                    avg_running_requests=1,
-                    running_requests=[TimeStampedValue(timer.time(), 1)],
+                    aggregated_metrics={RUNNING_REQUESTS_KEY: 1},
+                    metrics={RUNNING_REQUESTS_KEY: [TimeStampedValue(timer.time(), 1)]},
                     timestamp=timer.time(),
                 )
                 asm.record_request_metrics_for_replica(replica_metric_report)
@@ -3179,12 +3197,16 @@ class TestAutoscaling:
                 actor_id="actor_id",
                 handle_source=DeploymentHandleSource.UNKNOWN,
                 queued_requests=0,
-                avg_running_requests={
-                    replica._actor.replica_id: 1 for replica in replicas
+                aggregated_metrics={
+                    RUNNING_REQUESTS_KEY: {
+                        replica._actor.replica_id: 1 for replica in replicas
+                    }
                 },
-                running_requests={
-                    replica._actor.replica_id: [TimeStampedValue(timer.time(), 1)]
-                    for replica in replicas
+                metrics={
+                    RUNNING_REQUESTS_KEY: {
+                        replica._actor.replica_id: [TimeStampedValue(timer.time(), 1)]
+                        for replica in replicas
+                    }
                 },
                 timestamp=timer.time(),
             )
@@ -3193,8 +3215,8 @@ class TestAutoscaling:
             for replica in replicas:
                 replica_metric_report = ReplicaMetricReport(
                     replica_id=replica._actor.replica_id,
-                    avg_running_requests=1,
-                    running_requests=[TimeStampedValue(timer.time(), 1)],
+                    aggregated_metrics={RUNNING_REQUESTS_KEY: 1},
+                    metrics={RUNNING_REQUESTS_KEY: [TimeStampedValue(timer.time(), 1)]},
                     timestamp=timer.time(),
                 )
                 asm.record_request_metrics_for_replica(replica_metric_report)
@@ -3288,8 +3310,8 @@ class TestAutoscaling:
             actor_id="actor_id",
             handle_source=DeploymentHandleSource.UNKNOWN,
             queued_requests=1,
-            avg_running_requests={},
-            running_requests={},
+            aggregated_metrics={},
+            metrics={},
             timestamp=timer.time(),
         )
         asm.record_request_metrics_for_handle(handle_metric_report)
@@ -3404,8 +3426,8 @@ class TestAutoscaling:
             actor_id="actor_id",
             handle_source=DeploymentHandleSource.UNKNOWN,
             queued_requests=1,
-            avg_running_requests={},
-            running_requests={},
+            aggregated_metrics={},
+            metrics={},
             timestamp=timer.time(),
         )
         asm.record_request_metrics_for_handle(handle_metric_report)
@@ -3480,11 +3502,15 @@ class TestAutoscaling:
             actor_id="actor_id",
             handle_source=DeploymentHandleSource.UNKNOWN,
             queued_requests=0,
-            avg_running_requests={ds._replicas.get()[0]._actor.replica_id: 2},
-            running_requests={
-                ds._replicas.get()[0]._actor.replica_id: [
-                    TimeStampedValue(timer.time(), 2)
-                ]
+            aggregated_metrics={
+                RUNNING_REQUESTS_KEY: {ds._replicas.get()[0]._actor.replica_id: 2}
+            },
+            metrics={
+                RUNNING_REQUESTS_KEY: {
+                    ds._replicas.get()[0]._actor.replica_id: [
+                        TimeStampedValue(timer.time(), 2)
+                    ]
+                }
             },
             timestamp=timer.time(),
         )
@@ -3572,11 +3598,15 @@ class TestAutoscaling:
             actor_id="d2_replica_actor_id",
             handle_source=DeploymentHandleSource.REPLICA,
             queued_requests=0,
-            avg_running_requests={ds1._replicas.get()[0]._actor.replica_id: 2},
-            running_requests={
-                ds1._replicas.get()[0]._actor.replica_id: [
-                    TimeStampedValue(timer.time(), 2)
-                ]
+            aggregated_metrics={
+                RUNNING_REQUESTS_KEY: {ds1._replicas.get()[0]._actor.replica_id: 2}
+            },
+            metrics={
+                RUNNING_REQUESTS_KEY: {
+                    ds1._replicas.get()[0]._actor.replica_id: [
+                        TimeStampedValue(timer.time(), 2)
+                    ]
+                }
             },
             timestamp=timer.time(),
         )

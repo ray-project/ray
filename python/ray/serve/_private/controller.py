@@ -13,6 +13,7 @@ from ray.actor import ActorHandle
 from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
+    RUNNING_REQUESTS_KEY,
     DeploymentID,
     HandleMetricReport,
     NodeId,
@@ -265,17 +266,16 @@ class ServeController:
         self, replica_metric_report: ReplicaMetricReport
     ):
         logger.debug(
-            f"Received metrics from replica {replica_metric_report.replica_id}: {replica_metric_report.avg_running_requests} running requests"
+            f"Received metrics from replica {replica_metric_report.replica_id}: {replica_metric_report.aggregated_metrics.get(RUNNING_REQUESTS_KEY)} running requests"
         )
-        curr_time = time.time()
-        latency = curr_time - replica_metric_report.timestamp
+        latency = time.time() - replica_metric_report.timestamp
         latency_ms = latency * 1000
         if latency_ms > RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS:
             logger.warning(
                 f"Received autoscaling metrics from replica {replica_metric_report.replica_id} with timestamp {replica_metric_report.timestamp} "
                 f"which is {latency_ms}ms ago. "
                 f"This is greater than the warning threshold RPC latency of {RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS}ms. "
-                f"This may indicate a performance issue with the controller try increasing the RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS environment variable."
+                "This may indicate a performance issue with the controller try increasing the RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS environment variable."
             )
         self.autoscaling_state_manager.record_request_metrics_for_replica(
             replica_metric_report
@@ -286,17 +286,16 @@ class ServeController:
     ):
         logger.debug(
             f"Received metrics from handle {handle_metric_report.handle_id} for deployment {handle_metric_report.deployment_id}: "
-            f"{handle_metric_report.queued_requests} queued requests and {handle_metric_report.avg_running_requests} running requests"
+            f"{handle_metric_report.queued_requests} queued requests and {handle_metric_report.aggregated_metrics[RUNNING_REQUESTS_KEY]} running requests"
         )
-        curr_time = time.time()
-        latency = curr_time - handle_metric_report.timestamp
+        latency = time.time() - handle_metric_report.timestamp
         latency_ms = latency * 1000
         if latency_ms > RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS:
             logger.warning(
                 f"Received autoscaling metrics from handle {handle_metric_report.handle_id} for deployment {handle_metric_report.deployment_id} with timestamp {handle_metric_report.timestamp} "
                 f"which is {latency_ms}ms ago. "
                 f"This is greater than the warning threshold RPC latency of {RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS}ms. "
-                f"This may indicate a performance issue with the controller try increasing the RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS environment variable."
+                "This may indicate a performance issue with the controller try increasing the RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS environment variable."
             )
         self.autoscaling_state_manager.record_request_metrics_for_handle(
             handle_metric_report

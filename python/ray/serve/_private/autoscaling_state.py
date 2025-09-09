@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set
 
 from ray.serve._private.common import (
+    RUNNING_REQUESTS_KEY,
     DeploymentID,
     HandleMetricReport,
     ReplicaID,
@@ -160,9 +161,6 @@ class AutoscalingState:
     ) -> None:
         """Records average number of ongoing requests at a replica."""
 
-        if replica_metric_report.avg_running_requests is None:
-            return
-
         replica_id = replica_metric_report.replica_id
         send_timestamp = replica_metric_report.timestamp
         if (
@@ -178,7 +176,6 @@ class AutoscalingState:
         """Records average number of queued and running requests at a handle for this
         deployment.
         """
-
         handle_id = handle_metric_report.handle_id
         send_timestamp = handle_metric_report.timestamp
         if (
@@ -282,18 +279,25 @@ class AutoscalingState:
 
         total_requests = 0
 
+        # print(f"self._replica_requests: {self._replica_requests}")
         for id in self._running_replicas:
             if id in self._replica_requests:
-                total_requests += self._replica_requests[id].avg_running_requests
+                total_requests += self._replica_requests[id].aggregated_metrics.get(
+                    RUNNING_REQUESTS_KEY
+                )
 
         metrics_collected_on_replicas = total_requests > 0
         for handle_metric in self._handle_requests.values():
             total_requests += handle_metric.queued_requests
 
             if not metrics_collected_on_replicas:
-                for id in self._running_replicas:
-                    if id in handle_metric.running_requests:
-                        total_requests += handle_metric.avg_running_requests[id]
+                for replica_id in self._running_replicas:
+                    if replica_id in handle_metric.aggregated_metrics.get(
+                        RUNNING_REQUESTS_KEY
+                    ):
+                        total_requests += handle_metric.aggregated_metrics.get(
+                            RUNNING_REQUESTS_KEY
+                        ).get(replica_id)
 
         return total_requests
 
