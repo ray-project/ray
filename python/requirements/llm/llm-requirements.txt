@@ -2,7 +2,7 @@
 # constraining to a maximum version (i.e. <=) to temporarily work around a bug.
 # Those pins for the sake of workarounds should not be advertised as constraints
 # on future releases in setup.py.
-vllm>=0.10.0
+vllm>=0.10.1.1
 # For json mode
 jsonref>=1.1.0
 jsonschema
@@ -13,7 +13,6 @@ typer
 meson
 pybind11
 hf_transfer
-transformers<4.54.0 # Due to https://github.com/vllm-project/vllm-ascend/issues/2046
 
 # nixl version Needs to be in sync with the one in ray-llm/Dockerfile
 nixl==0.4.1
