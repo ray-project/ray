@@ -140,6 +140,19 @@ class TaskPoolMapOperator(MapOperator):
             or 0,
         )
 
+    def per_task_resource_allocation(
+        self: "PhysicalOperator",
+    ) -> ExecutionResources:
+        return self.incremental_resource_usage()
+
+    def max_task_concurrency(self: "PhysicalOperator") -> Optional[int]:
+        return self._concurrency
+
+    def min_scheduling_resources(
+        self: "PhysicalOperator",
+    ) -> ExecutionResources:
+        return self.incremental_resource_usage()
+
     def get_concurrency(self) -> Optional[int]:
         return self._concurrency
 
