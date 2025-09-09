@@ -789,14 +789,17 @@ class Dataset:
         self,
         value: Union[Any, Dict[str, Any]] = None,
         *,
+        method: str = "value",
         subset: Optional[List[str]] = None,
+        limit: Optional[int] = None,
+        inplace: bool = False,
         compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
     ) -> "Dataset":
-        """Fill missing values (null/NaN) in the dataset.
+        """Fill missing values in the dataset.
 
-        This method fills missing values with the specified value, similar to
-        pandas.DataFrame.fillna() and PySpark DataFrame.na.fill().
+        This method fills missing values (null/NaN) with the specified value or method.
+        Ray Data considers ``None``, ``np.nan``, and ``pd.NaT`` to be missing values.
 
         Examples:
             Fill all missing values with a scalar:
@@ -841,14 +844,50 @@ class Dataset:
                 ])
                 ds.fillna(0, subset=["a"]).show()
 
+            Forward fill missing values:
+
+            .. testcode::
+
+                import ray
+                import numpy as np
+
+                ds = ray.data.from_items([
+                    {"a": 1, "b": 2.0},
+                    {"a": None, "b": np.nan},
+                    {"a": None, "b": 4.0},
+                    {"a": 3, "b": None}
+                ])
+                ds.fillna(method="forward").show()
+
+            Limit the number of consecutive fills:
+
+            .. testcode::
+
+                import ray
+                import numpy as np
+
+                ds = ray.data.from_items([
+                    {"a": 1}, {"a": None}, {"a": None}, {"a": None}, {"a": 5}
+                ])
+                ds.fillna(0, limit=2).show()
+
         Time complexity: O(dataset size / parallelism)
 
         Args:
             value: Value to use to fill missing values. Can be a scalar value to fill all
                 missing values, or a dictionary mapping column names to fill values for
-                specific columns.
+                specific columns. Required if method="value".
+            method: Method to use for filling missing values. Options:
+                - "value": Fill with specified values (default)
+                - "forward": Forward fill (propagate last valid observation forward)
+                - "backward": Backward fill (propagate next valid observation backward)
+                - "interpolate": Linear interpolation (numeric columns only)
             subset: List of column names to consider for filling. If None, all columns
                 are considered.
+            limit: Maximum number of consecutive missing values to fill. If None,
+                fill all missing values.
+            inplace: Whether to modify the dataset in-place. Note: Ray Data datasets
+                are immutable, so this parameter is ignored and always returns a new dataset.
             compute: This argument is deprecated. Use ``ray_remote_args`` to configure
                 distributed execution.
             ray_remote_args: Additional resource requirements to request from
@@ -857,12 +896,18 @@ class Dataset:
 
         Returns:
             A new dataset with missing values filled.
+
+        Raises:
+            ValueError: If method is not supported or if value is required but not provided.
         """
         plan = self._plan.copy()
         fillna_op = FillNa(
             self._logical_plan.dag,
             value=value,
+            method=method,
             subset=subset,
+            limit=limit,
+            inplace=inplace,
             compute=compute,
             ray_remote_args=ray_remote_args,
         )
@@ -876,13 +921,15 @@ class Dataset:
         how: str = "any",
         subset: Optional[List[str]] = None,
         thresh: Optional[int] = None,
+        ignore_values: Optional[List[Any]] = None,
+        inplace: bool = False,
         compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
     ) -> "Dataset":
-        """Drop rows with missing values (null/NaN) from the dataset.
+        """Drop rows with missing values from the dataset.
 
-        This method removes rows containing missing values, similar to
-        pandas.DataFrame.dropna() and PySpark DataFrame.na.drop().
+        This method removes rows containing missing values (null/NaN).
+        Ray Data considers ``None``, ``np.nan``, and ``pd.NaT`` to be missing values.
 
         Examples:
             Drop rows with any missing values:
@@ -945,6 +992,21 @@ class Dataset:
                 ])
                 ds.dropna(thresh=2).show()
 
+            Drop rows with custom missing values:
+
+            .. testcode::
+
+                import ray
+                import numpy as np
+
+                ds = ray.data.from_items([
+                    {"a": 1, "b": "valid"},
+                    {"a": 0, "b": ""},  # Treat 0 and empty string as missing
+                    {"a": 2, "b": "valid"},
+                    {"a": None, "b": "valid"}
+                ])
+                ds.dropna(ignore_values=[0, ""]).show()
+
         Time complexity: O(dataset size / parallelism)
 
         Args:
@@ -955,6 +1017,10 @@ class Dataset:
                 are considered.
             thresh: Minimum number of non-null values required to keep a row. If specified,
                 this overrides the 'how' parameter.
+            ignore_values: Additional values to treat as missing (beyond None and NaN).
+                Useful for treating empty strings, zeros, etc. as missing values.
+            inplace: Whether to modify the dataset in-place. Note: Ray Data datasets
+                are immutable, so this parameter is ignored and always returns a new dataset.
             compute: This argument is deprecated. Use ``ray_remote_args`` to configure
                 distributed execution.
             ray_remote_args: Additional resource requirements to request from
@@ -965,17 +1031,16 @@ class Dataset:
             A new dataset with rows containing missing values removed.
 
         Raises:
-            ValueError: If 'how' is not "any" or "all".
+            ValueError: If 'how' is not "any" or "all", or if thresh is negative.
         """
-        if how not in ["any", "all"]:
-            raise ValueError("'how' must be 'any' or 'all'")
-
         plan = self._plan.copy()
         dropna_op = DropNa(
             self._logical_plan.dag,
             how=how,
             subset=subset,
             thresh=thresh,
+            ignore_values=ignore_values,
+            inplace=inplace,
             compute=compute,
             ray_remote_args=ray_remote_args,
         )

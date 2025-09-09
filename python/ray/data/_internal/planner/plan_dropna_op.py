@@ -2,7 +2,7 @@
 Plan DropNa logical operator.
 
 This module contains the planning logic for converting DropNa logical operators
-into physical execution plans using MapOperator.
+into physical execution plans.
 """
 
 from typing import List, Optional
@@ -50,6 +50,7 @@ def plan_dropna_op(
     how = op.how
     subset = op.subset
     thresh = op.thresh
+    ignore_values = op.ignore_values
 
     def fn(batch: pa.Table) -> pa.Table:
         """Transform function that drops rows with missing values from a PyArrow table.
@@ -78,10 +79,10 @@ def plan_dropna_op(
             # Create mask for rows to keep
             if thresh is not None:
                 # Count non-missing values per row
-                mask = _create_thresh_mask(batch, columns_to_check, thresh)
+                mask = _create_thresh_mask(batch, columns_to_check, thresh, ignore_values)
             else:
                 # Create mask based on how parameter ("any" or "all")
-                mask = _create_how_mask(batch, columns_to_check, how)
+                mask = _create_how_mask(batch, columns_to_check, how, ignore_values)
 
             # Filter the table and preserve schema
             return _filter_with_schema_preservation(batch, mask)
@@ -135,7 +136,7 @@ def _is_not_missing(column: pa.Array) -> pa.Array:
 
 
 def _create_thresh_mask(
-    batch: pa.Table, columns_to_check: List[str], thresh: int
+    batch: pa.Table, columns_to_check: List[str], thresh: int, ignore_values: List[Any]
 ) -> pa.Array:
     """Create mask for threshold-based row dropping.
 
@@ -168,7 +169,7 @@ def _create_thresh_mask(
 
 
 def _create_how_mask(
-    batch: pa.Table, columns_to_check: List[str], how: str
+    batch: pa.Table, columns_to_check: List[str], how: str, ignore_values: List[Any]
 ) -> pa.Array:
     """Create mask for how-based row dropping ('any' or 'all').
 
