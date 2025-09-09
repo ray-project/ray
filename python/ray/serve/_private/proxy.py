@@ -5,7 +5,6 @@ import logging
 import os
 import pickle
 import time
-import weakref
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, Generator, Optional, Set, Tuple
 
@@ -727,9 +726,6 @@ class HTTPProxy(GenericProxy):
         )
         self.self_actor_name = self_actor_name
         self.asgi_receive_queues: Dict[str, MessageQueue] = dict()
-        self.requests: Dict[str, ProxyRequest] = weakref.WeakValueDictionary()
-        self.ongoing_requests: Dict[str, float] = weakref.WeakValueDictionary()
-        self.tracked_objects = weakref.WeakValueDictionary()
 
     @property
     def protocol(self) -> RequestProtocol:
@@ -1023,20 +1019,6 @@ class HTTPProxy(GenericProxy):
         assert status is not None
         yield status
 
-    def _get_internal_state_for_debugging(self):
-        # NOTE: This is a debug-only method!
-        # It's used by tests to check for memory leaks.
-        gc.collect()
-        report = {
-            "lingering_alive": len(self.tracked_objects),
-            "lingering_referrers": {},
-        }
-        for key, obj in self.tracked_objects.items():
-            report["lingering_referrers"][key] = [
-                str(type(o)) for o in gc.get_referrers(obj)
-            ]
-        return report
-
 
 @ray.remote(num_cpus=0)
 class ProxyActor:
@@ -1268,15 +1250,6 @@ class ProxyActor:
         return pickle.dumps(
             await self.http_proxy.receive_asgi_messages(request_metadata)
         )
-
-    def _get_http_options(self) -> HTTPOptions:
-        """Internal method to get HTTP options used by the proxy."""
-        return self._http_options
-
-    async def _get_internal_state_for_debugging(self):
-        """Debug-only method to inspect internal state for memory leaks."""
-        if self.http_proxy:
-            return self.http_proxy._get_internal_state_for_debugging()
 
     def get_http_proxy_options(self) -> HTTPOptions:
         """Returns the HTTP options of the proxy."""
