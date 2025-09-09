@@ -614,9 +614,9 @@ class TaskManager : public TaskManagerInterface {
   void MarkTaskNoRetryInternal(const TaskID &task_id, bool canceled)
       ABSL_LOCKS_EXCLUDED(mu_);
 
-  /// Update nested ref count info and store the in-memory value for a task's
-  /// return object. On success, sets direct_return_out to true if the object's value
-  /// was returned directly by value (not stored in plasma).
+  /// Update nested ref count info and store the task's return object.
+  /// Returns StatusOr<bool> where the bool indicates the object was returned
+  /// directly in-memory (not stored in plasma) when true.
   StatusOr<bool> HandleTaskReturn(const ObjectID &object_id,
                                   const rpc::ReturnObject &return_object,
                                   const NodeID &worker_node_id,
