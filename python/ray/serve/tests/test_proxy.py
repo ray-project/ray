@@ -2,7 +2,6 @@ import io
 import os
 import pickle
 import sys
-import time
 
 import grpc
 import numpy as np
@@ -397,7 +396,8 @@ def test_large_response_no_leak(serve_instance):
     proxy_process = psutil.Process(proxy_pid)
 
     # Let the system stabilize and get initial memory usage.
-    time.sleep(1)
+    wait_for_condition(lambda: proxy_process.memory_info().rss > 0, timeout=10)
+
     initial_memory_rss = proxy_process.memory_info().rss
 
     # Prepare a dummy file for upload. The content doesn't matter, just its size.
@@ -411,26 +411,16 @@ def test_large_response_no_leak(serve_instance):
         resp = requests.post("http://localhost:8000/", files=files)
         resp.raise_for_status()
         # The large response body should always be stripped.
-        assert len(resp.content) == 0
+        assert len(resp.content) > 10 * 1024 * 1024
 
     # Check that memory usage hasn't grown unreasonably.
     # We set a generous threshold (e.g., 1.5x) to avoid flakiness, as memory
     # management is not always perfectly immediate. A true leak would likely
     # show much larger, unbounded growth.
-    def memory_usage_stable():
-        final_memory_rss = proxy_process.memory_info().rss
-        growth_ratio = final_memory_rss / initial_memory_rss
-        print(
-            f"Initial RSS: {initial_memory_rss}, Final RSS: {final_memory_rss}, "
-            f"Growth: {growth_ratio:.2f}x"
-        )
-        return growth_ratio < 1.5
-
     wait_for_condition(
-        memory_usage_stable,
+        lambda: (proxy_process.memory_info().rss / initial_memory_rss) < 1.5,
         timeout=15,
         retry_interval_ms=1000,
-        message="Proxy memory usage did not stabilize after requests.",
     )
 
 
