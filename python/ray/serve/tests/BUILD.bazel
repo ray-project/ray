@@ -30,7 +30,7 @@ py_test_module_list(
     ],
 )
 
-# Small tests.
+# Custom metrics tests.
 py_test_module_list(
     size = "small",
     env = {
@@ -39,11 +39,27 @@ py_test_module_list(
         "RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S": "3",
     },
     files = [
+        "test_custom_metrics.py",
+    ],
+    tags = [
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+# Small tests.
+py_test_module_list(
+    size = "small",
+    files = [
         "test_advanced.py",
         "test_cluster_node_info_cache.py",
         "test_constructor_failure.py",
         "test_controller.py",
-        "test_custom_metrics.py",
         "test_deployment_version.py",
         "test_enable_task_events.py",
         "test_expected_versions.py",
