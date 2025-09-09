@@ -1147,7 +1147,7 @@ class ProxyActor(ProxyActorInterface):
             logging_config=logging_config,
         )
         grpc_enabled = is_grpc_enabled(self._grpc_options)
-        http_options = configure_http_middlewares(self._http_options)
+        self._http_options = configure_http_middlewares(self._http_options)
         event_loop = get_or_create_event_loop()
         self.long_poll_client = long_poll_client or LongPollClient(
             ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE),
