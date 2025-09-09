@@ -264,7 +264,7 @@ class JobInfoStorageClient:
         job_id: str,
         job_info: JobInfo,
         overwrite: bool = True,
-        timeout: Optional[int] = None,
+        timeout: Optional[int] = 30,
     ) -> bool:
         """Put job info to the internal kv store.
 
@@ -359,7 +359,7 @@ class JobInfoStorageClient:
         driver_exit_code: Optional[int] = None,
         error_type: Optional[JobErrorType] = None,
         jobinfo_replace_kwargs: Optional[Dict[str, Any]] = None,
-        timeout: Optional[int] = None,
+        timeout: Optional[int] = 30,
     ):
         """Puts or updates job status.  Sets end_time if status is terminal."""
 

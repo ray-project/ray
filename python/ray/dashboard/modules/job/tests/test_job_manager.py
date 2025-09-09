@@ -351,6 +351,35 @@ async def test_runtime_env_setup_logged_to_job_driver_logs(
         assert start_message in logs
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call_ray_start",
+    [
+        {
+            "cmd": "ray start --head",
+            "env": {
+                "RAY_testing_rpc_failure": "ray::rpc::InternalKVGcsService.grpc_client.InternalKVGet=2:50:50,CoreWorkerService.grpc_client.PushTask=3:50:50"
+            },
+        },
+    ],
+    indirect=True,
+)
+async def test_job_manager_network_fault_tolerance(call_ray_start, tmp_path):
+    """Test that the job manager is tolerant to transient network failures
+    when making RPCs to GCS and supervisor actor."""
+
+    ray.init(address=call_ray_start)
+    gcs_client = ray._private.worker.global_worker.gcs_client
+    job_manager = JobManager(gcs_client, tmp_path)
+
+    job_id = await job_manager.submit_job(
+        entrypoint="echo hello 1",
+    )
+    await async_wait_for_condition(
+        check_job_succeeded, job_manager=job_manager, job_id=job_id
+    )
+
+
 @pytest.fixture
 def shared_ray_instance():
     # Remove ray address for test ray cluster in case we have
@@ -1479,6 +1508,7 @@ async def test_actor_creation_error_not_overwritten(shared_ray_instance, tmp_pat
             assert data.driver_exit_code is None
 
 
+@pytest.mark.asyncio
 async def test_no_task_events_exported(shared_ray_instance, tmp_path):
     """Verify that no task events are exported by the JobSupervisor."""
     job_manager = create_job_manager(shared_ray_instance, tmp_path)
