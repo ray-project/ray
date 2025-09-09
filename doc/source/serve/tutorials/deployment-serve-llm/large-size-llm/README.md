@@ -125,10 +125,10 @@ Example Python:
 from urllib.parse import urljoin
 from openai import OpenAI
 
-api_key = "FAKE_KEY"
-base_url = "http://localhost:8000"
+API_KEY = "FAKE_KEY"
+BASE_URL = "http://localhost:8000"
 
-client = OpenAI(base_url=urljoin(base_url, "v1"), api_key=api_key)
+client = OpenAI(BASE_URL=urljoin(BASE_URL, "v1"), API_KEY=API_KEY)
 
 response = client.chat.completions.create(
     model="my-deepseek-r1",
