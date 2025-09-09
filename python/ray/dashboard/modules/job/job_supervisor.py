@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._common.network_utils import build_address
 from ray._private.accelerators.nvidia_gpu import NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.ray_logging.filters import CoreContextFilter
 from ray._private.ray_logging.formatters import JSONFormatter, TextFormatter
@@ -24,8 +25,7 @@ from ray.dashboard.modules.job.common import (
     JobInfoStorageClient,
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
-from ray.job_submission import JobStatus, JobErrorType
-from ray._common.network_utils import build_address
+from ray.job_submission import JobErrorType, JobStatus
 
 import psutil
 
