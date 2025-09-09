@@ -50,6 +50,7 @@ from ray.serve._private.grpc_util import (
 )
 from ray.serve._private.http_util import (
     MessageQueue,
+    configure_http_middlewares,
     convert_object_to_asgi_messages,
     get_http_response_status,
     receive_http_body,
@@ -1030,7 +1031,6 @@ class ProxyActorInterface(ABC):
         node_id: NodeId,
         node_ip_address: str,
         logging_config: LoggingConfig,
-        long_poll_client: Optional[LongPollClient] = None,
     ):
         """Initialize the proxy actor.
 
@@ -1040,14 +1040,12 @@ class ProxyActorInterface(ABC):
             node_id: ID of the node this proxy is running on
             node_ip_address: IP address of the node
             logging_config: Logging configuration
-            long_poll_client: Optional long poll client for receiving updates
         """
         self._node_id = node_id
         self._node_ip_address = node_ip_address
         self._http_options = http_options
         self._grpc_options = grpc_options
         self._logging_config = logging_config
-        self.long_poll_client = long_poll_client
 
     @abstractmethod
     async def ready(self) -> str:
@@ -1147,10 +1145,9 @@ class ProxyActor(ProxyActorInterface):
             node_id=node_id,
             node_ip_address=node_ip_address,
             logging_config=logging_config,
-            long_poll_client=long_poll_client,
         )
         grpc_enabled = is_grpc_enabled(self._grpc_options)
-
+        http_options = configure_http_middlewares(self._http_options)
         event_loop = get_or_create_event_loop()
         self.long_poll_client = long_poll_client or LongPollClient(
             ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE),
