@@ -82,7 +82,7 @@ class MultiConsumerEventBuffer:
                                 dropped_event.event_type
                             ),
                         },
-                        1
+                        1,
                     )
                 else:
                     # The dropped event was already consumed by the consumer, so we need to adjust the cursor
@@ -170,14 +170,16 @@ class MultiConsumerEventBuffer:
         """
         async with self._lock:
             consumer_id = str(uuid.uuid4())
-            evicted_events_metric_name = f"{metric_prefix}_{consumer_name}_queue_dropped_events_total"
-            
+            evicted_events_metric_name = (
+                f"{metric_prefix}_{consumer_name}_queue_dropped_events_total"
+            )
+
             # Register the counter metric
             metric_recorder.register_counter_metric(
                 evicted_events_metric_name,
-                "Total number of events dropped because the publish/buffer queue was full."
+                "Total number of events dropped because the publish/buffer queue was full.",
             )
-            
+
             self._consumers[consumer_id] = _ConsumerState(
                 cursor_index=0,
                 consumer_name=consumer_name,

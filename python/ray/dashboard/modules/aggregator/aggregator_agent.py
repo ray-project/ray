@@ -135,18 +135,20 @@ class AggregatorAgent(
 
         # Metrics
         self._open_telemetry_metric_recorder = metric_recorder
-        
+
         # Register counter metrics
         self._events_received_metric_name = f"{metric_prefix}_events_received_total"
         self._open_telemetry_metric_recorder.register_counter_metric(
             self._events_received_metric_name,
-            "Total number of events received via AddEvents gRPC."
+            "Total number of events received via AddEvents gRPC.",
         )
-        
-        self._events_failed_to_add_metric_name = f"{metric_prefix}_events_buffer_add_failures_total"
+
+        self._events_failed_to_add_metric_name = (
+            f"{metric_prefix}_events_buffer_add_failures_total"
+        )
         self._open_telemetry_metric_recorder.register_counter_metric(
             self._events_failed_to_add_metric_name,
-            "Total number of events that failed to be added to the event buffer."
+            "Total number of events that failed to be added to the event buffer.",
         )
 
     async def AddEvents(self, request, context) -> None:
@@ -163,9 +165,7 @@ class AggregatorAgent(
         events_data = request.events_data
         for event in events_data.events:
             self._open_telemetry_metric_recorder.set_metric_value(
-                self._events_received_metric_name,
-                self._common_tags,
-                1
+                self._events_received_metric_name, self._common_tags, 1
             )
             try:
                 await self._event_buffer.add_event(event)
@@ -176,9 +176,7 @@ class AggregatorAgent(
                     e,
                 )
                 self._open_telemetry_metric_recorder.set_metric_value(
-                    self._events_failed_to_add_metric_name,
-                    self._common_tags,
-                    1
+                    self._events_failed_to_add_metric_name, self._common_tags, 1
                 )
 
         return events_event_aggregator_service_pb2.AddEventsReply()
