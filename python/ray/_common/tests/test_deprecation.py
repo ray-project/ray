@@ -1,11 +1,13 @@
-import pytest
 import sys
+from unittest.mock import patch
+
+import pytest
+
 from ray._common.deprecation import (
     DEPRECATED_VALUE,
     Deprecated,
     deprecation_warning,
 )
-from unittest.mock import patch
 
 
 def test_deprecation_warning_warn():
