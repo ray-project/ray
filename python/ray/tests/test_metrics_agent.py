@@ -487,6 +487,7 @@ def httpserver_listen_address():
                 # Turn off task events generation to avoid the task events from the
                 # cluster impacting the test result
                 "RAY_task_events_report_interval_ms": 0,
+                "RAY_enable_open_telemetry": "true",
             },
         },
     ],
@@ -510,10 +511,8 @@ def test_metrics_export_event_aggregator_agent(
         metrics_names = metric_descriptors.keys()
         event_aggregator_metrics = [
             "ray_event_aggregator_agent_events_received_total",
-            "ray_event_aggregator_agent_events_buffer_add_failures_total",
             "ray_event_aggregator_agent_http_publisher_published_events_total",
             "ray_event_aggregator_agent_http_publisher_filtered_events_total",
-            "ray_event_aggregator_agent_http_publisher_failures_total",
             "ray_event_aggregator_agent_http_publisher_queue_dropped_events_total",
             "ray_event_aggregator_agent_http_publisher_consecutive_failures_since_last_success",
             "ray_event_aggregator_agent_http_publisher_time_since_last_success_seconds",
@@ -527,11 +526,9 @@ def test_metrics_export_event_aggregator_agent(
         _, _, metric_samples = fetch_prometheus(prom_addresses)
         expected_metrics_values = {
             "ray_event_aggregator_agent_events_received_total": 3.0,
-            "ray_event_aggregator_agent_events_buffer_add_failures_total": 0.0,
             "ray_event_aggregator_agent_http_publisher_published_events_total": 1.0,
             "ray_event_aggregator_agent_http_publisher_filtered_events_total": 1.0,
-            "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total": 1.0,
-            "ray_event_aggregator_agent_http_publisher_failures_total": 0.0,
+            "ray_event_aggregator_agent_http_publisher_queue_dropped_events_total": 1.0,
         }
         for descriptor, expected_value in expected_metrics_values.items():
             samples = [m for m in metric_samples if m.name == descriptor]

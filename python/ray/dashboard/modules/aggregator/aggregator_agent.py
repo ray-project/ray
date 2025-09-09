@@ -13,7 +13,7 @@ from ray.dashboard.modules.aggregator.publisher.ray_event_publisher import (
     RayEventPublisher,
 )
 
-from ray.util.metrics import Counter
+from ray.dashboard.modules.aggregator.shared import metric_recorder, metric_prefix
 
 import ray
 from ray._private import ray_constants
@@ -134,19 +134,20 @@ class AggregatorAgent(
             self._http_endpoint_publisher = NoopPublisher()
 
         # Metrics
-        _metrics_prefix = "event_aggregator_agent"
-        self._events_received = Counter(
-            f"{_metrics_prefix}_events_received_total",
-            "Total number of events received via AddEvents gRPC.",
-            tag_keys=tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
+        self._open_telemetry_metric_recorder = metric_recorder
+        
+        # Register counter metrics
+        self._events_received_metric_name = f"{metric_prefix}_events_received_total"
+        self._open_telemetry_metric_recorder.register_counter_metric(
+            self._events_received_metric_name,
+            "Total number of events received via AddEvents gRPC."
         )
-        self._events_received.set_default_tags(self._common_tags)
-        self._events_failed_to_add_to_aggregator = Counter(
-            f"{_metrics_prefix}_events_buffer_add_failures_total",
-            "Total number of events that failed to be added to the event buffer.",
-            tag_keys=tuple(dashboard_consts.COMPONENT_METRICS_TAG_KEYS),
+        
+        self._events_failed_to_add_metric_name = f"{metric_prefix}_events_buffer_add_failures_total"
+        self._open_telemetry_metric_recorder.register_counter_metric(
+            self._events_failed_to_add_metric_name,
+            "Total number of events that failed to be added to the event buffer."
         )
-        self._events_failed_to_add_to_aggregator.set_default_tags(self._common_tags)
 
     async def AddEvents(self, request, context) -> None:
         """
@@ -161,7 +162,11 @@ class AggregatorAgent(
         # downstream
         events_data = request.events_data
         for event in events_data.events:
-            self._events_received.inc(value=1)
+            self._open_telemetry_metric_recorder.set_metric_value(
+                self._events_received_metric_name,
+                self._common_tags,
+                1
+            )
             try:
                 await self._event_buffer.add_event(event)
             except Exception as e:
@@ -170,7 +175,11 @@ class AggregatorAgent(
                     "Error: %s",
                     e,
                 )
-                self._events_failed_to_add_to_aggregator.inc(value=1)
+                self._open_telemetry_metric_recorder.set_metric_value(
+                    self._events_failed_to_add_metric_name,
+                    self._common_tags,
+                    1
+                )
 
         return events_event_aggregator_service_pb2.AddEventsReply()
 

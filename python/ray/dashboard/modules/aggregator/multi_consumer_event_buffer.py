@@ -10,7 +10,7 @@ from ray.core.generated import (
 )
 from ray.core.generated.events_base_event_pb2 import RayEvent
 
-from ray.util.metrics import Counter
+from ray.dashboard.modules.aggregator.shared import metric_recorder, metric_prefix
 
 
 @dataclass
@@ -19,8 +19,8 @@ class _ConsumerState:
     cursor_index: int
     # Name of the consumer used for metric naming
     consumer_name: str
-    # Counter for evicted events for this consumer (lazily created per consumer)
-    evicted_events_counter: Optional[Counter]
+    # Metric name for tracking evicted events for this consumer
+    evicted_events_metric_name: Optional[str]
     # Event to signal that there are new events to consume
     has_new_events_to_consume: asyncio.Event
 
@@ -51,6 +51,7 @@ class MultiConsumerEventBuffer:
         self._max_batch_size = max_batch_size
 
         self._common_metrics_tags = common_metric_tags
+        self._metric_recorder = metric_recorder
 
     async def add_event(self, event: events_base_event_pb2.RayEvent) -> None:
         """Add an event to the buffer.
@@ -73,13 +74,15 @@ class MultiConsumerEventBuffer:
                 # Update consumer cursor index and evicted events metric if an event was dropped
                 if consumer_state.cursor_index == 0:
                     # The dropped event was the next event this consumer would have consumed, publish eviction metric
-                    consumer_state.evicted_events_counter.inc(
-                        value=1,
-                        tags={
+                    self._metric_recorder.set_metric_value(
+                        consumer_state.evicted_events_metric_name,
+                        {
+                            **self._common_metrics_tags,
                             "event_type": RayEvent.EventType.Name(
                                 dropped_event.event_type
                             ),
                         },
+                        1
                     )
                 else:
                     # The dropped event was already consumed by the consumer, so we need to adjust the cursor
@@ -167,23 +170,18 @@ class MultiConsumerEventBuffer:
         """
         async with self._lock:
             consumer_id = str(uuid.uuid4())
-            counter = None
-            supported_tags = (
-                tuple(self._common_metrics_tags.keys()) + ("event_type",)
-                if self._common_metrics_tags is not None
-                else ("event_type",)
+            evicted_events_metric_name = f"{metric_prefix}_{consumer_name}_queue_dropped_events_total"
+            
+            # Register the counter metric
+            metric_recorder.register_counter_metric(
+                evicted_events_metric_name,
+                "Total number of events dropped because the publish/buffer queue was full."
             )
-            metrics_prefix = "ray_event_aggregator_agent"
-            counter = Counter(
-                f"{metrics_prefix}_{consumer_name}_queue_dropped_events_total",
-                "Total number of events dropped because the publish/buffer queue was full.",
-                tag_keys=supported_tags,
-            )
-            counter.set_default_tags(self._common_metrics_tags)
+            
             self._consumers[consumer_id] = _ConsumerState(
                 cursor_index=0,
                 consumer_name=consumer_name,
-                evicted_events_counter=counter,
+                evicted_events_metric_name=evicted_events_metric_name,
                 has_new_events_to_consume=asyncio.Event(),
             )
             return consumer_id

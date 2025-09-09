@@ -18,7 +18,7 @@ from ray.dashboard.modules.aggregator.publisher.async_publisher_client import (
     PublisherClientInterface,
 )
 
-from ray.util.metrics import Counter, Gauge, Histogram
+from ray.dashboard.modules.aggregator.shared import metric_recorder, metric_prefix
 
 logger = logging.getLogger(__name__)
 
@@ -78,60 +78,50 @@ class RayEventPublisher(RayEventPublisherInterface):
 
         # Event set once the publisher has registered as a consumer and is ready to publish events
         self._started_event: asyncio.Event = asyncio.Event()
-
-        # Prometheus metrics (defined per-publisher instance using provided name)
-        metrics_prefix = "ray_event_aggregator_agent"
-        supported_tags = (
-            tuple(self._common_metric_tags.keys())
-            if self._common_metric_tags is not None
-            else ()
+    
+        # OpenTelemetry metrics setup
+        self._metric_recorder = metric_recorder
+        
+        # Register counter metrics
+        self._published_counter_name = f"{metric_prefix}_{self._name}_published_events_total"
+        self._metric_recorder.register_counter_metric(
+            self._published_counter_name,
+            "Total number of events successfully published to the destination."
         )
-
-        self._published_counter = Counter(
-            f"{metrics_prefix}_{self._name}_published_events_total",
-            "Total number of events successfully published to the destination.",
-            tag_keys=supported_tags,
+        
+        self._filtered_counter_name = f"{metric_prefix}_{self._name}_filtered_events_total"
+        self._metric_recorder.register_counter_metric(
+            self._filtered_counter_name,
+            "Total number of events filtered out before publishing to the destination."
         )
-        self._published_counter.set_default_tags(self._common_metric_tags)
-
-        self._filtered_counter = Counter(
-            f"{metrics_prefix}_{self._name}_filtered_events_total",
-            "Total number of events filtered out before publishing to the destination.",
-            tag_keys=supported_tags,
+        
+        self._failed_counter_name = f"{metric_prefix}_{self._name}_failures_total"
+        self._metric_recorder.register_counter_metric(
+            self._failed_counter_name,
+            "Total number of events that failed to publish after retries."
         )
-        self._filtered_counter.set_default_tags(self._common_metric_tags)
-
-        self._failed_counter = Counter(
-            f"{metrics_prefix}_{self._name}_failures_total",
-            "Total number of events that failed to publish after retries.",
-            tag_keys=supported_tags,
-        )
-        self._failed_counter.set_default_tags(self._common_metric_tags)
-
-        # Latency histogram buckets (s), fine-grained <100ms, moderate up to 2s,
-        # and a final 5s bucket to capture slower outliers.
+        
+        # Register histogram metric
         buckets = [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5]
-        self._publish_latency_hist = Histogram(
-            f"{metrics_prefix}_{self._name}_publish_duration_seconds",
+        self._publish_latency_hist_name = f"{metric_prefix}_{self._name}_publish_duration_seconds"
+        self._metric_recorder.register_histogram_metric(
+            self._publish_latency_hist_name,
             "Duration of publish calls in seconds.",
-            boundaries=buckets,
-            tag_keys=supported_tags + ("Outcome",),
+            buckets
         )
-        self._publish_latency_hist.set_default_tags(self._common_metric_tags)
-
-        self._consecutive_failures_gauge = Gauge(
-            f"{metrics_prefix}_{self._name}_consecutive_failures_since_last_success",
-            "Number of consecutive failed publish attempts since the last success.",
-            tag_keys=supported_tags,
+        
+        # Register gauge metrics
+        self._consecutive_failures_gauge_name = f"{metric_prefix}_{self._name}_consecutive_failures_since_last_success"
+        self._metric_recorder.register_gauge_metric(
+            self._consecutive_failures_gauge_name,
+            "Number of consecutive failed publish attempts since the last success."
         )
-        self._consecutive_failures_gauge.set_default_tags(self._common_metric_tags)
-
-        self._time_since_last_success_gauge = Gauge(
-            f"{metrics_prefix}_{self._name}_time_since_last_success_seconds",
-            "Seconds since the last successful publish to the destination.",
-            tag_keys=supported_tags,
+        
+        self._time_since_last_success_gauge_name = f"{metric_prefix}_{self._name}_time_since_last_success_seconds"
+        self._metric_recorder.register_gauge_metric(
+            self._time_since_last_success_gauge_name,
+            "Seconds since the last successful publish to the destination."
         )
-        self._time_since_last_success_gauge.set_default_tags(self._common_metric_tags)
 
     async def run_forever(self) -> None:
         """Run the publisher forever until cancellation or process death.
@@ -245,28 +235,68 @@ class RayEventPublisher(RayEventPublisherInterface):
     ) -> None:
         """Update in-memory stats and Prometheus metrics for a successful publish."""
         if num_published > 0:
-            self._published_counter.inc(int(num_published))
+            self._metric_recorder.set_metric_value(
+                self._published_counter_name,
+                self._common_metric_tags,
+                int(num_published)
+            )
         if num_filtered > 0:
-            self._filtered_counter.inc(int(num_filtered))
-        self._consecutive_failures_gauge.set(0)
-        self._time_since_last_success_gauge.set(0)
-        self._publish_latency_hist.observe(float(duration), tags={"Outcome": "success"})
+            self._metric_recorder.set_metric_value(
+                self._filtered_counter_name,
+                self._common_metric_tags,
+                int(num_filtered)
+            )
+        self._metric_recorder.set_metric_value(
+            self._consecutive_failures_gauge_name,
+            self._common_metric_tags,
+            0
+        )
+        self._metric_recorder.set_metric_value(
+            self._time_since_last_success_gauge_name,
+            self._common_metric_tags,
+            0
+        )
+        self._metric_recorder.set_metric_value(
+            self._publish_latency_hist_name,
+            {**self._common_metric_tags, "Outcome": "success"},
+            float(duration)
+        )
 
     async def _record_retry_failure(
         self, duration: float, failed_attempts: int
     ) -> None:
         """Update Prometheus metrics for a retryable failure attempt."""
-        self._consecutive_failures_gauge.set(int(failed_attempts))
-        self._publish_latency_hist.observe(float(duration), tags={"Outcome": "failure"})
+        self._metric_recorder.set_metric_value(
+            self._consecutive_failures_gauge_name,
+            self._common_metric_tags,
+            int(failed_attempts)
+        )
+        self._metric_recorder.set_metric_value(
+            self._publish_latency_hist_name,
+            {**self._common_metric_tags, "Outcome": "failure"},
+            float(duration)
+        )
 
     async def _record_final_failure(
         self, num_failed_events: int, duration: float
     ) -> None:
         """Update in-memory stats and Prometheus metrics for a final (non-retryable) failure."""
         if num_failed_events > 0:
-            self._failed_counter.inc(int(num_failed_events))
-        self._consecutive_failures_gauge.set(0)
-        self._publish_latency_hist.observe(float(duration), tags={"Outcome": "failure"})
+            self._metric_recorder.set_metric_value(
+                self._failed_counter_name,
+                self._common_metric_tags,
+                int(num_failed_events)
+            )
+        self._metric_recorder.set_metric_value(
+            self._consecutive_failures_gauge_name,
+            self._common_metric_tags,
+            0
+        )
+        self._metric_recorder.set_metric_value(
+            self._publish_latency_hist_name,
+            {**self._common_metric_tags, "Outcome": "failure"},
+            float(duration)
+        )
 
 
 class NoopPublisher(RayEventPublisherInterface):
