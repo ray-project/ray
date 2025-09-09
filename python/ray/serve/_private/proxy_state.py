@@ -40,7 +40,6 @@ from ray.serve.schema import (
     ProxyStatus,
     Target,
 )
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -173,7 +172,7 @@ class ActorProxyWrapper(ProxyWrapper):
             lifetime="detached",
             max_concurrency=ASYNC_CONCURRENCY,
             max_restarts=0,
-            scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
+            label_selector={"ray.io/node-id": node_id},
             enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
         ).remote(
             http_options,

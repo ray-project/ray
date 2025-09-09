@@ -18,6 +18,8 @@
 #include <string>
 #include <vector>
 
+#include "ray/common/id.h"
+
 namespace ray {
 
 using namespace ::ray::raylet_scheduling_policy;  // NOLINT
@@ -150,6 +152,23 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     const std::string &preferred_node_id,
     int64_t *total_violations,
     bool *is_infeasible) {
+  // The `ray.io/node-id` label is set by default and is handled as a special case label
+  // selector. If the specified node ID is infeasible, we fail quickly rather than leave
+  // the ResourceRequest waiting.
+  const auto &label_selector = resource_request.GetLabelSelector();
+  if (auto target_node_id_values = GetHardNodeAffinityValues(label_selector)) {
+    for (const auto &node_id_str : *target_node_id_values) {
+      scheduling::NodeID target_node_id =
+          scheduling::NodeID(NodeID::FromHex(node_id_str).Binary());
+      if (IsSchedulable(resource_request, target_node_id)) {
+        *is_infeasible = false;
+        return target_node_id;
+      }
+    }
+    *is_infeasible = true;
+    return scheduling::NodeID::Nil();
+  }
+
   // The zero cpu actor is a special case that must be handled the same way by all
   // scheduling policies, except for HARD node affnity scheduling policy.
   if (actor_creation && resource_request.IsEmpty() &&
