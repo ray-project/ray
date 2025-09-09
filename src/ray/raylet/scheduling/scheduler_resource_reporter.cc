@@ -22,6 +22,8 @@
 #include <deque>
 #include <utility>
 
+#include "ray/common/ray_config.h"
+
 namespace ray {
 namespace raylet {
 

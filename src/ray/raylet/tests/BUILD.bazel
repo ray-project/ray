@@ -100,7 +100,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
-        "//src/ray/common:lease",
         "//src/ray/common:test_utils",
         "//src/ray/observability:fake_metric",
         "//src/ray/raylet:lease_dependency_manager",

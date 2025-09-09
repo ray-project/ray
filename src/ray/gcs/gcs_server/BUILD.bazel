@@ -356,10 +356,10 @@ ray_cc_library(
         "gcs_actor.h",
     ],
     deps = [
-        "//src/ray/common:cluster_resource_data",
         "//src/ray/common:id",
         "//src/ray/common:lease",
         "//src/ray/common:task_common",
+        "//src/ray/common/scheduling:cluster_resource_data",
         "//src/ray/protobuf:core_worker_cc_proto",
         "//src/ray/protobuf:export_event_cc_proto",
         "//src/ray/protobuf:gcs_service_cc_proto",
