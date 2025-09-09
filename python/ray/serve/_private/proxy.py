@@ -50,7 +50,6 @@ from ray.serve._private.grpc_util import (
 )
 from ray.serve._private.http_util import (
     MessageQueue,
-    configure_http_middlewares,
     convert_object_to_asgi_messages,
     get_http_response_status,
     receive_http_body,
@@ -1150,10 +1149,6 @@ class ProxyActor(ProxyActorInterface):
             logging_config=logging_config,
             long_poll_client=long_poll_client,
         )
-        self._node_id = node_id
-        self._node_ip_address = node_ip_address
-        self._http_options = configure_http_middlewares(http_options)
-        self._grpc_options = grpc_options
         grpc_enabled = is_grpc_enabled(self._grpc_options)
 
         event_loop = get_or_create_event_loop()
@@ -1264,7 +1259,7 @@ class ProxyActor(ProxyActorInterface):
                     enable_so_reuseport=SOCKET_REUSE_PORT_ENABLED,
                 ),
             )
-        # A task that runs the gRPC server until it exits (currently runs forever).
+        # A task that runs the gRPC server until it exits (currently runs forever).l
         # Populated with the result of self._start_grpc_server_task.
         self._running_grpc_server_task: Optional[asyncio.Task] = None
 
