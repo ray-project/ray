@@ -5,6 +5,7 @@ import logging
 import os
 import pickle
 import time
+import weakref
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, Generator, Optional, Set, Tuple
 
@@ -108,7 +109,7 @@ if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
 
 INITIAL_BACKOFF_PERIOD_SEC = 0.05
 MAX_BACKOFF_PERIOD_SEC = 5
-
+MAX_RESPONSE_SIZE_IN_BYTES = 10 * 1024 * 1024  # 10 MB
 DRAINING_MESSAGE = "This node is being drained."
 
 
@@ -726,6 +727,9 @@ class HTTPProxy(GenericProxy):
         )
         self.self_actor_name = self_actor_name
         self.asgi_receive_queues: Dict[str, MessageQueue] = dict()
+        self.requests: Dict[str, ProxyRequest] = weakref.WeakValueDictionary()
+        self.ongoing_requests: Dict[str, float] = weakref.WeakValueDictionary()
+        self.tracked_objects = weakref.WeakValueDictionary()
 
     @property
     def protocol(self) -> RequestProtocol:
@@ -974,6 +978,10 @@ class HTTPProxy(GenericProxy):
 
                     yield asgi_message
                     response_started = True
+
+                    if len(asgi_message.get("body", "")) > MAX_RESPONSE_SIZE_IN_BYTES:
+                        asgi_message["body"] = b""
+
         except BaseException as e:
             status = get_http_response_status(e, self.request_timeout_s, request_id)
             for asgi_message in send_http_response_on_exception(
@@ -1014,6 +1022,20 @@ class HTTPProxy(GenericProxy):
         # The status code should always be set.
         assert status is not None
         yield status
+
+    def _get_internal_state_for_debugging(self):
+        # NOTE: This is a debug-only method!
+        # It's used by tests to check for memory leaks.
+        gc.collect()
+        report = {
+            "lingering_alive": len(self.tracked_objects),
+            "lingering_referrers": {},
+        }
+        for key, obj in self.tracked_objects.items():
+            report["lingering_referrers"][key] = [
+                str(type(o)) for o in gc.get_referrers(obj)
+            ]
+        return report
 
 
 @ray.remote(num_cpus=0)
@@ -1250,6 +1272,15 @@ class ProxyActor:
     def _get_http_options(self) -> HTTPOptions:
         """Internal method to get HTTP options used by the proxy."""
         return self._http_options
+
+    async def _get_internal_state_for_debugging(self):
+        """Debug-only method to inspect internal state for memory leaks."""
+        if self.http_proxy:
+            return self.http_proxy._get_internal_state_for_debugging()
+
+    def get_http_proxy_options(self) -> HTTPOptions:
+        """Returns the HTTP options of the proxy."""
+        return self.http_proxy.get_http_options()
 
 
 def _configure_gc_options():

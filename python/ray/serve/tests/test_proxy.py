@@ -1,8 +1,14 @@
+import io
 import os
+import pickle
 import sys
+import time
 
 import grpc
+import numpy as np
 import pytest
+import requests
+from PIL import Image
 
 import ray
 from ray import serve
@@ -25,6 +31,8 @@ from ray.serve.generated import serve_pb2
 from ray.serve.schema import ProxyStatus, ServeInstanceDetails
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 from ray.util.state import list_actors
+
+import psutil
 
 
 @pytest.fixture
@@ -354,6 +362,74 @@ def test_http_proxy_failure(serve_instance):
         return True
 
     wait_for_condition(check_new)
+
+
+def test_large_response_no_leak(serve_instance):
+    """Test large response bodies are stripped and don't cause proxy memory leaks."""
+    from fastapi import FastAPI, Response, UploadFile
+
+    # MAX_RESPONSE_SIZE_IN_BYTES is 10 MB in proxy.py
+    TEN_MB_PLUS_ONE = 10 * 1024 * 1024 + 1
+
+    app = FastAPI()
+
+    @serve.deployment
+    @serve.ingress(app)
+    class LargeFileProcessor:
+        @app.post("/")
+        async def process(self, f: UploadFile) -> Response:
+            # Read file and create a large response object to ensure the proxy
+            # handles and drops a large response payload.
+            await f.read()
+            large_object = np.zeros(TEN_MB_PLUS_ONE, dtype=np.uint8)
+            return Response(content=pickle.dumps(large_object))
+
+    serve.run(LargeFileProcessor.bind())
+
+    # Find the proxy actor and its PID to monitor memory.
+    proxy_actor_info = None
+    for actor in list_actors(filters=[("class_name", "=", "ProxyActor")]):
+        if actor["state"] == "ALIVE":
+            proxy_actor_info = actor
+            break
+    assert proxy_actor_info is not None
+    proxy_pid = proxy_actor_info["pid"]
+    proxy_process = psutil.Process(proxy_pid)
+
+    # Let the system stabilize and get initial memory usage.
+    time.sleep(1)
+    initial_memory_rss = proxy_process.memory_info().rss
+
+    # Prepare a dummy file for upload. The content doesn't matter, just its size.
+    dummy_image = np.zeros((100, 100, 3), dtype=np.uint8)
+    bio = io.BytesIO()
+    Image.fromarray(dummy_image).save(bio, format="jpeg")
+    files = {"f": bio.getvalue()}
+
+    # Send several large requests to the proxy.
+    for i in range(5):
+        resp = requests.post("http://localhost:8000/", files=files)
+        resp.raise_for_status()
+        # The large response body should always be stripped.
+        assert len(resp.content) == 0
+
+    # Wait for a few seconds to allow for garbage collection to run.
+    time.sleep(5)
+
+    final_memory_rss = proxy_process.memory_info().rss
+    growth_ratio = final_memory_rss / initial_memory_rss
+    print(
+        f"Initial RSS: {initial_memory_rss}, Final RSS: {final_memory_rss}, "
+        f"Growth: {growth_ratio:.2f}x"
+    )
+
+    # Check that memory usage hasn't grown unreasonably.
+    # We set a generous threshold (e.g., 1.5x) to avoid flakiness, as memory
+    # management is not always perfectly immediate. A true leak would likely
+    # show much larger, unbounded growth.
+    assert (
+        growth_ratio < 1.5
+    ), f"Proxy memory usage grew by {growth_ratio:.2f}x, indicating a possible leak."
 
 
 if __name__ == "__main__":
