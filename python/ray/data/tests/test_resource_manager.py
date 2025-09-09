@@ -1032,6 +1032,32 @@ class TestReservationOpResourceAllocator:
             cpu=6, object_store_memory=600
         )
 
+        # Test when resources are used.
+        op_usages[o6] = ExecutionResources(2, 0, 500)
+        op_internal_usage[o6] = 300
+        op_outputs_usages[o6] = 200
+        op_usages[o8] = ExecutionResources(2, 0, 100)
+        op_internal_usage[o8] = 50
+        op_outputs_usages[o8] = 50
+        """
+        +-----+------------------+------------------+--------------+
+        |     | _op_reserved     | _reserved_for    | used shared  |
+        |     | (used/remaining) | _op_outputs      | resources    |
+        |     |                  | (used/remaining) |              |
+        +-----+------------------+------------------+--------------+
+        | op6 | 200/0            | 200/0            | 100          |
+        +-----+------------------+------------------+--------------+
+        | op8 | 50/150           | 50/150           | 0            |
+        +-----+------------------+------------------+--------------+
+        """
+        allocator.update_usages()
+        assert allocator._op_budgets[o6] == ExecutionResources(
+            cpu=4, object_store_memory=350
+        )
+        assert allocator._op_budgets[o8] == ExecutionResources(
+            cpu=4, object_store_memory=500
+        )
+
         # Test when completed ops update the usage.
         op_usages[o5] = ExecutionResources.zero()
         allocator.update_usages()
@@ -1042,9 +1068,9 @@ class TestReservationOpResourceAllocator:
         |     | (used/remaining) | _op_outputs      | resources    |
         |     |                  | (used/remaining) |              |
         +-----+------------------+------------------+--------------+
-        | op6 | 0/213            | 0/213            | 0            |
+        | op6 | 213/0            | 200/13           | 300-213=87   |
         +-----+------------------+------------------+--------------+
-        | op8 | 0/213            | 0/213            | 0            |
+        | op8 | 50/163           | 50/163           | 0            |
         +-----+------------------+------------------+--------------+
         """
         assert set(allocator._op_budgets.keys()) == {o6, o8}
@@ -1060,11 +1086,13 @@ class TestReservationOpResourceAllocator:
         assert allocator._total_shared == ExecutionResources(
             cpu=7.5, object_store_memory=850
         )
+        # object_store_memory budget = 0 + (850 - 87) / 2 = 381 (rounded down)
         assert allocator._op_budgets[o6] == ExecutionResources(
-            cpu=7.5, object_store_memory=638
+            cpu=5.5, object_store_memory=381
         )
+        # object_store_memory budget = 163 + (850 - 87) / 2 = 545 (rounded up)
         assert allocator._op_budgets[o8] == ExecutionResources(
-            cpu=7.5, object_store_memory=638
+            cpu=5.5, object_store_memory=545
         )
 
 
