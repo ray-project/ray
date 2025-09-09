@@ -128,7 +128,9 @@ def _validate_resources(resources: Optional[Dict[str, float]]) -> Optional[str]:
 
 _common_options = {
     "label_selector": Option((dict, type(None)), lambda x: validate_label_selector(x)),
-    "fallback_strategy": Option(list((dict)), lambda x: validate_fallback_strategy(x)),
+    "fallback_strategy": Option(
+        (list, type(None)), lambda x: validate_fallback_strategy(x)
+    ),
     "accelerator_type": Option((str, type(None))),
     "memory": _resource_option("memory"),
     "name": Option((str, type(None))),

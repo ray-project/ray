@@ -199,6 +199,8 @@ def validate_fallback_strategy(
         return None
 
     for label_selector in fallback_strategy:
+        if not isinstance(label_selector, dict):
+            raise TypeError("Each element in fallback_strategy must be a dictionary.")
         possible_error_message = validate_label_selector(label_selector)
         if possible_error_message:
             return possible_error_message

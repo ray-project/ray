@@ -33,6 +33,7 @@ LeaseSpecification::LeaseSpecification(const rpc::TaskSpec &task_spec)
   message_->mutable_scheduling_strategy()->CopyFrom(task_spec.scheduling_strategy());
   message_->mutable_label_selector()->insert(task_spec.label_selector().begin(),
                                              task_spec.label_selector().end());
+  message_->mutable_fallback_strategy()->CopyFrom(task_spec.fallback_strategy());
   message_->set_depth(task_spec.depth());
   message_->set_parent_task_id(task_spec.parent_task_id());
   message_->mutable_dependencies()->Reserve(task_spec.args_size());
@@ -304,6 +305,13 @@ void LeaseSpecification::ComputeResources() {
   // Set LabelSelector required for scheduling if specified. Parses string map
   // from proto to LabelSelector data type.
   label_selector_ = std::make_shared<LabelSelector>(message_->label_selector());
+
+  // Parse FallbackStrategy from proto to list of LabelSelectors if specified.
+  auto strategy_list = std::make_shared<std::vector<LabelSelector>>();
+  for (const auto &proto_selector : message_->fallback_strategy()) {
+    strategy_list->emplace_back(proto_selector.label_selector());
+  }
+  fallback_strategy_ = std::move(strategy_list);
 
   // Copy dependencies from message
   dependencies_.reserve(message_->dependencies_size());
