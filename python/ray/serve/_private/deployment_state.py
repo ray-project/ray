@@ -2096,7 +2096,7 @@ class DeploymentState:
         self._replica_has_started = False
         return True
 
-    def autoscale(self, target_num_replicas=None) -> int:
+    def autoscale(self, target_num_replicas=None) -> bool:
         """
         Autoscale the deployment based on metrics or an externally provided target number of replica count.
 
@@ -3247,7 +3247,9 @@ class DeploymentStateManager:
         return any_recovering
 
     def autoscale(self, deployment_id: DeploymentID, target_num_replicas: int):
-        self._deployment_states[deployment_id].autoscale(
+        if deployment_id not in self._deployment_states:
+            return False
+        return self._deployment_states[deployment_id].autoscale(
             target_num_replicas=target_num_replicas
         )
 

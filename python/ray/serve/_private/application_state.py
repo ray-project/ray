@@ -329,6 +329,11 @@ class ApplicationState:
         if checkpoint_data.deployment_infos is not None:
             self._route_prefix = self._check_routes(checkpoint_data.deployment_infos)
 
+        if self.should_autoscale():
+            self._autoscaling_state_manager.register_application(
+                self._name, self._target_state.config
+            )
+
     def _set_target_state(
         self,
         deployment_infos: Optional[Dict[str, DeploymentInfo]],
@@ -443,17 +448,23 @@ class ApplicationState:
         deployments: Dict[str, DeploymentDetails] = self.list_deployment_details()
         decisions: Dict[
             str, int
-        ] = self._autoscaling_state_manager.apply_autoscaling_decision(
+        ] = self._autoscaling_state_manager.get_deployment_decisions(
             self._name, deployments
         )
 
+        target_state_changed = False
         for deployment_name, decision_num_replicas in decisions.items():
             deployment_id: DeploymentID = DeploymentID(
                 name=deployment_name, app_name=self._name
             )
-            self._deployment_state_manager.autoscale(
-                deployment_id, decision_num_replicas
+            target_state_changed = (
+                self._deployment_state_manager.autoscale(
+                    deployment_id, decision_num_replicas
+                )
+                or target_state_changed
             )
+
+        return target_state_changed
 
     def apply_deployment_info(
         self,
@@ -473,11 +484,6 @@ class ApplicationState:
         if route_prefix is not None and not route_prefix.startswith("/"):
             raise RayServeException(
                 f'Invalid route prefix "{route_prefix}", it must start with "/"'
-            )
-
-        if self.should_autoscale():
-            self._autoscaling_state_manager.register_application(
-                self._name, self._target_state.config
             )
 
         deployment_id = DeploymentID(name=deployment_name, app_name=self._name)
@@ -520,6 +526,11 @@ class ApplicationState:
         self._check_ingress_deployments(deployment_infos)
         # Check routes are unique in deployment infos
         self._route_prefix = self._check_routes(deployment_infos)
+
+        if self.should_autoscale():
+            self._autoscaling_state_manager.register_application(
+                self._name, self._target_state.config
+            )
 
         self._set_target_state(
             deployment_infos=deployment_infos,
@@ -1156,7 +1167,7 @@ class ApplicationStateManager:
         any_target_state_changed = False
         for name, app in self._application_states.items():
             if app.should_autoscale():
-                app.autoscale()
+                any_target_state_changed = app.autoscale()
             ready_to_be_deleted, app_target_state_changed = app.update()
             any_target_state_changed = (
                 any_target_state_changed or app_target_state_changed
@@ -1167,6 +1178,7 @@ class ApplicationStateManager:
 
         if len(apps_to_be_deleted) > 0:
             for app_name in apps_to_be_deleted:
+                self._autoscaling_state_manager.deregister_application(app_name)
                 del self._application_states[app_name]
             ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
 

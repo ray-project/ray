@@ -384,16 +384,16 @@ class ApplicationAutoscalingState:
         self._policy: AutoscalingPolicy = None
         self._policy_state: Dict[str, Dict] = None
 
-    def register(self, config: ServeApplicationSchema) -> int:
+    def register(self, config: ServeApplicationSchema):
         self._config = config
         self._policy = self._config.autoscaling_policy
         self._policy_state = {}
 
-    def apply_autoscale_policy(
+    def get_deployment_decisions(
         self, deployments: Dict[str, DeploymentDetails], _skip_bound_check: bool = False
     ) -> Dict[str, int]:
         autoscaling_contexts: list[AutoscalingContext] = []
-        decisions: dict[str, int] = {}
+        decisions: Dict[str, int] = {}
         for name, deployment_detail in deployments.items():
             deployment_id: DeploymentID = DeploymentID(
                 name=name, app_name=self._app_name
@@ -436,7 +436,9 @@ class ApplicationAutoscalingState:
                 deployment_id
             ]
             if not _skip_bound_check:
-                deployment_autoscaling_state.apply_bounds(decision_num_replicas)
+                decisions[deployment_id] = deployment_autoscaling_state.apply_bounds(
+                    decision_num_replicas
+                )
 
         return decisions
 
@@ -479,21 +481,28 @@ class AutoscalingStateManager:
     def register_application(
         self, app_name: ApplicationName, config: ServeApplicationSchema
     ):
+        deployment_autoscaling_states = {}
+        for deployment_name in config.deployment_names:
+            deployment_id = DeploymentID(deployment_name, app_name)
+            if deployment_id in self._deployment_autoscaling_states:
+                deployment_autoscaling_states[
+                    deployment_id
+                ] = self._deployment_autoscaling_states[deployment_id]
         if app_name not in self._app_autoscaling_states:
             self._app_autoscaling_states[app_name] = ApplicationAutoscalingState(
-                app_name, self._deployment_autoscaling_states
+                app_name, deployment_autoscaling_states
             )
 
-        return self._app_autoscaling_states[app_name].register(config)
+        self._app_autoscaling_states[app_name].register(config)
 
     def deregister_application(self, app_name: ApplicationName):
         """Remove application from tracking."""
         self._app_autoscaling_states.pop(app_name, None)
 
-    def apply_autoscaling_decision(
+    def get_deployment_decisions(
         self, app_name: ApplicationName, deployments: Dict[str, DeploymentDetails]
     ) -> Dict[str, int]:
-        return self._app_autoscaling_states[app_name].apply_autoscale_policy(
+        return self._app_autoscaling_states[app_name].get_deployment_decisions(
             deployments
         )
 
