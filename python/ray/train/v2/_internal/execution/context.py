@@ -157,7 +157,8 @@ class TrainContext:
         return self.execution_context.synchronization_actor
 
     def get_checkpoint(self):
-        return self.checkpoint
+        with self.report_order_condition:
+            return self.checkpoint
 
     def get_all_reported_checkpoints(self) -> List["ReportedCheckpoint"]:
         return ray.get(
@@ -219,7 +220,7 @@ class TrainContext:
         checkpoint_dir_name: str,
         metrics: Dict[str, Any],
         checkpoint: Optional["Checkpoint"] = None,
-        delete_checkpoint_after_upload: bool = False,
+        delete_local_checkpoint_after_upload: bool = False,
     ) -> _TrainingResult:
         """Save the checkpoint to remote storage.
 
@@ -227,7 +228,7 @@ class TrainContext:
             checkpoint_dir_name: The checkpoint dir to persist to.
             metrics: The metrics to report.
             checkpoint: The checkpoint to report.
-            delete_checkpoint_after_upload: Whether to delete the checkpoint after it is uploaded.
+            delete_local_checkpoint_after_upload: Whether to delete the checkpoint after it is uploaded.
 
         Returns:
             The training result object containing the persisted checkpoint.
@@ -237,21 +238,25 @@ class TrainContext:
             return _TrainingResult(checkpoint=None, metrics=metrics)
 
         # Persist the checkpoint to the remote storage path.
-        persisted_checkpoint = self.storage_context.persist_current_checkpoint(
-            checkpoint, checkpoint_dir_name
-        )
-        # TODO: fix unlikely corner case where 2 workers have same local checkpoint path
-        if delete_checkpoint_after_upload:
+        try:
+            persisted_checkpoint = self.storage_context.persist_current_checkpoint(
+                checkpoint, checkpoint_dir_name
+            )
+        except FileNotFoundError as e:
+            logger.exception(
+                f"Failed to find local checkpoint {checkpoint} when attempting to upload it. "
+                "This can happen when you upload 2 checkpoints from the same directory on "
+                "the same node."
+            )
+            raise e
+        # TODO: consider deleting local checkpoint as async callback instead
+        if delete_local_checkpoint_after_upload:
             try:
                 delete_fs_path(checkpoint.filesystem, checkpoint.path)
-            except FileNotFoundError:
+            except Exception:
                 logger.exception(
-                    f"Failed to find checkpoint {checkpoint} when attempting to delete "
-                    "it after successfulupload. Continuing training."
+                    f"Failed to delete the local checkpoint after a successful upload: {checkpoint}"
                 )
-
-        # Update latest checkpoint as the persisted checkpoint.
-        self.checkpoint = persisted_checkpoint
 
         return _TrainingResult(checkpoint=persisted_checkpoint, metrics=metrics)
 
@@ -272,6 +277,12 @@ class TrainContext:
             self.report_order_condition.wait_for(
                 lambda: self.current_report_index == report_call_index - 1
             )
+            logger.info(
+                f"Reporting training result {report_call_index}: {training_result}"
+            )
+            # Update latest checkpoint as the persisted checkpoint.
+            if training_result.checkpoint:
+                self.checkpoint = training_result.checkpoint
             self.get_result_queue().put(training_result)
             self.current_report_index += 1
             self.report_order_condition.notify_all()
@@ -282,7 +293,7 @@ class TrainContext:
         checkpoint: Optional["Checkpoint"] = None,
         checkpoint_dir_name: Optional[str] = None,
         checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
-        delete_checkpoint_after_upload: Optional[bool] = None,
+        delete_local_checkpoint_after_upload: Optional[bool] = None,
     ) -> None:
         """
         Upload checkpoint to remote storage and put a training
@@ -298,8 +309,7 @@ class TrainContext:
             checkpoint_upload_mode: The manner in which we want to upload the checkpoint.
                 Defaults to uploading the checkpoint synchronously.
                 This works when no checkpoint is provided but is not useful in that case.
-            delete_checkpoint_after_upload: Whether to delete the checkpoint after it is uploaded.
-                Defaults to False for SYNC and True for ASYNC.
+            delete_local_checkpoint_after_upload: Whether to delete the checkpoint after it is uploaded.
 
         TODO: the report function should be implemented in the worker instead
         of in the train context. The train context should only keep the train
@@ -338,7 +348,7 @@ class TrainContext:
                     checkpoint_dir_name,
                     metrics,
                     checkpoint,
-                    delete_checkpoint_after_upload,
+                    delete_local_checkpoint_after_upload,
                 )
                 self._wait_then_report(training_result, report_call_index)
 
@@ -361,7 +371,7 @@ class TrainContext:
                             checkpoint_dir_name,
                             metrics,
                             checkpoint,
-                            delete_checkpoint_after_upload,
+                            delete_local_checkpoint_after_upload,
                         )
                         self._wait_then_report(training_result, report_call_index)
                     except Exception as e:

@@ -148,6 +148,11 @@ def test_report_checkpoint_multirank(tmp_path):
 def test_report_mixed_checkpoint_upload_modes(tmp_path):
     """Run all 10 possible pairs (e.g. (SYNC, ASYNC)) of checkpoint upload modes between 2 workers."""
 
+    def get_checkpoint_iteration(checkpoint):
+        if not checkpoint:
+            return -1
+        return int(checkpoint.path.split("_")[-1])
+
     def train_fn():
         # When reporting with async checkpointing, write the checkpoint to
         # tmp_path, which stays alive for the duration of the test, instead of
@@ -163,12 +168,17 @@ def test_report_mixed_checkpoint_upload_modes(tmp_path):
             SYNC_ITERATIONS = [4, 5, 6]
             NO_UPLOAD_ITERATIONS = [7, 8]
             NO_CHECKPOINT_ITERATIONS = [9]
+            DELETE_LOCAL_TRUE_ITERATIONS = [0, 4, 7, 9]
+            DELETE_LOCAL_FALSE_ITERATIONS = [1, 5, 8]
         else:
             ASYNC_ITERATIONS = [0]
             SYNC_ITERATIONS = [1, 4]
             NO_UPLOAD_ITERATIONS = [2, 5, 7]
             NO_CHECKPOINT_ITERATIONS = [3, 6, 8, 9]
+            DELETE_LOCAL_TRUE_ITERATIONS = [7, 8, 9]
+            DELETE_LOCAL_FALSE_ITERATIONS = [4, 5, 6]
 
+        prev_latest_checkpoint_iteration = -1
         for i in range(10):
             # Set variables
             if i in ASYNC_ITERATIONS:
@@ -177,6 +187,12 @@ def test_report_mixed_checkpoint_upload_modes(tmp_path):
                 checkpoint_upload_mode = CheckpointUploadMode.SYNC
             else:
                 checkpoint_upload_mode = CheckpointUploadMode.NO_UPLOAD
+            if i in DELETE_LOCAL_TRUE_ITERATIONS:
+                delete_local_checkpoint_after_upload = True
+            elif i in DELETE_LOCAL_FALSE_ITERATIONS:
+                delete_local_checkpoint_after_upload = False
+            else:
+                delete_local_checkpoint_after_upload = None
             checkpoint_dir_name = ray.train.collective.broadcast_from_rank_zero(
                 f"checkpoint_iteration_{i}"
             )
@@ -184,7 +200,14 @@ def test_report_mixed_checkpoint_upload_modes(tmp_path):
 
             # Upload and report checkpoint
             if i in NO_CHECKPOINT_ITERATIONS:
-                ray.train.report(metrics=metrics, checkpoint=None)
+                ray.train.report(
+                    metrics=metrics,
+                    checkpoint=None,
+                    delete_local_checkpoint_after_upload=delete_local_checkpoint_after_upload,
+                )
+                assert prev_latest_checkpoint_iteration <= get_checkpoint_iteration(
+                    ray.train.get_checkpoint()
+                )
             else:
                 checkpoint_contents = f"iteration_{i}_shard_{rank}"
 
@@ -206,6 +229,12 @@ def test_report_mixed_checkpoint_upload_modes(tmp_path):
                         checkpoint=checkpoint,
                         checkpoint_upload_mode=checkpoint_upload_mode,
                         checkpoint_dir_name=checkpoint_dir_name,
+                        delete_local_checkpoint_after_upload=delete_local_checkpoint_after_upload,
+                    )
+                    latest_checkpoint = ray.train.get_checkpoint()
+                    assert latest_checkpoint == checkpoint
+                    prev_latest_checkpoint_iteration = get_checkpoint_iteration(
+                        latest_checkpoint
                     )
 
                 # Upload to local directory which gets uploaded to storage path
@@ -224,6 +253,18 @@ def test_report_mixed_checkpoint_upload_modes(tmp_path):
                         checkpoint=checkpoint,
                         checkpoint_upload_mode=checkpoint_upload_mode,
                         checkpoint_dir_name=checkpoint_dir_name,
+                        delete_local_checkpoint_after_upload=delete_local_checkpoint_after_upload,
+                    )
+                    latest_checkpoint = ray.train.get_checkpoint()
+                    if i in SYNC_ITERATIONS:
+                        assert checkpoint_dir_name in latest_checkpoint.path
+                    else:
+                        assert (
+                            prev_latest_checkpoint_iteration
+                            <= get_checkpoint_iteration(latest_checkpoint)
+                        )
+                    prev_latest_checkpoint_iteration = get_checkpoint_iteration(
+                        latest_checkpoint
                     )
 
     trainer = DataParallelTrainer(
@@ -232,6 +273,7 @@ def test_report_mixed_checkpoint_upload_modes(tmp_path):
         run_config=RunConfig(storage_path=str(tmp_path)),
     )
     result = trainer.fit()
+    # Note that the (checkpoint=None, checkpoint=None) pair does not produce any checkpoint
     assert len(result.best_checkpoints) == 9
     for i, (checkpoint, metrics) in enumerate(result.best_checkpoints):
         assert checkpoint.path.endswith(f"checkpoint_iteration_{i}")

@@ -16,3 +16,6 @@ class CheckpointUploadMode(Enum):
     ASYNC = "ASYNC"
     SYNC = "SYNC"
     NO_UPLOAD = "NO_UPLOAD"
+
+    def default_delete_local_checkpoint_after_upload(self) -> bool:
+        return self == CheckpointUploadMode.ASYNC
