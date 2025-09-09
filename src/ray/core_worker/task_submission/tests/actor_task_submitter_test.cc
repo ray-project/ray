@@ -19,10 +19,10 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "mock/ray/core_worker/actor_creator.h"
 #include "mock/ray/core_worker/reference_count.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
 #include "ray/common/test_utils.h"
+#include "ray/core_worker/fake_actor_creator.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray::core {
@@ -111,7 +111,7 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
 
   int num_clients_connected_ = 0;
   int64_t last_queue_warning_ = 0;
-  MockActorCreatorInterface actor_creator_;
+  FakeActorCreator actor_creator_;
   std::shared_ptr<rpc::CoreWorkerClientPool> client_pool_;
   std::shared_ptr<MockWorkerClient> worker_client_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;

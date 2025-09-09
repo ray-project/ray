@@ -475,7 +475,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                         timestamp));
   };
 
-  auto actor_creator = std::make_shared<DefaultActorCreator>(gcs_client);
+  auto actor_creator = std::make_shared<ActorCreator>(gcs_client->Actors());
 
   auto actor_task_submitter = std::make_unique<ActorTaskSubmitter>(
       *core_worker_client_pool,

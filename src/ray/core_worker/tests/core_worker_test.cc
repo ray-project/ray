@@ -180,7 +180,7 @@ class CoreWorkerTest : public ::testing::Test {
 
     auto lease_request_rate_limiter = std::make_shared<StaticLeaseRequestRateLimiter>(10);
 
-    auto actor_creator = std::make_shared<DefaultActorCreator>(mock_gcs_client);
+    auto actor_creator = std::make_shared<ActorCreator>(mock_gcs_client->Actors());
 
     auto normal_task_submitter = std::make_unique<NormalTaskSubmitter>(
         rpc_address_,

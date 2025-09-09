@@ -27,6 +27,7 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_utils.h"
+#include "ray/core_worker/fake_actor_creator.h"
 
 namespace ray {
 namespace core {
@@ -134,49 +135,10 @@ class MockTaskManager : public MockTaskManagerInterface {
   int num_fail_pending_task_calls = 0;
 };
 
-class MockActorCreator : public ActorCreatorInterface {
- public:
-  MockActorCreator() = default;
-
-  Status RegisterActor(const TaskSpecification &task_spec) const override {
-    return Status::OK();
-  };
-
-  void AsyncRegisterActor(const TaskSpecification &task_spec,
-                          gcs::StatusCallback callback) override {}
-
-  void AsyncCreateActor(
-      const TaskSpecification &task_spec,
-      const rpc::ClientCallback<rpc::CreateActorReply> &callback) override {}
-
-  void AsyncRestartActorForLineageReconstruction(
-      const ActorID &actor_id,
-      uint64_t num_restarts_due_to_lineage_reconstructions,
-      gcs::StatusCallback callback) override {}
-
-  void AsyncReportActorOutOfScope(const ActorID &actor_id,
-                                  uint64_t num_restarts_due_to_lineage_reconstruction,
-                                  gcs::StatusCallback callback) override {}
-
-  void AsyncWaitForActorRegisterFinish(const ActorID &,
-                                       gcs::StatusCallback callback) override {
-    callbacks.push_back(callback);
-  }
-
-  [[nodiscard]] bool IsActorInRegistering(const ActorID &actor_id) const override {
-    return actor_pending;
-  }
-
-  ~MockActorCreator() {}
-
-  std::list<gcs::StatusCallback> callbacks;
-  bool actor_pending = false;
-};
-
 TEST(LocalDependencyResolverTest, TestNoDependencies) {
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_manager = std::make_shared<MockTaskManager>();
-  MockActorCreator actor_creator;
+  FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
         return rpc::TensorTransport::OBJECT_STORE;
@@ -192,7 +154,7 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies1) {
   // Actor dependency resolved first.
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_manager = std::make_shared<MockTaskManager>();
-  MockActorCreator actor_creator;
+  FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
         return rpc::TensorTransport::OBJECT_STORE;
@@ -237,7 +199,7 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies2) {
   // Object dependency resolved first.
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_manager = std::make_shared<MockTaskManager>();
-  MockActorCreator actor_creator;
+  FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
         return rpc::TensorTransport::OBJECT_STORE;
@@ -281,7 +243,7 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies2) {
 TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_manager = std::make_shared<MockTaskManager>();
-  MockActorCreator actor_creator;
+  FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
         return rpc::TensorTransport::OBJECT_STORE;
@@ -311,7 +273,7 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
 TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_manager = std::make_shared<MockTaskManager>();
-  MockActorCreator actor_creator;
+  FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
         return rpc::TensorTransport::OBJECT_STORE;
@@ -345,7 +307,7 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
 TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_manager = std::make_shared<MockTaskManager>();
-  MockActorCreator actor_creator;
+  FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
         return rpc::TensorTransport::OBJECT_STORE;
@@ -383,7 +345,7 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
 TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_manager = std::make_shared<MockTaskManager>();
-  MockActorCreator actor_creator;
+  FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
         return rpc::TensorTransport::OBJECT_STORE;
@@ -423,7 +385,7 @@ TEST(LocalDependencyResolverTest, TestCancelDependencyResolution) {
   InstrumentedIOContextWithThread io_context("TestCancelDependencyResolution");
   auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
   auto task_manager = std::make_shared<MockTaskManager>();
-  MockActorCreator actor_creator;
+  FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
         return rpc::TensorTransport::OBJECT_STORE;
@@ -458,7 +420,7 @@ TEST(LocalDependencyResolverTest, TestCancelDependencyResolution) {
 TEST(LocalDependencyResolverTest, TestDependenciesAlreadyLocal) {
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_manager = std::make_shared<MockTaskManager>();
-  MockActorCreator actor_creator;
+  FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
         return rpc::TensorTransport::OBJECT_STORE;
@@ -494,7 +456,7 @@ TEST(LocalDependencyResolverTest, TestMixedTensorTransport) {
   // there will be performance regression in some edge cases.
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_manager = std::make_shared<MockTaskManager>();
-  MockActorCreator actor_creator;
+  FakeActorCreator actor_creator;
 
   // `obj1` is a GPU object, and `obj2` is a normal object.
   ObjectID obj1 = ObjectID::FromRandom();
