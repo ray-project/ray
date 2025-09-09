@@ -139,53 +139,203 @@ ray_cc_library(
     ],
 )
 
-# TODO(#55922): split out the scheduling dependencies into a separate bazel target
-# and have lease and task bazel targets depend on this
+ray_cc_library(
+    name = "scheduling_ids",
+    srcs = ["scheduling/scheduling_ids.cc"],
+    hdrs = ["scheduling/scheduling_ids.h"],
+    deps = [
+        ":constants",
+        ":ray_config",
+        "//src/ray/util:logging",
+        "@boost//:algorithm",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "label_selector",
+    srcs = ["scheduling/label_selector.cc"],
+    hdrs = ["scheduling/label_selector.h"],
+    deps = [
+        "//src/ray/protobuf:common_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@com_google_protobuf//:protobuf",
+    ],
+)
+
+ray_cc_library(
+    name = "fixed_point",
+    srcs = ["scheduling/fixed_point.cc"],
+    hdrs = ["scheduling/fixed_point.h"],
+    deps = [
+        ":constants",
+    ],
+)
+
+ray_cc_library(
+    name = "placement_group_util",
+    srcs = ["scheduling/placement_group_util.cc"],
+    hdrs = ["scheduling/placement_group_util.h"],
+    deps = [
+        ":scheduling_ids",
+        "//src/ray/util:logging",
+    ],
+)
+
+ray_cc_library(
+    name = "resource_set",
+    srcs = ["scheduling/resource_set.cc"],
+    hdrs = ["scheduling/resource_set.h"],
+    deps = [
+        ":fixed_point",
+        ":scheduling_ids",
+        "@boost//:range",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "cluster_resource_data",
+    srcs = ["scheduling/cluster_resource_data.cc"],
+    hdrs = ["scheduling/cluster_resource_data.h"],
+    deps = [
+        ":fixed_point",
+        ":label_selector",
+        ":resource_instance_set",
+        ":resource_set",
+        ":scheduling_ids",
+        "//src/ray/util:logging",
+        "@boost//:range",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+ray_cc_library(
+    name = "bundle_spec",
+    srcs = [
+        "bundle_spec.cc",
+    ],
+    hdrs = [
+        "bundle_spec.h",
+    ],
+    deps = [
+        ":cluster_resource_data",
+        ":grpc_util",
+        ":id",
+        ":label_selector",
+        ":placement_group_util",
+        ":scheduling_ids",
+        "//src/ray/protobuf:common_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_protobuf//:protobuf",
+    ],
+)
+
+ray_cc_library(
+    name = "placement_group",
+    srcs = [
+        "placement_group.cc",
+    ],
+    hdrs = [
+        "placement_group.h",
+    ],
+    deps = [
+        ":bundle_spec",
+        ":id",
+        "//src/ray/protobuf:common_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_protobuf//:protobuf",
+    ],
+)
+
+ray_cc_library(
+    name = "function_descriptor",
+    srcs = ["function_descriptor.cc"],
+    hdrs = ["function_descriptor.h"],
+    deps = [
+        ":grpc_util",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/util:logging",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+ray_cc_library(
+    name = "scheduling_class_util",
+    srcs = ["scheduling/scheduling_class_util.cc"],
+    hdrs = ["scheduling/scheduling_class_util.h"],
+    deps = [
+        ":function_descriptor",
+        ":label_selector",
+        ":resource_set",
+        ":runtime_env",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/util:logging",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_protobuf//:protobuf",
+    ],
+)
+
+ray_cc_library(
+    name = "resource_instance_set",
+    srcs = ["scheduling/resource_instance_set.cc"],
+    hdrs = ["scheduling/resource_instance_set.h"],
+    deps = [
+        ":fixed_point",
+        ":placement_group_util",
+        ":resource_set",
+        ":scheduling_ids",
+        "//src/ray/util:container_util",
+        "//src/ray/util:logging",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+ray_cc_library(
+    name = "bundle_location_index",
+    srcs = ["bundle_location_index.cc"],
+    hdrs = ["bundle_location_index.h"],
+    deps = [
+        ":id",
+        ":placement_group",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
 
 ray_cc_library(
     name = "task_common",
     srcs = [
-        "bundle_location_index.cc",
-        "bundle_spec.cc",
-        "function_descriptor.cc",
-        "placement_group.cc",
-        "scheduling/cluster_resource_data.cc",
-        "scheduling/fixed_point.cc",
-        "scheduling/label_selector.cc",
-        "scheduling/resource_instance_set.cc",
-        "scheduling/resource_set.cc",
-        "scheduling/scheduling_ids.cc",
         "task/task_spec.cc",
     ],
     hdrs = [
-        "bundle_location_index.h",
-        "bundle_spec.h",
-        "function_descriptor.h",
-        "placement_group.h",
-        "scheduling/cluster_resource_data.h",
-        "scheduling/fixed_point.h",
-        "scheduling/label_selector.h",
-        "scheduling/resource_instance_set.h",
-        "scheduling/resource_set.h",
-        "scheduling/scheduling_ids.h",
         "task/task_common.h",
         "task/task_spec.h",
         "task/task_util.h",
     ],
     deps = [
         ":event_stats",
+        ":function_descriptor",
         ":grpc_util",
-        ":id",
+        ":label_selector",
         ":ray_config",
         ":ray_object",
+        ":resource_set",
         ":runtime_env",
+        ":scheduling_class_util",
         "//src/ray/flatbuffers:node_manager_generated",
         "//src/ray/util:container_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -199,8 +349,12 @@ ray_cc_library(
         "lease/lease_spec.h",
     ],
     deps = [
+        ":function_descriptor",
         ":id",
-        ":task_common",
+        ":label_selector",
+        ":resource_set",
+        ":runtime_env",
+        ":scheduling_class_util",
         "//src/ray/protobuf:common_cc_proto",
     ],
 )

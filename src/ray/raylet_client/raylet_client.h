@@ -38,7 +38,7 @@ using ray::ObjectID;
 using ray::TaskID;
 using ray::WorkerID;
 
-using ray::Language;
+using ray::rpc::Language;
 
 // Maps from resource name to its allocation.
 using ResourceMappingType =
