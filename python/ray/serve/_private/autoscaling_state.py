@@ -399,10 +399,8 @@ class AutoscalingState:
 
         timestamps = [r.timestamp for r in self._replica_requests.values()]
         timestamps.extend(h.timestamp for h in self._handle_requests.values())
-        latest_ts = max(timestamps) if timestamps else None
-
-        if latest_ts is not None:
-            time_since_last_collected_metrics_s = max(0.0, time.time() - latest_ts)
+        if timestamps:
+            time_since_last_collected_metrics_s = time.time() - max(timestamps)
         else:
             time_since_last_collected_metrics_s = None
 
