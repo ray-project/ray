@@ -1,0 +1,41 @@
+load("//bazel:ray.bzl", "ray_cc_test")
+
+ray_cc_test(
+    name = "sysfs_cgroup_driver_test",
+    srcs = ["sysfs_cgroup_driver_test.cc"],
+    tags = [
+        "cgroup",
+        "team:core",
+    ],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
+    deps = [
+        "//src/ray/common:status",
+        "//src/ray/common:status_or",
+        "//src/ray/common/cgroup2:cgroup_test_utils",
+        "//src/ray/common/cgroup2:sysfs_cgroup_driver",
+        "//src/ray/common/tests:testing",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "cgroup_manager_test",
+    srcs = ["cgroup_manager_test.cc"],
+    tags = [
+        "cgroup",
+        "no_windows",
+        "team:core",
+    ],
+    deps = [
+        "//src/ray/common:status",
+        "//src/ray/common:status_or",
+        "//src/ray/common/cgroup2:cgroup_driver_interface",
+        "//src/ray/common/cgroup2:cgroup_manager",
+        "//src/ray/common/cgroup2:fake_cgroup_driver",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

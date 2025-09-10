@@ -62,6 +62,7 @@ class BuilderContainer(LinuxContainer):
             f"./ci/build/build-manylinux-wheel.sh {self.bin_path}",
             "chown -R 2000:100 /artifact-mount",
         ]
+
         if self.upload:
             cmds += ["./ci/build/copy_build_artifacts.sh wheel"]
         self.run_script(cmds)

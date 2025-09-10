@@ -20,11 +20,11 @@
 
 namespace ray::gcs {
 
-Status InMemoryStoreClient::AsyncPut(const std::string &table_name,
-                                     const std::string &key,
-                                     std::string data,
-                                     bool overwrite,
-                                     Postable<void(bool)> callback) {
+void InMemoryStoreClient::AsyncPut(const std::string &table_name,
+                                   const std::string &key,
+                                   std::string data,
+                                   bool overwrite,
+                                   Postable<void(bool)> callback) {
   auto &table = GetOrCreateMutableTable(table_name);
   bool inserted = false;
   if (overwrite) {
@@ -33,10 +33,9 @@ Status InMemoryStoreClient::AsyncPut(const std::string &table_name,
     inserted = table.Emplace(key, std::move(data));
   }
   std::move(callback).Post("GcsInMemoryStore.Put", inserted);
-  return Status::OK();
 }
 
-Status InMemoryStoreClient::AsyncGet(
+void InMemoryStoreClient::AsyncGet(
     const std::string &table_name,
     const std::string &key,
     ToPostable<OptionalItemCallback<std::string>> callback) {
@@ -46,10 +45,9 @@ Status InMemoryStoreClient::AsyncGet(
     data = table->Get(key);
   }
   std::move(callback).Post("GcsInMemoryStore.Get", Status::OK(), std::move(data));
-  return Status::OK();
 }
 
-Status InMemoryStoreClient::AsyncGetAll(
+void InMemoryStoreClient::AsyncGetAll(
     const std::string &table_name,
     Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) {
   auto result = absl::flat_hash_map<std::string, std::string>();
@@ -58,10 +56,9 @@ Status InMemoryStoreClient::AsyncGetAll(
     result = table->GetMapClone();
   }
   std::move(callback).Post("GcsInMemoryStore.GetAll", std::move(result));
-  return Status::OK();
 }
 
-Status InMemoryStoreClient::AsyncMultiGet(
+void InMemoryStoreClient::AsyncMultiGet(
     const std::string &table_name,
     const std::vector<std::string> &keys,
     Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) {
@@ -74,31 +71,27 @@ Status InMemoryStoreClient::AsyncMultiGet(
                      });
   }
   std::move(callback).Post("GcsInMemoryStore.GetAll", std::move(result));
-  return Status::OK();
 }
 
-Status InMemoryStoreClient::AsyncDelete(const std::string &table_name,
-                                        const std::string &key,
-                                        Postable<void(bool)> callback) {
+void InMemoryStoreClient::AsyncDelete(const std::string &table_name,
+                                      const std::string &key,
+                                      Postable<void(bool)> callback) {
   auto &table = GetOrCreateMutableTable(table_name);
   auto erased = table.Erase(key);
   std::move(callback).Post("GcsInMemoryStore.Delete", erased);
-  return Status::OK();
 }
 
-Status InMemoryStoreClient::AsyncBatchDelete(const std::string &table_name,
-                                             const std::vector<std::string> &keys,
-                                             Postable<void(int64_t)> callback) {
+void InMemoryStoreClient::AsyncBatchDelete(const std::string &table_name,
+                                           const std::vector<std::string> &keys,
+                                           Postable<void(int64_t)> callback) {
   auto &table = GetOrCreateMutableTable(table_name);
   int64_t num_erased = table.EraseKeys(absl::MakeSpan(keys));
   std::move(callback).Post("GcsInMemoryStore.BatchDelete", num_erased);
-  return Status::OK();
 }
 
-Status InMemoryStoreClient::AsyncGetNextJobID(Postable<void(int)> callback) {
+void InMemoryStoreClient::AsyncGetNextJobID(Postable<void(int)> callback) {
   auto job_id = job_id_.fetch_add(1, std::memory_order_acq_rel);
   std::move(callback).Post("GcsInMemoryStore.GetNextJobID", job_id);
-  return Status::OK();
 }
 
 ConcurrentFlatMap<std::string, std::string> &InMemoryStoreClient::GetOrCreateMutableTable(
@@ -121,7 +114,7 @@ const ConcurrentFlatMap<std::string, std::string> *InMemoryStoreClient::GetTable
   return nullptr;
 }
 
-Status InMemoryStoreClient::AsyncGetKeys(
+void InMemoryStoreClient::AsyncGetKeys(
     const std::string &table_name,
     const std::string &prefix,
     Postable<void(std::vector<std::string>)> callback) {
@@ -135,20 +128,17 @@ Status InMemoryStoreClient::AsyncGetKeys(
     });
   }
   std::move(callback).Post("GcsInMemoryStore.Keys", std::move(result));
-
-  return Status::OK();
 }
 
-Status InMemoryStoreClient::AsyncExists(const std::string &table_name,
-                                        const std::string &key,
-                                        Postable<void(bool)> callback) {
+void InMemoryStoreClient::AsyncExists(const std::string &table_name,
+                                      const std::string &key,
+                                      Postable<void(bool)> callback) {
   bool result = false;
   auto table = GetTable(table_name);
   if (table != nullptr) {
     result = table->Contains(key);
   }
   std::move(callback).Post("GcsInMemoryStore.Exists", result);
-  return Status::OK();
 }
 
 }  // namespace ray::gcs

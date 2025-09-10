@@ -1,8 +1,9 @@
 """Test the collective allreduice API."""
 import cupy as cp
 import pytest
-import ray
 import torch
+
+import ray
 from ray.util.collective.tests.util import create_collective_workers
 from ray.util.collective.types import ReduceOp
 
@@ -162,7 +163,8 @@ def test_allreduce_torch_cupy(ray_start_single_node_2_gpus):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

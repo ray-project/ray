@@ -20,11 +20,11 @@
 #include <vector>
 
 #include "absl/types/optional.h"
+#include "ray/common/gcs_callbacks.h"
 #include "ray/common/id.h"
 #include "ray/common/placement_group.h"
 #include "ray/common/status_or.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/gcs/callback.h"
 #include "ray/rpc/client_call.h"
 #include "ray/util/sequencer.h"
 #include "src/ray/protobuf/autoscaler.pb.h"
@@ -540,10 +540,8 @@ class ErrorInfoAccessor {
   /// duplicate messages currently cause failures (the GCS doesn't allow it). A
   /// natural way to do this is to have finer-grained time stamps.
   ///
-  /// \param data_ptr The error message that will be reported to GCS.
-  /// \param callback Callback that will be called when report is complete.
-  virtual void AsyncReportJobError(const std::shared_ptr<rpc::ErrorTableData> &data_ptr,
-                                   const StatusCallback &callback);
+  /// \param data The error message that will be reported to GCS.
+  virtual void AsyncReportJobError(rpc::ErrorTableData data);
 
  private:
   GcsClient *client_impl_;

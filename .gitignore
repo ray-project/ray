@@ -38,7 +38,7 @@ python/ray/autoscaler/kuberay/config
 # Python byte code files
 *.pyc
 python/.eggs
-
+.eggs
 # Backup files
 *.bak
 
@@ -126,6 +126,7 @@ scripts/nodes.txt
 .idea/**/tasks.xml
 .idea/dictionaries
 .llvm-local.bazelrc
+.user.bazelrc
 .aider*
 
 # Sensitive or high-churn files:
@@ -152,6 +153,10 @@ scripts/nodes.txt
 **/.cache
 .benchmarks
 python-driver-*
+
+# Ray Train unit test artifacts
+lightning_logs/
+hf-internal-testing/
 
 # Vscode
 .vscode/

@@ -1,0 +1,9 @@
+load("//bazel:ray.bzl", "ray_cc_library")
+
+ray_cc_library(
+    name = "fake_raylet_client",
+    hdrs = ["raylet_client.h"],
+    deps = [
+        "//src/ray/rpc:raylet_client_interface",
+    ],
+)

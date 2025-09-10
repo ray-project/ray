@@ -15,6 +15,7 @@ import ray
 import ray.util.state as state_api
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
+from ray.serve._private.autoscaling_state import AutoscalingContext
 from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
@@ -36,7 +37,7 @@ from ray.serve._private.test_utils import (
     get_num_alive_replicas,
     tlog,
 )
-from ray.serve.config import AutoscalingConfig
+from ray.serve.config import AutoscalingConfig, AutoscalingPolicy
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import ApplicationStatus, ServeDeploySchema
 from ray.util.state import list_actors
@@ -411,8 +412,8 @@ def test_e2e_scale_up_down_basic(min_replicas, serve_instance_with_signal):
         max_ongoing_requests=1000,
     )
     class A:
-        def __call__(self):
-            ray.get(signal.wait.remote())
+        async def __call__(self):
+            await signal.wait.remote()
 
     handle = serve.run(A.bind())
     wait_for_condition(
@@ -598,8 +599,8 @@ def test_e2e_bursty(serve_instance_with_signal):
         def __init__(self):
             logging.getLogger("ray.serve").setLevel(logging.ERROR)
 
-        def __call__(self):
-            ray.get(signal.wait.remote())
+        async def __call__(self):
+            await signal.wait.remote()
 
     handle = serve.run(A.bind())
     wait_for_condition(
@@ -662,8 +663,8 @@ def test_e2e_intermediate_downscaling(serve_instance_with_signal):
         max_ongoing_requests=1000,
     )
     class A:
-        def __call__(self):
-            ray.get(signal.wait.remote())
+        async def __call__(self):
+            await signal.wait.remote()
 
     handle = serve.run(A.bind())
     wait_for_condition(
@@ -1047,9 +1048,9 @@ import ray
 import os
 
 @serve.deployment
-def g():
+async def g():
     signal = ray.get_actor("signal123")
-    ray.get(signal.wait.remote())
+    await signal.wait.remote()
     return os.getpid()
 
 
@@ -1518,6 +1519,64 @@ def test_autoscaling_status_changes(serve_instance):
     )
 
     print("Statuses are as expected.")
+
+
+def custom_autoscaling_policy(ctx: AutoscalingContext):
+    if ctx.total_num_requests > 50:
+        return 3, {}
+    else:
+        return 2, {}
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        {"name": "ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy"},
+        AutoscalingPolicy(
+            name="ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy"
+        ),
+        AutoscalingPolicy(name=custom_autoscaling_policy),
+    ],
+)
+def test_e2e_scale_up_down_basic_with_custom_policy(serve_instance_with_signal, policy):
+    """Send 100 requests and check that we autoscale up, and then back down."""
+
+    _, signal = serve_instance_with_signal
+
+    @serve.deployment(
+        autoscaling_config={
+            "min_replicas": 1,
+            "max_replicas": 4,
+            "downscale_delay_s": 0.5,
+            "upscale_delay_s": 0,
+            "policy": policy,
+            "metrics_interval_s": 0.1,
+        },
+        # We will send over a lot of queries. This will make sure replicas are
+        # killed quickly during cleanup.
+        graceful_shutdown_timeout_s=1,
+        max_ongoing_requests=1000,
+    )
+    class A:
+        async def __call__(self):
+            await signal.wait.remote()
+
+    handle = serve.run(A.bind())
+    wait_for_condition(
+        check_deployment_status, name="A", expected_status=DeploymentStatus.HEALTHY
+    )
+
+    [handle.remote() for _ in range(40)]
+
+    # scale up one more replica from min_replicas
+    wait_for_condition(check_num_replicas_eq, name="A", target=2)
+    print("Scaled up to 2 replicas.")
+
+    ray.get(signal.send.remote(clear=True))
+    wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 0)
+    [handle.remote() for _ in range(70)]
+    wait_for_condition(check_num_replicas_eq, name="A", target=3)
+    ray.get(signal.send.remote(clear=True))
 
 
 if __name__ == "__main__":

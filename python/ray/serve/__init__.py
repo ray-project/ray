@@ -19,6 +19,7 @@ try:
         run,
         run_many,
         shutdown,
+        shutdown_async,
         start,
         status,
     )
@@ -47,6 +48,7 @@ __all__ = [
     "HTTPOptions",
     "get_replica_context",
     "shutdown",
+    "shutdown_async",
     "ingress",
     "deployment",
     "run",

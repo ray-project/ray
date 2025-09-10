@@ -98,7 +98,7 @@ class hcclRedOpTypeEnum:
 
 @ray.remote
 class HCCLRootInfoStore:
-    """HcclRootInfo store as a named actors class.
+    """HcclRootInfo store. This class is intended to be instantiated as a named actor.
 
     Args:
         name: the unique name for this named actor.

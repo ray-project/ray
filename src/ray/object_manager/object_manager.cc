@@ -21,7 +21,6 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/common_protocol.h"
 #include "ray/object_manager/plasma/store_runner.h"
 #include "ray/object_manager/spilled_object_reader.h"
 #include "ray/stats/metric_defs.h"
@@ -108,21 +107,20 @@ ObjectManager::ObjectManager(
       object_manager_server_("ObjectManager",
                              config_.object_manager_port,
                              config_.object_manager_address == "127.0.0.1",
-                             ClusterID::Nil(),
                              config_.rpc_service_threads_number),
       client_call_manager_(main_service,
                            /*record_stats=*/true,
                            ClusterID::Nil(),
                            config_.rpc_service_threads_number),
-      restore_spilled_object_(restore_spilled_object),
+      restore_spilled_object_(std::move(restore_spilled_object)),
       get_spilled_object_url_(std::move(get_spilled_object_url)),
       pull_retry_timer_(*main_service_,
-                        boost::posix_time::milliseconds(config.timer_freq_ms)) {
+                        boost::posix_time::milliseconds(config.timer_freq_ms)),
+      push_manager_(std::make_unique<PushManager>(/* max_chunks_in_flight= */ std::max(
+          static_cast<int64_t>(1L),
+          static_cast<int64_t>(config_.max_bytes_in_flight /
+                               config_.object_chunk_size)))) {
   RAY_CHECK_GT(config_.rpc_service_threads_number, 0);
-
-  push_manager_.reset(new PushManager(/* max_chunks_in_flight= */ std::max(
-      static_cast<int64_t>(1L),
-      static_cast<int64_t>(config_.max_bytes_in_flight / config_.object_chunk_size))));
 
   pull_retry_timer_.async_wait([this](const boost::system::error_code &e) { Tick(e); });
 
@@ -772,12 +770,12 @@ void ObjectManager::RecordMetrics() {
       plasma::plasma_store_runner->GetFallbackAllocated());
   // Subtract fallback allocated memory. It is tracked separately by
   // `ObjectStoreFallbackMemory`.
-  stats::ObjectStoreUsedMemory().Record(
+  ray_metric_object_store_used_memory_.Record(
       used_memory_ - plasma::plasma_store_runner->GetFallbackAllocated());
-  stats::ObjectStoreFallbackMemory().Record(
+  ray_metric_object_store_fallback_memory_.Record(
       plasma::plasma_store_runner->GetFallbackAllocated());
-  stats::ObjectStoreLocalObjects().Record(local_objects_.size());
-  stats::ObjectManagerPullRequests().Record(pull_manager_->NumObjectPullRequests());
+  ray_metric_object_store_local_objects_.Record(local_objects_.size());
+  ray_metric_object_manager_pull_requests_.Record(pull_manager_->NumObjectPullRequests());
 
   ray::stats::STATS_object_manager_bytes.Record(num_bytes_pushed_from_plasma_,
                                                 "PushedFromLocalPlasma");
@@ -828,7 +826,8 @@ void ObjectManager::Tick(const boost::system::error_code &e) {
 
   auto interval = boost::posix_time::milliseconds(config_.timer_freq_ms);
   pull_retry_timer_.expires_from_now(interval);
-  pull_retry_timer_.async_wait([this](const boost::system::error_code &e) { Tick(e); });
+  pull_retry_timer_.async_wait(
+      [this](const boost::system::error_code &err) { Tick(err); });
 }
 
 }  // namespace ray

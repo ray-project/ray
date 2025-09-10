@@ -7,7 +7,7 @@ from ray.rllib.utils.framework import (
     TensorType,
     TensorShape,
 )
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray._common.deprecation import deprecation_warning
 from ray.util import log_once
 
 tf1, tf, tfv = try_import_tf()
