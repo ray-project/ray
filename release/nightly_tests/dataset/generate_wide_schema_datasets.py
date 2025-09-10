@@ -11,9 +11,9 @@ import pandas as pd
 
 
 def generate_long_column_name(col_idx: int, prefix: str = "col") -> str:
-    """Generate a 1000-character column name."""
+    """Generate a 500-character column name."""
     base_name = f"{prefix}_{col_idx}_"
-    # Fill remaining characters with repeating pattern to reach exactly 1000 chars
+    # Fill remaining characters with repeating pattern to reach exactly 500 chars
     remaining_chars = 500 - len(base_name)
     if remaining_chars > 0:
         # Create a repeating pattern using alphanumeric characters
@@ -43,7 +43,7 @@ def create_simple_data(num_rows: int, num_columns: int) -> list:
 
 
 def create_tensor_data(num_rows: int, num_columns: int) -> list:
-    """Create mixed fixed and variable tensor columns with 1000-character column names."""
+    """Create mixed fixed and variable tensor columns with 500-character column names."""
     print(f"Creating tensor dataset with {num_rows} rows and {num_columns} columns...")
 
     # Create a single sample record first
@@ -66,7 +66,7 @@ def create_tensor_data(num_rows: int, num_columns: int) -> list:
 
 
 def create_object_data(num_rows: int, num_columns: int) -> list:
-    """Create Python object columns with 1000-character column names."""
+    """Create Python object columns with 500-character column names."""
     print(f"Creating object dataset with {num_rows} rows and {num_columns} columns...")
 
     # Create a single sample record first
@@ -82,7 +82,7 @@ def create_object_data(num_rows: int, num_columns: int) -> list:
         elif obj_type == 1:
             obj = [1, 2, 3, base_val]
         elif obj_type == 2:
-            obj = set([1, 2, 3, base_val])
+            obj = {1, 2, 3, base_val}
         else:
             obj = f"object_string_{base_val}"
 
@@ -94,7 +94,7 @@ def create_object_data(num_rows: int, num_columns: int) -> list:
 
 
 def create_nested_struct_data(num_rows: int, num_columns: int) -> list:
-    """Create nested struct columns with 1000-character column names."""
+    """Create nested struct columns with 500-character column names."""
     print(
         f"Creating nested struct dataset with {num_rows} rows and {num_columns} columns..."
     )
