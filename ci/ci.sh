@@ -151,8 +151,8 @@ test_macos_wheels() {
   return "${TEST_WHEEL_RESULT}"
 }
 
-install_npm_project() {
-  if [ "${OSTYPE}" = msys ]; then
+_install_npm_project() {
+  if [[ "${OSTYPE}" == msys ]]; then
     # Not Windows-compatible: https://github.com/npm/cli/issues/558#issuecomment-584673763
     { echo "WARNING: Skipping NPM due to module incompatibilities with Windows"; } 2> /dev/null
   else
@@ -170,14 +170,16 @@ build_dashboard_front_end() {
       cd ray/dashboard/client
 
       # skip nvm activation on buildkite linux instances.
-      if [ -z "${BUILDKITE-}" ] || [[ "${OSTYPE}" != linux* ]]; then
-        set +x  # suppress set -x since it'll get very noisy here
-        . "${HOME}/.nvm/nvm.sh"
-        NODE_VERSION="14"
-        nvm install $NODE_VERSION
-        nvm use --silent $NODE_VERSION
+      if [[ -z "${BUILDKITE-}" || "${OSTYPE}" != linux* ]]; then
+        if [[ -d "${HOME}/.nvm" ]]; then
+          set +x  # suppress set -x since it'll get very noisy here
+          . "${HOME}/.nvm/nvm.sh"
+          NODE_VERSION="14"
+          nvm install $NODE_VERSION
+          nvm use --silent $NODE_VERSION
+        fi
       fi
-      install_npm_project
+      _install_npm_project
       npm run build
     )
   fi
