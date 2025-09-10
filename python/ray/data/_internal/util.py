@@ -16,6 +16,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    Dict,
     Generator,
     Iterable,
     Iterator,
@@ -1744,3 +1745,30 @@ def rows_same(actual: pd.DataFrame, expected: pd.DataFrame) -> bool:
     expected_items_counts = Counter(frozenset(row.items()) for row in expected_rows)
 
     return actual_items_counts == expected_items_counts
+
+
+def merge_resources_to_ray_remote_args(
+    num_cpus: Optional[int],
+    num_gpus: Optional[int],
+    memory: Optional[int],
+    **ray_remote_args: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Convert the given resources to Ray remote args.
+
+    Args:
+        num_cpus: The number of CPUs to be added to the Ray remote args.
+        num_gpus: The number of GPUs to be added to the Ray remote args.
+        memory: The memory to be added to the Ray remote args.
+        **ray_remote_args: The Ray remote args to be merged.
+
+    Returns:
+        The converted arguments.
+    """
+    ray_remote_args = ray_remote_args.copy()
+    if num_cpus is not None:
+        ray_remote_args["num_cpus"] = num_cpus
+    if num_gpus is not None:
+        ray_remote_args["num_gpus"] = num_gpus
+    if memory is not None:
+        ray_remote_args["memory"] = memory
+    return ray_remote_args

@@ -26,6 +26,7 @@ from ray.data._internal.util import (
     _check_pyarrow_version,
     find_partition_index,
     iterate_with_retry,
+    merge_resources_to_ray_remote_args,
     rows_same,
 )
 from ray.data.tests.conftest import *  # noqa: F401, F403
@@ -343,6 +344,21 @@ def test_find_partition_index_duplicates_descending():
     assert find_partition_index(table, (1,), sort_key) == 5
     # Insert (3,) -> belongs at index 0
     assert find_partition_index(table, (3,), sort_key) == 0
+
+
+def test_merge_resources_to_ray_remote_args():
+    ray_remote_args = {}
+    ray_remote_args = merge_resources_to_ray_remote_args(1, 1, 1, **ray_remote_args)
+    assert ray_remote_args == {"num_cpus": 1, "num_gpus": 1, "memory": 1}
+
+    ray_remote_args = {"other_resource": 1}
+    ray_remote_args = merge_resources_to_ray_remote_args(1, 1, 1, **ray_remote_args)
+    assert ray_remote_args == {
+        "num_cpus": 1,
+        "num_gpus": 1,
+        "memory": 1,
+        "other_resource": 1,
+    }
 
 
 @pytest.mark.parametrize(
