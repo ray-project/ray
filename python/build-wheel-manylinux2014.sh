@@ -37,7 +37,6 @@ PYTHON_VERSIONS=(
 
 # Setup runtime environment
 ./ci/build/build-manylinux-forge.sh
-source "$HOME"/.nvm/nvm.sh
 
 # Compile ray
 ./ci/build/build-manylinux-ray.sh
