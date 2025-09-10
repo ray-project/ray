@@ -76,13 +76,13 @@ def transport_options(temp_queue_directory):
 
     return {
         # Incoming message queue - where new task messages are written when sent to broker
-        "data_folder_in": queue_path,
+        "data_folder_in": str(queue_path),
         # Outgoing message storage - where task results and responses are written after completion
-        "data_folder_out": queue_path,
+        "data_folder_out": str(queue_path),
         # Processed message archive - where messages are moved after successful processing
-        "data_folder_processed": queue_path,
+        "data_folder_processed": str(queue_path),
         # Control message storage - where Celery management and control commands are stored
-        "control_folder": control_path,
+        "control_folder": str(control_path),
     }
 
 
@@ -335,6 +335,78 @@ class TestTaskConsumerWithRayServe:
                 async def process_request(self, data):
                     self.task_received = True
                     self.data_received = data
+
+    def test_task_consumer_metrics(
+        self, temp_queue_directory, serve_instance, create_processor_config
+    ):
+        """Test that task processor metrics are collected and exposed correctly."""
+        processor_config = create_processor_config()
+
+        @serve.deployment
+        @task_consumer(task_processor_config=processor_config)
+        class ServeTaskConsumer:
+            def __init__(self):
+                self.task_received = False
+
+            @task_handler(name="process_request")
+            def process_request(self, data):
+                self.task_received = True
+
+            def get_task_received(self) -> bool:
+                return self.task_received
+
+        handle = serve.run(ServeTaskConsumer.bind())
+        send_request_to_queue.remote(processor_config, "test_data_1")
+
+        def assert_task_received():
+            return handle.get_task_received.remote().result()
+
+        wait_for_condition(assert_task_received, timeout=20)
+
+        adapter_instance = instantiate_adapter_from_config(
+            task_processor_config=processor_config
+        )
+        metrics = adapter_instance.get_metrics_sync()
+
+        assert len(metrics) > 0
+        worker_name = list(metrics.keys())[0]
+        worker_stats = metrics[worker_name]
+
+        # Check that the total number of processed tasks is correct.
+        assert worker_stats["pool"]["threads"] == 1
+        assert worker_stats["pool"]["max-concurrency"] == 1
+        assert worker_stats["total"]["process_request"] == 1
+        assert worker_stats["broker"]["transport"] == "filesystem"
+
+    def test_task_consumer_health_check(
+        self, temp_queue_directory, serve_instance, create_processor_config
+    ):
+        """Test that the health check for the task processor works correctly."""
+        processor_config = create_processor_config()
+
+        @serve.deployment
+        @task_consumer(task_processor_config=processor_config)
+        class ServeTaskConsumer:
+            pass
+
+        serve.run(ServeTaskConsumer.bind())
+
+        adapter_instance = instantiate_adapter_from_config(
+            task_processor_config=processor_config
+        )
+
+        def check_health():
+            health_status = adapter_instance.health_check_sync()
+            return len(health_status) > 0
+
+        # Wait for the worker to be ready
+        wait_for_condition(check_health, timeout=20)
+
+        health_status = adapter_instance.health_check_sync()
+        assert len(health_status) == 1
+
+        worker_name = list(health_status[0].keys())[0]
+        assert health_status[0][worker_name] == {"ok": "pong"}
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
