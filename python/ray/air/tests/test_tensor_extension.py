@@ -816,7 +816,8 @@ def test_tensor_array_string_tensors_simple(restore_data_context, tensor_format)
     arrow_table = pa.Table.from_pandas(df_pandas)
 
     # Convert back to pandas
-    df_roundtrip = arrow_table.to_pandas()
+    ignore_metadata = get_pyarrow_version() < parse_version("19.0.0")
+    df_roundtrip = arrow_table.to_pandas(ignore_metadata=ignore_metadata)
 
     # Verify the roundtrip preserves the data
     original_strings = df_pandas["strings"].to_numpy()

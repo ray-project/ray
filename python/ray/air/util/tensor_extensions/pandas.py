@@ -290,9 +290,6 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
     # errors, but is an undocumented ExtensionDtype attribute. See issue:
     # https://github.com/CODAIT/text-extensions-for-pandas/issues/166
     base = None
-    name = "tensor"
-    type = object   # scalar type stored in your array
-    kind = "O"      # treated like object dtype
 
     def __init__(self, shape: Tuple[Optional[int], ...], dtype: np.dtype):
         self._shape = shape
