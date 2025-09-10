@@ -313,7 +313,7 @@ RAY_CONFIG(int64_t, redis_retry_multiplier, 2)
 RAY_CONFIG(int64_t, redis_retry_max_ms, 1000)
 
 /// Allow up to 60 seconds to wait for the Redis reply.
-RAY_CONFIG(int64_t, redis_async_request_timeout_seaconds, 60)
+RAY_CONFIG(int64_t, redis_async_request_timeout_seconds, 60)
 
 /// The object manager's global timer interval in milliseconds.
 RAY_CONFIG(int, object_manager_timer_freq_ms, 100)
