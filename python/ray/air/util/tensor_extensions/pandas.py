@@ -336,7 +336,7 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
         A string identifying the data type.
         Will be used for display in, e.g. ``Series.dtype``
         """
-        return f"numpy.ndarray(shape={self._shape}, dtype={self._dtype})"
+        return "object"
 
     @classmethod
     def construct_from_string(cls, string: str):
