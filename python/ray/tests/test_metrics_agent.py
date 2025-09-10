@@ -30,6 +30,7 @@ from ray._private.test_utils import (
     get_log_batch,
     raw_metrics,
 )
+from ray._raylet import JobID, TaskID
 from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.core.generated.common_pb2 import TaskAttempt
 from ray.core.generated.events_base_event_pb2 import RayEvent
@@ -43,7 +44,6 @@ from ray.dashboard.modules.aggregator.tests.test_aggregator_agent import (
     get_event_aggregator_grpc_stub,
 )
 from ray.util.metrics import Counter, Gauge, Histogram, Metric
-from ray._raylet import JobID, TaskID
 from ray.util.state import list_nodes
 
 os.environ["RAY_event_stats"] = "1"

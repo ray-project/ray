@@ -1,10 +1,10 @@
 import asyncio
-from typing import Optional, Dict
+from typing import Dict, Optional
 
-from ray.core.generated import events_event_aggregator_service_pb2
 from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
 )
+from ray.core.generated import events_event_aggregator_service_pb2
 
 
 class TaskMetadataBuffer:

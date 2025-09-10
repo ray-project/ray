@@ -20,7 +20,6 @@ from ray.exceptions import RuntimeEnvSetupError
 from ray.runtime_env import RuntimeEnv
 from ray.util.state import list_tasks
 
-
 # Run every test in this module twice: default and with core-worker to aggregator feature flag enabled
 pytestmark = [
     pytest.mark.parametrize(

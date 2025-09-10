@@ -1,18 +1,17 @@
-from collections import deque
 import asyncio
 import time
-from typing import Dict, List, Optional
-from dataclasses import dataclass
 import uuid
-
-from ray.core.generated import (
-    events_base_event_pb2,
-)
-from ray.core.generated.events_base_event_pb2 import RayEvent
+from collections import deque
+from dataclasses import dataclass
+from typing import Dict, List, Optional
 
 from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
 )
+from ray.core.generated import (
+    events_base_event_pb2,
+)
+from ray.core.generated.events_base_event_pb2 import RayEvent
 
 
 @dataclass

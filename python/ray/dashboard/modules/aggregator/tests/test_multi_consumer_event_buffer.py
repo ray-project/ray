@@ -1,8 +1,9 @@
 import asyncio
+import random
 import sys
 import uuid
+
 import pytest
-import random
 from google.protobuf.timestamp_pb2 import Timestamp
 
 from ray.core.generated.events_base_event_pb2 import RayEvent

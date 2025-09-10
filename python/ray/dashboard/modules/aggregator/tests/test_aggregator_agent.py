@@ -1,11 +1,11 @@
 import base64
 import json
 import sys
+import uuid
 from unittest.mock import MagicMock
 
 import pytest
 from google.protobuf.timestamp_pb2 import Timestamp
-import uuid
 
 import ray.dashboard.consts as dashboard_consts
 from ray._private import ray_constants
@@ -14,7 +14,7 @@ from ray._private.test_utils import (
     wait_for_condition,
 )
 from ray._private.utils import init_grpc_channel
-from ray._raylet import GcsClient
+from ray._raylet import GcsClient, JobID, TaskID
 from ray.core.generated.common_pb2 import (
     ErrorType,
     FunctionDescriptor,
@@ -46,25 +46,14 @@ from ray.core.generated.events_task_execution_event_pb2 import (
     TaskExecutionEvent,
 )
 from ray.core.generated.events_task_profile_events_pb2 import TaskProfileEvents
+from ray.core.generated.gcs_service_pb2 import FilterPredicate, GetTaskEventsRequest
+from ray.core.generated.gcs_service_pb2_grpc import TaskInfoGcsServiceStub
 from ray.core.generated.profile_events_pb2 import ProfileEventEntry, ProfileEvents
 from ray.core.generated.runtime_environment_pb2 import (
     RuntimeEnvConfig,
     RuntimeEnvInfo,
     RuntimeEnvUris,
 )
-from ray.core.generated.common_pb2 import (
-    TaskType,
-    Language,
-    FunctionDescriptor,
-    PythonFunctionDescriptor,
-    TaskStatus,
-    ErrorType,
-    RayErrorInfo,
-)
-from ray.core.generated.gcs_service_pb2_grpc import TaskInfoGcsServiceStub
-from ray.core.generated.gcs_service_pb2 import GetTaskEventsRequest, FilterPredicate
-from ray._raylet import JobID, TaskID
-
 from ray.dashboard.modules.aggregator.aggregator_agent import AggregatorAgent
 from ray.dashboard.tests.conftest import *  # noqa
 

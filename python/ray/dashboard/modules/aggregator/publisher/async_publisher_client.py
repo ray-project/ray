@@ -1,18 +1,19 @@
-from concurrent.futures import ThreadPoolExecutor
 import json
 import logging
+from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from typing import Callable, List, Optional, Tuple
+
+import aiohttp
 
 from ray._common.utils import get_or_create_event_loop
-import aiohttp
 from ray._private.protobuf_compat import message_to_json
 from ray.core.generated import (
     events_base_event_pb2,
     events_event_aggregator_service_pb2,
 )
 from ray.dashboard.modules.aggregator.publisher.configs import PUBLISHER_TIMEOUT_SECONDS
-from typing import Callable, Optional, Tuple, List
-from dataclasses import dataclass
-from abc import ABC, abstractmethod
 
 logger = logging.getLogger(__name__)
 

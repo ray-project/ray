@@ -1,34 +1,33 @@
 import asyncio
+import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
-import logging
-from ray._private.gcs_utils import create_gcs_channel
-from ray.dashboard.modules.aggregator.multi_consumer_event_buffer import (
-    MultiConsumerEventBuffer,
-)
-from ray.dashboard.modules.aggregator.publisher.async_publisher_client import (
-    AsyncHttpPublisherClient,
-    AsyncGCSPublisherClient,
-)
-from ray.dashboard.modules.aggregator.publisher.ray_event_publisher import (
-    NoopPublisher,
-    RayEventPublisher,
-)
-from ray.dashboard.modules.aggregator.task_metadata_buffer import TaskMetadataBuffer
 
+import ray
+import ray.dashboard.utils as dashboard_utils
+from ray._private import ray_constants
+from ray._private.gcs_utils import create_gcs_channel
 from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
 )
-
-import ray
-from ray._private import ray_constants
-import ray.dashboard.utils as dashboard_utils
 from ray.core.generated import (
     events_base_event_pb2,
     events_event_aggregator_service_pb2,
     events_event_aggregator_service_pb2_grpc,
     gcs_service_pb2_grpc,
 )
+from ray.dashboard.modules.aggregator.multi_consumer_event_buffer import (
+    MultiConsumerEventBuffer,
+)
+from ray.dashboard.modules.aggregator.publisher.async_publisher_client import (
+    AsyncGCSPublisherClient,
+    AsyncHttpPublisherClient,
+)
+from ray.dashboard.modules.aggregator.publisher.ray_event_publisher import (
+    NoopPublisher,
+    RayEventPublisher,
+)
+from ray.dashboard.modules.aggregator.task_metadata_buffer import TaskMetadataBuffer
 
 logger = logging.getLogger(__name__)
 

@@ -1,8 +1,9 @@
-import pytest
 import sys
 
-from ray.dashboard.modules.aggregator.task_metadata_buffer import TaskMetadataBuffer
+import pytest
+
 from ray.core.generated.events_event_aggregator_service_pb2 import TaskEventsMetadata
+from ray.dashboard.modules.aggregator.task_metadata_buffer import TaskMetadataBuffer
 
 
 def _create_test_metadata(dropped_task_ids: list = None, attempt_number=1):
