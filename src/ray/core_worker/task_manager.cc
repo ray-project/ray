@@ -311,11 +311,15 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
           return_object_id, [this](const ObjectID &object_id) {
             auto actor_id = ObjectID::ToActorID(object_id);
             auto rpc_client = get_actor_rpc_client_callback_(actor_id);
-            auto request = rpc::FreeActorObjectRequest();
+            if (!rpc_client.has_value()) {
+              // ActorTaskSubmitter already knows the actor is already dead.
+              return;
+            }
+            rpc::FreeActorObjectRequest request;
             request.set_object_id(object_id.Binary());
-            rpc_client->FreeActorObject(
+            rpc_client.value()->FreeActorObject(
                 request,
-                [object_id, actor_id](Status status,
+                [object_id, actor_id](const Status &status,
                                       const rpc::FreeActorObjectReply &reply) {
                   if (!status.ok()) {
                     RAY_LOG(ERROR).WithField(object_id).WithField(actor_id)
@@ -416,7 +420,7 @@ std::optional<rpc::ErrorType> TaskManager::ResubmitTask(
   // issue #54260.
   RAY_LOG(INFO) << "Resubmitting task that produced lost plasma object, attempt #"
                 << spec.AttemptNumber() << ": " << spec.DebugString();
-  retry_task_callback_(spec, /*object_recovery*/ true, /*delay_ms*/ 0);
+  async_retry_task_callback_(spec, /*delay_ms=*/0);
 
   return std::nullopt;
 }
@@ -424,8 +428,8 @@ std::optional<rpc::ErrorType> TaskManager::ResubmitTask(
 void TaskManager::SetupTaskEntryForResubmit(TaskEntry &task_entry) {
   task_entry.MarkRetry();
   // NOTE(rickyx): We only increment the AttemptNumber on the task spec when
-  // `retry_task_callback_` is invoked. In order to record the correct status change for
-  // the new task attempt, we pass the attempt number explicitly.
+  // `async_retry_task_callback_` is invoked. In order to record the correct status change
+  // for the new task attempt, we pass the attempt number explicitly.
   SetTaskStatus(task_entry,
                 rpc::TaskStatus::PENDING_ARGS_AVAIL,
                 /* state_update */ std::nullopt,
@@ -503,7 +507,7 @@ void TaskManager::MarkGeneratorFailedAndResubmit(const TaskID &task_id) {
   // Note: Don't need to call UpdateReferencesForResubmit because CompletePendingTask or
   // FailPendingTask are not called when this is. Therefore, RemoveFinishedTaskReferences
   // never happened for this task.
-  retry_task_callback_(spec, /*object_recovery*/ true, /*delay_ms*/ 0);
+  async_retry_task_callback_(spec, /*delay_ms*/ 0);
 }
 
 void TaskManager::DrainAndShutdown(std::function<void()> shutdown) {
@@ -1225,7 +1229,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                                  spec.AttemptNumber(),
                                  RayConfig::instance().task_oom_retry_delay_base_ms())
                            : RayConfig::instance().task_retry_delay_ms();
-    retry_task_callback_(spec, /*object_recovery*/ false, delay_ms);
+    async_retry_task_callback_(spec, delay_ms);
     return true;
   } else {
     RAY_LOG(INFO) << "No retries left for task " << spec.TaskId()
