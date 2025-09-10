@@ -371,6 +371,9 @@ class Dataset:
                 * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n)``, Ray
                   Data uses an autoscaling actor pool from ``m`` to ``n`` workers.
 
+                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n, initial)``, Ray
+                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
+
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
                   method raises an error.
 
@@ -631,6 +634,9 @@ class Dataset:
 
                 * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n)``, Ray
                   Data uses an autoscaling actor pool from ``m`` to ``n`` workers.
+
+                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n, initial)``, Ray
+                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
 
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
                   method raises an error.
@@ -1332,6 +1338,9 @@ class Dataset:
                 * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n)``, Ray
                   Data uses an autoscaling actor pool from ``m`` to ``n`` workers.
 
+                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n, initial)``, Ray
+                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
+
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
                   method raises an error.
 
@@ -1449,6 +1458,9 @@ class Dataset:
 
                 * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n)``, Ray
                   Data uses an autoscaling actor pool from ``m`` to ``n`` workers.
+
+                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n, initial)``, Ray
+                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
 
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
                   method raises an error.
