@@ -416,26 +416,14 @@ class AutoscalingState:
             "errors": [],
         }
 
-    def get_deployment_snapshot(self, curr_target_num_replicas: int) -> Dict[str, Any]:
+    def get_deployment_snapshot(self) -> Optional[Dict[str, Any]]:
         """
-        Return a compact per-deployment snapshot for observability/logging, using a cached value if available.
-        If cache is empty, triggers a policy evaluation to populate it.
+        Return the cached deployment snapshot if available.
+
+        A snapshot reflects the autoscaler's last decision. If it hasn't
+        been created yet, None is returned.
         """
-        if self._cached_deployment_snapshot is not None:
-            return self._cached_deployment_snapshot
-        _ = self.get_decision_num_replicas(
-            curr_target_num_replicas=curr_target_num_replicas
-        )
-        return self._cached_deployment_snapshot or {
-            "current_replicas": len(self._running_replicas),
-            "target_replicas": curr_target_num_replicas,
-            "min_replicas": self.get_num_replicas_lower_bound(),
-            "max_replicas": self.get_num_replicas_upper_bound(),
-            "total_requests": self.get_total_num_requests(),
-            "queued_requests": 0.0,
-            "time_since_last_collected_metrics_s": None,
-            "errors": [],
-        }
+        return self._cached_deployment_snapshot
 
 
 class AutoscalingStateManager:
@@ -552,6 +540,4 @@ class AutoscalingStateManager:
         self, deployment_id: DeploymentID, curr_target_num_replicas: int
     ) -> Dict[str, Any]:
         """Expose a per-deployment snapshot so controller doesn't duplicate computations."""
-        return self._autoscaling_states[deployment_id].get_deployment_snapshot(
-            curr_target_num_replicas=curr_target_num_replicas
-        )
+        return self._autoscaling_states[deployment_id].get_deployment_snapshot()
