@@ -262,9 +262,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     def to_pandas(self) -> "pandas.DataFrame":
         from ray.air.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
+
         # We specify ignore_metadata=True because pyarrow will use the metadata
-        # to build the pyarrow Table. This can lead to errors for older pyarrow
-        # versions.
+        # to build the Table. This can is handled incorrectly for older pyarrow versions
         df = self._table.to_pandas(ignore_metadata=True)
         ctx = DataContext.get_current()
         if ctx.enable_tensor_extension_casting:
