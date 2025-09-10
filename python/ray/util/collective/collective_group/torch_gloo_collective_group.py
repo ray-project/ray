@@ -1,9 +1,9 @@
 import os
 from typing import TYPE_CHECKING, List, Optional
 
+import numpy as np
 import torch
 import torch.distributed as dist
-import numpy as np
 
 import ray.experimental.internal_kv as internal_kv
 from ray.util.collective.collective_group.base_collective_group import BaseGroup
