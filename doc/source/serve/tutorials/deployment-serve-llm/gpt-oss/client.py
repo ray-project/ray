@@ -1,4 +1,4 @@
-#client_streaming.py
+# client_streaming.py
 from urllib.parse import urljoin
 from openai import OpenAI
 
@@ -10,10 +10,8 @@ client = OpenAI(base_url=urljoin(base_url, "v1"), api_key=api_key)
 # Example: Complex query with thinking process
 response = client.chat.completions.create(
     model="my-gpt-oss",
-    messages=[
-        {"role": "user", "content": "How many r's in strawberry"}
-    ],
-    stream=True
+    messages=[{"role": "user", "content": "How many r's in strawberry"}],
+    stream=True,
 )
 
 # Stream

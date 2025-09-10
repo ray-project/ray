@@ -366,7 +366,7 @@ response = client.chat.completions.create(
 ## Troubleshooting
 
 **Can't download the vocab file**  
-```error
+```console
 openai_harmony.HarmonyError: error downloading or loading vocab file: failed to download or load vocab
 ```
 

@@ -13,7 +13,7 @@ for nb in \
   "vision-llm/notebook" \
   "reasoning-llm/notebook" \
   "hybrid-reasoning-llm/notebook" \
-  "gpt-oss/notebook" \
+  "gpt-oss/notebook" 
 do
   python ci/nb2py.py "${nb}.ipynb" "${nb}.py" --ignore-cmds
   python "${nb}.py"
