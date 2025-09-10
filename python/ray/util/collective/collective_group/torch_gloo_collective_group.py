@@ -5,7 +5,6 @@ import torch
 import torch.distributed as dist
 
 import ray.experimental.internal_kv as internal_kv
-from ray._common.network_utils import parse_address
 from ray.util.collective.collective_group.base_collective_group import BaseGroup
 from ray.util.collective.types import (
     AllGatherOptions,

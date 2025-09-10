@@ -1,11 +1,13 @@
-import sys
 import random
-import torch
+import sys
+
 import pytest
+import torch
+
 import ray
-from ray.experimental.collective import create_collective_group
-from ray._private.custom_types import TensorTransportEnum
 from ray._common.test_utils import wait_for_condition
+from ray._private.custom_types import TensorTransportEnum
+from ray.experimental.collective import create_collective_group
 
 # tensordict is not supported on macos ci, so we skip the tests
 support_tensordict = sys.platform != "darwin"
