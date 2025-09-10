@@ -31,6 +31,7 @@
 #include "ray/common/lease/lease.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_utils.h"
+#include "ray/observability/fake_metric.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/tests/util.h"
 
@@ -316,7 +317,8 @@ class LocalLeaseManagerTest : public ::testing::Test {
         id_(NodeID::FromRandom()),
         scheduler_(CreateSingleNodeScheduler(id_.Binary(), num_cpus, *gcs_client_)),
         object_manager_(),
-        lease_dependency_manager_(object_manager_),
+        fake_task_by_state_counter_(),
+        lease_dependency_manager_(object_manager_, fake_task_by_state_counter_),
         local_lease_manager_(std::make_shared<LocalLeaseManager>(
             id_,
             *scheduler_,
@@ -364,7 +366,7 @@ class LocalLeaseManagerTest : public ::testing::Test {
   NodeID id_;
   std::shared_ptr<ClusterResourceScheduler> scheduler_;
   MockWorkerPool pool_;
-  absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
+  absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::unordered_set<ObjectID> missing_objects_;
 
   int default_arg_size_ = 10;
@@ -373,6 +375,7 @@ class LocalLeaseManagerTest : public ::testing::Test {
   absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_info_;
 
   MockObjectManager object_manager_;
+  ray::observability::FakeMetric fake_task_by_state_counter_;
   LeaseDependencyManager lease_dependency_manager_;
   std::shared_ptr<LocalLeaseManager> local_lease_manager_;
 };
