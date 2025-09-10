@@ -360,7 +360,7 @@ class DataIterator(abc.ABC):
             >>> from ray.data.collate_fn import PandasBatchCollateFn
             >>> class CustomPandasBatchCollateFn(PandasBatchCollateFn):
             ...     def __call__(self, batch: pd.DataFrame) -> torch.Tensor:
-            ...         return torch.as_tensor(batch["col_1"].values + 5)
+            ...         return torch.as_tensor(batch["col_1"].to_numpy() + 5)
             >>> iterator = ray.data.from_items([
             ...     {"col_1": 1, "col_2": 2},
             ...     {"col_1": 3, "col_2": 4}]).iterator()
