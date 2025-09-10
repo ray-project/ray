@@ -6,7 +6,7 @@ import torch
 import torch.distributed as dist
 
 from ray.train import Result
-from ray.train.v2._internal.execution.local_mode_utils import LocalController
+from ray.train.v2._internal.execution.local_mode.utils import LocalController
 from ray.train.v2._internal.execution.train_fn_utils import (
     LocalTrainFnUtils,
     get_train_fn_utils,
@@ -41,7 +41,7 @@ def is_torch_dist_env_set() -> bool:
 
 
 class LocalTorchController(LocalController):
-    def run(self, train_func: Callable[[], None]) -> Result:
+    def _set_train_fn_utils(self) -> None:
         world_size = 1
         world_rank = 0
         if is_torch_dist_env_set():
@@ -56,6 +56,7 @@ class LocalTorchController(LocalController):
             assert os.environ["LOCAL_WORLD_SIZE"] == str(
                 world_size
             ), "Local mode only supports 1 node, LOCAL_WORLD_SIZE should be equal to WORLD_SIZE."
+
         if world_size != 1:
             assert (
                 self.datasets is None or len(self.datasets) == 0
@@ -68,6 +69,9 @@ class LocalTorchController(LocalController):
                 dataset_shards=self.datasets,
             )
         )
+
+    def run(self, train_func: Callable[[], None]) -> Result:
+        self._set_train_fn_utils()
         train_func()
         train_fn_utils = get_train_fn_utils()
         assert isinstance(train_fn_utils, LocalTrainFnUtils)
@@ -77,6 +81,4 @@ class LocalTorchController(LocalController):
             path=None,
             error=None,
         )
-        if dist.is_initialized():
-            dist.destroy_process_group()
         return result
