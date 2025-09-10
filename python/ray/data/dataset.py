@@ -2705,17 +2705,17 @@ class Dataset:
             # Note: left_suffix and right_suffix always refer to the original left and right datasets
             # regardless of which one is larger/smaller
             join_type_enum = JoinType(join_type)
-            
+
             # Determine the correct suffixes based on which dataset is large/small
             if datasets_swapped:
                 # Original left (self) is now small, original right (ds) is now large
                 large_table_suffix = right_suffix  # large table is original right
-                small_table_suffix = left_suffix   # small table is original left
+                small_table_suffix = left_suffix  # small table is original left
             else:
                 # Original left (self) is large, original right (ds) is small
-                large_table_suffix = left_suffix   # large table is original left
+                large_table_suffix = left_suffix  # large table is original left
                 small_table_suffix = right_suffix  # small table is original right
-            
+
             join_fn = BroadcastJoinFunction(
                 small_table_dataset=small_ds,
                 join_type=join_type_enum,
@@ -5959,11 +5959,10 @@ class Dataset:
         import pyarrow as pa
 
         ref_bundles: Iterator[RefBundle] = self.iter_internal_ref_bundles()
-        block_refs: List[
-            ObjectRef["pyarrow.Table"]
-        ] = _ref_bundles_iterator_to_block_refs_list(ref_bundles)
+        block_refs: List[ObjectRef["pyarrow.Table"]] = (
+            _ref_bundles_iterator_to_block_refs_list(ref_bundles)
+        )
 
-        
         # Schema is safe to call since we have already triggered execution with
         # iter_internal_ref_bundles.
         schema = self.schema(fetch_if_missing=True)
