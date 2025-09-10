@@ -814,8 +814,7 @@ class Worker:
                 objects. If True, then the returned object will not have a
                 valid value. The object must be written to using the
                 ray.experimental.channel API before readers can read.
-            _tensor_transport: [Alpha] The tensor transport backend to use. Currently, we only support "object_store" and "nixl".
-
+            _tensor_transport: [Alpha] The tensor transport backend to use. Currently, this supports "object_store" and "nixl".
         Returns:
             ObjectRef: The object ref the object was put under.
 
@@ -915,7 +914,7 @@ class Worker:
             # transport to fetch it. The `tensor_transport_hint` has the highest priority, then the
             # tensor_transport in obj_ref.tensor_transport(), then the tensor_transport in serialize_objects,
             # then the default value `OBJECT_STORE`.
-            tensor_transport_choosed = (
+            chosen_tensor_transport = (
                 tensor_transport_hint
                 or (
                     TensorTransportEnum(obj_ref.tensor_transport()) if obj_ref else None
@@ -929,7 +928,7 @@ class Worker:
                 # If using a non-object store transport, then tensors will be sent
                 # out-of-band. Get them before deserializing the object store data.
                 gpu_objects[object_id] = self.gpu_object_manager.get_gpu_object(
-                    object_id, tensor_transport == tensor_transport_choosed
+                    object_id, tensor_transport == chosen_tensor_transport
                 )
 
         # Function actor manager or the import thread may call pickle.loads
@@ -967,7 +966,7 @@ class Worker:
                 raised.
             skip_deserialization: If true, only the buffer will be released and
                 the object associated with the buffer will not be deserialized.
-            _tensor_transport: [Alpha] The tensor transport to use for the GPU object. Currently, we only support "object_store" and "nixl" for tensor transport in ray.get().
+            _tensor_transport: [Alpha] The tensor transport to use to fetch `torch.Tensors` found in the Ray Direct Transport object. Currently, this supports "object_store" and "nixl".
         Returns:
             list: List of deserialized objects or None if skip_deserialization is True.
             bytes: UUID of the debugger breakpoint we should drop
@@ -989,7 +988,7 @@ class Worker:
             TensorTransportEnum.OBJECT_STORE,
             TensorTransportEnum.NIXL,
             None,
-        ], "Currently, we only support 'object_store' and 'nixl' for tensor transport in ray.get()."
+        ], "Currently, RDT only supports 'object_store' and 'nixl' for tensor transport in ray.get()."
         timeout_ms = (
             int(timeout * 1000) if timeout is not None and timeout != -1 else -1
         )
@@ -2894,7 +2893,7 @@ def get(
             corresponding object becomes available. Setting ``timeout=0`` will
             return the object immediately if it's available, else raise
             GetTimeoutError in accordance with the above docstring.
-        _tensor_transport: [Alpha] The tensor transport to use for the GPU object. Currently, we only support "object_store" and "nixl" for tensor transport in ray.get().
+        _tensor_transport: [Alpha] The tensor transport to use to fetch `torch.Tensors` found in the Ray Direct Transport object. Currently, this supports "object_store" and "nixl".
 
     Returns:
         A Python object or a list of Python objects.
@@ -3012,7 +3011,7 @@ def put(
             object prior to the object creator exiting, otherwise the reference
             will still be lost. *Note that this argument is an experimental API
             and should be avoided if possible.*
-        _tensor_transport: [Alpha] The tensor transport to use for the GPU object. Currently, we only support "object_store" and "nixl" for tensor transport in ray.put().
+        _tensor_transport: [Alpha] The tensor transport to use for the GPU object. Currently, this supports "object_store" and "nixl" for tensor transport in ray.put().
 
     Returns:
         The object ref assigned to this value.
