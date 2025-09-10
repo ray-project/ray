@@ -2732,15 +2732,14 @@ class DeploymentState:
             active_replicas
             and self._curr_status_info.status == DeploymentStatus.HEALTHY
         ):
-            if active_replicas:
-                replicas_to_reconfigure = (
-                    self._rank_manager.check_rank_consistency_and_reassign_minimally(
-                        active_replicas,
-                    )
+            replicas_to_reconfigure = (
+                self._rank_manager.check_rank_consistency_and_reassign_minimally(
+                    active_replicas,
                 )
+            )
 
-                # Reconfigure replicas that had their ranks reassigned
-                self._reconfigure_replicas_with_new_ranks(replicas_to_reconfigure)
+            # Reconfigure replicas that had their ranks reassigned
+            self._reconfigure_replicas_with_new_ranks(replicas_to_reconfigure)
 
     def _reconfigure_replicas_with_new_ranks(
         self, replicas_to_reconfigure: List["DeploymentReplica"]
@@ -2772,7 +2771,7 @@ class DeploymentState:
             f"Successfully reconfigured {updated_count} replicas with new ranks in deployment {self._id}"
         )
 
-    def get_replica_ranks_mapping(self) -> Dict[str, int]:
+    def _get_replica_ranks_mapping(self) -> Dict[str, int]:
         """Get the current mapping of replica IDs to ranks.
         Returns:
             Dictionary mapping replica_id to rank.
@@ -3422,7 +3421,7 @@ class DeploymentStateManager:
             node_ids.update(deployment_state.get_active_node_ids())
         return node_ids
 
-    def get_replica_ranks_mapping(self, deployment_id: DeploymentID) -> Dict[str, int]:
+    def _get_replica_ranks_mapping(self, deployment_id: DeploymentID) -> Dict[str, int]:
         """Get the current rank mapping for all replicas in a deployment.
         Args:
             deployment_id: The deployment ID to get ranks for.
@@ -3433,4 +3432,4 @@ class DeploymentStateManager:
         if deployment_state is None:
             return {}
 
-        return deployment_state.get_replica_ranks_mapping()
+        return deployment_state._get_replica_ranks_mapping()

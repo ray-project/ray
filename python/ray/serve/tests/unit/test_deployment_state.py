@@ -4942,7 +4942,7 @@ class TestDeploymentRankManagerIntegrationE2E:
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
         # Check initial ranks are 0, 1, 2
-        ranks_mapping = ds.get_replica_ranks_mapping()
+        ranks_mapping = ds._get_replica_ranks_mapping()
         ranks = sorted(ranks_mapping.values())
         assert ranks == [0, 1, 2], f"Expected ranks [0, 1, 2], got {ranks}"
 
@@ -4968,7 +4968,7 @@ class TestDeploymentRankManagerIntegrationE2E:
         dsm.update()
 
         # After scaling down and reaching healthy status, ranks should be contiguous [0, 1]
-        ranks_mapping = ds.get_replica_ranks_mapping()
+        ranks_mapping = ds._get_replica_ranks_mapping()
         ranks = sorted(ranks_mapping.values())
         assert ranks == [0, 1], f"Expected ranks [0, 1] after scale down, got {ranks}"
 
@@ -4994,7 +4994,7 @@ class TestDeploymentRankManagerIntegrationE2E:
         dsm.update()
 
         # Final ranks should be contiguous [0, 1, 2]
-        ranks_mapping = ds.get_replica_ranks_mapping()
+        ranks_mapping = ds._get_replica_ranks_mapping()
         ranks = sorted(ranks_mapping.values())
         assert ranks == [0, 1, 2], f"Expected final ranks [0, 1, 2], got {ranks}"
 
@@ -5040,7 +5040,7 @@ class TestDeploymentRankManagerIntegrationE2E:
         assert new_ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
         # At this point ranks should be scattered but all values [0, 1, 2] should be present
-        ranks_mapping = new_ds.get_replica_ranks_mapping()
+        ranks_mapping = new_ds._get_replica_ranks_mapping()
         ranks = sorted(ranks_mapping.values())
         assert ranks == [0, 1, 2], "Should have recovered scattered ranks"
 
@@ -5048,7 +5048,7 @@ class TestDeploymentRankManagerIntegrationE2E:
         new_dsm.update()
 
         # After rank consistency check, ranks should still be [0, 1, 2]
-        final_ranks_mapping = new_ds.get_replica_ranks_mapping()
+        final_ranks_mapping = new_ds._get_replica_ranks_mapping()
         final_ranks = sorted(final_ranks_mapping.values())
         assert final_ranks == [
             0,
@@ -5110,7 +5110,7 @@ class TestDeploymentRankManagerIntegrationE2E:
         new_dsm.update()
 
         # After reassignment, ranks should be contiguous [0, 1, 2, 3]
-        ranks_mapping = new_ds.get_replica_ranks_mapping()
+        ranks_mapping = new_ds._get_replica_ranks_mapping()
         ranks = sorted(ranks_mapping.values())
         assert ranks == [
             0,
@@ -5140,7 +5140,7 @@ class TestDeploymentRankManagerIntegrationE2E:
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
         # Verify initial ranks are contiguous
-        ranks_mapping = ds.get_replica_ranks_mapping()
+        ranks_mapping = ds._get_replica_ranks_mapping()
         initial_ranks = sorted(ranks_mapping.values())
         assert initial_ranks == [0, 1, 2]
 
@@ -5177,7 +5177,7 @@ class TestDeploymentRankManagerIntegrationE2E:
         dsm.update()
 
         # After rolling update, verify ranks are still contiguous
-        final_ranks_mapping = ds.get_replica_ranks_mapping()
+        final_ranks_mapping = ds._get_replica_ranks_mapping()
         final_ranks = sorted(final_ranks_mapping.values())
         assert final_ranks == [
             0,
@@ -5203,16 +5203,25 @@ class TestDeploymentRankManagerIntegrationE2E:
         starting_replicas = ds._replicas.get([ReplicaState.STARTING])
         starting_replicas[0]._actor.set_ready()
         starting_replicas[1]._actor.set_ready()
-        starting_replicas[2]._actor.set_done_stopping()
+        starting_replicas[2]._actor.set_failed_to_start()
 
         dsm.update()
 
         running_count = ds._replicas.count(states=[ReplicaState.RUNNING])
-        starting_count = ds._replicas.count(states=[ReplicaState.STARTING])
+        stopping_count = ds._replicas.count(states=[ReplicaState.STOPPING])
         assert running_count == 2, "Should have 2 running replicas"
+        assert stopping_count == 1, "Should have 1 stopping replica"
+
+        self._set_replicas_done_stopping(ds)
+        dsm.update()
+
+        starting_count = ds._replicas.count(states=[ReplicaState.STARTING])
         assert starting_count == 1, "Should have 1 starting replica"
+
         self._set_replicas_ready(ds, [ReplicaState.STARTING])
 
+        dsm.update()
+        # second update to reassign ranks
         dsm.update()
 
         # Final verification - should have 3 running replicas (ignore failed/stopping replicas)
@@ -5222,7 +5231,7 @@ class TestDeploymentRankManagerIntegrationE2E:
         ), f"Expected 3 running replicas, got {len(running_replicas)}"
 
         # Verify that ranks are properly assigned and unique for running replicas
-        ranks_mapping = ds.get_replica_ranks_mapping()
+        ranks_mapping = ds._get_replica_ranks_mapping()
 
         # Filter ranks to only include those for running replicas
         running_replica_ids = [
