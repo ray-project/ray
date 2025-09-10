@@ -59,6 +59,10 @@ from ray.data._internal.execution.util import memory_string
 from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.cache.dataset_cache import (
+    cache_result,
+    invalidate_cache_on_transform,
+)
 from ray.data._internal.logical.operators.all_to_all_operator import (
     RandomizeBlocks,
     RandomShuffle,
@@ -272,6 +276,7 @@ class Dataset:
             return _as(ds._plan.copy(), ds._logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
+    @invalidate_cache_on_transform("map")
     def map(
         self,
         fn: UserDefinedFunction[Dict[str, Any], Dict[str, Any]],
@@ -1384,6 +1389,7 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
+    @invalidate_cache_on_transform("filter")
     def filter(
         self,
         fn: Optional[UserDefinedFunction[Dict[str, Any], bool]] = None,
@@ -2728,6 +2734,7 @@ class Dataset:
     @AllToAllAPI
     @ConsumptionAPI
     @PublicAPI(api_group=GGA_API_GROUP)
+    @cache_result("unique", include_params=["column"])
     def unique(self, column: str) -> List[Any]:
         """List the unique elements in a given column.
 
@@ -2813,6 +2820,7 @@ class Dataset:
     @AllToAllAPI
     @ConsumptionAPI
     @PublicAPI(api_group=GGA_API_GROUP)
+    @cache_result("sum", include_params=["on", "ignore_nulls"])
     def sum(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Union[Any, Dict[str, Any]]:
@@ -2857,6 +2865,7 @@ class Dataset:
     @AllToAllAPI
     @ConsumptionAPI
     @PublicAPI(api_group=GGA_API_GROUP)
+    @cache_result("min", include_params=["on", "ignore_nulls"])
     def min(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Union[Any, Dict[str, Any]]:
@@ -2901,6 +2910,7 @@ class Dataset:
     @AllToAllAPI
     @ConsumptionAPI
     @PublicAPI(api_group=GGA_API_GROUP)
+    @cache_result("max", include_params=["on", "ignore_nulls"])
     def max(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Union[Any, Dict[str, Any]]:
@@ -2945,6 +2955,7 @@ class Dataset:
     @AllToAllAPI
     @ConsumptionAPI
     @PublicAPI(api_group=GGA_API_GROUP)
+    @cache_result("mean", include_params=["on", "ignore_nulls"])
     def mean(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Union[Any, Dict[str, Any]]:
@@ -2989,6 +3000,7 @@ class Dataset:
     @AllToAllAPI
     @ConsumptionAPI
     @PublicAPI(api_group=GGA_API_GROUP)
+    @cache_result("std", include_params=["on", "ignore_nulls", "ddof"])
     def std(
         self,
         on: Optional[Union[str, List[str]]] = None,
@@ -3153,6 +3165,7 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
+    @invalidate_cache_on_transform("limit")
     def limit(self, limit: int) -> "Dataset":
         """Truncate the dataset to the first ``limit`` rows.
 
@@ -3181,6 +3194,7 @@ class Dataset:
 
     @ConsumptionAPI
     @PublicAPI(api_group=CD_API_GROUP)
+    @cache_result("take_batch", include_params=["batch_size", "batch_format"])
     def take_batch(
         self, batch_size: int = 20, *, batch_format: Optional[str] = "default"
     ) -> DataBatch:
@@ -3241,6 +3255,7 @@ class Dataset:
 
     @ConsumptionAPI
     @PublicAPI(api_group=CD_API_GROUP)
+    @cache_result("take", include_params=["limit"])
     def take(self, limit: int = 20) -> List[Dict[str, Any]]:
         """Return up to ``limit`` rows from the :class:`Dataset`.
 
@@ -3292,6 +3307,7 @@ class Dataset:
 
     @ConsumptionAPI
     @PublicAPI(api_group=CD_API_GROUP)
+    @cache_result("take_all", include_params=["limit"])
     def take_all(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """Return all of the rows in this :class:`Dataset`.
 
@@ -3367,6 +3383,7 @@ class Dataset:
         pattern="Examples:",
     )
     @PublicAPI(api_group=IM_API_GROUP)
+    @cache_result("count")
     def count(self) -> int:
         """Count the number of rows in the dataset.
 
@@ -3418,6 +3435,7 @@ class Dataset:
         pattern="Time complexity:",
     )
     @PublicAPI(api_group=IM_API_GROUP)
+    @cache_result("schema", include_params=["fetch_if_missing"])
     def schema(self, fetch_if_missing: bool = True) -> Optional["Schema"]:
         """Return the schema of the dataset.
 
@@ -3465,6 +3483,7 @@ class Dataset:
         pattern="Time complexity:",
     )
     @PublicAPI(api_group=IM_API_GROUP)
+    @cache_result("columns", include_params=["fetch_if_missing"])
     def columns(self, fetch_if_missing: bool = True) -> Optional[List[str]]:
         """Returns the columns of this Dataset.
 
@@ -3513,6 +3532,7 @@ class Dataset:
 
     @ConsumptionAPI
     @PublicAPI(api_group=IM_API_GROUP)
+    @cache_result("size_bytes")
     def size_bytes(self) -> int:
         """Return the in-memory size of the dataset.
 
@@ -3537,6 +3557,7 @@ class Dataset:
 
     @ConsumptionAPI
     @PublicAPI(api_group=IM_API_GROUP)
+    @cache_result("input_files")
     def input_files(self) -> List[str]:
         """Return the list of input files for the dataset.
 
@@ -5734,9 +5755,9 @@ class Dataset:
         import pyarrow as pa
 
         ref_bundles: Iterator[RefBundle] = self.iter_internal_ref_bundles()
-        block_refs: List[
-            ObjectRef["pyarrow.Table"]
-        ] = _ref_bundles_iterator_to_block_refs_list(ref_bundles)
+        block_refs: List[ObjectRef["pyarrow.Table"]] = (
+            _ref_bundles_iterator_to_block_refs_list(ref_bundles)
+        )
         # Schema is safe to call since we have already triggered execution with
         # iter_internal_ref_bundles.
         schema = self.schema(fetch_if_missing=True)
@@ -5781,6 +5802,9 @@ class Dataset:
 
     @ConsumptionAPI(pattern="store memory.", insert_after=True)
     @PublicAPI(api_group=E_API_GROUP)
+    @cache_result(
+        "materialize"
+    )  # Caches MaterializedDataset object (ObjectRef[Block] refs), not raw data
     def materialize(self) -> "MaterializedDataset":
         """Execute and materialize this dataset into object store memory.
 
@@ -5831,6 +5855,7 @@ class Dataset:
         return output
 
     @PublicAPI(api_group=IM_API_GROUP)
+    @cache_result("stats")
     def stats(self) -> str:
         """Returns a string containing execution timing information.
 

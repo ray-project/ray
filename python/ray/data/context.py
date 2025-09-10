@@ -498,9 +498,9 @@ class DataContext:
     )
     write_file_retry_on_errors: List[str] = DEFAULT_WRITE_FILE_RETRY_ON_ERRORS
     warn_on_driver_memory_usage_bytes: int = DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES
-    actor_task_retry_on_errors: Union[
-        bool, List[BaseException]
-    ] = DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS
+    actor_task_retry_on_errors: Union[bool, List[BaseException]] = (
+        DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS
+    )
     op_resource_reservation_enabled: bool = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
     op_resource_reservation_ratio: float = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
     max_errored_blocks: int = DEFAULT_MAX_ERRORED_BLOCKS
@@ -540,6 +540,14 @@ class DataContext:
     downstream_capacity_backpressure_max_queued_bundles: int = None
 
     enforce_schemas: bool = DEFAULT_ENFORCE_SCHEMAS
+
+    # Dataset caching configuration
+    enable_dataset_caching: bool = True
+    dataset_cache_max_size_bytes: int = 1024 * 1024 * 1024  # 1GB default
+    cache_location: Optional[str] = None  # None = use default temp location
+    memory_spill_threshold_bytes: int = (
+        100 * 1024 * 1024
+    )  # 100MB threshold for spilling to disk
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to

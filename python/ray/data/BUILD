@@ -122,6 +122,20 @@ py_test(
 )
 
 py_test(
+    name = "test_cache",
+    size = "small",
+    srcs = ["tests/test_cache.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_sql",
     size = "small",
     srcs = ["tests/test_sql.py"],
