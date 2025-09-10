@@ -14,7 +14,7 @@
 
 syntax = "proto3";
 
-package ray.rpc;
+package ray.rpc.events;
 
 import "src/ray/protobuf/common.proto";
 import "google/protobuf/timestamp.proto";

@@ -14,7 +14,7 @@
 
 syntax = "proto3";
 
-package ray.rpc;
+package ray.rpc.events;
 
 message ActorDefinitionEvent {
   // The ID of the actor that was created.
