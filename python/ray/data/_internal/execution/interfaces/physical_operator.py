@@ -325,8 +325,11 @@ class PhysicalOperator(Operator):
             `None` if the target max block size is not set, otherwise the target max block size.
             `None` means the block size is infinite.
         """
-        target_max_block_size = self.target_max_block_size
-        if target_max_block_size is None:
+        if self._output_block_size_option_override is not None:
+            target_max_block_size = (
+                self._output_block_size_option_override.target_max_block_size
+            )
+        else:
             target_max_block_size = self.data_context.target_max_block_size
         return target_max_block_size
 
