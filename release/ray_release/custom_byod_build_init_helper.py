@@ -9,13 +9,10 @@ from ray_release.test import Test
 def _generate_custom_build_step_key(image: str) -> str:
     # Buildkite step key cannot contain special characters, so they need to be replaced.
     # Buildkite also limits step key length to 80 characters.
-    return (
-        "custom_build_"
-        + image.replace("/", "_")
-        .replace(":", "_")
-        .replace(".", "_")
-        .replace("-", "_")[-40:]
+    image_name = (
+        image.replace("/", "_").replace(":", "_").replace(".", "_").replace("-", "_")
     )
+    return "custom_build_" + image_name[:30] + image_name[-30:]
 
 
 def get_images_from_tests(tests: List[Test]) -> List[Tuple[str, str, str]]:
