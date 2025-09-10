@@ -101,34 +101,41 @@ class ObjectManagerTest : public ::testing::Test {
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> rpc_work_;
 };
 
-TEST_F(ObjectManagerTest, TestHandleFreeObjectsIdempotent) {
+uint32_t NumRemoteFreeObjectsRequests(const ObjectManager &object_manager) {
+  uint32_t num_free_objects_requests = 0;
+  for (const auto &[node_id, rpc_client] :
+       object_manager.remote_object_manager_clients_) {
+    auto fake_rpc_client =
+        std::dynamic_pointer_cast<ray::rpc::FakeObjectManagerClient>(rpc_client);
+    num_free_objects_requests += fake_rpc_client->num_free_objects_requests;
+  }
+  return num_free_objects_requests;
+}
+
+TEST_F(ObjectManagerTest, TestFreeObjectsRemoteOnlyFalse) {
   auto object_id = ObjectID::FromRandom();
-  rpc::FreeObjectsRequest request;
-  request.add_object_ids(object_id.Binary());
+
+  absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_info_map_;
+  rpc::GcsNodeInfo self_node_info;
+  self_node_info.set_node_id(local_node_id_.Binary());
+  node_info_map_[local_node_id_] = self_node_info;
+  NodeID remote_node_id_ = NodeID::FromRandom();
+  rpc::GcsNodeInfo remote_node_info;
+  remote_node_info.set_node_id(remote_node_id_.Binary());
+  node_info_map_[remote_node_id_] = remote_node_info;
+
+  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, GetAll())
+      .WillOnce(::testing::ReturnRef(node_info_map_));
+  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, Get(remote_node_id_, _))
+      .WillOnce(::testing::Return(&remote_node_info));
+
   fake_plasma_client_->objects_in_plasma_[object_id] =
       std::make_pair(std::vector<uint8_t>(1), std::vector<uint8_t>(1));
-  ASSERT_TRUE(fake_plasma_client_->objects_in_plasma_.contains(object_id));
-  ASSERT_EQ(fake_plasma_client_->objects_in_plasma_.size(), 1);
-  rpc::FreeObjectsReply reply1;
-  object_manager_->HandleFreeObjects(
-      request,
-      &reply1,
-      [](Status status, std::function<void()> success, std::function<void()> failure) {
-        EXPECT_TRUE(status.ok());
-      });
+  object_manager_->FreeObjects({object_id}, false);
   ASSERT_EQ(fake_plasma_client_->num_free_objects_requests, 1);
   ASSERT_TRUE(!fake_plasma_client_->objects_in_plasma_.contains(object_id));
-  ASSERT_EQ(fake_plasma_client_->objects_in_plasma_.size(), 0);
-  rpc::FreeObjectsReply reply2;
-  object_manager_->HandleFreeObjects(
-      request,
-      &reply2,
-      [](Status status, std::function<void()> success, std::function<void()> failure) {
-        EXPECT_TRUE(status.ok());
-      });
-  ASSERT_EQ(fake_plasma_client_->num_free_objects_requests, 2);
-  ASSERT_TRUE(!fake_plasma_client_->objects_in_plasma_.contains(object_id));
-  ASSERT_EQ(fake_plasma_client_->objects_in_plasma_.size(), 0);
+  ASSERT_EQ(NumRemoteFreeObjectsRequests(*object_manager_), 0);
+  ASSERT_EQ(rpc_context_.poll_one(), 1);
 }
 
 }  // namespace ray

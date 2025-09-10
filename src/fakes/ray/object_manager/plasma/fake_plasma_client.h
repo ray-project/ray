@@ -44,8 +44,7 @@ class FakePlasmaClient : public PlasmaClientInterface {
                                 std::shared_ptr<Buffer> *data,
                                 plasma::flatbuf::ObjectSource source,
                                 int device_num = 0) override {
-    return TryCreateImmediately(
-        object_id, owner_address, data_size, metadata, metadata_size, data, source);
+    return Status::OK();
   }
 
   Status TryCreateImmediately(const ObjectID &object_id,

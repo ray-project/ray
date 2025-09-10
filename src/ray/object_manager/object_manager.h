@@ -273,6 +273,7 @@ class ObjectManager : public ObjectManagerInterface,
 
  private:
   friend class TestObjectManager;
+  friend uint32_t NumRemoteFreeObjectsRequests(const ObjectManager &object_manager);
 
   /// Spread the Free request to all objects managers.
   ///
