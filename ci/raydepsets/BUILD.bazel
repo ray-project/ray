@@ -35,6 +35,8 @@ py_test(
     name = "test_cli",
     srcs = ["tests/test_cli.py"],
     data = [
+        "tests/test_data/pre-hook-error-test.sh",
+        "tests/test_data/pre-hook-test.sh",
         "tests/test_data/requirement_constraints_test.txt",
         "tests/test_data/requirements_compiled_test.txt",
         "tests/test_data/requirements_compiled_test_expand.txt",

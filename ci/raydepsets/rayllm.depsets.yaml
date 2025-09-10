@@ -34,6 +34,8 @@ depsets:
       - /tmp/ray-deps/requirements_compiled.txt
     output: python/deplocks/llm/ray_test_${PYTHON_VERSION}_${CUDA_CODE}.lock
     operation: compile
+    pre_hooks:
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh
 
 # Second, expand it into LLM test dependencies.
   - name: compiled_ray_llm_test_depset_${PYTHON_VERSION}_${CUDA_CODE}
