@@ -3,7 +3,7 @@ import io
 from io import BytesIO
 from typing import Dict
 
-import os, boto3
+import boto3
 from botocore import UNSIGNED
 from botocore.config import Config
 
@@ -19,7 +19,6 @@ from torchvision import models
 from ray import serve
 from ray.serve.handle import DeploymentHandle
 from smart_open import open as smart_open
-from urllib.parse import urlparse
 
 # New dictionary mapping class names to labels.
 CLASS_TO_LABEL: Dict[str, int] = {
@@ -83,45 +82,27 @@ class ObjectDetection:
     def _load_faster_rcnn_model(self):
         """Loads the Faster R-CNN model from a remote source if not already available locally."""
         # Download model only once from the remote storage to the cluster path.
-        # if not os.path.exists(CLUSTER_MODEL_PATH):
-        #     with smart_open(REMOTE_MODEL_PATH, "rb") as s3_file:
-        #         with open(CLUSTER_MODEL_PATH, "wb") as local_file:
-        #             local_file.write(s3_file.read())
-        # if not os.path.exists(CLUSTER_MODEL_PATH):
-        #     s3 = boto3.Session().client("s3", config=Config(signature_version="unsigned"))
-        #     with smart_open(REMOTE_MODEL_PATH, "rb", transport_params={"client": s3}) as s3f, open(CLUSTER_MODEL_PATH, "wb") as out:
-        #         out.write(s3f.read())
-        # if not os.path.exists(CLUSTER_MODEL_PATH):
-        #     os.makedirs(os.path.dirname(CLUSTER_MODEL_PATH), exist_ok=True)
-        #     s3 = boto3.client("s3", config=Config(signature_version=UNSIGNED))  # <-- sentinel, not the string "unsigned"
-        #     with smart_open(REMOTE_MODEL_PATH, "rb", transport_params={"client": s3}) as src, open(CLUSTER_MODEL_PATH, "wb") as dst:
-        #         for chunk in iter(lambda: src.read(1024 * 1024), b""):
-        #             dst.write(chunk)
-
-        def to_https_from_s3(uri: str) -> str:
-            """
-            Convert s3://bucket/key (or s3a://, s3n://) to
-            https://bucket.s3.amazonaws.com/key. If already http(s), return as-is.
-            """
-            u = urlparse(uri)
-            if u.scheme in ("http", "https"):
-                return uri
-            if u.scheme in ("s3", "s3a", "s3n"):
-                bucket = u.netloc
-                key = u.path.lstrip("/")
-                if not bucket or not key:
-                    raise ValueError(f"Invalid S3 URI: {uri}")
-                return f"https://{bucket}.s3.amazonaws.com/{key}"
-            raise ValueError(f"Unsupported URI scheme in REMOTE_MODEL_PATH: {uri}")
-
-        HTTPS_URL = to_https_from_s3(REMOTE_MODEL_PATH)
-
-        # Stream-download once to cluster storage (no AWS creds needed for public object).
         if not os.path.exists(CLUSTER_MODEL_PATH):
             os.makedirs(os.path.dirname(CLUSTER_MODEL_PATH), exist_ok=True)
-            with smart_open(HTTPS_URL, "rb") as src, open(
-                CLUSTER_MODEL_PATH, "wb"
-            ) as dst:
+
+            # Create S3 client, falling back to unsigned for public buckets
+            session = boto3.Session()
+            # session.get_credentials() will return None if no credentials can be found.
+            if session.get_credentials():
+                # If credentials are found, use a standard signed client.
+                s3_client = session.client("s3")
+            else:
+                # No credentials found, fall back to an unsigned client for public buckets.
+                s3_client = boto3.client(
+                    "s3", config=Config(signature_version=UNSIGNED)
+                )
+
+            transport_params = {"client": s3_client}
+
+            # Stream-download from S3 to cluster storage
+            with smart_open(
+                REMOTE_MODEL_PATH, "rb", transport_params=transport_params
+            ) as src, open(CLUSTER_MODEL_PATH, "wb") as dst:
                 for chunk in iter(lambda: src.read(1024 * 1024), b""):
                     dst.write(chunk)
 
