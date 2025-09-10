@@ -3,6 +3,12 @@
 set -euo pipefail
 
 CONFIG_PATH="${1:-ci/raydepsets/rayllm.depsets.yaml}"
+CHECK_LOCK_FILES="${CHECK_LOCK_FILES:-false}"
+if [[ "${CHECK_LOCK_FILES}" == "true" ]]; then
+	CHECK_FLAG="--check"
+else
+	CHECK_FLAG=""
+fi
 
 PYTHON_CODE="$(python -c "import sys; v=sys.version_info; print(f'py{v.major}{v.minor}')")"
 if [[ "${PYTHON_CODE}" != "py311" ]]; then
@@ -18,6 +24,6 @@ cp python/requirements_compiled.txt /tmp/ray-deps/requirements_compiled.txt
 sed -e '/^--extra-index-url /d' -e '/^--find-links /d' /tmp/ray-deps/requirements_compiled.txt > /tmp/ray-deps/requirements_compiled.txt.tmp
 mv /tmp/ray-deps/requirements_compiled.txt.tmp /tmp/ray-deps/requirements_compiled.txt
 
-bazel run //ci/raydepsets:raydepsets -- build "${CONFIG_PATH}"
+bazel run //ci/raydepsets:raydepsets -- build "${CONFIG_PATH}" ${CHECK_FLAG}
 
 echo "--- Done"
