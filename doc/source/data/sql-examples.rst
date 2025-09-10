@@ -19,7 +19,7 @@ Start with simple SELECT operations to explore your data:
 .. testcode::
 
     import ray
-    from ray.data.sql import sql, register_table
+    import ray.data.sql sql, register_table
 
     # Create sample data
     users = ray.data.from_items([
@@ -33,7 +33,7 @@ Start with simple SELECT operations to explore your data:
     register_table("users", users)
     
     # Execute basic queries
-    result = sql("SELECT name, age FROM users WHERE age > 27")
+    result = ray.data.sql("SELECT name, age FROM users WHERE age > 27")
     print("Users over 27:")
     for row in result.take(10):
         print(f"  {row['name']}: {row['age']}")
@@ -189,7 +189,7 @@ Apply filters early to reduce data processing:
     register_table("large_data", large_dataset)
     
     # Efficient query with early filtering
-    filtered_result = sql("""
+    filtered_result = ray.data.sql("""
         SELECT category, COUNT(*) as count, AVG(value) as avg_value
         FROM large_data
         WHERE active = true AND value > 100
@@ -218,7 +218,7 @@ Configure the SQL engine for specific requirements:
 
 .. testcode::
 
-    from ray.data.sql import SQLConfig, LogLevel
+    import ray.data.sql SQLConfig, LogLevel
     from ray.data import DataContext
 
     # Development configuration with verbose logging
@@ -243,7 +243,7 @@ Configure the SQL engine for specific requirements:
         ctx.sql_config = prod_config
         
         # This query uses the production configuration
-        result = sql("SELECT COUNT(*) as total FROM users")
+        result = ray.data.sql("SELECT COUNT(*) as total FROM users")
         print(f"Total users: {result.take(1)[0]['total']}")
 
 .. testoutput::
@@ -260,12 +260,12 @@ Handle common SQL errors gracefully in your applications:
 
 .. testcode::
 
-    from ray.data.sql import list_tables, get_schema
+    import ray.data.sql list_tables, get_schema
 
     def safe_sql_query(query, description="query"):
         """Execute SQL with comprehensive error handling."""
         try:
-            result = sql(query)
+            result = ray.data.sql(query)
             return result
         except ValueError as e:
             if "table" in str(e).lower():
@@ -361,7 +361,7 @@ Clean up resources when you're done:
 
 .. testcode::
 
-    from ray.data.sql import clear_tables, list_tables
+    import ray.data.sql clear_tables, list_tables
 
     # Check current tables
     print(f"Tables before cleanup: {list_tables()}")

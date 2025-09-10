@@ -63,6 +63,9 @@ class ProjectionAnalyzer:
         # Logger for debugging projection analysis
         self._logger = setup_logger("ProjectionAnalyzer")
 
+        # Cache for compiled projections
+        self._projection_cache: Dict[str, Tuple[List[str], List[Callable]]] = {}
+
     def analyze_projections(
         self,
         select_exprs: List[exp.Expression],

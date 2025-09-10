@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from sqlglot import exp
 
 import ray.data
+import ray.data.aggregate as agg_module
 from ..compiler.expressions import ExpressionCompiler
 from ..registry.base import TableRegistry
 from ray.data import Dataset
@@ -298,8 +299,8 @@ class JoinHandler:
         self._logger.debug(
             f"Executing {join_info.join_type.upper()} JOIN: {resolved_left_columns} = {resolved_right_columns}"
         )
-        self._logger.debug(f"Left dataset count: {left_dataset.count()}")
-        self._logger.debug(f"Right dataset count: {join_info.right_dataset.count()}")
+        # Avoid expensive count() operations in debug logging
+        self._logger.debug(f"JOIN operation starting with resolved columns")
 
         # Use Ray Dataset API join method for ALL join types (Ray's native join works correctly)
         # join(ds, join_type, num_partitions, on, right_on, left_suffix, right_suffix, ...)
@@ -315,7 +316,7 @@ class JoinHandler:
             right_suffix=join_info.right_suffix,  # Suffix for right operand columns
         )
 
-        self._logger.debug(f"Join result: {result.count()} rows")
+        self._logger.debug(f"JOIN operation completed successfully")
         return result
 
     def _create_column_mapping(
@@ -444,8 +445,6 @@ class AggregateAnalyzer:
             NotImplementedError: If aggregate function is not supported.
             ValueError: If aggregate specification is invalid.
         """
-        import ray.data.aggregate as agg_module
-
         aggregates = []
         renames = {}
         cols = list(dataset.columns()) if dataset else []

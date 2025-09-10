@@ -156,6 +156,7 @@ class TableRegistry:
             TypeError: If dataset is not a Ray Dataset.
             ValueError: If name is invalid or reserved.
         """
+        # Simple validation
         if not isinstance(dataset, Dataset):
             raise TypeError(f"Expected Ray Dataset, got {type(dataset)}")
 
@@ -166,18 +167,18 @@ class TableRegistry:
         if name.lower() in self.SQL_RESERVED_WORDS:
             raise ValueError(f"Table name '{name}' is a SQL reserved word")
 
-        # Check for invalid characters
-        if not name.replace("_", "").replace("-", "").isalnum():
+        # Basic character validation
+        if not name.replace("_", "").isalnum():
             raise ValueError(
-                "Table name can only contain alphanumeric characters, underscores, and hyphens"
+                "Table name can only contain alphanumeric characters and underscores"
             )
 
-        # Check for length limits
+        # Length check
         if len(name) > 64:
             raise ValueError("Table name cannot exceed 64 characters")
 
         self._tables[name] = dataset
-        self._logger.debug(f"Registered table '{name}' with {dataset.count()} rows")
+        self._logger.debug(f"Registered table '{name}'")
 
     def get(self, name: str) -> Dataset:
         """Retrieve a registered dataset by table name.

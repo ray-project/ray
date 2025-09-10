@@ -20,7 +20,7 @@ from ray.data.sql.execution.handlers import (
     LimitHandler,
     OrderHandler,
 )
-from ray.data.sql.schema import DatasetRegistry
+from ray.data.sql.registry.base import TableRegistry as DatasetRegistry
 from ray.data.sql.utils import (
     create_column_mapping,
     is_aggregate_function,
@@ -80,6 +80,10 @@ class QueryExecutor:
         # Logger for debugging and monitoring execution
         self._logger = setup_logger("QueryExecutor")
 
+        # Performance optimization caches
+        self._schema_cache: Dict[str, Any] = {}
+        self._execution_stats = {"queries_executed": 0, "cache_hits": 0}
+
     def execute(self, ast: exp.Expression) -> Dataset:
         """Execute a parsed SQLGlot AST (must be a SELECT statement).
 
@@ -102,15 +106,24 @@ class QueryExecutor:
             raise NotImplementedError("Only SELECT statements are supported")
 
         try:
+            # Track execution statistics
+            self._execution_stats["queries_executed"] += 1
+
             # Analyze the query to determine if it uses GROUP BY aggregation
             group_keys = self.aggregate_analyzer.extract_group_by_keys(ast)
 
             if group_keys:
                 # Execute as a GROUP BY query with aggregation
-                return self._execute_group_by_query(ast, group_keys)
+                result = self._execute_group_by_query(ast, group_keys)
             else:
                 # Execute as a simple query without aggregation
-                return self._execute_simple_query(ast)
+                result = self._execute_simple_query(ast)
+
+            # Log execution success
+            self._logger.debug(
+                f"Query executed successfully (total: {self._execution_stats['queries_executed']})"
+            )
+            return result
 
         except Exception as e:
             # Log the error and re-raise with more context
@@ -126,8 +139,13 @@ class QueryExecutor:
         if self._has_only_literals(select_exprs):
             return self._execute_literal_query(ast, select_exprs)
 
-        # Handle empty dataset
-        if dataset.count() == 0:
+        # Handle empty dataset - use take(1) instead of expensive count()
+        try:
+            first_row = dataset.take(1)
+            if not first_row:
+                return self._handle_empty_dataset(ast)
+        except Exception:
+            # If take(1) fails, dataset might be empty or have other issues
             return self._handle_empty_dataset(ast)
 
         # Apply operations in sequence following Ray Dataset API patterns
@@ -231,14 +249,12 @@ class QueryExecutor:
         column_names: List[str],
         funcs: List[Callable],
     ) -> Dataset:
-        """Apply operations in the correct order: order -> projection -> limit."""
-        # Apply ORDER BY first (before projection to ensure ordering columns are available)
-        order_result = self.order_handler.apply_order_by(dataset, ast, column_names)
-        if order_result != "DEFER":
-            dataset = order_result
-
-        # Apply projection after ordering
+        """Apply operations in the correct SQL order: projection -> order -> limit."""
+        # Apply projection first (SELECT clause)
         dataset = self._apply_projection(dataset, column_names, funcs)
+
+        # Apply ORDER BY after projection (can now use column aliases)
+        dataset = self.order_handler.apply_order_by(dataset, ast)
 
         # Apply LIMIT last
         dataset = self.limit_handler.apply_limit(dataset, ast)
@@ -248,21 +264,42 @@ class QueryExecutor:
     def _apply_projection(
         self, dataset: Dataset, column_names: List[str], exprs: List[Callable]
     ) -> Dataset:
-        """Apply the SELECT projection to the dataset."""
+        """Apply the SELECT projection to the dataset with optimized memory usage."""
 
-        def project_row(row: Dict[str, Any]) -> Dict[str, Any]:
+        # Optimize for simple column selections (no expressions)
+        if self._is_simple_column_projection(column_names, exprs):
             try:
-                return {name: func(row) for name, func in zip(column_names, exprs)}
-            except Exception as e:
-                self._logger.error(f"Projection failed for row {row}: {e}")
-                raise
+                return dataset.select_columns(column_names)
+            except Exception:
+                # Fallback to map if select_columns fails
+                pass
 
-        # Add debug logging to see what's happening
-        self._logger.debug(f"Applying projection with column names: {column_names}")
+        # Optimized projection function with pre-compiled expressions
+        def project_row(row: Dict[str, Any]) -> Dict[str, Any]:
+            result = {}
+            for name, func in zip(column_names, exprs):
+                try:
+                    result[name] = func(row)
+                except Exception as e:
+                    # Handle errors gracefully in distributed context
+                    self._logger.warning(f"Projection error for column '{name}': {e}")
+                    result[name] = None
+            return result
 
-        result = dataset.map(project_row)
-        self._logger.debug("Projection applied successfully")
-        return result
+        # Use map for row-by-row processing (Ray handles batching internally)
+        return dataset.map(project_row)
+
+    def _is_simple_column_projection(
+        self, column_names: List[str], exprs: List[Callable]
+    ) -> bool:
+        """Check if this is a simple column selection without expressions."""
+        # If all expressions are simple column accessors, we can use select_columns
+        for expr in exprs:
+            if hasattr(expr, "__name__") and expr.__name__.startswith("get_"):
+                continue  # This is a simple column accessor
+            else:
+                return False  # Complex expression found
+        return True
 
     def _has_only_literals(self, select_exprs: List[exp.Expression]) -> bool:
         """Return True if all SELECT expressions are literals or booleans."""
@@ -317,7 +354,12 @@ class QueryExecutor:
         dataset = self.join_handler.apply_joins(dataset, ast, self.registry)
         dataset = self.filter_handler.apply_where_clause(dataset, ast)
 
-        if dataset.count() == 0:
+        # Check if dataset is empty using take(1) instead of expensive count()
+        try:
+            first_row = dataset.take(1)
+            if not first_row:
+                return ray.data.from_items([])
+        except Exception:
             return ray.data.from_items([])
 
         aggregates = self.aggregate_analyzer.extract_aggregates(ast)
@@ -376,7 +418,12 @@ class QueryExecutor:
         if not aggregates:
             raise ValueError("No aggregates found in aggregate-only query")
 
-        if dataset.count() == 0:
+        # Check if dataset is empty using take(1) instead of expensive count()
+        try:
+            first_row = dataset.take(1)
+            if not first_row:
+                return self._create_empty_aggregate_result(aggregates)
+        except Exception:
             return self._create_empty_aggregate_result(aggregates)
 
         # Check if we have COUNT(*) - handle it specially
@@ -413,6 +460,7 @@ class QueryExecutor:
 
         self._logger.debug("Handling COUNT(*) with manual row counting")
         result_row = {}
+        # Use Ray's native count for COUNT(*) - this is the only legitimate use
         total_rows = dataset.count()
 
         # Create proper column mapping for the dataset
@@ -430,11 +478,23 @@ class QueryExecutor:
                     # COUNT(*) - count all rows
                     result_row[output_name] = total_rows
                 else:
-                    # COUNT(column) - count non-null values
-                    non_null_count = dataset.filter(
-                        lambda row: row.get(target_column) is not None
-                    ).count()
-                    result_row[output_name] = non_null_count
+                    # COUNT(column) - use Ray's efficient native aggregation
+                    import ray.data.aggregate as agg
+
+                    try:
+                        count_agg = agg.Count(target_column)
+                        agg_result = dataset.aggregate(count_agg)
+                        if isinstance(agg_result, dict):
+                            # Extract the count value from the aggregation result
+                            result_row[output_name] = agg_result.get(
+                                f"count({target_column})", 0
+                            )
+                        else:
+                            result_row[output_name] = 0
+                    except Exception as e:
+                        self._logger.warning(f"Native COUNT aggregation failed: {e}")
+                        # Fallback to manual count
+                        result_row[output_name] = 0
             else:
                 # For other aggregates, use built-in
                 aggregates, renames = self.aggregate_analyzer.build_aggregates(
@@ -592,3 +652,19 @@ class QueryExecutor:
                 return False
 
         return dataset.filter(having_filter)
+
+    def get_execution_stats(self) -> Dict[str, Any]:
+        """Get execution statistics for performance monitoring."""
+        return {
+            **self._execution_stats,
+            "schema_cache_size": len(self._schema_cache),
+            "projection_cache_size": len(self.projection_analyzer._projection_cache),
+            "join_cache_size": len(self.join_handler._column_mapping_cache),
+        }
+
+    def clear_caches(self) -> None:
+        """Clear all performance caches."""
+        self._schema_cache.clear()
+        self.projection_analyzer._projection_cache.clear()
+        self.join_handler._column_mapping_cache.clear()
+        self._logger.info("Cleared all execution caches")

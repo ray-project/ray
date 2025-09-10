@@ -18,7 +18,7 @@ class FeatureValidator(SQLValidator):
     """
 
     # Supported SQL statement types
-    SUPPORTED_STATEMENTS = {exp.Select}
+    SUPPORTED_STATEMENTS = {exp.Select, exp.Union, exp.CTE}
 
     # Supported expression types for WHERE clauses
     SUPPORTED_WHERE_EXPRESSIONS = {
@@ -50,6 +50,18 @@ class FeatureValidator(SQLValidator):
         exp.Cast,  # Type casting
         exp.Case,  # CASE expressions
         exp.Subquery,  # Now supported in FROM and WHERE clauses
+        # String functions
+        exp.Upper,
+        exp.Lower,
+        exp.Length,
+        exp.Substring,
+        exp.Trim,
+        exp.Concat,
+        # Math functions
+        exp.Abs,
+        exp.Round,
+        exp.Ceil,
+        exp.Floor,
     }
 
     # Supported aggregate functions
@@ -81,7 +93,6 @@ class FeatureValidator(SQLValidator):
     # Unsupported features that should raise clear errors
     UNSUPPORTED_FEATURES = {
         exp.Distinct: "DISTINCT is not yet supported. Use ray.data.Dataset.unique() after the query",
-        exp.Union: "UNION is not yet supported. Use ray.data.Dataset.union() to combine datasets",
         exp.Intersect: "INTERSECT is not yet supported",
         exp.Except: "EXCEPT is not yet supported",
         exp.Window: "Window functions are not yet supported",
@@ -108,7 +119,7 @@ class FeatureValidator(SQLValidator):
         ):
             statement_type = type(ast).__name__
             raise ValueError(
-                f"{statement_type} statements are not supported. Only SELECT statements are currently supported"
+                f"{statement_type} statements are not supported. Only SELECT and UNION statements are currently supported"
             )
 
         # Check for unsupported features in the AST
@@ -117,6 +128,9 @@ class FeatureValidator(SQLValidator):
         # Validate SELECT-specific constructs
         if isinstance(ast, exp.Select):
             self._validate_select_statement(ast, query)
+        elif isinstance(ast, exp.Union):
+            # Validate UNION operations
+            self._validate_union_statement(ast, query)
 
     def _check_unsupported_features(self, ast: exp.Expression, query: str) -> None:
         """Check for unsupported features in the AST."""
@@ -188,10 +202,19 @@ class FeatureValidator(SQLValidator):
             elif isinstance(expr, exp.Identifier):
                 # Column identifier - supported
                 continue
+            elif isinstance(expr, exp.Case):
+                # CASE expressions in GROUP BY - supported
+                continue
+            elif isinstance(expr, (exp.Add, exp.Sub, exp.Mul, exp.Div)):
+                # Arithmetic expressions in GROUP BY - supported
+                continue
+            elif isinstance(expr, (exp.Upper, exp.Lower, exp.Length)):
+                # String functions in GROUP BY - supported
+                continue
             else:
-                # Complex expressions in GROUP BY not yet supported
+                # Other complex expressions in GROUP BY not yet supported
                 raise ValueError(
-                    f"Complex expressions in GROUP BY are not yet supported: {type(expr).__name__}"
+                    f"Complex expressions in GROUP BY are not yet supported: {type(expr).__name__}. Supported: columns, CASE, arithmetic, string functions"
                 )
 
     def _validate_order_by(self, order_by: exp.Order, query: str) -> None:
@@ -311,3 +334,17 @@ class FeatureValidator(SQLValidator):
         )
 
         return features
+
+    def _validate_union_statement(self, ast: exp.Union, query: str) -> None:
+        """Validate UNION statement."""
+        # Validate left side of UNION
+        if isinstance(ast.left, exp.Select):
+            self._validate_select_statement(ast.left, query)
+        elif isinstance(ast.left, exp.Union):
+            self._validate_union_statement(ast.left, query)
+
+        # Validate right side of UNION
+        if isinstance(ast.right, exp.Select):
+            self._validate_select_statement(ast.right, query)
+        elif isinstance(ast.right, exp.Union):
+            self._validate_union_statement(ast.right, query)

@@ -401,8 +401,13 @@ SUPPORTED_CONSTRUCTS: Set[Type[exp.Expression]] = {
     exp.Having,
     exp.Order,
     exp.Limit,
+    exp.Offset,  # Added OFFSET support
     # Join operations
     exp.Join,
+    # Set operations
+    exp.Union,  # Added UNION support
+    # CTE support
+    exp.CTE,  # Added CTE support
     # Expressions
     exp.Column,
     exp.Literal,
@@ -417,20 +422,11 @@ SUPPORTED_CONSTRUCTS: Set[Type[exp.Expression]] = {
     # Basic table references
     exp.Table,
     exp.TableAlias,
+    exp.Subquery,  # Added subquery support
 }
 
 # Unsupported SQL constructs with reasons
 UNSUPPORTED_CONSTRUCTS: Dict[Type[exp.Expression], Dict[str, str]] = {
-    exp.CTE: {
-        "name": "Common Table Expressions (WITH)",
-        "reason": "CTEs not implemented",
-        "suggestion": "Break complex queries into multiple steps using intermediate tables",
-    },
-    exp.Union: {
-        "name": "UNION",
-        "reason": "Set operations not implemented",
-        "suggestion": "Use Dataset.union() method instead",
-    },
     exp.Intersect: {
         "name": "INTERSECT",
         "reason": "Set operations not implemented",

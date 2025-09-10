@@ -6,7 +6,8 @@ that can be used with Ray Dataset operations.
 
 import math
 import operator
-from typing import Any, Callable, Dict, Mapping
+from functools import lru_cache
+from typing import Any, Callable, Dict, Mapping, Optional
 
 from sqlglot import exp
 
@@ -18,7 +19,13 @@ class ExpressionCompiler:
 
     This class converts SQL expressions into Python callables that can be
     used with Ray Dataset operations like map(), filter(), and aggregate().
+
+    The compiler uses caching and optimized patterns for better performance
+    in distributed Ray Dataset operations.
     """
+
+    # Expression compilation cache for performance
+    _compilation_cache: Dict[str, Callable] = {}
 
     # Comparison operators mapping
     COMPARISON_OPS = {
@@ -80,32 +87,76 @@ class ExpressionCompiler:
 
     @classmethod
     def compile(cls, expr: exp.Expression) -> Callable[[Mapping[str, Any]], Any]:
+        """Compile with caching for performance."""
+        # Create cache key from expression
+        expr_key = cls._get_expression_cache_key(expr)
+
+        # Check cache first
+        if expr_key in cls._compilation_cache:
+            return cls._compilation_cache[expr_key]
+
+        # Compile and cache
+        compiled_func = cls._compile_expression(expr)
+
+        # Cache with size limit
+        if len(cls._compilation_cache) >= 1000:  # Prevent memory bloat
+            # Remove oldest entry (simple FIFO)
+            oldest_key = next(iter(cls._compilation_cache))
+            del cls._compilation_cache[oldest_key]
+
+        cls._compilation_cache[expr_key] = compiled_func
+        return compiled_func
+
+    @classmethod
+    def _get_expression_cache_key(cls, expr: exp.Expression) -> str:
+        """Generate a cache key for an expression."""
+        return f"{type(expr).__name__}:{str(expr)}"
+
+    @classmethod
+    def _compile_expression(
+        cls, expr: exp.Expression
+    ) -> Callable[[Mapping[str, Any]], Any]:
         """Compile a SQLGlot expression into a Python function.
 
+        This method converts SQL expressions into executable Python functions that
+        can be used with Ray Dataset operations like map(), filter(), and aggregate().
+        The compiled functions follow Ray Dataset API patterns and handle NULL values
+        appropriately.
+
         Args:
-            expr: SQLGlot expression to compile.
+            expr: SQLGlot expression to compile (column references, literals, operators, functions).
 
         Returns:
             Callable function that takes a row dict and returns the computed value.
+            The function handles NULL values and type conversions according to SQL semantics.
 
         Raises:
             UnsupportedOperationError: If the expression type is not supported.
+
+        Examples:
+            Compile a column reference:
+                >>> func = ExpressionCompiler.compile(Column(this=Identifier(this="age")))
+                >>> result = func({"age": 25, "name": "Alice"})  # Returns 25
+
+            Compile an arithmetic expression:
+                >>> func = ExpressionCompiler.compile(Add(left=Column(...), right=Literal(this=10)))
+                >>> result = func({"value": 5})  # Returns 15
         """
         expr_type = type(expr)
 
-        # Column references
+        # Optimized column references
         if isinstance(expr, exp.Column):
             col_name = str(expr.name)
-            return lambda row: row.get(col_name)
+            # Handle table-qualified column names efficiently
+            if "." in col_name:
+                col_name = col_name.split(".")[-1]
 
-        # Table-qualified column references
-        if isinstance(expr, exp.Column) and expr.table:
-            col_name = str(expr.name)
-            return lambda row: row.get(col_name)  # For now, ignore table qualification
+            # Use optimized column accessor for better performance
+            return cls._create_column_accessor(col_name)
 
         # Literal values
         if isinstance(expr, exp.Literal):
-            value = expr.this
+            value = cls._parse_literal(expr)
             return lambda _: value
 
         # Comparison operators
@@ -665,3 +716,62 @@ class ExpressionCompiler:
             return 1
 
         return window_func
+
+    @classmethod
+    def _parse_literal(cls, literal_expr: exp.Literal) -> Any:
+        """Parse a SQLGlot literal into a Python value.
+
+        Args:
+            literal_expr: SQLGlot literal expression.
+
+        Returns:
+            Parsed Python value with appropriate type.
+        """
+        value = literal_expr.this
+
+        # Handle different literal types
+        if literal_expr.is_string:
+            return str(value)
+        elif literal_expr.is_number:
+            # Try to parse as int first, then float
+            try:
+                if "." in str(value):
+                    return float(value)
+                else:
+                    return int(value)
+            except (ValueError, TypeError):
+                return str(value)
+        elif str(value).lower() in ("true", "false"):
+            return str(value).lower() == "true"
+        elif str(value).lower() in ("null", "none"):
+            return None
+        else:
+            # Default to string representation
+            return str(value)
+
+    @classmethod
+    def _create_column_accessor(
+        cls, col_name: str
+    ) -> Callable[[Mapping[str, Any]], Any]:
+        """Create an optimized column accessor function.
+
+        This creates a closure that avoids string operations on each call
+        for better performance in distributed operations.
+        """
+
+        def column_accessor(row: Mapping[str, Any]) -> Any:
+            return row.get(col_name)
+
+        # Add column name as attribute for debugging
+        column_accessor.__name__ = f"get_{col_name}"
+        return column_accessor
+
+    @classmethod
+    def clear_compilation_cache(cls) -> None:
+        """Clear the expression compilation cache."""
+        cls._compilation_cache.clear()
+
+    @classmethod
+    def get_cache_stats(cls) -> Dict[str, int]:
+        """Get compilation cache statistics."""
+        return {"cache_size": len(cls._compilation_cache), "cache_limit": 1000}

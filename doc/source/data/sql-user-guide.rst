@@ -21,7 +21,7 @@ Ray Data SQL supports various join types for combining datasets:
 .. testcode::
 
     import ray.data
-    from ray.data.sql import register_table, sql
+    import ray.data.sql register_table, sql
 
     # Sample data for advanced join examples
     employees = ray.data.from_items([
@@ -41,7 +41,7 @@ Ray Data SQL supports various join types for combining datasets:
     register_table("departments", departments)
 
     # Self-join to find manager-employee relationships
-    result = sql("""
+    result = ray.data.sql("""
         SELECT e.name as employee, 
                m.name as manager,
                e.salary
@@ -50,7 +50,7 @@ Ray Data SQL supports various join types for combining datasets:
     """)
 
     # Multi-table joins with aggregation
-    result = sql("""
+    result = ray.data.sql("""
         SELECT d.name as department,
                d.budget,
                COUNT(e.id) as employee_count,
@@ -96,7 +96,7 @@ Use subqueries and Common Table Expressions for complex data analysis:
     """)
 
     # Common Table Expression (CTE)
-    result = sql("""
+    result = ray.data.sql("""
         WITH dept_stats AS (
             SELECT dept_id,
                    AVG(salary) as avg_salary,
@@ -159,7 +159,7 @@ Ray Data SQL automatically infers data types from your datasets:
 
 .. testcode::
 
-    from ray.data.sql import get_schema
+    import ray.data.sql get_schema
 
     # Check inferred schema
     schema = get_schema("employees")
@@ -182,7 +182,7 @@ Perform explicit type conversions in your queries:
 .. testcode::
 
     # Cast operations
-    result = sql("""
+    result = ray.data.sql("""
         SELECT id,
                CAST(value AS FLOAT) as numeric_value,
                COALESCE(note, 'no note') as note_with_default,
@@ -204,7 +204,7 @@ Follow these best practices for optimal performance:
 
 .. testcode::
 
-    from ray.data.sql import SQLConfig, LogLevel
+    import ray.data.sql SQLConfig, LogLevel
 
     # Enable query optimization
     config = SQLConfig(
@@ -244,10 +244,10 @@ Select only the columns you need:
 .. testcode::
 
     # GOOD: Select specific columns
-    result = sql("SELECT name, salary FROM employees WHERE dept_id = 10")
+    result = ray.data.sql("SELECT name, salary FROM employees WHERE dept_id = 10")
     
     # AVOID: Select all columns when you don't need them
-    # result = sql("SELECT * FROM employees WHERE dept_id = 10")
+    # result = ray.data.sql("SELECT * FROM employees WHERE dept_id = 10")
 
 Partitioning and data layout
 ----------------------------
@@ -268,7 +268,7 @@ For large datasets, consider data partitioning:
     register_table("sales", partitioned)
     
     # Queries on partitioned data are more efficient
-    result = sql("""
+    result = ray.data.sql("""
         SELECT region, SUM(sales) as total_sales
         FROM sales
         WHERE date = '2024-01-01'  -- Efficient partition pruning
@@ -285,7 +285,7 @@ Ray Data SQL provides extensive configuration options for different environments
 
 .. testcode::
 
-    from ray.data.sql import SQLConfig, LogLevel
+    import ray.data.sql SQLConfig, LogLevel
     from ray.data import DataContext
 
     # Development configuration - verbose logging and strict checking
@@ -334,7 +334,7 @@ Ray Data SQL provides extensive configuration options for different environments
     # Apply configuration for a session
     with DataContext() as ctx:
         ctx.sql_config = production_config
-        result = sql("SELECT * FROM employees")
+        result = ray.data.sql("SELECT * FROM employees")
 
 SQL dialect handling
 --------------------
@@ -395,7 +395,7 @@ Ray Data SQL uses SQLGlot for parsing and supports multiple SQL dialects:
     with DataContext() as ctx:
         ctx.sql_config = config
         # Query is automatically converted to DuckDB-compatible syntax
-        result = sql(postgres_query)
+        result = ray.data.sql(postgres_query)
 
 Advanced Configuration Options
 ------------------------------
@@ -475,7 +475,7 @@ Handle large datasets efficiently:
 .. testcode::
 
     # For very large datasets, use streaming processing
-    large_result = sql("""
+    large_result = ray.data.sql("""
         SELECT user_id, COUNT(*) as action_count
         FROM user_actions
         GROUP BY user_id
@@ -498,7 +498,7 @@ Understanding Current Limitations
 
     # ❌ NOT SUPPORTED: Window functions (limited support)
     try:
-        result = sql("""
+        result = ray.data.sql("""
             SELECT name, salary,
                    ROW_NUMBER() OVER (PARTITION BY dept_id ORDER BY salary DESC) as rank
             FROM employees
@@ -515,16 +515,16 @@ Understanding Current Limitations
 
     # ❌ NOT SUPPORTED: User-defined functions
     try:
-        result = sql("SELECT custom_function(name) FROM employees")
+        result = ray.data.sql("SELECT custom_function(name) FROM employees")
     except Exception:
         # ✅ WORKAROUND: Use Ray Data map operations
-        result = sql("SELECT name FROM employees")
+        result = ray.data.sql("SELECT name FROM employees")
         transformed = result.map(lambda row: {"custom_result": custom_function(row["name"])})
 
     # ❌ NOT SUPPORTED: Recursive CTEs
     # .. vale off
     try:
-        result = sql("""
+        result = ray.data.sql("""
             WITH RECURSIVE employee_hierarchy AS (
                 SELECT id, name, manager_id, 0 as level FROM employees WHERE manager_id IS NULL
                 UNION ALL
@@ -606,11 +606,11 @@ Data Type Limitations
     register_table("nested_data", nested_data)
     
     # ✅ WORKS: Simple field access
-    result = sql("SELECT id, nested_dict FROM nested_data")
+    result = ray.data.sql("SELECT id, nested_dict FROM nested_data")
     
     # ❌ LIMITED: Complex nested operations
     try:
-        result = sql("SELECT nested_dict.key FROM nested_data")
+        result = ray.data.sql("SELECT nested_dict.key FROM nested_data")
     except Exception:
         # ✅ WORKAROUND: Use Ray Data for complex nested access
         result = nested_data.map(lambda row: {"key": row["nested_dict"]["key"]})
@@ -711,33 +711,33 @@ Common Error Patterns and Solutions
 
     try:
         # Common syntax error: missing quotes
-        result = sql("SELECT name FROM employees WHERE dept = Engineering")
+        result = ray.data.sql("SELECT name FROM employees WHERE dept = Engineering")
     except Exception as e:
         print(f"Syntax error: {e}")
         # Fix: Add quotes around string literal
-        result = sql("SELECT name FROM employees WHERE dept = 'Engineering'")
+        result = ray.data.sql("SELECT name FROM employees WHERE dept = 'Engineering'")
 
     try:
         # Common error: column name typos
-        result = sql("SELECT employe_name FROM employees")  # Typo in column name
+        result = ray.data.sql("SELECT employe_name FROM employees")  # Typo in column name
     except ValueError as e:
         print(f"Column error: {e}")
         # Fix: Check available columns
-        from ray.data.sql import get_schema
+        import ray.data.sql get_schema
         schema = get_schema("employees")
         print(f"Available columns: {schema.column_names}")
-        result = sql("SELECT employee_name FROM employees")
+        result = ray.data.sql("SELECT employee_name FROM employees")
 
 **Table and Registration Errors**
 
 .. testcode::
 
     try:
-        result = sql("SELECT * FROM nonexistent_table")
+        result = ray.data.sql("SELECT * FROM nonexistent_table")
     except ValueError as e:
         print(f"Table error: {e}")
         # Check what tables are available
-        from ray.data.sql import list_tables
+        import ray.data.sql list_tables
         print(f"Available tables: {list_tables()}")
 
 **Memory and Performance Errors**
@@ -746,7 +746,7 @@ Common Error Patterns and Solutions
 
     try:
         # Query that might run out of memory
-        large_result = sql("""
+        large_result = ray.data.sql("""
             SELECT a.*, b.*
             FROM large_table_a a
             CROSS JOIN large_table_b b
@@ -757,7 +757,7 @@ Common Error Patterns and Solutions
         config = SQLConfig(enable_streaming_execution=True)
         with DataContext() as ctx:
             ctx.sql_config = config
-            result = sql("""
+            result = ray.data.sql("""
                 SELECT a.id, b.id
                 FROM large_table_a a
                 JOIN large_table_b b ON a.key = b.key
@@ -771,7 +771,7 @@ Advanced Debugging Techniques
 
 .. testcode::
 
-    from ray.data.sql import SQLConfig, LogLevel
+    import ray.data.sql SQLConfig, LogLevel
     import time
 
     # Comprehensive debugging configuration
@@ -795,7 +795,7 @@ Advanced Debugging Techniques
                 ctx.sql_config = debug_config
                 
                 # Execute query
-                result = sql(query)
+                result = ray.data.sql(query)
                 
                 # Get execution stats
                 execution_time = time.time() - start_time
@@ -931,7 +931,7 @@ Resource Management
 .. testcode::
 
     # Clean up tables when done
-    from ray.data.sql import clear_tables, list_tables
+    import ray.data.sql clear_tables, list_tables
 
     # Check current tables
     print(f"Active tables: {list_tables()}")
@@ -953,7 +953,7 @@ Monitor SQL query performance in production:
 .. testcode::
 
     import time
-    from ray.data.sql import SQLConfig, LogLevel
+    import ray.data.sql SQLConfig, LogLevel
 
     # Enable detailed logging for production monitoring
     config = SQLConfig(
@@ -964,7 +964,7 @@ Monitor SQL query performance in production:
     def monitored_sql(query):
         start_time = time.time()
         try:
-            result = sql(query)
+            result = ray.data.sql(query)
             execution_time = time.time() - start_time
             row_count = result.count()
             
@@ -996,7 +996,7 @@ Test your SQL queries systematically:
         register_table("test_employees", test_employees)
         
         # Test query
-        result = sql("""
+        result = ray.data.sql("""
             SELECT dept_id, AVG(salary) as avg_salary
             FROM test_employees
             GROUP BY dept_id

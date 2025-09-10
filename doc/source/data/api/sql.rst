@@ -4,14 +4,18 @@
 Ray Data SQL API
 =================
 
+.. warning::
+    Ray Data SQL is currently experimental and APIs are subject to change.
+
 This page provides the API reference for Ray Data SQL functions and classes.
 
 Query Execution
 ===============
 
-.. currentmodule:: ray.data.sql
+.. currentmodule:: ray.data
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    sql
@@ -24,20 +28,22 @@ Core Classes
 ============
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
-   RaySQL
-   SQLConfig
-   LogLevel
+   sql.RaySQL
+   sql.SQLConfig
+   sql.LogLevel
 
 Engine Management
 =================
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
-   get_engine
-   get_registry
+   sql.get_engine
+   sql.get_registry
 
 Query Execution Functions
 =========================
@@ -45,27 +51,27 @@ Query Execution Functions
 sql
 ---
 
-.. autofunction:: sql
+.. autofunction:: ray.data.sql
 
 register_table
 --------------
 
-.. autofunction:: register_table
+.. autofunction:: ray.data.register_table
 
 list_tables
 -----------
 
-.. autofunction:: list_tables
+.. autofunction:: ray.data.sql.list_tables
 
 get_schema
 ----------
 
-.. autofunction:: get_schema
+.. autofunction:: ray.data.sql.get_schema
 
 clear_tables
 ------------
 
-.. autofunction:: clear_tables
+.. autofunction:: ray.data.sql.clear_tables
 
 Core Classes
 ============
@@ -73,21 +79,21 @@ Core Classes
 RaySQL
 ------
 
-.. autoclass:: RaySQL
+.. autoclass:: ray.data.sql.RaySQL
    :members:
    :special-members: __init__
 
 SQLConfig  
 ---------
 
-.. autoclass:: SQLConfig
+.. autoclass:: ray.data.sql.SQLConfig
    :members:
    :special-members: __init__
 
 LogLevel
 --------
 
-.. autoclass:: LogLevel
+.. autoclass:: ray.data.sql.LogLevel
    :members:
 
 Engine Management Functions
@@ -96,9 +102,9 @@ Engine Management Functions
 get_engine
 ----------
 
-.. autofunction:: get_engine
+.. autofunction:: ray.data.sql.get_engine
 
 get_registry
 ------------
 
-.. autofunction:: get_registry 
+.. autofunction:: ray.data.sql.get_registry 

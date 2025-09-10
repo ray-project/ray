@@ -4,6 +4,9 @@
 SQL Quickstart
 =================
 
+.. warning::
+    Ray Data SQL is currently experimental and APIs are subject to change.
+
 This quickstart guide shows you how to get started with Ray Data SQL. You will learn how to execute SQL queries on Ray Datasets using familiar SQL syntax.
 
 Installation
@@ -26,7 +29,7 @@ Start by creating Ray Datasets and registering them as SQL tables:
 .. testcode::
 
     import ray.data
-    from ray.data.sql import register_table, sql
+    import ray.data.sql
 
     # Create sample datasets
     users = ray.data.from_items([
@@ -45,8 +48,8 @@ Start by creating Ray Datasets and registering them as SQL tables:
     ])
 
     # Register datasets as SQL tables
-    register_table("users", users)
-    register_table("orders", orders)
+    ray.data.sql.register_table("users", users)
+    ray.data.sql.register_table("orders", orders)
 
 Step 2: Execute basic SQL queries
 ---------------------------------
@@ -56,17 +59,17 @@ Now you can execute SQL queries using the familiar SELECT syntax:
 .. testcode::
 
     # Simple SELECT query
-    result = sql("SELECT name, age FROM users WHERE age > 25")
+    result = ray.data.sql("SELECT name, age FROM users WHERE age > 25")
     print(result.take_all())
     # Output: [{'name': 'Alice', 'age': 30}, {'name': 'Charlie', 'age': 35}, {'name': 'Diana', 'age': 28}]
 
     # Query with ORDER BY
-    result = sql("SELECT name, age FROM users ORDER BY age DESC")
+    result = ray.data.sql("SELECT name, age FROM users ORDER BY age DESC")
     print(result.take_all())
     # Output: [{'name': 'Charlie', 'age': 35}, {'name': 'Alice', 'age': 30}, {'name': 'Diana', 'age': 28}, {'name': 'Bob', 'age': 25}]
 
     # Query with aggregation
-    result = sql("SELECT city, COUNT(*) as user_count FROM users GROUP BY city")
+    result = ray.data.sql("SELECT city, COUNT(*) as user_count FROM users GROUP BY city")
     print(result.take_all())
     # Output: [{'city': 'New York', 'user_count': 2}, {'city': 'San Francisco', 'user_count': 1}, {'city': 'Los Angeles', 'user_count': 1}]
 
@@ -82,7 +85,7 @@ Perform JOIN operations to combine data from multiple tables:
 .. testcode::
 
     # INNER JOIN to combine users and orders
-    result = sql("""
+    result = ray.data.sql("""
         SELECT u.name, u.city, o.product, o.amount
         FROM users u
         INNER JOIN orders o ON u.id = o.user_id
@@ -93,7 +96,7 @@ Perform JOIN operations to combine data from multiple tables:
     #          {'name': 'Charlie', 'city': 'Los Angeles', 'product': 'Monitor', 'amount': 200.0}]
 
     # LEFT JOIN to include all users
-    result = sql("""
+    result = ray.data.sql("""
         SELECT u.name, 
                COALESCE(SUM(o.amount), 0) as total_spent,
                COUNT(o.id) as order_count
@@ -112,7 +115,7 @@ Use more advanced SQL features like subqueries and window functions:
 .. testcode::
 
     # Subquery example
-    result = sql("""
+    result = ray.data.sql("""
         SELECT name, age
         FROM users
         WHERE id IN (
@@ -124,7 +127,7 @@ Use more advanced SQL features like subqueries and window functions:
     print(result.take_all())
 
     # Complex aggregation with HAVING
-    result = sql("""
+    result = ray.data.sql("""
         SELECT u.city, 
                AVG(u.age) as avg_age,
                SUM(o.amount) as total_revenue
@@ -160,7 +163,7 @@ SQL results are Ray Datasets, so you can seamlessly mix SQL with Ray Data operat
 
     # Back to SQL (register the processed dataset)
     register_table("customer_tiers", processed)
-    final_result = sql("""
+    final_result = ray.data.sql("""
         SELECT spending_tier, 
                COUNT(*) as customer_count,
                AVG(total) as avg_spending
@@ -191,7 +194,7 @@ Customize SQL engine behavior with configuration:
     from ray.data import DataContext
     with DataContext() as ctx:
         ctx.sql_config = config
-        result = sql("SELECT NAME from USERS where AGE > 30")  # Case-insensitive
+        result = ray.data.sql("SELECT NAME from USERS where AGE > 30")  # Case-insensitive
 
 Auto-registration
 =================
@@ -205,7 +208,7 @@ For convenience, you can use auto-registration with variable names:
     purchases = ray.data.from_items([{"customer_id": 1, "item": "book"}])
 
     # Auto-register and query (uses variable names as table names)
-    result = sql("""
+    result = ray.data.sql("""
         SELECT c.name, p.item
         FROM customers c
         JOIN purchases p ON c.id = p.customer_id

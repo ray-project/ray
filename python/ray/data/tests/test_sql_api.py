@@ -2664,7 +2664,7 @@ def test_sql_union_all_operations(ray_start_regular_shared, sql_test_data):
     """Test UNION ALL operations."""
     print("\n Testing UNION ALL operations...")
 
-    # Simple UNION ALL
+    # Simple UNION ALL - using Ray Dataset native union() method
     result = ray.data.sql(
         """
         SELECT name, age FROM users WHERE age < 30
@@ -2683,10 +2683,10 @@ def test_sql_union_all_operations(ray_start_regular_shared, sql_test_data):
 
 
 def test_sql_groupby_with_expressions(ray_start_regular_shared, sql_test_data):
-    """Test GROUP BY with expressions."""
+    """Test GROUP BY with expressions using Ray Dataset native operations."""
     print("\n Testing GROUP BY with expressions...")
 
-    # GROUP BY with CASE expression
+    # GROUP BY with CASE expression - now supported
     result = ray.data.sql(
         """
         SELECT

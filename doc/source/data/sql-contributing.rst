@@ -50,7 +50,7 @@ Setting up your development environment
        from ray.data.sql import sql, register_table
        ds = ray.data.range(10)
        register_table('test', ds)
-       result = sql('SELECT * FROM test LIMIT 5')
+       result = ray.data.sql('SELECT * FROM test LIMIT 5')
        print(f'Success: {result.count()} rows')
        "
 
@@ -162,7 +162,7 @@ Follow these patterns when writing tests:
         
         def test_basic_select(self):
             """Test basic SELECT functionality."""
-            result = sql("SELECT name FROM users")
+            result = ray.data.sql("SELECT name FROM users")
             names = [row["name"] for row in result.take_all()]
             assert "Alice" in names
             assert "Bob" in names
@@ -218,7 +218,7 @@ Use Google-style docstrings with examples:
                 register_table("users", users)
 
                 # Query the registered table
-                result = sql("SELECT name FROM users")
+                result = ray.data.sql("SELECT name FROM users")
                 print([row["name"] for row in result.take_all()])
 
             .. testoutput::

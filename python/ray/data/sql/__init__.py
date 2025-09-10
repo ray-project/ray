@@ -80,10 +80,12 @@ from ray.data.sql.core import (
 )
 from ray.data.sql.exceptions import (
     ColumnNotFoundError,
+    SchemaError,
     SQLError,
     SQLExecutionError,
     SQLParseError,
     TableNotFoundError,
+    UnsupportedOperationError,
 )
 
 # Public API exports
@@ -123,6 +125,8 @@ __all__ = [
     "SQLExecutionError",
     "TableNotFoundError",
     "ColumnNotFoundError",
+    "SchemaError",
+    "UnsupportedOperationError",
 ]
 
 # Module-level documentation

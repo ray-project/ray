@@ -5,9 +5,10 @@ SQL queries against Ray Datasets. It follows Ray API patterns and provides
 comprehensive error handling, performance optimizations, and ease-of-use features.
 """
 
+import hashlib
 import logging
 import time
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import sqlglot
 from sqlglot import exp
@@ -19,7 +20,7 @@ from ray.data.sql.exceptions import (
     SQLParseError,
     UnsupportedOperationError,
 )
-from ray.data.sql.execution.engine import SQLExecutionEngine
+from ray.data.sql.execution.executor import QueryExecutor
 from ray.data.sql.registry.base import TableRegistry
 from ray.data.sql.validators.base import CompositeValidator
 from ray.data.sql.validators.features import FeatureValidator
@@ -27,7 +28,7 @@ from ray.data.sql.validators.syntax import SyntaxValidator
 from ray.util.annotations import PublicAPI
 
 
-@PublicAPI
+@PublicAPI(stability="alpha")
 class RaySQL:
     """Main SQL engine for Ray Data.
 
@@ -44,6 +45,9 @@ class RaySQL:
         With configuration:
             >>> config = SQLConfig(log_level=LogLevel.DEBUG)
             >>> engine = RaySQL(config)
+
+    Args:
+        config: SQL engine configuration. Uses default if not provided.
     """
 
     def __init__(self, config: Optional[SQLConfig] = None):
@@ -54,7 +58,7 @@ class RaySQL:
         """
         self.config = config or SQLConfig()
         self.registry = TableRegistry()
-        self.execution_engine = SQLExecutionEngine(self.registry, self.config)
+        self.execution_engine = QueryExecutor(self.registry, self.config)
         self._logger = logging.getLogger(__name__)
         self._setup_logging()
 
@@ -66,7 +70,11 @@ class RaySQL:
             ]
         )
 
-    def _setup_logging(self):
+        # Query plan cache for performance
+        self._query_cache: Dict[str, exp.Expression] = {}
+        self._cache_max_size = 1000  # Maximum number of cached queries
+
+    def _setup_logging(self) -> None:
         """Set up logging configuration."""
         log_level_mapping = {
             LogLevel.ERROR: logging.ERROR,
@@ -83,7 +91,8 @@ class RaySQL:
             dataset: Ray Dataset to register.
         """
         self.registry.register(name, dataset)
-        self._logger.info(f"Registered table '{name}' with {dataset.count()} rows")
+        # Avoid expensive count() operation during registration
+        self._logger.info(f"Registered table '{name}' successfully")
 
     def unregister_table(self, name: str) -> None:
         """Unregister a table by name.
@@ -108,26 +117,47 @@ class RaySQL:
             SQLParseError: If the query cannot be parsed.
             UnsupportedOperationError: If the query uses unsupported features.
             SQLExecutionError: If query execution fails.
+            ValidationError: If query validation fails.
+            ConfigurationError: If configuration is invalid.
         """
+        # Simple input validation
+        if not isinstance(query, str) or not query.strip():
+            raise SQLParseError("Query must be a non-empty string", query=query)
+
+        if default_dataset is not None and not isinstance(default_dataset, Dataset):
+            raise SQLExecutionError(
+                "default_dataset must be a Ray Dataset", query=query
+            )
+
         start_time = time.time()
-        self._logger.info(f"Executing SQL query: {query}")
+        self._logger.info(
+            f"Executing SQL query: {query.strip()[:100]}{'...' if len(query.strip()) > 100 else ''}"
+        )
 
         try:
-            # Parse the SQL query
-            ast = sqlglot.parse_one(query)
-            if not ast:
-                raise SQLParseError("Query could not be parsed", query=query)
+            # Check query cache first for performance
+            ast = self._get_cached_query(query)
+            if ast is None:
+                # Parse the SQL query
+                ast = sqlglot.parse_one(query)
+                if not ast:
+                    raise SQLParseError("Query could not be parsed", query=query)
 
-            # Validate the query
-            self.validator.validate(query, ast)
+                # Validate the query
+                self.validator.validate(query, ast)
+
+                # Cache the parsed and validated query
+                self._cache_query(query, ast)
+            else:
+                self._logger.debug(f"Using cached query plan for: {query[:50]}...")
 
             # Handle WITH clauses (CTEs) before main query execution
-            if hasattr(ast, "with_") and ast.with_:
+            if hasattr(ast, "with_") and ast.with_ is not None:
                 self._execute_ctes(ast.with_)
 
-            # Execute the query
+            # Execute the query using the unified executor
             if isinstance(ast, exp.Select):
-                result = self.execution_engine.execute(ast, default_dataset)
+                result = self.execution_engine.execute(ast)
             elif isinstance(ast, exp.Union):
                 result = self._execute_union(ast, default_dataset)
             else:
@@ -142,12 +172,13 @@ class RaySQL:
 
             return result
 
+        except (SQLParseError, UnsupportedOperationError, SQLExecutionError):
+            # Re-raise known SQL errors without wrapping
+            raise
+        except ValueError as e:
+            # Convert validation errors to SQL execution errors
+            raise SQLExecutionError(f"Validation error: {str(e)}", query=query) from e
         except Exception as e:
-            if isinstance(
-                e, (SQLParseError, UnsupportedOperationError, SQLExecutionError)
-            ):
-                raise e
-
             # Wrap unexpected errors
             raise SQLExecutionError(
                 f"Unexpected error during query execution: {str(e)}",
@@ -207,10 +238,10 @@ class RaySQL:
             Dataset containing the union of all SELECT results.
         """
         # Execute left side
-        left_result = self.execution_engine.execute(ast.left, default_dataset)
+        left_result = self.execution_engine.execute(ast.left)
 
         # Execute right side
-        right_result = self.execution_engine.execute(ast.right, default_dataset)
+        right_result = self.execution_engine.execute(ast.right)
 
         # Use Ray Dataset union operation
         result = left_result.union(right_result)
@@ -225,38 +256,80 @@ class RaySQL:
                 suggestion="Use UNION ALL instead, or apply deduplication manually with Ray Dataset operations",
             )
 
-    def _execute_ctes(self, with_clause) -> None:
+    def _execute_ctes(self, with_clause: Any) -> None:
         """Execute Common Table Expressions (WITH clauses).
 
-        CTEs are just named intermediate datasets that get registered
-        as temporary tables in the registry.
+        CTEs are intermediate datasets that get registered as temporary tables.
 
         Args:
             with_clause: The WITH clause containing CTE definitions.
         """
-        # Process each CTE in the WITH clause
-        for cte in with_clause.expressions:
-            if not isinstance(cte, exp.CTE):
-                continue
+        # Handle the case where with_ might be a method or property
+        if callable(with_clause):
+            # If it's a method, call it to get the actual WITH clause
+            try:
+                actual_with = with_clause()
+                if actual_with:
+                    with_clause = actual_with
+                else:
+                    return  # No CTEs to process
+            except Exception:
+                return  # Can't access CTEs, skip
 
-            # Get the CTE name and query
-            cte_name = str(cte.alias)
-            cte_query = cte.this
+        # Process CTEs from the WITH clause
+        if hasattr(with_clause, "expressions") and with_clause.expressions:
+            for cte in with_clause.expressions:
+                if not isinstance(cte, exp.CTE):
+                    continue
 
-            # Execute the CTE query to get a dataset
-            if isinstance(cte_query, exp.Select):
-                cte_result = self.execution_engine.execute(cte_query)
-            elif isinstance(cte_query, exp.Union):
-                cte_result = self._execute_union(cte_query)
-            else:
-                raise UnsupportedOperationError(
-                    f"CTE with {type(cte_query).__name__} statement",
-                    suggestion="CTEs only support SELECT and UNION statements",
-                )
+                # Get the CTE name and query
+                cte_name = str(cte.alias)
+                cte_query = cte.this
 
-            # Register the CTE result as a temporary table
-            self.register_table(cte_name, cte_result)
-            self._logger.info(f"Registered CTE '{cte_name}' as temporary table")
+                # Execute the CTE query to get a dataset
+                if isinstance(cte_query, exp.Select):
+                    cte_result = self.execution_engine.execute(cte_query)
+                elif isinstance(cte_query, exp.Union):
+                    cte_result = self._execute_union(cte_query)
+                else:
+                    raise UnsupportedOperationError(
+                        f"CTE with {type(cte_query).__name__} statement",
+                        suggestion="CTEs only support SELECT and UNION statements",
+                    )
+
+                # Register the CTE result as a temporary table
+                self.register_table(cte_name, cte_result)
+                self._logger.info(f"Registered CTE '{cte_name}' as temporary table")
+
+    def _get_cache_key(self, query: str) -> str:
+        """Generate a cache key for the query."""
+        # Normalize whitespace and create hash
+        normalized = " ".join(query.strip().split())
+        return hashlib.md5(normalized.encode()).hexdigest()
+
+    def _get_cached_query(self, query: str) -> Optional[exp.Expression]:
+        """Get cached parsed query AST if available."""
+        cache_key = self._get_cache_key(query)
+        return self._query_cache.get(cache_key)
+
+    def _cache_query(self, query: str, ast: exp.Expression) -> None:
+        """Cache a parsed and validated query AST."""
+        cache_key = self._get_cache_key(query)
+
+        # Implement simple LRU eviction if cache is full
+        if len(self._query_cache) >= self._cache_max_size:
+            # Remove oldest entry (simple FIFO for now)
+            oldest_key = next(iter(self._query_cache))
+            del self._query_cache[oldest_key]
+
+        self._query_cache[cache_key] = ast
+        self._logger.debug(f"Cached query plan (cache size: {len(self._query_cache)})")
+
+    def clear_query_cache(self) -> None:
+        """Clear the query plan cache."""
+        cache_size = len(self._query_cache)
+        self._query_cache.clear()
+        self._logger.info(f"Cleared query cache ({cache_size} entries removed)")
 
 
 # Global engine instance
@@ -532,7 +605,7 @@ def get_config_summary() -> Dict[str, Any]:
 
 
 # Public API functions
-@PublicAPI
+@PublicAPI(stability="alpha")
 def sql(query: str, default_dataset: Optional[Dataset] = None) -> Dataset:
     """Execute a SQL query using the global engine.
 
@@ -546,13 +619,25 @@ def sql(query: str, default_dataset: Optional[Dataset] = None) -> Dataset:
     return get_engine().sql(query, default_dataset)
 
 
-@PublicAPI
+@PublicAPI(stability="alpha")
 def register_table(name: str, dataset: Dataset) -> None:
     """Register a Ray Dataset as a SQL table.
 
     Args:
-        name: SQL table name.
+        name: SQL table name (must be valid SQL identifier).
         dataset: Ray Dataset to register.
+
+    Raises:
+        TypeError: If dataset is not a Ray Dataset.
+        ValidationError: If name is invalid or reserved.
+
+    Examples:
+        Register a simple dataset:
+            >>> users = ray.data.from_items([{"id": 1, "name": "Alice"}])
+            >>> ray.data.sql.register_table("users", users)
+
+        Use in SQL queries:
+            >>> result = ray.data.sql("SELECT * FROM users WHERE id = 1")
     """
     get_engine().register_table(name, dataset)
 

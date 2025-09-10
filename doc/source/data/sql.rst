@@ -4,6 +4,9 @@
 Ray Data SQL: SQL for Data
 ============================
 
+.. warning::
+    Ray Data SQL is currently experimental and APIs are subject to change.
+
 .. toctree::
     :hidden:
 
@@ -80,7 +83,7 @@ Here's a simple example of using SQL with Ray Data:
     register_table("orders", orders)
 
     # Execute SQL queries
-    result = sql("""
+    result = ray.data.sql("""
         SELECT u.name, SUM(o.amount) as total_spent
         FROM users u
         JOIN orders o ON u.id = o.user_id
@@ -215,7 +218,7 @@ Ray Data SQL provides extensive configuration options for different use cases:
     # Use with context manager for session-specific settings
     with ray.data.DataContext() as ctx:
         ctx.sql_config = config
-        result = sql("SELECT * FROM users WHERE age > 30")
+        result = ray.data.sql("SELECT * FROM users WHERE age > 30")
 
 Advanced configuration options
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -280,7 +283,7 @@ SQL queries seamlessly integrate with Ray Data operations:
     
     # Back to SQL
     register_table("transformed_users", transformed)
-    final_result = sql("SELECT age_group, COUNT(*) FROM transformed_users GROUP BY age_group")
+    final_result = ray.data.sql("SELECT age_group, COUNT(*) FROM transformed_users GROUP BY age_group")
 
 Limitations and considerations
 ------------------------------

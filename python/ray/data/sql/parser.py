@@ -16,9 +16,8 @@ try:
 except ImportError:
     sqlglot_optimize = None
 
-from ray.data.sql.config import LogicalPlan, SQLConfig
-from ray.data.sql.schema import SchemaManager
-from ray.data.sql.utils import SUPPORTED_AGGREGATES, setup_logger
+from ray.data.sql.config import SQLConfig
+from ray.data.sql.utils import setup_logger
 
 # Supported general functions (non-aggregate)
 SUPPORTED_FUNCTIONS = {
@@ -117,11 +116,6 @@ UNSUPPORTED_FUNCTION_SUGGESTIONS = {
 
 # Unsupported SQL constructs with information
 UNSUPPORTED_CONSTRUCTS = {
-    exp.CTE: {
-        "name": "Common Table Expressions (WITH)",
-        "suggestion": "Break into multiple steps using intermediate tables",
-    },
-    exp.Union: {"name": "UNION", "suggestion": "Use Dataset.union() method instead"},
     exp.Intersect: {
         "name": "INTERSECT",
         "suggestion": "Use JOIN operations to find common records",
@@ -334,45 +328,26 @@ class ASTOptimizer:
         self.config = config
         self._logger = setup_logger("ASTOptimizer")
 
-    def optimize(
-        self, ast: exp.Expression, schema_manager: SchemaManager
-    ) -> exp.Expression:
+    def optimize(self, ast: exp.Expression) -> exp.Expression:
         """Apply optimization rules to the AST.
 
         Args:
             ast: SQLGlot AST to optimize.
-            schema_manager: Schema manager for column information.
 
         Returns:
             Optimized AST.
         """
-        if not self.config.enable_custom_optimizer:
+        if not getattr(self.config, "enable_custom_optimizer", False):
             return ast
 
         self._logger.debug("Starting AST optimization")
 
-        # Apply optimization rules
-        ast = self._qualify_columns(ast, schema_manager)
+        # Apply basic optimization rules
         ast = self._pushdown_predicates(ast)
         ast = self._simplify_expressions(ast)
         ast = self._normalize_predicates(ast)
 
         self._logger.debug("AST optimization completed")
-        return ast
-
-    def _qualify_columns(
-        self, ast: exp.Expression, schema_manager: SchemaManager
-    ) -> exp.Expression:
-        """Add table qualifiers to ambiguous columns.
-
-        Args:
-            ast: AST to process.
-            schema_manager: Schema manager for column information.
-
-        Returns:
-            AST with qualified columns.
-        """
-        # This is a simplified version - in practice, you'd need more complex logic
         return ast
 
     def _pushdown_predicates(self, ast: exp.Expression) -> exp.Expression:
@@ -412,68 +387,5 @@ class ASTOptimizer:
         return ast
 
 
-class LogicalPlanner:
-    """Converts optimized AST into logical plan.
-
-    The LogicalPlanner takes an optimized SQLGlot AST and converts it into
-    a logical execution plan that can be executed by the query engine.
-
-    Examples:
-        .. testcode::
-
-            config = SQLConfig()
-            planner = LogicalPlanner(config)
-            plan = planner.plan(ast)
-    """
-
-    def __init__(self, config: SQLConfig):
-        """Initialize LogicalPlanner.
-
-        Args:
-            config: SQL configuration object containing settings for planning.
-        """
-        self.config = config
-        self._logger = setup_logger("LogicalPlanner")
-
-    def plan(self, ast: exp.Expression) -> Optional[LogicalPlan]:
-        """Convert AST to logical plan.
-
-        Args:
-            ast: SQLGlot AST to convert.
-
-        Returns:
-            Logical execution plan.
-
-        Raises:
-            NotImplementedError: If planning is not implemented for the AST type.
-        """
-        if not self.config.enable_logical_planning:
-            return None
-
-        self._logger.debug("Starting logical planning")
-
-        if isinstance(ast, exp.Select):
-            return self._plan_select(ast)
-        elif isinstance(ast, exp.Create):
-            # CREATE TABLE AS SELECT doesn't need logical planning
-            # It will be handled directly in the executor
-            self._logger.debug("CREATE statement detected - skipping logical planning")
-            return None
-        else:
-            raise NotImplementedError(
-                f"Planning not implemented for {type(ast).__name__}"
-            )
-
-    def _plan_select(self, ast: exp.Select) -> LogicalPlan:
-        """Plan a SELECT statement.
-
-        Args:
-            ast: SELECT AST to plan.
-
-        Returns:
-            Logical plan for the SELECT statement.
-        """
-        # This is a simplified version - in practice, you'd need more complex logic
-        plan = LogicalPlan(LogicalPlan.Operation.SELECT, ast=ast)
-        self._logger.debug(f"Created logical plan: {plan}")
-        return plan
+# Logical planning functionality removed for simplicity
+# The current implementation uses direct AST execution which is more maintainable
