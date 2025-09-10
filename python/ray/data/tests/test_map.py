@@ -34,6 +34,7 @@ from ray.data._internal.planner.plan_udf_map_op import (
     _MapActorContext,
 )
 from ray.data.context import DataContext
+from ray.data.datatype import DataType
 from ray.data.exceptions import UserCodeException
 from ray.data.expressions import col, lit, udf
 from ray.data.tests.conftest import *  # noqa
@@ -2377,35 +2378,35 @@ def test_with_column_multiple_expressions(
     [
         # Single column UDF - add one to each value
         pytest.param(
-            lambda: udf()(lambda x: pc.add(x, 1)),
+            lambda: udf(DataType.int64())(lambda x: pc.add(x, 1)),
             "add_one",
             1,  # 0 + 1 = 1
             id="single_column_add_one",
         ),
         # Single column UDF - multiply by 2
         pytest.param(
-            lambda: udf()(lambda x: pc.multiply(x, 2)),
+            lambda: udf(DataType.int64())(lambda x: pc.multiply(x, 2)),
             "times_two",
             0,  # 0 * 2 = 0
             id="single_column_multiply",
         ),
         # Single column UDF - square the value
         pytest.param(
-            lambda: udf()(lambda x: pc.multiply(x, x)),
+            lambda: udf(DataType.int64())(lambda x: pc.multiply(x, x)),
             "squared",
             0,  # 0 * 0 = 0
             id="single_column_square",
         ),
         # Single column UDF with string return type
         pytest.param(
-            lambda: udf()(lambda x: pc.cast(x, pa.string())),
+            lambda: udf(DataType.string())(lambda x: pc.cast(x, pa.string())),
             "id_str",
             "0",  # Convert 0 to "0"
             id="single_column_to_string",
         ),
         # Single column UDF with float return type
         pytest.param(
-            lambda: udf()(lambda x: pc.divide(x, 2.0)),
+            lambda: udf(DataType.float64())(lambda x: pc.divide(x, 2.0)),
             "half",
             0.0,  # 0 / 2.0 = 0.0
             id="single_column_divide_float",
@@ -2442,7 +2443,7 @@ def test_with_column_udf_single_column(
         pytest.param(
             {
                 "data": [{"a": 1, "b": 2}, {"a": 3, "b": 4}],
-                "udf": lambda: udf()(lambda x, y: pc.add(x, y)),
+                "udf": lambda: udf(DataType.int64())(lambda x, y: pc.add(x, y)),
                 "column_name": "sum_ab",
                 "expected_first": 3,  # 1 + 2 = 3
                 "expected_second": 7,  # 3 + 4 = 7
@@ -2453,7 +2454,7 @@ def test_with_column_udf_single_column(
         pytest.param(
             {
                 "data": [{"x": 2, "y": 3}, {"x": 4, "y": 5}],
-                "udf": lambda: udf()(lambda x, y: pc.multiply(x, y)),
+                "udf": lambda: udf(DataType.int64())(lambda x, y: pc.multiply(x, y)),
                 "column_name": "product_xy",
                 "expected_first": 6,  # 2 * 3 = 6
                 "expected_second": 20,  # 4 * 5 = 20
@@ -2467,7 +2468,7 @@ def test_with_column_udf_single_column(
                     {"first": "John", "last": "Doe"},
                     {"first": "Jane", "last": "Smith"},
                 ],
-                "udf": lambda: udf()(
+                "udf": lambda: udf(DataType.string())(
                     lambda first, last: pc.binary_join_element_wise(first, last, " ")
                 ),
                 "column_name": "full_name",
@@ -2560,7 +2561,7 @@ def test_with_column_udf_in_complex_expressions(
     ds = ray.data.range(5)
 
     # Create a simple add_one UDF for use in expressions
-    @udf()
+    @udf(DataType.int64())
     def add_one(x: pa.Array) -> pa.Array:
         return pc.add(x, 1)
 
@@ -2586,15 +2587,15 @@ def test_with_column_udf_multiple_udfs(
     ds = ray.data.range(5)
 
     # Define multiple UDFs
-    @udf()
+    @udf(DataType.int64())
     def add_one(x: pa.Array) -> pa.Array:
         return pc.add(x, 1)
 
-    @udf()
+    @udf(DataType.int64())
     def multiply_by_two(x: pa.Array) -> pa.Array:
         return pc.multiply(x, 2)
 
-    @udf()
+    @udf(DataType.float64())
     def divide_by_three(x: pa.Array) -> pa.Array:
         return pc.divide(x, 3.0)
 
@@ -2635,7 +2636,7 @@ def test_with_column_mixed_udf_and_regular_expressions(
     ds = ray.data.range(5)
 
     # Define a UDF for testing
-    @udf()
+    @udf(DataType.int64())
     def multiply_by_three(x: pa.Array) -> pa.Array:
         return pc.multiply(x, 3)
 
@@ -2677,18 +2678,18 @@ def test_with_column_udf_invalid_return_type_validation(
     """Test that UDFs returning invalid types raise TypeError with clear message."""
     ds = ray.data.range(3)
 
-    # Test UDF returning invalid type (dict)
-    @udf()
+    # Test UDF returning invalid type (dict) - expecting string but returning dict
+    @udf(DataType.string())
     def invalid_dict_return(x: pa.Array) -> dict:
         return {"invalid": "return_type"}
 
-    # Test UDF returning invalid type (str)
-    @udf()
+    # Test UDF returning invalid type (str) - expecting string but returning plain str
+    @udf(DataType.string())
     def invalid_str_return(x: pa.Array) -> str:
         return "invalid_string"
 
-    # Test UDF returning invalid type (int)
-    @udf()
+    # Test UDF returning invalid type (int) - expecting int64 but returning plain int
+    @udf(DataType.int64())
     def invalid_int_return(x: pa.Array) -> int:
         return 42
 

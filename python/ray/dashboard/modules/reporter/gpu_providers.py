@@ -8,8 +8,8 @@ import abc
 import enum
 import logging
 import subprocess
-from typing import Dict, List, Optional, Union, TypedDict
 from collections import defaultdict
+from typing import Dict, List, Optional, TypedDict, Union
 
 from ray._private.ray_constants import RAY_METRIC_ENABLE_GPU_NVSMI
 

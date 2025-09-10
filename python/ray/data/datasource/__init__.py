@@ -56,7 +56,6 @@ __all__ = [
     "FileShuffleConfig",
     "FileMetadataProvider",
     "FilenameProvider",
-    "ParquetMetadataProvider",
     "PartitionStyle",
     "PathPartitionFilter",
     "PathPartitionParser",
