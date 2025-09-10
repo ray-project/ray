@@ -66,7 +66,7 @@ RedisAsyncContext::RedisAsyncContext(
   timer_ = std::make_shared<boost::asio::steady_timer>(io_service_);
   {
     const std::lock_guard lock(mutex_);
-    time_t timeout_s = RayConfig::instance().redis_db_reply_wait_seconds();
+    time_t timeout_s = RayConfig::instance().redis_async_request_timeout_seaconds();
     redisAsyncSetTimeout(redis_async_context_.get(),
                          (struct timeval){.tv_sec = timeout_s, .tv_usec = 0});
   }
