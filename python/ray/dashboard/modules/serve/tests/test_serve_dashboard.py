@@ -2,27 +2,27 @@ import copy
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Dict
-import ray
-import tempfile
+
 import pytest
-from ray._common.test_utils import wait_for_condition
 import requests
+
+import ray
+from ray import serve
+from ray._common.test_utils import Semaphore, SignalActor, wait_for_condition
 from ray.serve._private.common import (
     DeploymentStatus,
     DeploymentStatusTrigger,
     ReplicaState,
 )
 from ray.serve._private.constants import SERVE_NAMESPACE
+from ray.serve._private.test_utils import get_num_alive_replicas
 from ray.serve.schema import ApplicationStatus, ProxyStatus, ServeInstanceDetails
 from ray.serve.tests.conftest import *  # noqa: F401 F403
 from ray.tests.conftest import *  # noqa: F401 F403
 from ray.util.state import list_actors
-from ray import serve
-from ray.serve._private.test_utils import get_num_alive_replicas
-from ray._common.test_utils import Semaphore, SignalActor
-
 
 # For local testing on a Macbook, set `export TEST_ON_DARWIN=1`.
 TEST_ON_DARWIN = os.environ.get("TEST_ON_DARWIN", "0") == "1"
