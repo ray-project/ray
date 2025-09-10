@@ -680,7 +680,7 @@ ITERATION_INITIALIZATION_PANEL = Panel(
     unit="seconds",
     targets=[
         Target(
-            expr='sum(ray_data_iter_initialize_seconds{{{global_filters}, operator=~"$Operator"}}) by (dataset)',
+            expr="sum(ray_data_iter_initialize_seconds{{{global_filters}}}) by (dataset)",
             legend="Seconds: {{dataset}}, {{operator}}",
         )
     ],
@@ -695,7 +695,7 @@ ITERATION_BLOCKED_PANEL = Panel(
     unit="seconds",
     targets=[
         Target(
-            expr='sum(ray_data_iter_total_blocked_seconds{{{global_filters}, operator=~"$Operator"}}) by (dataset)',
+            expr="sum(ray_data_iter_total_blocked_seconds{{{global_filters}}}) by (dataset)",
             legend="Seconds: {{dataset}}",
         )
     ],
@@ -710,7 +710,7 @@ ITERATION_USER_PANEL = Panel(
     unit="seconds",
     targets=[
         Target(
-            expr='sum(ray_data_iter_user_seconds{{{global_filters}, operator=~"$Operator"}}) by (dataset)',
+            expr="sum(ray_data_iter_user_seconds{{{global_filters}}}) by (dataset)",
             legend="Seconds: {{dataset}}",
         )
     ],
@@ -726,7 +726,7 @@ SCHEDULING_LOOP_DURATION_PANEL = Panel(
     unit="seconds",
     targets=[
         Target(
-            expr='sum(ray_data_sched_loop_duration_s{{{global_filters}, operator=~"$Operator"}}) by (dataset)',
+            expr="sum(ray_data_sched_loop_duration_s{{{global_filters}}}) by (dataset)",
             legend="Scheduling Loop Duration: {{dataset}}",
         )
     ],
