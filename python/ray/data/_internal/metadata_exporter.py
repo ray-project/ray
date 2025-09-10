@@ -13,6 +13,13 @@ from ray._private.event.export_event_logger import (
     get_export_event_logger,
 )
 from ray.data._internal.execution.dataset_state import DatasetState
+from ray.core.generated.export_dataset_metadata_pb2 import (
+    ExportDatasetMetadata as ProtoDatasetMetadata,
+)
+from ray.dashboard.modules.metrics.dashboards.common import Panel
+from ray.dashboard.modules.metrics.dashboards.data_dashboard_panels import (
+    OPERATOR_PANELS,
+)
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
@@ -259,10 +266,25 @@ def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
         execution_start_time=dataset_metadata.execution_start_time,
         execution_end_time=dataset_metadata.execution_end_time,
         state=ProtoDatasetMetadata.DatasetState.Value(dataset_metadata.state),
+        operator_panels=[
+            _to_proto_dashboard_panel(p) for p in dataset_metadata.operator_panels
+        ],
     )
     proto_dataset_metadata.topology.CopyFrom(proto_topology)
 
     return proto_dataset_metadata
+
+
+def _to_proto_dashboard_panel(
+    panel: Panel,
+) -> ProtoDatasetMetadata.DashboardPanelMetadata:
+    """Convert Dashboard Panel to protobuf format."""
+    proto_panel = ProtoDatasetMetadata.DashboardPanelMetadata(
+        id=str(panel.id),
+        title=panel.title,
+    )
+
+    return proto_panel
 
 
 def get_dataset_metadata_exporter() -> "DatasetMetadataExporter":
