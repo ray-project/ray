@@ -1,18 +1,13 @@
 from dataclasses import asdict, dataclass
-from multiprocessing import Process, Queue
-from itertools import chain
+import os
+import sys
+import subprocess
 import json
 import logging
-from typing import Any
+from typing import Any, List
 
 import ray
-from ray.serve._private.benchmarks.locust_utils import (
-    run_locust_master,
-    run_locust_worker,
-    LocustStage,
-    LocustTestResults,
-    LocustStages,
-)
+from ray.serve._private.benchmarks.locust_utils import LocustStage, LocustTestResults
 
 
 logger = logging.getLogger(__file__)
@@ -25,7 +20,7 @@ class LocustLoadTestConfig:
     host_url: str
     auth_token: str
     data: Any
-    stages: LocustStages
+    stages: List[LocustStage]
     wait_for_workers_timeout_s: float = 600
 
 
@@ -36,19 +31,102 @@ class LocustProcess:
         worker_type: str,
         host_url: str,
         token: str,
-        **kwargs,
+        expected_num_workers: int = None,
+        stages: List[LocustStage] = None,
+        wait_for_workers_timeout_s: float = None,
+        data: Any = None,
+        master_address: str = None,
     ):
-        self.q = Queue()
-        self.p = Process(
-            target=run_locust_master if worker_type == "master" else run_locust_worker,
-            kwargs={"q": self.q, **kwargs},
-        )
+        self.worker_type = worker_type
+        self.host_url = host_url
+        self.token = token
+        self.expected_num_workers = expected_num_workers
+        self.stages = stages
+        self.wait_for_workers_timeout_s = wait_for_workers_timeout_s
+        self.data = data
+        self.master_address = master_address
 
     def run(self):
-        self.p.start()
-        print(f"Started {self.p.name} ({self.p.pid})")
-        self.p.join()
-        return self.q.get()
+        # Create a temporary file for results
+        import tempfile
+
+        results_file = tempfile.NamedTemporaryFile(
+            mode="w", delete=False, suffix=".json"
+        )
+        results_file.close()
+
+        # Prepare the subprocess script
+        if self.worker_type == "master":
+            script = f"""
+import sys
+import json
+from ray.serve._private.benchmarks.locust_utils import run_locust_master, run_locust_worker, LocustStage
+
+stages = json.loads(sys.argv[1])
+stages = [LocustStage(**stage) for stage in stages]
+results = run_locust_master(
+    host_url="{self.host_url}",
+    token="{self.token}",
+    expected_num_workers={self.expected_num_workers},
+    stages=stages,
+    wait_for_workers_timeout_s={self.wait_for_workers_timeout_s}
+)
+
+with open("{results_file.name}", 'w') as f:
+    json.dump(results, f)
+"""
+            stages = json.dumps([asdict(stage) for stage in self.stages])
+            cmd_args = [sys.executable, "-c", script, stages]
+        else:
+            script = f"""
+import sys
+import json
+from ray.serve._private.benchmarks.locust_utils import run_locust_master, run_locust_worker, LocustStage
+
+data = sys.argv[1]
+results = run_locust_worker(
+    master_address="{self.master_address}",
+    host_url="{self.host_url}",
+    token="{self.token}",
+    data=data,
+)
+"""
+            data = json.dumps(self.data)
+            cmd_args = [sys.executable, "-c", script, data]
+
+        # Start the Locust process
+        self.process = subprocess.Popen(
+            cmd_args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+        print(f"Started {self.worker_type} subprocess ({self.process.pid})")
+
+        try:
+            # Wait for the process to complete first
+            for line in self.process.stdout:  # yields as the child prints
+                sys.stdout.write(line)  # stream to our stdout
+
+            return_code = self.process.wait()
+            if return_code != 0:
+                # Clean up the results file on error
+                try:
+                    os.unlink(results_file.name)
+                except OSError:
+                    pass
+                raise RuntimeError(f"Subprocess failed with return code {return_code}.")
+
+            # Read the result from the results file
+            with open(results_file.name, "r") as f:
+                result_data = f.read()
+
+            if result_data:
+                result = LocustTestResults(**json.loads(result_data))
+                return result
+        finally:
+            os.unlink(results_file.name)
 
 
 def run_locust_load_test(config: LocustLoadTestConfig) -> LocustTestResults:
@@ -89,14 +167,11 @@ def run_locust_load_test(config: LocustLoadTestConfig) -> LocustTestResults:
 
     # Collect results and metrics
     stats: LocustTestResults = ray.get(master_ref)
-    errors = sorted(chain(*ray.get(worker_refs)), key=lambda e: e.start_time_s)
+    ray.get(worker_refs)
 
     # If there were any requests that failed, raise error.
     if stats.num_failures > 0:
-        errors_json = [asdict(err) for err in errors]
-        raise RuntimeError(
-            f"There were failed requests: {json.dumps(errors_json, indent=4)}"
-        )
+        raise RuntimeError(f"There were {stats.num_failures} failed requests")
 
     return stats
 
@@ -105,13 +180,11 @@ if __name__ == "__main__":
     ray.init(address="auto")
     results = run_locust_load_test(
         LocustLoadTestConfig(
-            num_workers=10,
+            num_workers=9,
             host_url="https://services-canary-pinger-aws-zugs7.cld-kvedzwag2qa8i5bj.s.anyscaleuserdata.com/info",
             auth_token="v9M8jb3tBbHOGoWrg7X1fCwF8wYn7gqZR5VZ1_h4t50",
             data=None,
-            stages=LocustStages(
-                stages=[LocustStage(duration_s=10, users=10, spawn_rate=1)]
-            ),
+            stages=[LocustStage(duration_s=10, users=10, spawn_rate=1)],
         )
     )
     print(results)

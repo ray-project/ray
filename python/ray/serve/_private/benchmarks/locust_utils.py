@@ -1,9 +1,13 @@
 import argparse
+import logging
 import time
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, List
 
 from ray.serve._private.utils import generate_request_id
+
+logger = logging.getLogger(__file__)
+logging.basicConfig(level=logging.INFO)
 
 MASTER_PORT = 5557
 
@@ -85,7 +89,7 @@ class LocustClient:
                 response_time: float,
                 **kwargs,
             ):
-                if exception:
+                if exception and response.status_code != 0:
                     request_id = context["request_id"]
                     response.encoding = "utf-8"
                     err = FailedRequest(
@@ -97,7 +101,8 @@ class LocustClient:
                     )
                     self.errors.append(err)
                     print(
-                        f"Request '{request_id}' failed with exception: {response.text}"
+                        f"Request '{request_id}' failed with exception:\n"
+                        f"{exception}\n{response.text}"
                     )
 
         self.user_class = EndpointUser
@@ -132,7 +137,9 @@ def run_locust_worker(
         master_host=master_address, master_port=MASTER_PORT
     )
     runner.greenlet.join()
-    return [asdict(err) for err in client.errors]
+
+    if client.errors:
+        logger.error(f"There were {len(client.errors)} errors: {client.errors}")
 
 
 def run_locust_master(
