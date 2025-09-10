@@ -2,12 +2,15 @@ import sys
 from pathlib import Path
 
 import pytest
+from click.testing import CliRunner
 
 import ray
+import ray._private.utils as utils
+import ray.scripts.scripts as scripts
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 
 
-# This test is intended to run in CI inside a container.
+# These tests is intended to run in CI inside a container.
 # If you want to run this test locally, you will need to create a cgroup that
 # the raylet can manage and delegate to the correct user.
 #  sudo mkdir -p /sys/fs/cgroup/resource_isolation_test
@@ -74,6 +77,98 @@ def test_resource_isolation_enabled_creates_cgroup_hierarchy(ray_start_cluster):
     # everything. If the base_cgroup is deleted, then all clean up succeeded.
     cluster.remove_node(worker_node)
     assert not node_cgroup.is_dir()
+
+
+# Test that resource isolation can be enabled from cli
+@pytest.fixture
+def cleanup_ray():
+    """Shutdown all ray instances"""
+    yield
+    runner = CliRunner()
+    runner.invoke(scripts.stop, ["--force"])
+    ray.shutdown()
+
+
+def test_ray_start_invalid_resource_isolation_config(cleanup_ray):
+    runner = CliRunner()
+    result = runner.invoke(
+        scripts.start,
+        ["--cgroup-path=/doesnt/matter"],
+    )
+    assert result.exit_code != 0
+    assert isinstance(result.exception, ValueError)
+
+
+def test_ray_start_resource_isolation_config_default_values(monkeypatch, cleanup_ray):
+    monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: 16)
+    # Uncomment this line to run this test locally. The default cgroup for ray is
+    # /sys/fs/cgroup (defined as ray.constrants.DEFAULT_CGROUP_PATH).
+    # monkeypatch.setattr(ray_constants, "DEFAULT_CGROUP_PATH", "/sys/fs/cgroup/resource_isolation_test")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        scripts.start,
+        ["--head", "--enable-resource-isolation"],
+    )
+    # TODO(#54703): This only checks to see that we start up, it doesn't check to see that we start
+    # up with default values. Need to test the side-effect.
+    assert result.exit_code == 0
+
+
+# Test that resource isolation can be enabled from ray.init
+@pytest.fixture
+def ray_shutdown():
+    yield
+    ray.shutdown()
+
+
+def test_ray_init_resource_isolation_disabled_by_default(ray_shutdown):
+    ray.init(address="local")
+    node = ray._private.worker._global_node
+    assert node is not None
+    assert not node.resource_isolation_config.is_enabled()
+
+
+def test_ray_init_with_resource_isolation_default_values(monkeypatch, ray_shutdown):
+    total_system_cpu = 10
+    monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: total_system_cpu)
+    # Uncomment this line to run this test locally. The default cgroup for ray is
+    # /sys/fs/cgroup (defined as ray.constrants.DEFAULT_CGROUP_PATH).
+    # monkeypatch.setattr(ray_constants, "DEFAULT_CGROUP_PATH", "/sys/fs/cgroup/resource_isolation_test")
+    ray.init(address="local", enable_resource_isolation=True)
+    node = ray._private.worker._global_node
+    assert node is not None
+    assert node.resource_isolation_config.is_enabled()
+
+
+def test_ray_init_with_resource_isolation_override_defaults(monkeypatch, ray_shutdown):
+    cgroup_path = "/sys/fs/cgroup"
+    system_reserved_cpu = 1
+    system_reserved_memory = 1 * 10**9
+    total_system_cpu = 10
+    total_system_memory = 10 * 10**9
+    object_store_memory = 1 * 10**9
+    monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: total_system_cpu)
+    monkeypatch.setattr(
+        utils, "get_system_memory", lambda *args, **kwargs: total_system_memory
+    )
+    ray.init(
+        address="local",
+        enable_resource_isolation=True,
+        _cgroup_path=cgroup_path,
+        system_reserved_cpu=system_reserved_cpu,
+        system_reserved_memory=system_reserved_memory,
+        object_store_memory=object_store_memory,
+    )
+    node = ray._private.worker._global_node
+    # TODO(#54703): Need to check side-effects on cgroups.
+    assert node is not None
+    assert node.resource_isolation_config.is_enabled()
+    assert node.resource_isolation_config.system_reserved_cpu_weight == 1000
+    assert (
+        node.resource_isolation_config.system_reserved_memory
+        == system_reserved_memory + object_store_memory
+    )
 
 
 if __name__ == "__main__":
