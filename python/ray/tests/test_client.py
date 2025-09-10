@@ -6,8 +6,8 @@ import re
 import sys
 import threading
 import time
-from unittest.mock import Mock
 from typing import Type
+from unittest.mock import Mock
 
 import numpy as np
 import pytest
@@ -17,12 +17,12 @@ from pydantic.v1 import BaseModel as BaseModelV1
 import ray
 import ray.cloudpickle as cloudpickle
 import ray.util.client.server.server as ray_client_server
+from ray._common.network_utils import build_address
 from ray._private.client_mode_hook import (
     client_mode_should_convert,
     disable_client_hook,
     enable_client_mode,
 )
-from ray._common.network_utils import build_address
 from ray._private.test_utils import run_string_as_driver
 from ray.tests.client_test_utils import (
     create_remote_signal_actor,

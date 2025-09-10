@@ -24,10 +24,10 @@ RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
 /// Whether to enable Ray event stats collection.
 RAY_CONFIG(bool, event_stats, true)
 
-/// Whether to enable Ray event stats metrics export.
-/// Note that enabling this adds high overhead to
-/// Ray metrics agent.
-RAY_CONFIG(bool, event_stats_metrics, false)
+/// Whether to enable Ray event stats metrics for main services
+/// such as gcs and raylet (which today are the sole consumers of
+/// this config)
+RAY_CONFIG(bool, emit_main_service_metrics, true)
 
 /// Whether to enable cluster authentication.
 RAY_CONFIG(bool, enable_cluster_auth, true)
@@ -334,7 +334,9 @@ RAY_CONFIG(uint64_t, object_manager_default_chunk_size, 5 * 1024 * 1024)
 
 /// The maximum number of outbound bytes to allow to be outstanding. This avoids
 /// excessive memory usage during object broadcast to many receivers.
-RAY_CONFIG(int64_t, object_manager_max_bytes_in_flight, (int64_t)2 * 1024 * 1024 * 1024)
+RAY_CONFIG(uint64_t,
+           object_manager_max_bytes_in_flight,
+           ((uint64_t)2) * 1024 * 1024 * 1024)
 
 /// Maximum number of ids in one batch to send to GCS to delete keys.
 RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000)
@@ -945,3 +947,6 @@ RAY_CONFIG(int32_t, raylet_rpc_server_reconnect_timeout_s, 60)
 // process getting spawned.  Setting to zero or less maintains the default
 // number of threads grpc will spawn.
 RAY_CONFIG(int64_t, worker_num_grpc_internal_threads, 0)
+
+// Whether to start a background thread to manage Python GC in workers.
+RAY_CONFIG(bool, start_python_gc_manager_thread, true)

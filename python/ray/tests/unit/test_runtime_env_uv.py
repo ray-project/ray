@@ -1,8 +1,9 @@
-from ray._private.runtime_env import uv
-
-import pytest
 import sys
 from unittest.mock import patch
+
+import pytest
+
+from ray._private.runtime_env import uv
 
 
 class TestRuntimeEnv:

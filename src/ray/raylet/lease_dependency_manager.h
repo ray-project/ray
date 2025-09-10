@@ -22,15 +22,15 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "ray/common/common_protocol.h"
 #include "ray/common/id.h"
-#include "ray/common/lease/lease.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/util/counter_map.h"
 
 namespace ray {
 
 namespace raylet {
+
+using std::literals::operator""sv;
 
 /// Used for unit-testing the ClusterLeaseManager, which requests dependencies
 /// for queued leases.
@@ -43,7 +43,7 @@ class LeaseDependencyManagerInterface {
   virtual void RemoveLeaseDependencies(const LeaseID &lease_id) = 0;
   virtual bool LeaseDependenciesBlocked(const LeaseID &lease_id) const = 0;
   virtual bool CheckObjectLocal(const ObjectID &object_id) const = 0;
-  virtual ~LeaseDependencyManagerInterface(){};
+  virtual ~LeaseDependencyManagerInterface() = default;
 };
 
 /// \class LeaseDependencyManager
@@ -57,8 +57,10 @@ class LeaseDependencyManagerInterface {
 class LeaseDependencyManager : public LeaseDependencyManagerInterface {
  public:
   /// Create a lease dependency manager.
-  explicit LeaseDependencyManager(ObjectManagerInterface &object_manager)
-      : object_manager_(object_manager) {
+  explicit LeaseDependencyManager(
+      ObjectManagerInterface &object_manager,
+      ray::observability::MetricInterface &task_by_state_counter)
+      : object_manager_(object_manager), task_by_state_counter_(task_by_state_counter) {
     waiting_leases_counter_.SetOnChangeCallback(
         [this](std::pair<std::string, bool> key) mutable {
           int64_t num_total = waiting_leases_counter_.Get(key);
@@ -68,25 +70,26 @@ class LeaseDependencyManager : public LeaseDependencyManagerInterface {
           int64_t num_inactive = std::min(
               num_total, object_manager_.PullManagerNumInactivePullsByTaskName(key));
           // Offset the metric values recorded from the owner process.
-          ray::stats::STATS_tasks.Record(
+          task_by_state_counter_.Record(
               -num_total,
-              {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT)},
-               {"Name", key.first},
-               {"IsRetry", key.second ? "1" : "0"},
-               {"Source", "dependency_manager"}});
-          ray::stats::STATS_tasks.Record(
+              {{"State"sv,
+                rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT)},
+               {"Name"sv, key.first},
+               {"IsRetry"sv, key.second ? "1" : "0"},
+               {"Source"sv, "dependency_manager"}});
+          task_by_state_counter_.Record(
               num_total - num_inactive,
-              {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_FETCH)},
-               {"Name", key.first},
-               {"IsRetry", key.second ? "1" : "0"},
-               {"Source", "dependency_manager"}});
-          ray::stats::STATS_tasks.Record(
+              {{"State"sv, rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_FETCH)},
+               {"Name"sv, key.first},
+               {"IsRetry"sv, key.second ? "1" : "0"},
+               {"Source"sv, "dependency_manager"}});
+          task_by_state_counter_.Record(
               num_inactive,
-              {{"State",
+              {{"State"sv,
                 rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_OBJ_STORE_MEM_AVAIL)},
-               {"Name", key.first},
-               {"IsRetry", key.second ? "1" : "0"},
-               {"Source", "dependency_manager"}});
+               {"Name"sv, key.first},
+               {"IsRetry"sv, key.second ? "1" : "0"},
+               {"Source"sv, "dependency_manager"}});
         });
   }
 
@@ -94,7 +97,7 @@ class LeaseDependencyManager : public LeaseDependencyManagerInterface {
   ///
   /// \param object_id The object to check for.
   /// \return Whether the object is local.
-  bool CheckObjectLocal(const ObjectID &object_id) const;
+  bool CheckObjectLocal(const ObjectID &object_id) const override;
 
   /// Get the address of the owner of this object. An address will only be
   /// returned if the caller previously specified that this object is required
@@ -158,7 +161,7 @@ class LeaseDependencyManager : public LeaseDependencyManagerInterface {
   /// \param required_objects The objects required by the lease.
   bool RequestLeaseDependencies(const LeaseID &lease_id,
                                 const std::vector<rpc::ObjectReference> &required_objects,
-                                const TaskMetricsKey &task_key);
+                                const TaskMetricsKey &task_key) override;
 
   /// Cancel a lease's dependencies. We will no longer attempt to fetch any
   /// remote dependencies, if no other lease or worker requires them.
@@ -167,7 +170,7 @@ class LeaseDependencyManager : public LeaseDependencyManagerInterface {
   ///
   /// \param lease_id The lease that requires the objects.
   /// \param required_objects The objects required by the lease.
-  void RemoveLeaseDependencies(const LeaseID &lease_id);
+  void RemoveLeaseDependencies(const LeaseID &lease_id) override;
 
   /// Handle an object becoming locally available.
   ///
@@ -188,7 +191,7 @@ class LeaseDependencyManager : public LeaseDependencyManagerInterface {
 
   /// Check whether a requested lease's dependencies are not being fetched to
   /// the local node due to lack of memory.
-  bool LeaseDependenciesBlocked(const LeaseID &lease_id) const;
+  bool LeaseDependenciesBlocked(const LeaseID &lease_id) const override;
 
   /// Returns debug string for class.
   ///
@@ -227,13 +230,13 @@ class LeaseDependencyManager : public LeaseDependencyManagerInterface {
 
   /// A struct to represent the object dependencies of a task.
   struct LeaseDependencies {
-    LeaseDependencies(const absl::flat_hash_set<ObjectID> &deps,
+    LeaseDependencies(absl::flat_hash_set<ObjectID> deps,
                       CounterMap<std::pair<std::string, bool>> &counter_map,
-                      const TaskMetricsKey &task_key)
+                      TaskMetricsKey task_key)
         : dependencies_(std::move(deps)),
           num_missing_dependencies_(dependencies_.size()),
           waiting_task_counter_map_(counter_map),
-          task_key_(task_key) {
+          task_key_(std::move(task_key)) {
       if (num_missing_dependencies_ > 0) {
         waiting_task_counter_map_.Increment(task_key_);
       }
@@ -267,6 +270,9 @@ class LeaseDependencyManager : public LeaseDependencyManagerInterface {
         waiting_task_counter_map_.Decrement(task_key_);
       }
     }
+
+    LeaseDependencies(const LeaseDependencies &) = delete;
+    LeaseDependencies &operator=(const LeaseDependencies &) = delete;
 
     ~LeaseDependencies() {
       if (num_missing_dependencies_ > 0) {
@@ -310,11 +316,19 @@ class LeaseDependencyManager : public LeaseDependencyManagerInterface {
 
   /// The set of locally available objects. This is used to determine which
   /// leases are ready to run and which `ray.wait` requests can be finished.
-  std::unordered_set<ray::ObjectID> local_objects_;
+  absl::flat_hash_set<ray::ObjectID> local_objects_;
 
   /// Counts the number of active lease dependency fetches by lease name. The counter
   /// total will be less than or equal to the size of queued_lease_requests_.
   CounterMap<TaskMetricsKey> waiting_leases_counter_;
+
+  // Metric to track the number of tasks by state.
+  // Expected tags:
+  // - State: the task state, as described by rpc::TaskState proto in common.proto
+  // - Name: the name of the function called
+  // - IsRetry: whether the task is a retry
+  // - Source: component reporting, e.g., "core_worker", "executor", or "pull_manager"
+  ray::observability::MetricInterface &task_by_state_counter_;
 
   friend class LeaseDependencyManagerTest;
 };

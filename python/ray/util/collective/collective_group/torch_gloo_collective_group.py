@@ -1,5 +1,6 @@
-from typing import TYPE_CHECKING, List, Optional
 import os
+from typing import TYPE_CHECKING, List, Optional
+
 import torch
 import torch.distributed as dist
 
@@ -10,16 +11,16 @@ from ray.util.collective.collective_group.base_collective_group import (
     get_master_address_metadata_key,
 )
 from ray.util.collective.types import (
+    AllGatherOptions,
     AllReduceOptions,
-    BarrierOptions,
     Backend,
+    BarrierOptions,
+    BroadcastOptions,
+    RecvOptions,
     ReduceOp,
     ReduceOptions,
-    BroadcastOptions,
-    AllGatherOptions,
     ReduceScatterOptions,
     SendOptions,
-    RecvOptions,
 )
 
 if TYPE_CHECKING:

@@ -242,7 +242,7 @@ Refer to the tracking libraries' documentation for semantics.
 
        def train_func():
             if ray.train.get_context().get_world_rank() == 0:
-                   wandb.init(..., config={"ray_train_persistent_storage_path": "TODO: fill in when API stablizes"})
+                   wandb.init(..., config={"ray_train_persistent_storage_path": "TODO: fill in when API stabilizes"})
 
 .. tip::
 

@@ -328,7 +328,7 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
   // Actor leases should be sent to the raylet immediately, so we should never build up a
   // backlog in GCS.
   // Counter for generating unique lease IDs.
-  static uint32_t lease_id_counter = 1;
+  static uint32_t lease_id_counter = 0;
   actor->GetMutableLeaseSpec()->set_lease_id(
       LeaseID::FromWorker(WorkerID::FromRandom(), lease_id_counter++).Binary());
   raylet_client->RequestWorkerLease(
@@ -416,18 +416,17 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
     // Without this, there could be a possible race condition. Related issues:
     // https://github.com/ray-project/ray/pull/9215/files#r449469320
     worker_client_pool_.GetOrConnect(leased_worker->GetAddress());
-    RAY_CHECK_OK(gcs_actor_table_.Put(actor->GetActorID(),
-                                      actor->GetActorTableData(),
-                                      {[this, actor, leased_worker](Status status) {
-                                         RAY_CHECK_OK(status);
-                                         if (actor->GetState() ==
-                                             rpc::ActorTableData::DEAD) {
-                                           // Actor has already been killed.
-                                           return;
-                                         }
-                                         CreateActorOnWorker(actor, leased_worker);
-                                       },
-                                       io_context_}));
+    gcs_actor_table_.Put(actor->GetActorID(),
+                         actor->GetActorTableData(),
+                         {[this, actor, leased_worker](Status status) {
+                            RAY_CHECK_OK(status);
+                            if (actor->GetState() == rpc::ActorTableData::DEAD) {
+                              // Actor has already been killed.
+                              return;
+                            }
+                            CreateActorOnWorker(actor, leased_worker);
+                          },
+                          io_context_});
   }
 }
 
