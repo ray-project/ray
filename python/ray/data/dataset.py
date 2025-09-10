@@ -3686,6 +3686,8 @@ class Dataset:
             dataset_uuid=self._uuid,
             mode=mode,
         )
+        
+        # Execute immediately (original behavior)
         self.write_datasink(
             datasink,
             ray_remote_args=ray_remote_args,
@@ -4845,7 +4847,7 @@ class Dataset:
     @ConsumptionAPI(pattern="Time complexity:")
     def write_datasink(
         self,
-        datasink: Datasink,
+        datasink: Union[Datasink, List[Datasink]],
         *,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
@@ -4865,16 +4867,21 @@ class Dataset:
         if ray_remote_args is None:
             ray_remote_args = {}
 
-        if not datasink.supports_distributed_writes:
-            if ray.util.client.ray.is_connected():
-                raise ValueError(
-                    "If you're using Ray Client, Ray Data won't schedule write tasks "
-                    "on the driver's node."
+        # Handle both single datasink and list of datasinks
+        datasinks = datasink if isinstance(datasink, list) else [datasink]
+        
+        # Check distributed writes support for all datasinks
+        for ds in datasinks:
+            if not ds.supports_distributed_writes:
+                if ray.util.client.ray.is_connected():
+                    raise ValueError(
+                        "If you're using Ray Client, Ray Data won't schedule write tasks "
+                        "on the driver's node."
+                    )
+                ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
+                    ray.get_runtime_context().get_node_id(),
+                    soft=False,
                 )
-            ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
-                ray.get_runtime_context().get_node_id(),
-                soft=False,
-            )
 
         plan = self._plan.copy()
         write_op = Write(
@@ -4886,30 +4893,47 @@ class Dataset:
         logical_plan = LogicalPlan(write_op, self.context)
 
         try:
-            datasink.on_write_start()
-            if isinstance(datasink, _FileDatasink):
-                if not datasink.has_created_dir and datasink.mode == SaveMode.IGNORE:
-                    logger.info(
-                        f"Ignoring write because {datasink.path} already exists"
-                    )
-                    return
+            # Call on_write_start for all datasinks
+            for ds in datasinks:
+                ds.on_write_start()
+                if isinstance(ds, _FileDatasink):
+                    if not ds.has_created_dir and ds.mode == SaveMode.IGNORE:
+                        logger.info(
+                            f"Ignoring write because {ds.path} already exists"
+                        )
+                        return
 
             self._write_ds = Dataset(plan, logical_plan).materialize()
             # TODO: Get and handle the blocks with an iterator instead of getting
             # everything in a blocking way, so some blocks can be freed earlier.
             raw_write_results = ray.get(self._write_ds._plan.execute().block_refs)
             write_result = gen_datasink_write_result(raw_write_results)
-            logger.info(
-                "Data sink %s finished. %d rows and %s data written.",
-                datasink.get_name(),
-                write_result.num_rows,
-                memory_string(write_result.size_bytes),
-            )
-            datasink.on_write_complete(write_result)
+            
+            if len(datasinks) == 1:
+                logger.info(
+                    "Data sink %s finished. %d rows and %s data written.",
+                    datasinks[0].get_name(),
+                    write_result.num_rows,
+                    memory_string(write_result.size_bytes),
+                )
+            else:
+                logger.info(
+                    "Multi-write to %d destinations finished. %d rows and %s data written.",
+                    len(datasinks),
+                    write_result.num_rows,
+                    memory_string(write_result.size_bytes),
+                )
+            
+            # Call on_write_complete for all datasinks
+            for ds in datasinks:
+                ds.on_write_complete(write_result)
 
         except Exception as e:
-            datasink.on_write_failed(e)
+            # Call on_write_failed for all datasinks
+            for ds in datasinks:
+                ds.on_write_failed(e)
             raise
+
 
     @ConsumptionAPI(
         delegate=(
@@ -6446,3 +6470,5 @@ def _block_to_ndarray(block: Block, column: Optional[str]):
 def _block_to_arrow(block: Block):
     block = BlockAccessor.for_block(block)
     return block.to_arrow()
+
+

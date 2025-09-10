@@ -31,27 +31,76 @@ def gen_datasink_write_result(
     total_num_rows = sum(result["num_rows"].sum() for result in write_result_blocks)
     total_size_bytes = sum(result["size_bytes"].sum() for result in write_result_blocks)
 
-    write_returns = [result["write_return"][0] for result in write_result_blocks]
+    # Handle both single and multi-write results
+    write_returns = []
+    for result in write_result_blocks:
+        if result.get("is_multi_write", [False])[0]:
+            # Multi-write case: flatten the list of write returns from all datasinks
+            multi_returns = result["write_return"][0]  # This is a list of lists
+            write_returns.extend(multi_returns)
+        else:
+            # Single write case: add the single write return
+            write_returns.append(result["write_return"][0])
+    
     return WriteResult(total_num_rows, total_size_bytes, write_returns)
 
 
 def generate_write_fn(
-    datasink_or_legacy_datasource: Union[Datasink, Datasource], **write_args
+    datasink_or_legacy_datasource: Union[Datasink, Datasource, List[Datasink]], **write_args
 ) -> Callable[[Iterator[Block], TaskContext], Iterator[Block]]:
     def fn(blocks: Iterator[Block], ctx: TaskContext) -> Iterator[Block]:
-        """Writes the blocks to the given datasink or legacy datasource.
+        """Writes the blocks to the given datasink(s) or legacy datasource.
 
         Outputs the original blocks to be written."""
-        # Create a copy of the iterator, so we can return the original blocks.
-        it1, it2 = itertools.tee(blocks, 2)
-        if isinstance(datasink_or_legacy_datasource, Datasink):
-            ctx.kwargs["_datasink_write_return"] = datasink_or_legacy_datasource.write(
-                it1, ctx
-            )
+        
+        # Handle multi-datasink case
+        if isinstance(datasink_or_legacy_datasource, list):
+            # Validate input
+            if not datasink_or_legacy_datasource:
+                raise ValueError("List of datasinks cannot be empty")
+            
+            # Create N+1 iterators: N for writing, 1 for return
+            num_datasinks = len(datasink_or_legacy_datasource)
+            iterators = itertools.tee(blocks, num_datasinks + 1)
+            write_iterators = iterators[:-1]
+            return_iterator = iterators[-1]
+            
+            # Write to each datasink and collect results
+            write_returns = []
+            write_errors = []
+            
+            for i, datasink in enumerate(datasink_or_legacy_datasource):
+                try:
+                    if isinstance(datasink, Datasink):
+                        write_return = datasink.write(write_iterators[i], ctx)
+                        write_returns.append(write_return)
+                    else:
+                        # Legacy datasource support
+                        datasink.write(write_iterators[i], ctx, **write_args)
+                        write_returns.append(None)
+                except Exception as e:
+                    write_errors.append((i, datasink, e))
+                    write_returns.append(None)
+            
+            # Handle any write errors
+            if write_errors:
+                error_details = [f"Datasink {i} ({datasink}): {e}" for i, datasink, e in write_errors]
+                raise RuntimeError(f"Multi-write failed for {len(write_errors)} datasinks: {'; '.join(error_details)}")
+            
+            ctx.kwargs["_multi_datasink_write_returns"] = write_returns
+            return return_iterator
         else:
-            datasink_or_legacy_datasource.write(it1, ctx, **write_args)
+            # Single datasink case (original logic)
+            # Create a copy of the iterator, so we can return the original blocks.
+            it1, it2 = itertools.tee(blocks, 2)
+            if isinstance(datasink_or_legacy_datasource, Datasink):
+                ctx.kwargs["_datasink_write_return"] = datasink_or_legacy_datasource.write(
+                    it1, ctx
+                )
+            else:
+                datasink_or_legacy_datasource.write(it1, ctx, **write_args)
 
-        return it2
+            return it2
 
     return fn
 
@@ -73,13 +122,28 @@ def generate_collect_write_stats_fn() -> (
         # type.
         import pandas as pd
 
-        block = pd.DataFrame(
-            {
-                "num_rows": [total_num_rows],
-                "size_bytes": [total_size_bytes],
-                "write_return": [ctx.kwargs.get("_datasink_write_return", None)],
-            }
-        )
+        # Handle both single and multi-write cases
+        if "_multi_datasink_write_returns" in ctx.kwargs:
+            # Multi-write case: aggregate stats for all writes
+            multi_write_returns = ctx.kwargs.get("_multi_datasink_write_returns", [])
+            block = pd.DataFrame(
+                {
+                    "num_rows": [total_num_rows],
+                    "size_bytes": [total_size_bytes],
+                    "write_return": [multi_write_returns],  # List of write returns
+                    "is_multi_write": [True],
+                }
+            )
+        else:
+            # Single write case (original logic)
+            block = pd.DataFrame(
+                {
+                    "num_rows": [total_num_rows],
+                    "size_bytes": [total_size_bytes],
+                    "write_return": [ctx.kwargs.get("_datasink_write_return", None)],
+                    "is_multi_write": [False],
+                }
+            )
         return iter([block])
 
     return fn
