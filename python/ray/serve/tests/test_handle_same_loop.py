@@ -220,5 +220,27 @@ async def test_request_cancellation_in_same_loop(
     await signal_actor.send.remote(clear=True)
 
 
+@pytest.mark.asyncio
+async def test_multiple_awaits(serve_instance_async):
+    """Test that multiple awaits doesn't call replica multiple times."""
+    a = 0
+
+    @serve.deployment
+    async def foo():
+        nonlocal a
+        a += 1
+        return a
+
+    app = serve.run(foo.bind())
+
+    response = app.remote()
+    assert await response == 1
+    assert await response == 1
+
+    response = app.remote()
+    assert await response == 2
+    assert await response == 2
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

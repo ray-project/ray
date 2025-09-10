@@ -16,16 +16,17 @@ from ray.dashboard.modules.aggregator.publisher.ray_event_publisher import (
 )
 from ray.dashboard.modules.aggregator.task_metadata_buffer import TaskMetadataBuffer
 
-from ray.dashboard.modules.aggregator.shared import metric_recorder, metric_prefix
+from ray._private.telemetry.open_telemetry_metric_recorder import (
+    OpenTelemetryMetricRecorder,
+)
 
 import ray
 from ray._private import ray_constants
 import ray.dashboard.utils as dashboard_utils
-import ray.dashboard.consts as dashboard_consts
 from ray.core.generated import (
+    events_base_event_pb2,
     events_event_aggregator_service_pb2,
     events_event_aggregator_service_pb2_grpc,
-    events_base_event_pb2,
     gcs_service_pb2_grpc,
 )
 
@@ -54,7 +55,7 @@ EVENTS_EXPORT_ADDR = os.environ.get(f"{env_var_prefix}_EVENTS_EXPORT_ADDR", "")
 # Event filtering configurations
 # Comma-separated list of event types that are allowed to be exposed to external services
 # Valid values: TASK_DEFINITION_EVENT, TASK_EXECUTION_EVENT, ACTOR_TASK_DEFINITION_EVENT, ACTOR_TASK_EXECUTION_EVENT
-# The list of all supported event types can be found in src/ray/protobuf/events_base_event.proto (EventType enum)
+# The list of all supported event types can be found in src/ray/protobuf/public/events_base_event.proto (EventType enum)
 # By default TASK_PROFILE_EVENT is not exposed to external services
 DEFAULT_EXPOSABLE_EVENT_TYPES = (
     "TASK_DEFINITION_EVENT,TASK_EXECUTION_EVENT,"
@@ -165,17 +166,18 @@ class AggregatorAgent(
             self._gcs_publisher = NoopPublisher()
  
         # Metrics
-        self._open_telemetry_metric_recorder = metric_recorder
+        _metric_prefix = "event_aggregator_agent"
+        self._open_telemetry_metric_recorder = OpenTelemetryMetricRecorder()
 
         # Register counter metrics
-        self._events_received_metric_name = f"{metric_prefix}_events_received_total"
+        self._events_received_metric_name = f"{_metric_prefix}_events_received_total"
         self._open_telemetry_metric_recorder.register_counter_metric(
             self._events_received_metric_name,
             "Total number of events received via AddEvents gRPC.",
         )
 
         self._events_failed_to_add_metric_name = (
-            f"{metric_prefix}_events_buffer_add_failures_total"
+            f"{_metric_prefix}_events_buffer_add_failures_total"
         )
         self._open_telemetry_metric_recorder.register_counter_metric(
             self._events_failed_to_add_metric_name,

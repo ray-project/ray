@@ -31,7 +31,7 @@ from ray.rllib.models.torch.torch_action_dist import (
     TorchMultiCategorical,
 )
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
-from ray.rllib.utils.deprecation import (
+from ray._common.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
 )
