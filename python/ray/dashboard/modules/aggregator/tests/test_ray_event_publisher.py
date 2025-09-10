@@ -1,23 +1,24 @@
-import uuid
-import pytest
-import sys
 import asyncio
+import sys
+import uuid
+from typing import Optional
+
+import pytest
+from google.protobuf.timestamp_pb2 import Timestamp
 
 from ray._common.test_utils import async_wait_for_condition
-from ray.dashboard.modules.aggregator.publisher.ray_event_publisher import (
-    RayEventPublisher,
-    NoopPublisher,
-)
-from ray.dashboard.modules.aggregator.publisher.async_publisher_client import (
-    PublishStats,
-    PublisherClientInterface,
-)
+from ray.core.generated import events_base_event_pb2
 from ray.dashboard.modules.aggregator.multi_consumer_event_buffer import (
     MultiConsumerEventBuffer,
 )
-from ray.core.generated import events_base_event_pb2
-from typing import Optional
-from google.protobuf.timestamp_pb2 import Timestamp
+from ray.dashboard.modules.aggregator.publisher.async_publisher_client import (
+    PublisherClientInterface,
+    PublishStats,
+)
+from ray.dashboard.modules.aggregator.publisher.ray_event_publisher import (
+    NoopPublisher,
+    RayEventPublisher,
+)
 
 
 class MockPublisherClient(PublisherClientInterface):

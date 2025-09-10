@@ -1,25 +1,24 @@
-from abc import ABC, abstractmethod
 import asyncio
 import logging
 import random
+from abc import ABC, abstractmethod
 from typing import Dict, Optional
 
+from ray._private.telemetry.open_telemetry_metric_recorder import (
+    OpenTelemetryMetricRecorder,
+)
 from ray.dashboard.modules.aggregator.multi_consumer_event_buffer import (
     MultiConsumerEventBuffer,
-)
-from ray.dashboard.modules.aggregator.publisher.configs import (
-    PUBLISHER_MAX_BUFFER_SEND_INTERVAL_SECONDS,
-    PUBLISHER_MAX_RETRIES,
-    PUBLISHER_INITIAL_BACKOFF_SECONDS,
-    PUBLISHER_MAX_BACKOFF_SECONDS,
-    PUBLISHER_JITTER_RATIO,
 )
 from ray.dashboard.modules.aggregator.publisher.async_publisher_client import (
     PublisherClientInterface,
 )
-
-from ray._private.telemetry.open_telemetry_metric_recorder import (
-    OpenTelemetryMetricRecorder,
+from ray.dashboard.modules.aggregator.publisher.configs import (
+    PUBLISHER_INITIAL_BACKOFF_SECONDS,
+    PUBLISHER_JITTER_RATIO,
+    PUBLISHER_MAX_BACKOFF_SECONDS,
+    PUBLISHER_MAX_BUFFER_SEND_INTERVAL_SECONDS,
+    PUBLISHER_MAX_RETRIES,
 )
 
 logger = logging.getLogger(__name__)
