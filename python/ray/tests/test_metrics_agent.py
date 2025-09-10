@@ -6,7 +6,6 @@ import signal
 import sys
 import time
 import warnings
-from collections import defaultdict
 from pprint import pformat
 from unittest.mock import MagicMock
 
@@ -200,7 +199,6 @@ def _setup_cluster_for_test(request, ray_start_cluster):
             "event_stats_print_interval_ms": 500,
             "event_stats": True,
             "enable_metrics_collection": enable_metrics_collection,
-            "enable_open_telemetry": os.getenv("RAY_enable_open_telemetry") == "1",
         }
     )
     # Add worker nodes.
@@ -309,19 +307,9 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         # The list of custom or user defined metrics. Open Telemetry backend does not
         # support exporting Counter as Gauge, so we skip some metrics in that case.
         custom_metrics = (
-            [
-                "test_counter",
-                "test_counter_total",
-                "test_driver_counter",
-                "test_driver_counter_total",
-                "test_gauge",
-            ]
-            if os.environ.get("RAY_enable_open_telemetry") != "1"
-            else [
-                "test_counter_total",
-                "test_driver_counter_total",
-                "test_gauge",
-            ]
+            "test_counter_total",
+            "test_driver_counter_total",
+            "test_gauge",
         )
 
         # Make sure our user defined metrics exist and have the correct types

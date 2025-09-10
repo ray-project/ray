@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import threading
+import time
 from typing import Dict, List, Optional
 
 import grpc
@@ -149,15 +150,18 @@ def get_metric_dictionaries(name: str, timeout: float = 20) -> List[Dict]:
             }
         ]
     """
+    last_metric = []
 
     def metric_available() -> bool:
         metrics = httpx.get("http://127.0.0.1:9999", timeout=10).text
         assert name in metrics
+        last_metric.clear()
+        last_metric.append(metrics)
         return True
 
     wait_for_condition(metric_available, retry_interval_ms=1000, timeout=timeout)
 
-    metrics = httpx.get("http://127.0.0.1:9999").text
+    metrics = last_metric[0]
     serve_metrics = [line for line in metrics.splitlines() if "ray_serve_" in line]
     print("metrics", "\n".join(serve_metrics))
 
@@ -472,7 +476,7 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     fake_app_name = "fake-app"
     ping_grpc_call_method(channel=channel, app_name=fake_app_name, test_not_found=True)
 
-    num_requests = get_metric_dictionaries("serve_num_http_requests")
+    num_requests = get_metric_dictionaries("serve_num_http_requests_total")
     assert len(num_requests) == 1
     assert num_requests[0]["route"] == ""
     assert num_requests[0]["method"] == "GET"
@@ -480,7 +484,7 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     assert num_requests[0]["status_code"] == "404"
     print("serve_num_http_requests working as expected.")
 
-    num_requests = get_metric_dictionaries("serve_num_grpc_requests")
+    num_requests = get_metric_dictionaries("serve_num_grpc_requests_total")
     assert len(num_requests) == 1
     assert num_requests[0]["route"] == ""
     assert num_requests[0]["method"] == "/ray.serve.UserDefinedService/__call__"
@@ -488,14 +492,14 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     assert num_requests[0]["status_code"] == str(grpc.StatusCode.NOT_FOUND)
     print("serve_num_grpc_requests working as expected.")
 
-    num_errors = get_metric_dictionaries("serve_num_http_error_requests")
+    num_errors = get_metric_dictionaries("serve_num_http_error_requests_total")
     assert len(num_errors) == 1
     assert num_errors[0]["route"] == ""
     assert num_errors[0]["error_code"] == "404"
     assert num_errors[0]["method"] == "GET"
     print("serve_num_http_error_requests working as expected.")
 
-    num_errors = get_metric_dictionaries("serve_num_grpc_error_requests")
+    num_errors = get_metric_dictionaries("serve_num_grpc_error_requests_total")
     assert len(num_errors) == 1
     assert num_errors[0]["route"] == ""
     assert num_errors[0]["error_code"] == str(grpc.StatusCode.NOT_FOUND)
@@ -536,14 +540,14 @@ def test_proxy_timeout_metrics(metrics_start_shutdown):
     with pytest.raises(grpc.RpcError):
         ping_grpc_call_method(channel=channel, app_name="status_code_timeout")
 
-    num_errors = get_metric_dictionaries("serve_num_http_error_requests")
+    num_errors = get_metric_dictionaries("serve_num_http_error_requests_total")
     assert len(num_errors) == 1
     assert num_errors[0]["route"] == "/status_code_timeout"
     assert num_errors[0]["error_code"] == "408"
     assert num_errors[0]["method"] == "GET"
     assert num_errors[0]["application"] == "status_code_timeout"
 
-    num_errors = get_metric_dictionaries("serve_num_grpc_error_requests")
+    num_errors = get_metric_dictionaries("serve_num_grpc_error_requests_total")
     assert len(num_errors) == 1
     assert num_errors[0]["route"] == "status_code_timeout"
     assert num_errors[0]["error_code"] == str(grpc.StatusCode.DEADLINE_EXCEEDED)
@@ -632,7 +636,7 @@ def test_proxy_disconnect_grpc_metrics(metrics_start_shutdown):
     thread.join()
     ray.get(signal.send.remote(clear=True))
 
-    num_errors = get_metric_dictionaries("serve_num_grpc_error_requests")
+    num_errors = get_metric_dictionaries("serve_num_grpc_error_requests_total")
     assert len(num_errors) == 1
     assert num_errors[0]["route"] == "disconnect"
     assert num_errors[0]["error_code"] == str(grpc.StatusCode.CANCELLED)
@@ -663,7 +667,7 @@ def test_proxy_metrics_fields_internal_error(metrics_start_shutdown):
         ping_grpc_call_method(channel=channel, app_name=real_app_name)
 
     num_deployment_errors = get_metric_dictionaries(
-        "serve_num_deployment_http_error_requests"
+        "serve_num_deployment_http_error_requests_total"
     )
     assert len(num_deployment_errors) == 1
     assert num_deployment_errors[0]["deployment"] == "f"
@@ -673,7 +677,7 @@ def test_proxy_metrics_fields_internal_error(metrics_start_shutdown):
     print("serve_num_deployment_http_error_requests working as expected.")
 
     num_deployment_errors = get_metric_dictionaries(
-        "serve_num_deployment_grpc_error_requests"
+        "serve_num_deployment_grpc_error_requests_total"
     )
     assert len(num_deployment_errors) == 1
     assert num_deployment_errors[0]["deployment"] == "f"
