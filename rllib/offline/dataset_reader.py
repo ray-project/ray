@@ -1,17 +1,18 @@
 import logging
 import math
-from pathlib import Path
 import re
-import numpy as np
-from typing import List, Tuple, TYPE_CHECKING, Optional
 import zipfile
+from pathlib import Path
+from typing import TYPE_CHECKING, List, Optional, Tuple
+
+import numpy as np
 
 import ray.data
 from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.offline.json_reader import from_json_data, postprocess_actions
-from ray.rllib.policy.sample_batch import concat_samples, SampleBatch, DEFAULT_POLICY_ID
-from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, concat_samples
+from ray.rllib.utils.annotations import PublicAPI, override
 from ray.rllib.utils.typing import SampleBatchType
 
 if TYPE_CHECKING:

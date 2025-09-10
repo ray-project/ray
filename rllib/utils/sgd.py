@@ -1,11 +1,12 @@
 """Utils for minibatch SGD across multiple RLlib policies."""
 
 import logging
-import numpy as np
 import random
 
+import numpy as np
+
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import OldAPIStack
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 
 logger = logging.getLogger(__name__)

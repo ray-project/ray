@@ -1,6 +1,7 @@
-import numpy as np
 import random
 from typing import Optional
+
+import numpy as np
 
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf

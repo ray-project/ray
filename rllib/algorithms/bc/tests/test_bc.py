@@ -1,7 +1,7 @@
-from pathlib import Path
 import unittest
-import ray
+from pathlib import Path
 
+import ray
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -88,7 +88,8 @@ class TestBC(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

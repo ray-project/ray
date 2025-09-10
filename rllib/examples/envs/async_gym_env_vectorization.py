@@ -65,12 +65,12 @@ import time
 
 import gymnasium as gym
 
+from ray import tune
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
-from ray import tune
 
 parser = add_rllib_example_script_args(default_reward=60.0)
 parser.set_defaults(

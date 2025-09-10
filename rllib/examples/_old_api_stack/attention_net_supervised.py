@@ -1,8 +1,9 @@
 # @OldAPIStack
-from gymnasium.spaces import Box, Discrete
 import numpy as np
+from gymnasium.spaces import Box, Discrete
 
 from rllib.models.tf.attention_net import TrXLNet
+
 from ray.rllib.utils.framework import try_import_tf
 
 tf1, tf, tfv = try_import_tf()

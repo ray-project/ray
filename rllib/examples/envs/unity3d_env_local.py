@@ -28,7 +28,6 @@ import os
 
 import ray
 from ray import tune
-from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.wrappers.unity3d_env import Unity3DEnv
 from ray.rllib.utils.metrics import (
@@ -37,6 +36,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.tune.result import TRAINING_ITERATION
 
 parser = argparse.ArgumentParser()
 parser.add_argument(

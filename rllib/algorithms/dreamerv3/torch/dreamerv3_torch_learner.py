@@ -19,7 +19,7 @@ from ray.rllib.core.learner.learner import ParamDict
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_utils import symlog, two_hot, clip_gradients
+from ray.rllib.utils.torch_utils import clip_gradients, symlog, two_hot
 from ray.rllib.utils.typing import ModuleID, TensorType
 
 torch, nn = try_import_torch()

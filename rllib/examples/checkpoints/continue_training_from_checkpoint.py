@@ -85,6 +85,7 @@ import re
 import time
 
 from ray import tune
+from ray.air.integrations.wandb import WandbLoggerCallback
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
@@ -98,8 +99,6 @@ from ray.rllib.utils.test_utils import (
     check_learning_achieved,
 )
 from ray.tune.registry import get_trainable_cls, register_env
-from ray.air.integrations.wandb import WandbLoggerCallback
-
 
 parser = add_rllib_example_script_args(
     default_reward=500.0, default_timesteps=10000000, default_iters=2000

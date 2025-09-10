@@ -1,11 +1,11 @@
 import unittest
 
 from ray.rllib.algorithms.registry import (
+    ALGORITHMS,
+    ALGORITHMS_CLASS_TO_NAME,
     POLICIES,
     get_policy_class,
     get_policy_class_name,
-    ALGORITHMS_CLASS_TO_NAME,
-    ALGORITHMS,
 )
 
 
@@ -31,7 +31,8 @@ class TestPolicies(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))
