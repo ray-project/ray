@@ -5,7 +5,7 @@ This module contains the planning logic for converting DropNa logical operators
 into physical execution plans.
 """
 
-from typing import List, Optional
+from typing import Any, List, Optional
 
 import pyarrow as pa
 import pyarrow.compute as pc
