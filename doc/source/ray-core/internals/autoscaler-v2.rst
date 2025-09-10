@@ -16,7 +16,7 @@ The following sections describe these components in detail.
 Worker Group Configurations
 ---------------------------
 
-Work groups (node types) can be configured in these ways:
+Worker groups (node types) can be configured in these ways:
 
 - The `available_nodes_types <https://docs.ray.io/en/latest/cluster/vms/references/ray-cluster-configuration.html#node-types>`__ field in the Cluster YAML file, if you are using the `ray up` cluster launcher.
 - The `workerGroupSpecs <https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/config.html#pod-configuration-headgroupspec-and-workergroupspecs>`__ field in the RayCluster CRD, if you are using KubeRay.
