@@ -3,14 +3,14 @@ from urllib.parse import urljoin
 import base64
 from openai import OpenAI
 
-api_key = "FAKE_KEY"
-base_url = "http://localhost:8000"
+API_KEY = "FAKE_KEY"
+BASE_URL = "http://localhost:8000"
 
-client = OpenAI(base_url=urljoin(base_url, "v1"), api_key=api_key)
+client = OpenAI(BASE_URL=urljoin(BASE_URL, "v1"), API_KEY=API_KEY)
 
 ### From an image locally saved as `example.jpg`
 # Load and encode image as base64
-with open("example.jpg", "rb") as f:
+with open("vision-llm/example.jpg", "rb") as f:
     img_base64 = base64.b64encode(f.read()).decode()
 
 response = client.chat.completions.create(
