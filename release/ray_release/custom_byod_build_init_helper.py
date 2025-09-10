@@ -6,7 +6,7 @@ from ray_release.logger import logger
 from ray_release.test import Test
 
 
-def _generate_custom_build_step_key(image: str) -> str:
+def generate_custom_build_step_key(image: str) -> str:
     # Buildkite step key cannot contain special characters, so they need to be replaced.
     # Buildkite also limits step key length to 80 characters.
     image_name = (
@@ -51,7 +51,7 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
             continue
         step = {
             "label": f":tapioca: build custom: {image}",
-            "key": _generate_custom_build_step_key(image),
+            "key": generate_custom_build_step_key(image),
             "instance_type": "release-medium",
             "commands": [
                 "bash release/gcloud_docker_login.sh release/aws2gce_iam.json",

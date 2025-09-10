@@ -13,6 +13,7 @@ from ray_release.config import (
     get_test_project_id,
 )
 from ray_release.env import DEFAULT_ENVIRONMENT, load_environment
+from ray_release.custom_byod_build_init_helper import generate_custom_build_step_key
 from ray_release.template import get_test_env_var
 from ray_release.util import DeferredEnvVar
 
@@ -194,10 +195,7 @@ def get_step(
 
     image = test.get_anyscale_byod_image()
     if test.require_custom_byod_image():
-        step["depends_on"] = (
-            "custom_build_"
-            + image.replace("/", "_").replace(":", "_").replace(".", "_")[-40:],
-        )
+        step["depends_on"] = generate_custom_build_step_key(image)
     else:
         if "ray-ml" in image:
             step["depends_on"] = config["image_build_step_ml"]
