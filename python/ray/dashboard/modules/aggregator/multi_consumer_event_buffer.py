@@ -10,7 +10,9 @@ from ray.core.generated import (
 )
 from ray.core.generated.events_base_event_pb2 import RayEvent
 
-from ray.dashboard.modules.aggregator.shared import metric_recorder, metric_prefix
+from ray._private.telemetry.open_telemetry_metric_recorder import (
+    OpenTelemetryMetricRecorder,
+)
 
 
 @dataclass
@@ -20,7 +22,7 @@ class _ConsumerState:
     # Name of the consumer used for metric naming
     consumer_name: str
     # Metric name for tracking evicted events for this consumer
-    evicted_events_metric_name: Optional[str]
+    evicted_events_metric_name: str
     # Event to signal that there are new events to consume
     has_new_events_to_consume: asyncio.Event
 
@@ -51,7 +53,7 @@ class MultiConsumerEventBuffer:
         self._max_batch_size = max_batch_size
 
         self._common_metrics_tags = common_metric_tags or {}
-        self._metric_recorder = metric_recorder
+        self._metric_recorder = OpenTelemetryMetricRecorder()
 
     async def add_event(self, event: events_base_event_pb2.RayEvent) -> None:
         """Add an event to the buffer.
@@ -170,12 +172,13 @@ class MultiConsumerEventBuffer:
         """
         async with self._lock:
             consumer_id = str(uuid.uuid4())
+            _metric_prefix = "event_aggregator_agent"
             evicted_events_metric_name = (
-                f"{metric_prefix}_{consumer_name}_queue_dropped_events_total"
+                f"{_metric_prefix}_{consumer_name}_queue_dropped_events_total"
             )
 
             # Register the counter metric
-            metric_recorder.register_counter_metric(
+            self._metric_recorder.register_counter_metric(
                 evicted_events_metric_name,
                 "Total number of events dropped because the publish/buffer queue was full.",
             )
