@@ -70,6 +70,7 @@ ray_cc_test(
     deps = [
         "//:ray_mock",
         "//src/ray/common:id",
+        "//src/ray/common/scheduling:placement_group_util",
         "//src/ray/raylet:placement_group_resource_manager",
         "@com_google_googletest//:gtest_main",
     ],

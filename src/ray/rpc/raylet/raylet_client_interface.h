@@ -19,28 +19,14 @@
 #include <unordered_map>
 #include <vector>
 
-#include "ray/common/status.h"
 #include "src/ray/protobuf/autoscaler.pb.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
-
-using ray::ActorID;
-using ray::JobID;
-using ray::NodeID;
-using ray::ObjectID;
-using ray::TaskID;
-using ray::WorkerID;
-
-using ray::rpc::Language;
 
 // Maps from resource name to its allocation.
 using ResourceMappingType =
     std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
 
-namespace ray::rpc {
-template <class Reply>
-using ClientCallback = std::function<void(const Status &status, Reply &&reply)>;
-}
 namespace grpc {
 class Channel;
 }
@@ -54,6 +40,11 @@ class ObjectID;
 class LeaseID;
 class NodeID;
 class BundleSpecification;
+
+namespace rpc {
+template <class Reply>
+using ClientCallback = std::function<void(const Status &status, Reply &&reply)>;
+}
 
 class RayletClientInterface {
  public:

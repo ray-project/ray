@@ -192,7 +192,6 @@ ray_cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//src/ray/common:status",
         "//src/ray/protobuf:autoscaler_cc_proto",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:node_manager_cc_proto",
