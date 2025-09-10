@@ -1,0 +1,46 @@
+// Copyright 2025 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+option cc_enable_arenas = true;
+package ray.rpc;
+
+// This message defines the event_data stored by the export API for
+// EXPORT_DATASET_OPERATOR type events from Ray Data operators.
+message ExportDatasetOperatorEventData {
+  enum DatasetOperatorEventType {
+    UNSPECIFIED = 0;
+    ISSUE_DETECTION_HANGING = 1;
+    ISSUE_DETECTION_HIGH_MEMORY = 2;
+  }
+
+  // The dataset ID
+  string dataset_id = 1;
+
+  // The operator ID
+  string operator_id = 2;
+
+  // The operator name
+  string operator_name = 3;
+
+  // The timestamp when event is emitted (in seconds since epoch)
+  double event_time = 4;
+
+  // The type of the event
+  DatasetOperatorEventType event_type = 5;
+
+  // The content of the event message
+  string message = 6;
+}
