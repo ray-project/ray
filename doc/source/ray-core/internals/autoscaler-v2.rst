@@ -13,8 +13,8 @@ The autoscaler is responsible for resizing the cluster based on resource demand 
 To achieve this, it follows a structured process: evaluating worker group configurations, periodically reconciling cluster state with user constraints, applying bin-packing strategies to pending workload demands, and interacting with cloud providers through the Instance Manager.
 The following sections describe these components in detail.
 
-Work Group Configurations
--------------------------
+Worker Group Configurations
+---------------------------
 
 Work groups (node types) can be configured in these ways:
 
