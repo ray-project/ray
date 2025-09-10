@@ -117,14 +117,18 @@ class TorchGLOOGroup(BaseGroup):
         """
         assert isinstance(tensor_list, list) and len(tensor_list) == 1
         tensor_list = tensor_list[0]
+        converted_tensor_list = []
         for tensor in tensor_list:
-            if not isinstance(tensor, torch.Tensor) and not isinstance(
-                tensor, np.ndarray
-            ):
+            if isinstance(tensor, np.ndarray):
+                tensor = torch.from_numpy(tensor)
+                converted_tensor_list.append(tensor)
+            elif isinstance(tensor, torch.Tensor):
+                converted_tensor_list.append(tensor)
+            else:
                 raise ValueError(
                     f"torch_gloo group only accepts torch.Tensor or numpy.ndarray types, received tensor list with value {tensor}"
                 )
-        return tensor_list
+        return converted_tensor_list
 
     def allreduce(
         self,
