@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, List, Optional
 
 import torch
 import torch.distributed as dist
+import numpy as np
 
 import ray.experimental.internal_kv as internal_kv
 from ray.util.collective.collective_group.base_collective_group import BaseGroup
@@ -94,29 +95,32 @@ class TorchGLOOGroup(BaseGroup):
         return Backend.TORCH_GLOO
 
     def _check_tensor_input(self, tensor: List["torch.Tensor"]) -> "torch.Tensor":
-        """ray.util.collective wraps tensor arguments in a list. Check for a
-        single tensor and unwrap it.
+        """ray.util.collective wraps tensor arguments in a list.
+        Accept a single torch.Tensor or numpy.ndarray and unwrap/convert it.
         """
         assert isinstance(tensor, list) and len(tensor) == 1
-        tensor = tensor[0]
-        if not isinstance(tensor, torch.Tensor):
-            raise ValueError(
-                f"torch_gloo group only accepts torch.Tensor types, received {tensor}"
-            )
-        return tensor
+        t = tensor[0]
+        if isinstance(t, torch.Tensor):
+            return t
+        if isinstance(t, np.ndarray):
+            return torch.from_numpy(t)
+        raise ValueError(
+            f"torch_gloo group only accepts torch.Tensor or numpy.ndarray, received {type(t)}"
+        )
 
     def _check_tensor_list_input(
         self, tensor_list: List[List["torch.Tensor"]]
     ) -> List["torch.Tensor"]:
-        """ray.util.collective wraps tensor arguments in a list. Check for a
-        single list of tensors and unwrap it.
+        """ray.util.collective wraps tensor arguments in a list.
+        Accept a single list containing torch.Tensors or numpy.ndarrays and
+        unwrap/convert items as needed.
         """
         assert isinstance(tensor_list, list) and len(tensor_list) == 1
         tensor_list = tensor_list[0]
         for tensor in tensor_list:
-            if not isinstance(tensor, torch.Tensor):
+            if not isinstance(tensor, torch.Tensor) and not isinstance(tensor, np.ndarray):
                 raise ValueError(
-                    f"torch_gloo group only accepts torch.Tensor types, received tensor list with value {tensor}"
+                    f"torch_gloo group only accepts torch.Tensor or numpy.ndarray types, received tensor list with value {tensor}"
                 )
         return tensor_list
 

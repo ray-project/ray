@@ -214,20 +214,7 @@ def init_collective_group(
     )
 
 
-# NumPy <-> Torch bridging helpers for torch_gloo backend.
-def _to_torch_if_needed_for_gloo(obj):
-    try:
-        import torch as _torch
-    except ImportError:
-        raise RuntimeError("torch is required for GLOO backend.")
 
-    if isinstance(obj, np.ndarray):
-        return _torch.from_numpy(obj)
-    return obj
-
-
-def _to_torch_list_if_needed_for_gloo(tensor_list):
-    return [_to_torch_if_needed_for_gloo(t) for t in tensor_list]
 
 
 def create_collective_group(
@@ -353,8 +340,6 @@ def allreduce(tensor, group_name: str = "default", op=types.ReduceOp.SUM):
     g = get_group_handle(group_name)
     opts = types.AllReduceOptions
     opts.reduceOp = op
-    if g.backend() == types.Backend.TORCH_GLOO:
-        tensor = _to_torch_if_needed_for_gloo(tensor)
     g.allreduce([tensor], opts)
 
 
@@ -416,8 +401,6 @@ def reduce(
     opts.reduceOp = op
     opts.root_rank = dst_rank
     opts.root_tensor = 0
-    if g.backend() == types.Backend.TORCH_GLOO:
-        tensor = _to_torch_if_needed_for_gloo(tensor)
     g.reduce([tensor], opts)
 
 
@@ -476,8 +459,6 @@ def broadcast(tensor, src_rank: int = 0, group_name: str = "default"):
     opts = types.BroadcastOptions()
     opts.root_rank = src_rank
     opts.root_tensor = 0
-    if g.backend() == types.Backend.TORCH_GLOO:
-        tensor = _to_torch_if_needed_for_gloo(tensor)
     g.broadcast([tensor], opts)
 
 
@@ -523,9 +504,6 @@ def allgather(tensor_list: list, tensor, group_name: str = "default"):
     _check_single_tensor_input(tensor)
     _check_tensor_list_input(tensor_list)
     g = get_group_handle(group_name)
-    if g.backend() == types.Backend.TORCH_GLOO:
-        tensor = _to_torch_if_needed_for_gloo(tensor)
-        tensor_list = _to_torch_list_if_needed_for_gloo(tensor_list)
     if len(tensor_list) != g.world_size:
         # Typically CLL lib requires len(tensor_list) >= world_size;
         # Here we make it more strict: len(tensor_list) == world_size.
@@ -583,9 +561,6 @@ def reducescatter(
     g = get_group_handle(group_name)
     opts = types.ReduceScatterOptions()
     opts.reduceOp = op
-    if g.backend() == types.Backend.TORCH_GLOO:
-        tensor = _to_torch_if_needed_for_gloo(tensor)
-        tensor_list = _to_torch_list_if_needed_for_gloo(tensor_list)
     if len(tensor_list) != g.world_size:
         raise RuntimeError(
             "The length of the tensor list operands to reducescatter "
@@ -641,8 +616,6 @@ def send(tensor, dst_rank: int, group_name: str = "default"):
         raise RuntimeError("The destination rank '{}' is self.".format(dst_rank))
     opts = types.SendOptions()
     opts.dst_rank = dst_rank
-    if g.backend() == types.Backend.TORCH_GLOO:
-        tensor = _to_torch_if_needed_for_gloo(tensor)
     g.send([tensor], opts)
 
 
@@ -685,8 +658,6 @@ def send_multigpu(
     opts.dst_rank = dst_rank
     opts.dst_gpu_index = dst_gpu_index
     opts.n_elements = n_elements
-    if g.backend() == types.Backend.TORCH_GLOO:
-        tensor = _to_torch_if_needed_for_gloo(tensor)
     g.send([tensor], opts)
 
 
@@ -708,8 +679,6 @@ def recv(tensor, src_rank: int, group_name: str = "default"):
         raise RuntimeError("The destination rank '{}' is self.".format(src_rank))
     opts = types.RecvOptions()
     opts.src_rank = src_rank
-    if g.backend() == types.Backend.TORCH_GLOO:
-        tensor = _to_torch_if_needed_for_gloo(tensor)
     g.recv([tensor], opts)
 
 
