@@ -2163,13 +2163,14 @@ class DeploymentState:
 
         return False
 
-    def set_target_state(
+    def set_target_num_replicas(
         self,
-        target_info: DeploymentInfo,
         target_num_replicas: int,
     ) -> None:
         """Set the target state for the deployment to the provided info."""
-        self._set_target_state(target_info, target_num_replicas)
+        self._target_state.target_num_replicas = target_num_replicas
+
+        ServeUsageTag.NUM_REPLICAS_LIGHTWEIGHT_UPDATED.record("True")
 
     def _stop_or_update_outdated_version_replicas(self, max_to_stop=math.inf) -> bool:
         """Stop or update replicas with outdated versions.
@@ -3142,13 +3143,11 @@ class DeploymentStateManager:
         self._validate_deployment_state_for_num_replica_update(deployment_id)
 
         deployment_state = self._deployment_states[deployment_id]
-        current_target_info = deployment_state.target_info
-
         if target_num_replicas != deployment_state.target_num_replicas:
             logger.info(
                 f"Target number of replicas changed from {deployment_state.target_num_replicas} to {target_num_replicas} for deployment {deployment_id}"
             )
-            deployment_state.set_target_state(current_target_info, target_num_replicas)
+            deployment_state.set_target_num_replicas(target_num_replicas)
             self.save_checkpoint()
         else:
             logger.info(
