@@ -18,7 +18,6 @@ from ray.serve._private.common import DeploymentID
 from ray.serve.exceptions import DeploymentIsBeingDeletedError
 from ray.serve.schema import ScaleDeploymentRequest
 
-
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
