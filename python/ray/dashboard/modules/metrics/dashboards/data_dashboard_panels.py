@@ -961,7 +961,7 @@ DATA_GRAFANA_ROWS = [
     Row(
         title="Operator Panels",
         id=108,
-        panels=OPERATOR_PANELS,
+        panels=[ALL_RESOURCES_UTILIZATION_PANEL],
         collapsed=True,
     ),
 ]

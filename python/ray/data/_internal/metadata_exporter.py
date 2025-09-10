@@ -267,7 +267,7 @@ def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
         execution_end_time=dataset_metadata.execution_end_time,
         state=ProtoDatasetMetadata.DatasetState.Value(dataset_metadata.state),
         operator_panels=[
-            _to_proto_dashboard_panel(p) for p in dataset_metadata.operator_panels
+            _to_proto_dashboard_panel(p) for p in OPERATOR_PANELS
         ],
     )
     proto_dataset_metadata.topology.CopyFrom(proto_topology)
