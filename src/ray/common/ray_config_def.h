@@ -528,7 +528,7 @@ RAY_CONFIG(std::string, metric_cardinality_level, "legacy")
 
 /// Whether enable OpenTelemetry as the metrics collection backend. The default is
 /// using OpenCensus.
-RAY_CONFIG(bool, enable_open_telemetry, false)
+RAY_CONFIG(bool, enable_open_telemetry, true)
 
 /// Comma separated list of components we enable grpc metrics collection for.
 /// Only effective if `enable_metrics_collection` is also true. Will have some performance

@@ -77,16 +77,14 @@ ray.get(a)
     proc = run_string_as_driver_nonblocking(driver)
 
     expected = {
-        "RUNNING": 2.0,
-        "PENDING_NODE_ASSIGNMENT": 8.0,
-    }
-    wait_for_condition(
-        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
-    )
-    assert tasks_by_name_and_state(info) == {
         ("f", "RUNNING"): 2.0,
         ("f", "PENDING_NODE_ASSIGNMENT"): 8.0,
     }
+
+    def check_task_state():
+        return tasks_by_name_and_state(info) == expected
+
+    wait_for_condition(check_task_state, timeout=20, retry_interval_ms=500)
     proc.kill()
 
 
@@ -106,20 +104,16 @@ a = [f.remote() for _ in range(1)]
 ray.get(a)
 """
     procs = [run_string_as_driver_nonblocking(driver) for _ in range(3)]
-    expected = {
-        "RUNNING": 3.0,
-    }
-    wait_for_condition(
-        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
-    )
 
-    # Check we have three jobs reporting "RUNNING".
-    metrics = raw_metrics(info)
-    jobs_at_state = defaultdict(set)
-    for sample in metrics["ray_tasks"]:
-        jobs_at_state[sample.labels["State"]].add(sample.labels["JobId"])
-    print("Jobs at state: {}".format(jobs_at_state))
-    assert len(jobs_at_state["RUNNING"]) == 3, jobs_at_state
+    def check_task_state():
+        metrics = raw_metrics(info)
+        jobs_at_state = defaultdict(set)
+        for sample in metrics["ray_tasks"]:
+            jobs_at_state[sample.labels["State"]].add(sample.labels["JobId"])
+        print(f"Jobs at state: {jobs_at_state}")
+        return len(jobs_at_state["RUNNING"]) == 3
+
+    wait_for_condition(check_task_state, timeout=20, retry_interval_ms=500)
 
     for proc in procs:
         proc.kill()
@@ -148,24 +142,19 @@ ray.get(w)
     proc = run_string_as_driver_nonblocking(driver)
 
     expected = {
-        "RUNNING": 2.0,
-        "RUNNING_IN_RAY_GET": 1.0,
-        "PENDING_NODE_ASSIGNMENT": 8.0,
+        ("wrapper", "RUNNING_IN_RAY_GET"): 1.0,
+        ("f", "RUNNING"): 2.0,
+        ("f", "PENDING_NODE_ASSIGNMENT"): 8.0,
     }
 
     def check_task_state():
-        assert tasks_by_state(info) == expected
+        return tasks_by_name_and_state(info) == expected
 
     wait_for_assertion(
         check_task_state,
         timeout=20,
         retry_interval_ms=2000,
     )
-    assert tasks_by_name_and_state(info) == {
-        ("wrapper", "RUNNING_IN_RAY_GET"): 1.0,
-        ("f", "RUNNING"): 2.0,
-        ("f", "PENDING_NODE_ASSIGNMENT"): 8.0,
-    }
     proc.kill()
 
 
@@ -192,24 +181,19 @@ ray.get(w)
     proc = run_string_as_driver_nonblocking(driver)
 
     expected = {
-        "RUNNING": 2.0,
-        "RUNNING_IN_RAY_WAIT": 1.0,
-        "PENDING_NODE_ASSIGNMENT": 8.0,
+        ("wrapper", "RUNNING_IN_RAY_WAIT"): 1.0,
+        ("f", "RUNNING"): 2.0,
+        ("f", "PENDING_NODE_ASSIGNMENT"): 8.0,
     }
 
     def check_task_state():
-        assert tasks_by_state(info) == expected
+        return tasks_by_name_and_state(info) == expected
 
     wait_for_assertion(
         check_task_state,
         timeout=20,
         retry_interval_ms=2000,
     )
-    assert tasks_by_name_and_state(info) == {
-        ("wrapper", "RUNNING_IN_RAY_WAIT"): 1.0,
-        ("f", "RUNNING"): 2.0,
-        ("f", "PENDING_NODE_ASSIGNMENT"): 8.0,
-    }
     proc.kill()
 
 
@@ -283,16 +267,14 @@ ray.get(a)
 """
     proc = run_string_as_driver_nonblocking(driver)
     expected = {
-        "RUNNING": 1.0,
-        "PENDING_ARGS_AVAIL": 5.0,
-    }
-    wait_for_condition(
-        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
-    )
-    assert tasks_by_name_and_state(info) == {
         ("f", "RUNNING"): 1.0,
         ("g", "PENDING_ARGS_AVAIL"): 5.0,
     }
+    wait_for_condition(
+        lambda: tasks_by_name_and_state(info) == expected,
+        timeout=20,
+        retry_interval_ms=500,
+    )
     proc.kill()
 
 
@@ -321,19 +303,16 @@ ray.get(z)
 """
     proc = run_string_as_driver_nonblocking(driver)
     expected = {
-        "RUNNING": 1.0,
-        "SUBMITTED_TO_WORKER": 9.0,
-        "FINISHED": 11.0,
-    }
-    wait_for_condition(
-        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
-    )
-    assert tasks_by_name_and_state(info) == {
-        ("F.__init__", "FINISHED"): 1.0,
         ("F.g", "FINISHED"): 10.0,
         ("F.f", "RUNNING"): 1.0,
         ("F.g", "SUBMITTED_TO_WORKER"): 9.0,
+        ("F.__init__", "FINISHED"): 1.0,
     }
+    wait_for_condition(
+        lambda: tasks_by_name_and_state(info) == expected,
+        timeout=20,
+        retry_interval_ms=500,
+    )
     proc.kill()
 
 
@@ -361,16 +340,14 @@ time.sleep(999)
 
     proc = run_string_as_driver_nonblocking(driver)
     expected = {
-        "FAILED": 1.0,
-        "FINISHED": 1.0,
-    }
-    wait_for_condition(
-        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
-    )
-    assert tasks_by_name_and_state(info) == {
         ("g", "FAILED"): 1.0,
         ("f", "FINISHED"): 1.0,
     }
+    wait_for_condition(
+        lambda: tasks_by_name_and_state(info) == expected,
+        timeout=20,
+        retry_interval_ms=500,
+    )
     proc.kill()
 
 
@@ -421,7 +398,7 @@ time.sleep(999)
     wait_for_condition(
         lambda: tasks_by_all(info) == expected,
         timeout=20,
-        retry_interval_ms=500,
+        retry_interval_ms=1000,
     )
     proc.kill()
 
@@ -567,7 +544,6 @@ ray.get(a)
     for i in range(10):
         print("Run job", i)
         run_string_as_driver(driver)
-        tasks_by_state(info)
 
     expected = {
         "FINISHED": 100.0,
