@@ -310,9 +310,8 @@ class AutoscalingState:
         `_skip_bound_check` is True, then the bounds are not applied.
         """
 
-        self._cached_deployment_snapshot = None
         total_requests = self.get_total_num_requests()
-        autoscaling_context: AutoscalingContext = AutoscalingContext(
+        ctx: AutoscalingContext = AutoscalingContext(
             deployment_id=self._deployment_id,
             deployment_name=self._deployment_id.name,
             app_name=self._deployment_id.app_name,
@@ -333,15 +332,19 @@ class AutoscalingState:
             last_scale_down_time=None,
         )
 
-        decision_num_replicas, self._policy_state = self._policy(autoscaling_context)
+        decision_num_replicas, self._policy_state = self._policy(ctx)
 
         if _skip_bound_check:
+            self._cached_deployment_snapshot = self._create_deployment_snapshot(
+                ctx=ctx,
+                target_replicas=decision_num_replicas,
+            )
             return decision_num_replicas
 
         bounded_decision = self.apply_bounds(decision_num_replicas)
-        self._cache_deployment_snapshot(
+        self._cached_deployment_snapshot = self._create_deployment_snapshot(
+            ctx=ctx,
             target_replicas=bounded_decision,
-            total_requests=total_requests,
         )
         return bounded_decision
 
@@ -374,20 +377,16 @@ class AutoscalingState:
 
         return total_requests
 
-    def _cache_deployment_snapshot(
+    def _create_deployment_snapshot(
         self,
         *,
+        ctx: AutoscalingContext,
         target_replicas: int,
-        total_requests: float,
-    ) -> None:
-        """Build and cache a compact per-deployment snapshot for observability/logging.
-
-        This avoids repeating aggregation work in the controller loop by
-        reusing the values computed during policy evaluation.
-        """
-        current_replicas = len(self._running_replicas)
-        min_replicas = self.get_num_replicas_lower_bound()
-        max_replicas = self.get_num_replicas_upper_bound()
+    ) -> Dict[str, Any]:
+        """Create (but do not log) a compact per-deployment snapshot for observability/logging. Uses data from the passed AutoscalingContext to avoid recomputation. Returns the snapshot dict; the caller decides when to cache it."""
+        current_replicas = ctx.current_num_replicas
+        min_replicas = ctx.capacity_adjusted_min_replicas
+        max_replicas = ctx.capacity_adjusted_max_replicas
 
         # Aggregate queued requests (best-effort)
         if self._handle_requests:
@@ -404,12 +403,12 @@ class AutoscalingState:
         else:
             time_since_last_collected_metrics_s = None
 
-        self._cached_deployment_snapshot = {
+        return {
             "current_replicas": int(current_replicas),
             "target_replicas": int(target_replicas),
             "min_replicas": int(min_replicas) if min_replicas is not None else None,
             "max_replicas": int(max_replicas) if max_replicas is not None else None,
-            "total_requests": total_requests,
+            "total_requests": ctx.total_num_requests,
             "queued_requests": float(queued_requests),
             "time_since_last_collected_metrics_s": None
             if time_since_last_collected_metrics_s is None
