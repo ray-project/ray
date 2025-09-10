@@ -79,8 +79,8 @@ class Postable {
   void Post(const std::string &name, Args &&...args) const & {
     RAY_CHECK(func_ != nullptr) << "Postable has already been invoked.";
     io_context_.post(
-        [this, args_tuple = std::make_tuple(std::forward<Args>(args)...)]() mutable {
-          std::apply(func_, std::move(args_tuple));
+        [func = func_, args_tuple = std::make_tuple(std::forward<Args>(args)...)]() mutable {
+          std::apply(func, std::move(args_tuple));
         },
         name);
   }
