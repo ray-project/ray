@@ -141,6 +141,8 @@ def _setup_torch_process_group(
         dist.init_process_group(
             backend="xla",
             init_method="xla://",  # Use XLA's native init method
+            rank=world_rank,
+            world_size=world_size,
             timeout=timedelta(seconds=timeout_s),
         )
 
@@ -204,7 +206,53 @@ class _TorchBackend(Backend):
     share_cuda_visible_devices: bool = True
 
     def on_start(self, worker_group: WorkerGroup, backend_config: TorchConfig):
-        if dist.is_available():
+        if not dist.is_available():
+            raise RuntimeError("Distributed torch is not available.")
+
+        # --- FIX STARTS HERE: Create separate logic paths for XLA vs. other backends ---
+
+        if backend_config.backend == "xla":
+            # XLA BACKEND INITIALIZATION PATH
+            # This path does NOT use MASTER_ADDR/MASTER_PORT.
+            # It relies exclusively on PJRT environment variables.
+
+            # 1. Get a coordinator address from Ray's rank 0 worker.
+            master_addr, master_port = worker_group.execute_single(0, get_address_and_port)
+            pjrt_port = master_port + 123  # Use a different port for clarity
+            coordinator = f"{master_addr}:{pjrt_port}"
+
+            # 2. Define the function to set ONLY the necessary PJRT env vars.
+            def _set_pjrt_envs(coord):
+                context = ray.train.get_context()
+                os.environ["PJRT_DEVICE"] = "TPU"
+                os.environ["PJRT_COORDINATOR_ADDRESS"] = coord
+                os.environ["PJRT_NUM_PROCESSES"] = str(context.get_world_size())
+                os.environ["PJRT_PROCESS_INDEX"] = str(context.get_world_rank())
+                logger.info(
+                    f"PJRT envs set for worker {context.get_world_rank()}: "
+                    f"COORD={coord}, PROCS={context.get_world_size()}, INDEX={context.get_world_rank()}"
+                )
+
+            # 3. Execute the setup function on all workers.
+            worker_group.execute(_set_pjrt_envs, coord=coordinator)
+
+            # 4. Call the process group setup, which will use the PJRT variables.
+            # We pass an empty URL because the 'xla' backend ignores it and uses env vars.
+            setup_futures = [
+                worker_group.execute_single_async(
+                    i,
+                    _setup_torch_process_group,
+                    backend="xla",
+                    world_rank=i,
+                    world_size=len(worker_group),
+                    init_method="xla://",  # Use the specific XLA init method
+                    timeout_s=backend_config.timeout_s,
+                )
+                for i in range(len(worker_group))
+            ]
+            ray.get(setup_futures)
+
+        else:
             # Set the appropriate training backend.
             if backend_config.backend is None:
                 if worker_group.num_gpus_per_worker > 0:
@@ -234,83 +282,6 @@ class _TorchBackend(Backend):
                     f"be either 'env' or 'tcp'."
                 )
 
-            if backend_config.backend == "xla":
-                # set pjrt envs
-                pjrt_port = master_port + 123
-                coordinator = f"{master_addr}:{pjrt_port}"
-                def _set_pjrt_envs(coord):
-                    context = ray.train.get_context()
-
-                    os.environ["RAY_DISABLE_WORKER_REUSE"] = "1"
-                    # debugging logs:
-                    os.environ["TF_CPP_MIN_LOG_LEVEL"] = "0"          # verbose TF/XLA logs
-                    os.environ["GRPC_VERBOSITY"] = "INFO"
-                    # Fine-grained C++ module logging:
-                    os.environ["TF_CPP_VMODULE"] = (
-                        "pjrt_client=1,stream_executor_pjrt_client=1,"
-                        "pjrt_distributed_client=1,pjrt_distributed=1,"
-                        "coordination_service_agent=1"
-                    )
-                    # Optional extra:
-                    os.environ["PJRT_CLIENT_VERBOSE_LOGS"] = "1"
-                    # Core PJRT settings
-                    os.environ["PJRT_DEVICE"] = "TPU"
-
-                    # PJRT multiprocess rendezvous (new-style names)
-                    # os.environ["PJRT_COORDINATOR_ADDRESS"] = coord
-                    # os.environ["PJRT_DIST_SERVICE_ADDR"] = coord
-                    # os.environ["PJRT_NUM_PROCESSES"] = str(context.get_world_size())
-                    # os.environ["PJRT_PROCESS_INDEX"] = str(context.get_world_rank())
-
-                    # once again, turn on spmd
-                    # os.environ["XLA_USE_SPMD"] = "1"
-
-                    # CRITICAL: Use Ray's world size and rank for consistency
-                    # os.environ["PJRT_WORLD_SIZE"] = str(context.get_world_size())
-                    # os.environ["PJRT_LOCAL_PROCESS_RANK"] = str(context.get_world_rank())
-
-                    # # For multi-node setups
-                    # os.environ["PJRT_LOCAL_PROCESS_COUNT"] = str(context.get_local_world_size())
-                    # os.environ["PJRT_NODE_ID"] = str(context.get_node_rank())
-
-                    # # Additional XLA settings for GPU
-                    # os.environ["GPU_NUM_DEVICES"] = "1"  # One GPU per Ray worker
-
-                    # logger.info(f"PJRT env vars set for worker {context.get_world_rank()}: "
-                    #             f"WORLD_SIZE={context.get_world_size()}, "
-                    #             f"RANK={context.get_world_rank()}, "
-                    #             f"COORDINATOR={coord}")
-
-                worker_group.execute(_set_pjrt_envs, coord=coordinator)
-                logger.info(f"PJRT environment configured with coordinator: {coordinator}")
-
-                # Wait a moment for env vars to propagate
-                import time
-                time.sleep(1)
-
-                # it might be related since we will need these env var before pjrt init and xla process group init
-                worker_group.execute(_set_torch_distributed_env_vars)
-                logger.info("set torch distributed envs for c10d")
-
-
-                
-                logger.info(f"set torch distributed init method for xla url: {url}")
-                setup_futures = []
-                for i in range(len(worker_group)):
-                    setup_futures.append(
-                        worker_group.execute_single_async(
-                            i,
-                            _setup_torch_process_group,
-                            backend=backend,
-                            world_rank=i,
-                            world_size=len(worker_group),
-                            init_method=url,
-                            timeout_s=backend_config.timeout_s,
-                        )
-                    )
-                ray.get(setup_futures)
-                return
-
             setup_futures = []
             for i in range(len(worker_group)):
                 setup_futures.append(
@@ -325,8 +296,7 @@ class _TorchBackend(Backend):
                     )
                 )
             ray.get(setup_futures)
-        else:
-            raise RuntimeError("Distributed torch is not available.")
+
 
     def on_shutdown(self, worker_group: WorkerGroup, backend_config: TorchConfig):
         worker_group.execute(
