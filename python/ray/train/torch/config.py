@@ -228,6 +228,8 @@ class _TorchBackend(Backend):
                 os.environ["PJRT_COORDINATOR_ADDRESS"] = coord
                 os.environ["PJRT_NUM_PROCESSES"] = str(context.get_world_size())
                 os.environ["PJRT_PROCESS_INDEX"] = str(context.get_world_rank())
+                os.environ['TPU_VISIBLE_CHIPS'] = "0"
+                os.environ['TPU_PROCESS_BOUNDS']="1,1,1"
                 logger.info(
                     f"PJRT envs set for worker {context.get_world_rank()}: "
                     f"COORD={coord}, PROCS={context.get_world_size()}, INDEX={context.get_world_rank()}"
@@ -235,6 +237,24 @@ class _TorchBackend(Backend):
 
             # 3. Execute the setup function on all workers.
             worker_group.execute(_set_pjrt_envs, coord=coordinator)
+
+            def _pjrt_init_from_ray_locals():
+                # IMPORTANT: do not import torch_xla *anywhere* earlier on the worker.
+                from ray.train import get_context
+                ctx = get_context()
+
+                # Initialize PJRT using local rank/world size (per host).
+                from torch_xla._internal import pjrt
+                import torch_xla.runtime as xr
+
+                pjrt.initialize_multiprocess(
+                    ctx.get_local_rank(),        # local_rank on this host
+                    ctx.get_local_world_size()   # local_world_size (#procs on this host)
+                )
+                # Establish world size / ordinal (same thing torchrun pathway does).
+                xr._init_world_size_ordinal()
+
+            worker_group.execute(_pjrt_init_from_ray_locals)
 
             # 4. Call the process group setup, which will use the PJRT variables.
             # We pass an empty URL because the 'xla' backend ignores it and uses env vars.
