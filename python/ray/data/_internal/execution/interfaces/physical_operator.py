@@ -258,7 +258,7 @@ class PhysicalOperator(Operator):
         for x in input_dependencies:
             assert isinstance(x, PhysicalOperator), x
         self._inputs_complete = not input_dependencies
-        self._output_block_size_option = None
+        self._output_block_size_option_override = None
         self.override_target_max_block_size(target_max_block_size_override)
         self._started = False
         self._shutdown = False
