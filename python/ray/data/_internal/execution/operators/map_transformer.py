@@ -163,7 +163,7 @@ class MapTransformer:
         """Get the transform functions."""
         return self._transform_fns
 
-    def set_target_max_block_size(self, target_max_block_size: int):
+    def override_target_max_block_size(self, target_max_block_size: Optional[int]):
         if target_max_block_size is not None:
             self._output_block_size_option = OutputBlockSizeOption(
                 target_max_block_size=target_max_block_size
