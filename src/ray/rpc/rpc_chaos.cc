@@ -49,19 +49,10 @@ class RpcFailureManager {
 
     // Clear old state
     failable_methods_.clear();
-    all_rpc_failure_ = false;
-    req_failure_prob_ = 0;
-    resp_failure_prob_ = 0;
+    wildcard_set_ = false;
     has_failures_ = false;
 
-    if (!RayConfig::instance().testing_all_rpc_failure().empty()) {
-      std::vector<std::string> colon_split =
-          absl::StrSplit(RayConfig::instance().testing_all_rpc_failure(), ':');
-      RAY_CHECK_EQ(colon_split.size(), 2UL);
-      req_failure_prob_ = std::stoul(colon_split[0]);
-      resp_failure_prob_ = std::stoul(colon_split[1]);
-      all_rpc_failure_ = true;
-    } else if (!RayConfig::instance().testing_rpc_failure().empty()) {
+    if (!RayConfig::instance().testing_rpc_failure().empty()) {
       for (const auto &item :
            absl::StrSplit(RayConfig::instance().testing_rpc_failure(), ',')) {
         std::vector<std::string> equal_split = absl::StrSplit(item, '=');
@@ -69,15 +60,18 @@ class RpcFailureManager {
         std::vector<std::string> colon_split = absl::StrSplit(equal_split[1], ':');
         RAY_CHECK_EQ(colon_split.size(), 3UL);
         auto [iter, _] = failable_methods_.emplace(equal_split[0],
-                                                   Failable{std::stoul(colon_split[0]),
+                                                   Failable{std::stoi(colon_split[0]),
                                                             std::stoul(colon_split[1]),
                                                             std::stoul(colon_split[2])});
         const auto &failable = iter->second;
         RAY_CHECK_LE(failable.req_failure_prob + failable.resp_failure_prob, 100UL);
+        if (equal_split[0] == "*") {
+          wildcard_set_ = true;
+          // The wildcard overrides all other method configurations.
+          break;
+        }
       }
-    }
 
-    if (all_rpc_failure_ || !failable_methods_.empty()) {
       std::random_device rd;
       auto seed = rd();
       RAY_LOG(INFO) << "Setting RpcFailureManager seed to " << seed;
@@ -91,54 +85,50 @@ class RpcFailureManager {
       return RpcFailure::None;
     }
 
-    absl::ReaderMutexLock lock(&mu_);
+    absl::MutexLock lock(&mu_);
 
-    if (all_rpc_failure_) {
-      return GetFailureTypeFromProbs(req_failure_prob_, resp_failure_prob_);
+    // Wildcard overrides any other method configurations.
+    if (wildcard_set_) {
+      return GetFailureTypeFromFailable(failable_methods_["*"]);
     }
 
     auto iter = failable_methods_.find(name);
     if (iter == failable_methods_.end()) {
       return RpcFailure::None;
     }
-
-    auto &failable = iter->second;
-    if (failable.num_remaining_failures == 0) {
-      return RpcFailure::None;
-    }
-    return GetFailureTypeFromProbs(failable.req_failure_prob, failable.resp_failure_prob);
+    return GetFailureTypeFromFailable(iter->second);
   }
 
  private:
-  RpcFailure GetFailureTypeFromProbs(size_t req_failure_prob, size_t resp_failure_prob) {
-    std::uniform_int_distribution<size_t> dist(1ul, 100ul);
-    const size_t random_number = dist(gen_);
-    if (random_number <= req_failure_prob) {
-      return RpcFailure::Request;
-    }
-    if (random_number <= req_failure_prob + resp_failure_prob) {
-      return RpcFailure::Response;
-    }
-    return RpcFailure::None;
-  }
-
   absl::Mutex mu_;
   std::mt19937 gen_;
   std::atomic_bool has_failures_ = false;
 
   // If we're testing all rpc failures, we'll use these probabilites instead of
   // failable_methods_
-  bool all_rpc_failure_ = false;
-  size_t req_failure_prob_ = 0;
-  size_t resp_failure_prob_ = 0;
+  bool wildcard_set_ = false;
 
   // call name -> (num_remaining_failures, req_failure_prob, resp_failure_prob)
   struct Failable {
-    size_t num_remaining_failures;
+    int num_remaining_failures;
     size_t req_failure_prob;
     size_t resp_failure_prob;
   };
   absl::flat_hash_map<std::string, Failable> failable_methods_ ABSL_GUARDED_BY(&mu_);
+
+  RpcFailure GetFailureTypeFromFailable(Failable &failable) {
+    std::uniform_int_distribution<size_t> dist(1ul, 100ul);
+    const size_t random_number = dist(gen_);
+    if (random_number <= failable.req_failure_prob) {
+      failable.num_remaining_failures--;
+      return RpcFailure::Request;
+    }
+    if (random_number <= failable.req_failure_prob + failable.resp_failure_prob) {
+      failable.num_remaining_failures--;
+      return RpcFailure::Response;
+    }
+    return RpcFailure::None;
+  }
 };
 
 namespace {

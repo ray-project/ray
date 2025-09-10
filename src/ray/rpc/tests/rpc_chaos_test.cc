@@ -45,22 +45,22 @@ TEST(RpcChaosTest, MethodRpcFailureEdgeCase) {
   }
 }
 
-TEST(RpcChaosTest, AllRpcFailure) {
-  RayConfig::instance().testing_all_rpc_failure() = "100:0";
+TEST(RpcChaosTest, WildcardRpcFailure) {
+  RayConfig::instance().testing_rpc_failure() = "*=-1:100:0";
   ray::rpc::testing::Init();
   for (int i = 0; i < 100; i++) {
     ASSERT_EQ(ray::rpc::testing::GetRpcFailure("method"),
               ray::rpc::testing::RpcFailure::Request);
   }
 
-  RayConfig::instance().testing_all_rpc_failure() = "0:100";
+  RayConfig::instance().testing_rpc_failure() = "*=-1:0:100";
   ray::rpc::testing::Init();
   for (int i = 0; i < 100; i++) {
     ASSERT_EQ(ray::rpc::testing::GetRpcFailure("method"),
               ray::rpc::testing::RpcFailure::Response);
   }
 
-  RayConfig::instance().testing_all_rpc_failure() = "0:0";
+  RayConfig::instance().testing_rpc_failure() = "*=-1:0:0";
   ray::rpc::testing::Init();
   for (int i = 0; i < 100; i++) {
     ASSERT_EQ(ray::rpc::testing::GetRpcFailure("method"),

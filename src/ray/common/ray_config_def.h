@@ -828,16 +828,16 @@ RAY_CONFIG(std::string, REDIS_SERVER_NAME, "")
 //  it will apply to all methods.
 RAY_CONFIG(std::string, testing_asio_delay_us, "")
 
-///  To use this, simply do
-///      export
-///      RAY_testing_rpc_failure="method1=max_num_failures:req_failure_prob:resp_failure_prob,method2=max_num_failures:req_failure_prob:resp_failure_prob"
+/// To use this, simply do
+///     export
+///     RAY_testing_rpc_failure="method1=max_num_failures:req_failure_prob:resp_failure_prob,method2=max_num_failures:req_failure_prob:resp_failure_prob"
+/// If you want to test all rpc failures you can use * as the method name and you can set
+/// -1 max_num_failures to have unlimited failures.
+/// Ex. unlimited failures for all rpc's with 25% request failures and 50% response
+/// failures.
+///     export RAY_testing_rpc_failure="*=-1:25:50"
+/// NOTE: Setting the wildcard will override any configuration for other methods.
 RAY_CONFIG(std::string, testing_rpc_failure, "")
-
-/// To use this:
-///      export RAY_testing_all_rpc_failure=req_failure_prob:resp_failure_prob
-/// NOTE: testing_rpc_failure will be ignored if this is set and only the config from this
-/// will be used.
-RAY_CONFIG(std::string, testing_all_rpc_failure, "")
 
 /// The following are configs for the health check. They are borrowed
 /// from k8s health probe (shorturl.at/jmTY3)
