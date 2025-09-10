@@ -8,7 +8,7 @@ import numpy as np
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.utils.annotations import OldAPIStack, override
-from ray.rllib.utils.deprecation import Deprecated
+from ray._common.deprecation import Deprecated
 from ray.rllib.utils.typing import (
     AgentID,
     EnvCreator,

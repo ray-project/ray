@@ -7,14 +7,14 @@ from urllib.parse import urlparse
 import pyarrow as pa
 
 import ray
-from ray.data._internal.compute import ActorPoolStrategy, get_compute
+from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     MapTransformer,
 )
-from ray.data._internal.logical.operators.map_operator import Download
+from ray.data._internal.logical.operators.one_to_one_operator import Download
 from ray.data._internal.util import RetryingPyFileSystem, make_async_gen
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
@@ -33,9 +33,9 @@ def plan_download_op(
     """Plan the download operation with partitioning and downloading stages."""
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
-    compute = get_compute(op._compute)
     uri_column_name = op.uri_column_name
     output_bytes_column_name = op.output_bytes_column_name
+    ray_remote_args = op.ray_remote_args
 
     # Import _get_udf from the main planner file
     from ray.data._internal.planner.plan_udf_map_op import (
@@ -58,8 +58,7 @@ def plan_download_op(
         data_context,
         name="URIPartitioner",
         compute_strategy=partition_compute,  # Use actor-based compute for callable class
-        ray_remote_args=op._ray_remote_args,
-        ray_remote_args_fn=op._ray_remote_args_fn,
+        ray_remote_args=ray_remote_args,
     )
 
     fn, init_fn = _get_udf(
@@ -74,14 +73,14 @@ def plan_download_op(
         BlockMapTransformFn(download_transform_fn),
     ]
     download_map_transformer = MapTransformer(transform_fns, init_fn)
+    download_compute = TaskPoolStrategy()
     download_map_operator = MapOperator.create(
         download_map_transformer,
         partition_map_operator,
         data_context,
         name="URIDownloader",
-        compute_strategy=compute,
-        ray_remote_args=op._ray_remote_args,
-        ray_remote_args_fn=op._ray_remote_args_fn,
+        compute_strategy=download_compute,
+        ray_remote_args=ray_remote_args,
     )
 
     return download_map_operator
