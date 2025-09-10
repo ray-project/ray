@@ -664,7 +664,7 @@ def test_gpu_object_ref_in_list_throws_exception(ray_start_regular):
     # Test: GPU ref inside a list should fail during task submission
     with pytest.raises(
         ValueError,
-        match="Passing GPU ObjectRefs inside data structures is not yet supported",
+        match="Passing RDT ObjectRefs inside data structures is not yet supported",
     ):
         actor.double.remote([gpu_ref])
 
@@ -672,7 +672,7 @@ def test_gpu_object_ref_in_list_throws_exception(ray_start_regular):
     normal_ref = ray.put("normal_data")
     with pytest.raises(
         ValueError,
-        match="Passing GPU ObjectRefs inside data structures is not yet supported",
+        match="Passing RDT ObjectRefs inside data structures is not yet supported",
     ):
         actor.double.remote([gpu_ref, normal_ref])
 

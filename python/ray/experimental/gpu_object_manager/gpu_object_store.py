@@ -253,7 +253,7 @@ class GPUObjectStore:
                 timeout=timeout,
             ):
                 raise TimeoutError(
-                    f"ObjectRef({obj_id}) not found in GPU object store after {timeout}s, transfer may have failed. Please report this issue on GitHub: https://github.com/ray-project/ray/issues/new/choose"
+                    f"ObjectRef({obj_id}) not found in RDT object store after {timeout}s, transfer may have failed. Please report this issue on GitHub: https://github.com/ray-project/ray/issues/new/choose"
                 )
 
     def pop_object(self, obj_id: str) -> List["torch.Tensor"]:
@@ -283,7 +283,7 @@ class GPUObjectStore:
                 lambda: tensor not in self._tensor_to_object_ids, timeout=timeout
             ):
                 raise TimeoutError(
-                    f"Tensor {tensor} not freed from GPU object store after {timeout}s. The tensor will not be freed until all ObjectRefs containing the tensor have gone out of scope."
+                    f"Tensor {tensor} not freed from RDT object store after {timeout}s. The tensor will not be freed until all ObjectRefs containing the tensor have gone out of scope."
                 )
 
     def get_num_objects(self) -> int:
