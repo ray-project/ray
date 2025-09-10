@@ -287,6 +287,7 @@ def train_func(use_ray: bool, config: Dict):
 
         local_time_taken = time.monotonic() - local_start_time
 
+        report_start_time = time.monotonic()
         if use_ray:
             train.report(dict(loss=loss, local_time_taken=local_time_taken))
         else:
@@ -294,6 +295,10 @@ def train_func(use_ray: bool, config: Dict):
             if local_rank == 0:
                 with open(VANILLA_RESULT_JSON, "w") as f:
                     json.dump({"loss": loss, "local_time_taken": local_time_taken}, f)
+        print(
+            f"Time taken to report epoch {epoch} when use_ray = {use_ray} on rank {local_rank}: "
+            f"{time.monotonic() - report_start_time:.2f} seconds"
+        )
 
 
 def train_torch_ray_air(
