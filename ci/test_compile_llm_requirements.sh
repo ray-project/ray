@@ -35,7 +35,7 @@ done
 FAILED=0
 for LOCK_TYPE in "${LOCK_TYPES[@]}"; do
     for VARIANT in "${VARIANTS[@]}"; do
-        diff --color -u ./python/deplocks/llm/"${LOCK_TYPE}"_py311_"${VARIANT}".lock "$TEMP_DIR/${LOCK_TYPE}_py311_${VARIANT}_backup.lock" || {
+        diff -u ./python/deplocks/llm/"${LOCK_TYPE}"_py311_"${VARIANT}".lock "$TEMP_DIR/${LOCK_TYPE}_py311_${VARIANT}_backup.lock" || {
             echo "${LOCK_TYPE}_py311_${VARIANT}.lock is not up to date. Please download it from Artifacts tab and git push the changes."
             FAILED=1
         }
