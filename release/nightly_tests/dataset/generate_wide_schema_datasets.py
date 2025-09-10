@@ -21,12 +21,12 @@ def generate_long_column_name(col_idx: int, prefix: str = "col") -> str:
         filler = (pattern * ((remaining_chars // len(pattern)) + 1))[:remaining_chars]
         return base_name + filler
     else:
-        # If base_name is already >= 1000 chars, truncate to exactly 1000
-        return base_name[:1000]
+        # If base_name is already >= 500 chars, truncate to exactly 500
+        return base_name[:500]
 
 
 def create_simple_data(num_rows: int, num_columns: int) -> list:
-    """Create simple int64 columns with 1000-character column names."""
+    """Create simple int64 columns with 500-character column names."""
     print(f"Creating simple dataset with {num_rows} rows and {num_columns} columns...")
 
     # Create a single sample record first
