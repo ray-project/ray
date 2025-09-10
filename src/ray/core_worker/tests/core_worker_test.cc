@@ -128,6 +128,9 @@ class CoreWorkerTest : public ::testing::Test {
     auto fake_object_info_publisher = std::make_unique<pubsub::FakePublisher>();
     auto fake_object_info_subscriber = std::make_unique<pubsub::FakeSubscriber>();
 
+    // Store pointer to fake publisher for direct access in tests
+    fake_object_info_publisher_ = fake_object_info_publisher.get();
+
     reference_counter_ = std::make_shared<ReferenceCounter>(
         rpc_address_,
         fake_object_info_publisher.get(),
@@ -273,6 +276,7 @@ class CoreWorkerTest : public ::testing::Test {
   std::shared_ptr<TaskManager> task_manager_;
   std::shared_ptr<CoreWorker> core_worker_;
   ray::observability::FakeMetric fake_task_by_state_counter_;
+  pubsub::FakePublisher *fake_object_info_publisher_;
 };
 
 std::shared_ptr<RayObject> MakeRayObject(const std::string &data_str,
@@ -527,11 +531,95 @@ TEST_F(CoreWorkerTest, HandlePubsubCommandBatchIdempotency) {
   core_worker_->HandlePubsubCommandBatch(
       command_batch_request,
       &reply,
-      [](const Status &, std::function<void()>, std::function<void()>) {});
+      [](const Status &status, std::function<void()>, std::function<void()>) {
+        ASSERT_TRUE(status.ok());
+      });
   core_worker_->HandlePubsubCommandBatch(
       command_batch_request,
       &reply,
-      [](const Status &, std::function<void()>, std::function<void()>) {});
+      [](const Status &status, std::function<void()>, std::function<void()>) {
+        ASSERT_TRUE(status.ok());
+      });
+}
+
+TEST_F(CoreWorkerTest, HandlePubsubLongPollingIdempotency) {
+  auto subscriber_id = NodeID::FromRandom();
+  auto object_id = ObjectID::FromRandom();
+
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(object_id, {}, owner_address, "", 0, false, true);
+
+  rpc::PubsubCommandBatchRequest command_batch_request;
+  command_batch_request.set_subscriber_id(subscriber_id.Binary());
+  auto *command = command_batch_request.add_commands();
+  command->set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
+  command->set_key_id(object_id.Binary());
+  auto *sub_message = command->mutable_subscribe_message();
+  auto *real_sub_message = sub_message->mutable_worker_object_eviction_message();
+  real_sub_message->set_intended_worker_id(core_worker_->GetWorkerID().Binary());
+  real_sub_message->set_object_id(object_id.Binary());
+  *real_sub_message->mutable_subscriber_address() = rpc_address_;
+
+  rpc::PubsubCommandBatchReply command_reply;
+  core_worker_->HandlePubsubCommandBatch(
+      command_batch_request,
+      &command_reply,
+      [](const Status &status, std::function<void()>, std::function<void()>) {
+        ASSERT_TRUE(status.ok());
+      });
+
+  rpc::PubMessage pub_message;
+  pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
+  pub_message.set_key_id(object_id.Binary());
+  auto *worker_object_eviction_message =
+      pub_message.mutable_worker_object_eviction_message();
+  worker_object_eviction_message->set_object_id(object_id.Binary());
+
+  fake_object_info_publisher_->Publish(std::move(pub_message));
+
+  rpc::PubsubLongPollingRequest request;
+  request.set_subscriber_id(subscriber_id.Binary());
+  request.set_max_processed_sequence_id(0);
+  request.set_publisher_id("");
+
+  rpc::PubsubLongPollingReply reply1;
+  rpc::PubsubLongPollingReply reply2;
+
+  core_worker_->HandlePubsubLongPolling(
+      request,
+      &reply1,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+
+  core_worker_->HandlePubsubLongPolling(
+      request,
+      &reply2,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+
+  EXPECT_EQ(reply1.publisher_id(), reply2.publisher_id());
+  EXPECT_EQ(reply1.pub_messages_size(), reply2.pub_messages_size());
+
+  EXPECT_EQ(reply1.pub_messages_size(), 1);
+  EXPECT_EQ(reply2.pub_messages_size(), 1);
+
+  for (int i = 0; i < reply1.pub_messages_size(); ++i) {
+    const auto &msg1 = reply1.pub_messages(i);
+    const auto &msg2 = reply2.pub_messages(i);
+
+    EXPECT_EQ(msg1.channel_type(), msg2.channel_type());
+    EXPECT_EQ(msg1.key_id(), msg2.key_id());
+    EXPECT_EQ(msg1.sequence_id(), msg2.sequence_id());
+
+    if (msg1.has_worker_object_eviction_message() &&
+        msg2.has_worker_object_eviction_message()) {
+      EXPECT_EQ(msg1.worker_object_eviction_message().object_id(),
+                msg2.worker_object_eviction_message().object_id());
+    }
+  }
 }
 
 namespace {
