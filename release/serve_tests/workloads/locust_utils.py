@@ -7,7 +7,11 @@ import logging
 from typing import Any, List
 
 import ray
-from ray.serve._private.benchmarks.locust_utils import LocustStage, LocustTestResults
+from ray.serve._private.benchmarks.locust_utils import (
+    LocustStage,
+    LocustTestResults,
+    PerformanceStats,
+)
 
 
 logger = logging.getLogger(__file__)
@@ -123,7 +127,14 @@ results = run_locust_worker(
                 result_data = f.read()
 
             if result_data:
-                result = LocustTestResults(**json.loads(result_data))
+                result_data = json.loads(result_data)
+                stats_in_stages = [
+                    PerformanceStats(**stage)
+                    for stage in result_data.pop("stats_in_stages")
+                ]
+                result = LocustTestResults(
+                    **result_data, stats_in_stages=stats_in_stages
+                )
                 return result
         finally:
             os.unlink(results_file.name)
@@ -168,11 +179,6 @@ def run_locust_load_test(config: LocustLoadTestConfig) -> LocustTestResults:
     # Collect results and metrics
     stats: LocustTestResults = ray.get(master_ref)
     ray.get(worker_refs)
-
-    # If there were any requests that failed, raise error.
-    if stats.num_failures > 0:
-        raise RuntimeError(f"There were {stats.num_failures} failed requests")
-
     return stats
 
 

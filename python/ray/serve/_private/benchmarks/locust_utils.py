@@ -91,19 +91,25 @@ class LocustClient:
             ):
                 if exception and response.status_code != 0:
                     request_id = context["request_id"]
-                    response.encoding = "utf-8"
-                    err = FailedRequest(
-                        request_id=request_id,
-                        status_code=response.status_code,
-                        exception=response.text,
-                        response_time_ms=response_time,
-                        start_time_s=start_time,
-                    )
-                    self.errors.append(err)
                     print(
                         f"Request '{request_id}' failed with exception:\n"
                         f"{exception}\n{response.text}"
                     )
+
+                    if response.status_code != 0:
+                        response.encoding = "utf-8"
+                        err = FailedRequest(
+                            request_id=request_id,
+                            status_code=response.status_code,
+                            exception=response.text,
+                            response_time_ms=response_time,
+                            start_time_s=start_time,
+                        )
+                        self.errors.append(err)
+                        print(
+                            f"Request '{request_id}' failed with exception:\n"
+                            f"{exception}\n{response.text}"
+                        )
 
         self.user_class = EndpointUser
 
@@ -139,7 +145,7 @@ def run_locust_worker(
     runner.greenlet.join()
 
     if client.errors:
-        logger.error(f"There were {len(client.errors)} errors: {client.errors}")
+        raise RuntimeError(f"There were {len(client.errors)} errors: {client.errors}")
 
 
 def run_locust_master(
