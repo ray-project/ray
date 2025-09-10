@@ -473,8 +473,10 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       [this](const ActorID &actor_id) {
         auto core_worker = GetCoreWorker();
         auto addr = core_worker->actor_task_submitter_->GetActorAddress(actor_id);
-        RAY_CHECK(addr.has_value()) << "Actor address not found for actor " << actor_id;
-        return core_worker->core_worker_client_pool_->GetOrConnect(addr.value());
+        if (!addr.has_value()) {
+          return std::nullopt;
+        }
+        return core_worker->core_worker_client_pool_->GetOrConnect(*addr);
       },
       gcs_client,
       task_by_state_counter_);
