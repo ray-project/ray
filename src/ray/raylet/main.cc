@@ -346,7 +346,7 @@ int main(int argc, char *argv[]) {
     gcs_client->Disconnect();
     ray::stats::Shutdown();
     main_service.stop();
-    for (int i = 0; i < object_manager_rpc_threads.size(); i++) {
+    for (size_t i = 0; i < object_manager_rpc_threads.size(); i++) {
       if (object_manager_rpc_threads[i].joinable()) {
         object_manager_rpc_threads[i].join();
       }
