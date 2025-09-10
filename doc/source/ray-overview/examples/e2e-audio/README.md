@@ -28,7 +28,7 @@ Ray Data is particularly powerful for this use case because it:
 Install the dependencies using:
 
 ```bash
-pip install -r requirements.txt
+pip install -r llm_example_py311_cu128.lock
 ```
 
 This tutorial runs on a cluster with five L4 GPU worker nodes.
