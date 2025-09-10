@@ -40,7 +40,7 @@ It periodically `reconciles <https://github.com/ray-project/ray/blob/03491225d59
 2. **The Latest User Cluster Constraints** (queried from the `get_cluster_resource_state` GCS RPC): The minimum cluster size, if specified by the user `ray.autoscaler.sdk.request_resources` invocation.
 3. **The Latest Total and Available Node Resources** (queried from the `get_cluster_resource_state` GCS RPC): The total and currently available resources of each active Ray node.
 4. **The Latest Cloud Instances** (queried from the cloud provider's implementation): The list of instances managed by the Cloud Provider implementation.
-5. **The Latest Work Group Configurations.** (queried from the cluster YAML file or the RayCluster CRD).
+5. **The Latest Worker Group Configurations.** (queried from the cluster YAML file or the RayCluster CRD).
 
 The above information is retrieved at the beginning of each reconciliation loop.
 The Reconciler uses this information to construct its internal state. This is the `sync phase <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/instance_manager/reconciler.py#L112-L120>`__.
