@@ -47,6 +47,8 @@ class OpenTelemetryMetricRecorder:
                 # Take snapshot of current observations.
                 with self._lock:
                     observations = self._observations_by_name[name]
+                    # Clear the observations to avoid emitting dead observations.
+                    self._observations_by_name[name] = {}
                     # Drop high cardinality from tag_set and sum up the value for
                     # same tag set after dropping
                     aggregated_observations = defaultdict(float)
