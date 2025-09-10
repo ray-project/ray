@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import platform
+import shutil
 import signal
 import subprocess
 import sys
@@ -10,36 +11,33 @@ import time
 import urllib
 import urllib.parse
 import warnings
-import shutil
 from datetime import datetime
-from typing import Optional, Set, List, Tuple
-from ray._common.utils import load_class
-from ray.dashboard.modules.metrics import install_and_start_prometheus
-from ray.util.check_open_ports import check_open_ports
-import requests
+from typing import List, Optional, Set, Tuple
 
 import click
 import colorama
-import psutil
+import requests
 import yaml
 
 import ray
+import ray._common.usage.usage_constants as usage_constant
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
+from ray._common.network_utils import build_address, parse_address
+from ray._common.usage import usage_lib
+from ray._common.utils import load_class
+from ray._private.http_utils import validate_http_only_endpoint
+from ray._private.internal_api import memory_summary
 from ray._private.label_utils import (
-    parse_node_labels_json,
     parse_node_labels_from_yaml_file,
+    parse_node_labels_json,
     parse_node_labels_string,
 )
+from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.utils import (
     get_ray_client_dependency_error,
     parse_resources_json,
 )
-from ray._common.network_utils import parse_address, build_address
-from ray._private.http_utils import validate_http_only_endpoint
-from ray._private.internal_api import memory_summary
-from ray._common.usage import usage_lib
-import ray._common.usage.usage_constants as usage_constant
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cli_logger
 from ray.autoscaler._private.commands import (
     RUN_ENV_TYPES,
@@ -58,10 +56,12 @@ from ray.autoscaler._private.commands import (
 )
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
-from ray.util.annotations import PublicAPI
 from ray.core.generated import autoscaler_pb2
-from ray._private.resource_isolation_config import ResourceIsolationConfig
+from ray.dashboard.modules.metrics import install_and_start_prometheus
+from ray.util.annotations import PublicAPI
+from ray.util.check_open_ports import check_open_ports
 
+import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -2638,33 +2638,29 @@ def cpp(show_library_path, generate_bazel_project_template_to):
         cli_logger.print("Ray C++ include path {} ", cf.bold(f"{include_dir}"))
         cli_logger.print("Ray C++ library path {} ", cf.bold(f"{lib_dir}"))
     if generate_bazel_project_template_to:
+        out_dir = generate_bazel_project_template_to
         # copytree expects that the dst dir doesn't exist
         # so we manually delete it if it exists.
-        if os.path.exists(generate_bazel_project_template_to):
-            shutil.rmtree(generate_bazel_project_template_to)
-        shutil.copytree(cpp_templete_dir, generate_bazel_project_template_to)
-        out_include_dir = os.path.join(
-            generate_bazel_project_template_to, "thirdparty/include"
-        )
-        if os.path.exists(out_include_dir):
-            shutil.rmtree(out_include_dir)
+        if os.path.exists(out_dir):
+            shutil.rmtree(out_dir)
+
+        shutil.copytree(cpp_templete_dir, out_dir)
+        for filename in ["_WORKSPACE", "_BUILD.bazel", "_.bazelrc"]:
+            # Renames the bazel related files by removing the leading underscore.
+            dest_name = os.path.join(out_dir, filename[1:])
+            shutil.move(os.path.join(out_dir, filename), dest_name)
+
+        out_include_dir = os.path.join(out_dir, "thirdparty/include")
         shutil.copytree(include_dir, out_include_dir)
-        out_lib_dir = os.path.join(generate_bazel_project_template_to, "thirdparty/lib")
-        if os.path.exists(out_lib_dir):
-            shutil.rmtree(out_lib_dir)
+        out_lib_dir = os.path.join(out_dir, "thirdparty/lib")
         shutil.copytree(lib_dir, out_lib_dir)
 
         cli_logger.print(
             "Project template generated to {}",
-            cf.bold(f"{os.path.abspath(generate_bazel_project_template_to)}"),
+            cf.bold(f"{os.path.abspath(out_dir)}"),
         )
         cli_logger.print("To build and run this template, run")
-        cli_logger.print(
-            cf.bold(
-                f"    cd {os.path.abspath(generate_bazel_project_template_to)}"
-                " && bash run.sh"
-            )
-        )
+        cli_logger.print(cf.bold(f"    cd {os.path.abspath(out_dir)} && bash run.sh"))
 
 
 @cli.command(hidden=True)
@@ -2744,9 +2740,9 @@ cli.add_command(sanity_check)
 
 try:
     from ray.util.state.state_cli import (
+        logs_state_cli_group,
         ray_get,
         ray_list,
-        logs_state_cli_group,
         summary_state_cli_group,
     )
 

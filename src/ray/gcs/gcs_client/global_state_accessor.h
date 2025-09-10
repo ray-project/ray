@@ -24,7 +24,6 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
-#include "ray/rpc/server_call.h"
 
 namespace ray {
 namespace gcs {

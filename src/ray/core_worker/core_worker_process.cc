@@ -27,14 +27,16 @@
 #include "ray/common/cgroup/cgroup_context.h"
 #include "ray/common/cgroup/cgroup_manager.h"
 #include "ray/common/cgroup/constants.h"
+#include "ray/common/protobuf_utils.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/core_worker_rpc_proxy.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
-#include "ray/gcs/pb_util.h"
 #include "ray/ipc/raylet_ipc_client.h"
+#include "ray/object_manager/plasma/client.h"
+#include "ray/rpc/raylet/raylet_client.h"
 #include "ray/stats/stats.h"
 #include "ray/util/container_util.h"
 #include "ray/util/env.h"
@@ -243,16 +245,19 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   // instead of crashing.
   auto raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
       local_node_id, options.node_ip_address, options.node_manager_port);
-  auto local_raylet_rpc_client = std::make_shared<raylet::RayletClient>(
-      std::move(raylet_address),
-      *client_call_manager,
-      /*raylet_unavailable_timeout_callback=*/[] {});
-  auto core_worker_server = std::make_unique<rpc::GrpcServer>(
-      WorkerTypeString(options.worker_type), assigned_port, options.node_ip_address);
+  auto local_raylet_rpc_client =
+      std::make_shared<rpc::RayletClient>(std::move(raylet_address),
+                                          *client_call_manager,
+                                          /*raylet_unavailable_timeout_callback=*/[] {});
+  auto core_worker_server =
+      std::make_unique<rpc::GrpcServer>(WorkerTypeString(options.worker_type),
+                                        assigned_port,
+                                        options.node_ip_address == "127.0.0.1");
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
   core_worker_server->RegisterService(
-      std::make_unique<rpc::CoreWorkerGrpcService>(io_service_, *service_handler_),
+      std::make_unique<rpc::CoreWorkerGrpcService>(
+          io_service_, *service_handler_, /*max_active_rpcs_per_handler_=*/-1),
       false /* token_auth */);
   core_worker_server->Run();
 
@@ -280,7 +285,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto raylet_client_pool =
       std::make_shared<rpc::RayletClientPool>([&](const rpc::Address &addr) {
         auto core_worker = GetCoreWorker();
-        return std::make_shared<ray::raylet::RayletClient>(
+        return std::make_shared<ray::rpc::RayletClient>(
             addr,
             *core_worker->client_call_manager_,
             rpc::RayletClientPool::GetDefaultUnavailableTimeoutCallback(
@@ -349,6 +354,13 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
             /*min_concurrent_lease_cap_*/ 10);
   }
 
+  // We can turn on exit_on_connection_failure on for the core worker plasma
+  // client to early exit core worker after the raylet's death because on the
+  // raylet side, we never proactively close the plasma store connection even
+  // during shutdown. So any error from the raylet side should be a sign of raylet
+  // death.
+  auto plasma_client = std::shared_ptr<plasma::PlasmaClientInterface>(
+      new plasma::PlasmaClient(/*exit_on_connection_failure*/ true));
   auto plasma_store_provider = std::make_shared<CoreWorkerPlasmaStoreProvider>(
       options.store_socket,
       raylet_ipc_client,
@@ -357,6 +369,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       /*warmup=*/
       (options.worker_type != WorkerType::SPILL_WORKER &&
        options.worker_type != WorkerType::RESTORE_WORKER),
+      /*store_client=*/plasma_client,
+      /*fetch_batch_size=*/RayConfig::instance().worker_fetch_request_size(),
       /*get_current_call_site=*/[this]() {
         auto core_worker = GetCoreWorker();
         return core_worker->CurrentCallSite();
@@ -421,19 +435,29 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       /*put_in_local_plasma_callback=*/
       [this](const RayObject &object, const ObjectID &object_id) {
         auto core_worker = GetCoreWorker();
-        auto put_status =
-            core_worker->PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true);
-        if (!put_status.ok()) {
-          RAY_LOG(WARNING).WithField(object_id)
-              << "Failed to put object in plasma store: " << put_status;
-          return put_status;
+        constexpr int max_retries = 3;
+        int attempt = 0;
+        int64_t backoff_ms = 10;
+        Status put_status;
+        while (attempt++ < max_retries) {
+          put_status =
+              core_worker->PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true);
+          if (put_status.ok()) {
+            return Status::OK();
+          }
+          // Backoff before retrying.
+          std::this_thread::sleep_for(std::chrono::milliseconds(backoff_ms));
+          backoff_ms *= 2;
         }
-        return Status::OK();
+        RAY_LOG(WARNING).WithField(object_id)
+            << "Exhausted plasma put retries (attempts=" << attempt
+            << ") with status: " << put_status;
+        return put_status;
       },
-      /* retry_task_callback= */
-      [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
+      /* async_retry_task_callback=*/
+      [this](TaskSpecification &spec, uint32_t delay_ms) {
         auto core_worker = GetCoreWorker();
-        core_worker->TaskManagerRetryTask(spec, object_recovery, delay_ms);
+        core_worker->AsyncRetryTask(spec, delay_ms);
       },
       /*queue_generator_resubmit=*/
       [this](const TaskSpecification &spec) {
@@ -452,7 +476,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
         RAY_CHECK(addr.has_value()) << "Actor address not found for actor " << actor_id;
         return core_worker->core_worker_client_pool_->GetOrConnect(addr.value());
       },
-      gcs_client);
+      gcs_client,
+      task_by_state_counter_);
 
   auto on_excess_queueing = [this](const ActorID &actor_id, uint64_t num_queued) {
     auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(
@@ -470,7 +495,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                         timestamp));
   };
 
-  auto actor_creator = std::make_shared<DefaultActorCreator>(gcs_client);
+  auto actor_creator = std::make_shared<ActorCreator>(gcs_client->Actors());
 
   auto actor_task_submitter = std::make_unique<ActorTaskSubmitter>(
       *core_worker_client_pool,
@@ -656,7 +681,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    std::move(actor_manager),
                                    task_execution_service_,
                                    std::move(task_event_buffer),
-                                   pid);
+                                   pid,
+                                   task_by_state_counter_);
   return core_worker;
 }
 
@@ -837,8 +863,7 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
     // TODO(joshlee): This local raylet client has a custom retry policy below since its
     // likely the driver can start up before the raylet is ready. We want to move away
     // from this and will be fixed in https://github.com/ray-project/ray/issues/55200
-    raylet::RayletClient local_raylet_rpc_client(
-        raylet_address, client_call_manager, [] {});
+    rpc::RayletClient local_raylet_rpc_client(raylet_address, client_call_manager, [] {});
 
     std::function<void(int64_t)> get_once = [this,
                                              &get_once,

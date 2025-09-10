@@ -11,20 +11,17 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include "ray/core_worker/task_submission/actor_task_submitter.h"
 
-// clang-format off
 #include <memory>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "ray/core_worker/actor_creator.h"
+#include "mock/ray/core_worker/memory_store.h"
+#include "mock/ray/core_worker/reference_count.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
-#include "mock/ray/core_worker/reference_count.h"
-#include "mock/ray/core_worker/memory_store.h"
-
-// clang-format on
+#include "ray/core_worker/actor_creator.h"
+#include "ray/core_worker/task_submission/actor_task_submitter.h"
 
 namespace ray {
 namespace core {
@@ -36,7 +33,7 @@ class DirectTaskTransportTest : public ::testing::Test {
 
   void SetUp() override {
     gcs_client = std::make_shared<ray::gcs::MockGcsClient>();
-    actor_creator = std::make_unique<DefaultActorCreator>(gcs_client);
+    actor_creator = std::make_unique<ActorCreator>(gcs_client->Actors());
 
     task_manager = std::make_shared<MockTaskManagerInterface>();
     client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
@@ -75,7 +72,7 @@ class DirectTaskTransportTest : public ::testing::Test {
 
  protected:
   bool CheckSubmitTask(TaskSpecification task) {
-    EXPECT_TRUE(actor_task_submitter->SubmitTask(task).ok());
+    actor_task_submitter->SubmitTask(task);
     return 1 == io_context.poll_one();
   }
 
@@ -86,7 +83,7 @@ class DirectTaskTransportTest : public ::testing::Test {
   std::shared_ptr<rpc::CoreWorkerClientPool> client_pool;
   std::unique_ptr<CoreWorkerMemoryStore> memory_store;
   std::shared_ptr<MockTaskManagerInterface> task_manager;
-  std::unique_ptr<DefaultActorCreator> actor_creator;
+  std::unique_ptr<ActorCreator> actor_creator;
   std::shared_ptr<ray::gcs::MockGcsClient> gcs_client;
   std::shared_ptr<MockReferenceCounter> reference_counter;
 };
@@ -99,7 +96,7 @@ TEST_F(DirectTaskTransportTest, ActorCreationOk) {
   EXPECT_CALL(*gcs_client->mock_actor_accessor,
               AsyncCreateActor(creation_task_spec, ::testing::_))
       .WillOnce(::testing::DoAll(::testing::SaveArg<1>(&create_cb)));
-  ASSERT_TRUE(actor_task_submitter->SubmitActorCreationTask(creation_task_spec).ok());
+  actor_task_submitter->SubmitActorCreationTask(creation_task_spec);
   create_cb(Status::OK(), rpc::CreateActorReply());
 }
 
@@ -115,7 +112,7 @@ TEST_F(DirectTaskTransportTest, ActorCreationFail) {
   EXPECT_CALL(*gcs_client->mock_actor_accessor,
               AsyncCreateActor(creation_task_spec, ::testing::_))
       .WillOnce(::testing::DoAll(::testing::SaveArg<1>(&create_cb)));
-  ASSERT_TRUE(actor_task_submitter->SubmitActorCreationTask(creation_task_spec).ok());
+  actor_task_submitter->SubmitActorCreationTask(creation_task_spec);
   create_cb(Status::IOError(""), rpc::CreateActorReply());
 }
 

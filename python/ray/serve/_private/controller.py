@@ -652,6 +652,9 @@ class ServeController:
             if SERVE_ROOT_URL_ENV_KEY in os.environ:
                 return os.environ[SERVE_ROOT_URL_ENV_KEY]
             else:
+                # HTTP is disabled
+                if http_config.host is None:
+                    return ""
                 return (
                     f"http://{build_address(http_config.host, http_config.port)}"
                     f"{http_config.root_path}"
