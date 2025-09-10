@@ -81,4 +81,6 @@ class LocalTorchController(LocalController):
             path=None,
             error=None,
         )
+        if dist.is_initialized():
+            dist.destroy_process_group()
         return result
