@@ -16,3 +16,5 @@ hf_transfer
 
 # nixl version Needs to be in sync with the one in ray-llm/Dockerfile
 nixl==0.4.1
+dm-tree
+gymnasium
