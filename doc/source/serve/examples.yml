@@ -74,7 +74,7 @@ examples:
       - natural language processing
     link: tutorials/serve-deepseek
     related_technology: llm applications
-  - title: Deploying a small-sized LLM
+  - title: Deploy a small-sized LLM
     skill_level: beginner
     use_cases:
       - generative ai
@@ -82,7 +82,7 @@ examples:
       - natural language processing
     link: tutorials/deployment-serve-llm/small-size-llm/README
     related_technology: llm applications
-  - title: Deploying a medium-sized LLM
+  - title: Deploy a medium-sized LLM
     skill_level: beginner
     use_cases:
       - generative ai
@@ -90,7 +90,7 @@ examples:
       - natural language processing
     link: tutorials/deployment-serve-llm/medium-size-llm/README
     related_technology: llm applications
-  - title: Deploying a large-sized LLM
+  - title: Deploy a large-sized LLM
     skill_level: beginner
     use_cases:
       - generative ai
@@ -98,7 +98,7 @@ examples:
       - natural language processing
     link: tutorials/deployment-serve-llm/large-size-llm/README
     related_technology: llm applications
-  - title: Deploying a vision LLM
+  - title: Deploy a vision LLM
     skill_level: beginner
     use_cases:
       - generative ai
@@ -106,7 +106,7 @@ examples:
       - natural language processing
     link: tutorials/deployment-serve-llm/vision-llm/README
     related_technology: llm applications
-  - title: Deploying a reasoning LLM
+  - title: Deploy a reasoning LLM
     skill_level: beginner
     use_cases:
       - generative ai
@@ -114,7 +114,7 @@ examples:
       - natural language processing
     link: tutorials/deployment-serve-llm/reasoning-llm/README
     related_technology: llm applications
-  - title: Deploying a hybrid reasoning LLM
+  - title: Deploy a hybrid reasoning LLM
     skill_level: beginner
     use_cases:
       - generative ai
