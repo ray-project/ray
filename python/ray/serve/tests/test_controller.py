@@ -179,6 +179,9 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                                     "downscaling_factor": None,
                                     "downscale_delay_s": 600.0,
                                     "upscale_delay_s": 30.0,
+                                    "policy": {
+                                        "name": "ray.serve.autoscaling_policy:default_autoscaling_policy"
+                                    },
                                 },
                                 "graceful_shutdown_wait_loop_s": 2.0,
                                 "graceful_shutdown_timeout_s": 20.0,
