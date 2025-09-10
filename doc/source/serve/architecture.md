@@ -29,8 +29,8 @@ There are three kinds of actors that are created to make up a Serve instance:
   responds once they are completed.  For scalability and high availability,
   you can also run a proxy on each node in the cluster via the `proxy_location` field inside [`serve.start()`](core-apis) or [the config file](serve-in-production-config-file).
 - **gRPC Proxy**: If Serve is started with valid `port` and `grpc_servicer_functions`,
-  then the gRPC proxy is started alongside with the HTTP proxy. This Actor runs a
-  [grpcio](https://grpc.github.io/grpc/python/) server. The gRPC server that accepts
+  then the gRPC proxy is started alongside the HTTP proxy. This Actor runs a
+  [grpcio](https://grpc.github.io/grpc/python/) server. The gRPC server accepts
   incoming requests, forwards them to replicas, and responds once they are completed.
 - **Replicas**: Actors that actually execute the code in response to a
   request. For example, they may contain an instantiation of an ML model. Each
@@ -51,7 +51,7 @@ When an HTTP or gRPC request is sent to the corresponding HTTP or gRPC proxy, th
 
 Each replica maintains a queue of requests and executes requests one at a time, possibly
 using `asyncio` to process them concurrently. If the handler (the deployment function or the `__call__` method of the deployment class) is declared with `async def`, the replica will not wait for the
-handler to run.  Otherwise, the replica blocks until the handler returns.
+handler to run. Otherwise, the replica blocks until the handler returns.
 
 When making a request via a [DeploymentHandle](serve-key-concepts-deployment-handle) instead of HTTP or gRPC for [model composition](serve-model-composition), the request is placed on a queue in the `DeploymentHandle`, and we skip to step 3 above.
 
@@ -88,7 +88,7 @@ Ray Serve's autoscaling feature automatically increases or decreases a deploymen
 - The Serve Autoscaler runs in the Serve Controller actor.
 - Each `DeploymentHandle` and each replica periodically pushes its metrics to the autoscaler.
 - For each deployment, the autoscaler periodically checks `DeploymentHandle` queues and in-flight queries on replicas to decide whether or not to scale the number of replicas.
-- Each `DeploymentHandle` continuously polls the controller to check for new deployment replicas. Whenever new replicas are discovered, it sends any buffered or new queries to the replica until `max_ongoing_requests` is reached.  Queries are sent to replicas in round-robin fashion, subject to the constraint that no replica is handling more than `max_ongoing_requests` requests at a time.
+- Each `DeploymentHandle` continuously polls the controller to check for new deployment replicas. Whenever new replicas are discovered, it sends any buffered or new queries to the replica until `max_ongoing_requests` is reached. Queries are sent to replicas in round-robin fashion, subject to the constraint that no replica is handling more than `max_ongoing_requests` requests at a time.
 
 :::{note}
 When the controller dies, requests can still be sent via HTTP, gRPC and `DeploymentHandle`, but autoscaling is paused. When the controller recovers, the autoscaling resumes, but all previous metrics collected are lost.
@@ -105,7 +105,7 @@ Each node in your Ray cluster provides a Serve REST API server that can connect 
 
 You can configure Serve to start one proxy Actor per node with the `proxy_location` field inside [`serve.start()`](core-apis) or [the config file](serve-in-production-config-file). Each proxy binds to the same port. You
 should be able to reach Serve and send requests to any models with any of the
-servers.  You can use your own load balancer on top of Ray Serve.
+servers. You can use your own load balancer on top of Ray Serve.
 
 This architecture ensures horizontal scalability for Serve. You can scale your HTTP and gRPC ingress by adding more nodes. You can also scale your model inference by increasing the number
 of replicas via the `num_replicas` option of your deployment.

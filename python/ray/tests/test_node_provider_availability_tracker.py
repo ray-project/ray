@@ -1,16 +1,16 @@
-import datetime
 import dataclasses
+import datetime
 import sys
+
 import pytest
 
-from ray.autoscaler.node_launch_exception import NodeLaunchException
 from ray.autoscaler._private.node_provider_availability_tracker import (
-    NodeProviderAvailabilityTracker,
-    NodeAvailabilitySummary,
     NodeAvailabilityRecord,
+    NodeAvailabilitySummary,
+    NodeProviderAvailabilityTracker,
     UnavailableNodeInformation,
 )
-
+from ray.autoscaler.node_launch_exception import NodeLaunchException
 
 cur_time = float(0)
 

@@ -1,11 +1,12 @@
 import sys
-import pytest
-import ray
-
+from dataclasses import dataclass
 from typing import List
+
+import pytest
+
+import ray
 from ray.runtime_env import RuntimeEnv
 from ray.runtime_env.types.pip import Pip
-from dataclasses import dataclass
 
 
 @dataclass

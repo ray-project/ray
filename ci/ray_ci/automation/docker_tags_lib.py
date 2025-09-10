@@ -1,25 +1,25 @@
-import subprocess
-import re
-from datetime import datetime
-from typing import List, Optional, Callable, Tuple
 import os
-import sys
-from dateutil import parser
 import platform
+import re
+import subprocess
+import sys
+from datetime import datetime
+from typing import Callable, List, Optional, Tuple
 
-import docker
 import requests
 import runfiles
+from dateutil import parser
 
+import docker
 from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VERSION
 from ci.ray_ci.docker_container import (
-    GPU_PLATFORM,
-    PYTHON_VERSIONS_RAY,
-    PYTHON_VERSIONS_RAY_ML,
-    PLATFORMS_RAY,
-    PLATFORMS_RAY_ML,
     ARCHITECTURES_RAY,
     ARCHITECTURES_RAY_ML,
+    GPU_PLATFORM,
+    PLATFORMS_RAY,
+    PLATFORMS_RAY_ML,
+    PYTHON_VERSIONS_RAY,
+    PYTHON_VERSIONS_RAY_ML,
     RayType,
 )
 from ci.ray_ci.utils import logger

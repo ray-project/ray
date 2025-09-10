@@ -1,0 +1,28 @@
+group: dependencies
+depends_on:
+  - forge
+steps:
+  # dependencies
+  - label: ":tapioca: build: pip-compile dependencies"
+    key: pip_compile_dependencies
+    tags: always
+    instance_type: small
+    commands:
+      # uncomment the following line to update the pinned versions of pip dependencies
+      # to the latest versions; otherwise, the pinned versions will be re-used as much
+      # as possible
+      # - rm ./python/requirements_compiled.txt
+      - cp ./python/requirements_compiled.txt requirements_compiled_backup.txt
+      - ./ci/ci.sh compile_pip_dependencies
+      - cp -f ./python/requirements_compiled.txt /artifact-mount/
+      - diff ./python/requirements_compiled.txt requirements_compiled_backup.txt || (echo "requirements_compiled.txt is not up to date. Please download it from Artifacts tab and git push the changes." && exit 1)
+    job_env: oss-ci-base_test-py3.11
+    depends_on: oss-ci-base_test-multipy
+
+  - label: ":tapioca: build: raydepsets: compile LLM dependencies"
+    key: raydepsets_compile_llm_dependencies
+    tags: always
+    instance_type: small
+    command: ./ci/test_compile_llm_requirements.sh
+    job_env: oss-ci-base_test-py3.11
+    depends_on: oss-ci-base_test-multipy

@@ -8,8 +8,8 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
-from ray._private.ray_constants import env_integer
 from ray._common.utils import binary_to_hex
+from ray._private.ray_constants import env_integer
 from ray._raylet import GcsClient
 from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,

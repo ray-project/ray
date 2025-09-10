@@ -52,6 +52,8 @@ if TYPE_CHECKING:
         EmbeddingRequest,
         EmbeddingResponse,
         ErrorResponse,
+        ScoreRequest,
+        ScoreResponse,
     )
 
 logger = get_logger(__name__)
@@ -103,6 +105,18 @@ class _LLMServerBase(ABC):
         Raise error when the engine is dead and needs to be restarted.
         """
         ...
+
+    @abstractmethod
+    async def reset_prefix_cache(self) -> None:
+        """Reset the prefix cache of the underlying engine"""
+
+    @abstractmethod
+    async def start_profile(self) -> None:
+        """Start profiling"""
+
+    @abstractmethod
+    async def stop_profile(self) -> None:
+        """Stop profiling"""
 
     # TODO (Kourosh): This does not belong here.
     async def llm_config(self) -> Optional[LLMConfig]:
@@ -294,7 +308,10 @@ class LLMServer(_LLMServerBase):
     async def _run_request(
         self,
         request: Union[
-            "ChatCompletionRequest", "CompletionRequest", "EmbeddingRequest"
+            "ChatCompletionRequest",
+            "CompletionRequest",
+            "EmbeddingRequest",
+            "ScoreRequest",
         ],
         *,
         engine_method: str,
@@ -380,6 +397,24 @@ class LLMServer(_LLMServerBase):
             request, engine_method="embeddings", batch_output_stream=False
         )
 
+    async def score(
+        self, request: "ScoreRequest"
+    ) -> AsyncGenerator[Union["ScoreResponse", "ErrorResponse"], None]:
+        """Runs a score request to the engine and returns the response.
+
+        Returns an AsyncGenerator over the ScoreResponse object. This is so that the caller can have a consistent interface across all the methods of chat, completions, embeddings, and score.
+
+        Args:
+            request: A ScoreRequest object.
+
+        Returns:
+            An AsyncGenerator over the ScoreResponse object.
+        """
+        # NOTE: Score does not need batching, similar to embeddings.
+        return await self._run_request(
+            request, engine_method="score", batch_output_stream=False
+        )
+
     async def check_health(self) -> None:
         """
         Check the health of the replica. Does not return anything. Raise error when
@@ -391,6 +426,41 @@ class LLMServer(_LLMServerBase):
             return await self.engine.check_health()
         except Exception as e:
             logger.error("Engine health check failed in LLMServer.check_health: %s", e)
+            raise e
+
+    async def reset_prefix_cache(self) -> None:
+        """Reset the prefix cache of the underlying engine"""
+        if self.engine is None:
+            return
+        try:
+            await self.engine.reset_prefix_cache()
+        except Exception as e:
+            logger.error(
+                "Engine reset prefix cache failed in LLMServer.reset_prefix_cache: %s",
+                e,
+            )
+            raise e
+
+    async def start_profile(self) -> None:
+        """Start profiling"""
+        if self.engine is None:
+            return
+        try:
+            await self.engine.start_profile()
+        except Exception as e:
+            logger.error(
+                "Engine start profile failed in LLMServer.start_profile: %s", e
+            )
+            raise e
+
+    async def stop_profile(self) -> None:
+        """Stop profiling"""
+        if self.engine is None:
+            return
+        try:
+            await self.engine.stop_profile()
+        except Exception as e:
+            logger.error("Engine stop profile failed in LLMServer.stop_profile: %s", e)
             raise e
 
     async def llm_config(self) -> Optional[LLMConfig]:
@@ -428,4 +498,4 @@ class LLMDeployment(LLMServer):
     # to give developers an ability to test the implementation outside the Ray Serve.
     # But in practice we should always test the LLMDeployment class as a Serve
     # deployment to ensure all functionalities can be run remotely asynchronously.
-    ...
+    pass

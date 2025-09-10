@@ -11,6 +11,6 @@ srcs:
   - python/requirements/ml/data-test-requirements.txt
 build_args:
   - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON
-  - ARROW_VERSION=17.*
+  - ARROW_VERSION=20.*
 tags:
   - cr.ray.io/rayproject/databuild-py$PYTHON

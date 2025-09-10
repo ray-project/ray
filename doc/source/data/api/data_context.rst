@@ -3,7 +3,7 @@
 Global configuration
 ====================
 
-.. currentmodule:: ray.data
+.. currentmodule:: ray.data.context
 
 .. autoclass:: DataContext
 
@@ -12,3 +12,6 @@ Global configuration
    :toctree: doc/
 
    DataContext.get_current
+
+
+.. autoclass:: AutoscalingConfig

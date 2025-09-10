@@ -188,6 +188,22 @@ scrape_configs:
     - '/tmp/ray/prom_metrics_service_discovery.json'
 ```
 
+#### HTTP service discovery
+Ray also exposes the same list of addresses to scrape over an HTTP endpoint, compatible with [Prometheus HTTP Service Discovery](https://prometheus.io/docs/prometheus/latest/http_sd/).
+
+Use the following in your Prometheus config to use the HTTP endpoint for service discovery ([HTTP SD docs](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#http_sd_config)):
+
+```yaml
+scrape_configs:
+- job_name: 'ray'
+  http_sd_configs:
+  - url: 'http://<RayHeadnodeAddress>:<DashboardPort>/api/prometheus/sd'
+    refresh_interval: 60s
+```
+
+- `<DashboardPort>` is `8265` by default. See [Configuring and Managing Ray Dashboard](https://docs.ray.io/en/latest/cluster/configure-manage-dashboard.html) for more details.
+- The endpoint returns a JSON list of targets for Prometheus metrics. When no targets are available, it returns `[]`.
+
 ### Manually discovering metrics endpoints
 
 If you know the IP addresses of the nodes in your Ray Cluster, you can configure Prometheus to read metrics from a static list of endpoints.

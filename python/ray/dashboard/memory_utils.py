@@ -430,7 +430,7 @@ def memory_summary(
         "Type",
         "Call Site",
         "Status",
-        "Attampt",
+        "Attempt",
         "Size",
         "Reference Type",
         "Object Ref",
@@ -444,7 +444,7 @@ def memory_summary(
 
     mem += f"Grouping by {group_by}...\
         Sorting by {sort_by}...\
-        Display {num_entries if num_entries is not None else 'all'}\
+        Display {num_entries if num_entries is not None else 'all'} \
 entries per group...\n\n\n"
 
     for key, group in memory_table["group"].items():

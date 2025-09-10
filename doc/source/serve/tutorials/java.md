@@ -20,7 +20,7 @@ To use Java Ray Serve, you need the following dependency in your pom.xml.
 
 ## Example model
 
-This example use case is a production workflow of a financial application. The application needs to compute the best strategy to interact with different banks for a single task.
+This example use case is a production workflow for a financial application. The application needs to compute the best strategy to interact with different banks for a single task.
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/Strategy.java
 :end-before: docs-strategy-end
@@ -43,7 +43,7 @@ This code uses the `Strategy` class:
 :start-after: docs-strategy-calc-start
 ```
 
-When the scale of banks and indicators expands, the three-tier `for` loop slows down the calculation. Even if you use the thread pool to calculate each indicator in parallel, you may encounter a single machine performance bottleneck. Moreover, you can't use this `Strategy`  object as a resident service.
+When the scale of banks and indicators expands, the three-tier `for` loop slows down the calculation. Even if you use the thread pool to calculate each indicator in parallel, you may encounter a single machine performance bottleneck. Moreover, you can't use this `Strategy` object as a resident service.
 
 ## Converting to a Ray Serve Deployment
 

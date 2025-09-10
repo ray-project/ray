@@ -17,12 +17,12 @@ key concepts and general architecture of RLlib.
     **RLlib overview:** The central component of RLlib is the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
     class, acting as a runtime for executing your RL experiments.
     Your gateway into using an :ref:`Algorithm <rllib-key-concepts-algorithms>` is the
-    :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` (<span style="color: #cfe0e1;">cyan</span>) class, allowing
+    :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` (cyan) class, allowing
     you to manage available configuration settings, for example learning rate or model architecture.
     Most :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` objects have
-    :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors (<span style="color: #d0e2f3;">blue</span>) to collect training samples
+    :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors (blue) to collect training samples
     from the :ref:`RL environment <rllib-key-concepts-environments>` and
-    :py:class:`~ray.rllib.core.learner.learner.Learner` actors (<span style="color: #fff2cc;">yellow</span>)
+    :py:class:`~ray.rllib.core.learner.learner.Learner` actors (yellow)
     to compute gradients and update your :ref:`models <rllib-key-concepts-rl-modules>`.
     The algorithm synchronizes model weights after an update.
 
@@ -142,7 +142,7 @@ and the rules that govern environment transitions when applying actions.
 
     A simple **RL environment** where an agent starts with an initial observation returned by the ``reset()`` method.
     The agent, possibly controlled by a neural network policy, sends actions, like ``right`` or ``jump``,
-    to the environmant's ``step()`` method, which returns a reward. Here, the reward values are +5 for reaching the goal
+    to the environment's ``step()`` method, which returns a reward. Here, the reward values are +5 for reaching the goal
     and 0 otherwise. The environment also returns a boolean flag indicating whether the episode is complete.
 
 Environments may vary in complexity, from simple tasks, like navigating a grid world, to highly intricate systems, like autonomous
@@ -184,7 +184,7 @@ network models and defines how to use them during the three phases of its RL lif
 **Exploration**, for collecting training data, **inference** when computing actions for evaluation or in production,
 and **training** for computing the loss function inputs.
 
-You can chose to use :ref:`RLlib's built-in default models and configure these <rllib-default-rl-modules-docs>` as needed,
+You can choose to use :ref:`RLlib's built-in default models and configure these <rllib-default-rl-modules-docs>` as needed,
 for example for changing the number of layers or the activation functions, or
 :ref:`write your own custom models in PyTorch <rllib-implementing-custom-rl-modules>`,
 allowing you to implement any architecture and computation logic.

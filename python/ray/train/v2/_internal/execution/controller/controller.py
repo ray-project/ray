@@ -3,7 +3,7 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass
-from typing import Callable, List, Optional, Union
+from typing import TYPE_CHECKING, Callable, List, Optional, Union
 
 import pandas as pd
 
@@ -50,7 +50,6 @@ from ray.train.v2._internal.execution.scaling_policy import (
     ResizeDecision,
     ScalingPolicy,
 )
-from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.worker_group import (
     WorkerGroup,
     WorkerGroupPollStatus,
@@ -58,7 +57,7 @@ from ray.train.v2._internal.execution.worker_group import (
 from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
 )
-from ray.train.v2._internal.logging.logging import configure_controller_logger
+from ray.train.v2._internal.logging import LoggingManager
 from ray.train.v2._internal.util import ObjectRefWrapper, time_monotonic
 from ray.train.v2.api.callback import RayTrainCallback
 from ray.train.v2.api.exceptions import (
@@ -66,6 +65,10 @@ from ray.train.v2.api.exceptions import (
     TrainingFailedError,
 )
 from ray.train.v2.api.result import Result
+
+if TYPE_CHECKING:
+    from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
+
 
 logger = logging.getLogger(__name__)
 
@@ -116,17 +119,13 @@ class TrainController:
             ENABLE_CONTROLLER_STRUCTURED_LOGGING_ENV_VAR,
             DEFAULT_ENABLE_CONTROLLER_LOGGING,
         ):
-            configure_controller_logger(self._train_run_context)
+            LoggingManager.configure_controller_logger(self._train_run_context)
         self._train_fn_ref = train_fn_ref
         self._scaling_policy = scaling_policy
         self._failure_policy = failure_policy
         self._run_config = self._train_run_context.run_config
         self._callbacks = callbacks or []
-        self._storage_context = StorageContext(
-            storage_path=self._run_config.storage_path,
-            experiment_dir_name=self._run_config.name,
-            storage_filesystem=self._run_config.storage_filesystem,
-        )
+        self._storage_context = self._train_run_context.run_config.storage_context
 
         self._checkpoint_manager = CheckpointManager(
             checkpoint_config=self._run_config.checkpoint_config,
@@ -275,17 +274,37 @@ class TrainController:
     ) -> Optional[ControllerError]:
         """Start the worker group and launch the train function.
 
+        Args:
+            num_workers: The number of workers to start.
+            resources_per_worker: The resources per worker to start.
+
         Returns:
             None if the worker group was successfully started,
             ControllerError if the worker group failed to start.
         """
         placement_strategy = self._scaling_policy.scaling_config.placement_strategy
+        scaling_config = self._train_run_context.scaling_config
+
+        # Check for `bundle_label_selector` to influence WorkerGroup scheduling.
+        bundle_label_selector = None
+        try:
+            for callback in self._controller_callbacks:
+                selector = callback.on_controller_start_worker_group(
+                    scaling_config=scaling_config, num_workers=num_workers
+                )
+                if selector:
+                    bundle_label_selector = selector
+                    break
+        except Exception as e:
+            return ControllerError(e)
+
         worker_group_context = WorkerGroupContext(
             run_attempt_id=self._get_run_attempt_id(),
             train_fn_ref=self._train_fn_ref,
             num_workers=num_workers,
             resources_per_worker=resources_per_worker,
             placement_strategy=placement_strategy,
+            bundle_label_selector=bundle_label_selector,
         )
         try:
             self._worker_group = self.worker_group_cls.create(
@@ -521,7 +540,6 @@ class TrainController:
             raise ValueError(
                 f"Cannot get result when controller is in state {controller_state}"
             )
-
         return self._build_result()
 
     def get_training_failed_error(self) -> Optional[TrainingFailedError]:
@@ -537,3 +555,10 @@ class TrainController:
             return controller_state.training_failed_error
 
         return None
+
+    async def get_all_reported_checkpoints(
+        self, expected_num_report_calls: int
+    ) -> List["ReportedCheckpoint"]:
+        return await self._checkpoint_manager.get_all_reported_checkpoints(
+            expected_num_report_calls
+        )

@@ -1,11 +1,12 @@
-import sys
-import ray
-import pydot
 import os
+import sys
+
+import pydot
+import pytest
+
+import ray
 from ray.dag import InputNode, MultiOutputNode
 from ray.tests.conftest import *  # noqa
-
-import pytest
 
 
 @pytest.fixture

@@ -1,0 +1,12 @@
+load("//bazel:ray.bzl", "ray_cc_library")
+
+ray_cc_library(
+    name = "fake_plasma_client",
+    hdrs = ["fake_plasma_client.h"],
+    deps = [
+        "//src/ray/common:buffer",
+        "//src/ray/common:id",
+        "//src/ray/common:status",
+        "//src/ray/object_manager/plasma:plasma_client_interface",
+    ],
+)

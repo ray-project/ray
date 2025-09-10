@@ -5,7 +5,7 @@ Configuring Ray
 
 .. note:: For running Java applications, see `Java Applications`_.
 
-This page discusses the various way to configure Ray, both from the Python API
+This page discusses the various ways to configure Ray, both from the Python API
 and from the command line. Take a look at the ``ray.init`` `documentation
 <package-ref.html#ray.init>`__ for a complete overview of the configurations.
 
@@ -96,7 +96,7 @@ Change the *root temporary directory* by passing ``--temp-dir={your temp path}``
 
 There currently isn't a stable way to change the root temporary directory when calling ``ray.init()``, but if you need to, you can provide the ``_temp_dir`` argument to ``ray.init()``.
 
-Look :ref:`Logging Directory Structure <logging-directory-structure>` for more details.
+See :ref:`Logging Directory Structure <logging-directory-structure>` for more details.
 
 .. _ray-ports:
 

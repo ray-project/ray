@@ -1,4 +1,5 @@
 import sys
+
 import pytest
 
 from ray._private.accelerators import NvidiaGPUAcceleratorManager

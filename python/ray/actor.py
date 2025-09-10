@@ -1,33 +1,32 @@
 import inspect
 import logging
 from typing import (
+    TYPE_CHECKING,
     Any,
+    Callable,
     Dict,
+    Generic,
     List,
     Literal,
     Optional,
     Tuple,
-    Union,
-    TYPE_CHECKING,
     TypeVar,
-    Generic,
-    Callable,
+    Union,
     overload,
 )
 
 try:
-    from typing import ParamSpec
-    from typing import Concatenate
+    from typing import Concatenate, ParamSpec
 except ImportError:
-    from typing_extensions import ParamSpec
-    from typing_extensions import Concatenate
+    from typing_extensions import Concatenate, ParamSpec
 
-import ray._private.ray_constants as ray_constants
-from ray._common.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
 import ray._common.signature as signature
+import ray._private.ray_constants as ray_constants
 import ray._raylet
-from ray import ActorClassID, Language, cross_language, ObjectRef
+from ray import ActorClassID, Language, ObjectRef, cross_language
 from ray._common import ray_option_utils
+from ray._common.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
+from ray._common.ray_option_utils import _warn_if_using_deprecated_placement_group
 from ray._private.async_compat import has_async_methods
 from ray._private.auto_init_hook import wrap_auto_init
 from ray._private.client_mode_hook import (
@@ -35,12 +34,14 @@ from ray._private.client_mode_hook import (
     client_mode_hook,
     client_mode_should_convert,
 )
+from ray._private.custom_types import (
+    TensorTransportEnum,
+)
 from ray._private.inspect_util import (
     is_class_method,
     is_function_or_method,
     is_static_method,
 )
-from ray._common.ray_option_utils import _warn_if_using_deprecated_placement_group
 from ray._private.utils import get_runtime_env_info, parse_runtime_env_for_task_or_actor
 from ray._raylet import (
     STREAMING_GENERATOR_RETURN,
@@ -59,9 +60,6 @@ from ray.util.tracing.tracing_helper import (
     _inject_tracing_into_class,
     _tracing_actor_creation,
     _tracing_actor_method_invocation,
-)
-from ray._private.custom_types import (
-    TensorTransportEnum,
 )
 
 if TYPE_CHECKING:
@@ -817,11 +815,26 @@ class ActorMethod:
         if tensor_transport is None:
             tensor_transport = self._tensor_transport
 
-        if tensor_transport != TensorTransportEnum.OBJECT_STORE and num_returns != 1:
-            raise ValueError(
-                f"Currently, methods with tensor_transport={tensor_transport.name} only support 1 return value. "
-                "Please make sure the actor method is decorated with `@ray.method(num_returns=1)` (the default)."
-            )
+        if tensor_transport != TensorTransportEnum.OBJECT_STORE:
+            if num_returns != 1:
+                raise ValueError(
+                    f"Currently, methods with tensor_transport={tensor_transport.name} only support 1 return value. "
+                    "Please make sure the actor method is decorated with `@ray.method(num_returns=1)` (the default)."
+                )
+            if not self._actor._ray_enable_tensor_transport:
+                raise ValueError(
+                    f'Currently, methods with .options(tensor_transport="{tensor_transport.name}") are not supported when enable_tensor_transport=False. '
+                    "Please set @ray.remote(enable_tensor_transport=True) on the actor class definition."
+                )
+            gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
+            if not gpu_object_manager.actor_has_tensor_transport(
+                self._actor, tensor_transport
+            ):
+                raise ValueError(
+                    f'{self._actor} does not have tensor transport {tensor_transport.name} available. If using a collective-based transport ("nccl" or "gloo"), please create a communicator with '
+                    "`ray.experimental.collective.create_collective_group` "
+                    "before calling actor tasks with non-default tensor_transport."
+                )
 
         args = args or []
         kwargs = kwargs or {}
@@ -857,14 +870,18 @@ class ActorMethod:
         if self._decorator is not None:
             invocation = self._decorator(invocation)
 
-        obj_ref = invocation(args, kwargs)
+        object_refs = invocation(args, kwargs)
         if tensor_transport != TensorTransportEnum.OBJECT_STORE:
+            # Currently, we only support transfer tensor out-of-band when
+            # num_returns is 1.
+            assert isinstance(object_refs, ObjectRef)
+            object_ref = object_refs
             gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
             gpu_object_manager.add_gpu_object_ref(
-                obj_ref, self._actor, tensor_transport
+                object_ref, self._actor, tensor_transport
             )
 
-        return obj_ref
+        return object_refs
 
     def __getstate__(self):
         return {
@@ -931,7 +948,6 @@ class _ActorClassMethodMetadata(object):
         cls,
         modified_class,
         actor_creation_function_descriptor,
-        enable_tensor_transport: bool = False,
     ):
         # Try to create an instance from cache.
         cached_meta = cls._cache.get(actor_creation_function_descriptor)
@@ -957,6 +973,15 @@ class _ActorClassMethodMetadata(object):
         self.generator_backpressure_num_objects = {}
         self.concurrency_group_for_methods = {}
         self.method_name_to_tensor_transport: Dict[str, TensorTransportEnum] = {}
+
+        # Check whether any actor methods specify a non-default tensor transport.
+        self.has_tensor_transport_methods = any(
+            getattr(
+                method, "__ray_tensor_transport__", TensorTransportEnum.OBJECT_STORE
+            )
+            != TensorTransportEnum.OBJECT_STORE
+            for _, method in actor_methods
+        )
 
         for method_name, method in actor_methods:
             # Whether or not this method requires binding of its first
@@ -1017,15 +1042,6 @@ class _ActorClassMethodMetadata(object):
                     method_name
                 ] = method.__ray_tensor_transport__
 
-            method_tensor_transport = self.method_name_to_tensor_transport.get(
-                method_name, None
-            )
-            if not enable_tensor_transport and method_tensor_transport is not None:
-                if method_tensor_transport != TensorTransportEnum.OBJECT_STORE:
-                    raise ValueError(
-                        f"Method {method_name} has tensor_transport={method_tensor_transport.name} but enable_tensor_transport is False"
-                    )
-
         # Update cache.
         cls._cache[actor_creation_function_descriptor] = self
         return self
@@ -1041,6 +1057,7 @@ class _ActorClassMetadata:
         actor_creation_function_descriptor: The function descriptor for
             the actor creation task.
         class_id: The ID of this actor class.
+        method_meta: The actor method metadata.
         class_name: The name of this class.
         num_cpus: The default number of CPUs required by the actor creation
             task.
@@ -1056,14 +1073,14 @@ class _ActorClassMetadata:
             See :ref:`accelerator types <accelerator_types>`.
         runtime_env: The runtime environment for this actor.
         scheduling_strategy: Strategy about how to schedule this actor.
-        enable_tensor_transport: Whether to enable out-of-band tensor transport for this actor.
         last_export_cluster_and_job: A pair of the last exported cluster
             and job to help us to know whether this function was exported.
             This is an imperfect mechanism used to determine if we need to
             export the remote function again. It is imperfect in the sense that
             the actor class definition could be exported multiple times by
             different workers.
-        method_meta: The actor method metadata.
+        enable_tensor_transport: Whether to enable out-of-band tensor transport
+            for this actor.
     """
 
     def __init__(
@@ -1072,6 +1089,7 @@ class _ActorClassMetadata:
         modified_class,
         actor_creation_function_descriptor,
         class_id,
+        method_meta,
         max_restarts,
         max_task_retries,
         num_cpus,
@@ -1084,11 +1102,12 @@ class _ActorClassMetadata:
         runtime_env,
         concurrency_groups,
         scheduling_strategy: SchedulingStrategyT,
-        enable_tensor_transport: bool = False,
+        enable_tensor_transport: bool,
     ):
         self.language = language
         self.modified_class = modified_class
         self.actor_creation_function_descriptor = actor_creation_function_descriptor
+        self.method_meta = method_meta
         self.class_name = actor_creation_function_descriptor.class_name
         self.is_cross_language = language != Language.PYTHON
         self.class_id = class_id
@@ -1104,13 +1123,8 @@ class _ActorClassMetadata:
         self.runtime_env = runtime_env
         self.concurrency_groups = concurrency_groups
         self.scheduling_strategy = scheduling_strategy
-        self.enable_tensor_transport = enable_tensor_transport
         self.last_export_cluster_and_job = None
-        self.method_meta = _ActorClassMethodMetadata.create(
-            modified_class,
-            actor_creation_function_descriptor,
-            self.enable_tensor_transport,
-        )
+        self.enable_tensor_transport = enable_tensor_transport
 
 
 @PublicAPI
@@ -1118,7 +1132,7 @@ class ActorClassInheritanceException(TypeError):
     pass
 
 
-def _process_option_dict(actor_options):
+def _process_option_dict(actor_options, has_tensor_transport_methods):
     _filled_options = {}
     arg_names = set(inspect.getfullargspec(_ActorClassMetadata.__init__)[0])
     for k, v in ray_option_utils.actor_options.items():
@@ -1127,15 +1141,28 @@ def _process_option_dict(actor_options):
     _filled_options["runtime_env"] = parse_runtime_env_for_task_or_actor(
         _filled_options["runtime_env"]
     )
+    # If any actor method has a non-default tensor transport, automatically
+    # enable tensor transport, unless it was explicitly set to False by the
+    # user.
+    if has_tensor_transport_methods:
+        if _filled_options["enable_tensor_transport"] is False:
+            raise ValueError(
+                "Actor class has methods with @ray.method(tensor_transport=...) decorator but @ray.remote(enable_tensor_transport=False). "
+                "Either set enable_tensor_transport=True or remove the @ray.method(tensor_transport=...) decorator from the methods."
+            )
+        _filled_options["enable_tensor_transport"] = True
 
     # Ray GPU objects requires a background thread for data transfer. However,
     # currently by default the background thread will be blocked if the main
-    # thread does not yield. For now, we explicitly create the background
-    # thread, which forces Ray to execute all tasks on background threads
-    # instead of the main thread.
+    # thread does not yield. For now, we explicitly create the background thread
+    # if `@ray.remote(enable_tensor_transport=True)` or if any methods are
+    # decorated with `@ray.method(tensor_transport=...)` and a non-default
+    # tensor transport. This forces Ray to execute all tasks on background
+    # threads instead of the main thread.
     # TODO(swang): Remove this code once
     # https://github.com/ray-project/ray/issues/54639 is fixed.
-    if _filled_options.get("enable_tensor_transport", False):
+    enable_tensor_transport = _filled_options.get("enable_tensor_transport", False)
+    if enable_tensor_transport:
         if _filled_options.get("concurrency_groups", None) is None:
             _filled_options["concurrency_groups"] = {}
         _filled_options["concurrency_groups"]["_ray_system"] = 1
@@ -1251,12 +1278,19 @@ class ActorClass(Generic[T]):
             modified_class.__ray_actor_class__
         )
 
+        actor_method_meta = _ActorClassMethodMetadata.create(
+            modified_class,
+            actor_creation_function_descriptor,
+        )
         self.__ray_metadata__ = _ActorClassMetadata(
             Language.PYTHON,
             modified_class,
             actor_creation_function_descriptor,
             class_id,
-            **_process_option_dict(actor_options),
+            actor_method_meta,
+            **_process_option_dict(
+                actor_options, actor_method_meta.has_tensor_transport_methods
+            ),
         )
         self._default_options = actor_options
         if "runtime_env" in self._default_options:
@@ -1272,12 +1306,20 @@ class ActorClass(Generic[T]):
         actor_options,
     ):
         self = ActorClass.__new__(ActorClass)
+        modified_class = None
+        actor_method_meta = _ActorClassMethodMetadata.create(
+            modified_class,
+            actor_creation_function_descriptor,
+        )
         self.__ray_metadata__ = _ActorClassMetadata(
             language,
-            None,
+            modified_class,
             actor_creation_function_descriptor,
             None,
-            **_process_option_dict(actor_options),
+            actor_method_meta,
+            **_process_option_dict(
+                actor_options, actor_method_meta.has_tensor_transport_methods
+            ),
         )
         self._default_options = actor_options
         if "runtime_env" in self._default_options:
@@ -1298,7 +1340,7 @@ class ActorClass(Generic[T]):
         """
         return self._remote(args=args, kwargs=kwargs, **self._default_options)
 
-    def options(self, **actor_options):
+    def options(self, **actor_options) -> "ActorClass[T]":
         """Configures and overrides the actor instantiation parameters.
 
         The arguments are the same as those that can be passed
@@ -1349,6 +1391,11 @@ class ActorClass(Generic[T]):
                 concurrency defaults to 1 for threaded execution, and 1000 for
                 asyncio execution. Note that the execution order is not
                 guaranteed when max_concurrency > 1.
+            allow_out_of_order_execution: Only for *actors*. Whether Ray executes actor
+                tasks out of order. If you're using multi-threaded
+                (``max_concurrency > 1``) or async actors, you can't set this to False.
+                Defaults to True if you're using multi-threaded or async actors, and
+                False otherwise. Actor task retries are always executed out of order.
             name: The globally unique name for the actor, which can be used
                 to retrieve the actor via ray.get_actor(name) as long as the
                 actor is still alive.
@@ -1445,55 +1492,8 @@ class ActorClass(Generic[T]):
         Args:
             args: The arguments to forward to the actor constructor.
             kwargs: The keyword arguments to forward to the actor constructor.
-            num_cpus: The number of CPUs required by the actor creation task.
-            num_gpus: The number of GPUs required by the actor creation task.
-            memory: Restrict the heap memory usage of this actor.
-            resources: The custom resources required by the actor creation
-                task.
-            max_concurrency: The max number of concurrent calls to allow for
-                this actor. This only works with direct actor calls. The max
-                concurrency defaults to 1 for threaded execution, and 1000 for
-                asyncio execution. Note that the execution order is not
-                guaranteed when max_concurrency > 1.
-            name: The globally unique name for the actor, which can be used
-                to retrieve the actor via ray.get_actor(name) as long as the
-                actor is still alive.
-            namespace: Override the namespace to use for the actor. By default,
-                actors are created in an anonymous namespace. The actor can
-                be retrieved via ray.get_actor(name=name, namespace=namespace).
-            lifetime: Either `None`, which defaults to the actor will fate
-                share with its creator and will be deleted once its refcount
-                drops to zero, or "detached", which means the actor will live
-                as a global object independent of the creator.
-            placement_group: (This has been deprecated, please use
-                `PlacementGroupSchedulingStrategy` scheduling_strategy)
-                the placement group this actor belongs to,
-                or None if it doesn't belong to any group. Setting to "default"
-                autodetects the placement group based on the current setting of
-                placement_group_capture_child_tasks.
-            placement_group_bundle_index: (This has been deprecated, please use
-                `PlacementGroupSchedulingStrategy` scheduling_strategy)
-                the index of the bundle
-                if the actor belongs to a placement group, which may be -1 to
-                specify any available bundle.
-            placement_group_capture_child_tasks: (This has been deprecated,
-                please use `PlacementGroupSchedulingStrategy`
-                scheduling_strategy)
-                Whether or not children tasks
-                of this actor should implicitly use the same placement group
-                as its parent. It is False by default.
-            runtime_env (Dict[str, Any]): Specifies the runtime environment for
-                this actor or task and its children (see
-                :ref:`runtime-environments` for details).
-            max_pending_calls: Set the max number of pending calls
-                allowed on the actor handle. When this value is exceeded,
-                PendingCallsLimitExceeded will be raised for further tasks.
-                Note that this limit is counted per handle. -1 means that the
-                number of pending calls is unlimited.
-            scheduling_strategy: Strategy about how to schedule this actor.
-            enable_task_events: True if tracing is enabled, i.e., task events from
-                the actor should be reported. Defaults to True.
-            _labels: The key-value labels of the actor.
+            **actor_options: Keyword arguments for configuring the actor options.
+                See ``ActorClass.options`` for more details.
 
         Returns:
             A handle to the newly created actor.
@@ -1752,6 +1752,26 @@ class ActorClass(Generic[T]):
                 )
             )
 
+        allow_out_of_order_execution = actor_options.get("allow_out_of_order_execution")
+
+        # If the actor is async or multi-threaded, default to out-of-order execution.
+        if allow_out_of_order_execution is None:
+            allow_out_of_order_execution = is_asyncio or max_concurrency > 1
+
+        if is_asyncio and not allow_out_of_order_execution:
+            raise ValueError(
+                "If you're using async actors, Ray can't execute actor tasks in order. "
+                "Set `allow_out_of_order_execution=True` to allow out-of-order "
+                "execution."
+            )
+
+        elif max_concurrency > 1 and not allow_out_of_order_execution:
+            raise ValueError(
+                "If you're using multi-threaded actors, Ray can't execute actor tasks "
+                "in order. Set `allow_out_of_order_execution=True` to allow "
+                "out-of-order execution."
+            )
+
         actor_id = worker.core_worker.create_actor(
             meta.language,
             meta.actor_creation_function_descriptor,
@@ -1774,6 +1794,7 @@ class ActorClass(Generic[T]):
             enable_task_events=enable_task_events,
             labels=actor_options.get("_labels"),
             label_selector=actor_options.get("label_selector"),
+            allow_out_of_order_execution=allow_out_of_order_execution,
         )
 
         if _actor_launch_hook:
@@ -1794,11 +1815,13 @@ class ActorClass(Generic[T]):
             meta.method_meta.retry_exceptions,
             meta.method_meta.generator_backpressure_num_objects,
             meta.method_meta.enable_task_events,
+            meta.enable_tensor_transport,
             meta.method_meta.method_name_to_tensor_transport,
             actor_method_cpu,
             meta.actor_creation_function_descriptor,
             worker.current_cluster_and_job,
             original_handle=True,
+            allow_out_of_order_execution=allow_out_of_order_execution,
         )
 
         return actor_handle
@@ -1868,6 +1891,7 @@ class ActorHandle(Generic[T]):
         _ray_is_cross_language: Whether this actor is cross language.
         _ray_actor_creation_function_descriptor: The function descriptor
             of the actor creation task.
+        _ray_allow_out_of_order_execution: Whether the actor can execute tasks out of order.
     """
 
     def __init__(
@@ -1884,12 +1908,14 @@ class ActorHandle(Generic[T]):
         method_retry_exceptions: Dict[str, Union[bool, list, tuple]],
         method_generator_backpressure_num_objects: Dict[str, int],
         method_enable_task_events: Dict[str, bool],
+        enable_tensor_transport: bool,
         method_name_to_tensor_transport: Dict[str, TensorTransportEnum],
         actor_method_cpus: int,
         actor_creation_function_descriptor,
         cluster_and_job,
         original_handle=False,
         weak_ref: bool = False,
+        allow_out_of_order_execution: Optional[bool] = None,
     ):
         """Initialize an ActorHandle.
 
@@ -1906,12 +1932,17 @@ class ActorHandle(Generic[T]):
             method_retry_exceptions: Dictionary mapping method names to their retry exception settings.
             method_generator_backpressure_num_objects: Dictionary mapping method names to their generator backpressure settings.
             method_enable_task_events: Dictionary mapping method names to whether task events are enabled.
+            enable_tensor_transport: Whether tensor transport is enabled for
+                this actor. If True, then methods can be called with
+                .options(tensor_transport=...) to specify a non-default tensor
+                transport.
             method_name_to_tensor_transport: Dictionary mapping method names to their tensor transport settings.
             actor_method_cpus: The number of CPUs required by actor methods.
             actor_creation_function_descriptor: The function descriptor for actor creation.
             cluster_and_job: The cluster and job information.
             original_handle: Whether this is the original actor handle.
             weak_ref: Whether this is a weak reference to the actor.
+            allow_out_of_order_execution: Whether the actor can execute tasks out of order.
         """
         self._ray_actor_language = language
         self._ray_actor_id = actor_id
@@ -1919,6 +1950,7 @@ class ActorHandle(Generic[T]):
         self._ray_original_handle = original_handle
         self._ray_weak_ref = weak_ref
         self._ray_enable_task_events = enable_task_events
+        self._ray_allow_out_of_order_execution = allow_out_of_order_execution
 
         self._ray_method_is_generator = method_is_generator
         self._ray_method_decorators = method_decorators
@@ -1930,6 +1962,7 @@ class ActorHandle(Generic[T]):
             method_generator_backpressure_num_objects
         )
         self._ray_method_enable_task_events = method_enable_task_events
+        self._ray_enable_tensor_transport = enable_tensor_transport
         self._ray_method_name_to_tensor_transport = method_name_to_tensor_transport
         self._ray_actor_method_cpus = actor_method_cpus
         self._ray_cluster_and_job = cluster_and_job
@@ -2252,6 +2285,8 @@ class ActorHandle(Generic[T]):
                         self._ray_method_generator_backpressure_num_objects
                     ),
                     "method_enable_task_events": self._ray_method_enable_task_events,
+                    "enable_tensor_transport": self._ray_enable_tensor_transport,
+                    "method_name_to_tensor_transport": self._ray_method_name_to_tensor_transport,
                     "actor_method_cpus": self._ray_actor_method_cpus,
                     "actor_creation_function_descriptor": self._ray_actor_creation_function_descriptor,  # noqa: E501
                 },
@@ -2301,6 +2336,8 @@ class ActorHandle(Generic[T]):
                 state["method_retry_exceptions"],
                 state["method_generator_backpressure_num_objects"],
                 state["method_enable_task_events"],
+                state["enable_tensor_transport"],
+                state["method_name_to_tensor_transport"],
                 state["actor_method_cpus"],
                 state["actor_creation_function_descriptor"],
                 state["current_cluster_and_job"],

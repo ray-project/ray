@@ -24,7 +24,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
-from gymnasium import core, spaces
+import gymnasium as gym
 
 try:
     from dm_env import specs
@@ -40,7 +40,7 @@ except (ImportError, OSError):
     suite = None
 import numpy as np
 
-from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 
 
 def _spec_to_box(spec):
@@ -62,7 +62,7 @@ def _spec_to_box(spec):
     low = np.concatenate(mins, axis=0)
     high = np.concatenate(maxs, axis=0)
     assert low.shape == high.shape
-    return spaces.Box(low, high, dtype=np.float32)
+    return gym.spaces.Box(low, high, dtype=np.float32)
 
 
 def _flatten_obs(obs):
@@ -74,7 +74,7 @@ def _flatten_obs(obs):
 
 
 @PublicAPI
-class DMCEnv(core.Env):
+class DMCEnv(gym.Env):
     def __init__(
         self,
         domain_name,
@@ -126,18 +126,18 @@ class DMCEnv(core.Env):
 
         # true and normalized action spaces
         self._true_action_space = _spec_to_box([self._env.action_spec()])
-        self._norm_action_space = spaces.Box(
+        self._norm_action_space = gym.spaces.Box(
             low=-1.0, high=1.0, shape=self._true_action_space.shape, dtype=np.float32
         )
 
         # create observation space
         if from_pixels:
             shape = [3, height, width] if channels_first else [height, width, 3]
-            self._observation_space = spaces.Box(
+            self._observation_space = gym.spaces.Box(
                 low=0, high=255, shape=shape, dtype=np.uint8
             )
             if preprocess:
-                self._observation_space = spaces.Box(
+                self._observation_space = gym.spaces.Box(
                     low=-0.5, high=0.5, shape=shape, dtype=np.float32
                 )
         else:
@@ -218,3 +218,20 @@ class DMCEnv(core.Env):
         width = width or self._width
         camera_id = camera_id or self._camera_id
         return self._env.physics.render(height=height, width=width, camera_id=camera_id)
+
+
+@DeveloperAPI
+class ActionClip(gym.ActionWrapper):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._low = -1.0
+        self._high = 1.0
+        self.action_space = gym.spaces.Box(
+            self._low,
+            self._high,
+            self.action_space.shape,
+            self.action_space.dtype,
+        )
+
+    def action(self, action):
+        return np.clip(action, self._low, self._high)

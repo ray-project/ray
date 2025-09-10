@@ -551,7 +551,7 @@ def test_deploy_and_delete_app(mocked_application_state):
 
     app_state.update()
     deployment_state_manager.set_deployment_deleted(d1_id)
-    ready_to_be_deleted = app_state.update()
+    ready_to_be_deleted, _ = app_state.update()
     assert not ready_to_be_deleted
     assert app_state.status == ApplicationStatus.DELETING
 

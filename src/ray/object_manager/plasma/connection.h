@@ -20,9 +20,9 @@
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "ray/common/client_connection.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/ipc/client_connection.h"
 #include "ray/util/compat.h"
 
 namespace plasma {

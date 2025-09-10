@@ -330,7 +330,7 @@ Custom callbacks
 ----------------
 
 If you're using custom callbacks on the old API stack, you're subclassing the ``DefaultCallbacks`` class,
-which the Ray team renamed to :py:class`~ray.rllib.callbacks.callbacks.RLlibCallback`.
+which the Ray team renamed to :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback`.
 You can continue this approach with the new API stack and pass your custom subclass to your config like the following:
 
 .. testcode::
@@ -340,7 +340,7 @@ You can continue this approach with the new API stack and pass your custom subcl
 However, if you're overriding those methods that triggered on the :py:class:`~ray.rllib.env.env_runner.EnvRunner`
 side, for example, ``on_episode_start/stop/step/etc...``, you may have to translate some call arguments.
 
-The following is a one-to-one translation guide for these types of :py:class`~ray.rllib.callbacks.callbacks.RLlibCallback`
+The following is a one-to-one translation guide for these types of :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback`
 methods:
 
 .. testcode::

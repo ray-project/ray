@@ -1,32 +1,31 @@
+import logging
 import os
-import shutil
-import tempfile
-import socket
-import threading
 import re
-import pytest
+import shutil
+import socket
 import sys
-from unittest import mock
+import tempfile
+import threading
+import time
 from abc import ABC
+from contextlib import contextmanager
+from unittest import mock
+
+import pytest
+from pyspark.sql import SparkSession
 
 import ray
-
 import ray.util.spark.cluster_init
+from ray._common.test_utils import wait_for_condition
 from ray.util.spark import (
+    MAX_NUM_WORKER_NODES,
+    setup_global_ray_cluster,
     setup_ray_cluster,
     shutdown_ray_cluster,
-    setup_global_ray_cluster,
-    MAX_NUM_WORKER_NODES,
 )
 from ray.util.spark.utils import (
     _calc_mem_per_ray_worker_node,
 )
-from pyspark.sql import SparkSession
-import time
-import logging
-from contextlib import contextmanager
-from ray._common.test_utils import wait_for_condition
-
 
 pytestmark = [
     pytest.mark.skipif(

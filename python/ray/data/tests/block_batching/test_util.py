@@ -10,7 +10,7 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.block_batching.interfaces import Batch
+from ray.data._internal.block_batching.interfaces import Batch, BatchMetadata
 from ray.data._internal.block_batching.util import (
     _calculate_ref_hits,
     blocks_to_batches,
@@ -64,13 +64,17 @@ def test_blocks_to_batches(block_size, drop_last):
         assert leftover_batches == 1
         assert full_batches == (dataset_size // batch_size)
 
-    assert [batch.batch_idx for batch in batch_iter] == list(range(len(batch_iter)))
+    assert [batch.metadata.batch_idx for batch in batch_iter] == list(
+        range(len(batch_iter))
+    )
 
 
 @pytest.mark.parametrize("batch_format", ["pandas", "numpy", "pyarrow"])
 def test_format_batches(batch_format):
     block_iter = block_generator(num_rows=2, num_blocks=2)
-    batch_iter = (Batch(i, block) for i, block in enumerate(block_iter))
+    batch_iter = (
+        Batch(BatchMetadata(batch_idx=i), block) for i, block in enumerate(block_iter)
+    )
     batch_iter = list(format_batches(batch_iter, batch_format=batch_format))
 
     for batch in batch_iter:
@@ -82,7 +86,9 @@ def test_format_batches(batch_format):
             assert isinstance(batch.data, dict)
             assert isinstance(batch.data["foo"], np.ndarray)
 
-    assert [batch.batch_idx for batch in batch_iter] == list(range(len(batch_iter)))
+    assert [batch.metadata.batch_idx for batch in batch_iter] == list(
+        range(len(batch_iter))
+    )
 
 
 def test_collate():
@@ -90,13 +96,13 @@ def test_collate():
         return pa.table({"bar": [1] * 2})
 
     batches = [
-        Batch(i, data)
+        Batch(BatchMetadata(batch_idx=i), data)
         for i, data in enumerate(block_generator(num_rows=2, num_blocks=2))
     ]
     batch_iter = collate(batches, collate_fn=collate_fn)
 
     for i, batch in enumerate(batch_iter):
-        assert batch.batch_idx == i
+        assert batch.metadata.batch_idx == i
         assert batch.data == pa.table({"bar": [1] * 2})
 
 
@@ -105,13 +111,13 @@ def test_finalize():
         return pa.table({"bar": [1] * 2})
 
     batches = [
-        Batch(i, data)
+        Batch(BatchMetadata(batch_idx=i), data)
         for i, data in enumerate(block_generator(num_rows=2, num_blocks=2))
     ]
     batch_iter = finalize_batches(batches, finalize_fn=finalize_fn)
 
     for i, batch in enumerate(batch_iter):
-        assert batch.batch_idx == i
+        assert batch.metadata.batch_idx == i
         assert batch.data == pa.table({"bar": [1] * 2})
 
 

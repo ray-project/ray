@@ -8,7 +8,9 @@ import click
 import yaml
 
 import ray._private.services as services
+from ray._common.network_utils import parse_address
 from ray._private.thirdparty.tabulate.tabulate import tabulate
+from ray.util.annotations import PublicAPI
 from ray.util.state import (
     StateApiClient,
     get_log,
@@ -30,7 +32,6 @@ from ray.util.state.common import (
     resource_to_schema,
 )
 from ray.util.state.exception import RayStateApiException
-from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -807,7 +808,7 @@ def _get_head_node_ip(address: Optional[str] = None):
     """
     try:
         address = services.canonicalize_bootstrap_address_or_die(address)
-        return address.split(":")[0]
+        return parse_address(address)[0]
     except (ConnectionError, ValueError) as e:
         # Hide all the stack trace
         raise click.UsageError(str(e))

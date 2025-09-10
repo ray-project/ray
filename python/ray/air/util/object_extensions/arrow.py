@@ -6,8 +6,8 @@ import pyarrow as pa
 from packaging.version import parse as parse_version
 
 import ray.air.util.object_extensions.pandas
-from ray._private.serialization import pickle_dumps
 from ray._private.arrow_utils import get_pyarrow_version
+from ray._private.serialization import pickle_dumps
 from ray.util.annotations import PublicAPI
 
 MIN_PYARROW_VERSION_SCALAR_SUBCLASS = parse_version("9.0.0")
@@ -70,6 +70,9 @@ class ArrowPythonObjectType(pa.ExtensionType):
             self.storage_type,
             self.__arrow_ext_serialize__(),
         )
+
+    def __hash__(self) -> int:
+        return hash((type(self), self.storage_type.id, self.extension_name))
 
 
 @PublicAPI(stability="alpha")

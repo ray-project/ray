@@ -50,7 +50,7 @@ def _env_creator(cfg):
 tune.register_env("env", _env_creator)
 
 default_config = DreamerV3Config()
-lr_multiplier = (args.num_learners or 1) ** 0.5
+lr_multiplier = args.num_learners or 1
 
 config = (
     DreamerV3Config()

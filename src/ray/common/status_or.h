@@ -155,6 +155,7 @@ class StatusOr {
 
   bool IsNotFound() const { return code() == StatusCode::NotFound; }
   bool IsInvalidArgument() const { return code() == StatusCode::InvalidArgument; }
+  bool IsInvalid() const { return code() == StatusCode::Invalid; }
   bool IsPermissionDenied() const { return code() == StatusCode::PermissionDenied; }
 
   // Returns a reference to the current `ray::Status` contained within the

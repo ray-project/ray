@@ -77,7 +77,7 @@ method:
     )
 
 
-To scale your setup and define, how many :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors you want to leverage,
+To scale your setup and define how many :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors you want to leverage,
 you can call the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.env_runners` method.
 ``EnvRunners`` are used to collect samples for training updates from your :ref:`environment <rllib-key-concepts-environments>`.
 

@@ -1,14 +1,15 @@
-import click
 import sys
+
+import click
 
 from ci.ray_ci.automation.docker_tags_lib import list_image_tags
 from ci.ray_ci.docker_container import (
+    ARCHITECTURES_RAY,
+    ARCHITECTURES_RAY_ML,
     PLATFORMS_RAY,
     PLATFORMS_RAY_ML,
     PYTHON_VERSIONS_RAY,
     PYTHON_VERSIONS_RAY_ML,
-    ARCHITECTURES_RAY,
-    ARCHITECTURES_RAY_ML,
     RayType,
 )
 

@@ -9,13 +9,13 @@ from typing import Optional, Set
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._common.ray_constants import (
-    LOGGING_ROTATE_BYTES,
-    LOGGING_ROTATE_BACKUP_COUNT,
-)
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.head as dashboard_head
 import ray.dashboard.utils as dashboard_utils
+from ray._common.ray_constants import (
+    LOGGING_ROTATE_BACKUP_COUNT,
+    LOGGING_ROTATE_BYTES,
+)
 from ray._common.utils import get_or_create_event_loop
 from ray._private import logging_utils
 from ray._private.ray_logging import setup_component_logger

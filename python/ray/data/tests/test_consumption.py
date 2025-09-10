@@ -535,6 +535,50 @@ def test_dataset_repr(ray_start_regular_shared):
     )
 
 
+def test_dataset_explain(ray_start_regular_shared, capsys):
+    ds = ray.data.range(10, override_num_blocks=10)
+    ds = ds.map(lambda x: x)
+
+    ds.explain()
+    captured = capsys.readouterr()
+    assert captured.out.rstrip() == (
+        "-------- Logical Plan --------\n"
+        "Map(<lambda>)\n"
+        "+- ReadRange\n"
+        "-------- Physical Plan --------\n"
+        "TaskPoolMapOperator[ReadRange->Map(<lambda>)]\n"
+        "+- InputDataBuffer[Input]"
+    )
+
+    ds = ds.filter(lambda x: x["id"] > 0)
+    ds.explain()
+    captured = capsys.readouterr()
+    assert captured.out.rstrip() == (
+        "-------- Logical Plan --------\n"
+        "Filter(<lambda>)\n"
+        "+- Map(<lambda>)\n"
+        "   +- ReadRange\n"
+        "-------- Physical Plan --------\n"
+        "TaskPoolMapOperator[ReadRange->Map(<lambda>)->Filter(<lambda>)]\n"
+        "+- InputDataBuffer[Input]"
+    )
+    ds = ds.random_shuffle().map(lambda x: x)
+    ds.explain()
+    captured = capsys.readouterr()
+    assert captured.out.rstrip() == (
+        "-------- Logical Plan --------\n"
+        "Map(<lambda>)\n"
+        "+- RandomShuffle\n"
+        "   +- Filter(<lambda>)\n"
+        "      +- Map(<lambda>)\n"
+        "         +- ReadRange\n"
+        "-------- Physical Plan --------\n"
+        "TaskPoolMapOperator[Map(<lambda>)]\n"
+        "+- AllToAllOperator[ReadRange->Map(<lambda>)->Filter(<lambda>)->RandomShuffle]\n"
+        "   +- InputDataBuffer[Input]"
+    )
+
+
 @pytest.mark.parametrize("lazy", [False, True])
 def test_limit(ray_start_regular_shared, lazy):
     ds = ray.data.range(100, override_num_blocks=20)
@@ -1819,7 +1863,7 @@ def test_dataset_plan_as_string(ray_start_cluster):
     ds = ray.data.read_parquet("example://iris.parquet", override_num_blocks=8)
     assert ds._plan.get_plan_as_string(type(ds)) == (
         "Dataset(\n"
-        "   num_rows=150,\n"
+        "   num_rows=?,\n"
         "   schema={\n"
         "      sepal.length: double,\n"
         "      sepal.width: double,\n"
@@ -1838,7 +1882,7 @@ def test_dataset_plan_as_string(ray_start_cluster):
         "      +- MapBatches(<lambda>)\n"
         "         +- MapBatches(<lambda>)\n"
         "            +- Dataset(\n"
-        "                  num_rows=150,\n"
+        "                  num_rows=?,\n"
         "                  schema={\n"
         "                     sepal.length: double,\n"
         "                     sepal.width: double,\n"

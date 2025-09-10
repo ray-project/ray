@@ -18,7 +18,7 @@ from typing import (
 import ray
 from .ref_bundle import RefBundle
 from ray._raylet import ObjectRefGenerator
-from ray.data._internal.execution.autoscaler.autoscaling_actor_pool import (
+from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
     AutoscalingActorPool,
 )
 from ray.data._internal.execution.interfaces.execution_options import (
@@ -401,6 +401,40 @@ class PhysicalOperator(Operator):
             logical_op_id = f"{logical_op}_{i}"
             res[logical_op_id] = logical_op._get_args()
         return res
+
+    # TODO(@balaji): Disambiguate this with `incremental_resource_usage`.
+    def per_task_resource_allocation(
+        self: "PhysicalOperator",
+    ) -> ExecutionResources:
+        """The amount of logical resources used by each task.
+
+        For regular tasks, these are the resources required to schedule a task. For
+        actor tasks, these are the resources required to schedule an actor divided by
+        the number of actor threads (i.e., `max_concurrency`).
+
+        Returns:
+            The resource requirement per task.
+        """
+        return ExecutionResources.zero()
+
+    def max_task_concurrency(self: "PhysicalOperator") -> Optional[int]:
+        """The maximum number of tasks that can be run concurrently.
+
+        Some operators manually configure a maximum concurrency. For example, if you
+        specify `concurrency` in `map_batches`.
+        """
+        return None
+
+    # TODO(@balaji): Disambiguate this with `base_resource_usage`.
+    def min_scheduling_resources(
+        self: "PhysicalOperator",
+    ) -> ExecutionResources:
+        """The minimum resource bundle required to schedule a worker.
+
+        For regular tasks, this is the resources required to schedule a task. For actor
+        tasks, this is the resources required to schedule an actor.
+        """
+        return ExecutionResources.zero()
 
     def progress_str(self) -> str:
         """Return any extra status to be displayed in the operator progress bar.

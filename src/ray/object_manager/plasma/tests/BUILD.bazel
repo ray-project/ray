@@ -1,0 +1,65 @@
+load("//bazel:ray.bzl", "ray_cc_test")
+
+ray_cc_test(
+    name = "fallback_allocator_test",
+    srcs = ["fallback_allocator_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/object_manager/plasma:plasma_allocator",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "object_store_test",
+    srcs = ["object_store_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/object_manager/plasma:plasma_object_store",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "mutable_object_test",
+    srcs = ["mutable_object_test.cc"],
+    tags = [
+        "no_windows",
+        "team:core",
+    ],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        "//src/ray/core_worker:experimental_mutable_object_manager",
+        "//src/ray/object_manager:object_manager_common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "obj_lifecycle_mgr_test",
+    srcs = [
+        "obj_lifecycle_mgr_test.cc",
+        "stats_collector_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/object_manager/plasma:obj_lifecycle_mgr",
+        "@com_google_absl//absl/random",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "eviction_policy_test",
+    srcs = ["eviction_policy_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/object_manager/plasma:plasma_eviction_policy",
+        "//src/ray/object_manager/plasma:plasma_object_store",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

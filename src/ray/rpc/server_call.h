@@ -109,9 +109,6 @@ class ServerCall {
   /// Get the state of this `ServerCall`.
   virtual ServerCallState GetState() const = 0;
 
-  /// Set state of this `ServerCall`.
-  virtual void SetState(const ServerCallState &new_state) = 0;
-
   /// Handle the requst. This is the callback function to be called by
   /// `GrpcServer` when the request is received.
   virtual void HandleRequest() = 0;
@@ -201,11 +198,7 @@ class ServerCallImpl : public ServerCall {
     }
   }
 
-  ~ServerCallImpl() override = default;
-
   ServerCallState GetState() const override { return state_; }
-
-  void SetState(const ServerCallState &new_state) override { state_ = new_state; }
 
   void HandleRequest() override {
     stats_handle_ = io_service_.stats().RecordStart(call_name_);
@@ -256,18 +249,18 @@ class ServerCallImpl : public ServerCall {
 
   void HandleRequestImpl(bool auth_success) {
     if constexpr (std::is_base_of_v<DelayedServiceHandler, ServiceHandler>) {
-      service_handler_.WaitUntilInitialized();
+      if (!service_handler_initialized_) {
+        service_handler_.WaitUntilInitialized();
+        service_handler_initialized_ = true;
+      }
     }
     state_ = ServerCallState::PROCESSING;
-    // NOTE(hchen): This `factory` local variable is needed. Because `SendReply` runs in
-    // a different thread, and will cause `this` to be deleted.
-    const auto &factory = factory_;
-    if (factory.GetMaxActiveRPCs() == -1) {
+    if (factory_.GetMaxActiveRPCs() == -1) {
       // Create a new `ServerCall` to accept the next incoming request.
       // We create this before handling the request only when no back pressure limit is
       // set. So that the it can be populated by the completion queue in the background if
       // a new request comes in.
-      factory.CreateCall();
+      factory_.CreateCall();
     }
     if (!auth_success) {
       boost::asio::post(GetServerCallExecutor(), [this]() {
@@ -354,6 +347,9 @@ class ServerCallImpl : public ServerCall {
 
   /// The service handler that handles the request.
   ServiceHandler &service_handler_;
+
+  // A boolean to track if the service handler has been initialized.
+  bool service_handler_initialized_ = false;
 
   /// Pointer to the service handler function.
   HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function_;

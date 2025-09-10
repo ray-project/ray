@@ -146,8 +146,8 @@ class DeploymentStatusInternalTrigger(str, Enum):
     AUTOSCALE_UP = "AUTOSCALE_UP"
     AUTOSCALE_DOWN = "AUTOSCALE_DOWN"
     # MANUALLY_INCREASE_NUM_REPLICAS and MANUALLY_DECREASE_NUM_REPLICAS are used
-    # instead of CONFIG_UPDATE when "only the replica scale" is triggered
-    # by the config update.
+    # instead of CONFIG_UPDATE when the config update only scales
+    # the number of replicas.
     MANUALLY_INCREASE_NUM_REPLICAS = "MANUALLY_INCREASE_NUM_REPLICAS"
     MANUALLY_DECREASE_NUM_REPLICAS = "MANUALLY_DECREASE_NUM_REPLICAS"
     REPLICA_STARTUP_FAILED = "REPLICA_STARTUP_FAILED"
@@ -746,3 +746,11 @@ class CreatePlacementGroupRequest:
     target_node_id: str
     name: str
     runtime_env: Optional[str] = None
+
+
+# This error is used to raise when a by-value DeploymentResponse is converted to an
+# ObjectRef.
+OBJ_REF_NOT_SUPPORTED_ERROR = RuntimeError(
+    "Converting by-value DeploymentResponses to ObjectRefs is not supported. "
+    "Use handle.options(_by_reference=True) to enable it."
+)

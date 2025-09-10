@@ -35,23 +35,19 @@ struct GetRequest {
   GetRequest(instrumented_io_context &io_context,
              const std::shared_ptr<ClientInterface> &client,
              const std::vector<ObjectID> &object_ids,
-             bool is_from_worker,
              int64_t num_unique_objects_to_wait_for);
   /// The client that called get.
-  std::shared_ptr<ClientInterface> client;
+  std::shared_ptr<ClientInterface> client_;
   /// The object IDs involved in this request. This is used in the reply.
-  std::vector<ObjectID> object_ids;
+  std::vector<ObjectID> object_ids_;
   /// The object information for the objects in this request. This is used in
   /// the reply.
-  absl::flat_hash_map<ObjectID, PlasmaObject> objects;
+  absl::flat_hash_map<ObjectID, PlasmaObject> objects_;
   /// The minimum number of objects to wait for in this request.
-  const int64_t num_unique_objects_to_wait_for;
+  const int64_t num_unique_objects_to_wait_for_;
   /// The number of object requests in this wait request that are already
   /// satisfied.
-  int64_t num_unique_objects_satisfied;
-  /// Whether or not the request comes from the core worker. It is used to track the size
-  /// of total objects that are consumed by core worker.
-  const bool is_from_worker;
+  int64_t num_unique_objects_satisfied_;
 
   void AsyncWait(int64_t timeout_ms,
                  std::function<void(const boost::system::error_code &)> on_timeout);
@@ -90,14 +86,13 @@ class GetRequestQueue {
   /// \param client the client where the request comes from.
   /// \param object_ids the object ids to get.
   /// \param timeout_ms timeout in millisecond, -1 is used to indicate that no timer
-  /// should be set. \param is_from_worker whether the get request from a worker or not.
+  /// should be set.
   /// \param object_callback the callback function called once any object has been
   /// satisfied. \param all_objects_callback the callback function called when all objects
   /// has been satisfied.
   void AddRequest(const std::shared_ptr<ClientInterface> &client,
                   const std::vector<ObjectID> &object_ids,
-                  int64_t timeout_ms,
-                  bool is_from_worker);
+                  int64_t timeout_ms);
 
   /// Remove all of the GetRequests for a given client.
   ///

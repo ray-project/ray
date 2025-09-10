@@ -291,6 +291,12 @@ class ResourceAndLabelSpec:
                     ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY
                 ] = accelerator_type
 
+            # Set TPU specific default labels to enable multi-host scheduling.
+            if accelerator_manager.get_resource_name() == "TPU":
+                tpu_labels = accelerator_manager.get_current_node_accelerator_labels()
+                if tpu_labels:
+                    default_labels.update(tpu_labels)
+
         return default_labels
 
     def _resolve_labels(

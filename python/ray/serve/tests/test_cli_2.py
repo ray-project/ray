@@ -31,7 +31,7 @@ from ray.util.state import list_actors
 CONNECTION_ERROR_MSG = "connection error"
 
 
-def ping_endpoint(app_name: str, params: str = ""):
+def ping_endpoint(app_name: str = SERVE_DEFAULT_APP_NAME, params: str = ""):
     try:
         url = get_application_url("HTTP", app_name=app_name)
         return httpx.get(f"{url}/{params}").text
@@ -139,16 +139,18 @@ def test_shutdown(ray_start_stop):
 
         # `serve config` and `serve status` should print messages indicating
         # nothing is deployed
-        def serve_config_empty():
-            config_response = subprocess.check_output(["serve", "config"])
-            return len(config_response) == 0
+        def serve_config_empty_warning():
+            config_response = subprocess.check_output(["serve", "config"]).decode(
+                "utf-8"
+            )
+            return config_response == "No configuration was found.\n"
 
         def serve_status_empty():
             status_response = subprocess.check_output(["serve", "status"])
             status = yaml.safe_load(status_response)
             return len(status["applications"]) == 0
 
-        wait_for_condition(serve_config_empty)
+        wait_for_condition(serve_config_empty_warning)
         wait_for_condition(serve_status_empty)
         print("`serve config` and `serve status` print empty responses.\n")
 
@@ -233,7 +235,7 @@ def test_build_multi_app(ray_start_stop):
         def check_no_apps():
             for url in app_urls:
                 with pytest.raises(httpx.HTTPError):
-                    _ = httpx.get(f"{url}").text
+                    _ = httpx.get(url).text
             return True
 
         wait_for_condition(check_no_apps, timeout=15)
@@ -429,7 +431,7 @@ class TestRayReinitialization:
         cause error.
         """
         p = subprocess.Popen(["serve", "run", import_file_name])
-        wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
+        wait_for_condition(lambda: ping_endpoint() == "foobar", timeout=10)
         p.send_signal(signal.SIGINT)
         p.wait()
 
@@ -444,7 +446,7 @@ class TestRayReinitialization:
         p = subprocess.Popen(
             ["serve", "run", "--address=127.0.0.1:6379", import_file_name]
         )
-        wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
+        wait_for_condition(lambda: ping_endpoint() == "foobar", timeout=10)
         p.send_signal(signal.SIGINT)
         p.wait()
 
@@ -463,7 +465,7 @@ class TestRayReinitialization:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
         )
-        wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
+        wait_for_condition(lambda: ping_endpoint() == "foobar", timeout=10)
         p.send_signal(signal.SIGINT)
         p.wait()
         process_output, _ = p.communicate()
@@ -491,7 +493,7 @@ class TestRayReinitialization:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
         )
-        wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
+        wait_for_condition(lambda: ping_endpoint() == "foobar", timeout=10)
         p.send_signal(signal.SIGINT)
         p.wait()
         process_output, _ = p.communicate()

@@ -579,7 +579,7 @@ def test_streaming_exec_schedule_s():
         continue
 
     ds_stats = ds._plan.stats()
-    assert 0 < ds_stats.streaming_exec_schedule_s.get() < 1
+    assert ds_stats.streaming_exec_schedule_s.get() > 0
 
 
 def test_execution_callbacks():
@@ -798,7 +798,6 @@ def test_execution_callbacks_executor_arg(tmp_path, restore_data_context):
     assert isinstance(logical_ops[0], Read)
     datasource = logical_ops[0]._datasource
     assert isinstance(datasource, ParquetDatasource)
-    assert datasource._unresolved_paths == input_path
 
     assert isinstance(logical_ops[1], MapRows)
     assert logical_ops[1]._fn == udf

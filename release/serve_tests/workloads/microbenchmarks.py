@@ -26,6 +26,9 @@ from ray.serve._private.benchmarks.common import (
     do_single_http_batch,
     generate_payload,
     Noop,
+    ModelComp,
+    GrpcDeployment,
+    GrpcModelComp,
     IntermediateRouter,
     run_latency_benchmark,
     run_throughput_benchmark,
@@ -58,18 +61,6 @@ STREAMING_BATCH_SIZE = 150
 STREAMING_HTTP_BATCH_SIZE = 500
 STREAMING_TOKENS_PER_REQUEST = 1000
 STREAMING_NUM_TRIALS = 10
-
-
-@serve.deployment
-class GrpcDeployment:
-    def __init__(self):
-        logging.getLogger("ray.serve").setLevel(logging.WARNING)
-
-    async def grpc_call(self, user_message):
-        return serve_pb2.ModelOutput(output=9)
-
-    async def call_with_string(self, user_message):
-        return serve_pb2.ModelOutput(output=9)
 
 
 def convert_throughput_to_perf_metrics(
@@ -133,6 +124,7 @@ async def _main(
     run_throughput: bool,
     run_streaming: bool,
     throughput_max_ongoing_requests: List[int],
+    concurrencies: List[int],
 ):
     perf_metrics = []
     payload_1mb = generate_payload(1000000)
@@ -153,26 +145,39 @@ async def _main(
                     num_requests=NUM_REQUESTS,
                 )
                 perf_metrics.extend(convert_latencies_to_perf_metrics(name, latencies))
-                serve.shutdown()
+                await serve.shutdown_async()
 
         if run_throughput:
             # Microbenchmark: HTTP throughput
-            for max_ongoing_requests in throughput_max_ongoing_requests:
-                serve.run(
-                    Noop.options(max_ongoing_requests=max_ongoing_requests).bind()
-                )
-                url = get_application_url(use_localhost=True)
-                mean, std, _ = await run_throughput_benchmark(
-                    fn=partial(do_single_http_batch, batch_size=BATCH_SIZE, url=url),
-                    multiplier=BATCH_SIZE,
-                    num_trials=NUM_TRIALS,
-                    trial_runtime=TRIAL_RUNTIME_S,
-                )
-                test_name = get_throughput_test_name("http", max_ongoing_requests)
-                perf_metrics.extend(
-                    convert_throughput_to_perf_metrics(test_name, mean, std)
-                )
-                serve.shutdown()
+            for max_ongoing_requests, concurrency in zip(
+                throughput_max_ongoing_requests, concurrencies
+            ):
+                workloads = {
+                    "http": Noop.options(
+                        max_ongoing_requests=max_ongoing_requests
+                    ).bind(),
+                    "http_model_comp": ModelComp.options(
+                        max_ongoing_requests=max_ongoing_requests
+                    ).bind(
+                        Noop.options(max_ongoing_requests=max_ongoing_requests).bind()
+                    ),
+                }
+                for name, app in workloads.items():
+                    serve.run(app)
+                    url = get_application_url(use_localhost=True)
+                    mean, std, _ = await run_throughput_benchmark(
+                        fn=partial(
+                            do_single_http_batch, batch_size=concurrency, url=url
+                        ),
+                        multiplier=concurrency,
+                        num_trials=NUM_TRIALS,
+                        trial_runtime=TRIAL_RUNTIME_S,
+                    )
+                    test_name = get_throughput_test_name(name, max_ongoing_requests)
+                    perf_metrics.extend(
+                        convert_throughput_to_perf_metrics(test_name, mean, std)
+                    )
+                    await serve.shutdown_async()
 
         if run_streaming:
             # Direct streaming between replica
@@ -209,7 +214,7 @@ async def _main(
             perf_metrics.extend(
                 convert_latencies_to_perf_metrics("http_streaming", latencies)
             )
-            serve.shutdown()
+            await serve.shutdown_async()
 
             # Streaming with intermediate router
             serve.run(
@@ -243,7 +248,7 @@ async def _main(
                     "http_intermediate_streaming", latencies
                 )
             )
-            serve.shutdown()
+            await serve.shutdown_async()
 
     # GRPC
     if run_grpc:
@@ -275,33 +280,42 @@ async def _main(
                     num_requests=NUM_REQUESTS,
                 )
                 perf_metrics.extend(convert_latencies_to_perf_metrics(name, latencies))
-                serve.shutdown()
+                await serve.shutdown_async()
 
         if run_throughput:
             # Microbenchmark: GRPC throughput
-            for max_ongoing_requests in throughput_max_ongoing_requests:
-                serve.start(grpc_options=serve_grpc_options)
-                serve.run(
-                    GrpcDeployment.options(
+            for max_ongoing_requests, concurrency in zip(
+                throughput_max_ongoing_requests, concurrencies
+            ):
+                workloads = {
+                    "grpc": GrpcDeployment.options(
                         max_ongoing_requests=max_ongoing_requests
-                    ).bind()
-                )
-                target = get_application_url(
-                    protocol=RequestProtocol.GRPC, use_localhost=True
-                )
-                mean, std, _ = await run_throughput_benchmark(
-                    fn=partial(
-                        do_single_grpc_batch, batch_size=BATCH_SIZE, target=target
+                    ).bind(),
+                    "grpc_model_comp": GrpcModelComp.options(
+                        max_ongoing_requests=max_ongoing_requests
+                    ).bind(
+                        Noop.options(max_ongoing_requests=max_ongoing_requests).bind()
                     ),
-                    multiplier=BATCH_SIZE,
-                    num_trials=NUM_TRIALS,
-                    trial_runtime=TRIAL_RUNTIME_S,
-                )
-                test_name = get_throughput_test_name("grpc", max_ongoing_requests)
-                perf_metrics.extend(
-                    convert_throughput_to_perf_metrics(test_name, mean, std)
-                )
-                serve.shutdown()
+                }
+                for name, app in workloads.items():
+                    serve.start(grpc_options=serve_grpc_options)
+                    serve.run(app)
+                    target = get_application_url(
+                        protocol=RequestProtocol.GRPC, use_localhost=True
+                    )
+                    mean, std, _ = await run_throughput_benchmark(
+                        fn=partial(
+                            do_single_grpc_batch, batch_size=concurrency, target=target
+                        ),
+                        multiplier=concurrency,
+                        num_trials=NUM_TRIALS,
+                        trial_runtime=TRIAL_RUNTIME_S,
+                    )
+                    test_name = get_throughput_test_name(name, max_ongoing_requests)
+                    perf_metrics.extend(
+                        convert_throughput_to_perf_metrics(test_name, mean, std)
+                    )
+                    await serve.shutdown_async()
 
     # Handle
     if run_handle:
@@ -316,26 +330,44 @@ async def _main(
                     num_requests=NUM_REQUESTS, payload=payload
                 )
                 perf_metrics.extend(convert_latencies_to_perf_metrics(name, latencies))
-                serve.shutdown()
+                await serve.shutdown_async()
 
         if run_throughput:
             # Microbenchmark: Handle throughput
-            for max_ongoing_requests in throughput_max_ongoing_requests:
-                h: DeploymentHandle = serve.run(
-                    Benchmarker.options(max_ongoing_requests=max_ongoing_requests).bind(
+            for max_ongoing_requests, concurrency in zip(
+                throughput_max_ongoing_requests, concurrencies
+            ):
+                workloads = {
+                    "handle": Benchmarker.options(
+                        max_ongoing_requests=max_ongoing_requests
+                    ).bind(
                         Noop.options(max_ongoing_requests=max_ongoing_requests).bind()
+                    ),
+                    "handle_model_comp": Benchmarker.options(
+                        max_ongoing_requests=max_ongoing_requests
+                    ).bind(
+                        ModelComp.options(
+                            max_ongoing_requests=max_ongoing_requests
+                        ).bind(
+                            Noop.options(
+                                max_ongoing_requests=max_ongoing_requests
+                            ).bind()
+                        )
+                    ),
+                }
+                for name, app in workloads.items():
+                    h: DeploymentHandle = serve.run(app)
+
+                    mean, std, _ = await h.run_throughput_benchmark.remote(
+                        batch_size=concurrency,
+                        num_trials=NUM_TRIALS,
+                        trial_runtime=TRIAL_RUNTIME_S,
                     )
-                )
-                mean, std, _ = await h.run_throughput_benchmark.remote(
-                    batch_size=BATCH_SIZE,
-                    num_trials=NUM_TRIALS,
-                    trial_runtime=TRIAL_RUNTIME_S,
-                )
-                test_name = get_throughput_test_name("handle", max_ongoing_requests)
-                perf_metrics.extend(
-                    convert_throughput_to_perf_metrics(test_name, mean, std)
-                )
-                serve.shutdown()
+                    test_name = get_throughput_test_name(name, max_ongoing_requests)
+                    perf_metrics.extend(
+                        convert_throughput_to_perf_metrics(test_name, mean, std)
+                    )
+                    await serve.shutdown_async()
 
         if run_streaming:
             h: DeploymentHandle = serve.run(
@@ -362,7 +394,7 @@ async def _main(
             perf_metrics.extend(
                 convert_latencies_to_perf_metrics("handle_streaming", latencies)
             )
-            serve.shutdown()
+            await serve.shutdown_async()
 
     logging.info(f"Perf metrics:\n {json.dumps(perf_metrics, indent=4)}")
     results = {"perf_metrics": perf_metrics}
@@ -383,8 +415,16 @@ async def _main(
     "-t",
     multiple=True,
     type=int,
-    default=[5, 100],
-    help="Max ongoing requests for throughput benchmarks. Default: [5, 100]",
+    default=[5, 100, 800],
+    help="Max ongoing requests for throughput benchmarks. Must be in the same order as --concurrencies. Default: [5, 100, 800]",
+)
+@click.option(
+    "--concurrencies",
+    "-c",
+    multiple=True,
+    type=int,
+    default=[100, 100, 800],
+    help="User concurrency for throughput benchmarks. Must be in the same order as --throughput-max-ongoing-requests. Default: [100, 100, 800]",
 )
 def main(
     output_path: Optional[str],
@@ -396,7 +436,12 @@ def main(
     run_throughput: bool,
     run_streaming: bool,
     throughput_max_ongoing_requests: List[int],
+    concurrencies: List[int],
 ):
+    assert len(throughput_max_ongoing_requests) == len(
+        concurrencies
+    ), "Must have the same number of --throughput-max-ongoing-requests and --concurrencies"
+
     # If none of the flags are set, default to run all
     if not (
         run_http
@@ -426,6 +471,7 @@ def main(
             run_throughput,
             run_streaming,
             throughput_max_ongoing_requests,
+            concurrencies,
         )
     )
 

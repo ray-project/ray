@@ -28,8 +28,8 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/lease_policy.h"
-#include "ray/pubsub/publisher.h"
-#include "ray/pubsub/subscriber.h"
+#include "ray/pubsub/publisher_interface.h"
+#include "ray/pubsub/subscriber_interface.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
@@ -56,7 +56,7 @@ class ReferenceCounterInterface {
       const int64_t object_size,
       bool is_reconstructable,
       bool add_local_ref,
-      const std::optional<NodeID> &pinned_at_raylet_id = std::optional<NodeID>(),
+      const std::optional<NodeID> &pinned_at_node_id = std::optional<NodeID>(),
       rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE) = 0;
   virtual bool AddObjectOutOfScopeOrFreedCallback(
       const ObjectID &object_id,
@@ -188,7 +188,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] add_local_ref Whether to initialize the local ref count to 1.
   /// This is used to ensure that the ref is considered in scope before the
   /// corresponding ObjectRef has been returned to the language frontend.
-  /// \param[in] pinned_at_raylet_id The primary location for the object, if it
+  /// \param[in] pinned_at_node_id The primary location for the object, if it
   /// is already known. This is only used for ray.put calls.
   /// \param[in] tensor_transport The transport used for the object.
   void AddOwnedObject(
@@ -199,7 +199,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
       const int64_t object_size,
       bool is_reconstructable,
       bool add_local_ref,
-      const std::optional<NodeID> &pinned_at_raylet_id = std::optional<NodeID>(),
+      const std::optional<NodeID> &pinned_at_node_id = std::optional<NodeID>(),
       rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
@@ -444,8 +444,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Update the pinned location of an object stored in plasma.
   ///
   /// \param[in] object_id The object to update.
-  /// \param[in] raylet_id The raylet that is now pinning the object ID.
-  void UpdateObjectPinnedAtRaylet(const ObjectID &object_id, const NodeID &raylet_id)
+  /// \param[in] node_id The raylet that is now pinning the object ID.
+  void UpdateObjectPinnedAtRaylet(const ObjectID &object_id, const NodeID &node_id)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Check whether the object is pinned at a remote plasma store node or
@@ -473,7 +473,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   ///
   /// \param[in] node_id The node whose object store has been removed.
   /// \return The set of objects that were pinned on the given node.
-  void ResetObjectsOnRemovedNode(const NodeID &raylet_id);
+  void ResetObjectsOnRemovedNode(const NodeID &node_id);
 
   std::vector<ObjectID> FlushObjectsToRecover();
 
@@ -646,22 +646,22 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// Constructor for a reference whose origin is unknown.
     Reference() = default;
     Reference(std::string call_site, int64_t object_size)
-        : call_site(std::move(call_site)), object_size(object_size) {}
+        : call_site_(std::move(call_site)), object_size_(object_size) {}
     /// Constructor for a reference that we created.
     Reference(rpc::Address owner_address,
               std::string call_site,
               int64_t object_size,
               bool is_reconstructable,
-              std::optional<NodeID> pinned_at_raylet_id,
+              std::optional<NodeID> pinned_at_node_id,
               rpc::TensorTransport tensor_transport)
-        : call_site(std::move(call_site)),
-          object_size(object_size),
-          owner_address(std::move(owner_address)),
-          pinned_at_raylet_id(std::move(pinned_at_raylet_id)),
-          tensor_transport(tensor_transport),
-          owned_by_us(true),
-          is_reconstructable(is_reconstructable),
-          pending_creation(!pinned_at_raylet_id.has_value()) {}
+        : call_site_(std::move(call_site)),
+          object_size_(object_size),
+          owner_address_(std::move(owner_address)),
+          pinned_at_node_id_(std::move(pinned_at_node_id)),
+          tensor_transport_(tensor_transport),
+          owned_by_us_(true),
+          is_reconstructable_(is_reconstructable),
+          pending_creation_(!pinned_at_node_id_.has_value()) {}
 
     /// Constructor from a protobuf. This is assumed to be a message from
     /// another process, so the object defaults to not being owned by us.
@@ -694,7 +694,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
       bool was_stored_in_objects = !borrow().stored_in_objects.empty();
 
       bool has_lineage_references = false;
-      if (lineage_pinning_enabled && owned_by_us && !is_reconstructable) {
+      if (lineage_pinning_enabled && owned_by_us_ && !is_reconstructable_) {
         has_lineage_references = lineage_ref_count > 0;
       }
 
@@ -756,9 +756,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
     std::string DebugString() const;
 
     /// Description of the call site where the reference was created.
-    std::string call_site = "<unknown>";
+    std::string call_site_ = "<unknown>";
     /// Object size if known, otherwise -1;
-    int64_t object_size = -1;
+    int64_t object_size_ = -1;
     /// If this object is owned by us and stored in plasma, this contains all
     /// object locations.
     absl::flat_hash_set<NodeID> locations;
@@ -766,25 +766,25 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// owner, then this is added during creation of the Reference. If this is
     /// process is a borrower, the borrower must add the owner's address before
     /// using the ObjectID.
-    std::optional<rpc::Address> owner_address;
+    std::optional<rpc::Address> owner_address_;
     /// If this object is owned by us and stored in plasma, and reference
     /// counting is enabled, then some raylet must be pinning the object value.
     /// This is the address of that raylet.
-    std::optional<NodeID> pinned_at_raylet_id;
+    std::optional<NodeID> pinned_at_node_id_;
     /// TODO(kevin85421): Make tensor_transport a required field for all constructors.
     ///
     /// The transport used for the object.
-    rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE;
+    rpc::TensorTransport tensor_transport_ = rpc::TensorTransport::OBJECT_STORE;
     /// Whether we own the object. If we own the object, then we are
     /// responsible for tracking the state of the task that creates the object
     /// (see task_manager.h).
-    bool owned_by_us = false;
+    bool owned_by_us_ = false;
 
     // Whether this object can be reconstructed via lineage. If false, then the
     // object's value will be pinned as long as it is referenced by any other
     // object's lineage. This should be set to false if the object was created
     // by ray.put(), a task that cannot be retried, or its lineage was evicted.
-    bool is_reconstructable = false;
+    bool is_reconstructable_ = false;
     /// Whether the lineage of this object was evicted due to memory pressure.
     bool lineage_evicted = false;
     /// The number of tasks that depend on this object that may be retried in
@@ -843,7 +843,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     bool has_nested_refs_to_report = false;
 
     /// Whether the task that creates this object is scheduled/executing.
-    bool pending_creation = false;
+    bool pending_creation_ = false;
 
     /// Whether or not this object was spilled.
     bool did_spill = false;
@@ -860,7 +860,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
       const int64_t object_size,
       bool is_reconstructable,
       bool add_local_ref,
-      const std::optional<NodeID> &pinned_at_raylet_id,
+      const std::optional<NodeID> &pinned_at_node_id,
       rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 

@@ -122,6 +122,25 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
   Status CreateCgroup(const std::string &cgroup_path) override;
 
   /**
+    To delete a cgroup using the cgroupv2 vfs, the current user needs to read, write, and
+    execute permissions for the parent cgroup. This can be achieved through cgroup
+    delegation. The cgroup must also have no processes or children.
+
+    @see The relevant manpage section on delegation for more details
+    https://docs.kernel.org/admin-guide/cgroup-v2.html#delegation
+
+    @param cgroup_path the absolute path of the cgroup directory to create.
+
+    @return Status::OK if no errors are encounted.
+    @return Status::NotFound if an ancestor cgroup does not exist.
+    @return Status::PermissionDenied if current user doesn't have read, write, and execute
+    permissions.
+    @return Status::InvalidArgument if the cgroup has children, processes, or for any
+    other reason.
+    */
+  Status DeleteCgroup(const std::string &cgroup_path) override;
+
+  /**
     Parses the cgroup.controllers file which has a space separated list of all controllers
     available to the cgroup.
 
@@ -188,8 +207,7 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
     https://docs.kernel.org/admin-guide/cgroup-v2.html#controlling-controllers
 
     @param cgroup_path absolute path of the cgroup.
-    @param controller name of the controller i.e. "cpu" or "memory" from
-    @ref CgroupDriverInterface::supported_controllers_ "supported controllers".
+    @param controller name of the controller e.g. "cpu", "memory" etc.
 
     @return Status::OK if successful
     @return Status::NotFound if the cgroup does not exist.
@@ -225,19 +243,22 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
                            const std::string &controller) override;
 
   /**
-    Adds a constraint to the respective cgroup file. See
-    @ref CgroupDriverInterface::supported_constraints_ "supported constraints" and valid
-    values.
+    Adds a constraint to the respective cgroup file.
+
+    @param cgroup_path absolute path of the cgroup.
+    @param controller the name of the controller
+    @param constraint the name of the cgroup file to add the constraint to e.g. cpu.weight
+    @param constraint_value
 
     @return Status::OK if no errors are encounted.
     @return Status::NotFound if the cgroup does not exist.
     @return Status::PermissionDenied if current user doesn't have read, write, and execute
     permissions.
-    @return Status::InvalidArgument if the cgroup is not using cgroupv2, the constraint
-    is not supported in ray, the constraint value is out of range, or if cannot write
-    to the relevant constraint file.
+    @return Status::InvalidArgument if the cgroup is not using cgroupv2, controller is not
+    enabled, or cannot write to the constraint file.
    */
   Status AddConstraint(const std::string &cgroup,
+                       const std::string &controller,
                        const std::string &constraint,
                        const std::string &constraint_value) override;
 

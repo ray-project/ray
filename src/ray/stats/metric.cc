@@ -113,21 +113,7 @@ void Metric::Record(double value, TagsType tags) {
     return;
   }
 
-  if (::RayConfig::instance().experimental_enable_open_telemetry_on_core()) {
-    // Register the metric if it hasn't been registered yet; otherwise, this is a no-op.
-    // We defer metric registration until the first time it's recorded, rather than during
-    // construction, to avoid issues with static initialization order. Specifically, our
-    // internal Metric objects (see metric_defs.h) are declared as static, and
-    // constructing another static object within their constructor can lead to crashes at
-    // program exit due to unpredictable destruction order.
-    //
-    // Once these internal Metric objects are migrated to use DEFINE_stats, we can
-    // safely move the registration logic to the constructor. See
-    // https://github.com/ray-project/ray/issues/54538 for the backlog of Ray metric infra
-    // improvements.
-    //
-    // This function is thread-safe.
-    RegisterOpenTelemetryMetric();
+  if (::RayConfig::instance().enable_open_telemetry()) {
     // Collect tags from both the metric-specific tags and the global tags.
     absl::flat_hash_map<std::string, std::string> open_telemetry_tags;
     std::unordered_set<std::string> tag_keys_set;
@@ -175,7 +161,7 @@ void Metric::Record(double value, TagsType tags) {
 }
 
 void Metric::Record(double value,
-                    std::unordered_map<std::string_view, std::string> tags) {
+                    const std::unordered_map<std::string_view, std::string> &tags) {
   TagsType tags_pair_vec;
   tags_pair_vec.reserve(tags.size());
   std::for_each(tags.begin(), tags.end(), [&tags_pair_vec](auto &tag) {
@@ -185,7 +171,8 @@ void Metric::Record(double value,
   Record(value, std::move(tags_pair_vec));
 }
 
-void Metric::Record(double value, std::unordered_map<std::string, std::string> tags) {
+void Metric::Record(double value,
+                    const std::unordered_map<std::string, std::string> &tags) {
   TagsType tags_pair_vec;
   tags_pair_vec.reserve(tags.size());
   std::for_each(tags.begin(), tags.end(), [&tags_pair_vec](auto &tag) {

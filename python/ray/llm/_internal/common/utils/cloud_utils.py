@@ -148,7 +148,13 @@ class CloudFileSystem:
                 object_uri = f"{scheme}://{parts[1]}"
 
         if object_uri.startswith("s3://"):
-            fs = pa_fs.S3FileSystem(anonymous=anonymous)
+            endpoint = os.getenv("AWS_ENDPOINT_URL_S3", None)
+            virtual_hosted_style = os.getenv("AWS_S3_ADDRESSING_STYLE", None)
+            fs = pa_fs.S3FileSystem(
+                anonymous=anonymous,
+                endpoint_override=endpoint,
+                force_virtual_addressing=(virtual_hosted_style == "virtual"),
+            )
             path = object_uri[5:]  # Remove "s3://"
         elif object_uri.startswith("gs://"):
             fs = pa_fs.GcsFileSystem(anonymous=anonymous)
@@ -227,6 +233,7 @@ class CloudFileSystem:
         path: str,
         bucket_uri: str,
         substrings_to_include: Optional[List[str]] = None,
+        suffixes_to_exclude: Optional[List[str]] = None,
     ) -> None:
         """Download files from cloud storage to a local directory.
 
@@ -234,6 +241,7 @@ class CloudFileSystem:
             path: Local directory where files will be downloaded
             bucket_uri: URI of cloud directory
             substrings_to_include: Only include files containing these substrings
+            suffixes_to_exclude: Exclude certain files from download (e.g .safetensors)
         """
         try:
             fs, source_path = CloudFileSystem.get_fs_and_path(bucket_uri)
@@ -260,6 +268,11 @@ class CloudFileSystem:
                     ):
                         continue
 
+                # Check if file matches suffixes to exclude filter
+                if suffixes_to_exclude:
+                    if any(rel_path.endswith(suffix) for suffix in suffixes_to_exclude):
+                        continue
+
                 # Create destination directory if needed
                 if "/" in rel_path:
                     dest_dir = os.path.join(path, os.path.dirname(rel_path))
@@ -277,7 +290,10 @@ class CloudFileSystem:
 
     @staticmethod
     def download_model(
-        destination_path: str, bucket_uri: str, tokenizer_only: bool
+        destination_path: str,
+        bucket_uri: str,
+        tokenizer_only: bool,
+        exclude_safetensors: bool = False,
     ) -> None:
         """Download a model from cloud storage.
 
@@ -288,6 +304,7 @@ class CloudFileSystem:
             destination_path: Path where the model will be stored
             bucket_uri: URI of the cloud directory containing the model
             tokenizer_only: If True, only download tokenizer-related files
+            exclude_safetensors: If True, skip download of safetensor files
         """
         try:
             fs, source_path = CloudFileSystem.get_fs_and_path(bucket_uri)
@@ -327,10 +344,14 @@ class CloudFileSystem:
             tokenizer_file_substrings = (
                 ["tokenizer", "config.json"] if tokenizer_only else []
             )
+
+            safetensors_to_exclude = [".safetensors"] if exclude_safetensors else None
+
             CloudFileSystem.download_files(
                 path=destination_dir,
                 bucket_uri=bucket_uri,
                 substrings_to_include=tokenizer_file_substrings,
+                suffixes_to_exclude=safetensors_to_exclude,
             )
 
         except Exception as e:

@@ -3,13 +3,14 @@
 # 2. Options for `uv install`.
 
 import os
-import pytest
 import sys
 import tempfile
 from pathlib import Path
 
-from ray._private.runtime_env import virtualenv_utils
+import pytest
+
 import ray
+from ray._private.runtime_env import virtualenv_utils
 
 
 @pytest.fixture(scope="function")

@@ -138,12 +138,12 @@ class GlobalState:
             "Address": {
                 "IPAddress": actor_table_data.address.ip_address,
                 "Port": actor_table_data.address.port,
-                "NodeID": binary_to_hex(actor_table_data.address.raylet_id),
+                "NodeID": binary_to_hex(actor_table_data.address.node_id),
             },
             "OwnerAddress": {
                 "IPAddress": actor_table_data.owner_address.ip_address,
                 "Port": actor_table_data.owner_address.port,
-                "NodeID": binary_to_hex(actor_table_data.owner_address.raylet_id),
+                "NodeID": binary_to_hex(actor_table_data.owner_address.node_id),
             },
             "State": gcs_pb2.ActorTableData.ActorState.DESCRIPTOR.values_by_number[
                 actor_table_data.state

@@ -2,11 +2,6 @@
 
 set -e
 
-# Install uv and set up Python
-pip install uv
-uv python install 3.11
-uv python pin 3.11
-
 # Create a temporary directory for backup files and setup cleanup trap
 TEMP_DIR=$(mktemp -d)
 cleanup() {
@@ -23,16 +18,16 @@ VARIANTS=(cpu cu121 cu128)
 
 for LOCK_TYPE in "${LOCK_TYPES[@]}"; do
     for VARIANT in "${VARIANTS[@]}"; do
-        cp ./python/requirements_compiled_"${LOCK_TYPE}"_py311_"${VARIANT}".txt "$TEMP_DIR/requirements_compiled_${LOCK_TYPE}_py311_${VARIANT}_backup.txt"
+        cp ./python/deplocks/llm/"${LOCK_TYPE}"_py311_"${VARIANT}".lock "$TEMP_DIR/${LOCK_TYPE}_py311_${VARIANT}_backup.lock"
     done
 done
 
-./ci/compile_llm_requirements.sh
+./ci/compile_llm_requirements.sh ci/raydepsets/rayllm.depsets.yaml
 
 # Copy files to artifact mount on Buildkite
 for LOCK_TYPE in "${LOCK_TYPES[@]}"; do
     for VARIANT in "${VARIANTS[@]}"; do
-        cp ./python/requirements_compiled_"${LOCK_TYPE}"_py311_"${VARIANT}".txt /artifact-mount/
+        cp ./python/deplocks/llm/"${LOCK_TYPE}"_py311_"${VARIANT}".lock /artifact-mount/
     done
 done
 
@@ -40,8 +35,8 @@ done
 FAILED=0
 for LOCK_TYPE in "${LOCK_TYPES[@]}"; do
     for VARIANT in "${VARIANTS[@]}"; do
-        diff --color -u ./python/requirements_compiled_"${LOCK_TYPE}"_py311_"${VARIANT}".txt "$TEMP_DIR/requirements_compiled_${LOCK_TYPE}_py311_${VARIANT}_backup.txt" || {
-            echo "requirements_compiled_${LOCK_TYPE}_py311_${VARIANT}.txt is not up to date. Please download it from Artifacts tab and git push the changes."
+        diff --color -u ./python/deplocks/llm/"${LOCK_TYPE}"_py311_"${VARIANT}".lock "$TEMP_DIR/${LOCK_TYPE}_py311_${VARIANT}_backup.lock" || {
+            echo "${LOCK_TYPE}_py311_${VARIANT}.lock is not up to date. Please download it from Artifacts tab and git push the changes."
             FAILED=1
         }
     done

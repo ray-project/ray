@@ -20,7 +20,7 @@
 
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
-#include "ray/core_worker/common.h"
+#include "ray/core_worker/core_worker.h"
 #include "ray/stats/metric.h"
 
 // This header is used to warp some internal code so we can reduce suspicious

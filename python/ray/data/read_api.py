@@ -95,8 +95,8 @@ from ray.data.datasource.file_based_datasource import (
 from ray.data.datasource.file_meta_provider import (
     DefaultFileMetadataProvider,
     FastFileMetadataProvider,
+    FileMetadataProvider,
 )
-from ray.data.datasource.parquet_meta_provider import ParquetMetadataProvider
 from ray.data.datasource.partitioning import Partitioning
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
@@ -801,7 +801,7 @@ def read_parquet(
     parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
-    meta_provider: Optional[ParquetMetadataProvider] = None,
+    meta_provider: Optional[FileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Optional[Partitioning] = Partitioning("hive"),
     shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
@@ -937,8 +937,6 @@ def read_parquet(
     _emit_meta_provider_deprecation_warning(meta_provider)
     _validate_shuffle_arg(shuffle)
 
-    if meta_provider is None:
-        meta_provider = ParquetMetadataProvider()
     arrow_parquet_args = _resolve_parquet_args(
         tensor_column_schema,
         **arrow_parquet_args,
@@ -3428,7 +3426,7 @@ def from_huggingface(
         hf_ds_arrow = dataset.with_format("arrow")
         ray_ds = from_arrow(hf_ds_arrow[:], override_num_blocks=override_num_blocks)
         return ray_ds
-    elif isinstance(dataset, (datasets.DatasetDict, datasets.IterableDatasetDict)):
+    if isinstance(dataset, (datasets.DatasetDict, datasets.IterableDatasetDict)):
         available_keys = list(dataset.keys())
         raise DeprecationWarning(
             "You provided a Hugging Face DatasetDict or IterableDatasetDict, "
@@ -3886,7 +3884,7 @@ def read_delta(
     columns: Optional[List[str]] = None,
     parallelism: int = -1,
     ray_remote_args: Optional[Dict[str, Any]] = None,
-    meta_provider: Optional[ParquetMetadataProvider] = None,
+    meta_provider: Optional[FileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Optional[Partitioning] = Partitioning("hive"),
     shuffle: Union[Literal["files"], None] = None,

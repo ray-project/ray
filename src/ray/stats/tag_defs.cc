@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/stats/metric.h"
+#include "ray/stats/tag_defs.h"
 
 namespace ray {
 namespace stats {
@@ -32,7 +32,8 @@ const TagKeyType DriverPidKey = TagKeyType::Register("DriverPid");
 
 const TagKeyType ActorIdKey = TagKeyType::Register("ActorId");
 
-// Keep in sync with the WORKER_ID_TAG_KEY in python/ray/_private/metrics_agent.py
+// Keep in sync with the WORKER_ID_TAG_KEY in
+// python/ray/_private/telemetry/metric_cardinality.py
 const TagKeyType WorkerIdKey = TagKeyType::Register("WorkerId");
 
 const TagKeyType JobIdKey = TagKeyType::Register("JobId");

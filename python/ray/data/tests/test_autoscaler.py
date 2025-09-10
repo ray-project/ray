@@ -8,10 +8,11 @@ import pytest
 
 import ray
 from ray.data import ExecutionResources
-from ray.data._internal.execution.autoscaler.default_autoscaler import (
+from ray.data._internal.actor_autoscaler import (
     ActorPoolScalingRequest,
-    DefaultAutoscaler,
+    DefaultActorAutoscaler,
 )
+from ray.data._internal.cluster_autoscaler import DefaultClusterAutoscaler
 from ray.data._internal.execution.operators.actor_pool_map_operator import _ActorPool
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
@@ -30,10 +31,9 @@ def test_actor_pool_scaling():
     resource_manager = MagicMock(
         spec=ResourceManager, get_budget=MagicMock(return_value=None)
     )
-    autoscaler = DefaultAutoscaler(
+    autoscaler = DefaultActorAutoscaler(
         topology=MagicMock(),
         resource_manager=resource_manager,
-        execution_id="execution_id",
         config=AutoscalingConfig(
             actor_pool_util_upscaling_threshold=1.0,
             actor_pool_util_downscaling_threshold=0.5,
@@ -80,14 +80,16 @@ def test_actor_pool_scaling():
         yield
         setattr(mock, attr, original)
 
-    def assert_autoscaling_action(*, delta: int, expected_reason: Optional[str]):
+    def assert_autoscaling_action(
+        *, delta: int, expected_reason: Optional[str], force: bool = False
+    ):
         nonlocal actor_pool, op, op_state
 
         assert autoscaler._derive_target_scaling_config(
             actor_pool=actor_pool,
             op=op,
             op_state=op_state,
-        ) == ActorPoolScalingRequest(delta=delta, reason=expected_reason)
+        ) == ActorPoolScalingRequest(delta=delta, force=force, reason=expected_reason)
 
     # Should scale up since the util above the threshold.
     assert actor_pool.get_pool_util() == 1.5
@@ -141,6 +143,7 @@ def test_actor_pool_scaling():
             assert_autoscaling_action(
                 delta=-1,
                 expected_reason="consumed all inputs",
+                force=True,
             )
 
     # Should scale down only once all inputs have been already dispatched AND
@@ -150,6 +153,7 @@ def test_actor_pool_scaling():
             with patch(op, "_inputs_complete", True, is_method=False):
                 assert_autoscaling_action(
                     delta=-1,
+                    force=True,
                     expected_reason="consumed all inputs",
                 )
 
@@ -236,15 +240,14 @@ def test_cluster_scaling():
         op2: op_state2,
     }
 
-    autoscaler = DefaultAutoscaler(
+    autoscaler = DefaultClusterAutoscaler(
         topology=topology,
         resource_manager=MagicMock(),
         execution_id="execution_id",
-        config=AutoscalingConfig(),
     )
 
     autoscaler._send_resource_request = MagicMock()
-    autoscaler._try_scale_up_cluster()
+    autoscaler.try_trigger_scaling()
 
     autoscaler._send_resource_request.assert_called_once_with(
         [{"CPU": 1}, {"CPU": 2}, {"CPU": 2}]

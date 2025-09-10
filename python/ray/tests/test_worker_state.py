@@ -1,13 +1,13 @@
-import pytest
 import sys
 import threading
+
+import pytest
 
 import ray
 from ray._common.test_utils import (
     wait_for_condition,
 )
 from ray.util.state import list_workers
-
 
 _SYSTEM_CONFIG = {
     "task_events_report_interval_ms": 100,

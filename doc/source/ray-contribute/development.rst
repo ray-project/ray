@@ -61,7 +61,7 @@ Create a virtual environment to prevent version conflicts and to develop with an
 
         This contains a directory with all the packages used by the local Python of your project. You only need to do this step once.
 
-        Activate your virtual environment to tell the  shell/terminal to use this particular Python:
+        Activate your virtual environment to tell the shell/terminal to use this particular Python:
 
         .. code-block:: shell
 
@@ -367,11 +367,11 @@ run the following (via ``-c`` ``fastbuild``/``dbg``/``opt``, respectively):
 
 .. code-block:: shell
 
- bazel build -c fastbuild //:ray_pkg
+ bazel run -c fastbuild //:gen_ray_pkg
 
 This will rebuild Ray with the appropriate options (which may take a while).
-If you need to build all targets, you can use ``"//:all"`` instead of
-``//:ray_pkg``.
+If you need to build all targets, you can use ``bazel build //:all`` instead of
+``bazel run //:gen_ray_pkg``.
 
 To make this change permanent, you can add an option such as the following
 line to your user-level ``~/.bazelrc`` file (not to be confused with the

@@ -2,9 +2,9 @@ import logging
 import subprocess
 
 from ray.autoscaler._private.updater import (
-    NodeUpdater,
-    TAG_RAY_NODE_STATUS,
     STATUS_UP_TO_DATE,
+    TAG_RAY_NODE_STATUS,
+    NodeUpdater,
 )
 from ray.autoscaler._private.util import with_envs, with_head_node_ip
 from ray.autoscaler.node_provider import NodeProvider as NodeProviderV1

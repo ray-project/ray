@@ -1,20 +1,20 @@
-from dataclasses import dataclass
 import logging
-from typing import Any, Dict, List, Optional, Type, Tuple
 import sys
-from packaging import version
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple, Type
 
+import pydantic
 import pytest
 from fastapi import FastAPI
-import pydantic
+from packaging import version
 
 try:
     # Testing with Pydantic 2
-    from pydantic import BaseModel as BaseModelV2
-    from pydantic.v1 import BaseModel as BaseModelV1
-
-    from pydantic import ValidationError as ValidationErrorV2
-    from pydantic.v1 import ValidationError as ValidationErrorV1
+    from pydantic import BaseModel as BaseModelV2, ValidationError as ValidationErrorV2
+    from pydantic.v1 import (
+        BaseModel as BaseModelV1,
+        ValidationError as ValidationErrorV1,
+    )
 
     BASE_MODELS = [BaseModelV1, BaseModelV2]
     BASE_MODEL_AND_ERRORS = [
@@ -23,16 +23,14 @@ try:
     ]
 except ImportError:
     # Testing with Pydantic 1
-    from pydantic import BaseModel as BaseModelV1
-    from pydantic import ValidationError as ValidationErrorV1
+    from pydantic import BaseModel as BaseModelV1, ValidationError as ValidationErrorV1
 
     BaseModelV2 = None
     BASE_MODELS = [BaseModelV1]
     BASE_MODEL_AND_ERRORS = [(BaseModelV1, ValidationErrorV1)]
 
 import ray
-
-from ray.tests.pydantic_module import User, app, user, closure
+from ray.tests.pydantic_module import User, app, closure, user
 
 
 @pytest.fixture(scope="session")

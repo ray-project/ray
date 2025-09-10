@@ -193,8 +193,8 @@ def test_lazy_reads(
 
     @ray.remote
     def test_import():
-        import test_module
         import file_module
+        import test_module
 
         assert TEST_IMPORT_DIR in os.environ.get("PYTHONPATH", "")
         return test_module.one(), file_module.hello()
@@ -236,8 +236,8 @@ def test_lazy_reads(
     @ray.remote
     class Actor:
         def test_import(self):
-            import test_module
             import file_module
+            import test_module
 
             assert TEST_IMPORT_DIR in os.environ.get("PYTHONPATH", "")
             return test_module.one(), file_module.hello()
@@ -297,8 +297,8 @@ def test_captured_import(start_cluster, tmp_working_dir, option: str):
 
     # Import in the driver.
     sys.path.insert(0, tmp_working_dir)
-    import test_module
     import file_module
+    import test_module
 
     @ray.remote
     def test_import():
