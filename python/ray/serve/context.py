@@ -225,17 +225,11 @@ def _set_request_context(
     _internal_request_id: str = "",
     app_name: str = "",
     multiplexed_model_id: str = "",
-    use_current_context: bool = True,
 ):
-    """Set the request context.
+    """Set the request context. If the value is not set,
+    the current context value will be used."""
 
-    If the value is not set, the current context value will be used
-    if use_current_context is True.
-    """
-    if use_current_context:
-        current_request_context = _get_serve_request_context()
-    else:
-        current_request_context = _RequestContext()
+    current_request_context = _get_serve_request_context()
 
     _serve_request_context.set(
         _RequestContext(
@@ -248,6 +242,11 @@ def _set_request_context(
             or current_request_context.multiplexed_model_id,
         )
     )
+
+
+def _unset_request_context():
+    """Unset the request context."""
+    _serve_request_context.set(_RequestContext())
 
 
 def _set_batch_request_context(request_contexts: List[_RequestContext]):

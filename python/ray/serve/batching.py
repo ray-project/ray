@@ -309,7 +309,7 @@ class _BatchQueue:
         """Loops infinitely and processes queued request batches."""
         # When asyncio task is created, the task will inherit the request context from the current context.
         # So we unset the request context so the current context is not inherited by the task, _process_batch.
-        serve.context._set_request_context(use_current_context=False)
+        serve.context._unset_request_context()
         while not self._loop.is_closed():
             batch = await self.wait_for_batch()
             promise = self._process_batch(func, batch)
