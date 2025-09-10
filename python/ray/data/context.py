@@ -475,7 +475,7 @@ class DataContext:
 
     # Default hash-shuffle parallelism level (will be used when not
     # provided explicitly)
-    default_hash_shuffle_parallelism = DEFAULT_MIN_PARALLELISM
+    default_hash_shuffle_parallelism: int = DEFAULT_MIN_PARALLELISM
 
     # Max number of aggregating actors that could be provisioned
     # to perform aggregations on partitions produced during hash-shuffling
