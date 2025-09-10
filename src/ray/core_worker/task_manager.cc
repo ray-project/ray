@@ -311,11 +311,15 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
           return_object_id, [this](const ObjectID &object_id) {
             auto actor_id = ObjectID::ToActorID(object_id);
             auto rpc_client = get_actor_rpc_client_callback_(actor_id);
-            auto request = rpc::FreeActorObjectRequest();
+            if (!rpc_client.has_value()) {
+              // ActorTaskSubmitter already knows the actor is already dead.
+              return;
+            }
+            rpc::FreeActorObjectRequest request;
             request.set_object_id(object_id.Binary());
-            rpc_client->FreeActorObject(
+            rpc_client.value()->FreeActorObject(
                 request,
-                [object_id, actor_id](Status status,
+                [object_id, actor_id](const Status &status,
                                       const rpc::FreeActorObjectReply &reply) {
                   if (!status.ok()) {
                     RAY_LOG(ERROR).WithField(object_id).WithField(actor_id)
