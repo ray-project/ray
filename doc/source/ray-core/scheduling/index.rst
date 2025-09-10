@@ -5,6 +5,18 @@ Scheduling
 
 For each task or actor, Ray will choose a node to run it and the scheduling decision is based on the following factors.
 
+
+Labels
+------
+
+Labels provide a simplified solution for controlling scheduling for tasks, actors, and placement group bundles using default and custom labels. See :doc:`./labels.md`.
+
+Labels are currently offered as an alpha feature. As this feature becomes stable, the Ray team recommends using labels instead of the following patterns:
+
+- NodeAffinitySchedulingStrategy when `soft=false`. Use the default `ray.io/node-id` label instead.
+- The `accelerator_type` option for tasks and actors. Use the default `ray.io/accelerator-type` label instead.
+- Custom resources such as the `special_hardware` pattern. Use custom labels instead.
+
 .. _ray-scheduling-resources:
 
 Resources
@@ -127,6 +139,7 @@ More about Ray Scheduling
 .. toctree::
     :maxdepth: 1
 
+    labels
     resources
     accelerators
     placement-group
