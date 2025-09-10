@@ -61,8 +61,8 @@ After the sync phase, the Reconciler performs the `following steps <https://gith
    No interaction with the cloud provider occurs until step 6.
 
 
-Bin Packing and Work Group Selection
-------------------------------------
+Bin Packing and Worker Group Selection
+--------------------------------------
 
 The autoscaler applies the following scoring logic to evaluate each node and selects the one with the highest score for a subset of the demands that are feasible on the selected node.
 It also applies the same scoring logic to each worker group and selects the one with the highest score to launch new instances.
