@@ -1,4 +1,4 @@
-FROM anyscale/ray-llm:2.49.1-py311-cu128
+FROM anyscale/ray-llm:2.44.1-py311-cu124
 
 COPY python/deplocks/examples/entity-recognition-with-llms/llm_example_py311_cu128.lock .
 
