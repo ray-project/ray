@@ -33,8 +33,8 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 import ray
 from ray import cloudpickle
+from ray._common.filters import CoreContextFilter
 from ray._common.utils import get_or_create_event_loop
-from ray._private.ray_logging.filters import CoreContextFilter
 from ray.actor import ActorClass, ActorHandle
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
