@@ -52,7 +52,6 @@ from ray.core.generated.runtime_environment_pb2 import (
     RuntimeEnvInfo,
     RuntimeEnvUris,
 )
-<<<<<<< HEAD
 from ray.core.generated.common_pb2 import (
     TaskType,
     Language,
@@ -66,8 +65,6 @@ from ray.core.generated.gcs_service_pb2_grpc import TaskInfoGcsServiceStub
 from ray.core.generated.gcs_service_pb2 import GetTaskEventsRequest, FilterPredicate
 from ray._raylet import JobID, TaskID
 
-=======
->>>>>>> upstream/aggrToGcs2
 from ray.dashboard.modules.aggregator.aggregator_agent import AggregatorAgent
 from ray.dashboard.tests.conftest import *  # noqa
 
@@ -955,7 +952,6 @@ def _get_task_event_from_gcs(
             return None
         for task_event in reply.events_by_task:
             if task_event.task_info.name.lower() == unique_task_name.lower():
-                print(reply)
                 return task_event
         return None
     except Exception:

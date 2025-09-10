@@ -74,6 +74,7 @@ PUBLISH_EVENTS_TO_GCS = ray_constants.env_bool(
     f"{env_var_prefix}_PUBLISH_EVENTS_TO_GCS", False
 )
 
+
 class AggregatorAgent(
     dashboard_utils.DashboardAgentModule,
     events_event_aggregator_service_pb2_grpc.EventAggregatorServiceServicer,
@@ -153,18 +154,19 @@ class AggregatorAgent(
                     self._async_gcs_channel
                 )
             )
-            self._gcs_publisher = RayEventsPublisher(
+            self._gcs_publisher = RayEventPublisher(
                 name="gcs_publisher",
                 publish_client=AsyncGCSPublisherClient(
                     gcs_stub=self._async_gcs_event_stub
                 ),
                 event_buffer=self._event_buffer,
+                common_metric_tags=self._common_tags,
                 task_metadata_buffer=self._task_metadata_buffer,
             )
         else:
             logger.info("Publishing events to GCS is disabled")
             self._gcs_publisher = NoopPublisher()
- 
+
         # Metrics
         _metric_prefix = "event_aggregator_agent"
         self._open_telemetry_metric_recorder = OpenTelemetryMetricRecorder()

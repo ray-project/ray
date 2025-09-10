@@ -533,7 +533,7 @@ def test_metrics_export_event_aggregator_agent(
             "ray_event_aggregator_agent_http_publisher_publish_duration_seconds_count",
             "ray_event_aggregator_agent_http_publisher_publish_duration_seconds_sum",
             # GCS publisher metrics
-            "ray_event_aggregator_agent_gcs_publisher_events_published_total",
+            "ray_event_aggregator_agent_gcs_publisher_published_events_total",
             "ray_event_aggregator_agent_gcs_publisher_queue_dropped_events_total",
             "ray_event_aggregator_agent_gcs_publisher_publish_duration_seconds_bucket",
             "ray_event_aggregator_agent_gcs_publisher_publish_duration_seconds_count",
@@ -549,18 +549,14 @@ def test_metrics_export_event_aggregator_agent(
             "ray_event_aggregator_agent_http_publisher_published_events_total": 1.0,
             "ray_event_aggregator_agent_http_publisher_filtered_events_total": 1.0,
             "ray_event_aggregator_agent_http_publisher_queue_dropped_events_total": 1.0,  # dropped due to max buffer size
-            "ray_event_aggregator_agent_gcs_publisher_events_published_total": 2.0,
+            "ray_event_aggregator_agent_gcs_publisher_published_events_total": 2.0,
             "ray_event_aggregator_agent_gcs_publisher_queue_dropped_events_total": 1.0,  # dropped due to max buffer size
         }
         for descriptor, expected_value in expected_metrics_values.items():
             samples = [m for m in metric_samples if m.name == descriptor]
             if not samples:
-                print(f"Metric {descriptor} not found")
                 return False
             if samples[0].value != expected_value:
-                print(
-                    f"Metric {descriptor} value {samples[0].value} does not match expected {expected_value}"
-                )
                 return False
         return True
 

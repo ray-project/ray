@@ -2,6 +2,9 @@ import asyncio
 from typing import Optional, Dict
 
 from ray.core.generated import events_event_aggregator_service_pb2
+from ray._private.telemetry.open_telemetry_metric_recorder import (
+    OpenTelemetryMetricRecorder,
+)
 
 
 class TaskMetadataBuffer:
@@ -11,12 +14,27 @@ class TaskMetadataBuffer:
         self,
         max_buffer_size: int = 1000,
         max_dropped_attempts_per_metadata_entry: int = 100,
+        common_metric_tags: Optional[Dict[str, str]] = None,
     ):
-        self._buffer = asyncio.Queue(maxsize=max_buffer_size)
-        self._metadata = events_event_aggregator_service_pb2.TaskEventsMetadata()
+        self._buffer = asyncio.Queue(
+            maxsize=max_buffer_size - 1
+        )  # -1 to account for the current metadata batch
+        self._current_metadata_batch = (
+            events_event_aggregator_service_pb2.TaskEventsMetadata()
+        )
         self._lock = asyncio.Lock()
         self._max_dropped_attempts = max_dropped_attempts_per_metadata_entry
-        self._dropped_metadata_count = 0
+
+        self._common_metric_tags = common_metric_tags or {}
+        self._metric_recorder = OpenTelemetryMetricRecorder()
+        _metric_prefix = "event_aggregator_agent"
+        self._dropped_metadata_count_metric_name = (
+            f"{_metric_prefix}_task_metadata_buffer_dropped_attempts_total"
+        )
+        self._metric_recorder.register_counter_metric(
+            self._dropped_metadata_count_metric_name,
+            "Total number of dropped task attempt metadata entries which were dropped due to buffer being full",
+        )
 
     async def merge(
         self,
@@ -29,26 +47,28 @@ class TaskMetadataBuffer:
         async with self._lock:
             for new_attempt in new_metadata.dropped_task_attempts:
                 if (
-                    len(self._metadata.dropped_task_attempts)
+                    len(self._current_metadata_batch.dropped_task_attempts)
                     >= self._max_dropped_attempts
                 ):
-                    # Flush current metadata to buffer
+                    # Add current metadata to buffer, if buffer is full, drop the oldest entry
                     if self._buffer.full():
                         oldest_entry = self._buffer.get_nowait()
-                        self._dropped_metadata_count += len(
-                            oldest_entry.dropped_task_attempts
+                        self._metric_recorder.set_metric_value(
+                            self._dropped_metadata_count_metric_name,
+                            self._common_metric_tags,
+                            len(oldest_entry.dropped_task_attempts),
                         )
 
                     # Enqueue current metadata batch and start a new batch
                     metadata_copy = (
                         events_event_aggregator_service_pb2.TaskEventsMetadata()
                     )
-                    metadata_copy.CopyFrom(self._metadata)
+                    metadata_copy.CopyFrom(self._current_metadata_batch)
                     self._buffer.put_nowait(metadata_copy)
-                    self._metadata.Clear()
+                    self._current_metadata_batch.Clear()
 
                 # Now add the new attempt
-                new_entry = self._metadata.dropped_task_attempts.add()
+                new_entry = self._current_metadata_batch.dropped_task_attempts.add()
                 new_entry.CopyFrom(new_attempt)
 
     async def get(self) -> events_event_aggregator_service_pb2.TaskEventsMetadata:
@@ -59,23 +79,11 @@ class TaskMetadataBuffer:
                 current_metadata = (
                     events_event_aggregator_service_pb2.TaskEventsMetadata()
                 )
-                current_metadata.CopyFrom(self._metadata)
+                current_metadata.CopyFrom(self._current_metadata_batch)
 
                 # Reset the current metadata and start merging afresh
-                self._metadata.Clear()
+                self._current_metadata_batch.Clear()
 
                 return current_metadata
 
             return self._buffer.get_nowait()
-
-    async def get_and_reset_dropped_metadata_count(self) -> int:
-        """Return the total number of dropped task attempts entries dropped due to buffer being full and reset the counter."""
-        async with self._lock:
-            dropped_metadata_count = self._dropped_metadata_count
-            self._dropped_metadata_count = 0
-            return dropped_metadata_count
-
-    async def get_and_reset_metrics(self) -> Dict[str, int]:
-        """Return metrics snapshot for this buffer since last call and reset counters."""
-        count = await self.get_and_reset_dropped_metadata_count()
-        return {"dropped_metadata_count": count}

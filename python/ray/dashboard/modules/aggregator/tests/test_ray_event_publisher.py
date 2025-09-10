@@ -150,6 +150,7 @@ class TestRayEventPublisher:
             with pytest.raises(asyncio.CancelledError):
                 await task
 
+
 class TestNoopPublisher:
     """Test no-op publisher implementation."""
 

@@ -31,13 +31,16 @@ async def _drain_all_attempts(buffer: TaskMetadataBuffer):
     Continues calling get() until it returns an empty set of attempts.
     """
     collected_ids = []
+    num_metadata_entries = 0
     while True:
         result = await buffer.get()
         attempts = await _result_to_attempts_list(result)
         if len(attempts) == 0:
             break
+
+        num_metadata_entries += 1
         collected_ids.extend([a.task_id for a in attempts])
-    return collected_ids
+    return collected_ids, num_metadata_entries
 
 
 class TestTaskMetadataBuffer:
@@ -70,39 +73,40 @@ class TestTaskMetadataBuffer:
         assert sorted(task_ids) == [b"task_1", b"task_2", b"task_3", b"task_4"]
 
     @pytest.mark.parametrize(
-        "max_attempts,num_tasks,max_buffer_size,expected_drop_attempts",
+        "max_attempts_per_metadata_entry,num_tasks,max_buffer_size,expected_drop_attempts,expected_num_metadata_entries",
         [
-            # No overflow, possibly multiple flushes. Ensure all tasks preserved.
-            (2, 3, 100, 0),
-            (5, 10, 100, 0),
+            # No overflow, two metadata entries should be created
+            (2, 3, 100, 0, 2),
+            # No overflow, three metadata entries should be created
+            (5, 15, 100, 0, 3),
             # Overflow scenario: buffer too small, ensure drop count is tracked.
-            (1, 4, 2, 1),
+            (1, 4, 2, 2, 2),
         ],
     )
     @pytest.mark.asyncio
-    async def test_buffer_flushing_and_drop_count(
-        self, max_attempts, num_tasks, max_buffer_size, expected_drop_attempts
+    async def test_buffer_merge_and_overflow(
+        self,
+        max_attempts_per_metadata_entry,
+        num_tasks,
+        max_buffer_size,
+        expected_drop_attempts,
+        expected_num_metadata_entries,
     ):
         buffer = TaskMetadataBuffer(
             max_buffer_size=max_buffer_size,
-            max_dropped_attempts_per_metadata_entry=max_attempts,
+            max_dropped_attempts_per_metadata_entry=max_attempts_per_metadata_entry,
         )
 
         for i in range(num_tasks):
             test_metadata = _create_test_metadata([f"task_{i}"])
             await buffer.merge(test_metadata)
 
-        # Verify dropped count
-        dropped_count = await buffer.get_and_reset_dropped_metadata_count()
-        assert dropped_count == expected_drop_attempts
-        # Subsequent call should be reset to 0
-        assert await buffer.get_and_reset_dropped_metadata_count() == 0
-
-        # Drain everything and verify conservation of attempts
-        drained_ids = await _drain_all_attempts(buffer)
+        # Drain everything and verify number of attempts in buffer is as expected
+        drained_ids, num_metadata_entries = await _drain_all_attempts(buffer)
         assert len(drained_ids) == num_tasks - expected_drop_attempts
+        assert num_metadata_entries == expected_num_metadata_entries
 
-        # Draining again should yield nothing
+        # Buffer should now be empty
         assert len(await _result_to_attempts_list(await buffer.get())) == 0
 
 
