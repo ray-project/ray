@@ -80,7 +80,7 @@ class BundleLocationIndex {
   /// Update the index to contain new node information. Should be used only when new node
   /// is added to the cluster.
   ///
-  /// \param nodes map of alive nodes.
+  /// \param map of alive nodes.
   void AddNodes(
       const absl::flat_hash_map<NodeID, std::shared_ptr<const ray::rpc::GcsNodeInfo>>
           &nodes);

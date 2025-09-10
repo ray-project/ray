@@ -73,7 +73,7 @@ TEST_F(GcsNodeManagerTest, TestListener) {
   int node_count = 1000;
 
   std::mutex callback_mutex;
-  size_t callbacks_remaining = node_count;
+  std::atomic_int callbacks_remaining = node_count;
 
   std::vector<std::shared_ptr<const rpc::GcsNodeInfo>> added_nodes;
   node_manager.AddNodeAddedListener(
@@ -111,15 +111,10 @@ TEST_F(GcsNodeManagerTest, TestListener) {
   callbacks_remaining = node_count;
   std::vector<std::shared_ptr<const rpc::GcsNodeInfo>> removed_nodes;
   node_manager.AddNodeRemovedListener(
-      [&removed_nodes, &callback_mutex, &callbacks_remaining](
-          std::shared_ptr<const rpc::GcsNodeInfo> node) {
+      [&removed_nodes,
+       &callbacks_remaining](std::shared_ptr<const rpc::GcsNodeInfo> node) {
         removed_nodes.emplace_back(std::move(node));
-        {
-          std::lock_guard<std::mutex> lock(callback_mutex);
-          if (callbacks_remaining > 0) {
-            --callbacks_remaining;
-          }
-        }
+        --callbacks_remaining;
       },
       io_context_->GetIoService());
   rpc::NodeDeathInfo death_info;
@@ -153,17 +148,15 @@ TEST_F(GcsNodeManagerTest, TestAddNodeListenerCallbackDeadlock) {
                                    client_pool_.get(),
                                    ClusterID::Nil());
   int node_count = 10;
-  std::mutex callback_mutex;
-  size_t callbacks_remaining = node_count;
+  std::atomic_int callbacks_remaining = node_count;
   node_manager.AddNodeAddedListener(
-      [&node_manager, &callback_mutex, &callbacks_remaining](
-          std::shared_ptr<const rpc::GcsNodeInfo> node) {
+      [&node_manager,
+       &callbacks_remaining](std::shared_ptr<const rpc::GcsNodeInfo> node) {
         rpc::NodeDeathInfo death_info;
         node_manager.RemoveNode(NodeID::FromBinary(node->node_id()),
                                 death_info,
                                 rpc::GcsNodeInfo::DEAD,
                                 1000);
-        std::lock_guard<std::mutex> lock(callback_mutex);
         --callbacks_remaining;
       },
       io_context_->GetIoService());

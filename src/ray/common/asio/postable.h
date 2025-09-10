@@ -48,10 +48,6 @@ using ToPostable = typename internal::ToPostableHelper<FuncType>::type;
 /// function can only be Post()ed or Dispatch()ed to that specific io_context. This
 /// provides thread safety and prevents accidentally running the function on the wrong
 /// io_context.
-///
-/// A Postable can only be Post()ed or Dispatch()ed once. After that, it is moved-from and
-/// a next invocation will fail unless using an lvalue overload (which may be called many
-/// times)
 template <typename FuncType>
 class Postable {
   static_assert(std::is_void_v<typename function_traits<FuncType>::result_type>,
@@ -79,7 +75,8 @@ class Postable {
   void Post(const std::string &name, Args &&...args) const & {
     RAY_CHECK(func_ != nullptr) << "Postable has already been invoked.";
     io_context_.post(
-        [func = func_, args_tuple = std::make_tuple(std::forward<Args>(args)...)]() mutable {
+        [func = func_,
+         args_tuple = std::make_tuple(std::forward<Args>(args)...)]() mutable {
           std::apply(func, std::move(args_tuple));
         },
         name);
