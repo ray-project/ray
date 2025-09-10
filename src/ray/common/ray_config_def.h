@@ -833,6 +833,12 @@ RAY_CONFIG(std::string, testing_asio_delay_us, "")
 ///      RAY_testing_rpc_failure="method1=max_num_failures:req_failure_prob:resp_failure_prob,method2=max_num_failures:req_failure_prob:resp_failure_prob"
 RAY_CONFIG(std::string, testing_rpc_failure, "")
 
+/// To use this:
+///      export RAY_testing_all_rpc_failure=req_failure_prob:resp_failure_prob
+/// NOTE: testing_rpc_failure will be ignored if this is set and only the config from this
+/// will be used.
+RAY_CONFIG(std::string, testing_all_rpc_failure, "")
+
 /// The following are configs for the health check. They are borrowed
 /// from k8s health probe (shorturl.at/jmTY3)
 /// The delay to send the first health check.
