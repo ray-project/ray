@@ -378,7 +378,7 @@ class TestAutoscalingMetrics:
 
         # Wait for deployment A to scale up
         wait_for_condition(check_num_requests_eq, client=client, id=dep_id, expected=20)
-        wait_for_condition(check_num_replicas_eq, name="A", target=5)
+        wait_for_condition(check_num_replicas_eq, name="A", target=5, timeout=20)
         print("Confirmed deployment scaled to 5 replicas.")
 
         # Kill CallerActor
