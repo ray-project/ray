@@ -805,7 +805,7 @@ if __name__ == "__main__":
         exclude_package_data={
             # Empty string means "any package".
             # Therefore, exclude BUILD from every package:
-            "": ["BUILD"],
+            "": ["BUILD", "BUILD.bazel"],
         },
         zip_safe=False,
         license="Apache 2.0",
