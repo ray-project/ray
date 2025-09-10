@@ -73,19 +73,17 @@ TEST_F(GcsNodeManagerTest, TestListener) {
   int node_count = 1000;
 
   std::mutex callback_mutex;
-  std::condition_variable callback_cv;
   size_t callbacks_remaining = node_count;
 
   std::vector<std::shared_ptr<const rpc::GcsNodeInfo>> added_nodes;
   node_manager.AddNodeAddedListener(
-      [&added_nodes, &callback_mutex, &callbacks_remaining, &callback_cv](
+      [&added_nodes, &callback_mutex, &callbacks_remaining](
           std::shared_ptr<const rpc::GcsNodeInfo> node) {
         added_nodes.emplace_back(std::move(node));
         {
           std::lock_guard<std::mutex> lock(callback_mutex);
           --callbacks_remaining;
         }
-        callback_cv.notify_one();
       },
       io_context_->GetIoService());
   for (int i = 0; i < node_count; ++i) {
@@ -113,7 +111,7 @@ TEST_F(GcsNodeManagerTest, TestListener) {
   callbacks_remaining = node_count;
   std::vector<std::shared_ptr<const rpc::GcsNodeInfo>> removed_nodes;
   node_manager.AddNodeRemovedListener(
-      [&removed_nodes, &callback_mutex, &callback_cv, &callbacks_remaining](
+      [&removed_nodes, &callback_mutex, &callbacks_remaining](
           std::shared_ptr<const rpc::GcsNodeInfo> node) {
         removed_nodes.emplace_back(std::move(node));
         {
@@ -122,7 +120,6 @@ TEST_F(GcsNodeManagerTest, TestListener) {
             --callbacks_remaining;
           }
         }
-        callback_cv.notify_one();
       },
       io_context_->GetIoService());
   rpc::NodeDeathInfo death_info;
@@ -143,6 +140,41 @@ TEST_F(GcsNodeManagerTest, TestListener) {
   for (int i = 0; i < node_count; ++i) {
     ASSERT_EQ(added_nodes[i]->node_id(), removed_nodes[i]->node_id());
   }
+}
+
+// Register a node-added listener that calls back into
+// GcsNodeManager::IsNodeAlive(node_id) during notification. Verify no deadlock and that
+// state remains consistent. This validates the "post-notify" approach.
+
+TEST_F(GcsNodeManagerTest, TestAddNodeListenerCallbackDeadlock) {
+  gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
+                                   gcs_table_storage_.get(),
+                                   io_context_->GetIoService(),
+                                   client_pool_.get(),
+                                   ClusterID::Nil());
+  int node_count = 10;
+  std::mutex callback_mutex;
+  size_t callbacks_remaining = node_count;
+  node_manager.AddNodeAddedListener(
+      [&node_manager, &callback_mutex, &callbacks_remaining](
+          std::shared_ptr<const rpc::GcsNodeInfo> node) {
+        rpc::NodeDeathInfo death_info;
+        node_manager.RemoveNode(NodeID::FromBinary(node->node_id()),
+                                death_info,
+                                rpc::GcsNodeInfo::DEAD,
+                                1000);
+        std::lock_guard<std::mutex> lock(callback_mutex);
+        --callbacks_remaining;
+      },
+      io_context_->GetIoService());
+  for (int i = 0; i < 5; ++i) {
+    auto node = GenNodeInfo();
+    node_manager.AddNode(node);
+  }
+  while (callbacks_remaining > 0) {
+    io_context_->GetIoService().run_one();
+  }
+  ASSERT_EQ(0, node_manager.GetAllAliveNodes().size());
 }
 
 TEST_F(GcsNodeManagerTest, TestUpdateAliveNode) {
@@ -200,6 +232,25 @@ TEST_F(GcsNodeManagerTest, TestUpdateAliveNode) {
     EXPECT_TRUE(updated_node.has_value());
     EXPECT_EQ(updated_node.value()->state_snapshot().state(),
               rpc::NodeSnapshot::DRAINING);
+  }
+
+  // Test 4: Update node with draining state with activity and idle duration (new activity
+  // should be ignored)
+  {
+    rpc::syncer::ResourceViewSyncMessage sync_message;
+    sync_message.set_idle_duration_ms(100);
+    sync_message.set_is_draining(true);
+    sync_message.add_node_activity("Very Busy workers on node.");
+    sync_message.add_node_activity("Oh such very very busy workers on node.");
+
+    node_manager.UpdateAliveNode(node_id, sync_message);
+
+    auto updated_node = node_manager.GetAliveNode(node_id);
+    EXPECT_TRUE(updated_node.has_value());
+    EXPECT_EQ(updated_node.value()->state_snapshot().state(),
+              rpc::NodeSnapshot::DRAINING);
+    EXPECT_FALSE(updated_node.value()->state_snapshot().node_activity_size() == 1);
+    EXPECT_EQ(updated_node.value()->state_snapshot().idle_duration_ms(), 100);
   }
 }
 

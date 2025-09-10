@@ -96,6 +96,17 @@ class Postable {
         name);
   }
 
+  template <typename... Args>
+  void Dispatch(const std::string &name, Args &&...args) & {
+    RAY_CHECK(func_ != nullptr) << "Postable has already been invoked.";
+    io_context_.dispatch(
+        [func = std::move(func_),
+         args_tuple = std::make_tuple(std::forward<Args>(args)...)]() mutable {
+          std::apply(func, std::move(args_tuple));
+        },
+        name);
+  }
+
   // OnInvocation
   // Adds an observer that will be called on the io_context before the original function.
   Postable OnInvocation(std::function<void()> observer) && {
