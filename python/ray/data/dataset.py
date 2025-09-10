@@ -23,6 +23,7 @@ from typing import (
 )
 
 import numpy as np
+import pyarrow as pa
 
 import ray
 import ray.cloudpickle as pickle
@@ -111,6 +112,7 @@ from ray.data.block import (
 from ray.data.context import DataContext
 from ray.data.datasource import Connection, Datasink, FilenameProvider, SaveMode
 from ray.data.datasource.file_datasink import _FileDatasink
+from ray.data.expressions import Expr
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.types import ObjectRef
@@ -134,8 +136,6 @@ if TYPE_CHECKING:
 
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data.grouped_data import GroupedData
-
-from ray.data.expressions import Expr
 
 logger = logging.getLogger(__name__)
 
@@ -968,6 +968,99 @@ class Dataset:
             concurrency=concurrency,
             zero_copy_batch=False,
             **ray_remote_args,
+        )
+
+    @PublicAPI(api_group=BT_API_GROUP)
+    def distinct(
+        self,
+        keys: Optional[List[str]] = None,
+    ) -> "Dataset":
+        """
+        Remove duplicate rows from the dataset.
+
+        This method is useful for preprocessing data by eliminating redundant entries. It can operate
+        on all columns (default) or only on a set of columns specified by ``keys``. The method keeps
+        the first occurrence of each duplicate row.
+
+        The method uses an internal groupby operation to identify and remove duplicates. The 'first'
+        occurrence refers to the order of rows within each group after the groupby shuffling,
+        which may not correspond to the original dataset order.
+
+        .. tip::
+            Setting ``keys`` allows you to find unique values based on one or more chosen columns,
+            while other columns retain their values from the first row in each group.
+
+        .. tip::
+            For predictable ordering semantics, sort the dataset before calling distinct:
+
+            ``ds.sort(["timestamp"]).distinct(keys=["user_id"])`` - earliest record per user
+
+        .. warning::
+            ``distinct`` is an expensive operation that requires shuffling data across the cluster.
+            Large datasets may incur significant computation and memory cost.
+
+        Examples:
+
+            Remove duplicate rows across all columns:
+
+            .. testcode::
+
+                import ray
+                import pyarrow as pa
+
+                ds = ray.data.from_arrow(pa.table({"a": [1,2,1,2,3], "b": ["x","y","x","y","z"]}))
+                print(ds.distinct().sort(key=["a","b"]).take_all())
+
+            .. testoutput::
+
+                [{'a': 1, 'b': 'x'}, {'a': 2, 'b': 'y'}, {'a': 3, 'b': 'z'}]
+
+            Remove duplicates based on a subset of columns:
+
+            .. testcode::
+
+                print(ds.distinct(keys=["a"]).sort(key=["a"]).take_all())
+
+            .. testoutput::
+
+                [{'a': 1, 'b': 'x'}, {'a': 2, 'b': 'y'}, {'a': 3, 'b': 'z'}]
+
+            For predictable ordering, sort the dataset before calling distinct:
+
+            .. testcode::
+
+                ds3 = ray.data.from_arrow(pa.table({
+                    "id": [1, 1, 1, 2, 2],
+                    "timestamp": [100, 200, 300, 150, 250],
+                    "value": ["a", "b", "c", "d", "e"]
+                }))
+
+                # Get earliest record per id (sort by timestamp first)
+                earliest = ds3.sort(["id", "timestamp"]).distinct(keys=["id"])
+                print(earliest.sort(key=["id"]).take_all())
+
+            .. testoutput::
+
+                [{'id': 1, 'timestamp': 100, 'value': 'a'}, {'id': 2, 'timestamp': 150, 'value': 'd'}]
+
+        Args:
+            keys: List of columns to consider for identifying duplicates. Only the values in these columns are checked for duplication. If None, all columns are used. Defaults to None.
+
+        Returns:
+            A new dataset with duplicate rows removed, keeping the first occurrence of each duplicate.
+        """
+        all_cols = self.columns()
+        if not all_cols:
+            return self
+
+        subset_cols = keys if keys is not None else all_cols
+
+        def reducer_first(batch: pa.Table) -> pa.Table:
+            return batch.slice(0, 1)
+
+        return self.groupby(subset_cols).map_groups(
+            reducer_first,
+            batch_format="pyarrow",
         )
 
     @PublicAPI(api_group=BT_API_GROUP)
@@ -5736,7 +5829,8 @@ class Dataset:
         ref_bundles: Iterator[RefBundle] = self.iter_internal_ref_bundles()
         block_refs: List[
             ObjectRef["pyarrow.Table"]
-        ] = _ref_bundles_iterator_to_block_refs_list(ref_bundles)
+            ] = _ref_bundles_iterator_to_block_refs_list(ref_bundles)
+
         # Schema is safe to call since we have already triggered execution with
         # iter_internal_ref_bundles.
         schema = self.schema(fetch_if_missing=True)
