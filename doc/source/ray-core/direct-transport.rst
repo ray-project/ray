@@ -1,5 +1,8 @@
 .. _direct-transport:
 
+.. TODO: asyncio not yet supported.
+.. TODO: wait_tensor_freed
+
 **************************
 Ray Direct Transport (RDT)
 **************************
@@ -34,6 +37,7 @@ Currently, RDT supports the following tensor transports:
 For ease of following along, we'll start with the `Gloo <https://github.com/pytorch/gloo>`__ transport, which can be used without any physical GPUs.
 
 .. _direct-transport-gloo:
+
 Usage with Gloo (CPUs only)
 ---------------------------
 

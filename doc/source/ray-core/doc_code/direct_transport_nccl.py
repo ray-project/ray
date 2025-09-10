@@ -5,14 +5,16 @@ import torch
 import ray
 from ray.experimental.collective import create_collective_group
 
+
 @ray.remote(num_gpus=1)
 class MyActor:
-   @ray.method(tensor_transport="nccl")
-   def random_tensor(self):
-      return torch.randn(1000, 1000).cuda()
+    @ray.method(tensor_transport="nccl")
+    def random_tensor(self):
+        return torch.randn(1000, 1000).cuda()
 
-   def sum(self, tensor: torch.Tensor):
-      return torch.sum(tensor)
+    def sum(self, tensor: torch.Tensor):
+        return torch.sum(tensor)
+
 
 sender, receiver = MyActor.remote(), MyActor.remote()
 group = create_collective_group([sender, receiver], tensor_transport="nccl")

@@ -4,18 +4,23 @@
 import torch
 import ray
 
+
 @ray.remote
 class MyActor:
-   def random_tensor(self):
-      return torch.randn(1000, 1000)
+    def random_tensor(self):
+        return torch.randn(1000, 1000)
+
+
 # __normal_example_end__
 
 # __gloo_example_start__
 @ray.remote
 class MyActor:
-   @ray.method(tensor_transport="gloo")
-   def random_tensor(self):
-      return torch.randn(1000, 1000)
+    @ray.method(tensor_transport="gloo")
+    def random_tensor(self):
+        return torch.randn(1000, 1000)
+
+
 # __gloo_example_end__
 
 # __gloo_group_start__
@@ -23,14 +28,16 @@ import torch
 import ray
 from ray.experimental.collective import create_collective_group
 
+
 @ray.remote
 class MyActor:
-   @ray.method(tensor_transport="gloo")
-   def random_tensor(self):
-      return torch.randn(1000, 1000)
-    
-   def sum(self, tensor: torch.Tensor):
-      return torch.sum(tensor)
+    @ray.method(tensor_transport="gloo")
+    def random_tensor(self):
+        return torch.randn(1000, 1000)
+
+    def sum(self, tensor: torch.Tensor):
+        return torch.sum(tensor)
+
 
 sender, receiver = MyActor.remote(), MyActor.remote()
 # The tensor_transport specified here must match the one used in the @ray.method
@@ -49,14 +56,16 @@ import torch
 import ray
 from ray.experimental.collective import create_collective_group
 
+
 @ray.remote
 class MyActor:
-   @ray.method(tensor_transport="gloo")
-   def random_tensor(self):
-      return torch.randn(1000, 1000)
+    @ray.method(tensor_transport="gloo")
+    def random_tensor(self):
+        return torch.randn(1000, 1000)
 
-   def sum(self, tensor: torch.Tensor):
-      return torch.sum(tensor)
+    def sum(self, tensor: torch.Tensor):
+        return torch.sum(tensor)
+
 
 sender, receiver = MyActor.remote(), MyActor.remote()
 group = create_collective_group([sender, receiver], tensor_transport="gloo")
@@ -73,14 +82,16 @@ import torch
 import ray
 from ray.experimental.collective import create_collective_group
 
+
 @ray.remote
 class MyActor:
-   @ray.method(tensor_transport="gloo")
-   def random_tensor_dict(self):
-      return {"tensor1": torch.randn(1000, 1000), "tensor2": torch.randn(1000, 1000)}
+    @ray.method(tensor_transport="gloo")
+    def random_tensor_dict(self):
+        return {"tensor1": torch.randn(1000, 1000), "tensor2": torch.randn(1000, 1000)}
 
-   def sum(self, tensor_dict: dict):
-      return torch.sum(tensor_dict["tensor1"]) + torch.sum(tensor_dict["tensor2"])
+    def sum(self, tensor_dict: dict):
+        return torch.sum(tensor_dict["tensor1"]) + torch.sum(tensor_dict["tensor2"])
+
 
 sender, receiver = MyActor.remote(), MyActor.remote()
 group = create_collective_group([sender, receiver], tensor_transport="gloo")
