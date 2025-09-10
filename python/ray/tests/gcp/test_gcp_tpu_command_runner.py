@@ -6,10 +6,10 @@ from unittest.mock import patch
 
 import pytest
 
-from ray.tests.test_autoscaler import MockProvider, MockProcessRunner
-from ray.autoscaler._private.gcp.tpu_command_runner import TPUCommandRunner
-from ray.autoscaler._private.command_runner import SSHCommandRunner
 from ray._private import ray_constants
+from ray.autoscaler._private.command_runner import SSHCommandRunner
+from ray.autoscaler._private.gcp.tpu_command_runner import TPUCommandRunner
+from ray.tests.test_autoscaler import MockProcessRunner, MockProvider
 
 _MOCK_TPU_NAME = "my-tpu"
 _MOCK_ACCELERATOR_TYPE = "v4-16"

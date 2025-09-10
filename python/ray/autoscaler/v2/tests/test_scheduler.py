@@ -28,7 +28,6 @@ from ray.autoscaler.v2.schema import (
 )
 from ray.autoscaler.v2.tests.util import MockEventLogger, make_autoscaler_instance
 from ray.autoscaler.v2.utils import ResourceRequestUtil
-from ray.core.generated.common_pb2 import LabelSelectorOperator
 from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceConstraint,
     GangResourceRequest,
@@ -36,6 +35,7 @@ from ray.core.generated.autoscaler_pb2 import (
     NodeStatus,
     ResourceRequest,
 )
+from ray.core.generated.common_pb2 import LabelSelectorOperator
 from ray.core.generated.instance_manager_pb2 import (
     Instance,
     NodeKind,

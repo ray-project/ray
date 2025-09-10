@@ -1,0 +1,24 @@
+load("//bazel:ray.bzl", "ray_cc_test")
+
+# This test is run through sysfs_cgroup_driver_integration_test_entrypoint.sh
+# See sysfs_cgroup_driver_integration_test_entrypoint.sh for instructions
+# for how to run locally.
+ray_cc_test(
+    name = "sysfs_cgroup_driver_integration_test",
+    srcs = ["sysfs_cgroup_driver_integration_test.cc"],
+    tags = [
+        "cgroup",
+        "team:core",
+    ],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
+    deps = [
+        "//src/ray/common:status",
+        "//src/ray/common:status_or",
+        "//src/ray/common/cgroup2:cgroup_test_utils",
+        "//src/ray/common/cgroup2:sysfs_cgroup_driver",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

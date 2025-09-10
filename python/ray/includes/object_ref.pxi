@@ -6,6 +6,7 @@ import functools
 import logging
 import threading
 from typing import Callable, Any, Union
+from _collections_abc import GenericAlias
 
 import ray
 import cython
@@ -34,18 +35,19 @@ def _set_future_helper(
 
 
 cdef class ObjectRef(BaseID):
+    __class_getitem__ = classmethod(GenericAlias) # should match how typing.Generic works
 
     def __cinit__(self):
         self.in_core_worker = False
 
     def __init__(
             self, id, owner_addr="", call_site_data="",
-            skip_adding_local_ref=False):
+            skip_adding_local_ref=False, tensor_transport_val=0):
         self._set_id(id)
         self.owner_addr = owner_addr
         self.in_core_worker = False
         self.call_site_data = call_site_data
-
+        self.tensor_transport_val = tensor_transport_val
         worker = ray._private.worker.global_worker
         # TODO(edoakes): We should be able to remove the in_core_worker flag.
         # But there are still some dummy object refs being created outside the
@@ -97,7 +99,8 @@ cdef class ObjectRef(BaseID):
     def call_site(self):
         return decode(self.call_site_data)
 
-    def size(self):
+    @classmethod
+    def size(cls):
         return CObjectID.Size()
 
     def _set_id(self, id):
@@ -152,3 +155,9 @@ cdef class ObjectRef(BaseID):
         core_worker = ray._private.worker.global_worker.core_worker
         core_worker.set_get_async_callback(self, py_callback)
         return self
+
+    def tensor_transport(self):
+        return self.tensor_transport_val
+
+    cdef CTensorTransport c_tensor_transport(self):
+        return <CTensorTransport>self.tensor_transport_val
