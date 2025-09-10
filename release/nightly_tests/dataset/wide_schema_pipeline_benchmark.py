@@ -1,5 +1,4 @@
 import argparse
-import uuid
 from typing import Dict, Any
 
 import ray
@@ -12,20 +11,22 @@ def parse_args() -> argparse.Namespace:
         "--data-type",
         choices=["primitives", "tensors", "objects", "nested_structs"],
         default="primitives",
-        help="Type of pre-generated dataset to benchmark"
+        help="Type of pre-generated dataset to benchmark",
     )
-    
+
     return parser.parse_args()
 
 
 def main(args: argparse.Namespace) -> None:
     benchmark = Benchmark()
-    
+
     # Use pre-generated datasets from S3
-    input_path = f"s3://ray-benchmark-data-internal-us-west-2/wide_schema/{args.data_type}"
-    
+    input_path = (
+        f"s3://ray-benchmark-data-internal-us-west-2/wide_schema/{args.data_type}"
+    )
+
     print(f"Using pre-generated dataset: {input_path}")
-    
+
     # Run the pipeline benchmark (TIMED)
     def run_pipeline() -> Dict[str, Any]:
         """Run the data pipeline: read -> map_batches -> write"""
@@ -34,19 +35,17 @@ def main(args: argparse.Namespace) -> None:
         # Get dataset stats for reporting
         row_count = ds.count()
         actual_num_columns = len(ds.schema().base_schema)
-        
+
         return {
             "num_columns": actual_num_columns,
             "data_type": args.data_type,
             "num_rows": row_count,
             "input_path": input_path,
         }
-    
+
     # Run the timed benchmark
     benchmark.run_fn("wide_schema_pipeline", run_pipeline)
     benchmark.write_result()
-    
-    print(f"Pipeline completed. Results written to")
 
 
 if __name__ == "__main__":
