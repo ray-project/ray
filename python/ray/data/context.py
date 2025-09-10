@@ -364,6 +364,8 @@ class DataContext:
             to use.
         use_ray_tqdm: Whether to enable distributed tqdm.
         enable_progress_bars: Whether to enable progress bars.
+        enable_operator_progress_bars: Whether to enable progress bars for individual
+            operators during execution.
         enable_progress_bar_name_truncation: If True, the name of the progress bar
             (often the operator name) will be truncated if it exceeds
             `ProgressBar.MAX_NAME_LENGTH`. Otherwise, the full operator name is shown.
@@ -379,7 +381,8 @@ class DataContext:
             retry. This follows same format as :ref:`retry_exceptions <task-retries>` in
             Ray Core. Default to `False` to not retry on any errors. Set to `True` to
             retry all errors, or set to a list of errors to retry.
-        enable_op_resource_reservation: Whether to reserve resources for each operator.
+        op_resource_reservation_enabled: Whether to enable resource reservation for
+            operators to prevent resource contention.
         op_resource_reservation_ratio: The ratio of the total resources to reserve for
             each operator.
         max_errored_blocks: Max number of blocks that are allowed to have errors,
@@ -410,7 +413,7 @@ class DataContext:
             trigger a retry when reading or writing files. This is useful for handling
             transient errors when reading from remote storage systems.
         default_hash_shuffle_parallelism: Default parallelism level for hash-based
-            shuffle operations.
+            shuffle operations if the number of partitions is unspecifed.
         max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
             provisioned for hash-shuffle aggregations.
         min_hash_shuffle_aggregator_wait_time_in_s: Minimum time to wait for hash
@@ -427,10 +430,6 @@ class DataContext:
         hash_aggregate_operator_actor_num_cpus_per_partition_override: Override CPU
             allocation per partition for hash aggregate operator actors.
         use_polars_sort: Whether to use Polars for tabular dataset sorting operations.
-        enable_operator_progress_bars: Whether to enable progress bars for individual
-            operators during execution.
-        op_resource_reservation_enabled: Whether to enable resource reservation for
-            operators to prevent resource contention.
         enable_per_node_metrics: Enable per node metrics reporting for Ray Data,
             disabled by default.
         override_object_store_memory_limit_fraction: Override the fraction of object
@@ -442,12 +441,13 @@ class DataContext:
         issue_detectors_config: Configuration for issue detection and monitoring during
             dataset operations.
         downstream_capacity_backpressure_ratio: Ratio for downstream capacity
-            backpressure control. If `None`, backpressure is disabled.
+            backpressure control. A higher ratio causes backpressure to kick-in
+            later. If `None`, this type of backpressure is disabled.
         downstream_capacity_backpressure_max_queued_bundles: Maximum number of queued
             bundles before applying backpressure. If `None`, no limit is applied.
         enforce_schemas: Whether to enforce schema consistency across dataset operations.
         pandas_block_ignore_metadata: Whether to ignore pandas metadata when converting
-            between Arrow and pandas formats for improved performance.
+            between Arrow and pandas formats for better type inference.
     """
 
     # `None` means the block size is infinite.
