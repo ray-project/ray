@@ -1,6 +1,6 @@
 FROM anyscale/ray-llm:2.49.1-py311-cu128
 
-COPY ./llm_example_py311_cu128.lock .
+COPY python/deplocks/examples/entity-recognition-with-llms/llm_example_py311_cu128.lock .
 
 RUN uv pip sync llm_example_py311_cu128.lock
 
