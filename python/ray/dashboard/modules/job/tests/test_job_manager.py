@@ -363,7 +363,9 @@ async def test_pending_job_timeout_during_raylet_creation(
     """Test the timeout for pending jobs during new raylet creation."""
 
     RAY_JOB_START_TIMEOUT_S = 1
-    monkeypatch.setenv(RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR, str(RAY_JOB_START_TIMEOUT_S))
+    monkeypatch.setenv(
+        RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR, str(RAY_JOB_START_TIMEOUT_S)
+    )
 
     ray.init(address=call_ray_start)
     gcs_client = ray._private.worker.global_worker.gcs_client
