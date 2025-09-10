@@ -16,7 +16,7 @@ from ray._common.test_utils import wait_for_condition
 from ray.actor import ActorHandle
 from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.execution.bundle_queue import FIFOBundleQueue
-from ray.data._internal.execution.interfaces import ExecutionResources
+from ray.data._internal.execution.interfaces import ExecutionOptions, ExecutionResources
 from ray.data._internal.execution.interfaces.physical_operator import _ActorPoolInfo
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
@@ -591,6 +591,26 @@ class TestActorPool(unittest.TestCase):
         except StopIteration:
             res5 = None
         assert res5 is None
+
+
+def test_setting_initial_size_for_actor_pool():
+    data_context = ray.data.DataContext.get_current()
+    op = ActorPoolMapOperator(
+        map_transformer=MagicMock(),
+        input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+        data_context=data_context,
+        target_max_block_size=None,
+        compute_strategy=ray.data.ActorPoolStrategy(
+            min_size=1, max_size=4, initial_size=2
+        ),
+        ray_remote_args={"num_cpus": 1},
+    )
+
+    op.start(ExecutionOptions())
+
+    assert op._actor_pool.get_actor_info() == _ActorPoolInfo(
+        running=0, pending=2, restarting=0
+    )
 
 
 def test_min_max_resource_requirements(restore_data_context):
