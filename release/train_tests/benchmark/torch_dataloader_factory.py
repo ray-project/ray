@@ -149,7 +149,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             pin_memory=pin_memory,
             prefetch_factor=prefetch_factor,
             timeout=timeout,
-            drop_last=True,
+            drop_last=False,
             **multiprocessing_args,
         )
         # Add a DistributedSampler to the dataloader if possible (map-style datasets)
