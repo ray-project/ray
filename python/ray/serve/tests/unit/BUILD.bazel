@@ -21,7 +21,10 @@ py_test_run_all_subdirectory(
 
 py_test_module_list(
     size = "medium",
-    env = {"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1"},
+    env = {
+        "RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1",
+        "RAY_SERVE_FAIL_ON_RANK_ERROR": "1",
+    },
     files = [
         "test_deployment_scheduler.py",
         "test_deployment_state.py",
@@ -40,7 +43,10 @@ py_test_module_list(
 
 py_test_module_list(
     size = "medium",
-    env = {"RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0"},
+    env = {
+        "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
+        "RAY_SERVE_FAIL_ON_RANK_ERROR": "1",
+    },
     files = [
         "test_autoscaling_policy.py",
         "test_deployment_state.py",
