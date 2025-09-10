@@ -853,11 +853,8 @@ class DeploymentSnapshot:
         *,
         limit: int = AUTOSCALER_SUMMARIZER_DECISION_LIMIT,
     ) -> List["AutoscalingDecisionSummary"]:
-        """Return a shallow summary of recent decisions without reformatting fields.
-
-        - Pass through timestamp_s as-is (may be None).
-        - Pass through reason as-is (defaults to empty string if missing).
-        - Only converts objects/dicts to AutoscalingDecisionSummary.
+        """
+        Return summaries of the most recent `limit` decisions.
         """
         out: List["AutoscalingDecisionSummary"] = []
         for d in list(decisions)[-limit:]:
