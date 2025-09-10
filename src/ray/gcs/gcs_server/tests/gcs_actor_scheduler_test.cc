@@ -43,7 +43,7 @@ class MockedGcsActorScheduler : public gcs::GcsActorScheduler {
 
  protected:
   void RetryLeasingWorkerFromNode(std::shared_ptr<gcs::GcsActor> actor,
-                                  std::shared_ptr<rpc::GcsNodeInfo> node) override {
+                                  std::shared_ptr<const rpc::GcsNodeInfo> node) override {
     ++num_retry_leasing_count_;
     if (num_retry_leasing_count_ <= 1) {
       DoRetryLeasingWorkerFromNode(actor, node);
@@ -148,18 +148,6 @@ class GcsActorSchedulerTest : public ::testing::Test {
                                const rpc::ResourcesData &resources) {
           gcs_resource_manager->UpdateNodeNormalTaskResources(node_id, resources);
         });
-
-    gcs_node_manager_->AddNodeAddedListener(
-        [cluster_resource_scheduler =
-             cluster_resource_scheduler_.get()](std::shared_ptr<rpc::GcsNodeInfo> node) {
-          scheduling::NodeID node_id(node->node_id());
-          auto &cluster_resource_manager =
-              cluster_resource_scheduler->GetClusterResourceManager();
-          auto resource_map = MapFromProtobuf(node->resources_total());
-          auto node_resources = ResourceMapToNodeResources(resource_map, resource_map);
-          cluster_resource_manager.AddOrUpdateNode(node_id, node_resources);
-        },
-        io_context_->GetIoService());
   }
 
   void TearDown() override { io_context_->Stop(); }
@@ -196,6 +184,13 @@ class GcsActorSchedulerTest : public ::testing::Test {
     node_info->mutable_resources_total()->insert(node_resources.begin(),
                                                  node_resources.end());
     gcs_node_manager_->AddNode(node_info);
+    scheduling::NodeID node_id(node_info->node_id());
+    auto &cluster_resource_manager =
+        cluster_resource_scheduler_->GetClusterResourceManager();
+    auto resource_map = MapFromProtobuf(node_info->resources_total());
+    auto node_resources_ = ResourceMapToNodeResources(resource_map, resource_map);
+    cluster_resource_manager.AddOrUpdateNode(node_id, node_resources_);
+
     return node_info;
   }
 
@@ -397,7 +392,7 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenLeasing) {
   // Remove the node and cancel the scheduling on this node, the scheduling should be
   // interrupted.
   rpc::NodeDeathInfo death_info;
-  gcs_node_manager_->RemoveNode(node_id, death_info);
+  gcs_node_manager_->RemoveNode(node_id, death_info, rpc::GcsNodeInfo::DEAD, 1000);
   ASSERT_EQ(0, gcs_node_manager_->GetAllAliveNodes().size());
   auto actor_ids = gcs_actor_scheduler_->CancelOnNode(node_id);
   ASSERT_EQ(1, actor_ids.size());
@@ -486,7 +481,7 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenCreating) {
   // Remove the node and cancel the scheduling on this node, the scheduling should be
   // interrupted.
   rpc::NodeDeathInfo death_info;
-  gcs_node_manager_->RemoveNode(node_id, death_info);
+  gcs_node_manager_->RemoveNode(node_id, death_info, rpc::GcsNodeInfo::DEAD, 1000);
   ASSERT_EQ(0, gcs_node_manager_->GetAllAliveNodes().size());
   auto actor_ids = gcs_actor_scheduler_->CancelOnNode(node_id);
   ASSERT_EQ(1, actor_ids.size());
@@ -1002,7 +997,7 @@ TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestNodeFailedWhenLeasingByGcs) {
   // Remove the node and cancel the scheduling on this node, the scheduling should be
   // interrupted.
   rpc::NodeDeathInfo death_info;
-  gcs_node_manager_->RemoveNode(node_id, death_info);
+  gcs_node_manager_->RemoveNode(node_id, death_info, rpc::GcsNodeInfo::DEAD, 1000);
   ASSERT_EQ(0, gcs_node_manager_->GetAllAliveNodes().size());
   auto actor_ids = gcs_actor_scheduler_->CancelOnNode(node_id);
   ASSERT_EQ(1, actor_ids.size());
@@ -1097,7 +1092,7 @@ TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestNodeFailedWhenCreatingByGcs) 
   // Remove the node and cancel the scheduling on this node, the scheduling should be
   // interrupted.
   rpc::NodeDeathInfo death_info;
-  gcs_node_manager_->RemoveNode(node_id, death_info);
+  gcs_node_manager_->RemoveNode(node_id, death_info, rpc::GcsNodeInfo::DEAD, 1000);
   ASSERT_EQ(0, gcs_node_manager_->GetAllAliveNodes().size());
   auto actor_ids = gcs_actor_scheduler_->CancelOnNode(node_id);
   ASSERT_EQ(1, actor_ids.size());

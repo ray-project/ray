@@ -700,7 +700,7 @@ void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) 
       /*overwrite=*/true,
       {[this, v2_enabled](bool new_value_put) {
          if (!new_value_put) {
-           // NOTE(rickyx): We cannot know if an overwirte Put succeeds or fails (e.g.
+           // NOTE(rickyx): We cannot know if an overwrite Put succeeds or fails (e.g.
            // when GCS re-started), so we just try to get the value to check if it's
            // correct.
            // TODO(rickyx): We could probably load some system configs from internal kv

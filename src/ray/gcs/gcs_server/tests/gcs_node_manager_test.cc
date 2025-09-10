@@ -167,7 +167,7 @@ TEST_F(GcsNodeManagerTest, TestAddNodeListenerCallbackDeadlock) {
         --callbacks_remaining;
       },
       io_context_->GetIoService());
-  for (int i = 0; i < 5; ++i) {
+  for (int i = 0; i < node_count; ++i) {
     auto node = GenNodeInfo();
     node_manager.AddNode(node);
   }
