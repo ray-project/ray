@@ -6,14 +6,14 @@ import string
 import sys
 import tempfile
 import uuid
+import zipfile
 from filecmp import dircmp
 from pathlib import Path
 from shutil import copytree, make_archive, rmtree
-import zipfile
-import ray
 
 import pytest
 
+import ray
 from ray._private.ray_constants import (
     KV_NAMESPACE_PACKAGE,
     RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
@@ -24,12 +24,13 @@ from ray._private.runtime_env.packaging import (
     Protocol,
     _dir_travel,
     _get_excludes,
+    _get_gitignore,
     _store_package_in_gcs,
     download_and_unpack_package,
     get_local_dir_from_uri,
     get_top_level_dir_from_compressed_package,
-    get_uri_for_file,
     get_uri_for_directory,
+    get_uri_for_file,
     get_uri_for_package,
     is_whl_uri,
     is_zip_uri,
@@ -37,7 +38,6 @@ from ray._private.runtime_env.packaging import (
     remove_dir_from_filepaths,
     unzip_package,
     upload_package_if_needed,
-    _get_gitignore,
     upload_package_to_gcs,
 )
 from ray.experimental.internal_kv import (
@@ -492,6 +492,11 @@ class TestParseUri:
             ("gs://bucket/file.zip", Protocol.GS, "gs_bucket_file.zip"),
             ("azure://container/file.zip", Protocol.AZURE, "azure_container_file.zip"),
             (
+                "abfss://container@account.dfs.core.windows.net/file.zip",
+                Protocol.ABFSS,
+                "abfss_container_account_dfs_core_windows_net_file.zip",
+            ),
+            (
                 "https://test.com/package-0.0.1-py2.py3-none-any.whl?param=value",
                 Protocol.HTTPS,
                 "package-0.0.1-py2.py3-none-any.whl",
@@ -554,6 +559,11 @@ class TestParseUri:
                 "azure_fake_2022-10-21T13_11_35_00_00_package.zip",
             ),
             (
+                "abfss://container@account.dfs.core.windows.net/2022-10-21T13:11:35+00:00/package.zip",
+                Protocol.ABFSS,
+                "abfss_container_account_dfs_core_windows_net_2022-10-21T13_11_35_00_00_package.zip",
+            ),
+            (
                 "file:///fake/2022-10-21T13:11:35+00:00/package.zip",
                 Protocol.FILE,
                 "file__fake_2022-10-21T13_11_35_00_00_package.zip",
@@ -595,6 +605,11 @@ class TestParseUri:
                 "package.whl",
             ),
             (
+                "abfss://container@account.dfs.core.windows.net/2022-10-21T13:11:35+00:00/package.whl",
+                Protocol.ABFSS,
+                "package.whl",
+            ),
+            (
                 "file:///fake/2022-10-21T13:11:35+00:00/package.whl",
                 Protocol.FILE,
                 "package.whl",
@@ -616,6 +631,142 @@ class TestParseUri:
         protocol, package_name = parse_uri(gcs_uri)
         assert protocol == Protocol.GCS
         assert package_name == gcs_uri.split("/")[-1]
+
+
+class TestAbfssProtocol:
+    """Test ABFSS protocol implementation."""
+
+    def test_abfss_protocol_handler_with_invalid_uris(self, tmp_path):
+        """Test that ABFSS protocol handler raises ValueError for invalid URIs."""
+        import unittest.mock as mock
+
+        invalid_uris = [
+            "abfss://@account.dfs.core.windows.net/file.zip",  # Empty container name
+            "abfss://container@.dfs.core.windows.net/file.zip",  # Empty account name
+            "abfss://container@account.blob.core.windows.net/file.zip",  # Wrong endpoint
+            "abfss://container@account.core.windows.net/file.zip",  # Missing .dfs
+            "abfss://account.dfs.core.windows.net/file.zip",  # Missing container@
+            "abfss://container",  # Missing @ and hostname
+            "abfss://",  # Empty netloc
+        ]
+
+        dest_file = tmp_path / "test_download.zip"
+
+        # Mock adlfs and azure.identity modules in sys.modules to avoid import errors in CI
+        import sys
+
+        mock_adlfs_module = mock.MagicMock()
+        mock_azure_identity_module = mock.MagicMock()
+
+        with mock.patch.dict(
+            sys.modules,
+            {
+                "adlfs": mock_adlfs_module,
+                "azure": mock.MagicMock(),
+                "azure.identity": mock_azure_identity_module,
+            },
+        ):
+            # Setup the mocks (though they won't be called due to validation failures)
+            mock_filesystem = mock.Mock()
+            mock_adlfs_module.AzureBlobFileSystem.return_value = mock_filesystem
+            mock_filesystem.open.return_value = mock.Mock()
+
+            for invalid_uri in invalid_uris:
+                with pytest.raises(ValueError, match="Invalid ABFSS URI format"):
+                    Protocol.ABFSS.download_remote_uri(invalid_uri, str(dest_file))
+
+
+class TestS3Protocol:
+    """Test S3 protocol implementation with public bucket fallback."""
+
+    def test_s3_client_creation_with_credentials(self):
+        """Test S3 client creation when credentials are available."""
+        import sys
+        import unittest.mock as mock
+
+        # Mock boto3 and smart_open modules
+        mock_boto3 = mock.MagicMock()
+        mock_smart_open = mock.MagicMock()
+
+        # Setup successful credential scenario
+        mock_session = mock.MagicMock()
+        mock_s3_client = mock.MagicMock()
+        mock_credentials = mock.MagicMock()  # Non-None credentials
+
+        mock_boto3.Session.return_value = mock_session
+        mock_session.get_credentials.return_value = mock_credentials
+        mock_session.client.return_value = mock_s3_client
+
+        with mock.patch.dict(
+            sys.modules,
+            {
+                "boto3": mock_boto3,
+                "smart_open": mock_smart_open,
+            },
+        ):
+            mock_smart_open.open = mock.MagicMock()
+
+            from ray._private.runtime_env.protocol import ProtocolsProvider
+
+            open_file, transport_params = ProtocolsProvider._handle_s3_protocol()
+
+            # Verify that Session was created and get_credentials was called
+            mock_boto3.Session.assert_called_once()
+            mock_session.get_credentials.assert_called_once()
+            # Verify that session.client was called to create signed S3 client
+            mock_session.client.assert_called_with("s3")
+            # Verify that the signed client is returned
+            assert transport_params["client"] == mock_s3_client
+
+    def test_s3_client_creation_without_credentials(self):
+        """Test S3 client creation falls back to unsigned when no credentials."""
+        import sys
+        import unittest.mock as mock
+
+        # Mock boto3 and botocore modules
+        mock_boto3 = mock.MagicMock()
+        mock_botocore = mock.MagicMock()
+        mock_smart_open = mock.MagicMock()
+
+        # Setup no credentials scenario
+        mock_session = mock.MagicMock()
+        mock_unsigned_client = mock.MagicMock()
+
+        mock_boto3.Session.return_value = mock_session
+        mock_session.get_credentials.return_value = None  # No credentials found
+        mock_boto3.client.return_value = mock_unsigned_client
+
+        # Mock Config and UNSIGNED
+        mock_config_class = mock.MagicMock()
+        mock_config = mock.MagicMock()
+        mock_config_class.return_value = mock_config
+        mock_botocore.config.Config = mock_config_class
+        mock_botocore.UNSIGNED = "UNSIGNED"
+
+        with mock.patch.dict(
+            sys.modules,
+            {
+                "boto3": mock_boto3,
+                "botocore": mock_botocore,
+                "botocore.config": mock_botocore.config,
+                "smart_open": mock_smart_open,
+            },
+        ):
+            mock_smart_open.open = mock.MagicMock()
+
+            from ray._private.runtime_env.protocol import ProtocolsProvider
+
+            open_file, transport_params = ProtocolsProvider._handle_s3_protocol()
+
+            # Verify that Session was created and get_credentials was called
+            mock_boto3.Session.assert_called_once()
+            mock_session.get_credentials.assert_called_once()
+            # Verify that boto3.client was called for unsigned client with config
+            mock_boto3.client.assert_called_with("s3", config=mock_config)
+            # Verify Config was created with UNSIGNED signature
+            mock_config_class.assert_called_with(signature_version="UNSIGNED")
+            # Verify that the unsigned client is returned
+            assert transport_params["client"] == mock_unsigned_client
 
 
 @pytest.mark.asyncio
@@ -698,8 +849,8 @@ class TestDownloadAndUnpackPackage:
                 # Add a file to the zip file so we can verify the file was extracted.
                 zip.writestr("file.txt", "Hello, world!")
 
-            from urllib.request import pathname2url
             from urllib.parse import urljoin
+            from urllib.request import pathname2url
 
             # in windows, file_path = ///C:/Users/...
             # in linux, file_path = /tmp/...

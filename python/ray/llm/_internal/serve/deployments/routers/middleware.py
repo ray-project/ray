@@ -67,10 +67,10 @@ def _uncaught_exception_handler(request: Request, e: Exception):
 
     logger.error(f"Uncaught exception while handling request {request_id}", exc_info=e)
 
-    response_payload = get_response_for_error(e, request_id)
+    error_response = get_response_for_error(e, request_id)
 
     return JSONResponse(
-        content=response_payload.model_dump(), status_code=response_payload.code
+        content=error_response.model_dump(), status_code=error_response.error.code
     )
 
 
@@ -111,11 +111,11 @@ def add_exception_handling_middleware(router: FastAPI):
             return await _handle_validation_error(request, e)
         except Exception as e:
             request_id = get_request_id(request)
-            response_payload = get_response_for_error(e, request_id)
+            error_response = get_response_for_error(e, request_id)
 
             return JSONResponse(
-                content=response_payload.model_dump(),
-                status_code=response_payload.code,
+                content=error_response.model_dump(),
+                status_code=error_response.error.code,
             )
 
     # This adds last-resort uncaught exception handler into Starlette

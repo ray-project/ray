@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -25,10 +26,12 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
+#include "ray/common/status.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/core_worker/task_manager_interface.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/observability/metric_interface.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/counter_map.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -38,13 +41,15 @@
 namespace ray {
 namespace core {
 
+using std::literals::operator""sv;
+
 class ActorManager;
 
 using TaskStatusCounter = CounterMap<std::tuple<std::string, rpc::TaskStatus, bool>>;
 using PutInLocalPlasmaCallback =
-    std::function<void(const RayObject &object, const ObjectID &object_id)>;
-using RetryTaskCallback =
-    std::function<void(TaskSpecification &spec, bool object_recovery, uint32_t delay_ms)>;
+    std::function<Status(const RayObject &object, const ObjectID &object_id)>;
+using AsyncRetryTaskCallback =
+    std::function<void(TaskSpecification &spec, uint32_t delay_ms)>;
 using ReconstructObjectCallback = std::function<void(const ObjectID &object_id)>;
 using PushErrorCallback = std::function<Status(const JobID &job_id,
                                                const std::string &type,
@@ -173,33 +178,35 @@ class TaskManager : public TaskManagerInterface {
       CoreWorkerMemoryStore &in_memory_store,
       ReferenceCounter &reference_counter,
       PutInLocalPlasmaCallback put_in_local_plasma_callback,
-      RetryTaskCallback retry_task_callback,
+      AsyncRetryTaskCallback async_retry_task_callback,
       std::function<bool(const TaskSpecification &spec)> queue_generator_resubmit,
       PushErrorCallback push_error_callback,
       int64_t max_lineage_bytes,
       worker::TaskEventBuffer &task_event_buffer,
       std::function<std::shared_ptr<ray::rpc::CoreWorkerClientInterface>(const ActorID &)>
           client_factory,
-      std::shared_ptr<gcs::GcsClient> gcs_client)
+      std::shared_ptr<gcs::GcsClient> gcs_client,
+      ray::observability::MetricInterface &task_by_state_counter)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         put_in_local_plasma_callback_(std::move(put_in_local_plasma_callback)),
-        retry_task_callback_(std::move(retry_task_callback)),
+        async_retry_task_callback_(std::move(async_retry_task_callback)),
         queue_generator_resubmit_(std::move(queue_generator_resubmit)),
         push_error_callback_(std::move(push_error_callback)),
         max_lineage_bytes_(max_lineage_bytes),
         task_event_buffer_(task_event_buffer),
         get_actor_rpc_client_callback_(std::move(client_factory)),
-        gcs_client_(std::move(gcs_client)) {
+        gcs_client_(std::move(gcs_client)),
+        task_by_state_counter_(task_by_state_counter) {
     task_counter_.SetOnChangeCallback(
         [this](const std::tuple<std::string, rpc::TaskStatus, bool> &key)
             ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
-              ray::stats::STATS_tasks.Record(
+              task_by_state_counter_.Record(
                   task_counter_.Get(key),
-                  {{"State", rpc::TaskStatus_Name(std::get<1>(key))},
-                   {"Name", std::get<0>(key)},
-                   {"IsRetry", std::get<2>(key) ? "1" : "0"},
-                   {"Source", "owner"}});
+                  {{"State"sv, rpc::TaskStatus_Name(std::get<1>(key))},
+                   {"Name"sv, std::get<0>(key)},
+                   {"IsRetry"sv, std::get<2>(key) ? "1" : "0"},
+                   {"Source"sv, "owner"}});
             });
     reference_counter_.SetReleaseLineageCallback(
         [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
@@ -501,41 +508,41 @@ class TaskManager : public TaskManagerInterface {
 
  private:
   struct TaskEntry {
-    TaskEntry(TaskSpecification spec_arg,
-              int num_retries_left_arg,
+    TaskEntry(TaskSpecification spec,
+              int num_retries_left,
               size_t num_returns,
               TaskStatusCounter &counter,
               int64_t num_oom_retries_left)
-        : spec(std::move(spec_arg)),
-          num_retries_left(num_retries_left_arg),
-          counter(&counter),
-          num_oom_retries_left(num_oom_retries_left),
-          is_canceled(false) {
-      reconstructable_return_ids.reserve(num_returns);
+        : spec_(std::move(spec)),
+          num_retries_left_(num_retries_left),
+          counter_(&counter),
+          num_oom_retries_left_(num_oom_retries_left),
+          is_canceled_(false) {
+      reconstructable_return_ids_.reserve(num_returns);
       for (size_t i = 0; i < num_returns; i++) {
-        reconstructable_return_ids.insert(spec.ReturnId(i));
+        reconstructable_return_ids_.insert(spec_.ReturnId(i));
       }
-      status =
-          std::make_tuple(spec.GetName(), rpc::TaskStatus::PENDING_ARGS_AVAIL, false);
-      counter.Increment(status);
+      status_ =
+          std::make_tuple(spec_.GetName(), rpc::TaskStatus::PENDING_ARGS_AVAIL, false);
+      counter_->Increment(status_);
     }
 
     void SetStatus(rpc::TaskStatus new_status) {
-      auto new_tuple = std::make_tuple(spec.GetName(), new_status, is_retry_);
+      auto new_tuple = std::make_tuple(spec_.GetName(), new_status, is_retry_);
       if (IsPending()) {
-        counter->Swap(status, new_tuple);
+        counter_->Swap(status_, new_tuple);
       } else {
         // FINISHED and FAILED are monotonically increasing.
         // TODO(jjyao): We should use Counter instead of Gauge
         // for FINISHED and FAILED tasks.
-        counter->Increment(new_tuple);
+        counter_->Increment(new_tuple);
       }
-      status = std::move(new_tuple);
+      status_ = std::move(new_tuple);
     }
 
     void MarkRetry() { is_retry_ = true; }
 
-    rpc::TaskStatus GetStatus() const { return std::get<1>(status); }
+    rpc::TaskStatus GetStatus() const { return std::get<1>(status_); }
 
     // Get the NodeID where the task is executed.
     NodeID GetNodeId() const { return node_id_; }
@@ -555,25 +562,25 @@ class TaskManager : public TaskManagerInterface {
     /// - The task is still pending execution. This means that the task may
     /// fail and so it may be retried in the future.
     /// - The task finished execution, but it has num_retries_left > 0 and
-    /// reconstructable_return_ids is not empty. This means that the task may
+    /// reconstructable_return_ids_ is not empty. This means that the task may
     /// be retried in the future to recreate its return objects.
     /// TODO(swang): The TaskSpec protobuf must be copied into the
     /// PushTaskRequest protobuf when sent to a worker so that we can retry it if
     /// the worker fails. We could avoid this by either not caching the full
     /// TaskSpec for tasks that cannot be retried (e.g., actor tasks), or by
     /// storing a shared_ptr to a PushTaskRequest protobuf for all tasks.
-    TaskSpecification spec;
+    TaskSpecification spec_;
     // Number of times this task may be resubmitted. If this reaches 0, then
     // the task entry may be erased.
-    int32_t num_retries_left;
+    int32_t num_retries_left_;
     // Reference to the task stats tracker.
-    TaskStatusCounter *counter;
+    TaskStatusCounter *counter_;
     // Number of times this task may be resubmitted if the task failed
     // due to out of memory failure.
-    int32_t num_oom_retries_left;
+    int32_t num_oom_retries_left_;
     // Whether the task has been marked for cancellation.
     // Canceled tasks will never be retried.
-    bool is_canceled;
+    bool is_canceled_;
     // Objects returned by this task that are reconstructable. This is set
     // objects may be reconstructed by resubmitting the task. Once the task
     // finishes its first execution, then the objects that the task returned by
@@ -584,18 +591,18 @@ class TaskManager : public TaskManagerInterface {
     // 2) There are no tasks that depend on the object. This includes both
     //    pending tasks and tasks that finished execution but that may be
     //    retried in the future.
-    absl::flat_hash_set<ObjectID> reconstructable_return_ids;
+    absl::flat_hash_set<ObjectID> reconstructable_return_ids_;
     // The size of this (serialized) task spec in bytes, if the task spec is
     // not pending, i.e. it is being pinned because it's in another object's
     // lineage. We cache this because the task spec protobuf can mutate
     // out-of-band.
-    int64_t lineage_footprint_bytes = 0;
+    int64_t lineage_footprint_bytes_ = 0;
     // Number of times this task successfully completed execution so far.
-    int num_successful_executions = 0;
+    int num_successful_executions_ = 0;
 
    private:
     // The task's current execution and metric status (name, status, is_retry).
-    std::tuple<std::string, rpc::TaskStatus, bool> status;
+    std::tuple<std::string, rpc::TaskStatus, bool> status_;
     // The node id where task is executed.
     NodeID node_id_;
     // Whether this is a task retry due to task failure.
@@ -607,13 +614,13 @@ class TaskManager : public TaskManagerInterface {
   void MarkTaskNoRetryInternal(const TaskID &task_id, bool canceled)
       ABSL_LOCKS_EXCLUDED(mu_);
 
-  /// Update nested ref count info and store the in-memory value for a task's
-  /// return object. Returns true if the task's return object was returned
-  /// directly by value.
-  bool HandleTaskReturn(const ObjectID &object_id,
-                        const rpc::ReturnObject &return_object,
-                        const NodeID &worker_node_id,
-                        bool store_in_plasma) ABSL_LOCKS_EXCLUDED(mu_);
+  /// Update nested ref count info and store the task's return object.
+  /// Returns StatusOr<bool> where the bool indicates the object was returned
+  /// directly in-memory (not stored in plasma) when true.
+  StatusOr<bool> HandleTaskReturn(const ObjectID &object_id,
+                                  const rpc::ReturnObject &return_object,
+                                  const NodeID &worker_node_id,
+                                  bool store_in_plasma) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Remove a lineage reference to this object ID. This should be called
   /// whenever a task that depended on this object ID can no longer be retried.
@@ -656,7 +663,7 @@ class TaskManager : public TaskManagerInterface {
   /// Shutdown if all tasks are finished and shutdown is scheduled.
   void ShutdownIfNeeded() ABSL_LOCKS_EXCLUDED(mu_);
 
-  /// Updates the task entry state (e.g. status, is_retry, lineage_footprint_bytes,
+  /// Updates the task entry state (e.g. status, is_retry, lineage_footprint_bytes_,
   /// num_retries_left) + related global task manager state.
   void SetupTaskEntryForResubmit(TaskEntry &task_entry)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -741,7 +748,7 @@ class TaskManager : public TaskManagerInterface {
   const PutInLocalPlasmaCallback put_in_local_plasma_callback_;
 
   /// Called when a task should be retried.
-  const RetryTaskCallback retry_task_callback_;
+  const AsyncRetryTaskCallback async_retry_task_callback_;
 
   /// For when a streaming generator task currently in progress needs to be resubmitted.
   std::function<bool(const TaskSpecification &spec)> queue_generator_resubmit_;
@@ -794,6 +801,14 @@ class TaskManager : public TaskManagerInterface {
       get_actor_rpc_client_callback_;
 
   std::shared_ptr<gcs::GcsClient> gcs_client_;
+
+  // Metric to track the number of tasks by state.
+  // Expected tags:
+  // - State: the task state, as described by rpc::TaskState proto in common.proto
+  // - Name: the name of the function called
+  // - IsRetry: whether the task is a retry
+  // - Source: component reporting, e.g., "core_worker", "executor", or "pull_manager"
+  observability::MetricInterface &task_by_state_counter_;
 
   friend class TaskManagerTest;
 };

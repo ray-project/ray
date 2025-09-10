@@ -20,17 +20,18 @@
 #include <utility>
 #include <vector>
 
+#include "fakes/ray/pubsub/subscriber.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 #include "mock/ray/pubsub/publisher.h"
-#include "mock/ray/pubsub/subscriber.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
-#include "ray/common/test_util.h"
+#include "ray/common/test_utils.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_event_buffer.h"
+#include "ray/observability/fake_metric.h"
 
 namespace ray {
 namespace core {
@@ -143,7 +144,7 @@ class TaskManagerTest : public ::testing::Test {
       : lineage_pinning_enabled_(lineage_pinning_enabled),
         addr_(GetRandomWorkerAddr()),
         publisher_(std::make_shared<pubsub::MockPublisher>()),
-        subscriber_(std::make_shared<pubsub::MockSubscriber>()),
+        subscriber_(std::make_shared<pubsub::FakeSubscriber>()),
         task_event_buffer_mock_(std::make_unique<MockTaskEventBuffer>()),
         mock_gcs_client_(std::make_shared<gcs::MockGcsClient>()),
         reference_counter_(std::make_shared<ReferenceCounter>(
@@ -160,12 +161,11 @@ class TaskManagerTest : public ::testing::Test {
             *reference_counter_,
             [this](const RayObject &object, const ObjectID &object_id) {
               stored_in_plasma.insert(object_id);
+              return Status::OK();
             },
-            [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
+            [this](TaskSpecification &spec, uint32_t delay_ms) {
               num_retries_++;
               last_delay_ms_ = delay_ms;
-              last_object_recovery_ = object_recovery;
-              return Status::OK();
             },
             [this](const TaskSpecification &spec) {
               return this->did_queue_generator_resubmit_;
@@ -180,7 +180,8 @@ class TaskManagerTest : public ::testing::Test {
                 -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
               return nullptr;
             },
-            mock_gcs_client_) {}
+            mock_gcs_client_,
+            fake_task_by_state_counter_) {}
 
   virtual void TearDown() { AssertNoLeaks(); }
 
@@ -215,7 +216,7 @@ class TaskManagerTest : public ::testing::Test {
   bool did_queue_generator_resubmit_ = false;
   rpc::Address addr_;
   std::shared_ptr<pubsub::MockPublisher> publisher_;
-  std::shared_ptr<pubsub::MockSubscriber> subscriber_;
+  std::shared_ptr<pubsub::FakeSubscriber> subscriber_;
   std::unique_ptr<MockTaskEventBuffer> task_event_buffer_mock_;
   std::shared_ptr<gcs::MockGcsClient> mock_gcs_client_;
   std::shared_ptr<ReferenceCounter> reference_counter_;
@@ -225,14 +226,27 @@ class TaskManagerTest : public ::testing::Test {
   TaskManager manager_;
   int num_retries_ = 0;
   uint32_t last_delay_ms_ = 0;
-  bool last_object_recovery_ = false;
   std::unordered_set<ObjectID> stored_in_plasma;
+  ray::observability::FakeMetric fake_task_by_state_counter_;
 };
 
 class TaskManagerLineageTest : public TaskManagerTest {
  public:
   TaskManagerLineageTest() : TaskManagerTest(true, /*max_lineage_bytes=*/10000) {}
 };
+
+TEST_F(TaskManagerTest, TestRecordMetrics) {
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {});
+  manager_.AddPendingTask(caller_address, spec, "");
+  manager_.RecordMetrics();
+  auto tag_to_value = fake_task_by_state_counter_.GetTagToValue();
+  ASSERT_EQ(tag_to_value.size(), 1);  // one task state data point
+  ASSERT_EQ(tag_to_value.begin()->first.at("State"),
+            rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_AVAIL));
+  ASSERT_EQ(tag_to_value.begin()->second, 1);  // one task in the PENDING_ARGS_AVAIL state
+  manager_.FailPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED);
+}
 
 TEST_F(TaskManagerTest, TestTaskSuccess) {
   rpc::Address caller_address;
@@ -429,7 +443,6 @@ TEST_F(TaskManagerTest, TestTaskReconstruction) {
     ASSERT_FALSE(store_->Get({return_id}, 1, 0, ctx, false, &results).ok());
     ASSERT_EQ(num_retries_, i + 1);
     ASSERT_EQ(last_delay_ms_, RayConfig::instance().task_retry_delay_ms());
-    ASSERT_EQ(last_object_recovery_, false);
   }
 
   manager_.FailOrRetryPendingTask(spec.TaskId(), error);
@@ -564,13 +577,11 @@ TEST_F(TaskManagerTest, TestTaskOomAndNonOomKillReturnsLastError) {
   manager_.FailOrRetryPendingTask(spec.TaskId(), error);
   ASSERT_EQ(num_retries_, 1);
   ASSERT_EQ(last_delay_ms_, RayConfig::instance().task_oom_retry_delay_base_ms());
-  ASSERT_EQ(last_object_recovery_, false);
 
   error = rpc::ErrorType::WORKER_DIED;
   manager_.FailOrRetryPendingTask(spec.TaskId(), error);
   ASSERT_EQ(num_retries_, 2);
   ASSERT_EQ(last_delay_ms_, RayConfig::instance().task_retry_delay_ms());
-  ASSERT_EQ(last_object_recovery_, false);
 
   error = rpc::ErrorType::WORKER_DIED;
   manager_.FailOrRetryPendingTask(spec.TaskId(), error);
@@ -1072,7 +1083,6 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   ASSERT_EQ(resubmitted_task_deps, spec.GetDependencyIds());
   ASSERT_EQ(num_retries_, 1);
   ASSERT_EQ(last_delay_ms_, 0);
-  ASSERT_EQ(last_object_recovery_, true);
   resubmitted_task_deps.clear();
 
   // The return ID goes out of scope.
@@ -1136,7 +1146,6 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskNondeterministicReturns) {
   ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps), std::nullopt);
   ASSERT_EQ(num_retries_, 1);
   ASSERT_EQ(last_delay_ms_, 0);
-  ASSERT_EQ(last_object_recovery_, true);
 
   // The re-executed task completes again. One of the return objects is now
   // returned directly.
@@ -1201,7 +1210,6 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskFails) {
   ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps), std::nullopt);
   ASSERT_EQ(num_retries_, 1);
   ASSERT_EQ(last_delay_ms_, 0);
-  ASSERT_EQ(last_object_recovery_, true);
 
   // The re-executed task fails due to worker crashed.
   {
@@ -1322,7 +1330,6 @@ TEST_F(TaskManagerLineageTest, TestResubmittedDynamicReturnsTaskFails) {
   ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps), std::nullopt);
   ASSERT_EQ(num_retries_, 1);
   ASSERT_EQ(last_delay_ms_, 0);
-  ASSERT_EQ(last_object_recovery_, true);
 
   // Dereference the generator to a list of its internal ObjectRefs.
   for (const auto &dynamic_return_id : dynamic_return_ids) {
@@ -1358,6 +1365,188 @@ TEST_F(TaskManagerLineageTest, TestResubmittedDynamicReturnsTaskFails) {
     ASSERT_EQ(stored_error, rpc::ErrorType::OBJECT_IN_PLASMA);
   }
   ASSERT_EQ(stored_in_plasma.size(), 3);
+}
+
+// High-level tests around plasma put failures and retries using a real memory store
+TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
+  auto local_ref_counter = std::make_shared<ReferenceCounter>(
+      addr_,
+      publisher_.get(),
+      subscriber_.get(),
+      /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      lineage_pinning_enabled_);
+  auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(),
+                                                             local_ref_counter.get());
+
+  TaskManager failing_mgr(
+      *local_store,
+      *local_ref_counter,
+      /*put_in_local_plasma_callback=*/
+      [](const RayObject &, const ObjectID &) {
+        return Status::ObjectStoreFull("simulated");
+      },
+      [this](TaskSpecification &spec, uint32_t delay_ms) {
+        num_retries_++;
+        last_delay_ms_ = delay_ms;
+      },
+      [this](const TaskSpecification &spec) {
+        return this->did_queue_generator_resubmit_;
+      },
+      [](const JobID &, const std::string &, const std::string &, double) {
+        return Status::OK();
+      },
+      /*max_lineage_bytes*/ 1024 * 1024,
+      *task_event_buffer_mock_.get(),
+      [](const ActorID &) -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
+        return nullptr;
+      },
+      mock_gcs_client_,
+      fake_task_by_state_counter_);
+
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {});
+  failing_mgr.AddPendingTask(caller_address, spec, "");
+  failing_mgr.MarkDependenciesResolved(spec.TaskId());
+  failing_mgr.MarkTaskWaitingForExecution(
+      spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
+
+  rpc::PushTaskReply reply;
+  auto return_object = reply.add_return_objects();
+  auto return_id = spec.ReturnId(0);
+  return_object->set_object_id(return_id.Binary());
+  return_object->set_in_plasma(true);
+  failing_mgr.CompletePendingTask(
+      spec.TaskId(), reply, rpc::Address(), /*app_err=*/false);
+
+  ASSERT_FALSE(failing_mgr.IsTaskPending(spec.TaskId()));
+  std::vector<std::shared_ptr<RayObject>> results;
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+  RAY_CHECK_OK(local_store->Get({return_id}, 1, 0, ctx, false, &results));
+  ASSERT_EQ(results.size(), 1);
+  ASSERT_TRUE(results[0]->IsException());
+}
+
+TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
+  std::shared_ptr<std::atomic<int>> attempts = std::make_shared<std::atomic<int>>(0);
+  auto local_ref_counter = std::make_shared<ReferenceCounter>(
+      addr_,
+      publisher_.get(),
+      subscriber_.get(),
+      /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      lineage_pinning_enabled_);
+  auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(),
+                                                             local_ref_counter.get());
+  TaskManager retry_mgr(
+      *local_store,
+      *local_ref_counter,
+      /*put_in_local_plasma_callback=*/
+      [attempts](const RayObject &, const ObjectID &) {
+        int n = ++(*attempts);
+        if (n < 3) {
+          return Status::TransientObjectStoreFull("retry");
+        }
+        return Status::OK();
+      },
+      [this](TaskSpecification &spec, uint32_t delay_ms) {
+        num_retries_++;
+        last_delay_ms_ = delay_ms;
+      },
+      [this](const TaskSpecification &spec) {
+        return this->did_queue_generator_resubmit_;
+      },
+      [](const JobID &, const std::string &, const std::string &, double) {
+        return Status::OK();
+      },
+      /*max_lineage_bytes*/ 1024 * 1024,
+      *task_event_buffer_mock_.get(),
+      [](const ActorID &) -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
+        return nullptr;
+      },
+      mock_gcs_client_,
+      fake_task_by_state_counter_);
+
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {});
+  retry_mgr.AddPendingTask(caller_address, spec, "");
+  retry_mgr.MarkDependenciesResolved(spec.TaskId());
+  retry_mgr.MarkTaskWaitingForExecution(
+      spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
+
+  rpc::PushTaskReply reply;
+  auto return_object = reply.add_return_objects();
+  auto return_id = spec.ReturnId(0);
+  return_object->set_object_id(return_id.Binary());
+  return_object->set_in_plasma(true);
+  retry_mgr.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), /*app_err=*/false);
+
+  std::vector<std::shared_ptr<RayObject>> results;
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+  RAY_CHECK_OK(local_store->Get({return_id}, 1, 0, ctx, false, &results));
+  ASSERT_EQ(results.size(), 1);
+  ASSERT_TRUE(results[0]->IsInPlasmaError());
+}
+
+TEST_F(TaskManagerTest, DynamicReturn_PlasmaPutFailure_FailsTaskImmediately) {
+  bool first_fail_done = false;
+  auto local_ref_counter = std::make_shared<ReferenceCounter>(
+      addr_,
+      publisher_.get(),
+      subscriber_.get(),
+      /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      lineage_pinning_enabled_);
+  auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(),
+                                                             local_ref_counter.get());
+  TaskManager dyn_mgr(
+      *local_store,
+      *local_ref_counter,
+      /*put_in_local_plasma_callback=*/
+      [&first_fail_done](const RayObject &, const ObjectID &) {
+        if (!first_fail_done) {
+          first_fail_done = true;
+          return Status::IOError("broken pipe");
+        }
+        return Status::OK();
+      },
+      [this](TaskSpecification &spec, uint32_t delay_ms) {
+        num_retries_++;
+        last_delay_ms_ = delay_ms;
+      },
+      [this](const TaskSpecification &spec) {
+        return this->did_queue_generator_resubmit_;
+      },
+      [](const JobID &, const std::string &, const std::string &, double) {
+        return Status::OK();
+      },
+      /*max_lineage_bytes*/ 1024 * 1024,
+      *task_event_buffer_mock_.get(),
+      [](const ActorID &) -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
+        return nullptr;
+      },
+      mock_gcs_client_,
+      fake_task_by_state_counter_);
+
+  auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true);
+  dyn_mgr.AddPendingTask(addr_, spec, "", /*num_retries=*/0);
+  dyn_mgr.MarkDependenciesResolved(spec.TaskId());
+  dyn_mgr.MarkTaskWaitingForExecution(
+      spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
+
+  rpc::PushTaskReply reply;
+  auto generator_id = spec.ReturnId(0);
+  auto gen_obj = reply.add_return_objects();
+  gen_obj->set_object_id(generator_id.Binary());
+  auto data = GenerateRandomBuffer();
+  gen_obj->set_data(data->Data(), data->Size());
+  for (int i = 0; i < 2; i++) {
+    auto dyn_id = ObjectID::FromIndex(spec.TaskId(), i + 2);
+    auto dyn_obj = reply.add_dynamic_return_objects();
+    dyn_obj->set_object_id(dyn_id.Binary());
+    dyn_obj->set_data(data->Data(), data->Size());
+    dyn_obj->set_in_plasma(true);
+  }
+
+  dyn_mgr.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), /*app_err=*/false);
+  ASSERT_FALSE(dyn_mgr.IsTaskPending(spec.TaskId()));
 }
 
 TEST_F(TaskManagerTest, TestObjectRefStreamCreateDelete) {
@@ -2374,10 +2563,10 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBackpressure) {
   bool signal_called = false;
   ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
       req,
-      /*execution_signal_callback*/ [&signal_called](Status status,
+      /*execution_signal_callback*/ [&signal_called](Status callback_status,
                                                      int64_t num_objects_consumed) {
         signal_called = true;
-        ASSERT_TRUE(status.ok());
+        ASSERT_TRUE(callback_status.ok());
         ASSERT_EQ(num_objects_consumed, 0);
       }));
   ASSERT_TRUE(signal_called);
@@ -2706,6 +2895,74 @@ TEST_F(TaskManagerTest, TestTaskRetriedOnNodePreemption) {
   // Cleanup
   manager_.FailPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED);
 }
+
+class PlasmaShutdownRaceTest : public ::testing::Test {
+ public:
+  PlasmaShutdownRaceTest() : is_shutting_down_(false) {}
+
+  Status SimulatePlasmaCallback(const ObjectID &object_id, bool simulate_failure) {
+    if (is_shutting_down_) {
+      skipped_operations_.insert(object_id);
+      return Status::OK();
+    }
+
+    if (simulate_failure) {
+      auto status = Status::IOError("Broken pipe");
+      if (status.IsIOError() && is_shutting_down_) {
+        tolerated_operations_.insert(object_id);
+        return Status::OK();
+      } else {
+        failed_operations_.insert(object_id);
+        return status;
+      }
+    }
+
+    successful_operations_.insert(object_id);
+    return Status::OK();
+  }
+
+  void SetShuttingDown(bool shutting_down) { is_shutting_down_ = shutting_down; }
+
+ protected:
+  bool is_shutting_down_;
+  std::unordered_set<ObjectID> skipped_operations_;
+  std::unordered_set<ObjectID> tolerated_operations_;
+  std::unordered_set<ObjectID> successful_operations_;
+  std::unordered_set<ObjectID> failed_operations_;
+};
+
+// Test plasma callback behavior during shutdown to prevent RAY_CHECK crashes
+TEST_F(PlasmaShutdownRaceTest, PlasmaCallbackHandlesShutdownRaceCondition) {
+  auto object_id = ObjectID::FromRandom();
+
+  SetShuttingDown(false);
+  ASSERT_TRUE(SimulatePlasmaCallback(object_id, false).ok());
+  ASSERT_EQ(successful_operations_.count(object_id), 1);
+
+  auto object_id2 = ObjectID::FromRandom();
+  auto status = SimulatePlasmaCallback(object_id2, true);
+  ASSERT_FALSE(status.ok());
+  ASSERT_TRUE(status.IsIOError());
+  ASSERT_EQ(failed_operations_.count(object_id2), 1);
+
+  auto object_id3 = ObjectID::FromRandom();
+  SetShuttingDown(true);
+  ASSERT_TRUE(SimulatePlasmaCallback(object_id3, false).ok());
+  ASSERT_EQ(skipped_operations_.count(object_id3), 1);
+
+  auto object_id4 = ObjectID::FromRandom();
+  SetShuttingDown(false);
+  auto status4 = Status::IOError("Broken pipe");
+  SetShuttingDown(true);
+
+  if (status4.IsIOError() && is_shutting_down_) {
+    tolerated_operations_.insert(object_id4);
+  } else {
+    failed_operations_.insert(object_id4);
+  }
+  ASSERT_EQ(tolerated_operations_.count(object_id4), 1);
+}
+
 }  // namespace core
 }  // namespace ray
 

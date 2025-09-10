@@ -575,8 +575,8 @@ def test_change_route_prefix(serve_instance):
         assert "Path '/old' not found." in resp.text
 
         # Response from new route should be same PID
-        url = get_application_url()
-        pid2 = httpx.get(url).json()[0]
+        url = get_application_url(exclude_route_prefix=True)
+        pid2 = httpx.get(f"{url}/new").json()[0]
         assert pid2 == pid1
         return True
 
@@ -616,6 +616,7 @@ def test_num_replicas_auto_api(serve_instance):
         "downscaling_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
+        "policy": {"name": "ray.serve.autoscaling_policy:default_autoscaling_policy"},
     }
 
 
@@ -668,6 +669,7 @@ def test_num_replicas_auto_basic(serve_instance):
         "downscaling_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
+        "policy": {"name": "ray.serve.autoscaling_policy:default_autoscaling_policy"},
     }
 
     h = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)

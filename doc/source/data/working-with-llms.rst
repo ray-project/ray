@@ -9,6 +9,7 @@ This guide shows you how to use :ref:`ray.data.llm <llm-ref>` to:
 
 * :ref:`Perform batch inference with LLMs <batch_inference_llm>`
 * :ref:`Configure vLLM for LLM inference <vllm_llm>`
+* :ref:`Batch inference with embedding models <embedding_models>`
 * :ref:`Query deployed models with an OpenAI compatible API endpoint <openai_compatible_api_endpoint>`
 
 .. _batch_inference_llm:
@@ -283,6 +284,63 @@ This example applies 2 adjustments on top of the previous example:
     vision_processed_ds = vision_processor(vision_dataset).materialize()
     vision_processed_ds.show(3)
 
+.. _embedding_models:
+
+Batch inference with embedding models
+---------------------------------------
+
+Ray Data LLM supports batch inference with embedding models using vLLM:
+
+.. testcode::
+
+    import ray
+    from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
+
+    embedding_config = vLLMEngineProcessorConfig(
+        model_source="sentence-transformers/all-MiniLM-L6-v2",
+        task_type="embed",
+        engine_kwargs=dict(
+            enable_prefix_caching=False,
+            enable_chunked_prefill=False,
+            max_model_len=256,
+            enforce_eager=True,
+        ),
+        batch_size=32,
+        concurrency=1,
+        apply_chat_template=False,
+        detokenize=False,
+    )
+
+    embedding_processor = build_llm_processor(
+        embedding_config,
+        preprocess=lambda row: dict(prompt=row["text"]),
+        postprocess=lambda row: {
+            "text": row["prompt"],
+            "embedding": row["embeddings"],
+        },
+    )
+
+    texts = [
+        "Hello world",
+        "This is a test sentence",
+        "Embedding models convert text to vectors",
+    ]
+    ds = ray.data.from_items([{"text": text} for text in texts])
+
+    embedded_ds = embedding_processor(ds)
+    embedded_ds.show(limit=1)
+
+.. testoutput::
+    :options: +MOCK
+
+    {'text': 'Hello world', 'embedding': [0.1, -0.2, 0.3, ...]}
+
+Key differences for embedding models:
+
+- Set ``task_type="embed"``
+- Set ``apply_chat_template=False`` and ``detokenize=False``
+- Use direct ``prompt`` input instead of ``messages``
+- Access embeddings through``row["embeddings"]``
 
 .. _openai_compatible_api_endpoint:
 
