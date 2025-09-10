@@ -6,10 +6,12 @@ from typing import Any, Dict, List, Optional, Set
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
+    DeploymentSnapshot,
     ReplicaID,
     TargetCapacityDirection,
 )
 from ray.serve._private.constants import (
+    AUTOSCALER_SUMMARIZER_DECISION_HISTORY_MAX,
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
@@ -79,6 +81,15 @@ class ReplicaMetricReport:
 
 
 @dataclass
+class _DecisionRecord:
+    timestamp_s: str
+    prev_num_replicas: int
+    curr_num_replicas: int
+    reason: str
+    policy: Optional[str] = None
+
+
+@dataclass
 class AutoscalingContext:
     """Rich context provided to custom autoscaling policies."""
 
@@ -137,7 +148,8 @@ class AutoscalingState:
         self._running_replicas: List[ReplicaID] = []
         self._target_capacity: Optional[float] = None
         self._target_capacity_direction: Optional[TargetCapacityDirection] = None
-        self._cached_deployment_snapshot: Optional[Dict[str, Any]] = None
+        self._cached_deployment_snapshot: Optional[DeploymentSnapshot] = None
+        self._decision_history: List[_DecisionRecord] = []
 
     def register(self, info: DeploymentInfo, curr_target_num_replicas: int) -> int:
         """Registers an autoscaling deployment's info.
@@ -335,18 +347,32 @@ class AutoscalingState:
         decision_num_replicas, self._policy_state = self._policy(ctx)
 
         if _skip_bound_check:
-            self._cached_deployment_snapshot = self._create_deployment_snapshot(
-                ctx=ctx,
-                target_replicas=decision_num_replicas,
-            )
-            return decision_num_replicas
+            target_for_record = decision_num_replicas
+        else:
+            target_for_record = self.apply_bounds(decision_num_replicas)
 
-        bounded_decision = self.apply_bounds(decision_num_replicas)
+        self._decision_history.append(
+            _DecisionRecord(
+                timestamp_s=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                prev_num_replicas=int(ctx.current_num_replicas),
+                curr_num_replicas=int(target_for_record),
+                reason=f"current={ctx.current_num_replicas}, target={target_for_record}",
+                policy=getattr(self._config, "name", None),
+            )
+        )
+        if len(self._decision_history) > AUTOSCALER_SUMMARIZER_DECISION_HISTORY_MAX:
+            self._decision_history = self._decision_history[
+                -AUTOSCALER_SUMMARIZER_DECISION_HISTORY_MAX:
+            ]
+
         self._cached_deployment_snapshot = self._create_deployment_snapshot(
             ctx=ctx,
-            target_replicas=bounded_decision,
+            target_replicas=target_for_record,
         )
-        return bounded_decision
+        return target_for_record
+
+    def get_recent_decisions(self) -> List[_DecisionRecord]:
+        return self._decision_history
 
     def get_total_num_requests(self) -> float:
         """Get average total number of requests aggregated over the past
@@ -382,8 +408,10 @@ class AutoscalingState:
         *,
         ctx: AutoscalingContext,
         target_replicas: int,
-    ) -> Dict[str, Any]:
-        """Create (but do not log) a compact per-deployment snapshot for observability/logging. Uses data from the passed AutoscalingContext to avoid recomputation. Returns the snapshot dict; the caller decides when to cache it."""
+    ) -> DeploymentSnapshot:
+        """Create a fully-populated DeploymentSnapshot using data already available in
+        AutoscalingState and the provided context.
+        """
         current_replicas = ctx.current_num_replicas
         min_replicas = ctx.capacity_adjusted_min_replicas
         max_replicas = ctx.capacity_adjusted_max_replicas
@@ -403,25 +431,50 @@ class AutoscalingState:
         else:
             time_since_last_collected_metrics_s = None
 
-        return {
-            "current_replicas": int(current_replicas),
-            "target_replicas": int(target_replicas),
-            "min_replicas": int(min_replicas) if min_replicas is not None else None,
-            "max_replicas": int(max_replicas) if max_replicas is not None else None,
-            "total_requests": ctx.total_num_requests,
-            "queued_requests": float(queued_requests),
-            "time_since_last_collected_metrics_s": None
-            if time_since_last_collected_metrics_s is None
-            else float(time_since_last_collected_metrics_s),
-            "errors": [],
-        }
+        # Derive scaling status from current vs target
+        if target_replicas > current_replicas:
+            scaling_status_raw = "UPSCALING"
+        elif target_replicas < current_replicas:
+            scaling_status_raw = "DOWNSCALING"
+        else:
+            scaling_status_raw = "STABLE"
+        scaling_status = DeploymentSnapshot.format_scaling_status(scaling_status_raw)
 
-    def get_deployment_snapshot(self) -> Optional[Dict[str, Any]]:
+        look_back_period_s = getattr(self._config, "look_back_period_s", None)
+        metrics_health = DeploymentSnapshot.format_metrics_health_text(
+            time_since_last_collected_metrics_s=(
+                None
+                if time_since_last_collected_metrics_s is None
+                else float(time_since_last_collected_metrics_s)
+            ),
+            look_back_period_s=look_back_period_s,
+        )
+
+        decisions_summary = DeploymentSnapshot.summarize_decisions(
+            self._decision_history
+        )
+
+        return DeploymentSnapshot(
+            timestamp_s=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            app=self._deployment_id.app_name,
+            deployment=self._deployment_id.name,
+            current_replicas=int(current_replicas),
+            target_replicas=int(target_replicas),
+            min_replicas=int(min_replicas) if min_replicas is not None else None,
+            max_replicas=int(max_replicas) if max_replicas is not None else None,
+            scaling_status=scaling_status,
+            policy=getattr(self._config, "name", "default"),
+            look_back_period_s=look_back_period_s,
+            queued_requests=float(queued_requests),
+            total_requests=float(ctx.total_num_requests),
+            metrics_health=metrics_health,
+            errors=[],
+            decisions=decisions_summary,
+        )
+
+    def get_deployment_snapshot(self) -> Optional[DeploymentSnapshot]:
         """
         Return the cached deployment snapshot if available.
-
-        A snapshot reflects the autoscaler's last decision. If it hasn't
-        been created yet, None is returned.
         """
         return self._cached_deployment_snapshot
 
@@ -537,7 +590,11 @@ class AutoscalingStateManager:
             autoscaling_state.drop_stale_handle_metrics(alive_serve_actor_ids)
 
     def get_deployment_snapshot(
-        self, deployment_id: DeploymentID, curr_target_num_replicas: int
-    ) -> Dict[str, Any]:
-        """Expose a per-deployment snapshot so controller doesn't duplicate computations."""
-        return self._autoscaling_states[deployment_id].get_deployment_snapshot()
+        self, deployment_id: DeploymentID
+    ) -> Optional[DeploymentSnapshot]:
+        state = self._autoscaling_states.get(deployment_id)
+        return state.get_deployment_snapshot() if state else None
+
+    def get_recent_decisions(self, deployment_id: DeploymentID):
+        state = self._autoscaling_states.get(deployment_id)
+        return state.get_recent_decisions() if state else []

@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 import pickle
@@ -24,7 +25,6 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
-    AUTOSCALER_SUMMARIZER_DECISION_HISTORY_MAX,
     CONTROL_LOOP_INTERVAL_S,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
     RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
@@ -38,9 +38,6 @@ from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.endpoint_state import EndpointState
-from ray.serve._private.event_summarizer import (
-    ServeAutoscalingEventSummarizer,
-)
 from ray.serve._private.grpc_util import set_proxy_default_grpc_options
 from ray.serve._private.http_util import (
     configure_http_options_with_defaults,
@@ -74,7 +71,6 @@ from ray.serve.schema import (
     HTTPOptionsSchema,
     LoggingConfig,
     ProxyDetails,
-    ScalingDecision,
     ServeActorDetails,
     ServeApplicationSchema,
     ServeDeploySchema,
@@ -229,12 +225,8 @@ class ServeController:
         self._proxy_nodes = set()
         self._update_proxy_nodes()
 
-        # Serve-side summarizer to throttle repetitive logs and build payloads.
-        self._serve_event_summarizer = ServeAutoscalingEventSummarizer()
-
         # Caches for autoscaling observability
         self._last_autoscaling_snapshots: Dict[DeploymentID, DeploymentSnapshot] = {}
-        self._scaling_decisions = {}
 
     def reconfigure_global_logging_config(self, global_logging_config: LoggingConfig):
         if (
@@ -399,27 +391,6 @@ class ServeController:
                 if autoscaling_config:
                     yield app_name, dep_name, details, autoscaling_config
 
-    def _append_autoscaling_decision(
-        self, dep_id, current_replicas, target_replicas, policy_name
-    ):
-        """Append a scaling decision to history and enforce history size limit."""
-        decision = ScalingDecision(
-            timestamp_s=time.time(),
-            reason=f"current={current_replicas}, target={target_replicas}",
-            prev_num_replicas=int(current_replicas),
-            curr_num_replicas=int(target_replicas),
-            policy=policy_name,
-        )
-        self._scaling_decisions.setdefault(dep_id, []).append(decision)
-        if (
-            len(self._scaling_decisions[dep_id])
-            > AUTOSCALER_SUMMARIZER_DECISION_HISTORY_MAX
-        ):
-            self._scaling_decisions[dep_id] = self._scaling_decisions[dep_id][
-                -1 * AUTOSCALER_SUMMARIZER_DECISION_HISTORY_MAX :
-            ]
-        return self._scaling_decisions[dep_id]
-
     def _emit_deployment_autoscaling_snapshots(self) -> None:
         """Emit a structured snapshot log per autoscaling-enabled deployment."""
         for (
@@ -430,65 +401,22 @@ class ServeController:
         ) in self._list_deployments_for_autoscaling():
             dep_id = DeploymentID(name=dep_name, app_name=app_name)
             deployment_snapshot = (
-                self.autoscaling_state_manager.get_deployment_snapshot(
-                    dep_id, details.target_num_replicas
-                )
+                self.autoscaling_state_manager.get_deployment_snapshot(dep_id)
             )
-            current_replicas = deployment_snapshot["current_replicas"]
-            target_replicas = deployment_snapshot["target_replicas"]
-            min_repl_adj = deployment_snapshot["min_replicas"]
-            max_repl_adj = deployment_snapshot["max_replicas"]
-            total_requests = deployment_snapshot["total_requests"]
-            policy_name = getattr(autoscaling_config, "name", None)
-            look_back_period_s = getattr(autoscaling_config, "look_back_period_s", None)
-            if target_replicas > current_replicas:
-                scaling_status = "UPSCALING"
-            elif target_replicas < current_replicas:
-                scaling_status = "DOWNSCALING"
-            else:
-                scaling_status = "STABLE"
+            if deployment_snapshot is None:
+                continue
 
             key = dep_id
-            self._append_autoscaling_decision(
-                dep_id, current_replicas, target_replicas, policy_name
-            )
-            recent_decisions = self._scaling_decisions.get(dep_id, [])
-            decisions_summary = self._serve_event_summarizer.summarize_recent_decisions(
-                recent_decisions
-            )
-
-            timestamp_s = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-            scaling_status_fmt = self._serve_event_summarizer.format_scaling_status(
-                scaling_status
-            )
-            health_text = self._serve_event_summarizer.format_metrics_health_text(
-                time_since_last_collected_metrics_s=deployment_snapshot.get(
-                    "time_since_last_collected_metrics_s"
-                ),
-                look_back_period_s=look_back_period_s,
-            )
-            snapshot = DeploymentSnapshot(
-                timestamp_s=timestamp_s,
-                app=app_name,
-                deployment=dep_name,
-                current_replicas=current_replicas,
-                target_replicas=target_replicas,
-                min_replicas=min_repl_adj,
-                max_replicas=max_repl_adj,
-                scaling_status=scaling_status_fmt,
-                policy=policy_name,
-                look_back_period_s=look_back_period_s,
-                queued_requests=deployment_snapshot.get("queued_requests"),
-                total_requests=total_requests,
-                metrics_health=health_text,
-                errors=deployment_snapshot.get("errors", []),
-                decisions=decisions_summary,
-            )
             last = self._last_autoscaling_snapshots.get(key)
-            if last is not None and last == snapshot:
+            if last is not None and last == deployment_snapshot:
                 continue
-            self._serve_event_summarizer.log_snapshot(snapshot)
-            self._last_autoscaling_snapshots[key] = snapshot
+
+            payload = deployment_snapshot.to_log_dict()
+            logger.info(
+                "serve_autoscaling_snapshot "
+                + json.dumps(payload, separators=(",", ":"))
+            )
+            self._last_autoscaling_snapshots[key] = deployment_snapshot
 
     async def run_control_loop(self) -> None:
         # NOTE(edoakes): we catch all exceptions here and simply log them,

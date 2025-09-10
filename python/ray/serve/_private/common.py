@@ -1,13 +1,17 @@
 import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence
 
 from starlette.types import Scope
 
 import ray
 from ray.actor import ActorHandle
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
+from ray.serve._private.constants import (
+    AUTOSCALER_SUMMARIZER_DECISION_LIMIT,
+    SERVE_DEFAULT_APP_NAME,
+    SERVE_NAMESPACE,
+)
 from ray.serve.generated.serve_pb2 import (
     DeploymentStatus as DeploymentStatusProto,
     DeploymentStatusInfo as DeploymentStatusInfoProto,
@@ -824,3 +828,57 @@ class DeploymentSnapshot:
                 for d in self.decisions
             ],
         }
+
+    @staticmethod
+    def format_scaling_status(scaling_status: str) -> str:
+        return {
+            "UPSCALING": "scaling up",
+            "DOWNSCALING": "scaling down",
+            "STABLE": "stable",
+        }.get(str(scaling_status), str(scaling_status).lower())
+
+    @staticmethod
+    def format_metrics_health_text(
+        *,
+        time_since_last_collected_metrics_s: Optional[float],
+        look_back_period_s: Optional[float],
+    ) -> str:
+        if time_since_last_collected_metrics_s is None:
+            return "unknown"
+        return f"{int(time_since_last_collected_metrics_s)}s"
+
+    @staticmethod
+    def summarize_decisions(
+        decisions: Sequence[Any],
+        *,
+        limit: int = AUTOSCALER_SUMMARIZER_DECISION_LIMIT,
+    ) -> List["AutoscalingDecisionSummary"]:
+        """Return a shallow summary of recent decisions without reformatting fields.
+
+        - Pass through timestamp_s as-is (may be None).
+        - Pass through reason as-is (defaults to empty string if missing).
+        - Only converts objects/dicts to AutoscalingDecisionSummary.
+        """
+        out: List["AutoscalingDecisionSummary"] = []
+        for d in list(decisions)[-limit:]:
+            if hasattr(d, "dict"):
+                dd = d.dict()
+                ts = dd.get("timestamp_s")
+                prev_num_replicas = dd.get("prev_num_replicas")
+                curr_num_replicas = dd.get("curr_num_replicas")
+                reason = dd.get("reason")
+            else:
+                ts = getattr(d, "timestamp_s", None)
+                prev_num_replicas = getattr(d, "prev_num_replicas", None)
+                curr_num_replicas = getattr(d, "curr_num_replicas", None)
+                reason = getattr(d, "reason", None)
+
+            out.append(
+                AutoscalingDecisionSummary(
+                    timestamp_s=ts,
+                    prev_num_replicas=prev_num_replicas,
+                    curr_num_replicas=curr_num_replicas,
+                    reason=reason or "",
+                )
+            )
+        return out
