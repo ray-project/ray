@@ -377,9 +377,9 @@ def test_default_shuffle_aggregator_args():
     parent_op_mock._output_dependencies = []
 
     op = JoinOperator(
+        data_context=DataContext.get_current(),
         left_input_op=parent_op_mock,
         right_input_op=parent_op_mock,
-        data_context=DataContext.get_current(),
         left_key_columns=("id",),
         right_key_columns=("id",),
         join_type=JoinType.INNER,
