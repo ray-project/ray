@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 import ray
 import ray.dashboard.utils as dashboard_utils
 from ray._private import ray_constants
+from ray._private.gcs_utils import create_gcs_channel
 from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
 )
@@ -13,17 +14,20 @@ from ray.core.generated import (
     events_base_event_pb2,
     events_event_aggregator_service_pb2,
     events_event_aggregator_service_pb2_grpc,
+    gcs_service_pb2_grpc,
 )
 from ray.dashboard.modules.aggregator.multi_consumer_event_buffer import (
     MultiConsumerEventBuffer,
 )
 from ray.dashboard.modules.aggregator.publisher.async_publisher_client import (
+    AsyncGCSPublisherClient,
     AsyncHttpPublisherClient,
 )
 from ray.dashboard.modules.aggregator.publisher.ray_event_publisher import (
     NoopPublisher,
     RayEventPublisher,
 )
+from ray.dashboard.modules.aggregator.task_metadata_buffer import TaskMetadataBuffer
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +68,10 @@ EXPOSABLE_EVENT_TYPES = os.environ.get(
 PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SVC = ray_constants.env_bool(
     f"{env_var_prefix}_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SVC", True
 )
+# flag to enable publishing events to GCS
+PUBLISH_EVENTS_TO_GCS = ray_constants.env_bool(
+    f"{env_var_prefix}_PUBLISH_EVENTS_TO_GCS", False
+)
 
 
 class AggregatorAgent(
@@ -72,8 +80,8 @@ class AggregatorAgent(
 ):
     """
     AggregatorAgent is a dashboard agent module that collects events sent with
-    gRPC from other components, buffers them, and periodically sends them to an
-    external service with HTTP POST requests for further processing or storage
+    gRPC from other components, buffers them, and periodically sends them to GCS and
+    an external service with HTTP POST requests for further processing or storage
     """
 
     def __init__(self, dashboard_agent) -> None:
@@ -99,6 +107,9 @@ class AggregatorAgent(
             max_workers=THREAD_POOL_EXECUTOR_MAX_WORKERS,
             thread_name_prefix="event_aggregator_agent_executor",
         )
+
+        # Task metadata buffer accumulates dropped task attempts for GCS publishing
+        self._task_metadata_buffer = TaskMetadataBuffer()
 
         self._lock = asyncio.Lock()
         self._events_export_addr = (
@@ -133,6 +144,28 @@ class AggregatorAgent(
             )
             self._http_endpoint_publisher = NoopPublisher()
 
+        if PUBLISH_EVENTS_TO_GCS:
+            logger.info("Publishing events to GCS is enabled")
+            self._event_processing_enabled = True
+            self._async_gcs_channel = create_gcs_channel(self.gcs_address, aio=True)
+            self._async_gcs_event_stub = (
+                gcs_service_pb2_grpc.RayEventExportGcsServiceStub(
+                    self._async_gcs_channel
+                )
+            )
+            self._gcs_publisher = RayEventPublisher(
+                name="gcs_publisher",
+                publish_client=AsyncGCSPublisherClient(
+                    gcs_stub=self._async_gcs_event_stub
+                ),
+                event_buffer=self._event_buffer,
+                common_metric_tags=self._common_tags,
+                task_metadata_buffer=self._task_metadata_buffer,
+            )
+        else:
+            logger.info("Publishing events to GCS is disabled")
+            self._gcs_publisher = NoopPublisher()
+
         # Metrics
         _metric_prefix = "event_aggregator_agent"
         self._open_telemetry_metric_recorder = OpenTelemetryMetricRecorder()
@@ -160,10 +193,8 @@ class AggregatorAgent(
         if not self._event_processing_enabled:
             return events_event_aggregator_service_pb2.AddEventsReply()
 
-        # TODO(myan) #54515: Considering adding a mechanism to also send out the events
-        # metadata (e.g. dropped task attempts) to help with event processing at the
-        # downstream
         events_data = request.events_data
+        await self._task_metadata_buffer.merge(events_data.task_events_metadata)
         for event in events_data.events:
             self._open_telemetry_metric_recorder.set_metric_value(
                 self._events_received_metric_name, self._common_tags, 1
@@ -199,7 +230,11 @@ class AggregatorAgent(
 
         await asyncio.gather(
             self._http_endpoint_publisher.run_forever(),
+            self._gcs_publisher.run_forever(),
         )
+
+        self._executor.shutdown()
+        self._async_gcs_channel.close()
 
     @staticmethod
     def is_minimal_module() -> bool:
