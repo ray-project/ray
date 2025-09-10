@@ -571,7 +571,7 @@ def get_compute_strategy(
     fn: "UserDefinedFunction",
     fn_constructor_args: Optional[Iterable[Any]] = None,
     compute: Optional[Union[str, "ComputeStrategy"]] = None,
-    concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+    concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
 ) -> "ComputeStrategy":
     """Get `ComputeStrategy` based on the function or class, and concurrency
     information.
@@ -630,25 +630,33 @@ def get_compute_strategy(
         return compute
     elif concurrency is not None:
         if isinstance(concurrency, tuple):
-            if (
-                len(concurrency) == 2
-                and isinstance(concurrency[0], int)
-                and isinstance(concurrency[1], int)
+            # Validate tuple length and that all elements are integers
+            if len(concurrency) not in (2, 3) or not all(
+                isinstance(c, int) for c in concurrency
             ):
-                if is_callable_class:
-                    return ActorPoolStrategy(
-                        min_size=concurrency[0], max_size=concurrency[1]
-                    )
-                else:
-                    raise ValueError(
-                        "``concurrency`` is set as a tuple of integers, but ``fn`` "
-                        f"is not a callable class: {fn}. Use ``concurrency=n`` to "
-                        "control maximum number of workers to use."
-                    )
-            else:
                 raise ValueError(
                     "``concurrency`` is expected to be set as a tuple of "
                     f"integers, but got: {concurrency}."
+                )
+
+            # Check if function is callable class (common validation)
+            if not is_callable_class:
+                raise ValueError(
+                    "``concurrency`` is set as a tuple of integers, but ``fn`` "
+                    f"is not a callable class: {fn}. Use ``concurrency=n`` to "
+                    "control maximum number of workers to use."
+                )
+
+            # Create ActorPoolStrategy based on tuple length
+            if len(concurrency) == 2:
+                return ActorPoolStrategy(
+                    min_size=concurrency[0], max_size=concurrency[1]
+                )
+            else:  # len(concurrency) == 3
+                return ActorPoolStrategy(
+                    min_size=concurrency[0],
+                    max_size=concurrency[1],
+                    initial_size=concurrency[2],
                 )
         elif isinstance(concurrency, int):
             if is_callable_class:
