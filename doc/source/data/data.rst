@@ -10,6 +10,7 @@ Ray Data: Scalable Datasets for ML
     quickstart
     key-concepts
     user-guide
+    performance/index
     examples
     api/api
     comparisons
@@ -118,6 +119,22 @@ Learn more
             :expand:
 
             Ray Data Examples
+
+    .. grid-item-card::
+
+        **Performance Optimization**
+        ^^^
+
+        Comprehensive guide to optimizing Ray Data performance with patterns,
+        antipatterns, and step-by-step improvements.
+
+        +++
+        .. button-ref:: data_performance_guide
+            :color: primary
+            :outline:
+            :expand:
+
+            Optimize Performance
 
     .. grid-item-card::
 
