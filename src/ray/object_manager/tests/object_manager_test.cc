@@ -112,7 +112,7 @@ uint32_t NumRemoteFreeObjectsRequests(const ObjectManager &object_manager) {
   return num_free_objects_requests;
 }
 
-TEST_F(ObjectManagerTest, TestFreeObjectsRemoteOnlyFalse) {
+TEST_F(ObjectManagerTest, TestFreeObjectsLocalOnlyFalse) {
   auto object_id = ObjectID::FromRandom();
 
   absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_info_map_;
