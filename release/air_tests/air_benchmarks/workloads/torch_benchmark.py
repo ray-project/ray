@@ -39,41 +39,103 @@ class NeuralNetwork(nn.Module):
 
 
 def train_epoch(
-    dataloader, model, loss_fn, optimizer, world_size: int, local_rank: int
+    dataloader,
+    model,
+    loss_fn,
+    optimizer,
+    world_size: int,
+    local_rank: int,
+    epoch: int,
+    use_ray: bool,
 ):
     size = len(dataloader.dataset) // world_size
     model.train()
+    total_batches = 0
+    total_batch_fetch_time = 0
+    total_loss_calc_time = 0
+    total_backprop_time = 0
+    batch_fetch_start_time = time.monotonic()
+    time_to_first_batch = None
     for batch, (X, y) in enumerate(dataloader):
+        batch_fetch_time = time.monotonic() - batch_fetch_start_time
+        total_batches += 1
+        if not time_to_first_batch:
+            time_to_first_batch = batch_fetch_time
+        total_batch_fetch_time += batch_fetch_time
+
         # Compute prediction error
+        loss_calc_start_time = time.monotonic()
         pred = model(X)
         loss = loss_fn(pred, y)
+        total_loss_calc_time += time.monotonic() - loss_calc_start_time
 
         # Backpropagation
+        backprop_start_time = time.monotonic()
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+        total_backprop_time += time.monotonic() - backprop_start_time
+
+        batch_fetch_start_time = time.monotonic()
 
         if batch % 100 == 0:
             loss, current = loss.item(), batch * len(X)
             print(f"[rank={local_rank}] loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
+    print(
+        f"On epoch {epoch} with use_ray = {use_ray} on rank {local_rank} and total batches {total_batches}:\n"
+        f"Average time taken to fetch batches: {total_batch_fetch_time / total_batches:.2f} seconds\n"
+        f"Average time taken to calculate loss: {total_loss_calc_time / total_batches:.2f} seconds\n"
+        f"Average time taken to backprop: {total_backprop_time / total_batches:.2f} seconds\n"
+        f"Time taken to fetch first batch: {time_to_first_batch:.2f} seconds"
+    )
 
 
-def validate_epoch(dataloader, model, loss_fn, world_size: int, local_rank: int):
+def validate_epoch(
+    dataloader,
+    model,
+    loss_fn,
+    world_size: int,
+    local_rank: int,
+    epoch: int,
+    use_ray: bool,
+):
     size = len(dataloader.dataset) // world_size
     num_batches = len(dataloader)
     model.eval()
     test_loss, correct = 0, 0
+    total_batches = 0
+    total_batch_fetch_time = 0
+    total_loss_calc_time = 0
+    batch_fetch_start_time = time.monotonic()
+    time_to_first_batch = None
     with torch.no_grad():
         for X, y in dataloader:
+            batch_fetch_time = time.monotonic() - batch_fetch_start_time
+            total_batches += 1
+            if not time_to_first_batch:
+                time_to_first_batch = batch_fetch_time
+            total_batch_fetch_time += batch_fetch_time
+
+            loss_calc_start_time = time.monotonic()
             pred = model(X)
             test_loss += loss_fn(pred, y).item()
+            total_loss_calc_time += time.monotonic() - loss_calc_start_time
+
             correct += (pred.argmax(1) == y).type(torch.float).sum().item()
+
+            batch_fetch_start_time = time.monotonic()
     test_loss /= num_batches
     correct /= size
     print(
         f"[rank={local_rank}] Test Error: \n "
         f"Accuracy: {(100 * correct):>0.1f}%, "
         f"Avg loss: {test_loss:>8f} \n"
+    )
+    print(
+        f"On epoch {epoch} with use_ray = {use_ray} on rank {local_rank} and total batches {total_batches}:\n"
+        f"Average time taken to fetch batches: {total_batch_fetch_time / total_batches:.2f} seconds\n"
+        f"Average time taken to calculate loss: {total_loss_calc_time / total_batches:.2f} seconds\n"
+        f"Time taken to fetch first batch: {time_to_first_batch:.2f} seconds"
     )
     return test_loss
 
@@ -168,6 +230,8 @@ def train_func(use_ray: bool, config: Dict):
     model = NeuralNetwork()
 
     # Prepare model
+    # TODO: consolidate with train_benchmark.py
+    prepare_model_start_time = time.monotonic()
     if use_ray:
         model = train.torch.prepare_model(model)
     else:
@@ -179,6 +243,10 @@ def train_func(use_ray: bool, config: Dict):
             )
         else:
             model = nn.parallel.DistributedDataParallel(model)
+    print(
+        f"Time taken to prepare model when use_ray = {use_ray} on rank {local_rank}: "
+        f"{time.monotonic() - prepare_model_start_time:.2f} seconds"
+    )
 
     loss_fn = nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
@@ -187,6 +255,7 @@ def train_func(use_ray: bool, config: Dict):
         if world_size > 1:
             train_dataloader.sampler.set_epoch(epoch)
 
+        train_epoch_start_time = time.monotonic()
         train_epoch(
             train_dataloader,
             model,
@@ -194,13 +263,26 @@ def train_func(use_ray: bool, config: Dict):
             optimizer,
             world_size=world_size,
             local_rank=local_rank,
+            epoch=epoch,
+            use_ray=use_ray,
         )
+        print(
+            f"Time taken to train epoch {epoch} when use_ray = {use_ray} on rank {local_rank}: "
+            f"{time.monotonic() - train_epoch_start_time:.2f} seconds"
+        )
+        validate_epoch_start_time = time.monotonic()
         loss = validate_epoch(
             test_dataloader,
             model,
             loss_fn,
             world_size=world_size,
             local_rank=local_rank,
+            epoch=epoch,
+            use_ray=use_ray,
+        )
+        print(
+            f"Time taken to validate epoch {epoch} when use_ray = {use_ray} on rank {local_rank}: "
+            f"{time.monotonic() - validate_epoch_start_time:.2f} seconds"
         )
 
         local_time_taken = time.monotonic() - local_start_time
