@@ -214,9 +214,6 @@ def init_collective_group(
     )
 
 
-
-
-
 def create_collective_group(
     actors,
     world_size: int,
