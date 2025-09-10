@@ -12,7 +12,9 @@ import numpy as np
 import ray
 from . import types
 import ray.experimental.internal_kv as _internal_kv
-from ray.experimental.collective.util import get_address_and_port as _get_address_and_port
+from ray.experimental.collective.util import (
+    get_address_and_port as _get_address_and_port,
+)
 from ray.util.collective.collective_group.torch_gloo_collective_group import (
     get_master_address_metadata_key as _get_master_addr_key,
 )
@@ -103,7 +105,9 @@ class GroupManager(object):
                 _internal_kv._internal_kv_put(metadata_key, f"{addr}:{port}")
             else:
                 # Wait until rank 0 publishes the metadata or timeout.
-                deadline_s = time.time() + (gloo_timeout / 1000.0 if gloo_timeout else 30.0)
+                deadline_s = time.time() + (
+                    gloo_timeout / 1000.0 if gloo_timeout else 30.0
+                )
                 while True:
                     meta = _internal_kv._internal_kv_get(metadata_key)
                     if meta is not None:

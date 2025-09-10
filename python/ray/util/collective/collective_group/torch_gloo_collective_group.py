@@ -146,10 +146,14 @@ class TorchGLOOGroup(BaseGroup):
         torch_reduce_op = TORCH_REDUCE_OP_MAP[reduce_options.reduceOp]
         # Avoid mutating non-root ranks' user tensors to match util.collective semantics.
         if self._rank == reduce_options.root_rank:
-            dist.reduce(t, dst=reduce_options.root_rank, op=torch_reduce_op, group=self._pg)
+            dist.reduce(
+                t, dst=reduce_options.root_rank, op=torch_reduce_op, group=self._pg
+            )
         else:
             tmp = t.detach().clone()
-            dist.reduce(tmp, dst=reduce_options.root_rank, op=torch_reduce_op, group=self._pg)
+            dist.reduce(
+                tmp, dst=reduce_options.root_rank, op=torch_reduce_op, group=self._pg
+            )
 
     def allgather(
         self,
