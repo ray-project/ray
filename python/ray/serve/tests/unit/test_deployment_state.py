@@ -48,6 +48,7 @@ from ray.serve._private.utils import (
     get_capacity_adjusted_num_replicas,
     get_random_string,
 )
+from ray.serve.exceptions import DeploymentIsBeingDeletedError
 from ray.util.placement_group import validate_placement_group
 
 # Global variable that is fetched during controller recovery that
@@ -5000,6 +5001,32 @@ def test_set_target_num_replicas_during_upgrade(mock_deployment_state_manager):
     check_counts(ds, total=5, by_state=[(ReplicaState.RUNNING, 5, v2)])
 
     assert ds.target_num_replicas == 5
+
+
+def test_set_target_num_replicas_deleting_deployment(mock_deployment_state_manager):
+    """Test scaling deployment that is being deleted."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    # Deploy an initial deployment
+    info, v1 = deployment_info(num_replicas=2, version="v1")
+    dsm.deploy(TEST_DEPLOYMENT_ID, info)
+
+    ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    dsm.update()
+
+    check_counts(ds, total=2, by_state=[(ReplicaState.STARTING, 2, v1)])
+
+    # Delete the deployment
+    dsm.delete_deployment(TEST_DEPLOYMENT_ID)
+
+    # The deployment status should be DELETING
+    statuses = dsm.get_deployment_statuses([TEST_DEPLOYMENT_ID])
+    assert statuses[0].status_trigger == DeploymentStatusTrigger.DELETING
+
+    # Scaling should fail
+    with pytest.raises(DeploymentIsBeingDeletedError):
+        dsm.set_target_num_replicas(TEST_DEPLOYMENT_ID, 3)
 
 
 if __name__ == "__main__":
