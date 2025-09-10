@@ -1,12 +1,11 @@
 import time
 
+import ray
+import ray.util.collective as col
 from ray.util.collective.collective_group.torch_gloo_collective_group import (
     TorchGLOOGroup as GLOOGroup,
 )
 from ray.util.collective.types import Backend
-
-import ray
-import ray.util.collective as col
 
 
 @ray.remote
