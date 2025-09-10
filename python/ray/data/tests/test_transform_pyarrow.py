@@ -572,22 +572,6 @@ def test_unify_schemas(unify_schemas_basic_schemas, unify_schemas_multicol_schem
     )
 
 
-def test_unify_schemas_null_typed_lists(unify_schemas_null_typed_lists_schemas):
-    """Test handling of null-typed lists (cols_with_null_list functionality)."""
-    schemas = unify_schemas_null_typed_lists_schemas
-
-    # Should find valid value_type from schema2 and override
-    result = unify_schemas([schemas["null_list"], schemas["int_list"]])
-    assert result == schemas["expected"]
-
-    # Test with multiple schemas, some with null types
-    result = unify_schemas(
-        [schemas["null_list"], schemas["int_list"], schemas["string_list"]]
-    )
-    # Should use the first non-null type found (int32)
-    assert result == schemas["expected"]
-
-
 def test_unify_schemas_object_types(unify_schemas_object_types_schemas):
     """Test handling of object types (columns_with_objects functionality)."""
     schemas = unify_schemas_object_types_schemas
@@ -2747,20 +2731,6 @@ def struct_variable_shaped_tensor_expected():
             ]
         ),
         "content": {"id": [1, 2, 3, 4]},
-    }
-
-
-@pytest.fixture
-def unify_schemas_null_typed_lists_schemas():
-    """Fixture for null typed lists unify schemas test data."""
-    schema1 = pa.schema([("list_col", pa.list_(pa.null()))])
-    schema2 = pa.schema([("list_col", pa.list_(pa.int32()))])
-    schema3 = pa.schema([("list_col", pa.list_(pa.string()))])
-    return {
-        "null_list": schema1,
-        "int_list": schema2,
-        "string_list": schema3,
-        "expected": pa.schema([("list_col", pa.list_(pa.int32()))]),
     }
 
 

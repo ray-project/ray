@@ -165,6 +165,7 @@ def _find_diverging_fields(
 
     Args:
         unique_schemas: List of PyArrow schemas to find diverging fields in.
+        promote_types: Whether to promote types.
 
     Returns:
         A dictionary of diverging fields with their reconciled types.
@@ -197,7 +198,6 @@ def _find_diverging_fields(
 
         for name in diverging_field_names:
             non_null_types = []
-            has_missing = False
             has_object = has_tensor = has_list = has_null = has_struct = False
 
             for schema in unique_schemas:
@@ -215,7 +215,7 @@ def _find_diverging_fields(
                     has_null = has_null or pyarrow.types.is_null(field_type)
                     has_struct = has_struct or pyarrow.types.is_struct(field_type)
                 except KeyError:
-                    has_missing = True
+                    pass
 
                 # Early exit if we find both object and tensor types
                 if has_object and has_tensor:
@@ -226,7 +226,6 @@ def _find_diverging_fields(
             if has_object or has_tensor or has_list or has_null or has_struct:
                 reconciled_value = _reconcile_field(
                     non_null_types=non_null_types,
-                    has_missing=has_missing,
                     promote_types=promote_types,
                 )
                 if reconciled_value is not None:
@@ -237,7 +236,6 @@ def _find_diverging_fields(
 
 def _reconcile_field(
     non_null_types: List[pyarrow.DataType],
-    has_missing: bool,
     promote_types: bool = False,
 ) -> Optional[pyarrow.DataType]:
     """
@@ -262,9 +260,8 @@ def _reconcile_field(
     # 1. Tensor fields
     tensor_field_types = [t for t in non_null_types if isinstance(t, tensor_types)]
     if tensor_field_types:
-        needs_variable_shape = (
-            has_missing
-            or ArrowTensorType._need_variable_shaped_tensor_array(tensor_field_types)
+        needs_variable_shape = ArrowTensorType._need_variable_shaped_tensor_array(
+            tensor_field_types
         )
 
         if needs_variable_shape:
@@ -289,26 +286,9 @@ def _reconcile_field(
         for t in non_null_types:
             if pyarrow.types.is_struct(t):
                 struct_schemas.append(pyarrow.schema(list(t)))
-
-        # Add empty schema if field is missing from some schemas
-        if has_missing:
-            struct_schemas.append(pyarrow.schema([]))
         # Recursively unify
         unified_struct = unify_schemas(struct_schemas, promote_types=promote_types)
         return pyarrow.struct(list(unified_struct))
-
-    # 4. Null-typed list fields
-    null_lists = [
-        t
-        for t in non_null_types
-        if pyarrow.types.is_list(t) and pyarrow.types.is_null(t.value_type)
-    ]
-    if null_lists:
-        # Find first non-null list type
-        for t in non_null_types:
-            if not (pyarrow.types.is_list(t) and pyarrow.types.is_null(t.value_type)):
-                return t
-
     # Let PyArrow handle other cases
     return None
 
@@ -365,18 +345,17 @@ def unify_schemas(
         return _unify_schemas_pyarrow(schemas_to_unify, promote_types)
 
     # Apply overrides to schemas
-    if overrides:
-        updated_schemas = []
-        for schema in schemas_to_unify:
-            for name, new_type in overrides.items():
-                try:
-                    idx = schema.get_field_index(name)
-                    field = schema.field(name).with_type(new_type)
-                    schema = schema.set(idx, field)
-                except KeyError:
-                    pass
-            updated_schemas.append(schema)
-        schemas_to_unify = updated_schemas
+    updated_schemas = []
+    for schema in schemas_to_unify:
+        for name, new_type in overrides.items():
+            try:
+                idx = schema.get_field_index(name)
+                field = schema.field(name).with_type(new_type)
+                schema = schema.set(idx, field)
+            except KeyError:
+                pass
+        updated_schemas.append(schema)
+    schemas_to_unify = updated_schemas
 
     # Final unification with overrides applied
     try:
