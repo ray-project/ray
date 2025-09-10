@@ -1,5 +1,6 @@
-import pytest
 import sys
+
+import pytest
 
 import ray._private.http_utils as http_utils
 
