@@ -470,7 +470,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       RayConfig::instance().max_lineage_bytes(),
       *task_event_buffer,
       /*get_actor_rpc_client_callback=*/
-      [this](const ActorID &actor_id) {
+      [this](const ActorID &actor_id)
+          -> std::optional<std::shared_ptr<rpc::CoreWorkerClientInterface>> {
         auto core_worker = GetCoreWorker();
         auto addr = core_worker->actor_task_submitter_->GetActorAddress(actor_id);
         if (!addr.has_value()) {
