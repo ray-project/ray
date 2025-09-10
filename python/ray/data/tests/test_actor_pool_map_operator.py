@@ -611,6 +611,7 @@ def test_setting_initial_size_for_actor_pool():
     assert op._actor_pool.get_actor_info() == _ActorPoolInfo(
         running=0, pending=2, restarting=0
     )
+    ray.shutdown()
 
 
 def test_min_max_resource_requirements(restore_data_context):
