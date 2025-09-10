@@ -20,7 +20,6 @@ _nccl_tensor_transport_manager = None
 _hccl_tensor_transport_manager = None
 
 
-
 def get_tensor_transport_manager(
     tensor_transport: Backend,
 ) -> "TensorTransportManager":

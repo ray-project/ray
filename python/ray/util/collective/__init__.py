@@ -16,15 +16,15 @@ from ray.util.collective.collective import (
     is_group_initialized,
     nccl_available,
     recv,
-    recv_multigpu,
     recv_multidevice,
+    recv_multigpu,
     reduce,
     reduce_multigpu,
     reducescatter,
     reducescatter_multigpu,
     send,
-    send_multigpu,
     send_multidevice,
+    send_multigpu,
 )
 
 __all__ = [

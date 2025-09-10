@@ -7,8 +7,8 @@ from typing import List
 import numpy as np
 
 import ray
-from ray.util.collective import types
 from ray.util.annotations import Deprecated
+from ray.util.collective import types
 
 _NCCL_AVAILABLE = True
 _GLOO_AVAILABLE = True
