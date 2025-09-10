@@ -54,6 +54,8 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
             "key": _generate_custom_build_step_key(image),
             "instance_type": "release-medium",
             "commands": [
+                "bash release/gcloud_docker_login.sh release/aws2gce_iam.json",
+                "export PATH=$(pwd)/google-cloud-sdk/bin:$$PATH",
                 f"aws ecr get-login-password --region {config['byod_ecr_region']} | docker login --username AWS --password-stdin {config['byod_ecr']}",
                 f"bazelisk run //release:custom_byod_build -- --image-name {image} --base-image {base_image} --post-build-script {post_build_script}",
             ],
