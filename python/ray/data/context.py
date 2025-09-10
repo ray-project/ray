@@ -409,10 +409,45 @@ class DataContext:
         retried_io_errors: A list of substrings of error messages that should
             trigger a retry when reading or writing files. This is useful for handling
             transient errors when reading from remote storage systems.
+        default_hash_shuffle_parallelism: Default parallelism level for hash-based
+            shuffle operations.
+        max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
+            provisioned for hash-shuffle aggregations.
+        min_hash_shuffle_aggregator_wait_time_in_s: Minimum time to wait for hash
+            shuffle aggregators to become available, in seconds.
+        hash_shuffle_aggregator_health_warning_interval_s: Interval for health warning
+            checks on hash shuffle aggregators, in seconds.
+        max_hash_shuffle_finalization_batch_size: Maximum batch size for concurrent
+            hash-shuffle finalization tasks. If `None`, defaults to
+            `max_hash_shuffle_aggregators`.
+        join_operator_actor_num_cpus_per_partition_override: Override CPU allocation
+            per partition for join operator actors.
+        hash_shuffle_operator_actor_num_cpus_per_partition_override: Override CPU
+            allocation per partition for hash shuffle operator actors.
+        hash_aggregate_operator_actor_num_cpus_per_partition_override: Override CPU
+            allocation per partition for hash aggregate operator actors.
+        use_polars_sort: Whether to use Polars for tabular dataset sorting operations.
+        enable_operator_progress_bars: Whether to enable progress bars for individual
+            operators during execution.
+        op_resource_reservation_enabled: Whether to enable resource reservation for
+            operators to prevent resource contention.
         enable_per_node_metrics: Enable per node metrics reporting for Ray Data,
             disabled by default.
+        override_object_store_memory_limit_fraction: Override the fraction of object
+            store memory limit. If `None`, uses Ray's default.
         memory_usage_poll_interval_s: The interval to poll the USS of map tasks. If `None`,
             map tasks won't record memory stats.
+        dataset_logger_id: Optional logger ID for dataset operations. If `None`, uses
+            default logging configuration.
+        issue_detectors_config: Configuration for issue detection and monitoring during
+            dataset operations.
+        downstream_capacity_backpressure_ratio: Ratio for downstream capacity
+            backpressure control. If `None`, backpressure is disabled.
+        downstream_capacity_backpressure_max_queued_bundles: Maximum number of queued
+            bundles before applying backpressure. If `None`, no limit is applied.
+        enforce_schemas: Whether to enforce schema consistency across dataset operations.
+        pandas_block_ignore_metadata: Whether to ignore pandas metadata when converting
+            between Arrow and pandas formats for improved performance.
     """
 
     # `None` means the block size is infinite.
