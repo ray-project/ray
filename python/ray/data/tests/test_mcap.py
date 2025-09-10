@@ -60,13 +60,15 @@ def create_mcap_file(file_path, messages_data):
                 schema_id = writer.register_schema(
                     name=schema_name,
                     encoding="jsonschema",
-                    data=json.dumps({
-                        "type": "object",
-                        "properties": {
-                            "test": {"type": "string"},
-                            "value": {"type": "number"}
+                    data=json.dumps(
+                        {
+                            "type": "object",
+                            "properties": {
+                                "test": {"type": "string"},
+                                "value": {"type": "number"},
+                            },
                         }
-                    }).encode()
+                    ).encode(),
                 )
                 schemas[schema_name] = schema_id
 
@@ -77,7 +79,7 @@ def create_mcap_file(file_path, messages_data):
                     schema_id=schemas[schema_name],
                     topic=topic,
                     message_encoding=message_encoding,
-                    metadata={"channel_name": channel_name}
+                    metadata={"channel_name": channel_name},
                 )
                 channels[channel_key] = channel_id
 
@@ -85,7 +87,7 @@ def create_mcap_file(file_path, messages_data):
             writer.add_message(
                 channel_id=channels[channel_key],
                 log_time=log_time,
-                data=json.dumps(data).encode('utf-8'),
+                data=json.dumps(data).encode("utf-8"),
                 publish_time=publish_time,
             )
 
@@ -135,6 +137,7 @@ def basic_mcap_file():
 
     # Cleanup
     import shutil
+
     shutil.rmtree(temp_dir, ignore_errors=True)
 
 
@@ -154,47 +157,50 @@ def multi_channel_mcap_file():
 
     # Create messages for different channels and topics
     for i in range(10):
-        messages_data.extend([
-            {
-                "schema_name": "sensor_msgs/Image",
-                "topic": "/camera/image_raw",
-                "channel": "camera",
-                "data": {"width": 640, "height": 480, "seq": i},
-                "log_time": base_time + i * 100000000,
-                "publish_time": base_time + i * 100000000 + 1000000,
-            },
-            {
-                "schema_name": "sensor_msgs/PointCloud2",
-                "topic": "/lidar/points",
-                "channel": "lidar",
-                "data": {"point_count": 1024 + i, "seq": i},
-                "log_time": base_time + i * 100000000 + 50000000,
-                "publish_time": base_time + i * 100000000 + 51000000,
-            },
-        ])
+        messages_data.extend(
+            [
+                {
+                    "schema_name": "sensor_msgs/Image",
+                    "topic": "/camera/image_raw",
+                    "channel": "camera",
+                    "data": {"width": 640, "height": 480, "seq": i},
+                    "log_time": base_time + i * 100000000,
+                    "publish_time": base_time + i * 100000000 + 1000000,
+                },
+                {
+                    "schema_name": "sensor_msgs/PointCloud2",
+                    "topic": "/lidar/points",
+                    "channel": "lidar",
+                    "data": {"point_count": 1024 + i, "seq": i},
+                    "log_time": base_time + i * 100000000 + 50000000,
+                    "publish_time": base_time + i * 100000000 + 51000000,
+                },
+            ]
+        )
 
     create_mcap_file(test_file_path, messages_data)
     yield test_file_path
 
     # Cleanup
     import shutil
+
     shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 def test_read_mcap_basic(ray_start_regular_shared, basic_mcap_file):
     """Test basic MCAP file reading."""
     ds = ray.data.read_mcap(basic_mcap_file)
-    
+
     # Verify dataset is created
     assert isinstance(ds, Dataset)
-    
+
     # Verify we can get basic info without errors
     assert ds.count() == 3  # We created 3 messages
-    
+
     # Verify we can read the data
     rows = ds.take_all()
     assert len(rows) == 3
-    
+
     # Check that basic fields are present
     for row in rows:
         assert "data" in row
@@ -208,10 +214,10 @@ def test_read_mcap_with_channels(ray_start_regular_shared, basic_mcap_file):
     # Note: In basic_mcap_file, we have "camera" and "lidar" channels
     channels = {"camera", "lidar"}
     ds = ray.data.read_mcap(basic_mcap_file, channels=channels)
-    
+
     assert isinstance(ds, Dataset)
     rows = ds.take_all()
-    
+
     # Should get messages from camera and lidar channels
     topics = {row["topic"] for row in rows}
     assert "/camera/image" in topics
@@ -222,10 +228,10 @@ def test_read_mcap_with_topics(ray_start_regular_shared, multi_channel_mcap_file
     """Test MCAP reading with topic filtering."""
     topics = {"/camera/image_raw", "/lidar/points"}
     ds = ray.data.read_mcap(multi_channel_mcap_file, topics=topics)
-    
+
     assert isinstance(ds, Dataset)
     rows = ds.take_all()
-    
+
     # Should only get messages from specified topics
     actual_topics = {row["topic"] for row in rows}
     assert actual_topics.issubset(topics)
@@ -237,23 +243,25 @@ def test_read_mcap_with_time_range(ray_start_regular_shared, multi_channel_mcap_
     base_time = 1600000000000000000
     time_range = (base_time, base_time + 500000000)  # First 5 message pairs
     ds = ray.data.read_mcap(multi_channel_mcap_file, time_range=time_range)
-    
+
     assert isinstance(ds, Dataset)
     rows = ds.take_all()
-    
+
     # Should have fewer messages due to time filtering
     assert len(rows) < 20  # Less than total messages
-    assert len(rows) > 0   # But still some messages
+    assert len(rows) > 0  # But still some messages
 
 
-def test_read_mcap_with_message_types(ray_start_regular_shared, multi_channel_mcap_file):
+def test_read_mcap_with_message_types(
+    ray_start_regular_shared, multi_channel_mcap_file
+):
     """Test MCAP reading with message type filtering."""
     message_types = {"sensor_msgs/Image"}
     ds = ray.data.read_mcap(multi_channel_mcap_file, message_types=message_types)
-    
+
     assert isinstance(ds, Dataset)
     rows = ds.take_all()
-    
+
     # Should only get Image messages, not PointCloud2
     assert len(rows) == 10  # Only camera messages
     for row in rows:
@@ -280,50 +288,53 @@ def test_read_mcap_multiple_files(ray_start_regular_shared):
             ]
             create_mcap_file(file_path, messages_data)
             file_paths.append(file_path)
-        
+
         ds = ray.data.read_mcap(file_paths)
         assert isinstance(ds, Dataset)
-        
+
         # Should have 3 messages total (1 from each file)
         rows = ds.take_all()
         assert len(rows) == 3
-        
+
         # Verify data from different files
         file_indices = {row["data"]["file_index"] for row in rows}
         assert file_indices == {0, 1, 2}
-        
+
     finally:
         import shutil
+
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 def test_read_mcap_with_include_paths(ray_start_regular_shared, basic_mcap_file):
     """Test MCAP reading with path inclusion."""
     ds = ray.data.read_mcap(basic_mcap_file, include_paths=True)
-    
+
     assert isinstance(ds, Dataset)
     rows = ds.take_all()
-    
+
     # Verify that path information is included
     for row in rows:
         assert "_file_path" in row
         assert basic_mcap_file in row["_file_path"]
 
 
-def test_read_mcap_with_include_metadata_false(ray_start_regular_shared, basic_mcap_file):
+def test_read_mcap_with_include_metadata_false(
+    ray_start_regular_shared, basic_mcap_file
+):
     """Test MCAP reading without metadata."""
     ds_with_metadata = ray.data.read_mcap(basic_mcap_file, include_metadata=True)
     ds_without_metadata = ray.data.read_mcap(basic_mcap_file, include_metadata=False)
-    
+
     rows_with = ds_with_metadata.take_all()
     rows_without = ds_without_metadata.take_all()
-    
+
     # Both should have same number of rows
     assert len(rows_with) == len(rows_without)
-    
+
     # Rows with metadata should have schema fields
     assert "schema_name" in rows_with[0]
-    
+
     # Rows without metadata should not have schema fields
     assert "schema_name" not in rows_without[0]
 
@@ -333,19 +344,19 @@ def test_read_mcap_invalid_time_range(ray_start_regular_shared, basic_mcap_file)
     # Start time >= end time should raise error
     with pytest.raises(ValueError, match="start_time must be less than end_time"):
         ray.data.read_mcap(basic_mcap_file, time_range=(2000000000, 1000000000))
-    
+
     # Negative time values should raise error
     with pytest.raises(ValueError, match="time values must be non-negative"):
         ray.data.read_mcap(basic_mcap_file, time_range=(-1000000000, 2000000000))
 
 
-def test_read_mcap_channels_and_topics_exclusive(ray_start_regular_shared, basic_mcap_file):
+def test_read_mcap_channels_and_topics_exclusive(
+    ray_start_regular_shared, basic_mcap_file
+):
     """Test that channels and topics parameters are mutually exclusive."""
     with pytest.raises(ValueError, match="Cannot specify both 'channels' and 'topics'"):
         ray.data.read_mcap(
-            basic_mcap_file,
-            channels={"camera"},
-            topics={"/camera/image_raw"}
+            basic_mcap_file, channels={"camera"}, topics={"/camera/image_raw"}
         )
 
 
@@ -374,29 +385,30 @@ def test_read_mcap_directory(ray_start_regular_shared):
                 }
             ]
             create_mcap_file(file_path, messages_data)
-        
+
         ds = ray.data.read_mcap(temp_dir)
         assert isinstance(ds, Dataset)
-        
+
         # Should read both files
         rows = ds.take_all()
         assert len(rows) == 2
-        
+
         # Verify data from both files
         dir_indices = {row["data"]["dir_index"] for row in rows}
         assert dir_indices == {0, 1}
-        
+
     finally:
         import shutil
+
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 def test_read_mcap_with_override_num_blocks(ray_start_regular_shared, basic_mcap_file):
     """Test MCAP reading with override_num_blocks parameter."""
     ds = ray.data.read_mcap(basic_mcap_file, override_num_blocks=2)
-    
+
     assert isinstance(ds, Dataset)
-    
+
     # Should still read all the data
     rows = ds.take_all()
     assert len(rows) == 3
@@ -419,32 +431,34 @@ def test_read_mcap_file_extensions(ray_start_regular_shared):
             }
         ]
         create_mcap_file(mcap_file, messages_data)
-        
+
         # Create a file with different extension (not MCAP format)
         other_file = os.path.join(temp_dir, "data.txt")
         with open(other_file, "wb") as f:
             f.write(b"NOT_MCAP_DATA" * 50)
-        
+
         # Should only read .mcap files by default
         ds = ray.data.read_mcap(temp_dir)
         assert isinstance(ds, Dataset)
         rows = ds.take_all()
         assert len(rows) == 1
         assert rows[0]["data"]["test"] == "mcap_extension"
-        
+
         # Should fail when trying to read non-MCAP files with wrong extension
         with pytest.raises(Exception):
             ds = ray.data.read_mcap(temp_dir, file_extensions=["txt"])
             ds.materialize()  # Force execution
-        
+
     finally:
         import shutil
+
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 def test_read_mcap_without_mcap_library(ray_start_regular_shared, basic_mcap_file):
     """Test MCAP reading fails gracefully without mcap library."""
     from unittest.mock import patch
+
     with patch.dict("sys.modules", {"mcap": None}):
         with pytest.raises(ImportError, match="MCAPDatasource.*depends on 'mcap'"):
             ray.data.read_mcap(basic_mcap_file)
