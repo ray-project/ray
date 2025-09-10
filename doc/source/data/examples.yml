@@ -1,14 +1,17 @@
-text: Below are examples for using Ray Data for batch inference workloads or large-scale data processing with a variety of frameworks and use cases.
+text: Below are examples for using Ray Data across diverse use cases including AI/ML, multimodal data processing, ETL, business intelligence, and large-scale data processing with a variety of frameworks.
 columns_to_show:
   - frameworks
+  - use_cases
 groupby: skill_level
 examples:
+  # AI & Machine Learning Examples
   - title: Image Classification Batch Inference with PyTorch ResNet152
     skill_level: beginner
     frameworks:
       - PyTorch
     use_cases:
       - computer vision
+      - machine learning
     link: examples/pytorch_resnet_batch_prediction
   - title: Object Detection Batch Inference with PyTorch FasterRCNN_ResNet50
     skill_level: beginner
@@ -16,6 +19,7 @@ examples:
       - PyTorch
     use_cases:
       - computer vision
+      - machine learning
     link: examples/batch_inference_object_detection
   - title: Image Classification Batch Inference with Hugging Face Vision Transformer
     skill_level: beginner
@@ -23,6 +27,7 @@ examples:
       - Transformers
     use_cases:
       - computer vision
+      - machine learning
     link: examples/huggingface_vit_batch_prediction
   - title: Batch Inference with LoRA Adapter
     skill_level: beginner
@@ -44,4 +49,97 @@ examples:
     skill_level: beginner
     frameworks:
       - xgboost
+    use_cases:
+      - machine learning
+      - tabular data
     link: ../train/examples/xgboost/distributed-xgboost-lightgbm
+  
+  # ETL & Data Engineering Examples
+  - title: Customer 360 Data Pipeline
+    skill_level: intermediate
+    frameworks:
+      - Ray Data
+    use_cases:
+      - etl
+      - data engineering
+      - customer analytics
+    link: use_cases/etl-examples#customer-data-pipeline
+  - title: Financial Risk Analysis Pipeline
+    skill_level: intermediate
+    frameworks:
+      - Ray Data
+    use_cases:
+      - etl
+      - financial services
+      - risk analysis
+    link: use_cases/etl-examples#financial-data-processing-pipeline
+  - title: Log Analysis and Monitoring
+    skill_level: intermediate
+    frameworks:
+      - Ray Data
+    use_cases:
+      - etl
+      - monitoring
+      - observability
+    link: use_cases/etl-examples#log-analysis-pipeline
+  
+  # Business Intelligence Examples
+  - title: Sales Analytics Dashboard Data Preparation
+    skill_level: beginner
+    frameworks:
+      - Ray Data
+    use_cases:
+      - business intelligence
+      - analytics
+      - dashboard preparation
+    link: business_guides/business-intelligence#dashboard-data-preparation
+  - title: Customer Segmentation Analysis
+    skill_level: intermediate
+    frameworks:
+      - Ray Data
+    use_cases:
+      - business intelligence
+      - customer analytics
+      - segmentation
+    link: business_guides/business-intelligence#customer-analytics
+  - title: Time Series Analysis for Business Metrics
+    skill_level: intermediate
+    frameworks:
+      - Ray Data
+    use_cases:
+      - business intelligence
+      - time series
+      - forecasting
+    link: business_guides/business-intelligence#time-series-analysis
+  
+  # Multimodal & Advanced Data Processing
+  - title: Multimodal Data Processing Pipeline
+    skill_level: advanced
+    frameworks:
+      - Ray Data
+      - PyTorch
+      - Transformers
+    use_cases:
+      - multimodal
+      - computer vision
+      - nlp
+    link: working-with-ai#multimodal-inference
+  - title: Lakehouse Format Processing with Delta Lake
+    skill_level: intermediate
+    frameworks:
+      - Ray Data
+      - Delta Lake
+    use_cases:
+      - data lakehouse
+      - acid transactions
+      - time travel
+    link: working-with-lakehouse-formats#working-with-delta-lake
+  - title: Large-Scale Tabular Data Analytics
+    skill_level: intermediate
+    frameworks:
+      - Ray Data
+    use_cases:
+      - tabular data
+      - analytics
+      - aggregations
+    link: working-with-tabular-data#business-intelligence-patterns
