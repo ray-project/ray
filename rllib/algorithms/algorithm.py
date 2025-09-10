@@ -345,8 +345,11 @@ class Algorithm(Checkpointable, Trainable):
             # `path` is a Checkpoint instance: Translate to directory and continue.
             if isinstance(path, Checkpoint):
                 path = path.to_directory()
-            return super().from_checkpoint(path, filesystem=filesystem, **kwargs)
-
+            restored: Algorithm = super().from_checkpoint(
+                path, filesystem=filesystem, **kwargs
+            )
+            restored._sync_initial_env_runner_states()
+            return restored
         # Not possible for (v0.1) (algo class and config information missing
         # or very hard to retrieve).
         elif checkpoint_info["checkpoint_version"] == version.Version("0.1"):
@@ -822,30 +825,7 @@ class Algorithm(Checkpointable, Trainable):
                 )
 
             # Sync the weights from the learner group to the EnvRunners.
-            rl_module_state = self.learner_group.get_state(
-                components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE,
-                inference_only=True,
-            )[COMPONENT_LEARNER]
-            if self.env_runner_group:
-                self.env_runner_group.sync_env_runner_states(
-                    config=self.config,
-                    env_steps_sampled=self.metrics.peek(
-                        (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
-                    ),
-                    rl_module_state=rl_module_state,
-                    env_to_module=self.env_to_module_connector,
-                    module_to_env=self.module_to_env_connector,
-                )
-            elif self.eval_env_runner_group:
-                self.eval_env_runner_group.sync_env_runner_states(
-                    config=self.evaluation_config,
-                    env_steps_sampled=self.metrics.peek(
-                        (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
-                    ),
-                    rl_module_state=rl_module_state,
-                    env_to_module=self.env_to_module_connector,
-                    module_to_env=self.module_to_env_connector,
-                )
+            self._sync_initial_env_runner_states()
             # TODO (simon): Update modules in DataWorkers.
 
             if self.offline_data:
@@ -1913,6 +1893,34 @@ class Algorithm(Checkpointable, Trainable):
             )
 
         return env_runner_results, env_steps, agent_steps, all_batches
+
+    def _sync_initial_env_runner_states(self):
+        rl_module_state = self.learner_group.get_state(
+            components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE,
+            inference_only=True,
+        )[COMPONENT_LEARNER]
+        if self.env_runner_group:
+            self.env_runner_group.sync_env_runner_states(
+                config=self.config,
+                env_steps_sampled=self.metrics.peek(
+                    (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
+                ),
+                rl_module_state=rl_module_state,
+                env_to_module=self.env_to_module_connector,
+                module_to_env=self.module_to_env_connector,
+                env_runner_metrics=self.metrics.get_state(key=ENV_RUNNER_RESULTS),
+            )
+        elif self.eval_env_runner_group:
+            self.eval_env_runner_group.sync_env_runner_states(
+                config=self.evaluation_config,
+                env_steps_sampled=self.metrics.peek(
+                    (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
+                ),
+                rl_module_state=rl_module_state,
+                env_to_module=self.env_to_module_connector,
+                module_to_env=self.module_to_env_connector,
+                env_runner_metrics=self.metrics.get_state(key=ENV_RUNNER_RESULTS),
+            )
 
     @OverrideToImplementCustomLogic
     def restore_env_runners(self, env_runner_group: EnvRunnerGroup) -> List[int]:

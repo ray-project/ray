@@ -494,7 +494,7 @@ py_test(
     ],
 )
 
-#@OldAPIStack
+# @OldAPIStack
 py_test(
     name = "learning_tests_multi_agent_cartpole_w_100_policies_appo_old_api_stack",
     size = "large",
@@ -2027,6 +2027,17 @@ py_test(
     size = "large",
     srcs = ["algorithms/tests/test_algorithm.py"],
     data = ["tests/data/cartpole/small.json"],
+    tags = [
+        "algorithms_dir",
+        "algorithms_dir_generic",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "test_algorithm_checkpoint_steps",
+    size = "medium",
+    srcs = ["algorithms/tests/test_algorithm_checkpoint_steps.py"],
     tags = [
         "algorithms_dir",
         "algorithms_dir_generic",
@@ -3722,7 +3733,7 @@ py_test(
     ],
 )
 
-#@OldAPIStack
+# @OldAPIStack
 py_test(
     name = "examples/checkpoints/continue_training_from_checkpoint_old_api_stack",
     size = "large",
@@ -4303,7 +4314,7 @@ py_test(
     ],
 )
 
-#@OldAPIStack
+# @OldAPIStack
 py_test(
     name = "examples/envs/greyscale_env",
     size = "medium",
@@ -4779,7 +4790,7 @@ py_test(
     ],
 )
 
-#@OldAPIStack
+# @OldAPIStack
 py_test(
     name = "examples/inference/policy_inference_after_training_with_lstm_tf",
     size = "medium",
@@ -4796,7 +4807,7 @@ py_test(
     ],
 )
 
-#@OldAPIStack
+# @OldAPIStack
 py_test(
     name = "examples/inference/policy_inference_after_training_with_lstm_torch",
     size = "medium",
@@ -5266,7 +5277,7 @@ py_test(
 #     args = ["--as-test"]
 # )
 
-#@OldAPIStack
+# @OldAPIStack
 py_test(
     name = "examples/offline_rl/offline_rl_torch_old_api_stack",
     size = "medium",
