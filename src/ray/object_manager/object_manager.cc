@@ -74,8 +74,7 @@ ObjectManager::ObjectManager(
         const std::string &address,
         const int port,
         rpc::ClientCallManager &client_call_manager)> object_manager_client_factory,
-    instrumented_io_context &rpc_service,
-    std::vector<std::thread> rpc_threads)
+    instrumented_io_context &rpc_service)
     : main_service_(&main_service),
       self_node_id_(self_node_id),
       config_(config),
@@ -85,7 +84,6 @@ ObjectManager::ObjectManager(
       buffer_pool_store_client_(buffer_pool_store_client),
       buffer_pool_(buffer_pool_store_client_, config_.object_chunk_size),
       rpc_service_(rpc_service),
-      rpc_threads_(std::move(rpc_threads)),
       object_manager_server_("ObjectManager",
                              config_.object_manager_port,
                              config_.object_manager_address == "127.0.0.1",
@@ -165,11 +163,6 @@ void ObjectManager::StartRpcService() {
 
 void ObjectManager::StopRpcService() {
   rpc_service_.stop();
-  for (int i = 0; i < config_.rpc_service_threads_number; i++) {
-    if (rpc_threads_[i].joinable()) {
-      rpc_threads_[i].join();
-    }
-  }
   object_manager_server_.Shutdown();
 }
 
@@ -647,6 +640,8 @@ void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
   buffer_pool_.FreeObjects(object_ids);
   if (!local_only) {
     std::vector<std::shared_ptr<rpc::ObjectManagerClientInterface>> rpc_clients;
+    // TODO(#56414): optimize this so we don't have to send a free objects request for
+    // every object to every node
     const auto &node_info_map = gcs_client_.Nodes().GetAll();
     for (const auto &[node_id, _] : node_info_map) {
       if (node_id == self_node_id_) {

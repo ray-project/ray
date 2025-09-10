@@ -167,7 +167,6 @@ class ObjectManager : public ObjectManagerInterface,
     return pull_manager_->NumInactivePulls(task_key);
   }
 
- public:
   /// Takes user-defined IObjectDirectory implementation.
   /// When this constructor is used, the ObjectManager assumes ownership of
   /// the given ObjectDirectory instance.
@@ -191,8 +190,7 @@ class ObjectManager : public ObjectManagerInterface,
           const std::string &address,
           const int port,
           rpc::ClientCallManager &client_call_manager)> object_manager_client_factory,
-      instrumented_io_context &rpc_service,
-      std::vector<std::thread> rpc_threads);
+      instrumented_io_context &rpc_service);
 
   ~ObjectManager() override;
 
@@ -275,7 +273,6 @@ class ObjectManager : public ObjectManagerInterface,
 
  private:
   friend class TestObjectManager;
-  friend uint32_t NumRemoteFreeObjectsRequests(const ObjectManager &object_manager);
 
   /// Spread the Free request to all objects managers.
   ///
@@ -433,10 +430,6 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// Multi-thread asio service, deal with all outgoing and incoming RPC request.
   instrumented_io_context &rpc_service_;
-
-  /// The thread pool used for running `rpc_service`.
-  /// Data copy operations during request are done in this thread pool.
-  std::vector<std::thread> rpc_threads_;
 
   /// Mapping from locally available objects to information about those objects
   /// including when the object was last pushed to other object managers.

@@ -27,7 +27,7 @@
 
 namespace plasma {
 
-class FakePlasmaClient : public plasma::PlasmaClientInterface {
+class FakePlasmaClient : public PlasmaClientInterface {
  public:
   Status Connect(const std::string &store_socket_name,
                  const std::string &manager_socket_name = "",
