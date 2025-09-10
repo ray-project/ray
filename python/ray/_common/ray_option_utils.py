@@ -222,7 +222,7 @@ _task_only_options = {
 
 _actor_only_options = {
     "concurrency_groups": Option((list, dict, type(None))),
-    "enable_tensor_transport": Option(bool, default_value=False),
+    "enable_tensor_transport": Option((bool, type(None)), default_value=None),
     "lifetime": Option(
         (str, type(None)),
         lambda x: None
@@ -236,6 +236,7 @@ _actor_only_options = {
     "max_pending_calls": _counting_option("max_pending_calls", default_value=-1),
     "namespace": Option((str, type(None))),
     "get_if_exists": Option(bool, default_value=False),
+    "allow_out_of_order_execution": Option((bool, type(None))),
 }
 
 # Priority is important here because during dictionary update, same key with higher

@@ -131,14 +131,12 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
 
   Status Get(const std::vector<ObjectID> &object_ids,
              int64_t timeout_ms,
-             std::vector<ObjectBuffer> *object_buffers,
-             bool is_from_worker);
+             std::vector<ObjectBuffer> *object_buffers);
 
   Status Get(const ObjectID *object_ids,
              int64_t num_objects,
              int64_t timeout_ms,
-             ObjectBuffer *object_buffers,
-             bool is_from_worker);
+             ObjectBuffer *object_buffers);
 
   Status GetExperimentalMutableObject(const ObjectID &object_id,
                                       std::unique_ptr<MutableObject> *mutable_object);
@@ -187,8 +185,7 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
   Status GetBuffers(const ObjectID *object_ids,
                     int64_t num_objects,
                     int64_t timeout_ms,
-                    ObjectBuffer *object_buffers,
-                    bool is_from_worker);
+                    ObjectBuffer *object_buffers);
 
   uint8_t *LookupMmappedFile(MEMFD_TYPE store_fd_val) const;
 
@@ -463,8 +460,7 @@ Status PlasmaClient::Impl::TryCreateImmediately(const ObjectID &object_id,
 Status PlasmaClient::Impl::GetBuffers(const ObjectID *object_ids,
                                       int64_t num_objects,
                                       int64_t timeout_ms,
-                                      ObjectBuffer *object_buffers,
-                                      bool is_from_worker) {
+                                      ObjectBuffer *object_buffers) {
   // Fill out the info for the objects that are already in use locally.
   bool all_present = true;
   for (int64_t i = 0; i < num_objects; ++i) {
@@ -517,8 +513,7 @@ Status PlasmaClient::Impl::GetBuffers(const ObjectID *object_ids,
   for (int64_t i = 0; i < num_objects; i++) {
     RAY_LOG(DEBUG) << "Sending get request " << object_ids[i];
   }
-  RAY_RETURN_NOT_OK(SendGetRequest(
-      store_conn_, &object_ids[0], num_objects, timeout_ms, is_from_worker));
+  RAY_RETURN_NOT_OK(SendGetRequest(store_conn_, &object_ids[0], num_objects, timeout_ms));
   std::vector<uint8_t> buffer;
   RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaGetReply, &buffer));
   std::vector<ObjectID> received_object_ids(num_objects);
@@ -630,13 +625,11 @@ Status PlasmaClient::Impl::GetExperimentalMutableObject(
 
 Status PlasmaClient::Impl::Get(const std::vector<ObjectID> &object_ids,
                                int64_t timeout_ms,
-                               std::vector<ObjectBuffer> *out,
-                               bool is_from_worker) {
+                               std::vector<ObjectBuffer> *out) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
   const size_t num_objects = object_ids.size();
   *out = std::vector<ObjectBuffer>(num_objects);
-  return GetBuffers(
-      object_ids.data(), num_objects, timeout_ms, out->data(), is_from_worker);
+  return GetBuffers(object_ids.data(), num_objects, timeout_ms, out->data());
 }
 
 Status PlasmaClient::Impl::MarkObjectUnused(const ObjectID &object_id) {
@@ -922,9 +915,8 @@ Status PlasmaClient::TryCreateImmediately(const ObjectID &object_id,
 
 Status PlasmaClient::Get(const std::vector<ObjectID> &object_ids,
                          int64_t timeout_ms,
-                         std::vector<ObjectBuffer> *object_buffers,
-                         bool is_from_worker) {
-  return impl_->Get(object_ids, timeout_ms, object_buffers, is_from_worker);
+                         std::vector<ObjectBuffer> *object_buffers) {
+  return impl_->Get(object_ids, timeout_ms, object_buffers);
 }
 
 Status PlasmaClient::GetExperimentalMutableObject(
@@ -932,8 +924,7 @@ Status PlasmaClient::GetExperimentalMutableObject(
   // First make sure the object is in scope. The ObjectBuffer will keep the
   // value pinned in the plasma store.
   std::vector<ObjectBuffer> object_buffers;
-  RAY_RETURN_NOT_OK(impl_->Get(
-      {object_id}, /*timeout_ms=*/0, &object_buffers, /*is_from_worker=*/true));
+  RAY_RETURN_NOT_OK(impl_->Get({object_id}, /*timeout_ms=*/0, &object_buffers));
   if (!object_buffers[0].data) {
     return Status::Invalid(
         "Experimental mutable object must be in the local object store to register as "

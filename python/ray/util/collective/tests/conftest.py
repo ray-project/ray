@@ -2,6 +2,7 @@
 import logging
 
 import pytest
+
 import ray
 try:
     from ray.util.collective.collective_group.nccl_collective_group import (

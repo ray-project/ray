@@ -2,34 +2,34 @@ import json
 import os
 import pathlib
 import sys
-import time
 import threading
+import time
 from dataclasses import asdict
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from unittest.mock import Mock, patch
-from ray._common.test_utils import wait_for_condition
-from ray._raylet import GcsClient
-from ray.tests.conftest import *  # noqa: F403
 
-import requests
 import pytest
+import requests
 from jsonschema import validate
-from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import ray
 import ray._common.usage.usage_constants as usage_constants
 import ray._common.usage.usage_lib as ray_usage_lib
+from ray._common.test_utils import wait_for_condition
+from ray._common.usage.usage_lib import ClusterConfigToReport, UsageStatsEnabledness
+from ray._private.accelerators import NvidiaGPUAcceleratorManager
 from ray._private.test_utils import (
     format_web_url,
     run_string_as_driver,
     wait_until_server_available,
 )
-from ray._common.usage.usage_lib import ClusterConfigToReport, UsageStatsEnabledness
+from ray._raylet import GcsClient
 from ray.autoscaler._private.cli_logger import cli_logger
+from ray.tests.conftest import *  # noqa: F403
 from ray.util.placement_group import (
     placement_group,
 )
-from ray._private.accelerators import NvidiaGPUAcceleratorManager
 
 schema = {
     "$schema": "http://json-schema.org/draft-07/schema#",
@@ -876,13 +876,15 @@ def test_usage_lib_get_total_num_running_jobs_to_report(
     ray.shutdown()
 
 
-def test_usage_lib_get_total_num_nodes_to_report(ray_start_cluster, reset_usage_stats):
+def test_usage_lib_get_total_num_alive_nodes_to_report(
+    ray_start_cluster, reset_usage_stats
+):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1)
     ray.init(address=cluster.address)
     worker_node = cluster.add_node(num_cpus=2)
     assert (
-        ray_usage_lib.get_total_num_nodes_to_report(
+        ray_usage_lib.get_total_num_alive_nodes_to_report(
             ray.experimental.internal_kv.internal_kv_get_gcs_client()
         )
         == 2
@@ -890,7 +892,7 @@ def test_usage_lib_get_total_num_nodes_to_report(ray_start_cluster, reset_usage_
     cluster.remove_node(worker_node)
     # Make sure only alive nodes are counted
     assert (
-        ray_usage_lib.get_total_num_nodes_to_report(
+        ray_usage_lib.get_total_num_alive_nodes_to_report(
             ray.experimental.internal_kv.internal_kv_get_gcs_client()
         )
         == 1
@@ -1460,7 +1462,7 @@ def test_usage_stats_gcs_query_failure(
 
         ray.init(address=cluster.address)
         assert (
-            ray_usage_lib.get_total_num_nodes_to_report(
+            ray_usage_lib.get_total_num_alive_nodes_to_report(
                 ray.experimental.internal_kv.internal_kv_get_gcs_client(), timeout=1
             )
             is None

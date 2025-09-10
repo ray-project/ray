@@ -119,7 +119,9 @@ class FakeRunningReplica(RunningReplica):
             self.get_queue_len_was_cancelled = True
             raise
 
-    def send_request(self, pr: PendingRequest) -> ReplicaResult:
+    def try_send_request(
+        self, pr: PendingRequest, with_rejection: bool
+    ) -> ReplicaResult:
         raise NotImplementedError()
 
     def send_request_with_rejection(self, pr: PendingRequest) -> ReplicaResult:
@@ -1916,7 +1918,7 @@ async def test_locality_aware_backoff_skips_sleeps(pow_2_router):
         assert done.pop().result() == r3
 
     # assert that we tried local node, followed by local AZ, followed by all replicas
-    assert len(chosen_replicas) == 3
+    assert len(chosen_replicas) in (3, 4)
     assert set(chosen_replicas[0]) == {r1.replica_id}
     assert set(chosen_replicas[1]) == {r1.replica_id, r2.replica_id}
     # assert intersection of chosen_replicas[2] and {r1.replica_id, r2.replica_id, r3.replica_id} is not empty

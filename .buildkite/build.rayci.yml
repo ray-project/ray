@@ -19,16 +19,30 @@ steps:
       - manylinux
       - forge
 
-  - label: ":tapioca: build: debug wheel"
+  - label: ":tapioca: build & test placeholder wheel {{matrix}}"
+    key: placeholder_wheels
     tags:
-      - linux_wheels
-      - oss
-    instance_type: large
+      - python
+    instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- wheel --build-type debug --upload
+      # validate minimal installation
+      - python ./ci/env/check_minimal_install.py --expected-python-version {{matrix}}
+      - python -m pip install --upgrade pip
+      # build placeholder wheel
+      - export RAY_DEBUG_BUILD=deps-only
+      - mkdir -p .whl
+      - pip wheel python/ --no-deps -w .whl/ --use-pep517
+      - ls -a .whl
+      # test placeholder wheel
+      - ./ci/build/test-linux-placeholder-wheel.sh {{matrix}}
     depends_on:
-      - manylinux
-      - forge
+      - minbuild-core
+    job_env: minbuild-core-py{{matrix}}
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.11"
+      - "3.12"
 
   - label: ":tapioca: build: jar"
     key: java_wheels
@@ -67,7 +81,8 @@ steps:
         --platform cu11.7.1-cudnn8 --platform cu11.8.0-cudnn8
         --platform cu12.1.1-cudnn8 --platform cu12.3.2-cudnn9
         --platform cu12.4.1-cudnn --platform cu12.5.1-cudnn
-        --platform cu12.8.1-cudnn --platform cpu
+        --platform cu12.6.3-cudnn --platform cu12.8.1-cudnn
+        --platform cpu
         --image-type ray --upload
     depends_on:
       - manylinux

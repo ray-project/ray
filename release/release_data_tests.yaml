@@ -35,6 +35,22 @@
       s3://ray-benchmark-data-internal-us-west-2/imagenet/parquet --format parquet
       --iter-bundles
 
+- name: "read_large_parquet_{{scaling}}"
+
+  cluster:
+    cluster_compute: "{{scaling}}_cpu_compute.yaml"
+
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  run:
+    timeout: 3600
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data-internal-us-west-2/large-parquet/ --format parquet
+      --iter-bundles
+
 - name: "read_images_{{scaling}}"
 
   cluster:
@@ -542,28 +558,36 @@
           python setup_chaos.py --chaos TerminateEC2InstanceWithGracePeriod
           --batch-size-to-kill 10 --max-to-kill 100 --kill-delay 120
 
-- name: batch_inference_hetero
+- name: batch_inference_hetero_{{case}}
   frequency: manual
+
+  matrix:
+    setup:
+      case: []
+      cluster_type: []
+      args: []
+    adjustments:
+      - with:
+          case: fixed_size
+          cluster_type: fixed_size
+          args: --inference-concurrency 40 40
+      - with:
+          case: autoscaling
+          cluster_type: autoscaling
+          args: --inference-concurrency 1 40
+      - with:
+          case: fixed_size_chaos
+          cluster_type: fixed_size
+          args: --inference-concurrency 40 40 --chaos
+
+  cluster:
+    cluster_compute: batch_inference_hetero/{{cluster_type}}_cluster_compute.yaml
+    byod:
+      post_build_script: byod_install_pybase64.sh
 
   run:
     timeout: 3600
-
-  variations:
-    - __suffix__: fixed_size
-      cluster:
-        cluster_compute: batch_inference_hetero/fixed_size_cluster_compute.yaml
-        byod:
-          post_build_script: byod_install_pybase64.sh
-      run:
-        script: python batch_inference_hetero/main.py --inference-concurrency 40 40
-
-    - __suffix__: autoscaling
-      cluster:
-        cluster_compute: batch_inference_hetero/autoscaling_cluster_compute.yaml
-        byod:
-          post_build_script: byod_install_pybase64.sh
-      run:
-        script: python batch_inference_hetero/main.py --inference-concurrency 1 40
+    script: python batch_inference_hetero/main.py {{args}}
 
 
 ##############

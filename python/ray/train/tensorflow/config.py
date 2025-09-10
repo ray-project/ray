@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import List
 
 import ray
+from ray._common.network_utils import build_address
 from ray.train._internal.utils import get_address_and_port
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
@@ -42,7 +43,7 @@ class _TensorflowBackend(Backend):
         # Compute URL for initializing distributed setup.
         def get_url():
             address, port = get_address_and_port()
-            return f"{address}:{port}"
+            return build_address(address, port)
 
         urls = worker_group.execute(get_url)
 

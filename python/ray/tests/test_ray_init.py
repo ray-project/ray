@@ -1,11 +1,11 @@
-from concurrent.futures import ThreadPoolExecutor
 import json
 import os
-import sys
-import unittest.mock
 import signal
 import subprocess
+import sys
 import tempfile
+import unittest.mock
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import grpc
@@ -14,14 +14,15 @@ import pytest
 import ray
 import ray._private.services
 import ray._private.utils as utils
+from ray._common.network_utils import build_address, parse_address
+from ray._private import ray_constants
+from ray._private.test_utils import external_redis_test_enabled
 from ray.client_builder import ClientContext
 from ray.cluster_utils import Cluster
+from ray.runtime_env.runtime_env import RuntimeEnv
 from ray.util.client.common import ClientObjectRef
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.worker import Worker
-from ray._private.test_utils import external_redis_test_enabled
-from ray._private import ray_constants
-from ray.runtime_env.runtime_env import RuntimeEnv
 
 
 @pytest.mark.skipif(
@@ -38,7 +39,7 @@ def test_ray_address(input, call_ray_start):
         assert res.address_info["gcs_address"] == address
         ray.shutdown()
 
-    addr = "localhost:{}".format(address.split(":")[-1])
+    addr = f"localhost:{parse_address(address)[-1]}"
     with unittest.mock.patch.dict(os.environ, {"RAY_ADDRESS": addr}):
         res = ray.init(input)
         # Ensure this is not a client.connect()
@@ -194,7 +195,7 @@ def test_auto_init_non_client(call_ray_start):
         assert not isinstance(res, ClientObjectRef)
         ray.shutdown()
 
-    addr = "localhost:{}".format(address.split(":")[-1])
+    addr = f"localhost:{parse_address(address)[-1]}"
     with unittest.mock.patch.dict(os.environ, {"RAY_ADDRESS": addr}):
         res = ray.put(300)
         # Ensure this is not a client.connect()
@@ -210,9 +211,10 @@ def test_auto_init_non_client(call_ray_start):
     "function", [lambda: ray.put(300), lambda: ray.remote(ray.nodes).remote()]
 )
 def test_auto_init_client(call_ray_start, function):
-    address = call_ray_start.split(":")[0]
+    address = parse_address(call_ray_start)[0]
+
     with unittest.mock.patch.dict(
-        os.environ, {"RAY_ADDRESS": f"ray://{address}:25036"}
+        os.environ, {"RAY_ADDRESS": f"ray://{build_address(address, 25036)}"}
     ):
         res = function()
         # Ensure this is a client connection.

@@ -11,6 +11,7 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionResponse,
     CompletionResponse,
     EmbeddingResponse,
+    ScoreResponse,
 )
 
 
@@ -94,3 +95,16 @@ class LLMResponseValidator:
         # Check dimensions if specified
         if expected_dimensions:
             assert len(response.data[0].embedding) == expected_dimensions
+
+    @staticmethod
+    def validate_score_response(response: ScoreResponse):
+        """Validate score responses."""
+        assert isinstance(response, ScoreResponse)
+        assert response.object == "list"
+        assert len(response.data) >= 1
+
+        # Validate each score data element
+        for i, score_data in enumerate(response.data):
+            assert score_data.object == "score"
+            assert isinstance(score_data.score, float)
+            assert score_data.index == i  # Index should match position in list

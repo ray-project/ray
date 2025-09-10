@@ -1,9 +1,11 @@
-import sys
 import json
-import pytest
+import sys
 from unittest.mock import patch
-from ray._common.constants import HEAD_NODE_RESOURCE_NAME, NODE_ID_PREFIX
+
+import pytest
+
 import ray._private.ray_constants as ray_constants
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME, NODE_ID_PREFIX
 from ray._private.accelerators import AcceleratorManager
 from ray._private.resource_and_label_spec import ResourceAndLabelSpec
 
@@ -106,10 +108,14 @@ def test_resource_and_label_spec_resolves_auto_detect(monkeypatch):
     assert HEAD_NODE_RESOURCE_NAME in spec.resources
     assert any(key.startswith(NODE_ID_PREFIX) for key in spec.resources.keys())
 
-    # object_store_memory = 8GB * DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
-    expected_object_store = int(
-        8 * 1024**3 * ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
-    )
+    if sys.platform == "darwin":
+        # Object store memory is capped at 2GB on macOS.
+        expected_object_store = 2 * 1024**3
+    else:
+        # object_store_memory = 8GB * DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
+        expected_object_store = int(
+            8 * 1024**3 * ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
+        )
     assert spec.object_store_memory == expected_object_store
 
     # memory is total available memory - object_store_memory

@@ -150,7 +150,11 @@ message NodeState {
   // The corresponding total resources on the node.
   map<string, double> total_resources = 5;
 
-  // Dynamic labels associated with the node.
+  // DEPRECATED: This field is part of the deprecated dynamic labels feature and
+  // must not be used in new code. It is retained solely for backward compatibility
+  // in the autoscaler, where it is required to retrieve the placement group ID for
+  // enforcing antiaffinity constraints in strict-spread placement group scheduling.
+  //
   // Reserved dynamic label names: _PG
   map<string, string> dynamic_labels = 6;
 
@@ -214,7 +218,7 @@ message ClusterResourceState {
   // There could be multiple constraints issued by different
   // jobs. Autoscaler to make sure all constraints are satisfied.
   repeated ClusterResourceConstraint cluster_resource_constraints = 6;
-  // The cluster session name.
+  // The current Ray session name.
   string cluster_session_name = 7;
 }
 

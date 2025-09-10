@@ -2,6 +2,7 @@
 import logging
 import time
 from typing import (
+    Any,
     List,
     Optional,
 )
@@ -34,7 +35,7 @@ from ray.serve._private.request_router.request_router import (
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-class PrefixAwarePow2ReplicaRouter(LocalityMixin, MultiplexMixin, RequestRouter):
+class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
     """Extends the PowerOfTwoChoicesRequestRouter with prefix-matching capabilities.
 
     This request router optimizes replica selection by considering input text prefixes:
@@ -139,14 +140,47 @@ class PrefixAwarePow2ReplicaRouter(LocalityMixin, MultiplexMixin, RequestRouter)
                 "No request with message or prompt attribute found in pending_request.args"
             )
 
-        # Convert list of messages to concatenated string
-        if isinstance(prompt, list):
-            concatenated_messages = "".join(
-                msg.get("content", "") for msg in prompt if "content" in msg
-            )
-            return concatenated_messages
-        else:
+        return self._normalize_prompt_to_string(prompt)
+
+    def _coerce_to_text(self, value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value
+        if isinstance(value, list):
+            return "".join(self._coerce_to_text(item) for item in value)
+        if isinstance(value, dict):
+            text_value = value.get("text")
+            if isinstance(text_value, str):
+                return text_value
+            if "content" in value:
+                return self._coerce_to_text(value["content"])
+
+        return ""
+
+    def _normalize_prompt_to_string(self, prompt: Any) -> str:
+        """Normalize prompt/messages a single string of characters.
+        This is not exhaustive (e.g. thinking parts, multimodal are not supported).
+        TODO(seiji): find a more maintainable way to normalize the prompt/messages.
+
+        Supported:
+        - string → return as-is
+        - list of strings → concat
+        - list of message dicts with 'content' as string → concat
+        - list of message dicts with 'content' as list of dicts → concat the 'text' fields from those parts
+        """
+        if isinstance(prompt, str):
             return prompt
+
+        if isinstance(prompt, list):
+            return "".join(
+                self._coerce_to_text(
+                    message.get("content") if isinstance(message, dict) else message
+                )
+                for message in prompt
+            )
+
+        return ""
 
     async def _prefix_match_best_replicas(
         self,
@@ -167,6 +201,7 @@ class PrefixAwarePow2ReplicaRouter(LocalityMixin, MultiplexMixin, RequestRouter)
         ):
             input_text = self._extract_text_from_request(pending_request)
             if input_text is not None:
+                # Start Sphinx tag: __begin_load_balance_component__
                 # Check for imbalanced load.
                 highest_queue_len = 0
                 lowest_queue_len = float("inf")
@@ -195,6 +230,8 @@ class PrefixAwarePow2ReplicaRouter(LocalityMixin, MultiplexMixin, RequestRouter)
                 is_imbalanced = (
                     highest_queue_len - lowest_queue_len > self._imbalanced_threshold
                 )
+                # End Sphinx tag: __end_load_balance_component__
+                # Start Sphinx tag: __begin_prefix_match_component__
                 if not is_imbalanced:
                     # Convert candidate replica IDs to strings for prefix matching.
                     candidate_replica_ids_strings = [
@@ -221,6 +258,7 @@ class PrefixAwarePow2ReplicaRouter(LocalityMixin, MultiplexMixin, RequestRouter)
                             and len(matched_tenant_id_strings) > 0
                         ):
                             chosen_replica_id_strings = matched_tenant_id_strings
+                # End Sphinx tag: __end_prefix_match_component__
         return [
             [
                 self._replicas[ReplicaID.from_full_id_str(chosen_id_string)]
@@ -228,10 +266,13 @@ class PrefixAwarePow2ReplicaRouter(LocalityMixin, MultiplexMixin, RequestRouter)
             ]
         ]
 
+    # Start Sphinx tag: __begin_on_replica_actor_died__
     def on_replica_actor_died(self, replica_id: ReplicaID):
         """Drop replica from replica set so it's not considered for future requests."""
         super().on_replica_actor_died(replica_id)
         ray.get(self._tree_actor.remove_tenants.remote([replica_id.to_full_id_str()]))
+
+    # End Sphinx tag: __end_on_replica_actor_died__
 
     def update_replicas(self, replicas: List[RunningReplica]):
         """Update the set of available replicas to be considered for routing.
@@ -283,6 +324,7 @@ class PrefixAwarePow2ReplicaRouter(LocalityMixin, MultiplexMixin, RequestRouter)
         model ID are available after that timeout, it will fall back to the regular
         procedure.
         """
+        # Start Sphinx tag: __begin_pow2_router_base__
         # Get fallback replicas from PowerOfTwoChoicesRequestRouter
         fallback_replicas = await PowerOfTwoChoicesRequestRouter.choose_replicas(
             self,
@@ -291,6 +333,7 @@ class PrefixAwarePow2ReplicaRouter(LocalityMixin, MultiplexMixin, RequestRouter)
         )
         if pending_request is None or not fallback_replicas:
             return fallback_replicas
+        # End Sphinx tag: __end_pow2_router_base__
 
         if (
             pending_request is not None
@@ -324,6 +367,7 @@ class PrefixAwarePow2ReplicaRouter(LocalityMixin, MultiplexMixin, RequestRouter)
 
         return fallback_replicas
 
+    # Start Sphinx tag: __begin_on_request_routed__
     def on_request_routed(
         self,
         pending_request: PendingRequest,
@@ -349,3 +393,5 @@ class PrefixAwarePow2ReplicaRouter(LocalityMixin, MultiplexMixin, RequestRouter)
                         input_text, replica_id.to_full_id_str(), time.time()
                     )
                 )
+
+    # End Sphinx tag: __end_on_request_routed__

@@ -469,6 +469,11 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             data_context=data_context,
         )
 
+        # We track the running usage total because iterating
+        # and summing over all shuffling tasks can be expensive
+        # if the # of shuffling tasks is large
+        self._shuffling_resource_usage = ExecutionResources.zero()
+
         self._input_block_transformer = input_block_transformer
 
         self._next_shuffle_tasks_idx: int = 0
@@ -508,6 +513,10 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         self._partitions_stats: DefaultDict[
             int, Dict[int, _PartitionStats]
         ] = defaultdict(dict)
+
+        self._health_monitoring_started: bool = False
+        self._health_monitoring_start_time: float = 0.0
+        self._pending_aggregators_refs: Optional[List[ObjectRef[ActorHandle]]] = None
 
     def start(self, options: ExecutionOptions) -> None:
         super().start(options)
@@ -581,6 +590,11 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
 
             def _on_partitioning_done(cur_shuffle_task_idx: int):
                 task = self._shuffling_tasks[input_index].pop(cur_shuffle_task_idx)
+                self._shuffling_resource_usage = (
+                    self._shuffling_resource_usage.subtract(
+                        task.get_requested_resource_bundle()
+                    )
+                )
                 # Fetch input block and resulting partition shards block metadata and
                 # handle obtained metadata
                 #
@@ -610,16 +624,22 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
                 self.shuffle_bar.update(i=input_block_metadata.num_rows)
 
             # TODO update metrics
-            self._shuffling_tasks[input_index][cur_shuffle_task_idx] = MetadataOpTask(
+            task = self._shuffling_tasks[input_index][
+                cur_shuffle_task_idx
+            ] = MetadataOpTask(
                 task_index=cur_shuffle_task_idx,
                 object_ref=input_block_partition_shards_metadata_tuple_ref,
                 task_done_callback=functools.partial(
                     _on_partitioning_done, cur_shuffle_task_idx
                 ),
-                task_resource_bundle=(
-                    ExecutionResources.from_resource_dict(shuffle_task_resource_bundle)
+                task_resource_bundle=ExecutionResources.from_resource_dict(
+                    shuffle_task_resource_bundle
                 ),
             )
+            if task.get_requested_resource_bundle() is not None:
+                self._shuffling_resource_usage = self._shuffling_resource_usage.add(
+                    task.get_requested_resource_bundle()
+                )
 
             #  Update Shuffle Metrics on task submission
             self.shuffle_metrics.on_task_submitted(
@@ -630,7 +650,13 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             )
 
             # Update Shuffle progress bar
-            self.shuffle_bar.update(total=self.shuffle_metrics.num_row_inputs_received)
+            _, _, num_rows = estimate_total_num_of_blocks(
+                cur_shuffle_task_idx + 1,
+                self.upstream_op_num_outputs(),
+                self.shuffle_metrics,
+                total_num_tasks=None,
+            )
+            self.shuffle_bar.update(total=num_rows)
 
     def has_next(self) -> bool:
         self._try_finalize()
@@ -846,19 +872,13 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         #     `base_resource_usage` method)
         #   - Active shuffling tasks
         #   - Active finalizing tasks (actor tasks)
-        base_usage = self.base_resource_usage()
-
-        shuffling_tasks = self._get_active_shuffling_tasks()
-        shuffling_tasks_cpus_used = sum(
-            [t.get_requested_resource_bundle().cpu for t in shuffling_tasks]
-        )
+        base_usage = self.base_resource_usage
+        running_usage = self._shuffling_resource_usage
 
         # TODO add memory to resources being tracked
-        return ExecutionResources(
-            cpu=base_usage.cpu + shuffling_tasks_cpus_used,
-            gpu=0,
-        )
+        return base_usage.add(running_usage)
 
+    @property
     def base_resource_usage(self) -> ExecutionResources:
         # TODO add memory to resources being tracked
         return ExecutionResources(
@@ -1096,6 +1116,18 @@ class HashShuffleOperator(HashShufflingOperatorBase):
         return aggregator_total_memory_required
 
 
+@dataclass
+class AggregatorHealthInfo:
+    """Health information about aggregators for issue detection."""
+
+    started_at: float
+    ready_aggregators: int
+    total_aggregators: int
+    has_unready_aggregators: bool
+    wait_time: float
+    required_resources: ExecutionResources
+
+
 class AggregatorPool:
     def __init__(
         self,
@@ -1118,7 +1150,7 @@ class AggregatorPool:
             num_partitions=num_partitions,
         )
 
-        self._aggregators: List[ray.ActorHandle] = []
+        self._aggregators: List[ray.actor.ActorHandle] = []
 
         self._aggregation_factory_ref: ObjectRef[
             StatefulShuffleAggregationFactory
@@ -1131,21 +1163,7 @@ class AggregatorPool:
             self._aggregator_partition_map,
         )
 
-        # Resource monitoring state
-        self._started_at: Optional[float] = None
-
-        # Add last warning timestamp for health checks
-        self._last_health_warning_time: Optional[float] = None
-        self._health_warning_interval_s: float = (
-            self._data_context.hash_shuffle_aggregator_health_warning_interval_s
-        )
-        # Track readiness refs for non-blocking health checks
-        self._pending_aggregators_refs: Optional[List[ObjectRef]] = None
-
     def start(self):
-        # Record start time for monitoring
-        self._started_at = time.time()
-
         # Check cluster resources before starting aggregators
         self._check_cluster_resources()
 
@@ -1159,6 +1177,9 @@ class AggregatorPool:
             ).remote(aggregator_id, target_partition_ids, self._aggregation_factory_ref)
 
             self._aggregators.append(aggregator)
+
+        # Start issue detector actor
+        self.start_health_monitoring()
 
     def _check_cluster_resources(self) -> None:
         """Check if cluster has enough resources to schedule all aggregators.
@@ -1225,82 +1246,6 @@ class AggregatorPool:
                 f"required memory={required_memory / GiB:.2f} GiB, available memory={available_memory / GiB:.2f} GiB"
             )
 
-    def _check_aggregator_health(self) -> None:
-        """Check if all aggregators are up and running after a timeout period.
-        Uses non-blocking ray.wait to check actor readiness.
-        Will warn every 10 seconds (configurable via `DataContext.hash_shuffle_aggregator_health_warning_interval_s`) if aggregators remain unhealthy.
-        """
-        min_wait_time = self._data_context.min_hash_shuffle_aggregator_wait_time_in_s
-        if self._started_at is None or time.time() - self._started_at < min_wait_time:
-            return
-
-        try:
-            # Initialize readiness refs the first time.
-            if self._pending_aggregators_refs is None:
-                self._pending_aggregators_refs = [
-                    aggregator.__ray_ready__.remote()
-                    for aggregator in self._aggregators
-                ]
-
-            if len(self._pending_aggregators_refs) == 0:
-                self._last_health_warning_time = None
-                logger.debug(
-                    f"All {self._num_aggregators} hash shuffle aggregators "
-                    f"are now healthy"
-                )
-                return
-
-            # Use ray.wait to check readiness in non-blocking fashion
-            _, unready_refs = ray.wait(
-                self._pending_aggregators_refs,
-                num_returns=len(self._pending_aggregators_refs),
-                timeout=0,  # Short timeout to avoid blocking
-            )
-
-            # Update readiness refs to only track the unready ones
-            self._pending_aggregators_refs = unready_refs
-
-            current_time = time.time()
-            should_warn = unready_refs and (  # If any refs are not ready
-                self._last_health_warning_time is None
-                or current_time - self._last_health_warning_time
-                >= self._health_warning_interval_s
-            )
-
-            if should_warn:
-                # Get cluster resource information for better diagnostics
-                available_resources = ray.available_resources()
-                available_cpus = available_resources.get("CPU", 0)
-                cluster_resources = ray.cluster_resources()
-                total_memory = cluster_resources.get("memory", 0)
-                available_memory = available_resources.get("memory", 0)
-
-                required_cpus = (
-                    self._aggregator_ray_remote_args.get("num_cpus", 1)
-                    * self._num_aggregators
-                )
-
-                ready_aggregators = self._num_aggregators - len(unready_refs)
-
-                logger.warning(
-                    f"Only {ready_aggregators} out of {self._num_aggregators} hash-shuffle aggregators are ready after {min_wait_time:.1f} secs. "
-                    f"This might indicate resource contention for cluster resources (available CPUs: {available_cpus}, required CPUs: {required_cpus}). "
-                    f"Cluster only has {available_memory / GiB:.2f} GiB available memory, {total_memory / GiB:.2f} GiB total memory. "
-                    f"Consider increasing cluster size or reducing the number of aggregators via `DataContext.max_hash_shuffle_aggregators`. "
-                    f"Will continue checking every {self._health_warning_interval_s}s."
-                )
-                self._last_health_warning_time = current_time
-            elif not unready_refs and self._last_health_warning_time is not None:
-                # All aggregators are ready
-                self._last_health_warning_time = None
-                logger.debug(
-                    f"All {self._num_aggregators} hash shuffle aggregators "
-                    f"are now healthy"
-                )
-
-        except Exception as e:
-            logger.warning(f"Failed to check aggregator health: {e}")
-
     @property
     def num_partitions(self):
         return self._num_partitions
@@ -1310,7 +1255,6 @@ class AggregatorPool:
         return self._num_aggregators
 
     def get_aggregator_for_partition(self, partition_id: int) -> ActorHandle:
-        self._check_aggregator_health()
         return self._aggregators[self._get_aggregator_id_for_partition(partition_id)]
 
     def _allocate_partitions(self, *, num_partitions: int):
@@ -1361,6 +1305,7 @@ class AggregatorPool:
         return finalized_remote_args
 
     def shutdown(self, force: bool):
+        # Shutdown aggregators
         if force:
             for actor in self._aggregators:
                 # NOTE: Actors can't be brought back after being ``ray.kill``-ed,
@@ -1368,6 +1313,57 @@ class AggregatorPool:
                 ray.kill(actor)
 
         self._aggregators.clear()
+
+    def check_aggregator_health(self) -> Optional[AggregatorHealthInfo]:
+        """Get health information about aggregators for issue detection.
+
+        Returns:
+            AggregatorHealthInfo with health info or None if monitoring hasn't started.
+        """
+        if not self._health_monitoring_started:
+            return None
+
+        if self._pending_aggregators_refs is None:
+            # Initialize readiness refs
+            self._pending_aggregators_refs = [
+                aggregator.__ray_ready__.remote() for aggregator in self._aggregators
+            ]
+
+        # Use ray.wait to check readiness in non-blocking fashion
+        _, unready_refs = ray.wait(
+            self._pending_aggregators_refs,
+            num_returns=len(self._pending_aggregators_refs),
+            timeout=0,  # Non-blocking
+        )
+
+        # Update readiness refs to only track the unready ones
+        self._pending_aggregators_refs = unready_refs
+
+        current_time = time.time()
+        ready_aggregators = self._num_aggregators - len(unready_refs)
+        required_cpus = (
+            self._aggregator_ray_remote_args.get("num_cpus", 1) * self._num_aggregators
+        )
+        required_memory = (
+            self._aggregator_ray_remote_args.get("memory", 0) * self._num_aggregators
+        )
+
+        return AggregatorHealthInfo(
+            started_at=self._health_monitoring_start_time,
+            ready_aggregators=ready_aggregators,
+            total_aggregators=self._num_aggregators,
+            has_unready_aggregators=len(unready_refs) > 0,
+            wait_time=current_time - self._health_monitoring_start_time,
+            required_resources=ExecutionResources(
+                cpu=required_cpus, memory=required_memory
+            ),
+        )
+
+    def start_health_monitoring(self):
+        """Start health monitoring (without separate actor)."""
+        self._health_monitoring_started = True
+        self._health_monitoring_start_time = time.time()
+        self._pending_aggregators_refs = None
 
 
 @ray.remote

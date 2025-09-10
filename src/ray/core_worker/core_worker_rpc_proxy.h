@@ -72,22 +72,21 @@ class CoreWorkerServiceHandlerProxy : public rpc::CoreWorkerServiceHandler {
 
   /// Wait until the worker is initialized.
   void WaitUntilInitialized() override {
-    // TODO(joshlee): investigate and remove the 1 second timeout
-    absl::MutexLock lock(&core_worker_mutex_);
-    while (core_worker_ == nullptr) {
-      core_worker_cv_.WaitWithTimeout(&core_worker_mutex_, absl::Seconds(1));
-    }
+    std::unique_lock<std::mutex> lock(core_worker_mutex_);
+    core_worker_cv_.wait(lock, [this]() { return this->core_worker_ != nullptr; });
   }
 
   void SetCoreWorker(CoreWorker *core_worker) {
-    absl::MutexLock lock(&core_worker_mutex_);
-    core_worker_ = core_worker;
-    core_worker_cv_.SignalAll();
+    {
+      std::scoped_lock<std::mutex> lock(core_worker_mutex_);
+      core_worker_ = core_worker;
+    }
+    core_worker_cv_.notify_all();
   }
 
  private:
-  absl::Mutex core_worker_mutex_;
-  absl::CondVar core_worker_cv_;
+  std::mutex core_worker_mutex_;
+  std::condition_variable core_worker_cv_;
   CoreWorker *core_worker_ = nullptr;
 };
 

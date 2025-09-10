@@ -43,14 +43,14 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/client_connection.h"
+#include "ray/ipc/client_connection.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/get_request_queue.h"
 #include "ray/object_manager/plasma/malloc.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
 #include "ray/object_manager/plasma/protocol.h"
 #include "ray/stats/metric_defs.h"
-#include "ray/util/util.h"
+#include "ray/util/network_util.h"
 
 namespace ph = boost::placeholders;
 namespace fb = plasma::flatbuf;
@@ -78,7 +78,7 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service,
                          ray::DeleteObjectCallback delete_object_callback)
     : io_context_(main_service),
       socket_name_(socket_name),
-      acceptor_(main_service, ParseUrlEndpoint(socket_name)),
+      acceptor_(main_service, ray::ParseUrlEndpoint(socket_name)),
       socket_(main_service),
       allocator_(allocator),
       fs_monitor_(fs_monitor),
@@ -98,7 +98,6 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service,
             mutex_.AssertHeld();
             return GetDebugDump();
           }),
-      total_consumed_bytes_(0),
       get_request_queue_(
           io_context_,
           object_lifecycle_mgr_,
@@ -107,7 +106,8 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service,
                  std::optional<MEMFD_TYPE> fallback_allocated_fd,
                  const auto &request) ABSL_NO_THREAD_SAFETY_ANALYSIS {
             mutex_.AssertHeld();
-            this->AddToClientObjectIds(object_id, fallback_allocated_fd, request->client);
+            this->AddToClientObjectIds(
+                object_id, fallback_allocated_fd, request->client_);
           },
           [this](const auto &request) { this->ReturnFromGet(request); }) {
   ray::SetCloseOnExec(acceptor_);
@@ -186,8 +186,8 @@ PlasmaError PlasmaStore::CreateObject(const ray::ObjectInfo &object_info,
   entry->ToPlasmaObject(result, /* check sealed */ false);
   // Record that this client is using this object.
   std::optional<MEMFD_TYPE> fallback_allocated_fd = std::nullopt;
-  if (entry->GetAllocation().fallback_allocated) {
-    fallback_allocated_fd = entry->GetAllocation().fd;
+  if (entry->GetAllocation().fallback_allocated_) {
+    fallback_allocated_fd = entry->GetAllocation().fd_;
   }
   AddToClientObjectIds(object_info.object_id, fallback_allocated_fd, client);
   return PlasmaError::OK;
@@ -204,23 +204,20 @@ void PlasmaStore::ReturnFromGet(const std::shared_ptr<GetRequest> &get_request) 
   absl::flat_hash_set<MEMFD_TYPE> fds_to_send;
   std::vector<MEMFD_TYPE> store_fds;
   std::vector<int64_t> mmap_sizes;
-  for (const auto &object_id : get_request->object_ids) {
-    const PlasmaObject &object = get_request->objects[object_id];
+  for (const auto &object_id : get_request->object_ids_) {
+    const PlasmaObject &object = get_request->objects_[object_id];
     MEMFD_TYPE fd = object.store_fd;
     if (object.data_size != -1 && fds_to_send.count(fd) == 0 && fd.first != INVALID_FD) {
       fds_to_send.insert(fd);
       store_fds.push_back(fd);
       mmap_sizes.push_back(object.mmap_size);
-      if (get_request->is_from_worker) {
-        total_consumed_bytes_ += object.data_size + object.metadata_size;
-      }
     }
   }
   // Send the get reply to the client.
-  Status s = SendGetReply(std::dynamic_pointer_cast<Client>(get_request->client),
-                          &get_request->object_ids[0],
-                          get_request->objects,
-                          get_request->object_ids.size(),
+  Status s = SendGetReply(std::dynamic_pointer_cast<Client>(get_request->client_),
+                          &get_request->object_ids_[0],
+                          get_request->objects_,
+                          get_request->object_ids_.size(),
                           store_fds,
                           mmap_sizes);
   // If we successfully sent the get reply message to the client, then also send
@@ -228,25 +225,24 @@ void PlasmaStore::ReturnFromGet(const std::shared_ptr<GetRequest> &get_request) 
   if (s.ok()) {
     // Send all of the file descriptors for the present objects.
     for (MEMFD_TYPE store_fd : store_fds) {
-      Status send_fd_status = get_request->client->SendFd(store_fd);
+      Status send_fd_status = get_request->client_->SendFd(store_fd);
       if (!send_fd_status.ok()) {
         RAY_LOG(ERROR) << "Failed to send mmap results to client on fd "
-                       << get_request->client;
+                       << get_request->client_;
       }
     }
   } else {
-    RAY_LOG(ERROR) << "Failed to send Get reply to client on fd " << get_request->client;
+    RAY_LOG(ERROR) << "Failed to send Get reply to client on fd " << get_request->client_;
   }
 }
 
 void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
                                     const std::vector<ObjectID> &object_ids,
-                                    int64_t timeout_ms,
-                                    bool is_from_worker) {
+                                    int64_t timeout_ms) {
   for (const auto &object_id : object_ids) {
     RAY_LOG(DEBUG) << "Adding get request " << object_id;
   }
-  get_request_queue_.AddRequest(client, object_ids, timeout_ms, is_from_worker);
+  get_request_queue_.AddRequest(client, object_ids, timeout_ms);
 }
 
 bool PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,
@@ -316,8 +312,8 @@ void PlasmaStore::ConnectClient(const boost::system::error_code &error) {
           return ProcessClientMessage(std::move(client), message_type, message);
         },
         /*connection_error_handler=*/
-        [this](std::shared_ptr<Client> client, const boost::system::error_code &error)
-            -> void { return HandleClientConnectionError(std::move(client), error); },
+        [this](std::shared_ptr<Client> client, const boost::system::error_code &err)
+            -> void { return HandleClientConnectionError(std::move(client), err); },
         std::move(socket_));
 
     // Start receiving messages.
@@ -431,10 +427,8 @@ Status PlasmaStore::ProcessClientMessage(std::shared_ptr<Client> client,
   case fb::MessageType::PlasmaGetRequest: {
     std::vector<ObjectID> object_ids_to_get;
     int64_t timeout_ms;
-    bool is_from_worker;
-    RAY_RETURN_NOT_OK(ReadGetRequest(
-        input, input_size, object_ids_to_get, &timeout_ms, &is_from_worker));
-    ProcessGetRequest(client, object_ids_to_get, timeout_ms, is_from_worker);
+    RAY_RETURN_NOT_OK(ReadGetRequest(input, input_size, object_ids_to_get, &timeout_ms));
+    ProcessGetRequest(client, object_ids_to_get, timeout_ms);
   } break;
   case fb::MessageType::PlasmaReleaseRequest: {
     // May unmap: client knows a fallback-allocated fd is involved.
@@ -561,8 +555,6 @@ void PlasmaStore::ReplyToCreateClient(const std::shared_ptr<Client> &client,
     static_cast<void>(SendUnfinishedCreateReply(client, object_id, req_id));
   }
 }
-
-int64_t PlasmaStore::GetConsumedBytes() { return total_consumed_bytes_; }
 
 bool PlasmaStore::IsObjectSpillable(const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);

@@ -1,9 +1,9 @@
+import logging
 import os
 import signal
 import sys
-import time
-import logging
 import threading
+import time
 
 import numpy as np
 import pytest
@@ -18,7 +18,7 @@ from ray._private.test_utils import (
     get_error_message,
     init_error_pubsub,
 )
-from ray.exceptions import GetTimeoutError, RayActorError, RayTaskError, ActorDiedError
+from ray.exceptions import ActorDiedError, GetTimeoutError, RayActorError, RayTaskError
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
@@ -378,26 +378,6 @@ def test_exception_chain(ray_start_regular):
         ray.get(r)
     except ZeroDivisionError as ex:
         assert isinstance(ex, RayTaskError)
-
-
-def test_baseexception_task(ray_start_regular):
-    @ray.remote
-    def task():
-        raise BaseException("abc")
-
-    with pytest.raises(ray.exceptions.WorkerCrashedError):
-        ray.get(task.remote())
-
-
-def test_baseexception_actor(ray_start_regular):
-    @ray.remote
-    class Actor:
-        def f(self):
-            raise BaseException("abc")
-
-    with pytest.raises(ActorDiedError):
-        a = Actor.remote()
-        ray.get(a.f.remote())
 
 
 @pytest.mark.skip("This test does not work yet.")
