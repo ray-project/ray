@@ -87,7 +87,6 @@ def _setup_torch_process_group(
     world_size: int,
     init_method: str,
     timeout_s: int = 1800,
-    # coordinator: Optional[str] = None
 ):
     """Connects the distributed PyTorch backend.
 
@@ -141,9 +140,7 @@ def _setup_torch_process_group(
         import torch_xla.distributed.xla_backend
         dist.init_process_group(
             backend="xla",
-            init_method=init_method,  # Use XLA's native init method
-            rank=world_rank,
-            world_size=world_size,
+            init_method="xla://",  # Use XLA's native init method
             timeout=timedelta(seconds=timeout_s),
         )
 
@@ -257,34 +254,32 @@ class _TorchBackend(Backend):
                     # Optional extra:
                     os.environ["PJRT_CLIENT_VERBOSE_LOGS"] = "1"
                     # Core PJRT settings
-                    os.environ.pop("NVIDIA_VISIBLE_DEVICES", None)
-                    os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")
-                    os.environ["PJRT_DEVICE"] = "CUDA"
+                    os.environ["PJRT_DEVICE"] = "TPU"
 
                     # PJRT multiprocess rendezvous (new-style names)
-                    os.environ["PJRT_COORDINATOR_ADDRESS"] = coord
-                    os.environ["PJRT_DIST_SERVICE_ADDR"] = coord
-                    os.environ["PJRT_NUM_PROCESSES"] = str(context.get_world_size())
-                    os.environ["PJRT_PROCESS_INDEX"] = str(context.get_world_rank())
+                    # os.environ["PJRT_COORDINATOR_ADDRESS"] = coord
+                    # os.environ["PJRT_DIST_SERVICE_ADDR"] = coord
+                    # os.environ["PJRT_NUM_PROCESSES"] = str(context.get_world_size())
+                    # os.environ["PJRT_PROCESS_INDEX"] = str(context.get_world_rank())
 
                     # once again, turn on spmd
                     # os.environ["XLA_USE_SPMD"] = "1"
 
                     # CRITICAL: Use Ray's world size and rank for consistency
-                    os.environ["PJRT_WORLD_SIZE"] = str(context.get_world_size())
-                    os.environ["PJRT_LOCAL_PROCESS_RANK"] = str(context.get_world_rank())
+                    # os.environ["PJRT_WORLD_SIZE"] = str(context.get_world_size())
+                    # os.environ["PJRT_LOCAL_PROCESS_RANK"] = str(context.get_world_rank())
 
-                    # For multi-node setups
-                    os.environ["PJRT_LOCAL_PROCESS_COUNT"] = str(context.get_local_world_size())
-                    os.environ["PJRT_NODE_ID"] = str(context.get_node_rank())
+                    # # For multi-node setups
+                    # os.environ["PJRT_LOCAL_PROCESS_COUNT"] = str(context.get_local_world_size())
+                    # os.environ["PJRT_NODE_ID"] = str(context.get_node_rank())
 
-                    # Additional XLA settings for GPU
-                    os.environ["GPU_NUM_DEVICES"] = "1"  # One GPU per Ray worker
+                    # # Additional XLA settings for GPU
+                    # os.environ["GPU_NUM_DEVICES"] = "1"  # One GPU per Ray worker
 
-                    logger.info(f"PJRT env vars set for worker {context.get_world_rank()}: "
-                                f"WORLD_SIZE={context.get_world_size()}, "
-                                f"RANK={context.get_world_rank()}, "
-                                f"COORDINATOR={coord}")
+                    # logger.info(f"PJRT env vars set for worker {context.get_world_rank()}: "
+                    #             f"WORLD_SIZE={context.get_world_size()}, "
+                    #             f"RANK={context.get_world_rank()}, "
+                    #             f"COORDINATOR={coord}")
 
                 worker_group.execute(_set_pjrt_envs, coord=coordinator)
                 logger.info(f"PJRT environment configured with coordinator: {coordinator}")
@@ -299,7 +294,6 @@ class _TorchBackend(Backend):
 
 
                 
-                url = f"xla://{coordinator}"
                 logger.info(f"set torch distributed init method for xla url: {url}")
                 setup_futures = []
                 for i in range(len(worker_group)):
