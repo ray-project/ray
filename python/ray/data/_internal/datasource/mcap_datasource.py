@@ -45,26 +45,26 @@ class MCAPDatasource(FileBasedDatasource):
     Examples:
         Basic usage with channel filtering:
 
-        >>> import ray
-        >>> from ray.data.datasource import MCAPDatasource
-        >>>
-        >>> datasource = MCAPDatasource(
-        ...     paths="/path/to/your/data.mcap",
-        ...     channels={"camera", "lidar"},
-        ...     time_range=(1000000000, 2000000000)
-        ... )
-        >>>
-        >>> dataset = ray.data.read_datasource(datasource)
+        >>> import ray  # doctest: +SKIP
+        >>> from ray.data.datasource import MCAPDatasource  # doctest: +SKIP
+        >>>  # doctest: +SKIP
+        >>> datasource = MCAPDatasource(  # doctest: +SKIP
+        ...     paths="/path/to/your/data.mcap",  # doctest: +SKIP
+        ...     channels={"camera", "lidar"},  # doctest: +SKIP
+        ...     time_range=(1000000000, 2000000000)  # doctest: +SKIP
+        ... )  # doctest: +SKIP
+        >>>  # doctest: +SKIP
+        >>> dataset = ray.data.read_datasource(datasource)  # doctest: +SKIP
 
         Advanced usage with multiple filters:
 
-        >>> datasource = MCAPDatasource(
-        ...     paths=["file1.mcap", "file2.mcap"],
-        ...     topics={"/camera/image_raw", "/lidar/points"},
-        ...     message_types={"sensor_msgs/Image", "sensor_msgs/PointCloud2"},
-        ...     include_metadata=True,
-        ...     include_paths=True
-        ... )
+        >>> datasource = MCAPDatasource(  # doctest: +SKIP
+        ...     paths=["file1.mcap", "file2.mcap"],  # doctest: +SKIP
+        ...     topics={"/camera/image_raw", "/lidar/points"},  # doctest: +SKIP
+        ...     message_types={"sensor_msgs/Image", "sensor_msgs/PointCloud2"},  # doctest: +SKIP
+        ...     include_metadata=True,  # doctest: +SKIP
+        ...     include_paths=True  # doctest: +SKIP
+        ... )  # doctest: +SKIP
     """
 
     _FILE_EXTENSIONS = ["mcap"]
@@ -85,10 +85,10 @@ class MCAPDatasource(FileBasedDatasource):
             paths: Path or list of paths to MCAP files.
             channels: Optional set of channel names to include. If specified, only
                 messages from these channels will be read. Mutually exclusive with
-                `topics`.
+                ``topics``.
             topics: Optional set of topic names to include. If specified, only
                 messages from these topics will be read. Mutually exclusive with
-                `channels`.
+                ``channels``.
             time_range: Optional tuple of (start_time, end_time) in nanoseconds for
                 filtering messages by timestamp. Both values must be non-negative and
                 start_time < end_time.
@@ -428,7 +428,8 @@ class MCAPDatasource(FileBasedDatasource):
         MCAP's built-in filtering capabilities for efficient predicate pushdown
         and applies additional filters at the Python level when necessary.
 
-        The method:
+        The method performs the following steps:
+
         1. Uses MCAP's make_reader for optimal file reading
         2. Applies time range and topic/channel filters at the MCAP level
         3. Applies message type filters at the Python level
