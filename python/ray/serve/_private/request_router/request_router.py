@@ -893,7 +893,7 @@ class RequestRouter(ABC):
 
     async def _choose_replicas_with_backoff(
         self,
-        pending_request: Optional[PendingRequest] = None,
+        pending_request: PendingRequest,
     ) -> AsyncGenerator[List[RunningReplica], None]:
         """Generator that repeatedly chooses available replicas.
         In the first iteration, only replicas colocated on the same node as this router
@@ -940,7 +940,7 @@ class RequestRouter(ABC):
                 # replica is found. These sequence should only help to reduce the
                 # latency of the request. No backoff and sleep should be applied, until
                 # we have fall into the case trying on all available replicas.
-                if pending_request is None or not pending_request.routing_context.should_backoff:
+                if not pending_request.routing_context.should_backoff:
                     continue
 
                 if not entered_backoff:
@@ -978,7 +978,9 @@ class RequestRouter(ABC):
                 start_time = time.time()
                 backoff_index = 0
                 pending_request = self._get_next_pending_request_to_route()
-                request_metadata = pending_request.metadata if pending_request else None
+                if pending_request is None: 
+                    continue
+                request_metadata = pending_request.metadata 
                 gen_choose_replicas_with_backoff = self._choose_replicas_with_backoff(
                     pending_request
                 )
