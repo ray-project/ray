@@ -251,7 +251,7 @@ class PhysicalOperator(Operator):
         name: str,
         input_dependencies: List["PhysicalOperator"],
         data_context: DataContext,
-        target_max_block_size: Optional[int],
+        target_max_block_size_override: Optional[int] = None,
     ):
         super().__init__(name, input_dependencies)
 
@@ -259,7 +259,7 @@ class PhysicalOperator(Operator):
             assert isinstance(x, PhysicalOperator), x
         self._inputs_complete = not input_dependencies
         self._output_block_size_option = None
-        self.set_target_max_block_size(target_max_block_size)
+        self.override_target_max_block_size(target_max_block_size_override)
         self._started = False
         self._shutdown = False
         self._in_task_submission_backpressure = False
@@ -307,15 +307,15 @@ class PhysicalOperator(Operator):
         self._logical_operators = list(logical_ops)
 
     @property
-    def target_max_block_size(self) -> Optional[int]:
+    def target_max_block_size_override(self) -> Optional[int]:
         """
         Target max block size output by this operator. If this returns None,
         then the default from DataContext should be used.
         """
-        if self._output_block_size_option is None:
+        if self._output_block_size_option_override is None:
             return None
         else:
-            return self._output_block_size_option.target_max_block_size
+            return self._output_block_size_option_override.target_max_block_size
 
     @property
     def actual_target_max_block_size(self) -> Optional[int]:
@@ -330,13 +330,13 @@ class PhysicalOperator(Operator):
             target_max_block_size = self.data_context.target_max_block_size
         return target_max_block_size
 
-    def set_target_max_block_size(self, target_max_block_size: Optional[int]):
+    def override_target_max_block_size(self, target_max_block_size: Optional[int]):
         if target_max_block_size is not None:
-            self._output_block_size_option = OutputBlockSizeOption(
+            self._output_block_size_option_override = OutputBlockSizeOption(
                 target_max_block_size=target_max_block_size
             )
-        elif self._output_block_size_option is not None:
-            self._output_block_size_option = None
+        elif self._output_block_size_option_override is not None:
+            self._output_block_size_option_override = None
 
     def mark_execution_finished(self):
         """Manually mark that this operator has finished execution."""
