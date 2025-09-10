@@ -22,12 +22,13 @@
 #include <vector>
 
 #include "ray/common/lease/lease_spec.h"
-#include "ray/gcs/pb_util.h"
+#include "ray/common/protobuf_utils.h"
+#include "ray/util/time.h"
 
 namespace ray {
 namespace core {
 
-Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
+void NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_CHECK(task_spec.IsNormalTask());
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
 
@@ -63,14 +64,9 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     const SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
                                        task_spec.GetDependencyIds(),
                                        task_spec.GetRuntimeEnvHash());
-    auto [scheduler_key_entry_iter, new_scheduling_key_entry] =
-        scheduling_key_entries_.try_emplace(scheduling_key, SchedulingKeyEntry{});
-    auto &scheduling_key_entry = scheduler_key_entry_iter->second;
-
-    // Only set lease_spec if this is a new scheduling key entry
-    if (new_scheduling_key_entry) {
-      scheduling_key_entry.lease_spec = LeaseSpecification(task_spec.GetMessage());
-    }
+    // TODO(#56107): Only create the lease spec if this is a new scheduling key entry
+    auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+    scheduling_key_entry.lease_spec = LeaseSpecification(task_spec.GetMessage());
     scheduling_key_entry.task_queue.push_back(std::move(task_spec));
 
     if (!scheduling_key_entry.AllWorkersBusy()) {
@@ -93,7 +89,6 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     }
     RequestNewWorkerIfNeeded(scheduling_key);
   });
-  return Status::OK();
 }
 
 void NormalTaskSubmitter::AddWorkerLeaseClient(
@@ -135,15 +130,8 @@ void NormalTaskSubmitter::ReturnWorkerLease(const rpc::Address &addr,
     scheduling_key_entries_.erase(scheduling_key);
   }
 
-  auto status =
-      lease_entry.raylet_client->ReturnWorkerLease(addr.port(),
-                                                   WorkerID::FromBinary(addr.worker_id()),
-                                                   was_error,
-                                                   error_detail,
-                                                   worker_exiting);
-  if (!status.ok()) {
-    RAY_LOG(ERROR) << "Error returning worker to raylet: " << status.ToString();
-  }
+  lease_entry.raylet_client->ReturnWorkerLease(
+      addr.port(), lease_entry.lease_id, was_error, error_detail, worker_exiting);
   worker_to_lease_entry_.erase(addr);
 }
 
@@ -225,11 +213,14 @@ void NormalTaskSubmitter::CancelWorkerLeaseIfNeeded(const SchedulingKey &schedul
             // The cancellation request can fail if the raylet does not have
             // the request queued. This can happen if: a) due to message
             // reordering, the raylet has not yet received the worker lease
-            // request, or b) we have already returned the worker lease
-            // request. In the former case, we should try the cancellation
-            // request again. In the latter case, the in-flight lease request
-            // should already have been removed from our local state, so we no
-            // longer need to cancel.
+            // request, b) we have already returned the worker lease
+            // request, or c) the current request is a retry and the server response to
+            // the initial request was lost after cancelling the lease. In case a), we
+            // should try the cancellation request again. In case b), the in-flight lease
+            // request should already have been removed from our local state, so we no
+            // longer need to cancel. In case c), the response for ReturnWorkerLease
+            // should have already been triggered and the pending lease request will be
+            // cleaned up.
             CancelWorkerLeaseIfNeeded(scheduling_key);
           }
         });
@@ -310,7 +301,7 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
     return;
   }
   // Counter for generating unique lease IDs.
-  static uint32_t lease_id_counter = 1;
+  static uint32_t lease_id_counter = 0;
   const LeaseID lease_id = LeaseID::FromWorker(worker_id_, lease_id_counter++);
   rpc::LeaseSpec lease_spec_msg = scheduling_key_entry.lease_spec.GetMessage();
   lease_spec_msg.set_lease_id(lease_id.Binary());
@@ -678,9 +669,9 @@ bool NormalTaskSubmitter::HandleGetWorkerFailureCause(
                                               fail_immediately);
 }
 
-Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
-                                       bool force_kill,
-                                       bool recursive) {
+void NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
+                                     bool force_kill,
+                                     bool recursive) {
   const auto task_id = task_spec.TaskId();
   RAY_LOG(INFO) << "Cancelling a task: " << task_id << " force_kill: " << force_kill
                 << " recursive: " << recursive;
@@ -695,13 +686,13 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
     // For idempotency.
     if (cancelled_tasks_.contains(task_id)) {
       // The task cancel is already in progress. We don't need to do anything.
-      return Status::OK();
+      return;
     }
 
     task_manager_.MarkTaskCanceled(task_id);
     if (!task_manager_.IsTaskPending(task_id)) {
       // The task is finished or failed so marking the task as cancelled is sufficient.
-      return Status::OK();
+      return;
     }
 
     auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
@@ -714,7 +705,7 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
           scheduling_tasks.erase(spec);
           CancelWorkerLeaseIfNeeded(scheduling_key);
           task_manager_.FailPendingTask(task_id, rpc::ErrorType::TASK_CANCELLED);
-          return Status::OK();
+          return;
         }
       }
     }
@@ -742,7 +733,7 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
         // scheduling_key_entries_ hashmap.
         scheduling_key_entries_.erase(scheduling_key);
       }
-      return Status::OK();
+      return;
     }
     // Looks for an RPC handle for the worker executing the task.
     client = core_worker_client_pool_->GetOrConnect(rpc_client->second);
@@ -792,20 +783,18 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
           }
         }
       });
-  return Status::OK();
 }
 
-Status NormalTaskSubmitter::CancelRemoteTask(const ObjectID &object_id,
-                                             const rpc::Address &worker_addr,
-                                             bool force_kill,
-                                             bool recursive) {
+void NormalTaskSubmitter::CancelRemoteTask(const ObjectID &object_id,
+                                           const rpc::Address &worker_addr,
+                                           bool force_kill,
+                                           bool recursive) {
   auto client = core_worker_client_pool_->GetOrConnect(worker_addr);
   auto request = rpc::RemoteCancelTaskRequest();
   request.set_force_kill(force_kill);
   request.set_recursive(recursive);
   request.set_remote_object_id(object_id.Binary());
   client->RemoteCancelTask(request, nullptr);
-  return Status::OK();
 }
 
 bool NormalTaskSubmitter::QueueGeneratorForResubmit(const TaskSpecification &spec) {
