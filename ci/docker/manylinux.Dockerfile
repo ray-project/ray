@@ -11,7 +11,9 @@ ENV RAYCI_DISABLE_JAVA=$RAYCI_DISABLE_JAVA
 ENV RAY_INSTALL_JAVA=1
 ENV BUILDKITE_BAZEL_CACHE_URL=$BUILDKITE_BAZEL_CACHE_URL
 
-RUN yum -y install sudo diffutils-3.7
+RUN yum -y update && \
+    yum -y install sudo diffutils && \
+    yum clean all
 
 COPY ci/build/build-manylinux-forge.sh /tmp/build-manylinux-forge.sh
 
