@@ -1,7 +1,9 @@
 import time
 
-from python.ray.util.collective.collective_group.gloo_collective_group import GLOOGroup
-from python.ray.util.collective.types import Backend
+from ray.util.collective.collective_group.torch_gloo_collective_group import (
+    TorchGLOOGroup as GLOOGroup,
+)
+from ray.util.collective.types import Backend
 
 import ray
 import ray.util.collective as col
