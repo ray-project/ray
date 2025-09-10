@@ -47,6 +47,13 @@ class RpcFailureManager {
   void Init() {
     absl::MutexLock lock(&mu_);
 
+    // Clear old state
+    failable_methods_.clear();
+    all_rpc_failure_ = false;
+    req_failure_prob_ = 0;
+    resp_failure_prob_ = 0;
+    has_failures_ = false;
+
     if (!RayConfig::instance().testing_all_rpc_failure().empty()) {
       std::vector<std::string> colon_split =
           absl::StrSplit(RayConfig::instance().testing_all_rpc_failure(), ':');
@@ -84,7 +91,7 @@ class RpcFailureManager {
       return RpcFailure::None;
     }
 
-    absl::MutexLock lock(&mu_);
+    absl::ReaderMutexLock lock(&mu_);
 
     if (all_rpc_failure_) {
       return GetFailureTypeFromProbs(req_failure_prob_, resp_failure_prob_);

@@ -17,7 +17,7 @@
 #include "gtest/gtest.h"
 #include "ray/common/ray_config.h"
 
-TEST(RpcChaosTest, Basic) {
+TEST(RpcChaosTest, MethodRpcFailure) {
   RayConfig::instance().testing_rpc_failure() = "method1=0:25:25,method2=1:25:25";
   ray::rpc::testing::Init();
   ASSERT_EQ(ray::rpc::testing::GetRpcFailure("unknown"),
@@ -31,7 +31,7 @@ TEST(RpcChaosTest, Basic) {
                    ray::rpc::testing::RpcFailure::None);
 }
 
-TEST(RpcChaosTest, EdgeCaseProbability) {
+TEST(RpcChaosTest, MethodRpcFailureEdgeCase) {
   RayConfig::instance().testing_rpc_failure() =
       "method1=1000:100:0,method2=1000:0:100,method3=1000:0:0";
   ray::rpc::testing::Init();
@@ -41,6 +41,29 @@ TEST(RpcChaosTest, EdgeCaseProbability) {
     ASSERT_EQ(ray::rpc::testing::GetRpcFailure("method2"),
               ray::rpc::testing::RpcFailure::Response);
     ASSERT_EQ(ray::rpc::testing::GetRpcFailure("method3"),
+              ray::rpc::testing::RpcFailure::None);
+  }
+}
+
+TEST(RpcChaosTest, AllRpcFailure) {
+  RayConfig::instance().testing_all_rpc_failure() = "100:0";
+  ray::rpc::testing::Init();
+  for (int i = 0; i < 100; i++) {
+    ASSERT_EQ(ray::rpc::testing::GetRpcFailure("method"),
+              ray::rpc::testing::RpcFailure::Request);
+  }
+
+  RayConfig::instance().testing_all_rpc_failure() = "0:100";
+  ray::rpc::testing::Init();
+  for (int i = 0; i < 100; i++) {
+    ASSERT_EQ(ray::rpc::testing::GetRpcFailure("method"),
+              ray::rpc::testing::RpcFailure::Response);
+  }
+
+  RayConfig::instance().testing_all_rpc_failure() = "0:0";
+  ray::rpc::testing::Init();
+  for (int i = 0; i < 100; i++) {
+    ASSERT_EQ(ray::rpc::testing::GetRpcFailure("method"),
               ray::rpc::testing::RpcFailure::None);
   }
 }
