@@ -1155,6 +1155,68 @@ Continue optimizing your Ray Data memory usage:
 - **Learn advanced operations**: :ref:`advanced_operations`
 - **Debug memory issues**: :ref:`troubleshooting`
 
+**Advanced Memory Management Strategies:**
+
+**Memory Optimization by Data Type:**
+
+**Structured Data (Tables):**
+- Use columnar formats to minimize memory footprint
+- Implement schema optimization for memory efficiency
+- Configure appropriate data types to reduce memory usage
+- Use compression to reduce memory requirements
+
+**Image Data:**
+- Optimize image loading and preprocessing pipelines
+- Use efficient image format conversions
+- Implement memory-efficient augmentation strategies
+- Configure GPU memory management for computer vision
+
+**Text Data:**
+- Optimize tokenization and text processing
+- Use efficient string handling strategies
+- Implement memory-efficient embedding generation
+- Configure for large language model processing
+
+**Time Series Data:**
+- Optimize temporal data structures
+- Use efficient windowing strategies
+- Implement memory-efficient aggregations
+- Configure for streaming time series processing
+
+**Memory Optimization by Processing Pattern:**
+
+**Batch Processing:**
+- Configure large blocks for efficiency
+- Use high memory limits for throughput
+- Implement efficient checkpointing
+- Optimize for sequential processing
+
+**Streaming Processing:**
+- Configure smaller blocks for low latency
+- Use streaming memory management
+- Implement efficient state management
+- Optimize for continuous processing
+
+**Interactive Processing:**
+- Balance memory usage with responsiveness
+- Use caching for frequently accessed data
+- Implement efficient result materialization
+- Optimize for ad-hoc queries
+
+**Memory Optimization by Cluster Configuration:**
+
+**Single Node:**
+- Optimize for local memory limits
+- Use efficient garbage collection
+- Implement memory pooling strategies
+- Configure for NUMA awareness
+
+**Multi-Node Clusters:**
+- Optimize object store distribution
+- Use efficient inter-node communication
+- Implement load balancing strategies
+- Configure for network-aware memory management
+
 **See also:**
 - :ref:`transform_optimization` - Optimize transformations for better memory usage
 - :ref:`reading_optimization` - Memory-efficient data loading strategies  

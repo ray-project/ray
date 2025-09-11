@@ -670,6 +670,46 @@ Best Practices Summary
 Next Steps
 ==========
 
+**Reading Optimization by Workload Type:**
+
+**Traditional ETL Workloads:**
+- Prioritize Parquet format for structured data processing
+- Use column pruning aggressively for wide tables
+- Configure larger block sizes for batch efficiency
+- Optimize for sequential access patterns
+
+**ML/AI Workloads:**
+- Balance file formats for mixed data types (structured, images, text)
+- Optimize block sizes for GPU memory constraints
+- Use streaming reads for large training datasets
+- Configure for mixed CPU/GPU access patterns
+
+**Real-time Processing:**
+- Minimize file count and optimize for low latency
+- Use Arrow format for zero-copy operations
+- Configure smaller blocks for faster processing start
+- Optimize for random access patterns
+
+**Performance Optimization by Storage System:**
+
+**Cloud Storage (S3, GCS, Azure Blob):**
+- Configure connection pooling and retry strategies
+- Optimize for network bandwidth limitations
+- Use region-aware data placement
+- Implement intelligent prefetching
+
+**Distributed File Systems (HDFS, Lustre):**
+- Optimize for block size alignment
+- Configure for network topology awareness
+- Use data locality optimization
+- Implement load balancing strategies
+
+**Local Storage (NVMe, SSD, HDD):**
+- Optimize for sequential vs random access
+- Configure for storage bandwidth limits
+- Use parallel I/O strategies
+- Implement efficient caching
+
 Now that you've optimized your reading performance:
 
 - **Continue to transforms**: :ref:`transform_optimization`

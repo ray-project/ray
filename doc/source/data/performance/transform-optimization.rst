@@ -1092,6 +1092,54 @@ Before deploying transform optimizations to production:
 - Real-time feature computation, streaming aggregations
 - Multi-modal data fusion, cross-format transformations
 
+**Data Format Migration for Performance:**
+
+When migrating between data formats for optimization:
+
+**CSV to Parquet Migration:**
+- Significant performance improvement for analytical workloads
+- Enables column pruning and predicate pushdown
+- Reduces storage size through compression
+- Improves query performance for wide tables
+
+**JSON to Structured Formats:**
+- Convert semi-structured JSON to Parquet for better performance
+- Use schema inference to determine optimal structure
+- Implement data validation during conversion
+- Consider schema evolution strategies
+
+**Legacy Format Modernization:**
+- Assess current format performance characteristics
+- Plan migration strategy with minimal disruption
+- Test performance improvements with representative workloads
+- Implement gradual migration with fallback options
+
+**Performance Optimization by Transform Type:**
+
+**Data Cleaning Transforms:**
+- Use vectorized operations for type conversions
+- Implement efficient null value handling
+- Optimize string processing operations
+- Use parallel validation strategies
+
+**Feature Engineering Transforms:**
+- Optimize mathematical operations with NumPy
+- Use efficient encoding strategies
+- Implement scalable normalization techniques
+- Optimize aggregation operations
+
+**Data Enrichment Transforms:**
+- Optimize lookup operations with broadcast patterns
+- Use efficient join strategies
+- Implement caching for reference data
+- Optimize for data freshness requirements
+
+**Multi-Modal Processing:**
+- Balance CPU and GPU operations
+- Optimize data format conversions
+- Implement efficient serialization
+- Use appropriate batch sizes for mixed data types
+
 **See also:**
 - :ref:`reading_optimization` - Optimize data loading for better transform performance
 - :ref:`data_key_concepts` - Understanding blocks, tasks, and actors

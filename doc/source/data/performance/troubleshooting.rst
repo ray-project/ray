@@ -1075,6 +1075,60 @@ Best Practices for Troubleshooting
 - Ray Data Documentation: https://docs.ray.io/en/latest/data/
 - Performance Benchmarking: https://github.com/ray-project/ray/tree/master/release/benchmarks
 
+**Advanced Troubleshooting Techniques:**
+
+**Performance Regression Analysis:**
+
+When performance degrades over time:
+- Compare current metrics with historical baselines
+- Identify changes in data characteristics or cluster configuration
+- Analyze code changes that might affect performance
+- Check for infrastructure changes or resource constraints
+
+**Cross-Workload Performance Analysis:**
+
+When comparing performance across different workloads:
+- Normalize metrics by data size and cluster resources
+- Account for workload complexity differences
+- Consider data locality and access patterns
+- Evaluate resource utilization patterns
+
+**Distributed System Performance Debugging:**
+
+For complex distributed performance issues:
+- Analyze task distribution across cluster nodes
+- Check for network bottlenecks and data skew
+- Evaluate load balancing effectiveness
+- Monitor inter-node communication patterns
+
+**Performance Optimization Validation:**
+
+After applying optimizations:
+- Measure performance improvements with representative workloads
+- Validate improvements across different data sizes
+- Test optimization effectiveness under various cluster conditions
+- Monitor for performance regression over time
+
+**Troubleshooting by Environment:**
+
+**Development Environment:**
+- Focus on rapid iteration and debugging
+- Use smaller datasets for faster testing
+- Implement comprehensive logging and monitoring
+- Optimize for development productivity
+
+**Staging Environment:**
+- Test with production-like data sizes
+- Validate performance under realistic conditions
+- Implement comprehensive monitoring and alerting
+- Test failure scenarios and recovery procedures
+
+**Production Environment:**
+- Monitor performance continuously
+- Implement automated performance regression detection
+- Use gradual rollout strategies for optimization changes
+- Maintain comprehensive performance documentation
+
 Next Steps
 ==========
 

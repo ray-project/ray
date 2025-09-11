@@ -1201,6 +1201,80 @@ Best Practices Summary
 Next Steps
 ==========
 
+**Advanced Pattern Categories:**
+
+**Scalability Patterns:**
+
+**Horizontal Scaling Pattern:**
+- Design operations that scale linearly with cluster size
+- Use data-parallel processing strategies
+- Implement efficient load distribution
+- Configure for elastic cluster scaling
+
+**Vertical Scaling Pattern:**
+- Optimize for high-memory, high-CPU nodes
+- Use memory-intensive processing strategies
+- Implement efficient resource utilization
+- Configure for specialized hardware
+
+**Reliability Patterns:**
+
+**Circuit Breaker Pattern:**
+- Implement failure detection and isolation
+- Use graceful degradation strategies
+- Configure automatic recovery mechanisms
+- Monitor system health and performance
+
+**Bulkhead Pattern:**
+- Isolate different workload types
+- Use resource partitioning strategies
+- Implement fault isolation
+- Configure for workload independence
+
+**Performance Patterns:**
+
+**Caching Pattern:**
+- Implement multi-level caching strategies
+- Use cache warming and invalidation
+- Configure cache sizing and eviction policies
+- Monitor cache hit rates and effectiveness
+
+**Lazy Loading Pattern:**
+- Defer expensive computations until needed
+- Use streaming execution effectively
+- Implement just-in-time data loading
+- Configure for memory efficiency
+
+**Monitoring Patterns:**
+
+**Observability Pattern:**
+- Implement comprehensive metrics collection
+- Use distributed tracing for complex operations
+- Configure alerting for performance issues
+- Monitor business and technical metrics
+
+**Performance Baseline Pattern:**
+- Establish performance baselines for different workloads
+- Implement automated performance regression detection
+- Use statistical analysis for performance trends
+- Configure alerts for significant performance changes
+
+**Advanced Antipattern Categories:**
+
+**Scalability Antipatterns:**
+
+**Hot Spot Antipattern:**
+- Uneven data distribution causing performance bottlenecks
+- Single nodes becoming overwhelmed with work
+- Resource contention from poor load balancing
+- Network bottlenecks from concentrated traffic
+
+**Resource Contention Antipattern:**
+- Multiple workloads competing for same resources
+- Inefficient resource allocation strategies
+- Poor isolation between different workload types
+- Suboptimal cluster resource utilization
+
 Continue building your Ray Data expertise:
 
 - **Apply these patterns** to your current Ray Data pipelines

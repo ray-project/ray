@@ -434,6 +434,24 @@ Ready to optimize your Ray Data performance? Here's what to do next:
 
    **Experienced user?** Jump straight to the :ref:`expert_path` or browse specific optimization topics in the navigation.
 
+**Performance Optimization by Data Size:**
+
+Different dataset sizes require different optimization strategies:
+
+- **Small datasets (< 1GB)**: Focus on reducing task overhead, fewer blocks, simple optimizations
+- **Medium datasets (1-100GB)**: Balance parallelism and efficiency, standard block sizes
+- **Large datasets (100GB-1TB)**: Maximize parallelism, optimize memory usage, streaming execution
+- **Very large datasets (> 1TB)**: Advanced techniques, cluster scaling, specialized optimizations
+
+**Performance Optimization by Cluster Size:**
+
+Optimization strategies vary with cluster configuration:
+
+- **Single node**: Optimize for local processing, minimize overhead
+- **Small clusters (2-10 nodes)**: Balance network and compute, moderate parallelism
+- **Medium clusters (10-50 nodes)**: Optimize data distribution, network efficiency
+- **Large clusters (50+ nodes)**: Advanced coordination, fault tolerance, load balancing
+
 **See also:**
 - :ref:`data_key_concepts` - Understand Ray Data fundamentals including blocks and streaming execution
 - :ref:`data_user_guide` - General Ray Data usage patterns and best practices
