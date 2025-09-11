@@ -487,14 +487,13 @@ TASK_COMPLETION_TIME_PANEL = Panel(
     unit="s",
     targets=[
         Target(
-            expr='sum by (le) (increase(ray_data_task_completion_time_bucket{{{global_filters}, operator=~\"$Operator\", le!=\"+Inf\"}}[$__interval]))',
+            expr='sum by (le) (rate(ray_data_task_completion_time_bucket{{{global_filters}, operator=~\"$Operator\", le!=\"+Inf\"}}[$__rate_interval]))',
             legend="{{le}}",
             template=TargetTemplate.HEATMAP,
         ),
     ],
     fill=0,
     stack=False,
-    interval="30s",
     template=PanelTemplate.HEATMAP,
     options=PanelOptions(
         color=Color(
@@ -513,14 +512,13 @@ BLOCK_COMPLETION_TIME_PANEL = Panel(
     unit="s",
     targets=[
         Target(
-            expr='sum by (le) (increase(ray_data_block_completion_time_bucket{{{global_filters}, operator=~\"$Operator\", le!=\"+Inf\"}}[$__interval]))',
+            expr='sum by (le) (rate(ray_data_block_completion_time_bucket{{{global_filters}, operator=~\"$Operator\", le!=\"+Inf\"}}[$__rate_interval]))',
             legend="{{le}}",
             template=TargetTemplate.HEATMAP,
         ),
     ],
     fill=0,
     stack=False,
-    interval="30s",
     template=PanelTemplate.HEATMAP,
     options=PanelOptions(
         color=Color(
@@ -539,14 +537,13 @@ BLOCK_SIZE_BYTES_PANEL = Panel(
     unit="bytes",
     targets=[
         Target(
-            expr='sum by (le) (increase(ray_data_block_size_bytes_bucket{{{global_filters}, operator=~\"$Operator\", le!=\"+Inf\"}}[$__interval]))',
+            expr='sum by (le) (rate(ray_data_block_size_bytes_bucket{{{global_filters}, operator=~\"$Operator\", le!=\"+Inf\"}}[$__rate_interval]))',
             legend="{{le}}",
             template=TargetTemplate.HEATMAP,
         ),
     ],
     fill=0,
     stack=False,
-    interval="30s",
     template=PanelTemplate.HEATMAP,
     options=PanelOptions(
         color=Color(
@@ -565,14 +562,13 @@ BLOCK_SIZE_ROWS_PANEL = Panel(
     unit="rows",
     targets=[
         Target(
-            expr='sum by (le) (increase(ray_data_block_size_rows_bucket{{{global_filters}, operator=~\"$Operator\", le!=\"+Inf\"}}[$__interval]))',
+            expr='sum by (le) (rate(ray_data_block_size_rows_bucket{{{global_filters}, operator=~\"$Operator\", le!=\"+Inf\"}}[$__rate_interval]))',
             legend="{{le}}",
             template=TargetTemplate.HEATMAP,
         ),
     ],
     fill=0,
     stack=False,
-    interval="30s",
     template=PanelTemplate.HEATMAP,
     options=PanelOptions(
         color=Color(

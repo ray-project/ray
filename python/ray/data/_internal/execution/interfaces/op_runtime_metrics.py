@@ -917,7 +917,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
         task_time_delta = time.perf_counter() - task_info.start_time
         bucket_index = find_bucket_index(histogram_buckets_s, task_time_delta)
-        print("Task finished", task_time_delta, bucket_index, task_info.num_outputs)
         self.task_completion_time[bucket_index] += 1
 
         assert task_info.cum_block_gen_time is not None
