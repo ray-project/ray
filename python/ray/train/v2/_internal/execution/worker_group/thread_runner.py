@@ -44,10 +44,11 @@ class ThreadRunner:
                     self._ret = result
                 self._exc_queue.put(None)
             except BaseException as e:
-                # Exclude the first 2 frames from the traceback, which are
-                # the `ThreadRunner._run_target` and `construct_train_func` calls.
+                # Exclude the first 3 frames from the traceback, which are
+                # the `ThreadRunner._run_target`, `construct_train_func`, and
+                # train_fn_with_final_checkpoint_flush calls.
                 self._exc_queue.put(
-                    construct_user_exception_with_traceback(e, exclude_frames=2)
+                    construct_user_exception_with_traceback(e, exclude_frames=3)
                 )
 
             with self._lock:
