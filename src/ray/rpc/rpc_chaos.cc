@@ -35,8 +35,9 @@ namespace testing {
 // contains the max number of failures to inject + probability of req failure +
 // probability of reply failure.
 
-// You can also use this to set probabilities for all rpc's.
-//     export RAY_testing_all_rpc_failure=25:50
+// You can also use a wildcard to set probabilities for all rpc's and -1 as num_failures
+// to have unlimited failures.
+//     export RAY_testing_rpc_failure="*=-1:25:50"
 // This will set the probabilities for all rpc's to 25% for request failures and 50% for
 // reply failures.
 
