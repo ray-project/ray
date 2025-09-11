@@ -201,7 +201,7 @@ def request_resources(
             resource shapes can fit. This request is persistent until another
             call to request_resources() is made.
         bundle_label_selector (List[Dict[str,str]]): Optional label selectors
-            that new nodes must satisfy (e.g. [{"accelerator-type": "A100"}]).
+            that new nodes must satisfy. (e.g. [{"accelerator-type": "A100"}]) The elements in the bundle_label_selectors should be one-to-one mapping to the elements in bundles.
     """
     if not ray.is_initialized():
         raise RuntimeError("Ray is not initialized yet")
