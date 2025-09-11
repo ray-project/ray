@@ -97,7 +97,7 @@ class CoreWorkerMemoryStore {
   /// \return A pair of sets of object IDs. The first set contains the object IDs that
   /// are ready in the core worker memory store (capped to num_objects), and the second
   /// set contains the object IDs are ready in the plasma object store (not capped).
-  Status Wait(const absl::flat_hash_set<ObjectID> &object_ids,
+  Status Wait(const std::vector<ObjectID> &id_vector,
               int num_objects,
               int64_t timeout_ms,
               const WorkerContext &ctx,
