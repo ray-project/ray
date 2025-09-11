@@ -2761,7 +2761,7 @@ Status CoreWorker::ExecuteTask(
   // execution and unpinned once the task completes. We will notify the caller
   // about any IDs that we are still borrowing by the time the task completes.
   std::vector<ObjectID> borrowed_ids;
-  RAY_CHECK_OK(GetAndPinArgsForExecutor(task_spec, &args, &arg_refs, &borrowed_ids));
+  RAY_RETURN_NOT_OK(GetAndPinArgsForExecutor(task_spec, &args, &arg_refs, &borrowed_ids));
 
   for (size_t i = 0; i < task_spec.NumReturns(); i++) {
     return_objects->emplace_back(task_spec.ReturnId(i), nullptr);
