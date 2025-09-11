@@ -316,7 +316,7 @@ TEST(CgroupManagerTest, AddProcessToSystemCgroupIsFatalIfSystemCgroupDoesNotExis
 
   std::unique_ptr<CgroupManager> cgroup_manager = std::move(cgroup_manager_s.value());
 
-  EXPECT_DEATH(cgroup_manager->AddProcessToSystemCgroup("-1"),
+  EXPECT_DEATH((void)cgroup_manager->AddProcessToSystemCgroup("-1"),
                "Failed to move.*not found");
 }
 
@@ -337,7 +337,7 @@ TEST(CgroupManagerTest,
 
   std::unique_ptr<CgroupManager> cgroup_manager = std::move(cgroup_manager_s.value());
 
-  EXPECT_DEATH(cgroup_manager->AddProcessToSystemCgroup("-1"),
+  EXPECT_DEATH((void)cgroup_manager->AddProcessToSystemCgroup("-1"),
                "Failed to move.*permissions");
 }
 
