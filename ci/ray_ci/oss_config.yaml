@@ -23,3 +23,7 @@ state_machine:
     aws_bucket: ray-ci-pr-results
   branch:
     aws_bucket: ray-ci-results
+release_image_step:
+  ray: anyscalebuild
+  ray_ml: anyscalemlbuild
+  ray_llm: anyscalellmbuild
