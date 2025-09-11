@@ -345,8 +345,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
                                    const std::function<void(const ObjectID &)> callback)
       override ABSL_LOCKS_EXCLUDED(mutex_);
 
-  /// Set up a call HandleRefRemovedInternal for when we are no longer borrowing this
-  /// object (when our ref count goes to 0).
+  /// So we call HandleRefRemovedInternal to publish when we are no longer borrowing
+  /// this object (when our ref count goes to 0).
   ///
   /// \param[in] object_id The object ID to set the callback for.
   /// \param[in] contained_in_id The object ID that contains object_id, if any.
@@ -368,7 +368,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] callback The callback to call.
   void SetReleaseLineageCallback(const LineageReleasedCallback &callback);
 
-  /// Just calls HandleRefRemovedInternal while locking.
+  /// Just calls HandleRefRemovedInternal with a lock.
   void HandleRefRemoved(const ObjectID &object_id) ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Returns the total number of ObjectIDs currently in scope.
@@ -986,8 +986,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// To respond to the object's owner once we are no longer borrowing it.  The
   /// sender is the owner of the object ID. We will send the reply when our
   /// RefCount() for the object ID goes to 0.
-  ///
-  /// \param[in] object_id The object that we were borrowing.
   void HandleRefRemovedInternal(const ObjectID &object_id)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
