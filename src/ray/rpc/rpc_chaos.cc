@@ -117,6 +117,10 @@ class RpcFailureManager {
   absl::flat_hash_map<std::string, Failable> failable_methods_ ABSL_GUARDED_BY(&mu_);
 
   RpcFailure GetFailureTypeFromFailable(Failable &failable) {
+    if (failable.num_remaining_failures == 0) {
+      // If < 0, unlimited failures.
+      return RpcFailure::None;
+    }
     std::uniform_int_distribution<size_t> dist(1ul, 100ul);
     const size_t random_number = dist(gen_);
     if (random_number <= failable.req_failure_prob) {
