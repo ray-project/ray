@@ -281,7 +281,7 @@ class ServeController:
         )
         self.autoscaling_state_manager.record_request_metrics_for_handle(report)
 
-    def bulk_record_handle_metrics(self, reports: Sequence[HandleMetricReport]) -> None:
+    def bulk_record_handle_metrics(self, reports: List[HandleMetricReport]) -> None:
         logger.debug(f"Received {len(reports)} bulk handle metrics reports")
         for report in reports:
             self.record_handle_metrics(report)
