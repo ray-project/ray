@@ -131,12 +131,12 @@ DEFINE_int64(system_reserved_cpu_weight,
              "The amount of cores reserved for ray system processes. It will be applied "
              "as a cpu.weight constraint to the system cgroup. 10000 - "
              "system-reserved-cpu-weight will be applied as a constraint to the "
-             "application cgroup. If If enable-resource-isolation is true, then this "
+             "application cgroup. If enable-resource-isolation is true, then this "
              "cannot be -1.");
 DEFINE_int64(system_reserved_memory_bytes,
              -1,
              "The amount of memory in bytes reserved for ray system processes. It will "
-             "be applied as a memory.min constraint to the sytem cgroup. If If "
+             "be applied as a memory.min constraint to the system cgroup. If "
              "enable-resource-isolation is true, then this cannot be -1");
 
 absl::flat_hash_map<std::string, std::string> parse_node_labels(
@@ -540,8 +540,6 @@ int main(int argc, char *argv[]) {
     object_manager_config.object_store_memory = object_store_memory;
     object_manager_config.max_bytes_in_flight =
         RayConfig::instance().object_manager_max_bytes_in_flight();
-    RAY_CHECK_GT(object_manager_config.max_bytes_in_flight, 0)
-        << "object_manager_max_bytes_in_flight must be greater than 0";
     object_manager_config.plasma_directory = plasma_directory;
     object_manager_config.fallback_directory = fallback_directory;
     object_manager_config.huge_pages = huge_pages;
