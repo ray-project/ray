@@ -16,6 +16,7 @@ from ray.serve.task_consumer import (
     task_consumer,
     task_handler,
 )
+from ray.tests.conftest import external_redis  # noqa: F401
 
 
 @ray.remote
@@ -409,7 +410,9 @@ class TestTaskConsumerWithRayServe:
         worker_name = list(health_status[0].keys())[0]
         assert health_status[0][worker_name] == {"ok": "pong"}
 
-    def test_task_processor_with_cancel_tasks(serve_instance, external_redis):
+    def test_task_processor_with_cancel_tasks(
+        self, external_redis, serve_instance  # noqa: F811
+    ):
         """Test the cancel task functionality with celery broker."""
         redis_address = os.environ.get("RAY_REDIS_ADDRESS")
 
