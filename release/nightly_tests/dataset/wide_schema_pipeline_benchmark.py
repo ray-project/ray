@@ -39,13 +39,11 @@ def main(args: argparse.Namespace) -> None:
             pass
 
         # Get dataset stats for reporting
-        row_count = ds.count()
         actual_num_columns = len(ds.schema().base_schema)
 
         return {
             "num_columns": actual_num_columns,
             "data_type": args.data_type,
-            "num_rows": row_count,
             "input_path": input_path,
         }
 
