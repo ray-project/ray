@@ -390,8 +390,7 @@ class Stats {
       open_telemetry_tags[tag_key.name()] = "";
     }
     for (const auto &tag : open_census_tags) {
-      const std::string &key = tag.first.name();
-      auto it = open_telemetry_tags.find(key);
+      auto it = open_telemetry_tags.find(tag.first.name());
       if (it != open_telemetry_tags.end()) {
         it->second = tag.second;
       }
