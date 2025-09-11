@@ -244,7 +244,7 @@
 # Wide Schema tests
 ###############
 
-- name: wide_schema_pipeline
+- name: wide_schema_pipeline_{{data_type}}
 
   cluster:
     cluster_compute: fixed_size_cpu_compute.yaml
