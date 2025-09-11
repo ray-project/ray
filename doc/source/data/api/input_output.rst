@@ -252,8 +252,8 @@ Lance
    read_lance
    Dataset.write_lance
 
-MCAP
-----
+MCAP (Message Capture)
+----------------------
 
 .. autosummary::
    :nosignatures:
