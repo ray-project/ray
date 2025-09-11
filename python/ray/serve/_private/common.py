@@ -879,3 +879,86 @@ class DeploymentSnapshot:
                 )
             )
         return out
+
+
+RUNNING_REQUESTS_KEY = "running_requests"
+
+
+@dataclass(order=True)
+class TimeStampedValue:
+    timestamp: float
+    value: float = field(compare=False)
+
+
+@dataclass
+class HandleMetricReport:
+    """Report from a deployment handle on queued and ongoing requests.
+
+    Args:
+        deployment_id: The deployment ID of the deployment handle.
+        handle_id: The handle ID of the deployment handle.
+        actor_id: If the deployment handle (from which this metric was
+            sent) lives on an actor, the ID of that actor.
+        handle_source: Describes what kind of entity holds this
+            deployment handle: a Serve proxy, a Serve replica, or
+            unknown.
+        queued_requests: The current number of queued requests at the
+            handle, i.e. requests that haven't been assigned to any
+            replica yet.
+        aggregated_metrics: A map of metric name to the aggregated value over the past
+            look_back_period_s seconds at the handle for each replica.
+        metrics: A map of metric name to the list of values running at that handle for each replica
+            over the past look_back_period_s seconds. This is a list because
+            we take multiple measurements over time.
+        timestamp: The time at which this report was created.
+    """
+
+    deployment_id: DeploymentID
+    handle_id: str
+    actor_id: str
+    handle_source: DeploymentHandleSource
+    queued_requests: float
+    aggregated_metrics: Dict[str, Dict[ReplicaID, float]]
+    metrics: Dict[str, Dict[ReplicaID, List[float]]]
+    timestamp: float
+
+    @property
+    def total_requests(self) -> float:
+        """Total number of queued and running requests."""
+        return self.queued_requests + sum(
+            self.aggregated_metrics.get(RUNNING_REQUESTS_KEY, {}).values()
+        )
+
+    @property
+    def is_serve_component_source(self) -> bool:
+        """Whether the handle source is a Serve actor.
+
+        More specifically, this returns whether a Serve actor tracked
+        by the controller holds the deployment handle that sent this
+        report. If the deployment handle lives on a driver, a Ray task,
+        or an actor that's not a Serve replica, then this returns False.
+        """
+        return self.handle_source in [
+            DeploymentHandleSource.PROXY,
+            DeploymentHandleSource.REPLICA,
+        ]
+
+
+@dataclass
+class ReplicaMetricReport:
+    """Report from a replica on ongoing requests.
+
+    Args:
+        replica_id: The replica ID of the replica.
+        aggregated_metrics: A map of metric name to the aggregated value over the past
+            look_back_period_s seconds at the replica.
+        metrics: A map of metric name to the list of values running at that replica
+            over the past look_back_period_s seconds. This is a list because
+            we take multiple measurements over time.
+        timestamp: The time at which this report was created.
+    """
+
+    replica_id: ReplicaID
+    aggregated_metrics: Dict[str, float]
+    metrics: Dict[str, List[float]]
+    timestamp: float

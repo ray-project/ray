@@ -334,7 +334,9 @@ RAY_CONFIG(uint64_t, object_manager_default_chunk_size, 5 * 1024 * 1024)
 
 /// The maximum number of outbound bytes to allow to be outstanding. This avoids
 /// excessive memory usage during object broadcast to many receivers.
-RAY_CONFIG(int64_t, object_manager_max_bytes_in_flight, (int64_t)2 * 1024 * 1024 * 1024)
+RAY_CONFIG(uint64_t,
+           object_manager_max_bytes_in_flight,
+           ((uint64_t)2) * 1024 * 1024 * 1024)
 
 /// Maximum number of ids in one batch to send to GCS to delete keys.
 RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000)
@@ -455,6 +457,11 @@ RAY_CONFIG(bool, task_events_skip_driver_for_test, false)
 /// The reported data should only be used for observability.
 /// Setting the value to 0 disables the task event recording and reporting.
 RAY_CONFIG(int64_t, task_events_report_interval_ms, 1000)
+
+/// The interval duration for which ray events will be reported to the event aggregator.
+/// The reported data should only be used for observability.
+/// Setting the value to 0 disables the ray event recording and reporting.
+RAY_CONFIG(int64_t, ray_events_report_interval_ms, 1000)
 
 /// The number of tasks tracked in GCS for task state events. Any additional events
 /// from new tasks will evict events of tasks reported earlier.

@@ -501,3 +501,7 @@ if RAY_SERVE_THROUGHPUT_OPTIMIZED:
 AUTOSCALER_SUMMARIZER_DECISION_HISTORY_MAX = 50
 # Maximum number of recent scaling decisions to include in each snapshot log.
 AUTOSCALER_SUMMARIZER_DECISION_LIMIT = 2
+# The maximum allowed RPC latency in milliseconds.
+# This is used to detect and warn about long RPC latencies
+# between the controller and the replicas.
+RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS = 2000
