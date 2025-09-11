@@ -368,7 +368,7 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
     };
 
     auto sub_message = std::make_unique<rpc::SubMessage>();
-    sub_message->mutable_worker_object_locations_message()->Swap(request.get());
+    *sub_message->mutable_worker_object_locations_message() = std::move(request);
 
     object_location_subscriber_->Subscribe(
         std::move(sub_message),
