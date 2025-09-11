@@ -3002,7 +3002,7 @@ cdef class CoreWorker:
                   local_mode, driver_name,
                   serialized_job_config, metrics_agent_port, runtime_env_hash,
                   startup_token, session_name, cluster_id, entrypoint,
-                  worker_launch_time_ms, worker_launched_time_ms, debug_source, enable_resource_isolation):
+                  worker_launch_time_ms, worker_launched_time_ms, debug_source):
         self.is_local_mode = local_mode
 
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
@@ -3058,7 +3058,6 @@ cdef class CoreWorker:
         options.worker_launch_time_ms = worker_launch_time_ms
         options.worker_launched_time_ms = worker_launched_time_ms
         options.debug_source = debug_source
-        options.enable_resource_isolation = enable_resource_isolation
         CCoreWorkerProcess.Initialize(options)
 
         self.cgname_to_eventloop_dict = None
@@ -3422,11 +3421,12 @@ cdef class CoreWorker:
             owner_address,
             c_bool inline_small_object,
             c_bool _is_experimental_channel,
+            int tensor_transport_val=0
     ):
         """Create an object reference with the current worker as the owner.
         """
         created_object = self.put_serialized_object_and_increment_local_ref(
-            serialized_object, pin_object, owner_address, inline_small_object, _is_experimental_channel)
+            serialized_object, pin_object, owner_address, inline_small_object, _is_experimental_channel, tensor_transport_val)
         if owner_address is None:
             owner_address = CCoreWorkerProcess.GetCoreWorker().GetRpcAddress().SerializeAsString()
 
@@ -3435,7 +3435,8 @@ cdef class CoreWorker:
         return ObjectRef(
             created_object,
             owner_address,
-            skip_adding_local_ref=True
+            skip_adding_local_ref=True,
+            tensor_transport_val=tensor_transport_val
         )
 
     def put_serialized_object_and_increment_local_ref(
@@ -3445,6 +3446,7 @@ cdef class CoreWorker:
             owner_address=None,
             c_bool inline_small_object=True,
             c_bool _is_experimental_channel=False,
+            int tensor_transport_val=0
             ):
         cdef:
             CObjectID c_object_id
@@ -3458,6 +3460,7 @@ cdef class CoreWorker:
                 serialized_object.contained_object_refs)
             size_t total_bytes = serialized_object.total_bytes
 
+        c_tensor_transport_val = <CTensorTransport>tensor_transport_val
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()
                 .CreateOwnedAndIncrementLocalRef(
@@ -3468,7 +3471,8 @@ cdef class CoreWorker:
                     &c_object_id,
                     &data,
                     c_owner_address,
-                    inline_small_object))
+                    inline_small_object,
+                    c_tensor_transport_val))
 
         if (data.get() == NULL):
             # Object already exists
@@ -4470,7 +4474,9 @@ cdef class CoreWorker:
             if <int>c_tensor_transport != <int>TENSOR_TRANSPORT_OBJECT_STORE:
                 # `output` contains tensors. We need to retrieve these tensors from `output`
                 # and store them in the GPUObjectManager.
-                serialized_object = context.serialize_and_store_gpu_objects(output, return_id.Hex())
+                serialized_object, tensors = context.serialize_gpu_objects(output)
+                context.store_gpu_objects(return_id.Hex().decode("ascii"), tensors)
+
             else:
                 serialized_object = context.serialize(output)
             data_size = serialized_object.total_bytes

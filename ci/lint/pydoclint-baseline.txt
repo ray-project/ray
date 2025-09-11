@@ -1098,8 +1098,6 @@ python/ray/data/_internal/execution/interfaces/task_context.py
 python/ray/data/_internal/execution/operators/base_physical_operator.py
     DOC101: Method `OneToOneOperator.__init__`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `OneToOneOperator.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [data_context: DataContext].
-    DOC101: Method `AllToAllOperator.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `AllToAllOperator.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [data_context: DataContext, target_max_block_size: Optional[int]].
     DOC103: Method `NAryOperator.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [*input_ops: LogicalOperator, data_context: DataContext]. Arguments in the docstring but not in the function signature: [input_op: , name: ].
 --------------------
 python/ray/data/_internal/execution/operators/hash_shuffle.py
@@ -2816,4 +2814,8 @@ python/ray/widgets/render.py
 python/ray/widgets/util.py
     DOC103: Function `_has_missing`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [*deps: Iterable[Union[str, Optional[str]]]]. Arguments in the docstring but not in the function signature: [deps: ].
     DOC103: Function `repr_with_fallback`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [*notebook_deps: Iterable[Union[str, Optional[str]]]]. Arguments in the docstring but not in the function signature: [notebook_deps: ].
+--------------------
+python/ray/_private/serialization.py
+    DOC106: Function `_gpu_object_ref_deserializer`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
+    DOC107: Function `_gpu_object_ref_deserializer`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
 --------------------

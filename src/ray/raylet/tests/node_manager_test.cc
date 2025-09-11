@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "fakes/ray/object_manager/plasma/fake_plasma_client.h"
 #include "fakes/ray/pubsub/subscriber.h"
 #include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "gmock/gmock.h"
@@ -28,13 +29,11 @@
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 #include "mock/ray/object_manager/object_directory.h"
 #include "mock/ray/object_manager/object_manager.h"
-#include "mock/ray/object_manager/plasma/client.h"
 #include "mock/ray/raylet/local_lease_manager.h"
 #include "mock/ray/raylet/worker_pool.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
 #include "ray/common/buffer.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
-#include "ray/object_manager/plasma/client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/scheduling/cluster_lease_manager.h"
@@ -94,102 +93,6 @@ class FakeLocalObjectManager : public LocalObjectManagerInterface {
 
  private:
   std::shared_ptr<absl::flat_hash_set<ObjectID>> objects_pending_deletion_;
-};
-
-class FakePlasmaClient : public plasma::PlasmaClientInterface {
- public:
-  Status Connect(const std::string &store_socket_name,
-                 const std::string &manager_socket_name = "",
-                 int num_retries = -1) override {
-    return Status::OK();
-  };
-
-  Status CreateAndSpillIfNeeded(const ObjectID &object_id,
-                                const ray::rpc::Address &owner_address,
-                                bool is_mutable,
-                                int64_t data_size,
-                                const uint8_t *metadata,
-                                int64_t metadata_size,
-                                std::shared_ptr<Buffer> *data,
-                                plasma::flatbuf::ObjectSource source,
-                                int device_num = 0) override {
-    return TryCreateImmediately(
-        object_id, owner_address, data_size, metadata, metadata_size, data, source);
-  }
-
-  Status TryCreateImmediately(const ObjectID &object_id,
-                              const ray::rpc::Address &owner_address,
-                              int64_t data_size,
-                              const uint8_t *metadata,
-                              int64_t metadata_size,
-                              std::shared_ptr<Buffer> *data,
-                              plasma::flatbuf::ObjectSource source,
-                              int device_num = 0) override {
-    objects_ids_in_plasma_.emplace(object_id);
-    objects_in_plasma_.emplace(
-        object_id, std::make_pair(std::vector<uint8_t>{}, std::vector<uint8_t>{}));
-    return Status::OK();
-  }
-
-  Status Get(const std::vector<ObjectID> &object_ids,
-             int64_t timeout_ms,
-             std::vector<plasma::ObjectBuffer> *object_buffers) override {
-    object_buffers->reserve(object_ids.size());
-    for (const auto &id : object_ids) {
-      if (objects_in_plasma_.contains(id)) {
-        auto &buffers = objects_in_plasma_[id];
-        plasma::ObjectBuffer shm_buffer{
-            std::make_shared<SharedMemoryBuffer>(buffers.first.data(),
-                                                 buffers.first.size()),
-            std::make_shared<SharedMemoryBuffer>(buffers.second.data(),
-                                                 buffers.second.size())};
-        object_buffers->emplace_back(shm_buffer);
-      } else {
-        object_buffers->emplace_back(plasma::ObjectBuffer{});
-      }
-    }
-    return Status::OK();
-  }
-
-  Status GetExperimentalMutableObject(
-      const ObjectID &object_id,
-      std::unique_ptr<plasma::MutableObject> *mutable_object) override {
-    return Status::OK();
-  }
-
-  Status Release(const ObjectID &object_id) override {
-    objects_ids_in_plasma_.erase(object_id);
-    return Status::OK();
-  }
-
-  Status Contains(const ObjectID &object_id, bool *has_object) override {
-    *has_object = objects_ids_in_plasma_.find(object_id) != objects_ids_in_plasma_.end();
-    return Status::OK();
-  }
-
-  Status Abort(const ObjectID &object_id) override { return Status::OK(); }
-
-  Status Seal(const ObjectID &object_id) override { return Status::OK(); }
-
-  Status Delete(const std::vector<ObjectID> &object_ids) override {
-    for (const auto &id : object_ids) {
-      objects_ids_in_plasma_.erase(id);
-    }
-    return Status::OK();
-  }
-
-  Status Disconnect() override { return Status::OK(); };
-
-  std::string DebugString() { return ""; }
-
-  int64_t store_capacity() { return 1; }
-
-  StatusOr<std::string> GetMemoryUsage() override { return std::string("fake"); }
-
- private:
-  absl::flat_hash_set<ObjectID> objects_ids_in_plasma_;
-  absl::flat_hash_map<ObjectID, std::pair<std::vector<uint8_t>, std::vector<uint8_t>>>
-      objects_in_plasma_;
 };
 
 LeaseSpecification BuildLeaseSpec(
@@ -531,7 +434,7 @@ class NodeManagerTest : public ::testing::Test {
   std::unique_ptr<MockObjectManager> mock_object_manager_;
   core::experimental::MockMutableObjectProvider *mock_mutable_object_provider_;
   std::shared_ptr<plasma::PlasmaClientInterface> mock_store_client_ =
-      std::make_shared<FakePlasmaClient>();
+      std::make_shared<plasma::FakePlasmaClient>();
 
   std::unique_ptr<NodeManager> node_manager_;
   MockWorkerPool mock_worker_pool_;
@@ -1163,6 +1066,45 @@ TEST_F(NodeManagerTest, TestHandleCancelWorkerLeaseNoLeaseIdempotent) {
   ASSERT_EQ(reply1.success(), false);
   ASSERT_EQ(reply2.success(), false);
 }
+
+class PinObjectIDsIdempotencyTest : public NodeManagerTest,
+                                    public ::testing::WithParamInterface<bool> {};
+
+TEST_P(PinObjectIDsIdempotencyTest, TestHandlePinObjectIDsIdempotency) {
+  const bool object_exists = GetParam();
+  ObjectID id = ObjectID::FromRandom();
+
+  if (object_exists) {
+    rpc::Address owner_addr;
+    plasma::flatbuf::ObjectSource source = plasma::flatbuf::ObjectSource::CreatedByWorker;
+    RAY_UNUSED(mock_store_client_->TryCreateImmediately(
+        id, owner_addr, 1024, nullptr, 1024, nullptr, source, 0));
+  }
+
+  rpc::PinObjectIDsRequest pin_request;
+  pin_request.add_object_ids(id.Binary());
+
+  rpc::PinObjectIDsReply reply1;
+  node_manager_->HandlePinObjectIDs(
+      pin_request,
+      &reply1,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {});
+
+  rpc::PinObjectIDsReply reply2;
+  node_manager_->HandlePinObjectIDs(
+      pin_request,
+      &reply2,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {});
+
+  EXPECT_EQ(reply1.successes_size(), 1);
+  EXPECT_EQ(reply1.successes(0), object_exists);
+  EXPECT_EQ(reply2.successes_size(), 1);
+  EXPECT_EQ(reply2.successes(0), object_exists);
+}
+
+INSTANTIATE_TEST_SUITE_P(PinObjectIDsIdempotencyVariations,
+                         PinObjectIDsIdempotencyTest,
+                         testing::Bool());
 
 }  // namespace ray::raylet
 
