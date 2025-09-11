@@ -321,6 +321,9 @@ class AutoscalingState:
         # Use a minimum window of 1.0s to avoid noise from small metrics intervals.
         aggregated_metrics = merge_timeseries_dicts(
             *metrics_timeseries_dicts,
+            # TODO (abrar): revisit this choice of window size. This is probably incorrect.
+            # Choosing self._config.metrics_interval_s causes the tests to fail. Needs
+            # investigation.
             window_s=max(1.0, self._config.metrics_interval_s),
         )
 
@@ -334,7 +337,69 @@ class AutoscalingState:
         return 0.0
 
     def _calculate_total_requests_aggregate_mode(self) -> float:
-        """Calculate total requests using aggregate metrics mode."""
+        """Calculate total requests using aggregate metrics mode with timeseries data.
+
+        This method works with raw timeseries metrics data and performs aggregation
+        at the controller level, providing more accurate and stable metrics compared
+        to simple mode.
+
+        Processing Steps:
+            1. Collect raw timeseries data from replicas (if available)
+            2. Collect queued requests from handles (always tracked at handle level)
+            3. Collect raw timeseries data from handles (if not available from replicas)
+            4. Merge and window the timeseries data for stability
+            5. Calculate average running requests from the merged timeseries
+
+        Key Differences from Simple Mode:
+            - Uses raw timeseries data instead of pre-aggregated metrics
+            - Performs windowing and merging for better stability during metric collection
+            - Aggregates at the controller level rather than using pre-computed averages
+            - Applies minimum 1.0s window to reduce noise from small metrics intervals
+
+        Metrics Collection Priority:
+            Running requests are collected with the following priority:
+            1. Replica-level metrics (preferred when available)
+            2. Handle-level metrics (fallback when replica metrics unavailable)
+
+            Queued requests are always collected from handles regardless of where
+            running requests are collected.
+
+        Timeseries Aggregation:
+            Raw timeseries data from multiple sources is merged using a tumbling window
+            approach with a window size of max(1.0s, metrics_interval_s). This provides
+            stability during metric collection and reduces noise.
+
+        Example with Numbers:
+            Assume metrics_interval_s = 0.5s, so window_size = max(1.0s, 0.5s) = 1.0s
+
+            Step 1: Collect raw timeseries from 2 replicas (r1, r2)
+            replica_metrics = [
+                {"running_requests": [(t=0.2, val=5), (t=0.8, val=7), (t=1.5, val=6)]},  # r1
+                {"running_requests": [(t=0.1, val=3), (t=0.9, val=4), (t=1.2, val=8)]}   # r2
+            ]
+
+            Step 2: Collect queued requests from handles
+            handle_queued = 2 + 3 = 5  # total from all handles
+
+            Step 3: No handle metrics needed (replica metrics available)
+            handle_metrics = []
+
+            Step 4: Merge timeseries with 1.0s window
+            # Window alignment: earliest=0.1, start=0.0, windows=[0,1), [1,2)
+            # Window 0 [0.1,1.1): r1 latest=7 (t=0.8), r2 latest=4 (t=0.9) → sum=11
+            # Window 1 [1.1,2.1): r1 latest=6 (t=1.5), r2 latest=8 (t=1.2) → sum=14
+            merged_timeseries = {"running_requests": [(t=0.1, val=11), (t=1.1, val=14)]}
+
+            Step 5: Calculate average running requests
+            running_points = [11, 14]
+            avg_running = (11 + 14) / 2 = 12.5
+
+            Final result: total_requests = avg_running + queued = 12.5 + 5 = 17.5
+
+        Returns:
+            Total number of requests (average running + queued) calculated from
+            timeseries data aggregation.
+        """
         # Collect replica-based running requests
         replica_metrics = self._collect_replica_running_requests()
         metrics_collected_on_replicas = len(replica_metrics) > 0
@@ -356,7 +421,50 @@ class AutoscalingState:
         return total_requests
 
     def _calculate_total_requests_simple_mode(self) -> float:
-        """Calculate total requests using simple metrics mode."""
+        """Calculate total requests using simple aggregated metrics mode.
+
+        This method works with pre-aggregated metrics that are computed by averaging
+        (or other functions) over the past look_back_period_s seconds.
+
+        Metrics Collection:
+            Metrics can be collected at two levels:
+            1. Replica level: Each replica reports one aggregated metric value
+            2. Handle level: Each handle reports metrics for multiple replicas
+
+        Replica-Level Metrics Example:
+            For 3 replicas (r1, r2, r3), metrics might look like:
+            {
+                "r1": 10,
+                "r2": 20,
+                "r3": 30
+            }
+            Total requests = 10 + 20 + 30 = 60
+
+        Handle-Level Metrics Example:
+            For 3 handles (h1, h2, h3), each managing 2 replicas:
+            - h1 manages r1, r2
+            - h2 manages r2, r3
+            - h3 manages r3, r1
+
+            Metrics structure:
+            {
+                "h1": {"r1": 10, "r2": 20},
+                "h2": {"r2": 20, "r3": 30},
+                "h3": {"r3": 30, "r1": 10}
+            }
+
+            Total requests = 10 + 20 + 20 + 30 + 30 + 10 = 120
+
+            Note: We can safely sum all handle metrics because each unique request
+            is counted only once across all handles (no double-counting).
+
+        Queued Requests:
+            Queued request metrics are always tracked at the handle level, regardless
+            of whether running request metrics are collected at replicas or handles.
+
+        Returns:
+            Total number of requests (running + queued) across all replicas/handles.
+        """
         total_requests = 0
 
         for id in self._running_replicas:

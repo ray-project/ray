@@ -278,19 +278,13 @@ class RouterMetricsManager:
                 self.metrics_pusher.register_or_update_task(
                     self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
                     self.push_autoscaling_metrics_to_controller,
-                    min(
-                        RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
-                        autoscaling_config.metrics_interval_s,
-                    ),
+                    autoscaling_config.metrics_interval_s,
                 )
             else:
                 self.metrics_pusher.register_or_update_task(
                     self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
                     self.push_autoscaling_metrics_to_controller,
-                    min(
-                        RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
-                        autoscaling_config.metrics_interval_s,
-                    ),
+                    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
                 )
 
         else:
