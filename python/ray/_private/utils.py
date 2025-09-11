@@ -855,7 +855,7 @@ def install_unified_signal_handlers(is_driver: bool):
             # Use existing forced path on the CoreWorker wrapper.
             from ray._private.worker import global_worker
             global_worker.core_worker.force_exit_worker(
-                "intentional_system_exit", detail.encode("utf-8")
+                "user", detail.encode("utf-8")
             )
         except Exception:
             # As a last resort, exit process immediately.
