@@ -33,7 +33,10 @@ def main(args: argparse.Namespace) -> None:
     # Run the pipeline benchmark (TIMED)
     def run_pipeline() -> Dict[str, Any]:
         """Run the data pipeline: read -> map_batches -> write"""
-        ds = ray.data.read_parquet(input_path).materialize()
+        ds = ray.data.read_parquet(input_path)
+
+        for _ in ds.iter_internal_ref_bundles():
+            pass
 
         # Get dataset stats for reporting
         row_count = ds.count()
