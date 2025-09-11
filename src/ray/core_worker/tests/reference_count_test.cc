@@ -319,10 +319,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
     auto r = num_requests_;
 
     auto borrower_callback = [=]() {
-      auto ref_removed_callback =
-          absl::bind_front(&ReferenceCounter::HandleRefRemoved, &rc_);
-      rc_.SetRefRemovedCallback(
-          object_id, contained_in_id, owner_address, ref_removed_callback);
+      rc_.SubscribeRefRemoved(object_id, contained_in_id, owner_address);
     };
     borrower_callbacks_[r] = borrower_callback;
 
