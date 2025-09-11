@@ -15,7 +15,7 @@ from ray.train.v2._internal.execution.callback import (
     WorkerGroupCallback,
 )
 from ray.train.v2._internal.execution.context import StorageContext
-from ray.train.v2._internal.execution.storage import _delete_fs_path, _exists_at_fs_path
+from ray.train.v2._internal.execution.storage import _exists_at_fs_path, delete_fs_path
 from ray.train.v2._internal.execution.worker_group import Worker
 from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
@@ -86,7 +86,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
 
         # This tracks the number of report calls that have been processed
         # for the current worker group.
-        self._num_report_calls = 0
+        self._current_report_index = 0
 
         self._condition = asyncio.Condition()
         super().__init__(checkpoint_config)
@@ -145,9 +145,9 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         for checkpoint_result in results_to_delete:
             checkpoint = checkpoint_result.checkpoint
             logger.debug("Deleting checkpoint: ", checkpoint)
-            _delete_fs_path(fs=checkpoint.filesystem, fs_path=checkpoint.path)
+            delete_fs_path(fs=checkpoint.filesystem, fs_path=checkpoint.path)
 
-        self._num_report_calls += 1
+        self._current_report_index += 1
 
         async def async_notify():
             async with self._condition:
@@ -283,7 +283,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         self, metrics: List[Dict[str, Any]], checkpoint: Optional[Checkpoint]
     ):
         if not checkpoint:
-            self._num_report_calls += 1
+            self._current_report_index += 1
             return
 
         rank_0_metrics = metrics[0]
@@ -296,7 +296,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
     # --------------------------
 
     def before_init_train_context(self, workers: List[Worker]) -> Dict[str, List[Any]]:
-        self._num_report_calls = 0
+        self._current_report_index = 0
         latest_checkpoint = (
             self.latest_checkpoint_result.checkpoint
             if self.latest_checkpoint_result
@@ -308,12 +308,12 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         return train_context_args
 
     async def get_all_reported_checkpoints(
-        self, expected_num_report_calls: int
+        self, current_report_index: int
     ) -> List[ReportedCheckpoint]:
         """Once expected_num_checkpoints are reported, return the ReportedCheckpoints."""
         async with self._condition:
             await self._condition.wait_for(
-                lambda: self._num_report_calls == expected_num_report_calls
+                lambda: self._current_report_index == current_report_index
             )
             # TODO: might be nice for CheckpointManager to manage ReportedCheckpoint
             # instead of _TrainingResult but that is a large refactor.

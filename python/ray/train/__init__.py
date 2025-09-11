@@ -34,6 +34,7 @@ if is_v2_enabled():
         RunConfig,
         ScalingConfig,
     )
+    from ray.train.v2.api.report_config import CheckpointUploadMode  # noqa: F811
     from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint  # noqa: F811
     from ray.train.v2.api.result import Result  # noqa: F811
     from ray.train.v2.api.train_fn_utils import (  # noqa: F811
@@ -82,6 +83,8 @@ TrainingIterator.__module__ = "ray.train"
 if is_v2_enabled():
     __all__.append("UserCallback")
     UserCallback.__module__ = "ray.train"
+    __all__.append("CheckpointUploadMode")
+    CheckpointUploadMode.__module__ = "ray.train"
     __all__.append("get_all_reported_checkpoints")
     get_all_reported_checkpoints.__module__ = "ray.train"
     __all__.append("ReportedCheckpoint")
