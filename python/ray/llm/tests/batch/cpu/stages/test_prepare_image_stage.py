@@ -164,5 +164,90 @@ async def test_prepare_image_udf_invalid_image_type(mock_image_processor):
             pass
 
 
+# Test that image extraction works consistently with both uniform content types
+# (no system prompt) and mixed content types (with system prompt)
+
+
+def test_extract_image_info_with_system_prompt():
+    udf = PrepareImageUDF(data_column="__data", expected_input_keys=["messages"])
+
+    messages = [
+        {"role": "system", "content": "You are an assistant"},
+        {
+            "role": "user",
+            "content": [
+                {"type": "image", "image": "https://example.com/test-image.jpg"},
+                {"type": "text", "text": "Can you describe this image in 1 words?"},
+            ],
+        },
+    ]
+
+    image_info = udf.extract_image_info(messages)
+    assert len(image_info) == 1
+    assert image_info[0] == "https://example.com/test-image.jpg"
+
+
+def test_extract_image_info_without_system_prompt():
+    udf = PrepareImageUDF(data_column="__data", expected_input_keys=["messages"])
+
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "image", "image": "https://example.com/test-image.jpg"},
+                {"type": "text", "text": "Can you describe this image in 1 words?"},
+            ],
+        }
+    ]
+
+    image_info = udf.extract_image_info(messages)
+    assert len(image_info) == 1
+    assert image_info[0] == "https://example.com/test-image.jpg"
+
+
+def test_extract_image_info_multiple_images_no_system_prompt():
+    udf = PrepareImageUDF(data_column="__data", expected_input_keys=["messages"])
+
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "image", "image": "https://example.com/image1.jpg"},
+                {"type": "text", "text": "Describe this image"},
+            ],
+        },
+        {
+            "role": "user",
+            "content": [
+                {"type": "image", "image": "https://example.com/image2.jpg"},
+                {"type": "text", "text": "What do you see?"},
+            ],
+        },
+    ]
+
+    image_info = udf.extract_image_info(messages)
+    assert len(image_info) == 2
+    assert image_info[0] == "https://example.com/image1.jpg"
+    assert image_info[1] == "https://example.com/image2.jpg"
+
+
+def test_extract_image_info_image_url_format_no_system_prompt():
+    udf = PrepareImageUDF(data_column="__data", expected_input_keys=["messages"])
+
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "image_url", "image_url": "https://example.com/image.jpg"},
+                {"type": "text", "text": "Describe this image"},
+            ],
+        }
+    ]
+
+    image_info = udf.extract_image_info(messages)
+    assert len(image_info) == 1
+    assert image_info[0] == "https://example.com/image.jpg"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
