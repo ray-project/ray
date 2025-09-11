@@ -9,6 +9,7 @@ import ray
 import ray.actor
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
+from ray.serve._private.autoscaling_state import AutoscalingContext
 from ray.serve._private.common import DeploymentID, DeploymentStatus
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.test_utils import (
@@ -17,6 +18,7 @@ from ray.serve._private.test_utils import (
     check_running,
     get_application_url,
 )
+from ray.serve.config import AutoscalingPolicy
 from ray.serve.schema import (
     ApplicationStatus,
     ServeDeploySchema,
@@ -875,6 +877,74 @@ def test_get_app_handle(serve_instance):
     handle_2 = serve.get_app_handle("app2")
     assert handle_1.route.remote("ADD", 2).result() == "4 pizzas please!"
     assert handle_2.route.remote("ADD", 2).result() == "5 pizzas please!"
+
+
+def app_level_custom_autoscaling_policy(ctxs: Dict[str, AutoscalingContext]):
+    decisions: Dict[str, int] = {}
+    for deployment_name, ctx in ctxs.items():
+        if ctx.total_num_requests > 50:
+            decisions[deployment_name] = 4
+        else:
+            decisions[deployment_name] = 2
+
+    return decisions, {}
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        {"name": "ray.serve.tests.test_deploy_app.app_level_custom_autoscaling_policy"},
+        AutoscalingPolicy(
+            name="ray.serve.tests.test_deploy_app.app_level_custom_autoscaling_policy"
+        ),
+        AutoscalingPolicy(name=app_level_custom_autoscaling_policy),
+    ],
+)
+def test_application_autoscaling_policy_config(serve_instance, policy):
+    client = serve_instance
+    signal = SignalActor.options(name="signal123").remote()
+
+    config_template = {
+        "import_path": "ray.serve.tests.test_config_files.get_signal.app",
+        "autoscaling_policy": policy,
+        "deployments": [
+            {
+                "name": "A",
+                "autoscaling_config": {
+                    "target_ongoing_requests": 1,
+                    "min_replicas": 1,
+                    "max_replicas": 10,
+                    "metrics_interval_s": 15,
+                    "upscale_delay_s": 0.5,
+                    "downscale_delay_s": 0.5,
+                    "look_back_period_s": 2,
+                },
+                "graceful_shutdown_timeout_s": 1,
+            }
+        ],
+    }
+
+    print(time.ctime(), "Deploying pid application.")
+    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
+    wait_for_condition(check_running, timeout=15)
+    print(time.ctime(), "Application is RUNNING.")
+
+    print(time.ctime(), "Sending 1 initial unblocked request.")
+    h = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
+    signal.send.remote()
+    h.remote().result()
+
+    print(time.ctime(), "Sending 40 blocked requests. Deployment should NOT scale up.")
+    signal.send.remote(clear=True)
+    [h.remote() for _ in range(40)]
+    with pytest.raises(RuntimeError, match="timeout"):
+        wait_for_condition(check_num_replicas_gte, name="A", target=2)
+
+    print(time.ctime(), "Sending 70 blocked requests. Deployment should scale up.")
+    signal.send.remote(clear=True)
+    [h.remote() for _ in range(70)]
+    with pytest.raises(RuntimeError, match="timeout"):
+        wait_for_condition(check_num_replicas_gte, name="A", target=4)
 
 
 if __name__ == "__main__":

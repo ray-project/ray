@@ -331,7 +331,9 @@ class ApplicationState:
 
         if self.should_autoscale():
             self._autoscaling_state_manager.register_application(
-                self._name, self._target_state.config
+                self._name,
+                self._target_state.config,
+                self._target_state.deployment_infos,
             )
 
     def _set_target_state(
@@ -527,11 +529,6 @@ class ApplicationState:
         # Check routes are unique in deployment infos
         self._route_prefix = self._check_routes(deployment_infos)
 
-        if self.should_autoscale():
-            self._autoscaling_state_manager.register_application(
-                self._name, self._target_state.config
-            )
-
         self._set_target_state(
             deployment_infos=deployment_infos,
             api_type=APIType.IMPERATIVE,
@@ -540,6 +537,13 @@ class ApplicationState:
             target_capacity=None,
             target_capacity_direction=None,
         )
+
+        if self.should_autoscale():
+            self._autoscaling_state_manager.register_application(
+                self._name,
+                self._target_state.config,
+                self._target_state.deployment_infos,
+            )
 
     def apply_app_config(
         self,
@@ -632,6 +636,13 @@ class ApplicationState:
                 target_capacity_direction=target_capacity_direction,
                 finished=False,
             )
+
+            if self.should_autoscale():
+                self._autoscaling_state_manager.register_application(
+                    self._name,
+                    self._target_state.config,
+                    self._target_state.deployment_infos,
+                )
 
     def _get_live_deployments(self) -> List[str]:
         return self._deployment_state_manager.get_deployments_in_application(self._name)
