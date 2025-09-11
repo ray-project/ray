@@ -1,16 +1,16 @@
-from typing import Optional, List, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional
 
 import ray
-from ray.util.collective.types import Backend
 from ray.experimental.collective.tensor_transport_manager import (
-    TensorTransportManager,
     TensorTransportEnum,
+    TensorTransportManager,
 )
 from ray.util.collective.collective import get_group_handle
 from ray.util.collective.types import (
     NIXL_GROUP_NAME,
-    NixlTransportMetadata,
+    Backend,
     NixlCommunicatorMetadata,
+    NixlTransportMetadata,
 )
 
 if TYPE_CHECKING:
@@ -78,7 +78,7 @@ class NixlTensorTransport(TensorTransportManager):
                 for t in gpu_object:
                     if t.device.type != device.type:
                         raise ValueError(
-                            "All tensors in one GPU object must be the same device type."
+                            "All tensors in an RDT object must have the same device type."
                         )
                     tensor_meta.append((t.shape, t.dtype))
             else:
@@ -120,8 +120,8 @@ class NixlTensorTransport(TensorTransportManager):
         tensor_transport_metadata: NixlTransportMetadata,
         communicator_metadata: NixlCommunicatorMetadata,
     ):
-        from ray.util.collective.collective import get_group_handle
         from ray.util.collective import types
+        from ray.util.collective.collective import get_group_handle
 
         if tensors:
             g = get_group_handle(communicator_metadata.communicator_name)
