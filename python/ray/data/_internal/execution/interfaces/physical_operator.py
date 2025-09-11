@@ -114,6 +114,7 @@ class DataOpTask(OpTask):
         self._streaming_gen = streaming_gen
         self._output_ready_callback = output_ready_callback
         self._task_done_callback = task_done_callback
+        self._pending_block_pair = None
 
     def get_waitable(self) -> ObjectRefGenerator:
         return self._streaming_gen
@@ -128,8 +129,16 @@ class DataOpTask(OpTask):
         """
         bytes_read = 0
         while max_bytes_to_read is None or bytes_read < max_bytes_to_read:
+            block_ref, meta_ref = self._pending_block_pair or (
+                ray.ObjectRef.nil(),
+                ray.ObjectRef.nil(),
+            )
             try:
-                block_ref = self._streaming_gen._next_sync(0)
+                block_ref = (
+                    self._streaming_gen._next_sync(0)
+                    if block_ref.is_nil()
+                    else block_ref
+                )
                 if block_ref.is_nil():
                     # The generator currently doesn't have new output.
                     # And it's not stopped yet.
@@ -139,9 +148,19 @@ class DataOpTask(OpTask):
                 break
 
             try:
-                meta_with_schema: "BlockMetadataWithSchema" = ray.get(
-                    next(self._streaming_gen)
+                meta_ref = (
+                    self._streaming_gen._next_sync(1) if meta_ref.is_nil() else meta_ref
                 )
+                if meta_ref.is_nil():
+                    self._pending_block_pair = (block_ref, meta_ref)
+                    break
+                meta_with_schema: "BlockMetadataWithSchema" = ray.get(
+                    meta_ref, timeout=1
+                )
+            except ray.exceptions.GetTimeoutError:
+                logger.warning(f"Get Meta timeout for (block_ref={block_ref.hex()})")
+                self._pending_block_pair = (block_ref, meta_ref)
+                break
             except StopIteration:
                 # The generator should always yield 2 values (block and metadata)
                 # each time. If we get a StopIteration here, it means an error
@@ -164,6 +183,7 @@ class DataOpTask(OpTask):
                     schema=meta_with_schema.schema,
                 ),
             )
+            self._pending_block_pair = None
             bytes_read += meta.size_bytes
 
         return bytes_read
