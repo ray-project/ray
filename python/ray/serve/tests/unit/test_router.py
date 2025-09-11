@@ -13,7 +13,6 @@ import ray
 from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray.exceptions import ActorDiedError, ActorUnavailableError
-from ray.serve._private.autoscaling_state import HandleMetricReport
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
