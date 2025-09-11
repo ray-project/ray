@@ -19,6 +19,8 @@ import string
 import random
 import time
 from ray.data.expressions import download
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray._private.test_utils import EC2InstanceTerminatorWithGracePeriod
 
 
 WRITE_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
@@ -51,6 +53,21 @@ def parse_args() -> argparse.Namespace:
         help=(
             "The number of copies of the dataset to read. Use this to simulate a larger "
             "dataset."
+        ),
+    )
+    parser.add_argument(
+        "--inference-concurrency",
+        dest="inference_concurrency",
+        type=int,
+        default=100,
+        help="The number of inference workers to use.",
+    )
+    parser.add_argument(
+        "--chaos",
+        action="store_true",
+        help=(
+            "Whether to enable chaos. If set, this script terminates one worker node "
+            "every minute with a grace period."
         ),
     )
     return parser.parse_args()
@@ -173,11 +190,14 @@ class FakeEmbedPatches:
             return batch
 
 
-def main(scale_factor: int):
+def main(args: argparse.Namespace):
     benchmark = Benchmark()
 
+    if args.chaos:
+        start_chaos()
+
     print("Creating metadata")
-    metadata = create_metadata(scale_factor=scale_factor)
+    metadata = create_metadata(scale_factor=args.scale_factor)
 
     def benchmark_fn():
         weights = ViT_B_16_Weights.DEFAULT
@@ -199,7 +219,7 @@ def main(scale_factor: int):
                 EmbedPatches,
                 num_gpus=1,
                 batch_size=BATCH_SIZE,
-                compute=ActorPoolStrategy(min_size=1, max_size=100),
+                compute=ActorPoolStrategy(tuple(args.inference_concurrency)),
                 fn_constructor_kwargs={"model": model_ref, "device": "cuda"},
             )
             .write_parquet(WRITE_PATH)
@@ -209,7 +229,23 @@ def main(scale_factor: int):
     benchmark.write_result()
 
 
+def start_chaos():
+    assert ray.is_initialized()
+
+    head_node_id = ray.get_runtime_context().get_node_id()
+    scheduling_strategy = NodeAffinitySchedulingStrategy(
+        node_id=head_node_id, soft=False
+    )
+    resource_killer = EC2InstanceTerminatorWithGracePeriod.options(
+        scheduling_strategy=scheduling_strategy
+    ).remote(head_node_id, max_to_kill=None)
+
+    ray.get(resource_killer.ready.remote())
+
+    resource_killer.run.remote()
+
+
 if __name__ == "__main__":
     args = parse_args()
-    scale_factor = args.scale_factor
-    main(scale_factor)
+    ray.init()
+    main(args)
