@@ -344,7 +344,7 @@ class ReplicaMetricsManager:
 
         new_aggregated_metrics = {}
         new_metrics = {**self._metrics_store.data}
-        
+
         if not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
             # Keep the legacy window_avg ongoing requests in the merged metrics dict
             window_avg = self._metrics_store.aggregate_avg([self._replica_id])[0] or 0.0
@@ -354,7 +354,7 @@ class ReplicaMetricsManager:
             replica_id=self._replica_id,
             timestamp=time.time(),
             aggregated_metrics=new_aggregated_metrics,
-            metrics=new_metrics
+            metrics=new_metrics,
         )
         self._controller_handle.record_autoscaling_metrics_from_replica.remote(
             replica_metric_report
