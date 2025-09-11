@@ -1,8 +1,4 @@
-"""Configuration classes for Ray Data SQL API.
-
-This module provides configuration options for customizing the behavior
-of the Ray Data SQL engine.
-"""
+"""Configuration for Ray Data SQL API."""
 
 import logging
 from dataclasses import dataclass
@@ -71,38 +67,11 @@ class SQLDialect(Enum):
 @PublicAPI
 @dataclass
 class SQLConfig:
-    """Configuration for the Ray Data SQL engine.
-
-    This class provides configuration options for customizing various aspects
-    of SQL query execution, optimization, and error handling.
-
-    Attributes:
-        log_level: Logging level for SQL operations.
-        dialect: SQL dialect to use for parsing and validation.
-        case_sensitive: Whether column and table names are case-sensitive.
-        strict_mode: Whether to enable strict error checking.
-        enable_optimization: Whether to enable query optimization.
-        max_join_partitions: Maximum number of partitions for join operations.
-        enable_predicate_pushdown: Whether to push WHERE clauses down to data sources.
-        enable_projection_pushdown: Whether to push SELECT columns down to data sources.
-        query_timeout_seconds: Maximum time allowed for query execution.
-        enable_sqlglot_optimizer: Whether to enable SQLGlot query optimization.
+    """Configuration for Ray Data SQL engine.
 
     Examples:
-        Basic configuration:
-            >>> config = SQLConfig(log_level=LogLevel.DEBUG, case_sensitive=False)
-            >>> engine = RaySQL(config)
-
-        Dialect configuration:
-            >>> config = SQLConfig(dialect=SQLDialect.POSTGRES, strict_mode=True)
-            >>> engine = RaySQL(config)
-
-        Performance tuning:
-            >>> config = SQLConfig(
-            ...     enable_optimization=True,
-            ...     max_join_partitions=50,
-            ...     enable_predicate_pushdown=True
-            ... )
+        >>> config = SQLConfig(log_level=LogLevel.DEBUG)
+        >>> engine = RaySQL(config)
     """
 
     log_level: LogLevel = LogLevel.INFO

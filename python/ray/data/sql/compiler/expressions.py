@@ -6,8 +6,7 @@ that can be used with Ray Dataset operations.
 
 import math
 import operator
-from functools import lru_cache
-from typing import Any, Callable, Dict, Mapping, Optional
+from typing import Any, Callable, Dict, Mapping
 
 from sqlglot import exp
 
@@ -19,13 +18,7 @@ class ExpressionCompiler:
 
     This class converts SQL expressions into Python callables that can be
     used with Ray Dataset operations like map(), filter(), and aggregate().
-
-    The compiler uses caching and optimized patterns for better performance
-    in distributed Ray Dataset operations.
     """
-
-    # Expression compilation cache for performance
-    _compilation_cache: Dict[str, Callable] = {}
 
     # Comparison operators mapping
     COMPARISON_OPS = {
@@ -118,29 +111,14 @@ class ExpressionCompiler:
     ) -> Callable[[Mapping[str, Any]], Any]:
         """Compile a SQLGlot expression into a Python function.
 
-        This method converts SQL expressions into executable Python functions that
-        can be used with Ray Dataset operations like map(), filter(), and aggregate().
-        The compiled functions follow Ray Dataset API patterns and handle NULL values
-        appropriately.
-
         Args:
-            expr: SQLGlot expression to compile (column references, literals, operators, functions).
+            expr: SQLGlot expression to compile.
 
         Returns:
             Callable function that takes a row dict and returns the computed value.
-            The function handles NULL values and type conversions according to SQL semantics.
 
         Raises:
             UnsupportedOperationError: If the expression type is not supported.
-
-        Examples:
-            Compile a column reference:
-                >>> func = ExpressionCompiler.compile(Column(this=Identifier(this="age")))
-                >>> result = func({"age": 25, "name": "Alice"})  # Returns 25
-
-            Compile an arithmetic expression:
-                >>> func = ExpressionCompiler.compile(Add(left=Column(...), right=Literal(this=10)))
-                >>> result = func({"value": 5})  # Returns 15
         """
         expr_type = type(expr)
 

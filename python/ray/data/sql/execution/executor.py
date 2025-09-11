@@ -80,9 +80,8 @@ class QueryExecutor:
         # Logger for debugging and monitoring execution
         self._logger = setup_logger("QueryExecutor")
 
-        # Performance optimization caches
-        self._schema_cache: Dict[str, Any] = {}
-        self._execution_stats = {"queries_executed": 0, "cache_hits": 0}
+        # Simple execution tracking
+        self._queries_executed = 0
 
     def execute(self, ast: exp.Expression) -> Dataset:
         """Execute a parsed SQLGlot AST (must be a SELECT statement).
@@ -106,8 +105,8 @@ class QueryExecutor:
             raise NotImplementedError("Only SELECT statements are supported")
 
         try:
-            # Track execution statistics
-            self._execution_stats["queries_executed"] += 1
+            # Track execution
+            self._queries_executed += 1
 
             # Analyze the query to determine if it uses GROUP BY aggregation
             group_keys = self.aggregate_analyzer.extract_group_by_keys(ast)
@@ -652,19 +651,3 @@ class QueryExecutor:
                 return False
 
         return dataset.filter(having_filter)
-
-    def get_execution_stats(self) -> Dict[str, Any]:
-        """Get execution statistics for performance monitoring."""
-        return {
-            **self._execution_stats,
-            "schema_cache_size": len(self._schema_cache),
-            "projection_cache_size": len(self.projection_analyzer._projection_cache),
-            "join_cache_size": len(self.join_handler._column_mapping_cache),
-        }
-
-    def clear_caches(self) -> None:
-        """Clear all performance caches."""
-        self._schema_cache.clear()
-        self.projection_analyzer._projection_cache.clear()
-        self.join_handler._column_mapping_cache.clear()
-        self._logger.info("Cleared all execution caches")

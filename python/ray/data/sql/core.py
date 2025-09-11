@@ -1,8 +1,6 @@
-"""Streamlined core SQL engine implementation for Ray Data.
+"""Core SQL engine implementation for Ray Data.
 
-This module provides the main SQL engine classes and functions for executing
-SQL queries against Ray Datasets. It follows Ray API patterns and provides
-comprehensive error handling, performance optimizations, and ease-of-use features.
+This module provides SQL query execution for Ray Datasets using standard SQL syntax.
 """
 
 import hashlib
@@ -70,9 +68,8 @@ class RaySQL:
             ]
         )
 
-        # Query plan cache for performance
+        # Simple query cache for performance
         self._query_cache: Dict[str, exp.Expression] = {}
-        self._cache_max_size = 1000  # Maximum number of cached queries
 
     def _setup_logging(self) -> None:
         """Set up logging configuration."""
@@ -316,20 +313,15 @@ class RaySQL:
         """Cache a parsed and validated query AST."""
         cache_key = self._get_cache_key(query)
 
-        # Implement simple LRU eviction if cache is full
-        if len(self._query_cache) >= self._cache_max_size:
-            # Remove oldest entry (simple FIFO for now)
-            oldest_key = next(iter(self._query_cache))
-            del self._query_cache[oldest_key]
+        # Simple cache with size limit
+        if len(self._query_cache) >= 100:  # Keep cache reasonable
+            self._query_cache.clear()  # Simple eviction
 
         self._query_cache[cache_key] = ast
-        self._logger.debug(f"Cached query plan (cache size: {len(self._query_cache)})")
 
     def clear_query_cache(self) -> None:
         """Clear the query plan cache."""
-        cache_size = len(self._query_cache)
         self._query_cache.clear()
-        self._logger.info(f"Cleared query cache ({cache_size} entries removed)")
 
 
 # Global engine instance
@@ -607,37 +599,37 @@ def get_config_summary() -> Dict[str, Any]:
 # Public API functions
 @PublicAPI(stability="alpha")
 def sql(query: str, default_dataset: Optional[Dataset] = None) -> Dataset:
-    """Execute a SQL query using the global engine.
+    """Execute a SQL query on registered datasets.
 
     Args:
         query: SQL query string.
         default_dataset: Default dataset for queries without FROM clause.
 
     Returns:
-        Ray Dataset containing the query results.
+        Dataset containing the query results.
+
+    Examples:
+        >>> import ray.data.sql
+        >>> users = ray.data.from_items([{"id": 1, "name": "Alice"}])
+        >>> ray.data.sql.register_table("users", users)
+        >>> result = ray.data.sql("SELECT * FROM users WHERE id = 1")
+        >>> print(result.take_all())
     """
     return get_engine().sql(query, default_dataset)
 
 
 @PublicAPI(stability="alpha")
 def register_table(name: str, dataset: Dataset) -> None:
-    """Register a Ray Dataset as a SQL table.
+    """Register a Dataset as a SQL table.
 
     Args:
-        name: SQL table name (must be valid SQL identifier).
+        name: Table name for SQL queries.
         dataset: Ray Dataset to register.
 
-    Raises:
-        TypeError: If dataset is not a Ray Dataset.
-        ValidationError: If name is invalid or reserved.
-
     Examples:
-        Register a simple dataset:
-            >>> users = ray.data.from_items([{"id": 1, "name": "Alice"}])
-            >>> ray.data.sql.register_table("users", users)
-
-        Use in SQL queries:
-            >>> result = ray.data.sql("SELECT * FROM users WHERE id = 1")
+        >>> users = ray.data.from_items([{"id": 1, "name": "Alice"}])
+        >>> ray.data.sql.register_table("users", users)
+        >>> result = ray.data.sql("SELECT * FROM users")
     """
     get_engine().register_table(name, dataset)
 
