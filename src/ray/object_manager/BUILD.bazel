@@ -19,8 +19,8 @@ ray_cc_library(
         "//src/ray/object_manager/plasma:plasma_store_server_lib",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:node_manager_cc_proto",
-        "//src/ray/rpc:object_manager_client",
-        "//src/ray/rpc:object_manager_server",
+        "//src/ray/rpc/object_manager:object_manager_client_interface",
+        "//src/ray/rpc/object_manager:object_manager_server",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
