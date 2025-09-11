@@ -761,7 +761,6 @@ def get_application_urls(
             for low latency benchmarking.
         is_websocket: Whether the url should be served as a websocket.
         exclude_route_prefix: The route prefix to exclude from the application.
-        target_groups: The target groups to use for the application.
     Returns:
         The URLs of the application.
     """
