@@ -85,7 +85,7 @@ class TaskPoolMapOperator(MapOperator):
         ctx = TaskContext(
             task_idx=self._next_data_task_idx,
             op_name=self.name,
-            target_max_block_size=self.actual_target_max_block_size,
+            target_max_block_size_override=self.actual_target_max_block_size,
         )
 
         dynamic_ray_remote_args = self._get_runtime_ray_remote_args(input_bundle=bundle)
