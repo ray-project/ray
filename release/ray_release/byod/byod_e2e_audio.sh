@@ -3,4 +3,4 @@
 set -exo pipefail
 
 # Install Python dependencies
-uv pip sync llm_example_py311_cu128.lock
+uv pip sync e2e_audio_py311_cu128.lock --system
