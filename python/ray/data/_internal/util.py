@@ -1751,7 +1751,7 @@ def merge_resources_to_ray_remote_args(
     num_cpus: Optional[int],
     num_gpus: Optional[int],
     memory: Optional[int],
-    **ray_remote_args: Dict[str, Any],
+    ray_remote_args: Dict[str, Any],
 ) -> Dict[str, Any]:
     """Convert the given resources to Ray remote args.
 
@@ -1759,7 +1759,7 @@ def merge_resources_to_ray_remote_args(
         num_cpus: The number of CPUs to be added to the Ray remote args.
         num_gpus: The number of GPUs to be added to the Ray remote args.
         memory: The memory to be added to the Ray remote args.
-        **ray_remote_args: The Ray remote args to be merged.
+        ray_remote_args: The Ray remote args to be merged.
 
     Returns:
         The converted arguments.

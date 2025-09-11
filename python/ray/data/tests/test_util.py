@@ -348,11 +348,11 @@ def test_find_partition_index_duplicates_descending():
 
 def test_merge_resources_to_ray_remote_args():
     ray_remote_args = {}
-    ray_remote_args = merge_resources_to_ray_remote_args(1, 1, 1, **ray_remote_args)
+    ray_remote_args = merge_resources_to_ray_remote_args(1, 1, 1, ray_remote_args)
     assert ray_remote_args == {"num_cpus": 1, "num_gpus": 1, "memory": 1}
 
     ray_remote_args = {"other_resource": 1}
-    ray_remote_args = merge_resources_to_ray_remote_args(1, 1, 1, **ray_remote_args)
+    ray_remote_args = merge_resources_to_ray_remote_args(1, 1, 1, ray_remote_args)
     assert ray_remote_args == {
         "num_cpus": 1,
         "num_gpus": 1,
