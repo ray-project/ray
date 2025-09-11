@@ -31,21 +31,21 @@ Quick Reading Optimization Checklist
 Before diving into details, use this checklist to identify immediate optimization opportunities:
 
 **File Organization**
-□ Consolidate small files (< 10MB) into larger files
-□ Use efficient formats (Parquet > CSV > JSON)
-□ Implement logical partitioning strategy
-□ Apply appropriate compression (snappy, gzip, lz4)
+- Consolidate small files (< 10MB) into larger files
+- Use efficient formats (Parquet > CSV > JSON)
+- Implement logical partitioning strategy
+- Apply appropriate compression (snappy, gzip, lz4)
 
 **Ray Data Configuration**
-□ Use column pruning with ``columns`` parameter
-□ Tune ``override_num_blocks`` for your cluster size
-□ Configure ``ray_remote_args`` for I/O-intensive reads
-□ Enable filter pushdown when possible
+- Use column pruning with ``columns`` parameter
+- Tune ``override_num_blocks`` for your cluster size
+- Configure ``ray_remote_args`` for I/O-intensive reads
+- Enable filter pushdown when possible
 
 **Resource Optimization**
-□ Match cluster resources to data size
-□ Use appropriate node types for I/O workloads
-□ Configure network settings for cloud storage
+- Match cluster resources to data size
+- Use appropriate node types for I/O workloads
+- Configure network settings for cloud storage
 
 File Format Optimization
 ========================
@@ -82,29 +82,29 @@ File format choice affects every aspect of your Ray Data pipeline:
      - Column Access
      - Best Use Case
    * - **Parquet**
-     - ⭐⭐⭐⭐⭐
-     - ⭐⭐⭐⭐⭐
-     - ⭐⭐⭐⭐⭐
+     - Excellent
+     - Excellent
+     - Excellent
      - Analytics, ML training
    * - **CSV**
-     - ⭐⭐
-     - ⭐⭐
-     - ⭐
+     - Fair
+     - Fair
+     - Poor
      - Simple data, compatibility
    * - **JSON**
-     - ⭐
-     - ⭐
-     - ⭐⭐
+     - Poor
+     - Poor
+     - Fair
      - Semi-structured data
    * - **Arrow/Feather**
-     - ⭐⭐⭐⭐⭐
-     - ⭐⭐⭐⭐
-     - ⭐⭐⭐⭐⭐
+     - Excellent
+     - Good
+     - Excellent
      - In-memory caching
    * - **ORC**
-     - ⭐⭐⭐⭐
-     - ⭐⭐⭐⭐⭐
-     - ⭐⭐⭐⭐
+     - Good
+     - Excellent
+     - Good
      - Hadoop ecosystem
 
 **Recommendation**: Use Parquet for most Ray Data workloads due to its excellent compression, columnar access, and metadata support.

@@ -121,27 +121,27 @@ Common Performance Issues
 Use this checklist to identify the most common Ray Data performance issues:
 
 **I/O Bottlenecks**
-□ Reading many small files (< 1MB each)
-□ Not using column pruning when reading Parquet
-□ Inefficient file formats (CSV vs Parquet)
-□ Network latency to data sources
+- Reading many small files (< 1MB each)
+- Not using column pruning when reading Parquet
+- Inefficient file formats (CSV vs Parquet)
+- Network latency to data sources
 
 **Transform Bottlenecks**  
-□ Using :meth:`~ray.data.Dataset.map` instead of :meth:`~ray.data.Dataset.map_batches`
-□ Using pandas batch_format unnecessarily
-□ Non-vectorized operations in transforms
-□ Memory-intensive operations without proper sizing
+- Using :meth:`~ray.data.Dataset.map` instead of :meth:`~ray.data.Dataset.map_batches`
+- Using pandas batch_format unnecessarily
+- Non-vectorized operations in transforms
+- Memory-intensive operations without proper sizing
 
 **Resource Bottlenecks**
-□ Incorrect batch sizes causing OOM or underutilization
-□ Wrong concurrency settings for workload
-□ Not utilizing available GPUs
-□ Excessive object store usage
+- Incorrect batch sizes causing OOM or underutilization
+- Wrong concurrency settings for workload
+- Not utilizing available GPUs
+- Excessive object store usage
 
 **System Bottlenecks**
-□ Insufficient cluster resources
-□ Network bandwidth limitations
-□ Disk I/O limitations
+- Insufficient cluster resources
+- Network bandwidth limitations
+- Disk I/O limitations
 
 Using Ray Dashboard for Performance Analysis
 ------------------------------------------

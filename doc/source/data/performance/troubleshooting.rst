@@ -48,23 +48,23 @@ Quick Diagnostic Checklist
 Start with this checklist to identify the most common performance issues:
 
 **Immediate Checks**
-□ Check Ray Dashboard for resource utilization
-□ Look for OOM errors in logs
-□ Verify cluster has sufficient resources
-□ Check for data skew in operations
+- Check Ray Dashboard for resource utilization
+- Look for OOM errors in logs
+- Verify cluster has sufficient resources
+- Check for data skew in operations
 
 **Performance Symptoms**
-□ Slow execution time
-□ High memory usage
-□ Low CPU/GPU utilization  
-□ Network bottlenecks
-□ Frequent task retries
+- Slow execution time
+- High memory usage
+- Low CPU/GPU utilization  
+- Network bottlenecks
+- Frequent task retries
 
 **Data Characteristics**
-□ Very large or very small files
-□ Wide tables with many columns
-□ Skewed data distribution
-□ Complex nested data structures
+- Very large or very small files
+- Wide tables with many columns
+- Skewed data distribution
+- Complex nested data structures
 
 Performance Issue Diagnostic Guide
 ==================================

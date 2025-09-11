@@ -16,20 +16,20 @@ Memory Optimization Quick Wins
 Start with these immediate memory optimizations:
 
 **Essential Memory Settings**
-□ Configure ``DataContext`` memory limits appropriately
-□ Tune batch sizes to prevent OOM errors
-□ Use streaming execution instead of materialization
-□ Monitor object store usage regularly
+- Configure ``DataContext`` memory limits appropriately
+- Tune batch sizes to prevent OOM errors
+- Use streaming execution instead of materialization
+- Monitor object store usage regularly
 
 **Block Size Optimization**
-□ Set appropriate ``target_max_block_size`` for your workload
-□ Use ``override_num_blocks`` to control parallelism vs memory trade-offs
-□ Avoid creating too many small blocks
+- Set appropriate ``target_max_block_size`` for your workload
+- Use ``override_num_blocks`` to control parallelism vs memory trade-offs
+- Avoid creating too many small blocks
 
 **Transform Memory Management**
-□ Set memory limits in ``ray_remote_args``
-□ Use in-place operations when possible
-□ Clean up intermediate results explicitly
+- Set memory limits in ``ray_remote_args``
+- Use in-place operations when possible
+- Clean up intermediate results explicitly
 
 Understanding Ray Data Memory Model
 ===================================

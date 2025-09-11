@@ -16,17 +16,17 @@ Transform Optimization Quick Wins
 Start with these high-impact optimizations for immediate performance improvements:
 
 **Essential Optimizations**
-□ Use :meth:`~ray.data.Dataset.map_batches` instead of :meth:`~ray.data.Dataset.map`
-□ Avoid ``batch_format="pandas"`` unless necessary
-□ Optimize batch sizes for your workload
-□ Use actors for stateful operations
-□ Leverage vectorized operations (NumPy, PyArrow)
+- Use :meth:`~ray.data.Dataset.map_batches` instead of :meth:`~ray.data.Dataset.map`
+- Avoid ``batch_format="pandas"`` unless necessary
+- Optimize batch sizes for your workload
+- Use actors for stateful operations
+- Leverage vectorized operations (NumPy, PyArrow)
 
 **Resource Optimizations**
-□ Tune concurrency based on your cluster
-□ Configure appropriate CPU/GPU allocation
-□ Set memory limits to prevent OOM
-□ Enable :ref:`operator fusion <data-internals>` when possible
+- Tune concurrency based on your cluster
+- Configure appropriate CPU/GPU allocation
+- Set memory limits to prevent OOM
+- Enable :ref:`operator fusion <data-internals>` when possible
 
 map vs map_batches: The Critical Choice
 ======================================
@@ -63,11 +63,11 @@ The performance difference comes from vectorization - modern CPUs and libraries 
      - Single row
      - Batch of rows
    * - **Performance**
-     - ⭐⭐
-     - ⭐⭐⭐⭐⭐
+     - Fair
+     - Excellent
    * - **Memory Efficiency**
-     - ⭐⭐⭐⭐
-     - ⭐⭐⭐
+     - Good
+     - Good
    * - **Vectorization**
      - No
      - Yes
@@ -146,23 +146,23 @@ The conversion process affects both memory usage and processing time:
      - Use Case
      - Example
    * - **"default" (dict)**
-     - ⭐⭐⭐⭐⭐
-     - ⭐⭐⭐⭐⭐
+     - Excellent
+     - Excellent
      - Universal
      - ETL, data cleaning, simple transforms
    * - **"pyarrow"**
-     - ⭐⭐⭐⭐
-     - ⭐⭐⭐⭐
+     - Good
+     - Good
      - Columnar operations
      - Analytics, data warehousing, aggregations
    * - **"pandas"**
-     - ⭐⭐
-     - ⭐⭐
+     - Fair
+     - Fair
      - Complex data manipulation
      - ETL with complex logic, data science exploration
    * - **"numpy"**
-     - ⭐⭐⭐⭐⭐
-     - ⭐⭐⭐⭐⭐
+     - Excellent
+     - Excellent
      - Numerical computing
      - ML inference, scientific computing, signal processing
 
