@@ -137,6 +137,9 @@ class DeploymentStatusTrigger(str, Enum):
     UPSCALE_COMPLETED = "UPSCALE_COMPLETED"
     DOWNSCALE_COMPLETED = "DOWNSCALE_COMPLETED"
     AUTOSCALING = "AUTOSCALING"
+    AUTOSCALING_UPSCALE = "AUTOSCALING_UPSCALE"
+    AUTOSCALING_DOWNSCALE = "AUTOSCALING_DOWNSCALE"
+    AUTOSCALING_STABLE = "AUTOSCALING_STABLE"
     REPLICA_STARTUP_FAILED = "REPLICA_STARTUP_FAILED"
     HEALTH_CHECK_FAILED = "HEALTH_CHECK_FAILED"
     INTERNAL_ERROR = "INTERNAL_ERROR"
@@ -830,12 +833,13 @@ class DeploymentSnapshot:
         }
 
     @staticmethod
-    def format_scaling_status(scaling_status: str) -> str:
-        return {
-            "UPSCALING": "scaling up",
-            "DOWNSCALING": "scaling down",
-            "STABLE": "stable",
-        }.get(str(scaling_status), str(scaling_status).lower())
+    def format_scaling_status(trigger: DeploymentStatusTrigger) -> str:
+        mapping = {
+            DeploymentStatusTrigger.AUTOSCALING_UPSCALE: "scaling up",
+            DeploymentStatusTrigger.AUTOSCALING_DOWNSCALE: "scaling down",
+            DeploymentStatusTrigger.AUTOSCALING_STABLE: "stable",
+        }
+        return mapping.get(trigger, str(trigger).lower())
 
     @staticmethod
     def format_metrics_health_text(

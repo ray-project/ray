@@ -8,6 +8,7 @@ from ray.serve._private.common import (
     AutoscalingSnapshotError,
     DeploymentID,
     DeploymentSnapshot,
+    DeploymentStatusTrigger,
     HandleMetricReport,
     ReplicaID,
     ReplicaMetricReport,
@@ -366,13 +367,12 @@ class AutoscalingState:
         else:
             time_since_last_collected_metrics_s = None
 
-        # Derive scaling status from current vs target
         if target_replicas > current_replicas:
-            scaling_status_raw = "UPSCALING"
+            scaling_status_raw = DeploymentStatusTrigger.AUTOSCALING_UPSCALE
         elif target_replicas < current_replicas:
-            scaling_status_raw = "DOWNSCALING"
+            scaling_status_raw = DeploymentStatusTrigger.AUTOSCALING_DOWNSCALE
         else:
-            scaling_status_raw = "STABLE"
+            scaling_status_raw = DeploymentStatusTrigger.AUTOSCALING_STABLE
         scaling_status = DeploymentSnapshot.format_scaling_status(scaling_status_raw)
 
         look_back_period_s = getattr(self._config, "look_back_period_s", None)
