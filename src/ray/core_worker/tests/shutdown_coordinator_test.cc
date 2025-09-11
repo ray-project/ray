@@ -176,6 +176,47 @@ TEST_F(ShutdownCoordinatorTest, RequestShutdown_DelegatesToGraceful_OnlyFirstSuc
   EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kUserError);  // unchanged
 }
 
+TEST_F(ShutdownCoordinatorTest, SingleSignal_IntentionalSystemExit_TriggersExitNotForce) {
+  auto fake = std::make_unique<FakeShutdownExecutor>();
+  auto *fake_ptr = fake.get();
+  ShutdownCoordinator coordinator(std::move(fake), rpc::WorkerType::WORKER);
+
+  const bool initiated = coordinator.RequestShutdown(
+      /*force_shutdown=*/false,
+      ShutdownReason::kIntentionalShutdown,
+      /*detail=*/"signal:INTENTIONAL",
+      ShutdownCoordinator::kInfiniteTimeout,
+      /*creation_task_exception_pb_bytes=*/nullptr);
+
+  ASSERT_TRUE(initiated);
+  EXPECT_EQ(fake_ptr->force_calls.load(), 0);
+  // Either graceful or exit path should have been invoked at least once.
+  EXPECT_TRUE(fake_ptr->graceful_calls.load() >= 1 ||
+              fake_ptr->worker_exit_calls.load() >= 1);
+}
+
+TEST_F(ShutdownCoordinatorTest, DoubleSignal_SecondForce_ExecutesForceShutdown) {
+  auto fake = std::make_unique<FakeShutdownExecutor>();
+  auto *fake_ptr = fake.get();
+  ShutdownCoordinator coordinator(std::move(fake), rpc::WorkerType::WORKER);
+
+  const bool first = coordinator.RequestShutdown(
+      /*force_shutdown=*/false,
+      ShutdownReason::kIntentionalShutdown,
+      /*detail=*/"first",
+      ShutdownCoordinator::kInfiniteTimeout,
+      /*creation_task_exception_pb_bytes=*/nullptr);
+  ASSERT_TRUE(first);
+
+  (void)coordinator.RequestShutdown(
+      /*force_shutdown=*/true,
+      ShutdownReason::kForcedExit,
+      /*detail=*/"second",
+      std::chrono::milliseconds{0},
+      /*creation_task_exception_pb_bytes=*/nullptr);
+  EXPECT_EQ(fake_ptr->force_calls.load(), 1);
+}
+
 TEST_F(ShutdownCoordinatorTest,
        RequestShutdown_Graceful_SetsDisconnecting_ThenTryTransitionToShutdown_Succeeds) {
   auto coordinator = std::make_unique<ShutdownCoordinator>(
