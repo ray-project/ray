@@ -1,15 +1,14 @@
-from typing import Optional, List, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional
 
 import ray
-from ray.util.collective.types import Backend
 from ray.experimental.collective.tensor_transport_manager import (
-    TensorTransportManager,
     TensorTransportEnum,
+    TensorTransportManager,
 )
-
 from ray.util.collective.types import (
-    CollectiveTransportMetadata,
+    Backend,
     CollectiveCommunicatorMetadata,
+    CollectiveTransportMetadata,
 )
 
 if TYPE_CHECKING:
@@ -63,7 +62,7 @@ class CollectiveTensorTransport(TensorTransportManager):
                 for t in gpu_object:
                     if t.device.type != device.type:
                         raise ValueError(
-                            "All tensors in one GPU object must be the same device type."
+                            "All tensors in an RDT object must have the same device type."
                         )
                     tensor_meta.append((t.shape, t.dtype))
             return CollectiveTransportMetadata(
@@ -106,7 +105,7 @@ class CollectiveTensorTransport(TensorTransportManager):
         elif len(communicators) > 1:
             raise ValueError(
                 f"There are {len(communicators)} possible communicators that contain actors {src_actor} and {dst_actor}. "
-                "Currently, GPU objects only support one communicator. Please make sure only "
+                "Currently, RDT objects only support one communicator. Please make sure only "
                 "one communicator exists."
             )
         communicator = communicators[0]
