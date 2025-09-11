@@ -24,12 +24,14 @@
 #include "gflags/gflags.h"
 #include "nlohmann/json.hpp"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/cgroup/cgroup_manager.h"
+#include "ray/common/cgroup2/cgroup_manager.h"
+#include "ray/common/cgroup2/sysfs_cgroup_driver.h"
 #include "ray/common/constants.h"
 #include "ray/common/id.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
+#include "ray/common/status_or.h"
 #include "ray/core_worker/metrics.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/object_manager/ownership_object_directory.h"
@@ -98,12 +100,6 @@ DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.")
 DEFINE_string(node_name, "", "The user-provided identifier or name for this node.");
 DEFINE_string(session_name, "", "The current Ray session name.");
 DEFINE_string(cluster_id, "", "ID of the cluster, separate from observability.");
-// TODO(hjiang): At the moment only enablement flag is added, I will add other flags for
-// CPU and memory resource reservation in the followup PR.
-DEFINE_bool(enable_resource_isolation,
-            false,
-            "Enable resource isolation through cgroupv2 by reserving resources for ray "
-            "system processes.");
 
 #ifdef __linux__
 DEFINE_string(plasma_directory,
@@ -119,6 +115,30 @@ DEFINE_bool(huge_pages, false, "Enable huge pages.");
 DEFINE_string(labels,
               "",
               "Define the key-value format of node labels, which is a serialized JSON.");
+DEFINE_bool(
+    enable_resource_isolation,
+    false,
+    "Enables resource isolation through cgroupv2. The raylet will create and "
+    "manage a cgroup hierarchy that separates system processes and worker processes "
+    "into separate cgroups.");
+DEFINE_string(
+    cgroup_path,
+    "",
+    "Path of the cgroup that the raylet will take ownership of to create its cgorup "
+    "hierarchy. The raylet process must have read, write, and execute permission for "
+    "this path. If enable_resource_isolation is true, then this cannot be empty.");
+DEFINE_int64(
+    system_reserved_cpu_weight,
+    -1,
+    "The amount of cores reserved for ray system processes. It will be applied "
+    "as a cpu.weight constraint to the system cgroup. 10000 - "
+    "system_reserved_cpu_weight will be applied as a constraint to the "
+    "application cgroup. If enable resource isolation is true, then this cannot be -1.");
+DEFINE_int64(system_reserved_memory_bytes,
+             -1,
+             "The amount of memory in bytes reserved for ray system processes. It will "
+             "be applied as a memory.min constraint to the sytem cgroup. If enable "
+             "resource isolation is true, then this cannot be -1");
 
 absl::flat_hash_map<std::string, std::string> parse_node_labels(
     const std::string &labels_json_str) {
@@ -226,18 +246,50 @@ int main(int argc, char *argv[]) {
   const std::string session_name = FLAGS_session_name;
   const bool is_head_node = FLAGS_head;
   const std::string labels_json_str = FLAGS_labels;
+  const bool enable_resource_isolation = FLAGS_enable_resource_isolation;
+  const std::string cgroup_path = FLAGS_cgroup_path;
+  const int64_t system_reserved_cpu_weight = FLAGS_system_reserved_cpu_weight;
+  const int64_t system_reserved_memory_bytes = FLAGS_system_reserved_memory_bytes;
 
   RAY_CHECK_NE(FLAGS_cluster_id, "") << "Expected cluster ID.";
   ray::ClusterID cluster_id = ray::ClusterID::FromHex(FLAGS_cluster_id);
   RAY_LOG(INFO) << "Setting cluster ID to: " << cluster_id;
   gflags::ShutDownCommandLineFlags();
 
-  // Get cgroup setup instance and perform necessary resource setup.
-  ray::GetCgroupSetup(FLAGS_enable_resource_isolation);
+  // TODO(#54703): Link OSS documentation once it's available in the error messages.
+  if (enable_resource_isolation) {
+    RAY_CHECK(!cgroup_path.empty())
+        << "Failed to start up raylet. If enable_resource_isolation is set to true, "
+           "cgroup_path cannot be empty.";
+    RAY_CHECK_NE(system_reserved_cpu_weight, -1)
+        << "Failed to start up raylet. If enable_resource_isolation is set to true, "
+           "system_reserved_cpu_weight must be set to a value between [1,10000]";
+    RAY_CHECK_NE(system_reserved_memory_bytes, -1)
+        << "Failed to start up raylet. If enable_resource_isolation is set to true, "
+           "system_reserved_memory_byres must be set to a value > 0";
+
+    std::unique_ptr<ray::SysFsCgroupDriver> cgroup_driver;
+    ray::StatusOr<std::unique_ptr<ray::CgroupManager>> cgroup_manager =
+        ray::CgroupManager::Create(std::move(cgroup_path),
+                                   node_id,
+                                   system_reserved_cpu_weight,
+                                   system_reserved_memory_bytes,
+                                   std::move(cgroup_driver));
+
+    // TODO(#54703) - Link to OSS documentation once available.
+    RAY_CHECK(cgroup_manager.ok())
+        << "Failed to start raylet. Could not create CgroupManager because of "
+        << cgroup_manager.ToString();
+
+#ifndef __linux__
+    RAY_LOG(WARNING)
+        << "Resource isolation with cgroups is only supported in linux. Please set "
+           "enable_resource_isolation to false. This is likely a misconfiguration.";
+#endif
+  }
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
-  node_manager_config.enable_resource_isolation = FLAGS_enable_resource_isolation;
 
   absl::flat_hash_map<std::string, double> static_resource_conf;
 
@@ -561,8 +613,7 @@ int main(int argc, char *argv[]) {
         /*starting_worker_timeout_callback=*/
         [&] { cluster_lease_manager->ScheduleAndGrantLeases(); },
         node_manager_config.ray_debugger_external,
-        /*get_time=*/[]() { return absl::Now(); },
-        node_manager_config.enable_resource_isolation);
+        /*get_time=*/[]() { return absl::Now(); });
 
     client_call_manager = std::make_unique<ray::rpc::ClientCallManager>(
         main_service, /*record_stats=*/true);
