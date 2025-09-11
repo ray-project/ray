@@ -136,6 +136,7 @@ TEST_F(ObjectManagerTest, TestFreeObjectsLocalOnlyFalse) {
   ASSERT_TRUE(!fake_plasma_client_->objects_in_plasma_.contains(object_id));
   ASSERT_EQ(NumRemoteFreeObjectsRequests(*object_manager_), 0);
   ASSERT_EQ(rpc_context_.poll_one(), 1);
+  ASSERT_EQ(NumRemoteFreeObjectsRequests(*object_manager_), 1);
 }
 
 }  // namespace ray
