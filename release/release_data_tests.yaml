@@ -589,7 +589,7 @@
     timeout: 3600
     script: python batch_inference_hetero/main.py {{args}}
 
-- name: text_embeddings_{{case}}
+- name: text_embedding_{{case}}
   frequency: manual
 
   matrix:
