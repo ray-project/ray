@@ -16,7 +16,6 @@
 
 #include <cstdint>
 #include <memory>
-#include <queue>
 #include <string>
 #include <thread>
 #include <utility>
