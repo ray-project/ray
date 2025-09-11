@@ -21,8 +21,8 @@ from ray.serve._private.constants import (
 from ray.serve._private.test_utils import (
     check_num_replicas_eq,
     check_running,
-    get_application_url,
     check_target_groups_ready,
+    get_application_url,
 )
 from ray.serve.schema import (
     ApplicationStatus,
