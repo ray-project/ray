@@ -1140,6 +1140,60 @@ When migrating between data formats for optimization:
 - Implement efficient serialization
 - Use appropriate batch sizes for mixed data types
 
+**GPU Optimization Strategies:**
+
+**GPU Memory Management:**
+- Configure GPU memory pools for efficient allocation
+- Use memory mapping for large datasets
+- Implement GPU memory monitoring and alerting
+- Optimize for GPU memory bandwidth
+
+**GPU Processing Patterns:**
+- Use appropriate batch sizes for GPU operations
+- Implement efficient CPU-GPU data transfer
+- Configure GPU task scheduling and load balancing
+- Optimize for GPU kernel execution efficiency
+
+**Mixed CPU/GPU Workloads:**
+- Balance CPU preprocessing with GPU processing
+- Use efficient data pipelines between CPU and GPU
+- Implement resource allocation strategies
+- Configure for heterogeneous cluster environments
+
+**GPU Acceleration for Different Data Types:**
+
+**Image Processing:**
+- Use GPU-accelerated image transformations
+- Implement efficient image loading and preprocessing
+- Configure memory management for large images
+- Optimize batch sizes for GPU memory constraints
+
+**Text Processing:**
+- Use GPU-accelerated tokenization and embedding
+- Implement efficient text preprocessing pipelines
+- Configure memory management for large language models
+- Optimize batch sizes for transformer models
+
+**Numerical Computing:**
+- Use GPU-accelerated mathematical operations
+- Implement efficient numerical algorithms
+- Configure memory management for large matrices
+- Optimize for scientific computing workloads
+
+**Performance Optimization Across Ray Data Versions:**
+
+**Version Compatibility:**
+- Understand performance characteristics across Ray versions
+- Plan optimization strategies for version upgrades
+- Test performance impact of version changes
+- Implement version-aware optimization strategies
+
+**Feature Evolution:**
+- Track new optimization features in Ray Data releases
+- Adopt new performance optimizations as they become available
+- Maintain compatibility with existing optimization strategies
+- Plan migration strategies for deprecated features
+
 **See also:**
 - :ref:`reading_optimization` - Optimize data loading for better transform performance
 - :ref:`data_key_concepts` - Understanding blocks, tasks, and actors

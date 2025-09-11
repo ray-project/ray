@@ -452,6 +452,73 @@ Optimization strategies vary with cluster configuration:
 - **Medium clusters (10-50 nodes)**: Optimize data distribution, network efficiency
 - **Large clusters (50+ nodes)**: Advanced coordination, fault tolerance, load balancing
 
+**Performance Optimization Decision Framework:**
+
+**Optimization Priority Matrix:**
+
+Use this framework to prioritize optimization efforts based on impact and complexity:
+
+.. list-table:: Optimization Priority Guide
+   :header-rows: 1
+   :class: optimization-priority-table
+
+   * - Impact Level
+     - Low Complexity
+     - Medium Complexity
+     - High Complexity
+   * - **High Impact**
+     - map_batches, column pruning
+     - Block size optimization
+     - Custom operators, advanced algorithms
+   * - **Medium Impact**
+     - Batch format selection
+     - Concurrency tuning
+     - Advanced memory management
+   * - **Low Impact**
+     - Progress bar configuration
+     - Minor parameter tuning
+     - Specialized optimizations
+
+**Optimization Implementation Strategy:**
+
+1. **Start with High Impact, Low Complexity** optimizations
+2. **Measure and validate** each optimization before proceeding
+3. **Move to Medium Impact, Low Complexity** optimizations
+4. **Consider High Impact, Medium Complexity** for significant workloads
+5. **Only pursue High Complexity** optimizations for specialized use cases
+
+**Performance Optimization by Industry:**
+
+**Financial Services:**
+- Optimize for regulatory compliance and audit requirements
+- Use efficient risk calculation and portfolio analysis
+- Implement low-latency trading data processing
+- Configure for high-frequency data ingestion
+
+**Healthcare and Life Sciences:**
+- Optimize for HIPAA compliance and data privacy
+- Use efficient genomics and medical imaging processing
+- Implement clinical trial data analysis optimization
+- Configure for research data management
+
+**Retail and E-commerce:**
+- Optimize for customer analytics and recommendation systems
+- Use efficient inventory and supply chain analytics
+- Implement real-time pricing and promotion optimization
+- Configure for seasonal workload variations
+
+**Manufacturing and IoT:**
+- Optimize for sensor data processing and analytics
+- Use efficient predictive maintenance algorithms
+- Implement quality control and process optimization
+- Configure for edge computing environments
+
+**Media and Entertainment:**
+- Optimize for content processing and recommendation systems
+- Use efficient media transcoding and analysis
+- Implement audience analytics and engagement optimization
+- Configure for high-bandwidth media workflows
+
 **See also:**
 - :ref:`data_key_concepts` - Understand Ray Data fundamentals including blocks and streaming execution
 - :ref:`data_user_guide` - General Ray Data usage patterns and best practices

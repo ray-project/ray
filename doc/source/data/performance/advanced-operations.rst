@@ -867,6 +867,68 @@ Advanced operations require special consideration in production environments:
 - Analyze task distribution and load balancing
 - Implement alerts for shuffle performance degradation
 
+**Advanced Join Optimization Strategies:**
+
+**Join Algorithm Selection:**
+- **Broadcast Join**: Best for small lookup tables (< 1GB)
+- **Hash Join**: Good for medium-sized datasets with even distribution
+- **Sort-Merge Join**: Efficient for large, pre-sorted datasets
+- **Nested Loop Join**: Only for very small datasets or complex conditions
+
+**Join Performance Optimization:**
+
+**Data Preparation:**
+- Pre-sort datasets on join keys when possible
+- Use consistent data types across join keys
+- Implement data quality checks before joins
+- Optimize data distribution for join efficiency
+
+**Memory Management:**
+- Configure memory limits for join operations
+- Use spilling strategies for large joins
+- Implement memory pooling for join buffers
+- Monitor memory usage during join operations
+
+**Network Optimization:**
+- Minimize data movement for join operations
+- Use data locality optimization
+- Implement efficient data serialization
+- Configure for network topology awareness
+
+**GroupBy Optimization Strategies:**
+
+**Aggregation Optimization:**
+- Use pre-aggregation strategies when possible
+- Implement efficient aggregation algorithms
+- Configure memory management for aggregations
+- Optimize for different aggregation types
+
+**Key Distribution Analysis:**
+- Analyze key distribution patterns
+- Implement strategies for skewed key handling
+- Use sampling for key distribution analysis
+- Configure partitioning based on key characteristics
+
+**Performance Monitoring:**
+- Monitor groupby operation performance
+- Track aggregation efficiency and resource usage
+- Analyze key distribution and skew patterns
+- Implement alerts for groupby performance issues
+
+**Advanced Sort Optimization:**
+
+**Sort Algorithm Selection:**
+- Use external sort for datasets larger than memory
+- Implement distributed sorting strategies
+- Configure sort memory management
+- Optimize for different sort key characteristics
+
+**Sort Performance Optimization:**
+- Use sampling for sort key distribution analysis
+- Implement efficient partitioning strategies
+- Configure memory management for sort operations
+- Monitor sort performance and resource usage
+
 Continue mastering advanced Ray Data operations:
 
 - **Apply these optimizations** to your complex data pipelines
