@@ -271,7 +271,7 @@ void ActorTaskSubmitter::CancelDependencyResolution(const TaskID &task_id) {
 }
 
 void ActorTaskSubmitter::DisconnectRpcClient(ClientQueue &queue) {
-  queue.rpc_client_ = nullptr;
+  queue.client_address_ = std::nullopt;
   core_worker_client_pool_.Disconnect(WorkerID::FromBinary(queue.worker_id_));
   queue.worker_id_.clear();
 }
@@ -310,9 +310,9 @@ void ActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
       return;
     }
 
-    if (queue->second.rpc_client_ &&
-        queue->second.rpc_client_->Addr().ip_address() == address.ip_address() &&
-        queue->second.rpc_client_->Addr().port() == address.port()) {
+    if (queue->second.client_address_ &&
+        queue->second.client_address_->ip_address() == address.ip_address() &&
+        queue->second.client_address_->port() == address.port()) {
       RAY_LOG(DEBUG).WithField(actor_id) << "Skip actor that has already been connected";
       return;
     }
@@ -324,7 +324,7 @@ void ActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
     }
 
     queue->second.num_restarts_ = num_restarts;
-    if (queue->second.rpc_client_) {
+    if (queue->second.client_address_) {
       // Clear the client to the old version of the actor.
       DisconnectRpcClient(queue->second);
       inflight_task_callbacks = std::move(queue->second.inflight_task_callbacks_);
@@ -334,8 +334,6 @@ void ActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
     queue->second.state_ = rpc::ActorTableData::ALIVE;
     // Update the mapping so new RPCs go out with the right intended worker id.
     queue->second.worker_id_ = address.worker_id();
-    // Create a new connection to the actor.
-    queue->second.rpc_client_ = core_worker_client_pool_.GetOrConnect(address);
 
     SendPendingTasks(actor_id);
   }
@@ -538,7 +536,7 @@ void ActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
     // and pending tasks will be sent at that time.
     return;
   }
-  if (!client_queue.rpc_client_) {
+  if (!client_queue.client_address_) {
     if (client_queue.state_ == rpc::ActorTableData::RESTARTING &&
         client_queue.fail_if_actor_unreachable_) {
       // When `fail_if_actor_unreachable` is true, tasks submitted while the actor is in
@@ -599,7 +597,7 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
     next_queueing_warn_threshold_ *= 2;
   }
 
-  rpc::Address addr(queue.rpc_client_->Addr());
+  auto &addr = queue.client_address_.value();
   rpc::ClientCallback<rpc::PushTaskReply> reply_callback =
       [this, addr, task_spec](const Status &status, const rpc::PushTaskReply &reply) {
         HandlePushTaskReply(status, reply, addr, task_spec);
@@ -630,7 +628,7 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   task_manager_.MarkTaskWaitingForExecution(task_id,
                                             NodeID::FromBinary(addr.node_id()),
                                             WorkerID::FromBinary(addr.worker_id()));
-  queue.rpc_client_->PushActorTask(
+  core_worker_client_pool_.GetOrConnect(addr)->PushActorTask(
       std::move(request), skip_queue, std::move(wrapped_callback));
 }
 
@@ -797,24 +795,17 @@ bool ActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) const {
   absl::MutexLock lock(&mu_);
 
   auto iter = client_queues_.find(actor_id);
-  return (iter != client_queues_.end() && iter->second.rpc_client_);
+  return (iter != client_queues_.end() && iter->second.client_address_.has_value());
 }
 
 std::optional<rpc::Address> ActorTaskSubmitter::GetActorAddress(
     const ActorID &actor_id) const {
   absl::MutexLock lock(&mu_);
-
   auto iter = client_queues_.find(actor_id);
   if (iter == client_queues_.end()) {
     return std::nullopt;
   }
-
-  const auto &rpc_client = iter->second.rpc_client_;
-  if (rpc_client == nullptr) {
-    return std::nullopt;
-  }
-
-  return iter->second.rpc_client_->Addr();
+  return iter->second.client_address_;
 }
 
 bool ActorTaskSubmitter::PendingTasksFull(const ActorID &actor_id) const {
@@ -938,12 +929,13 @@ void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive)
     RAY_LOG(DEBUG).WithField(task_id) << "Task was sent to an actor. Send a cancel RPC.";
     auto queue = client_queues_.find(actor_id);
     RAY_CHECK(queue != client_queues_.end());
-    if (!queue->second.rpc_client_) {
+    if (!queue->second.client_address_.has_value()) {
       RetryCancelTask(task_spec, recursive, 1000);
       return;
     }
 
-    const auto &client = queue->second.rpc_client_;
+    const auto &client =
+        core_worker_client_pool_.GetOrConnect(*queue->second.client_address_);
     auto request = rpc::CancelTaskRequest();
     request.set_intended_task_id(task_spec.TaskIdBinary());
     request.set_force_kill(force_kill);
