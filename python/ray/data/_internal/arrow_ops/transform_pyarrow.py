@@ -345,9 +345,10 @@ def unify_schemas(
     # Try PyArrow's unification first, only reconcile for tensor fields
     try:
         return _unify_schemas_pyarrow(schemas_to_unify, promote_types)
-    except pyarrow.lib.ArrowTypeError as e:
-        if "Unable to merge: Field tensor" in str(e):
-            pass
+    except (pyarrow.lib.ArrowTypeError, pyarrow.lib.ArrowInvalid):
+        # If we raise only on non tensor errors, it fails to unify PythonObjectType and pyarrow primitives.
+        # Look at test_pyarrow_conversion_error_handling for an example.
+        pass
 
     # Find diverging fields
     overrides = _find_diverging_fields(schemas_to_unify, promote_types)
