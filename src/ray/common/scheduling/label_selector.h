@@ -21,6 +21,7 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "google/protobuf/map.h"
+#include "ray/common/constants.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
@@ -107,7 +108,7 @@ H AbslHashValue(H h, const LabelSelector &label_selector) {
 
 inline std::optional<absl::flat_hash_set<std::string>> GetHardNodeAffinityValues(
     const LabelSelector &label_selector) {
-  const std::string hard_affinity_key = "ray.io/node-id";
+  const std::string hard_affinity_key(kLabelKeyNodeID);
 
   for (const auto &constraint : label_selector.GetConstraints()) {
     if (constraint.GetLabelKey() == hard_affinity_key) {
