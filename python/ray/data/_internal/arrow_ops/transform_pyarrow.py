@@ -1,4 +1,5 @@
 import logging
+from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import numpy as np
@@ -173,49 +174,37 @@ def _reconcile_diverging_fields(
     from ray.air.util.object_extensions.arrow import ArrowPythonObjectType
 
     reconciled_fields = {}
+    field_types = defaultdict(set)  # field_name -> set of types seen so far
+    field_flags = defaultdict(
+        lambda: defaultdict(bool)
+    )  # field_name -> dict of boolean flags
 
-    # Get all field names that appear in at least one schema
-    all_field_names = set()
+    # Process schemas and reconcile on-the-fly
     for schema in unique_schemas:
-        all_field_names.update(schema.names)
+        for field_name in schema.names:
+            field_type = schema.field(field_name).type
+            field_types[field_name].add(field_type)
+            flags = field_flags[field_name]
 
-    # Process each field in a single pass
-    for field_name in all_field_names:
-        field_types = []
-        non_null_types = []
-        has_object = has_tensor = has_list = has_null = has_struct = False
+            # Update flags
+            flags["has_object"] |= isinstance(field_type, ArrowPythonObjectType)
+            flags["has_tensor"] |= isinstance(
+                field_type, get_arrow_extension_tensor_types()
+            )
+            flags["has_list"] |= pyarrow.types.is_list(field_type)
+            flags["has_null"] |= pyarrow.types.is_null(field_type)
+            flags["has_struct"] |= pyarrow.types.is_struct(field_type)
 
-        # Collect types from all schemas that have this field
-        for schema in unique_schemas:
-            try:
-                field_type = schema.field(field_name).type
-                field_types.append(field_type)
-                non_null_types.append(field_type)
-
-                # Check for special types
-                has_object = has_object or isinstance(field_type, ArrowPythonObjectType)
-                has_tensor = has_tensor or isinstance(
-                    field_type, get_arrow_extension_tensor_types()
-                )
-                has_list = has_list or pyarrow.types.is_list(field_type)
-                has_null = has_null or pyarrow.types.is_null(field_type)
-                has_struct = has_struct or pyarrow.types.is_struct(field_type)
-            except KeyError:
-                # Field doesn't exist in this schema - skip
-                pass
-
-        # Check if types diverge (more than one unique type)
-        if len(set(field_types)) > 1:
-            # Early exit if we find both object and tensor types
-            if has_object and has_tensor:
+            # Check for object-tensor conflict
+            if flags["has_object"] and flags["has_tensor"]:
                 raise ValueError(
                     f"Found columns with both objects and tensors: {field_name}"
                 )
 
-            # Only reconcile special types that need custom handling
-            if has_object or has_tensor or has_list or has_null or has_struct:
+            # Reconcile immediately if it's a special type
+            if any(flags[flag] for flag in flags):
                 reconciled_value = _reconcile_field(
-                    non_null_types=non_null_types,
+                    non_null_types=field_types[field_name],
                     promote_types=promote_types,
                 )
                 if reconciled_value is not None:
