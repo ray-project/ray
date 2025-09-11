@@ -583,7 +583,7 @@ INTERNAL_OUTQUEUE_BYTES_PANEL = Panel(
 
 EXTERNAL_INQUEUE_BLOCKS_PANEL = Panel(
     id=2,
-    title="Operator External OutQueue Size (Blocks)",
+    title="Operator External InQueue Size (Blocks)",
     description="Number of blocks in operator's external output queue",
     unit="blocks",
     targets=[
@@ -598,7 +598,7 @@ EXTERNAL_INQUEUE_BLOCKS_PANEL = Panel(
 
 EXTERNAL_INQUEUE_BYTES_PANEL = Panel(
     id=27,
-    title="Operator External OutQueue Size (bytes)",
+    title="Operator External InQueue Size (bytes)",
     description="Byte size of blocks in operator's external output queue",
     unit="bytes",
     targets=[
