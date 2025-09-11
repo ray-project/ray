@@ -33,6 +33,7 @@
 #include "mock/ray/raylet/worker_pool.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
 #include "ray/common/buffer.h"
+#include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/object_manager/plasma/client.h"
 #include "ray/observability/fake_metric.h"
@@ -483,28 +484,30 @@ class NodeManagerTest : public ::testing::Test {
         [](const ray::RayLease &lease) {},
         *local_lease_manager_);
 
-    node_manager_ = std::make_unique<NodeManager>(io_service_,
-                                                  raylet_node_id_,
-                                                  "test_node_name",
-                                                  node_manager_config,
-                                                  *mock_gcs_client_,
-                                                  client_call_manager_,
-                                                  worker_rpc_pool_,
-                                                  raylet_client_pool_,
-                                                  *core_worker_subscriber_,
-                                                  *cluster_resource_scheduler_,
-                                                  *local_lease_manager_,
-                                                  *cluster_lease_manager_,
-                                                  *mock_object_directory_,
-                                                  *mock_object_manager_,
-                                                  *local_object_manager_,
-                                                  *lease_dependency_manager_,
-                                                  mock_worker_pool_,
-                                                  leased_workers_,
-                                                  *mock_store_client_,
-                                                  std::move(mutable_object_provider),
-                                                  /*shutdown_raylet_gracefully=*/
-                                                  [](const auto &) {});
+    node_manager_ = std::make_unique<NodeManager>(
+        io_service_,
+        raylet_node_id_,
+        "test_node_name",
+        node_manager_config,
+        *mock_gcs_client_,
+        client_call_manager_,
+        worker_rpc_pool_,
+        raylet_client_pool_,
+        *core_worker_subscriber_,
+        *cluster_resource_scheduler_,
+        *local_lease_manager_,
+        *cluster_lease_manager_,
+        *mock_object_directory_,
+        *mock_object_manager_,
+        *local_object_manager_,
+        *lease_dependency_manager_,
+        mock_worker_pool_,
+        leased_workers_,
+        *mock_store_client_,
+        std::move(mutable_object_provider),
+        /*shutdown_raylet_gracefully=*/
+        [](const auto &) {},
+        std::move(cgroup_manager_));
   }
 
   instrumented_io_context io_service_;
@@ -523,6 +526,7 @@ class NodeManagerTest : public ::testing::Test {
       std::make_unique<gcs::MockGcsClient>();
   std::unique_ptr<MockObjectDirectory> mock_object_directory_;
   std::unique_ptr<MockObjectManager> mock_object_manager_;
+  std::unique_ptr<CgroupManagerInterface> cgroup_manager_;
   core::experimental::MockMutableObjectProvider *mock_mutable_object_provider_;
   std::shared_ptr<plasma::PlasmaClientInterface> mock_store_client_ =
       std::make_shared<FakePlasmaClient>();
