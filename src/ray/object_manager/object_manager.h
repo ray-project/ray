@@ -55,7 +55,7 @@ struct ObjectManagerConfig {
   /// Object chunk size, in bytes
   uint64_t object_chunk_size;
   /// Max object push bytes in flight.
-  int64_t max_bytes_in_flight;
+  uint64_t max_bytes_in_flight;
   /// The store socket name.
   std::string store_socket_name;
   /// The time in milliseconds to wait until a Push request
