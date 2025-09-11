@@ -368,7 +368,7 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
         "metrics",
         "metrics_health",
         "decisions",
-        "policy",
+        "policy_name",
     ]:
         assert key in payload, f"missing key: {key}"
 

@@ -778,7 +778,7 @@ class DeploymentSnapshot:
     min_replicas: Optional[int]
     max_replicas: Optional[int]
     scaling_status: str
-    policy: str
+    policy_name: str
     look_back_period_s: Optional[float]
     queued_requests: Optional[float]
     total_requests: float
@@ -810,7 +810,7 @@ class DeploymentSnapshot:
             "min": self.min_replicas,
             "max": self.max_replicas,
             "scaling_status": self.scaling_status,
-            "policy": self.policy,
+            "policy_name": self.policy_name,
             "look_back_period_s": self.look_back_period_s,
             "metrics": {
                 "queued_requests": self.queued_requests,
@@ -845,7 +845,7 @@ class DeploymentSnapshot:
     ) -> str:
         if time_since_last_collected_metrics_s is None:
             return "unknown"
-        return f"{int(time_since_last_collected_metrics_s)}s"
+        return f"{float(time_since_last_collected_metrics_s)}s"
 
     @staticmethod
     def summarize_decisions(
@@ -962,3 +962,7 @@ class ReplicaMetricReport:
     aggregated_metrics: Dict[str, float]
     metrics: Dict[str, List[float]]
     timestamp: float
+
+
+class AutoscalingSnapshotError(str, Enum):
+    METRICS_UNAVAILABLE = "METRICS_UNAVAILABLE"

@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Set
 
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
+    AutoscalingSnapshotError,
     DeploymentID,
     DeploymentSnapshot,
     HandleMetricReport,
@@ -29,7 +30,7 @@ class _DecisionRecord:
     prev_num_replicas: int
     curr_num_replicas: int
     reason: str
-    policy: Optional[str] = None
+    policy_name: Optional[str] = None
 
 
 @dataclass
@@ -285,7 +286,7 @@ class AutoscalingState:
                 prev_num_replicas=int(ctx.current_num_replicas),
                 curr_num_replicas=int(target_for_record),
                 reason=f"current={ctx.current_num_replicas}, target={target_for_record}",
-                policy=getattr(self._config, "name", None),
+                policy_name=getattr(self._config, "name", None),
             )
         )
         if len(self._decision_history) > AUTOSCALER_SUMMARIZER_DECISION_HISTORY_MAX:
@@ -387,6 +388,10 @@ class AutoscalingState:
         decisions_summary = DeploymentSnapshot.summarize_decisions(
             self._decision_history
         )
+        errors: List[str] = []
+
+        if time_since_last_collected_metrics_s is None:
+            errors.append(AutoscalingSnapshotError.METRICS_UNAVAILABLE)
 
         return DeploymentSnapshot(
             timestamp_s=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -397,12 +402,12 @@ class AutoscalingState:
             min_replicas=int(min_replicas) if min_replicas is not None else None,
             max_replicas=int(max_replicas) if max_replicas is not None else None,
             scaling_status=scaling_status,
-            policy=getattr(self._config, "name", "default"),
+            policy_name=getattr(self._config, "name", "default"),
             look_back_period_s=look_back_period_s,
             queued_requests=float(queued_requests),
             total_requests=float(ctx.total_num_requests),
             metrics_health=metrics_health,
-            errors=[],
+            errors=errors,
             decisions=decisions_summary,
         )
 
