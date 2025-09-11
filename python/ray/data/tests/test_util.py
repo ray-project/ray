@@ -7,6 +7,7 @@ import pytest
 from typing_extensions import Hashable
 
 import ray
+from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.util import (
@@ -25,9 +26,11 @@ from ray.data._internal.util import (
     NULL_SENTINEL,
     _check_pyarrow_version,
     find_partition_index,
+    get_compute_strategy,
     iterate_with_retry,
     rows_same,
 )
+from ray.data.block import CallableClass
 from ray.data.tests.conftest import *  # noqa: F401, F403
 
 
@@ -361,6 +364,81 @@ def test_find_partition_index_duplicates_descending():
 )
 def test_rows_same(actual: pd.DataFrame, expected: pd.DataFrame, expected_equal: bool):
     assert rows_same(actual, expected) == expected_equal
+
+
+class TestGetComputeStrategy:
+    class _MyActor(CallableClass):
+        def __call__(self, batch):
+            return batch
+
+    def _plain_fn(self, batch):
+        return batch
+
+    def test_function_default_task_strategy(self):
+        strat = get_compute_strategy(self._plain_fn)
+        assert isinstance(strat, TaskPoolStrategy)
+
+    def test_function_with_int_concurrency_task_strategy(self):
+        strat = get_compute_strategy(self._plain_fn, concurrency=4)
+        assert isinstance(strat, TaskPoolStrategy)
+
+    def test_function_with_tuple_concurrency_raises(self):
+        with pytest.raises(ValueError, match="``fn`` is not a callable class"):
+            get_compute_strategy(self._plain_fn, concurrency=(1, 2))
+
+    def test_callable_class_requires_concurrency(self):
+        with pytest.raises(ValueError, match="``concurrency`` must be specified"):
+            get_compute_strategy(self._MyActor)
+
+    def test_callable_class_with_int_concurrency_actor_strategy(self):
+        strat = get_compute_strategy(self._MyActor, concurrency=3)
+        assert isinstance(strat, ActorPoolStrategy)
+
+    def test_callable_class_with_tuple2_concurrency_actor_strategy(self):
+        strat = get_compute_strategy(self._MyActor, concurrency=(1, 4))
+        assert isinstance(strat, ActorPoolStrategy)
+
+    def test_callable_class_with_tuple3_concurrency_actor_strategy(self):
+        strat = get_compute_strategy(self._MyActor, concurrency=(1, 4, 2))
+        assert isinstance(strat, ActorPoolStrategy)
+
+    def test_compute_with_callable_class_tasks_raises(self):
+        with pytest.raises(ValueError, match="must specify an actor compute strategy"):
+            get_compute_strategy(self._MyActor, compute="tasks")
+
+    def test_compute_with_function_actors_raises(self):
+        with pytest.raises(ValueError, match="``fn`` is not a callable class"):
+            get_compute_strategy(self._plain_fn, compute="actors")
+
+    def test_compute_legacy_tasks_string_pass_through(self):
+        # Should just return the value "tasks"
+        strat = get_compute_strategy(self._plain_fn, compute="tasks")
+        assert strat == "tasks"
+
+    def test_actor_int_concurrency_with_max_tasks_in_flight(self):
+        strat = get_compute_strategy(
+            self._MyActor,
+            concurrency=3,
+            max_tasks_in_flight_per_actor=4,
+        )
+        assert isinstance(strat, ActorPoolStrategy)
+        assert strat.max_tasks_in_flight_per_actor == 4
+
+    def test_actor_tuple2_concurrency_with_max_tasks_in_flight(self):
+        strat = get_compute_strategy(
+            self._MyActor,
+            concurrency=(1, 4),
+            max_tasks_in_flight_per_actor=5,
+        )
+        assert isinstance(strat, ActorPoolStrategy)
+        assert strat.max_tasks_in_flight_per_actor == 5
+
+    def test_function_with_max_tasks_in_flight_raises(self):
+        with pytest.raises(ValueError, match="``fn`` is not a callable class"):
+            get_compute_strategy(
+                self._plain_fn,
+                max_tasks_in_flight_per_actor=3,
+            )
 
 
 if __name__ == "__main__":
