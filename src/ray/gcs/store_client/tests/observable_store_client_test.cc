@@ -26,8 +26,10 @@ namespace gcs {
 class ObservableStoreClientTest : public StoreClientTestBase {
  public:
   void InitStoreClient() override {
-    store_client_ =
-        std::make_shared<ObservableStoreClient>(std::make_unique<InMemoryStoreClient>());
+    store_client_ = std::make_shared<ObservableStoreClient>(
+        std::make_unique<InMemoryStoreClient>(),
+        fake_storage_operation_latency_in_ms_histogram_,
+        fake_storage_operation_count_counter_);
   }
 };
 

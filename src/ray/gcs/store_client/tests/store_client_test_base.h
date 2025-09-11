@@ -28,6 +28,7 @@
 #include "ray/common/id.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/store_client/store_client.h"
+#include "ray/observability/fake_metric.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -55,6 +56,9 @@ class StoreClientTestBase : public ::testing::Test {
   }
 
   virtual void InitStoreClient() = 0;
+
+  ray::observability::FakeMetric fake_storage_operation_latency_in_ms_histogram_;
+  ray::observability::FakeMetric fake_storage_operation_count_counter_;
 
  protected:
   void Put() {
@@ -204,6 +208,17 @@ class StoreClientTestBase : public ::testing::Test {
     Delete();
 
     GetEmpty();
+
+    auto counter_tag_to_value = fake_storage_operation_count_counter_.GetTagToValue();
+    // 3 operations: Put, Get, Delete
+    ASSERT_EQ(counter_tag_to_value.size(), 3);
+    for (const auto &[key, value] : counter_tag_to_value) {
+      ASSERT_EQ(value, 1);
+    }
+    auto latency_tag_to_value =
+        fake_storage_operation_latency_in_ms_histogram_.GetTagToValue();
+    // 3 operations: Put, Get, Delete
+    ASSERT_EQ(latency_tag_to_value.size(), 3);
   }
 
   void TestAsyncGetAllAndBatchDelete() {

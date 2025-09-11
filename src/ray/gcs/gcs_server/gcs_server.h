@@ -36,6 +36,7 @@
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/observable_store_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
+#include "ray/observability/metric_interface.h"
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
@@ -93,7 +94,24 @@ class GcsAutoscalerStateManager;
 /// `DoStart` call to `Stop`.
 class GcsServer {
  public:
-  GcsServer(const GcsServerConfig &config, instrumented_io_context &main_service);
+  GcsServer(
+      const GcsServerConfig &config,
+      instrumented_io_context &main_service,
+      ray::observability::MetricInterface &actor_by_state_counter,
+      ray::observability::MetricInterface &gcs_actor_by_state_counter,
+      ray::observability::MetricInterface &running_job_counter,
+      ray::observability::MetricInterface &finished_job_counter,
+      ray::observability::MetricInterface &job_duration_in_seconds_counter,
+      ray::observability::MetricInterface &placement_group_counter,
+      ray::observability::MetricInterface
+          &placement_group_creation_latency_in_ms_histogram,
+      ray::observability::MetricInterface
+          &placement_group_scheduling_latency_in_ms_histogram,
+      ray::observability::MetricInterface &task_events_reported_counter,
+      ray::observability::MetricInterface &task_events_dropped_counter,
+      ray::observability::MetricInterface &task_events_stored_counter,
+      ray::observability::MetricInterface &storage_operation_latency_in_ms_histogram,
+      ray::observability::MetricInterface &storage_operation_count_counter);
   virtual ~GcsServer();
 
   /// Start gcs server.
@@ -297,6 +315,20 @@ class GcsServer {
   std::unique_ptr<Throttler> global_gc_throttler_;
   /// Client to call a metrics agent gRPC server.
   std::unique_ptr<rpc::MetricsAgentClient> metrics_agent_client_;
+  ray::observability::MetricInterface &actor_by_state_counter_;
+  ray::observability::MetricInterface &gcs_actor_by_state_counter_;
+  ray::observability::MetricInterface &running_job_counter_;
+  ray::observability::MetricInterface &finished_job_counter_;
+  ray::observability::MetricInterface &job_duration_in_seconds_counter_;
+  ray::observability::MetricInterface &placement_group_counter_;
+  ray::observability::MetricInterface &placement_group_creation_latency_in_ms_histogram_;
+  ray::observability::MetricInterface
+      &placement_group_scheduling_latency_in_ms_histogram_;
+  ray::observability::MetricInterface &task_events_reported_counter_;
+  ray::observability::MetricInterface &task_events_dropped_counter_;
+  ray::observability::MetricInterface &task_events_stored_counter_;
+  ray::observability::MetricInterface &storage_operation_latency_in_ms_histogram_;
+  ray::observability::MetricInterface &storage_operation_count_counter_;
 };
 
 }  // namespace gcs
