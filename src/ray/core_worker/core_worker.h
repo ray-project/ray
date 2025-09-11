@@ -678,6 +678,11 @@ class CoreWorker {
                   bool *has_object,
                   bool *is_in_plasma = nullptr);
 
+  int64_t InitWaitStream(const std::vector<ObjectID> &object_ids);
+  int64_t GetFromWaitStream(int64_t waitstream_id);
+
+  absl::flat_hash_map<int64_t, std::shared_ptr<WaitStream>> waitstreams_;
+
   /// Wait for a list of objects to appear in the object store.
   /// Duplicate object ids are supported, and `num_objects` includes duplicate ids in this
   /// case.
@@ -1423,9 +1428,6 @@ class CoreWorker {
   /// Record metric for executed and owned tasks. Will be run periodically.
   void RecordMetrics();
 
-  /// Check if there is an owner of the object from the ReferenceCounter.
-  bool HasOwner(const ObjectID &object_id) const;
-
   /// Helper method to fill in object status reply given an object.
   void PopulateObjectStatus(const ObjectID &object_id,
                             const std::shared_ptr<RayObject> &obj,
@@ -1944,5 +1946,8 @@ class CoreWorker {
   std::mutex gcs_client_node_cache_populated_mutex_;
   std::condition_variable gcs_client_node_cache_populated_cv_;
   bool gcs_client_node_cache_populated_ = false;
+
+  void AskPlasmaWaitStream(int64_t waitstream_id,
+                           const absl::flat_hash_set<ObjectID> &plasma_object_ids);
 };
 }  // namespace ray::core

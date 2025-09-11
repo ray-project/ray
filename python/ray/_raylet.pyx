@@ -656,6 +656,7 @@ cdef c_vector[CObjectID] ObjectRefsToVector(object_refs):
     """
     cdef:
         c_vector[CObjectID] result
+    result.reserve(len(object_refs))
     for object_ref in object_refs:
         result.push_back((<ObjectRef>object_ref).native())
     return result
@@ -3500,14 +3501,12 @@ cdef class CoreWorker:
                                 move(c_owner_address)))
         return c_object_id.Binary()
 
-    def wait(self,
-             object_refs_or_generators,
-             int num_returns,
-             int64_t timeout_ms,
-             c_bool fetch_local):
+    def waitstream(self, object_refs_or_generators, callback):
         cdef:
             c_vector[CObjectID] wait_ids
-            c_vector[c_bool] results
+            int64_t waitstream_id
+            int64_t result_idx = 0
+            size_t num_done = 0
 
         object_refs = []
         for ref_or_generator in object_refs_or_generators:
@@ -3528,11 +3527,47 @@ cdef class CoreWorker:
 
         wait_ids = ObjectRefsToVector(object_refs)
         with nogil:
+            waitstream_id = CCoreWorkerProcess.GetCoreWorker().InitWaitStream(
+                wait_ids)
+
+        while num_done < wait_ids.size():
+            with nogil:
+                result_idx = CCoreWorkerProcess.GetCoreWorker().GetFromWaitStream(
+                    waitstream_id)
+            callback(object_refs_or_generators[result_idx])
+            num_done += 1
+
+
+    def wait(self,
+             object_refs_or_generators,
+             int num_returns,
+             int64_t timeout_ms,
+             c_bool fetch_local):
+        cdef:
+            c_vector[CObjectID] wait_ids
+            c_vector[c_bool] results
+
+        wait_ids.reserve(len(object_refs_or_generators))
+        for ref_or_generator in object_refs_or_generators:
+            if (not isinstance(ref_or_generator, ObjectRef)
+                    and not isinstance(ref_or_generator, ObjectRefGenerator)):
+                raise TypeError(
+                    "wait() expected a list of ray.ObjectRef "
+                    "or ObjectRefGenerator, "
+                    f"got list containing {type(ref_or_generator)}"
+                )
+
+            if isinstance(ref_or_generator, ObjectRefGenerator):
+                # Before calling wait,
+                # get the next reference from a generator.
+                wait_ids.push_back((<ObjectRef>ref_or_generator._get_next_ref()).native())
+            else:
+                wait_ids.push_back((<ObjectRef>ref_or_generator).native())
+
+        with nogil:
             op_status = CCoreWorkerProcess.GetCoreWorker().Wait(
                 wait_ids, num_returns, timeout_ms, &results, fetch_local)
         check_status(op_status)
-
-        assert len(results) == len(object_refs)
 
         ready, not_ready = [], []
         for i, object_ref_or_generator in enumerate(object_refs_or_generators):

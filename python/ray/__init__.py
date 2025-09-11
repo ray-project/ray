@@ -128,6 +128,7 @@ from ray._private.worker import (  # noqa: E402,F401
     remote,
     shutdown,
     wait,
+    waitstream,
 )
 
 from ray._private.ray_logging.logging_config import LoggingConfig  # noqa: E402
@@ -201,6 +202,7 @@ __all__ = [
     "show_in_dashboard",
     "timeline",
     "wait",
+    "waitstream",
     "LOCAL_MODE",
     "SCRIPT_MODE",
     "WORKER_MODE",
@@ -217,6 +219,7 @@ AUTO_INIT_APIS = {
     "put",
     "wait",
     "get_runtime_context",
+    "waitstream",
 }
 
 # Public APIs that should not automatically trigger ray.init().
