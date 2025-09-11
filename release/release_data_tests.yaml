@@ -254,7 +254,7 @@
       data_type: [primitives, tensors, objects, nested_structs]
 
   run:
-    timeout: 3600
+    timeout: 300
     script: >
       python wide_schema_pipeline_benchmark.py
       --data-type {{data_type}}

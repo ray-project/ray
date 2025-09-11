@@ -20,7 +20,10 @@ def parse_args() -> argparse.Namespace:
 def main(args: argparse.Namespace) -> None:
     benchmark = Benchmark()
 
-    # Use pre-generated datasets from S3
+    # Each dataset contains about 500-600Mbs of data, except for objects,
+    # which contain about 150Mb (this is because their pickle bloat is big).
+    # Furthermore, the schema contains 5000 fields, and each column contains
+    # 500 characters.
     input_path = (
         f"s3://ray-benchmark-data-internal-us-west-2/wide_schema/{args.data_type}"
     )
@@ -30,7 +33,7 @@ def main(args: argparse.Namespace) -> None:
     # Run the pipeline benchmark (TIMED)
     def run_pipeline() -> Dict[str, Any]:
         """Run the data pipeline: read -> map_batches -> write"""
-        ds = ray.data.read_parquet(input_path).map_batches(lambda x: x).materialize()
+        ds = ray.data.read_parquet(input_path).materialize()
 
         # Get dataset stats for reporting
         row_count = ds.count()
