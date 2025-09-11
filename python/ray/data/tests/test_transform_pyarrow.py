@@ -610,6 +610,10 @@ def test_unify_schemas_objects_and_tensors(unify_schemas_objects_and_tensors_sch
         unify_schemas(unify_schemas_objects_and_tensors_schemas)
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("17.0.0"),
+    reason="Requires PyArrow version 17 or higher",
+)
 def test_unify_schemas_missing_tensor_fields(
     unify_schemas_missing_tensor_fields_schemas,
 ):
