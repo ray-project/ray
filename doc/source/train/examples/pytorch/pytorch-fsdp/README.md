@@ -1,12 +1,12 @@
-# Getting Started with PyTorch Fully Sharded Data Parallel (FSDP2) and Ray Train
+# Get started with PyTorch Fully Sharded Data Parallel (FSDP2) and Ray Train
 
 **Time to complete:** 30 min
 
-This template shows you how to unlock the memory and performance improvements of integrating PyTorch's Fully Sharded Data Parallel with Ray Train. 
+This template shows how to get memory and performance improvements of integrating PyTorch's Fully Sharded Data Parallel with Ray Train. 
 
-PyTorch's Fully Sharded Data Parallel (FSDP2) enables model sharding across nodes, allowing distributed training of large models with a significantly smaller memory footprint compared to standard Distributed Data Parallel (DDP). For a more detailed overview of FSDP2, see [PyTorch's official documentation](https://docs.pytorch.org/tutorials/intermediate/FSDP_tutorial.html#getting-started-with-fully-sharded-data-parallel-fsdp2). 
+PyTorch's FSDP2 enables model sharding across nodes, allowing distributed training of large models with a significantly smaller memory footprint compared to standard Distributed Data Parallel (DDP). For a more detailed overview of FSDP2, see [PyTorch's official documentation](https://docs.pytorch.org/tutorials/intermediate/FSDP_tutorial.html#getting-started-with-fully-sharded-data-parallel-fsdp2). 
 
-This tutorial provides a comprehensive, step-by-step guide on integrating PyTorch FSDP2 with Ray Train. Specifically, this guide covers: 
+This tutorial provides a comprehensive, step-by-step guide on integrating PyTorch FSDP2 with Ray Train. Specifically, this guide covers the following: 
 
 - A hands-on example of training an image classification model
 - Configuring FSDP2 to mitigate out-of-memory (OOM) errors using mixed precision, CPU offloading, sharding granularity, and more
@@ -14,7 +14,7 @@ This tutorial provides a comprehensive, step-by-step guide on integrating PyTorc
 - GPU memory profiling with PyTorch Profiler
 - Loading a distributed model for inference
 
-**Note:** This notebook uses FSDP2's `fully_sharded` API. If you are currently using FSDP1's `FullyShardedDataParallel`, consider migrating to FSDP2 for improved performance and features such as lower memory usage and `DTensor` integration. 
+**Note:** This notebook uses FSDP2's `fully_sharded` API. If you're using FSDP1's `FullyShardedDataParallel`, consider migrating to FSDP2 for improved performance and features such as lower memory usage and `DTensor` integration. 
 
 <div id="anyscale-note" class="alert alert-block alert-warning">
 
@@ -122,9 +122,9 @@ def init_model() -> torch.nn.Module:
     return model
 ```
 
-## 2. Define the Training Function
+## 2. Define the training function
 
-Below is the main training function that orchestrates the FSDP2 training process. In the following sections, each of the helper functions used within this training loop are implemented. First, the necessary imports for the training function are made.
+Below is the main training function that orchestrates the FSDP2 training process. The following sections implement each of the helper functions used in this training loop. First, make the necessary imports for the training function:
 
 
 ```python
@@ -189,7 +189,7 @@ def train_func(config):
 
     world_rank = ray.train.get_context().get_world_rank()
 
-    # Setup PyTorch Profiler for memory monitoring
+    # Set up PyTorch Profiler for memory monitoring
     with torch.profiler.profile(
        activities=[
            torch.profiler.ProfilerActivity.CPU,
@@ -212,7 +212,7 @@ def train_func(config):
                 train_loader.sampler.set_epoch(epoch)
 
             for images, labels in train_loader:
-                # Note: Data is automatically moved to the correct device by prepare_data_loader
+                # Note: prepare_data_loader automatically moves data to the correct device
                 outputs = model(images)
                 loss = criterion(outputs, labels)
                 
@@ -247,13 +247,13 @@ def train_func(config):
     save_model_for_inference(model, world_rank)
 ```
 
-### 2b. Storage Configuration
+### 2a. Storage Configuration
 
-In this demo, cluster storage is used to allow for quick iteration and development, but this may not be suitable in production environments or at high scale. In such cases, object storage should be used instead. For more information about how to select your storage type, see the [Anyscale storage configuration docs](https://docs.anyscale.com/configuration/storage).
+This demo uses cluster storage to allow for quick iteration and development, but this may not be suitable in production environments or at high scale. In those cases, you should use object storage instead. For more information about how to select your storage type, see the [Anyscale storage configuration docs](https://docs.anyscale.com/configuration/storage).
 
-## 3. Model Sharding with FSDP2
+## 3. Model sharding with FSDP2
 
-PyTorch's `fully_shard` enables sharding at various granularities. At the most granular level, every layer can be sharded to minimize peak memory utilization, but this also increases communication costs between Ray Train workers. Experiment with different sharding granularities to find the optimal balance for your use case. In this demo, only the encoder blocks are sharded—the largest layers in the Vision Transformer.
+PyTorch's `fully_shard` enables sharding at various granularities. At the most granular level, you can shard every layer to minimize peak memory utilization, but this also increases communication costs between Ray Train workers. Experiment with different sharding granularities to find the optimal balance for your use case. This example only shards the encoder blocks—the largest layers in the Vision Transformer.
 
 Beyond sharding granularity, FSDP2 offers several configuration options to optimize performance and mitigate out-of-memory (OOM) errors:
 
@@ -657,7 +657,7 @@ In this demo, the profiler is configured to generate a profiling file for each w
 
 
 ### Post Training Directory View
-When training on the Anyscale platform, the checkpoint shards, full model, and memory profiling reports are saved in the Anyscale cluster storage with the following layout:
+The Anyscale platform saves the checkpoint shards, full model, and memory profiling reports in cluster storage with the following layout:
 
 ```
 /mnt/cluster_storage/fsdp_mnist_1/
@@ -676,9 +676,9 @@ When training on the Anyscale platform, the checkpoint shards, full model, and m
 └── rank1_memory_profile.html       # Memory profiling for rank 1
 ```
 
-## 7. Loading the Trained Model for Inference
+## Loading the trained model for inference
 
-After training completes, the saved model can be loaded for inference on new data. The model is loaded in its unsharded form, ready for standard PyTorch inference.
+After training completes, you can load the saved model for inference on new data. Ray Train loads the model in its unsharded form, ready for standard PyTorch inference.
 
 
 ```python
@@ -723,9 +723,9 @@ with torch.no_grad():
 
 ## Summary
 
-In this tutorial, you: 
+In this tutorial, you did the following: 
 
 - Trained an image classification model using FSDP2 and Ray Train
 - Learned how to load and save distributed checkpoints with PyTorch DCP
 - Gained insight on configuring FSDP2 to balance training performance and memory usage
-- Unlocked multi-node GPU memory observability with PyTorch Profiler
+- Unlocked multi-node GPU memory observability with PyTorch Memory Profiler
