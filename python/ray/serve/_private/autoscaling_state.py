@@ -2,7 +2,7 @@ import logging
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, DefaultDict, Dict, Hashable, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
@@ -17,68 +17,9 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
-from ray.serve._private.metrics_utils import TimeStampedValue
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-
-@dataclass
-class HandleMetricReport:
-    """Report from a deployment handle on queued and ongoing requests.
-
-    Args:
-        actor_id: If the deployment handle (from which this metric was
-            sent) lives on an actor, the actor ID of that actor.
-        handle_source: Describes what kind of entity holds this
-            deployment handle: a Serve proxy, a Serve replica, or
-            unknown.
-        queued_requests: The current number of queued requests at the
-            handle, i.e. requests that haven't been assigned to any
-            replica yet.
-        running_requests: A map of replica ID to the average number of
-            requests, assigned through the handle, running at that
-            replica.
-        timestamp: The time at which this report was received.
-    """
-
-    actor_id: Optional[str]
-    handle_source: DeploymentHandleSource
-    queued_requests: float
-    running_requests: Dict[ReplicaID, float]
-    timestamp: float
-
-    @property
-    def total_requests(self) -> float:
-        """Total number of queued and running requests."""
-        return self.queued_requests + sum(self.running_requests.values())
-
-    @property
-    def is_serve_component_source(self) -> bool:
-        """Whether the handle source is a Serve actor.
-
-        More specifically, this returns whether a Serve actor tracked
-        by the controller holds the deployment handle that sent this
-        report. If the deployment handle lives on a driver, a Ray task,
-        or an actor that's not a Serve replica, then this returns False.
-        """
-        return self.handle_source in [
-            DeploymentHandleSource.PROXY,
-            DeploymentHandleSource.REPLICA,
-        ]
-
-
-@dataclass
-class ReplicaMetricReport:
-    """Report from a replica on ongoing requests.
-
-    Args:
-        metrics: Dict[str, List[Any]] of metric_name: List[metric_value]
-        timestamp: The time at which this report was received.
-    """
-
-    metrics: dict[str, List[Any]]
-    timestamp: float
 
 
 @dataclass
@@ -222,7 +163,10 @@ class AutoscalingState:
     ) -> None:
         """Records average number of ongoing requests at a replica."""
 
-        if not replica_metric_report or replica_metric_report.metrics.get(RUNNING_REQUESTS_KEY, None) is None:
+        if (
+            not replica_metric_report
+            or replica_metric_report.metrics.get(RUNNING_REQUESTS_KEY, None) is None
+        ):
             return
 
         replica_id = replica_metric_report.replica_id
@@ -232,7 +176,7 @@ class AutoscalingState:
             replica_id not in self._replica_metrics
             or send_timestamp > self._replica_metrics[replica_id].timestamp
         ):
-            self._replica_requests[replica_id] = replica_metric_report
+            self._replica_metrics[replica_id] = replica_metric_report
 
     def record_request_metrics_for_handle(
         self,
@@ -345,8 +289,8 @@ class AutoscalingState:
         total_requests = 0
 
         for id in self._running_replicas:
-            if id in self._replica_requests:
-                total_requests += self._replica_requests[id].aggregated_metrics.get(
+            if id in self._replica_metrics:
+                total_requests += self._replica_metrics[id].aggregated_metrics.get(
                     RUNNING_REQUESTS_KEY, 0
                 )
 

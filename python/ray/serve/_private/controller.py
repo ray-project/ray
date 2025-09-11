@@ -5,9 +5,7 @@ import pickle
 import time
 from typing import (
     Any,
-    DefaultDict,
     Dict,
-    Hashable,
     Iterable,
     List,
     Optional,
