@@ -1007,16 +1007,9 @@ class TestRouterMetricsManager:
 
             # Check metrics are pushed correctly
             metrics_manager.push_autoscaling_metrics_to_controller()
-            mock_controller_handle.record_handle_metrics.remote.assert_called_with(
-                HandleMetricReport(
-                    deployment_id=deployment_id,
-                    handle_id=handle_id,
-                    actor_id=self_actor_id,
-                    handle_source=DeploymentHandleSource.PROXY,
-                    queued_requests=n,
-                    running_requests=running_requests,
-                    timestamp=start,
-                )
+            handle_metric_report = metrics_manager._get_metrics_report()
+            mock_controller_handle.record_autoscaling_metrics_from_handle.remote.assert_called_with(
+                handle_metric_report
             )
 
     @pytest.mark.skipif(

@@ -17,8 +17,11 @@ from ray.serve._private.autoscaling_state import (
     HandleMetricReport,
 )
 from ray.serve._private.common import (
+    RUNNING_REQUESTS_KEY,
     DeploymentID,
+    HandleMetricReport,
     NodeId,
+    ReplicaMetricReport,
     RequestProtocol,
     RequestRoutingInfo,
     RunningReplicaInfo,
@@ -28,6 +31,7 @@ from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
+    RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS,
     RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
     SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
@@ -262,24 +266,44 @@ class ServeController:
     def get_pid(self) -> int:
         return os.getpid()
 
-    def record_autoscaling_metrics(
-        self, replica_id: str, window_avg: Optional[float], send_timestamp: float
+    def record_autoscaling_metrics_from_replica(
+        self, replica_metric_report: ReplicaMetricReport
     ):
         logger.debug(
-            f"Received metrics from replica {replica_id}: {window_avg} running requests"
+            f"Received metrics from replica {replica_metric_report.replica_id}: {replica_metric_report.aggregated_metrics.get(RUNNING_REQUESTS_KEY)} running requests"
         )
+        latency = time.time() - replica_metric_report.timestamp
+        latency_ms = latency * 1000
+        if latency_ms > RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS:
+            logger.warning(
+                f"Received autoscaling metrics from replica {replica_metric_report.replica_id} with timestamp {replica_metric_report.timestamp} "
+                f"which is {latency_ms}ms ago. "
+                f"This is greater than the warning threshold RPC latency of {RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS}ms. "
+                "This may indicate a performance issue with the controller try increasing the RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS environment variable."
+            )
         self.autoscaling_state_manager.record_request_metrics_for_replica(
-            replica_id, window_avg, send_timestamp
+            replica_metric_report
         )
 
-    def record_handle_metrics(self, report: HandleMetricReport) -> None:
+    def record_handle_metrics(self, handle_metric_report: HandleMetricReport) -> None:
         logger.debug(
-            f"Received metrics from handle {report.handle_id} "
-            f"for deployment {report.deployment_id}: "
-            f"{report.queued_requests} queued requests "
-            f"and {report.running_requests} running requests"
+            f"Received metrics from handle {handle_metric_report.handle_id} "
+            f"for deployment {handle_metric_report.deployment_id}: "
+            f"{handle_metric_report.queued_requests} queued requests "
+            f"and {handle_metric_report.aggregated_metrics[RUNNING_REQUESTS_KEY]} running requests"
         )
-        self.autoscaling_state_manager.record_request_metrics_for_handle(report)
+
+        latency = time.time() - handle_metric_report.timestamp
+        latency_ms = latency * 1000
+        if latency_ms > RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS:
+            logger.warning(
+                f"Received autoscaling metrics from handle {handle_metric_report.handle_id} for deployment {handle_metric_report.deployment_id} with timestamp {handle_metric_report.timestamp} "
+                f"which is {latency_ms}ms ago. "
+                f"This is greater than the warning threshold RPC latency of {RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS}ms. "
+                "This may indicate a performance issue with the controller try increasing the RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS environment variable."
+            )
+
+        self.autoscaling_state_manager.record_request_metrics_for_handle(handle_metric_report)
 
     def bulk_record_handle_metrics(self, reports: List[HandleMetricReport]) -> None:
         logger.debug(f"Received {len(reports)} bulk handle metrics reports")
@@ -645,6 +669,9 @@ class ServeController:
             if SERVE_ROOT_URL_ENV_KEY in os.environ:
                 return os.environ[SERVE_ROOT_URL_ENV_KEY]
             else:
+                # HTTP is disabled
+                if http_config.host is None:
+                    return ""
                 return (
                     f"http://{build_address(http_config.host, http_config.port)}"
                     f"{http_config.root_path}"

@@ -17,6 +17,7 @@
 #include <string>
 
 #include "ray/common/id.h"
+#include "ray/common/lease/lease_spec.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/util/counter_map.h"
@@ -62,6 +63,7 @@ class GcsActor {
         task_spec_(std::make_unique<rpc::TaskSpec>(std::move(task_spec))),
         counter_(std::move(counter)),
         export_event_write_enabled_(IsExportAPIEnabledActor()) {
+    lease_spec_ = std::make_unique<LeaseSpecification>(*task_spec_);
     RAY_CHECK(actor_table_data_.state() != rpc::ActorTableData::DEAD);
     RefreshMetrics();
   }
@@ -139,6 +141,7 @@ class GcsActor {
       actor_table_data_.mutable_label_selector()->insert(
           task_spec_->label_selector().begin(), task_spec_->label_selector().end());
     }
+    lease_spec_ = std::make_unique<LeaseSpecification>(*task_spec_);
     RefreshMetrics();
   }
 
@@ -187,12 +190,14 @@ class GcsActor {
   std::string GetRayNamespace() const;
   /// Get the task specification of this actor.
   TaskSpecification GetCreationTaskSpecification() const;
+  const LeaseSpecification &GetLeaseSpecification() const;
 
   /// Get the immutable ActorTableData of this actor.
   const rpc::ActorTableData &GetActorTableData() const;
   /// Get the mutable ActorTableData of this actor.
   rpc::ActorTableData *GetMutableActorTableData();
   rpc::TaskSpec *GetMutableTaskSpec();
+  rpc::LeaseSpec *GetMutableLeaseSpec();
   /// Write an event containing this actor's ActorTableData
   /// to file for the Export API.
   void WriteActorExportEvent() const;
@@ -265,6 +270,7 @@ class GcsActor {
   std::optional<rpc::ActorTableData::ActorState> last_metric_state_;
   /// If true, actor events are exported for Export API
   bool export_event_write_enabled_ = false;
+  std::unique_ptr<LeaseSpecification> lease_spec_;
 };
 
 using RestartActorForLineageReconstructionCallback =

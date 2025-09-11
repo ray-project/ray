@@ -61,7 +61,7 @@ Create a virtual environment to prevent version conflicts and to develop with an
 
         This contains a directory with all the packages used by the local Python of your project. You only need to do this step once.
 
-        Activate your virtual environment to tell the  shell/terminal to use this particular Python:
+        Activate your virtual environment to tell the shell/terminal to use this particular Python:
 
         .. code-block:: shell
 

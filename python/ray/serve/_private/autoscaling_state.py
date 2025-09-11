@@ -4,9 +4,11 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set
 
 from ray.serve._private.common import (
-    DeploymentHandleSource,
+    RUNNING_REQUESTS_KEY,
     DeploymentID,
+    HandleMetricReport,
     ReplicaID,
+    ReplicaMetricReport,
     TargetCapacityDirection,
 )
 from ray.serve._private.constants import (
@@ -17,56 +19,6 @@ from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-
-@dataclass
-class HandleMetricReport:
-    """Report from a deployment handle on queued and ongoing requests.
-
-    Args:
-        deployment_id: The identifier for the deployment that the
-            handle targets.
-        handle_id: The unique identifier for the deployment handle.
-        actor_id: If the deployment handle (from which this metric was
-            sent) lives on an actor, the actor ID of that actor.
-        handle_source: Describes what kind of entity holds this
-            deployment handle: a Serve proxy, a Serve replica, or
-            unknown.
-        queued_requests: The current number of queued requests at the
-            handle, i.e. requests that haven't been assigned to any
-            replica yet.
-        running_requests: A map of replica ID to the average number of
-            requests, assigned through the handle, running at that
-            replica.
-        timestamp: The time at which this report was received.
-    """
-
-    deployment_id: DeploymentID
-    handle_id: str
-    actor_id: Optional[str]
-    handle_source: DeploymentHandleSource
-    queued_requests: float
-    running_requests: Dict[ReplicaID, float]
-    timestamp: float
-
-    @property
-    def total_requests(self) -> float:
-        """Total number of queued and running requests."""
-        return self.queued_requests + sum(self.running_requests.values())
-
-    @property
-    def is_serve_component_source(self) -> bool:
-        """Whether the handle source is a Serve actor.
-
-        More specifically, this returns whether a Serve actor tracked
-        by the controller holds the deployment handle that sent this
-        report. If the deployment handle lives on a driver, a Ray task,
-        or an actor that's not a Serve replica, then this returns False.
-        """
-        return self.handle_source in [
-            DeploymentHandleSource.PROXY,
-            DeploymentHandleSource.REPLICA,
-        ]
 
 
 @dataclass
@@ -219,20 +171,16 @@ class AutoscalingState:
         )
 
     def record_request_metrics_for_replica(
-        self, replica_id: ReplicaID, window_avg: Optional[float], send_timestamp: float
+        self, replica_metric_report: ReplicaMetricReport
     ) -> None:
         """Records average number of ongoing requests at a replica."""
 
-        if window_avg is None:
-            return
-
+        replica_id = replica_metric_report.replica_id
+        send_timestamp = replica_metric_report.timestamp
         previous_report = self._replica_requests.get(replica_id)
 
         if previous_report is None or send_timestamp > previous_report.timestamp:
-            self._replica_requests[replica_id] = ReplicaMetricReport(
-                running_requests=window_avg,
-                timestamp=send_timestamp,
-            )
+            self._replica_requests[replica_id] = replica_metric_report
 
     def record_request_metrics_for_handle(self, report: HandleMetricReport) -> None:
         """Records average number of queued and running requests at a handle for this
@@ -341,16 +289,22 @@ class AutoscalingState:
 
         for id in self._running_replicas:
             if id in self._replica_requests:
-                total_requests += self._replica_requests[id].running_requests
+                total_requests += self._replica_requests[id].aggregated_metrics.get(
+                    RUNNING_REQUESTS_KEY
+                )
 
         metrics_collected_on_replicas = total_requests > 0
         for handle_metric in self._handle_requests.values():
             total_requests += handle_metric.queued_requests
 
             if not metrics_collected_on_replicas:
-                for id in self._running_replicas:
-                    if id in handle_metric.running_requests:
-                        total_requests += handle_metric.running_requests[id]
+                for replica_id in self._running_replicas:
+                    if replica_id in handle_metric.aggregated_metrics.get(
+                        RUNNING_REQUESTS_KEY
+                    ):
+                        total_requests += handle_metric.aggregated_metrics.get(
+                            RUNNING_REQUESTS_KEY
+                        ).get(replica_id)
 
         return total_requests
 
@@ -419,16 +373,14 @@ class AutoscalingStateManager:
         )
 
     def record_request_metrics_for_replica(
-        self, replica_id: ReplicaID, window_avg: Optional[float], send_timestamp: float
+        self, replica_metric_report: ReplicaMetricReport
     ) -> None:
-        deployment_id = replica_id.deployment_id
+        deployment_id = replica_metric_report.replica_id.deployment_id
         # Defensively guard against delayed replica metrics arriving
         # after the deployment's been deleted
         if deployment_id in self._autoscaling_states:
             self._autoscaling_states[deployment_id].record_request_metrics_for_replica(
-                replica_id=replica_id,
-                window_avg=window_avg,
-                send_timestamp=send_timestamp,
+                replica_metric_report
             )
 
     def record_request_metrics_for_handle(self, report: HandleMetricReport) -> None:

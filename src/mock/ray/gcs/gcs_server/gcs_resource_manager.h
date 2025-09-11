@@ -12,10 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#pragma once
+
+#include <gmock/gmock.h>
+
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/gcs/gcs_server/gcs_resource_manager.h"
 
 namespace ray {
 namespace gcs {
+
 static instrumented_io_context __mock_io_context_;
 static ClusterResourceManager __mock_cluster_resource_manager_(__mock_io_context_);
 static GcsNodeManager __mock_gcs_node_manager_(

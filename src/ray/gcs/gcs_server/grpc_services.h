@@ -30,10 +30,34 @@
 #include "ray/gcs/gcs_server/grpc_service_interfaces.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
+#include "src/ray/protobuf/autoscaler.grpc.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
 namespace rpc {
+
+class ActorInfoGrpcService : public GrpcService {
+ public:
+  explicit ActorInfoGrpcService(instrumented_io_context &io_service,
+                                ActorInfoGcsServiceHandler &service_handler,
+                                int64_t max_active_rpcs_per_handler)
+      : GrpcService(io_service),
+        service_handler_(service_handler),
+        max_active_rpcs_per_handler_(max_active_rpcs_per_handler) {}
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      const ClusterID &cluster_id) override;
+
+ private:
+  ActorInfoGcsService::AsyncService service_;
+  ActorInfoGcsServiceHandler &service_handler_;
+  int64_t max_active_rpcs_per_handler_;
+};
 
 class NodeInfoGrpcService : public GrpcService {
  public:
@@ -219,6 +243,58 @@ class TaskInfoGrpcService : public GrpcService {
   int64_t max_active_rpcs_per_handler_;
 };
 
+class PlacementGroupInfoGrpcService : public GrpcService {
+ public:
+  explicit PlacementGroupInfoGrpcService(instrumented_io_context &io_service,
+                                         PlacementGroupInfoGcsServiceHandler &handler,
+                                         int64_t max_active_rpcs_per_handler)
+      : GrpcService(io_service),
+        service_handler_(handler),
+        max_active_rpcs_per_handler_(max_active_rpcs_per_handler) {}
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      const ClusterID &cluster_id) override;
+
+ private:
+  PlacementGroupInfoGcsService::AsyncService service_;
+  PlacementGroupInfoGcsServiceHandler &service_handler_;
+  int64_t max_active_rpcs_per_handler_;
+};
+
+namespace autoscaler {
+
+class AutoscalerStateGrpcService : public GrpcService {
+ public:
+  explicit AutoscalerStateGrpcService(instrumented_io_context &io_service,
+                                      AutoscalerStateServiceHandler &handler,
+                                      int64_t max_active_rpcs_per_handler)
+      : GrpcService(io_service),
+        service_handler_(handler),
+        max_active_rpcs_per_handler_(max_active_rpcs_per_handler){};
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      const ClusterID &cluster_id) override;
+
+ private:
+  AutoscalerStateService::AsyncService service_;
+  AutoscalerStateServiceHandler &service_handler_;
+  int64_t max_active_rpcs_per_handler_;
+};
+
+}  // namespace autoscaler
+
+namespace events {
+
 class RayEventExportGrpcService : public GrpcService {
  public:
   explicit RayEventExportGrpcService(instrumented_io_context &io_service,
@@ -241,6 +317,8 @@ class RayEventExportGrpcService : public GrpcService {
   RayEventExportGcsServiceHandler &service_handler_;
   int64_t max_active_rpcs_per_handler_;
 };
+
+}  // namespace events
 
 }  // namespace rpc
 }  // namespace ray
