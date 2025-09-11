@@ -206,7 +206,7 @@ def get_worker_node_ips(cluster_config: Union[dict, str]) -> List[str]:
 def request_resources(
     num_cpus: Optional[int] = None,
     bundles: Optional[List[dict]] = None,
-    bundle_label_selector: Optional[List[dict]] = None,
+    bundle_label_selectors: Optional[List[dict]] = None,
 ) -> None:
     """Command the autoscaler to scale to accommodate the specified requests.
 
