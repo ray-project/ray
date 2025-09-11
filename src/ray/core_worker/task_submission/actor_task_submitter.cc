@@ -310,7 +310,7 @@ void ActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
       return;
     }
 
-    if (queue->second.client_address_ &&
+    if (queue->second.client_address_.has_value() &&
         queue->second.client_address_->ip_address() == address.ip_address() &&
         queue->second.client_address_->port() == address.port()) {
       RAY_LOG(DEBUG).WithField(actor_id) << "Skip actor that has already been connected";
@@ -324,7 +324,7 @@ void ActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
     }
 
     queue->second.num_restarts_ = num_restarts;
-    if (queue->second.client_address_) {
+    if (queue->second.client_address_.has_value()) {
       // Clear the client to the old version of the actor.
       DisconnectRpcClient(queue->second);
       inflight_task_callbacks = std::move(queue->second.inflight_task_callbacks_);
