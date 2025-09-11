@@ -321,7 +321,10 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
                 std::move(request),
                 [object_id, actor_id](const Status &status,
                                       const rpc::FreeActorObjectReply &reply) {
-                  if (!status.ok()) {
+                  if (status.IsDisconnected()) {
+                    RAY_LOG(DEBUG).WithField(object_id).WithField(actor_id)
+                        << "FreeActorObject failed because actor worker is dead";
+                  } else if (!status.ok()) {
                     RAY_LOG(ERROR).WithField(object_id).WithField(actor_id)
                         << "Failed to free actor object: " << status;
                   }
