@@ -71,19 +71,14 @@ TEST_F(GcsNodeManagerTest, TestListener) {
                                    ClusterID::Nil());
   // Test AddNodeAddedListener.
   int node_count = 1000;
-
-  std::mutex callback_mutex;
   std::atomic_int callbacks_remaining = node_count;
 
   std::vector<std::shared_ptr<const rpc::GcsNodeInfo>> added_nodes;
   node_manager.AddNodeAddedListener(
-      [&added_nodes, &callback_mutex, &callbacks_remaining](
+      [&added_nodes, &callbacks_remaining](
           std::shared_ptr<const rpc::GcsNodeInfo> node) {
         added_nodes.emplace_back(std::move(node));
-        {
-          std::lock_guard<std::mutex> lock(callback_mutex);
-          --callbacks_remaining;
-        }
+        --callbacks_remaining;
       },
       io_context_->GetIoService());
   for (int i = 0; i < node_count; ++i) {
