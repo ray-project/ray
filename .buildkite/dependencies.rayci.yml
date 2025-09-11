@@ -26,6 +26,6 @@ steps:
     commands:
       - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/rayllm.depsets.yaml --check
       - chown -R 2000:100 /artifact-mount
-      - cp python/deplocks/llm/* /artifact-mount/
+      - cp ./python/deplocks/llm/* /tmp/artifacts/
     job_env: oss-ci-base_test-py3.11
     depends_on: oss-ci-base_test-multipy
