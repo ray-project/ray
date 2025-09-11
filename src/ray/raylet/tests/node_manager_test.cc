@@ -134,13 +134,19 @@ class FakePlasmaClient : public plasma::PlasmaClientInterface {
   Status Get(const std::vector<ObjectID> &object_ids,
              int64_t timeout_ms,
              std::vector<plasma::ObjectBuffer> *object_buffers) override {
+    object_buffers->reserve(object_ids.size());
     for (const auto &id : object_ids) {
-      auto &buffers = objects_in_plasma_[id];
-      plasma::ObjectBuffer shm_buffer{std::make_shared<SharedMemoryBuffer>(
-                                          buffers.first.data(), buffers.first.size()),
-                                      std::make_shared<SharedMemoryBuffer>(
-                                          buffers.second.data(), buffers.second.size())};
-      object_buffers->emplace_back(shm_buffer);
+      if (objects_in_plasma_.contains(id)) {
+        auto &buffers = objects_in_plasma_[id];
+        plasma::ObjectBuffer shm_buffer{
+            std::make_shared<SharedMemoryBuffer>(buffers.first.data(),
+                                                 buffers.first.size()),
+            std::make_shared<SharedMemoryBuffer>(buffers.second.data(),
+                                                 buffers.second.size())};
+        object_buffers->emplace_back(shm_buffer);
+      } else {
+        object_buffers->emplace_back(plasma::ObjectBuffer{});
+      }
     }
     return Status::OK();
   }
@@ -1156,6 +1162,59 @@ TEST_F(NodeManagerTest, TestHandleCancelWorkerLeaseNoLeaseIdempotent) {
   ASSERT_EQ(GetPendingLeaseWorkerCount(*local_lease_manager_), 0);
   ASSERT_EQ(reply1.success(), false);
   ASSERT_EQ(reply2.success(), false);
+}
+
+TEST_F(NodeManagerTest, TestHandlePinObjectIDsHasPlasmaObjectIdempotency) {
+  rpc::Address owner_addr;
+  plasma::flatbuf::ObjectSource source = plasma::flatbuf::ObjectSource::CreatedByWorker;
+  ObjectID id = ObjectID::FromRandom();
+
+  RAY_UNUSED(mock_store_client_->TryCreateImmediately(
+      id, owner_addr, 1024, nullptr, 1024, nullptr, source, 0));
+
+  rpc::PinObjectIDsRequest pin_request;
+  pin_request.add_object_ids(id.Binary());
+
+  rpc::PinObjectIDsReply reply1;
+  node_manager_->HandlePinObjectIDs(
+      pin_request,
+      &reply1,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {});
+
+  rpc::PinObjectIDsReply reply2;
+  node_manager_->HandlePinObjectIDs(
+      pin_request,
+      &reply2,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {});
+
+  EXPECT_EQ(reply1.successes_size(), 1);
+  EXPECT_TRUE(reply1.successes(0));
+  EXPECT_EQ(reply2.successes_size(), 1);
+  EXPECT_TRUE(reply2.successes(0));
+}
+
+TEST_F(NodeManagerTest, TestHandlePinObjectIDsNoPlasmaObjectIdempotency) {
+  ObjectID id = ObjectID::FromRandom();
+
+  rpc::PinObjectIDsRequest pin_request;
+  pin_request.add_object_ids(id.Binary());
+
+  rpc::PinObjectIDsReply reply1;
+  node_manager_->HandlePinObjectIDs(
+      pin_request,
+      &reply1,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {});
+
+  rpc::PinObjectIDsReply reply2;
+  node_manager_->HandlePinObjectIDs(
+      pin_request,
+      &reply2,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {});
+
+  EXPECT_EQ(reply1.successes_size(), 1);
+  EXPECT_FALSE(reply1.successes(0));
+  EXPECT_EQ(reply2.successes_size(), 1);
+  EXPECT_FALSE(reply2.successes(0));
 }
 
 }  // namespace ray::raylet
