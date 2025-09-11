@@ -50,7 +50,8 @@ repos:
     rev: "0.6.6"
     hooks:
       - id: pydoclint
-        name: pydoclintlocal
+        name: pydoclint-local
+        stages: [pre-commit, pre-push]
         args: [
           --style=google,
           --baseline=ci/lint/pydoclint-baseline.txt,
@@ -72,7 +73,7 @@ repos:
     rev: "0.6.6"
     hooks:
       - id: pydoclint
-        name: pydoclintci
+        name: pydoclint-ci
         stages: [manual]
         args: [
           --style=google,
