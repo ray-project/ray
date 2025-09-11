@@ -572,6 +572,7 @@ def get_compute_strategy(
     fn_constructor_args: Optional[Iterable[Any]] = None,
     compute: Optional[Union[str, "ComputeStrategy"]] = None,
     concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+    max_tasks_in_flight_per_actor: Optional[int] = None,
 ) -> "ComputeStrategy":
     """Get `ComputeStrategy` based on the function or class, and concurrency
     information.
@@ -583,6 +584,9 @@ def get_compute_strategy(
         compute: Either "tasks" (default) to use Ray Tasks or an
                 :class:`~ray.data.ActorPoolStrategy` to use an autoscaling actor pool.
         concurrency: The number of Ray workers to use concurrently.
+        max_tasks_in_flight_per_actor: The maximum number of tasks that can
+                be submitted to a single actor at any given time. Is used only
+                when ``fn`` is callable class.
 
     Returns:
        The `ComputeStrategy` for execution.
@@ -595,7 +599,7 @@ def get_compute_strategy(
         is_callable_class = True
     else:
         # TODO(chengsu): disallow object that is not a function. For example,
-        # An object instance of class often indicates a bug in user code.
+        #  An object instance of class often indicates a bug in user code.
         is_callable_class = False
         if fn_constructor_args is not None:
             raise ValueError(
@@ -650,18 +654,30 @@ def get_compute_strategy(
             # Create ActorPoolStrategy based on tuple length
             if len(concurrency) == 2:
                 return ActorPoolStrategy(
-                    min_size=concurrency[0], max_size=concurrency[1]
+                    min_size=concurrency[0],
+                    max_size=concurrency[1],
+                    max_tasks_in_flight_per_actor=max_tasks_in_flight_per_actor,
                 )
             else:  # len(concurrency) == 3
                 return ActorPoolStrategy(
                     min_size=concurrency[0],
                     max_size=concurrency[1],
                     initial_size=concurrency[2],
+                    max_tasks_in_flight_per_actor=max_tasks_in_flight_per_actor,
                 )
         elif isinstance(concurrency, int):
             if is_callable_class:
-                return ActorPoolStrategy(size=concurrency)
+                return ActorPoolStrategy(
+                    size=concurrency,
+                    max_tasks_in_flight_per_actor=max_tasks_in_flight_per_actor,
+                )
             else:
+                if max_tasks_in_flight_per_actor is not None:
+                    raise ValueError(
+                        "``max_tasks_in_flight_per_actor`` can only be specified for "
+                        "callable classes (actors), but ``fn`` is not a callable class: "
+                        f"{fn}."
+                    )
                 return TaskPoolStrategy(size=concurrency)
         else:
             raise ValueError(
@@ -675,6 +691,12 @@ def get_compute_strategy(
                 "For example, use ``concurrency=n`` for a pool of ``n`` workers."
             )
         else:
+            if max_tasks_in_flight_per_actor is not None:
+                raise ValueError(
+                    "``max_tasks_in_flight_per_actor`` can only be specified for "
+                    "callable classes (actors), but ``fn`` is not a callable class: "
+                    f"{fn}."
+                )
             return TaskPoolStrategy()
 
 
