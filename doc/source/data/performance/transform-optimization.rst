@@ -559,12 +559,8 @@ Choose between tasks and actors based on your operation characteristics:
 .. testcode::
 
     # EFFICIENT Good for stateless operations
-    def simple_transform(batch):
-        """Stateless function - no persistent state."""
-        return {"result": batch["value"] * 2}
-    
-    # Uses tasks by default
-    ds.map_batches(simple_transform)
+    # Stateless function - uses tasks by default
+    result = ds.map_batches(lambda batch: {"result": batch["value"] * 2})
 
 **Stateful Transformations (Actors)**
 
@@ -623,22 +619,21 @@ Leverage NumPy for high-performance numerical operations:
         .. code-block:: python
 
             # Slow: Row-by-row processing
-            def slow_transform(batch):
-                results = []
-                for value in batch["values"]:
-                    result = value * 2 + 1
-                    results.append(result)
-                return {"results": results}
+            results = []
+            for value in batch["values"]:
+                result = value * 2 + 1
+                results.append(result)
+            return {"results": results}
 
     .. tab-item:: EFFICIENT Vectorized
 
         .. code-block:: python
 
             # Fast: Vectorized operations
-            def fast_transform(batch):
-                values = np.array(batch["values"])
-                results = values * 2 + 1  # Vectorized operation
-                return {"results": results}
+            import numpy as np
+            values = np.array(batch["values"])
+            results = values * 2 + 1  # Vectorized operation
+            return {"results": results}
 
 **Advanced Vectorization Patterns**
 

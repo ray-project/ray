@@ -208,31 +208,25 @@ Verify the configuration has been applied:
     print(f"  Max block size: {ctx.target_max_block_size / (1024*1024):.0f}MB")
     print(f"  Object store limit: {ctx.execution_options.resource_limits.object_store_memory / (1024**3):.1f}GB")
 
-**High-Memory Configuration**
+**High-Memory Configuration:**
+
+For environments with abundant memory (like large cloud instances), use settings that prioritize performance:
 
 .. testcode::
 
-    def configure_for_high_memory_environment():
-        """Configure Ray Data for high-memory environments."""
-        
-        ctx = ray.data.DataContext.get_current()
-        
-        # Larger blocks for better throughput
-        ctx.target_max_block_size = 256 * 1024 * 1024  # 256MB blocks
-        ctx.target_min_block_size = 64 * 1024 * 1024   # 64MB minimum
-        
-        # Use more object store memory
-        available_memory = psutil.virtual_memory().total
-        ctx.execution_options.resource_limits.object_store_memory = int(
-            available_memory * 0.4  # Use 40% of system memory
-        )
-        
-        print(f"Configured for high-memory environment:")
-        print(f"  Max block size: {ctx.target_max_block_size / (1024*1024):.0f}MB")
-        print(f"  Object store limit: {ctx.execution_options.resource_limits.object_store_memory / (1024**3):.1f}GB")
+    import psutil
     
-    # Apply high-memory configuration
-    configure_for_high_memory_environment()
+    ctx = ray.data.DataContext.get_current()
+    
+    # Larger blocks for better throughput
+    ctx.target_max_block_size = 256 * 1024 * 1024  # 256MB blocks
+    ctx.target_min_block_size = 64 * 1024 * 1024   # 64MB minimum
+    
+    # Use more object store memory (40% of system memory)
+    available_memory = psutil.virtual_memory().total
+    ctx.execution_options.resource_limits.object_store_memory = int(
+        available_memory * 0.4
+    )
 
 Block Size Optimization
 =======================
@@ -536,48 +530,33 @@ Minimizing Object Store Usage
 
 The Ray object store is shared across all Ray Data operations. Optimize its usage:
 
+**Monitor Object Store Usage:**
+
+Check object store memory usage before and after operations:
+
 .. testcode::
 
-    def monitor_object_store_usage():
-        """Monitor and report object store memory usage."""
-        
-        # Get object store statistics
-        try:
-            from ray._private.internal_api import memory_summary
-            memory_info = memory_summary(stats_only=True)
-            
-            object_store_used = memory_info.get("object_store_used_memory", 0)
-            object_store_total = memory_info.get("object_store_total_memory", 1)
-            
-            usage_percent = (object_store_used / object_store_total) * 100
-            
-            print(f"Object Store Usage:")
-            print(f"  Used: {object_store_used / (1024**3):.2f}GB")
-            print(f"  Total: {object_store_total / (1024**3):.2f}GB") 
-            print(f"  Usage: {usage_percent:.1f}%")
-            
-            if usage_percent > 80:
-                print("WARNING: Object store usage is high!")
-                print("Consider:")
-                print("- Reducing batch sizes")
-                print("- Using streaming execution")
-                print("- Avoiding unnecessary materialization")
-            
-            return usage_percent
-            
-        except Exception as e:
-            print(f"Could not get object store stats: {e}")
-            return 0
+    # Check object store usage
+    from ray._private.internal_api import memory_summary
     
-    # Monitor before and after operations
-    print("Before processing:")
-    monitor_object_store_usage()
+    memory_info = memory_summary(stats_only=True)
+    object_store_used = memory_info.get("object_store_used_memory", 0)
+    object_store_total = memory_info.get("object_store_total_memory", 1)
+    usage_percent = (object_store_used / object_store_total) * 100
     
+    print(f"Object store usage: {usage_percent:.1f}%")
+
+**Run your operations and monitor:**
+
+.. testcode::
+
     # Your Ray Data operations
     result = ds.map_batches(my_transform).write_parquet("output/")
     
-    print("\nAfter processing:")
-    monitor_object_store_usage()
+    # Check usage again after processing
+    memory_info = memory_summary(stats_only=True)
+    final_usage = memory_info.get("object_store_used_memory", 0) / object_store_total * 100
+    print(f"Final object store usage: {final_usage:.1f}%")
 
 **Object Store Cleanup Patterns**
 

@@ -149,58 +149,41 @@ Out of Memory (OOM) Errors
 
 **Diagnostic Steps:**
 
+**Diagnose Memory Issues:**
+
+Check for common memory-related problems:
+
 .. testcode::
 
-    def diagnose_memory_issues(ds):
-        """Diagnose memory-related issues in Ray Data pipeline."""
-        
-        print("Memory Diagnostics:")
-        
-        # Check dataset characteristics
-        stats = ds.stats()
-        total_size_gb = stats.total_bytes / (1024**3)
-        avg_block_size_mb = stats.total_bytes / stats.num_blocks / (1024**2)
-        
-        print(f"  Dataset size: {total_size_gb:.2f}GB")
-        print(f"  Number of blocks: {stats.num_blocks}")
-        print(f"  Average block size: {avg_block_size_mb:.1f}MB")
-        
-        # Check system memory
-        import psutil
-        memory_info = psutil.virtual_memory()
-        available_gb = memory_info.available / (1024**3)
-        
-        print(f"  Available system memory: {available_gb:.1f}GB")
-        
-        # Check Ray object store
-        try:
-            import ray
-            cluster_resources = ray.cluster_resources()
-            object_store_memory = cluster_resources.get("object_store_memory", 0) / (1024**3)
-            print(f"  Object store memory: {object_store_memory:.1f}GB")
-        except:
-            print("  Could not get object store info")
-        
-        # Identify issues
-        issues = []
-        
-        if avg_block_size_mb > 512:
-            issues.append("Blocks too large (>512MB)")
-        
-        if total_size_gb > available_gb * 0.5:
-            issues.append("Dataset larger than 50% of available memory")
-        
-        if stats.num_blocks < ray.cluster_resources().get("CPU", 1):
-            issues.append("Too few blocks for parallelization")
-        
-        if issues:
-            print("  Issues found:")
-            for issue in issues:
-                print(f"    {issue}")
-        else:
-            print("  No obvious memory issues detected")
-        
-        return issues
+    import psutil
+    
+    print("Memory Diagnostics:")
+    
+    # Check dataset characteristics
+    stats = ds.stats()
+    total_size_gb = stats.total_bytes / (1024**3)
+    avg_block_size_mb = stats.total_bytes / stats.num_blocks / (1024**2)
+    
+    print(f"  Dataset size: {total_size_gb:.2f}GB")
+    print(f"  Average block size: {avg_block_size_mb:.1f}MB")
+    
+    # Check available memory
+    available_gb = psutil.virtual_memory().available / (1024**3)
+    print(f"  Available memory: {available_gb:.1f}GB")
+
+**Identify Common Issues:**
+
+.. testcode::
+
+    # Check for typical memory problems
+    if avg_block_size_mb > 512:
+        print("  Issue: Blocks too large (>512MB)")
+    
+    if total_size_gb > available_gb * 0.5:
+        print("  Issue: Dataset larger than 50% of available memory")
+    
+    if stats.num_blocks < ray.cluster_resources().get("CPU", 1):
+        print("  Issue: Too few blocks for parallelization")
 
 **Common Memory Fixes:**
 

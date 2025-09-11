@@ -189,13 +189,10 @@ When you specify a schema, Ray Data validates and converts incoming data to matc
 .. testcode::
 
     # For Hive-partitioned datasets
-    def partition_filter(paths):
-        # Only read partitions from the last 7 days
-        return any("date=2024-01" in path for path in paths)
-    
+    # Filter to recent partitions only
     ds = ray.data.read_parquet(
         "s3://bucket/partitioned-data/",
-        partition_filter=partition_filter
+        partition_filter=lambda paths: any("date=2024-01" in path for path in paths)
     )
 
 Block Size Optimization

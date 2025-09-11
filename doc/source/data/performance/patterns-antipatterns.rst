@@ -189,30 +189,23 @@ Antipattern: Not Using Column Pruning
 
 **Advanced Column Pruning Pattern**:
 
+**Smart Column Selection:**
+
 .. code-block:: python
 
-    def smart_column_selection(path, required_cols, optional_cols=None):
-        """Intelligently select columns based on availability."""
-        
-        # Get schema to see available columns
-        sample = ray.data.read_parquet(path, override_num_blocks=1)
-        available_cols = list(sample.schema().names)
-        
-        # Select required columns
-        columns = [col for col in required_cols if col in available_cols]
-        
-        # Add optional columns if available
-        if optional_cols:
-            columns.extend([col for col in optional_cols if col in available_cols])
-        
-        return ray.data.read_parquet(path, columns=columns)
+    # Check available columns first
+    sample = ray.data.read_parquet("s3://bucket/data/", override_num_blocks=1)
+    available_cols = list(sample.schema().names)
     
-    # Usage
-    ds = smart_column_selection(
-        "s3://bucket/data/",
-        required_cols=["id", "value"],
-        optional_cols=["metadata", "tags"]
-    )
+    # Select only available columns
+    required_cols = ["id", "value"]
+    optional_cols = ["metadata", "tags"]
+    
+    columns = [col for col in required_cols if col in available_cols]
+    columns.extend([col for col in optional_cols if col in available_cols])
+    
+    # Read with selected columns
+    ds = ray.data.read_parquet("s3://bucket/data/", columns=columns)
 
 Antipattern: Wrong File Format Choice
 ------------------------------------
@@ -239,20 +232,16 @@ Antipattern: Wrong File Format Choice
 
         .. code-block:: python
 
-            # Convert to Parquet for analytical workloads
-            def convert_to_parquet(csv_path, parquet_path):
-                """Convert CSV to Parquet for better performance."""
-                
-                # Read CSV in chunks to avoid memory issues
-                ds = ray.data.read_csv(csv_path)
-                
-                # Write as Parquet with compression
-                ds.write_parquet(
-                    parquet_path,
-                    compression="snappy"  # Good balance of speed/size
-                )
+            # Convert CSV to Parquet for better performance
+            ds = ray.data.read_csv("s3://bucket/huge-dataset.csv")
             
-            # Use Parquet for analytics
+            # Write as Parquet with compression
+            ds.write_parquet(
+                "s3://bucket/dataset.parquet",
+                compression="snappy"  # Good balance of speed/size
+            )
+            
+            # Use Parquet for analytics with column pruning
             ds = ray.data.read_parquet(
                 "s3://bucket/dataset.parquet",
                 columns=["needed_col1", "needed_col2"]  # Column pruning works!
