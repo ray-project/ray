@@ -10,6 +10,10 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import tree  # pip install dm_tree
 
+from ray._common.deprecation import (
+    DEPRECATED_VALUE,
+    deprecation_warning,
+)
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.policy.policy import Policy, PolicyState
@@ -17,10 +21,6 @@ from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import OldAPIStack, override
-from ray._common.deprecation import (
-    DEPRECATED_VALUE,
-    deprecation_warning,
-)
 from ray.rllib.utils.error import ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import (
@@ -36,8 +36,8 @@ from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
-    TensorType,
     TensorStructType,
+    TensorType,
 )
 from ray.util.debug import log_once
 

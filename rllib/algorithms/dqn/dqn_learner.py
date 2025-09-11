@@ -12,8 +12,8 @@ from ray.rllib.core.rl_module.apis import QNetAPI, TargetNetworkAPI
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.utils.annotations import (
-    override,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
+    override,
 )
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
@@ -21,7 +21,6 @@ from ray.rllib.utils.metrics import (
     NUM_TARGET_UPDATES,
 )
 from ray.rllib.utils.typing import ModuleID, ShouldModuleBeUpdatedFn
-
 
 # Now, this is double defined: In `SACRLModule` and here. I would keep it here
 # or push it into the `Learner` as these are recurring keys in RL.

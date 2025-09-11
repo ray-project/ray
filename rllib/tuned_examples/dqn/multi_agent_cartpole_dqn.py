@@ -6,9 +6,8 @@ from ray.rllib.utils.metrics import (
     EPISODE_RETURN_MEAN,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
-from ray.tune.registry import register_env
-
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
+from ray.tune.registry import register_env
 
 parser = add_rllib_example_script_args(
     default_timesteps=500000,

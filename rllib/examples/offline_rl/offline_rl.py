@@ -20,13 +20,14 @@ Use the generated file(s) as "input" in the CQL config below
 """
 
 import argparse
+
 import numpy as np
 
-from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
 from ray.rllib.algorithms import cql as cql
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
+from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,

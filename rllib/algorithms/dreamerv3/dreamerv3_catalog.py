@@ -4,11 +4,11 @@ import numpy as np
 from ray.rllib.algorithms.dreamerv3.utils import (
     do_symlog_obs,
     get_gru_units,
-    get_num_z_classes,
     get_num_z_categoricals,
+    get_num_z_classes,
 )
-from ray.rllib.core.models.catalog import Catalog
 from ray.rllib.core.models.base import Encoder, Model
+from ray.rllib.core.models.catalog import Catalog
 from ray.rllib.utils import override
 
 

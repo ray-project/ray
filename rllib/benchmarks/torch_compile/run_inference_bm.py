@@ -1,17 +1,15 @@
 import argparse
-
-import matplotlib.pyplot as plt
+import json
+from pathlib import Path
 
 import gymnasium as gym
-from pathlib import Path
+import matplotlib.pyplot as plt
 import numpy as np
-import json
+import torch
 import tqdm
 
-import torch
-
-from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.benchmarks.torch_compile.utils import get_ppo_batch_for_env, timed
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchCompileConfig

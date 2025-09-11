@@ -1,10 +1,11 @@
-from ray.rllib.utils.annotations import DeveloperAPI
-
+import base64
 import logging
 import time
-import base64
+
 import numpy as np
+
 from ray import cloudpickle as pickle
+from ray.rllib.utils.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 

@@ -1,18 +1,19 @@
 import logging
+from typing import Callable, List, Optional, Set, Tuple, Union
+
 import gymnasium as gym
 import numpy as np
-from typing import Callable, List, Optional, Tuple, Union, Set
 
-from ray.rllib.env.base_env import BaseEnv, _DUMMY_AGENT_ID
+from ray.rllib.env.base_env import _DUMMY_AGENT_ID, BaseEnv
 from ray.rllib.utils.annotations import Deprecated, OldAPIStack, override
 from ray.rllib.utils.typing import (
+    AgentID,
     EnvActionType,
     EnvID,
     EnvInfoDict,
     EnvObsType,
     EnvType,
     MultiEnvDict,
-    AgentID,
 )
 from ray.util import log_once
 

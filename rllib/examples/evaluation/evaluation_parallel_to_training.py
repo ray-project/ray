@@ -68,7 +68,6 @@ the experiment takes considerably longer (~70sec vs ~80sec):
 """
 from typing import Optional
 
-from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
@@ -76,9 +75,9 @@ from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
     EVALUATION_RESULTS,
-    NUM_EPISODES,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    NUM_EPISODES,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.test_utils import (
@@ -87,6 +86,7 @@ from ray.rllib.utils.test_utils import (
 )
 from ray.rllib.utils.typing import ResultDict
 from ray.tune.registry import get_trainable_cls, register_env
+from ray.tune.result import TRAINING_ITERATION
 
 parser = add_rllib_example_script_args(
     default_timesteps=200000,
