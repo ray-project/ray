@@ -36,6 +36,7 @@
 #include "ray/raylet/local_object_manager.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/raylet.h"
+#include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/raylet/raylet_client.h"
 #include "ray/stats/stats.h"
 #include "ray/util/cmd_line_utils.h"
@@ -252,6 +253,16 @@ int main(int argc, char *argv[]) {
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
       main_service_work(main_service.get_executor());
 
+  instrumented_io_context object_manager_rpc_service{/*emit_metrics=*/false,
+                                                     /*running_on_single_thread=*/false,
+                                                     "object_manager_rpc_io_context"};
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
+      object_manager_rpc_work(object_manager_rpc_service.get_executor());
+
+  /// The thread pool used for running `rpc_service`.
+  /// Data copy operations during request are done in this thread pool.
+  std::vector<std::thread> object_manager_rpc_threads;
+
   // Initialize gcs client
   std::unique_ptr<ray::gcs::GcsClient> gcs_client;
   ray::gcs::GcsClientOptions client_options(FLAGS_gcs_address,
@@ -325,15 +336,23 @@ int main(int argc, char *argv[]) {
 
   auto shutted_down = std::make_shared<std::atomic<bool>>(false);
 
-  auto shutdown_raylet_after_unregistration =
-      [&main_service, &raylet_socket_name, &raylet, &gcs_client]() {
-        // We should stop the service and remove the local socket file.
-        raylet->Stop();
-        gcs_client->Disconnect();
-        ray::stats::Shutdown();
-        main_service.stop();
-        remove(raylet_socket_name.c_str());
-      };
+  auto shutdown_raylet_after_unregistration = [&main_service,
+                                               &raylet_socket_name,
+                                               &raylet,
+                                               &gcs_client,
+                                               &object_manager_rpc_threads]() {
+    // We should stop the service and remove the local socket file.
+    raylet->Stop();
+    gcs_client->Disconnect();
+    ray::stats::Shutdown();
+    main_service.stop();
+    for (size_t i = 0; i < object_manager_rpc_threads.size(); i++) {
+      if (object_manager_rpc_threads[i].joinable()) {
+        object_manager_rpc_threads[i].join();
+      }
+    }
+    remove(raylet_socket_name.c_str());
+  };
 
   // Shut down raylet gracefully, in a synchronous fashion.
   // This is an internal method and should only be run on the main_service.
@@ -594,24 +613,8 @@ int main(int argc, char *argv[]) {
           node_manager->MarkObjectsAsFailed(error_type, {ref}, ray::JobID::Nil());
         });
 
-    object_manager = std::make_unique<ray::ObjectManager>(
-        main_service,
-        raylet_node_id,
+    auto object_store_runner = std::make_unique<ray::ObjectStoreRunner>(
         object_manager_config,
-        *gcs_client,
-        object_directory.get(),
-        /*restore_spilled_object=*/
-        [&](const ray::ObjectID &object_id,
-            int64_t object_size,
-            const std::string &object_url,
-            std::function<void(const ray::Status &)> callback) {
-          local_object_manager->AsyncRestoreSpilledObject(
-              object_id, object_size, object_url, std::move(callback));
-        },
-        /*get_spilled_object_url=*/
-        [&](const ray::ObjectID &object_id) {
-          return local_object_manager->GetLocalSpilledObjectURL(object_id);
-        },
         /*spill_objects_callback=*/
         [&]() {
           // This callback is called from the plasma store thread.
@@ -631,11 +634,48 @@ int main(int argc, char *argv[]) {
         },
         /*add_object_callback=*/
         [&](const ray::ObjectInfo &object_info) {
-          node_manager->HandleObjectLocal(object_info);
+          main_service.post(
+              [&object_manager, &node_manager, object_info]() {
+                object_manager->HandleObjectAdded(object_info);
+                node_manager->HandleObjectLocal(object_info);
+              },
+              "ObjectManager.ObjectAdded");
         },
         /*delete_object_callback=*/
         [&](const ray::ObjectID &object_id) {
-          node_manager->HandleObjectMissing(object_id);
+          main_service.post(
+              [&object_manager, &node_manager, object_id]() {
+                object_manager->HandleObjectDeleted(object_id);
+                node_manager->HandleObjectMissing(object_id);
+              },
+              "ObjectManager.ObjectDeleted");
+        });
+
+    object_manager_rpc_threads.resize(object_manager_config.rpc_service_threads_number);
+    for (int i = 0; i < object_manager_config.rpc_service_threads_number; i++) {
+      object_manager_rpc_threads[i] = std::thread([&object_manager_rpc_service, i] {
+        SetThreadName(absl::StrFormat("rpc.obj.mgr.%d", i));
+        object_manager_rpc_service.run();
+      });
+    }
+
+    object_manager = std::make_unique<ray::ObjectManager>(
+        main_service,
+        raylet_node_id,
+        object_manager_config,
+        *gcs_client,
+        object_directory.get(),
+        /*restore_spilled_object=*/
+        [&](const ray::ObjectID &object_id,
+            int64_t object_size,
+            const std::string &object_url,
+            std::function<void(const ray::Status &)> callback) {
+          local_object_manager->AsyncRestoreSpilledObject(
+              object_id, object_size, object_url, std::move(callback));
+        },
+        /*get_spilled_object_url=*/
+        [&](const ray::ObjectID &object_id) {
+          return local_object_manager->GetLocalSpilledObjectURL(object_id);
         },
         /*pin_object=*/
         [&](const ray::ObjectID &object_id) {
@@ -653,7 +693,16 @@ int main(int argc, char *argv[]) {
           ray::rpc::ObjectReference ref;
           ref.set_object_id(object_id.Binary());
           node_manager->MarkObjectsAsFailed(error_type, {ref}, ray::JobID::Nil());
-        });
+        },
+        std::make_shared<plasma::PlasmaClient>(),
+        std::move(object_store_runner),
+        [&](const std::string &address,
+            const int port,
+            ray::rpc::ClientCallManager &call_manager) {
+          return std::make_shared<ray::rpc::ObjectManagerClient>(
+              address, port, call_manager);
+        },
+        object_manager_rpc_service);
 
     local_object_manager = std::make_unique<ray::raylet::LocalObjectManager>(
         raylet_node_id,
