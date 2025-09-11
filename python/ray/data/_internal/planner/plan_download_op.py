@@ -50,9 +50,10 @@ def plan_download_op(
         _get_udf,
     )
 
-    # only include partion actors if the upstream op is not a download operator. we do this
-    # because a single partition actor can bottleneck the download process and the download
-    # operator is responsible for outputting appropriately sized blocks.
+    # If we have multiple download operators in a row, we should only include the partition actor
+    # at the start of the chain. This is primarily done to prevent partition actors from bottlenecking
+    # the chain becuase the interleaved operators would be a single actor. As a result, the
+    # URIDownloader physical operator is responsible for outputting appropriately sized blocks.
     partition_map_operator = None
     if not upstream_op_is_download:
         # PartitionActor is a callable class, so we need ActorPoolStrategy
@@ -111,14 +112,13 @@ def uri_to_path(uri: str) -> str:
     return parsed.netloc + parsed.path
 
 
-def _arrow_batcher(table: pa.Table, n: int):
+def _arrow_batcher(table: pa.Table, output_batch_size: int):
     """Batch a PyArrow table into smaller tables of size n using zero-copy slicing."""
     num_rows = table.num_rows
-    for i in range(0, num_rows, n):
-        end_idx = min(i + n, num_rows)
+    for i in range(0, num_rows, output_batch_size):
+        end_idx = min(i + output_batch_size, num_rows)
         # Use PyArrow's zero-copy slice operation
         batch_table = table.slice(i, end_idx - i)
-        print(f"Yielding batch with len(batch): {batch_table.num_rows}")
         yield batch_table
 
 
