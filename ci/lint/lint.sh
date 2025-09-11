@@ -49,9 +49,6 @@ pre_commit_pydoclint() {
   # Run pre-commit pydoclint on all files
   pip install -c python/requirements_compiled.txt pre-commit clang-format
   pre-commit run pydoclint --hook-stage manual --all-files --show-diff-on-failure
-}
-
-pydoclint_check() {
   git diff --quiet -- ci/lint/pydoclint-baseline.txt || {
   echo "Baseline needs update. Run the CI-style hook: \"pre-commit run pydoclint --hook-stage manual --all-files --show-diff-on-failure\" locally and commit the baseline."
   exit 1
