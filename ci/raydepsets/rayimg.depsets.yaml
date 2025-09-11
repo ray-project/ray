@@ -19,7 +19,7 @@ depsets:
       - ray[all]==100.0.0-dev
     constraints:
       - python/requirements_compiled.txt
-    output: python/lock_files/ray_img/py${PYTHON_SHORT}.lock
+    output: python/deplocks/ray_img/ray_py${PYTHON_SHORT}.lock
     operation: compile
     append_flags:
       - --python-version=${PYTHON_VERSION}
