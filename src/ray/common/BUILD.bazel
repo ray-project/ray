@@ -17,6 +17,7 @@ ray_cc_library(
     deps = [
         ":asio",
         ":id",
+        ":placement_group",
         ":ray_object",
         ":task_common",
         "//src/ray/protobuf:autoscaler_cc_grpc",
@@ -150,53 +151,94 @@ ray_cc_library(
     ],
 )
 
-# TODO(#55922): split out the scheduling dependencies into a separate bazel target
-# and have lease and task bazel targets depend on this
+ray_cc_library(
+    name = "bundle_spec",
+    srcs = [
+        "bundle_spec.cc",
+    ],
+    hdrs = [
+        "bundle_spec.h",
+    ],
+    deps = [
+        ":grpc_util",
+        ":id",
+        "//src/ray/common/scheduling:cluster_resource_data",
+        "//src/ray/common/scheduling:label_selector",
+        "//src/ray/common/scheduling:placement_group_util",
+        "//src/ray/common/scheduling:scheduling_ids",
+        "//src/ray/protobuf:common_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_protobuf//:protobuf",
+    ],
+)
+
+ray_cc_library(
+    name = "placement_group",
+    srcs = [
+        "placement_group.cc",
+    ],
+    hdrs = [
+        "placement_group.h",
+    ],
+    deps = [
+        ":bundle_spec",
+        ":id",
+        "//src/ray/protobuf:common_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_protobuf//:protobuf",
+    ],
+)
+
+ray_cc_library(
+    name = "function_descriptor",
+    srcs = ["function_descriptor.cc"],
+    hdrs = ["function_descriptor.h"],
+    deps = [
+        ":grpc_util",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/util:logging",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+ray_cc_library(
+    name = "bundle_location_index",
+    srcs = ["bundle_location_index.cc"],
+    hdrs = ["bundle_location_index.h"],
+    deps = [
+        ":id",
+        ":placement_group",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
 
 ray_cc_library(
     name = "task_common",
     srcs = [
-        "bundle_location_index.cc",
-        "bundle_spec.cc",
-        "function_descriptor.cc",
-        "placement_group.cc",
-        "scheduling/cluster_resource_data.cc",
-        "scheduling/fixed_point.cc",
-        "scheduling/label_selector.cc",
-        "scheduling/resource_instance_set.cc",
-        "scheduling/resource_set.cc",
-        "scheduling/scheduling_ids.cc",
         "task/task_spec.cc",
     ],
     hdrs = [
-        "bundle_location_index.h",
-        "bundle_spec.h",
-        "function_descriptor.h",
-        "placement_group.h",
-        "scheduling/cluster_resource_data.h",
-        "scheduling/fixed_point.h",
-        "scheduling/label_selector.h",
-        "scheduling/resource_instance_set.h",
-        "scheduling/resource_set.h",
-        "scheduling/scheduling_ids.h",
         "task/task_common.h",
         "task/task_spec.h",
         "task/task_util.h",
     ],
     deps = [
         ":event_stats",
+        ":function_descriptor",
         ":grpc_util",
-        ":id",
         ":ray_config",
         ":ray_object",
         ":runtime_env",
+        "//src/ray/common/scheduling:label_selector",
+        "//src/ray/common/scheduling:resource_set",
+        "//src/ray/common/scheduling:scheduling_class_util",
         "//src/ray/flatbuffers:node_manager_generated",
         "//src/ray/util:container_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -210,8 +252,12 @@ ray_cc_library(
         "lease/lease_spec.h",
     ],
     deps = [
+        ":function_descriptor",
         ":id",
-        ":task_common",
+        ":runtime_env",
+        "//src/ray/common/scheduling:label_selector",
+        "//src/ray/common/scheduling:resource_set",
+        "//src/ray/common/scheduling:scheduling_class_util",
         "//src/ray/protobuf:common_cc_proto",
     ],
 )

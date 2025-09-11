@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "ray/common/ray_config.h"
 
 namespace ray {
 
@@ -27,7 +28,7 @@ TEST_F(SchedulingIDsTest, BasicTest) {
   std::vector<std::string> string_ids = {"hello", "whaaat", "yes"};
   std::vector<scheduling::NodeID> node_ids;
   for (auto &string_id : string_ids) {
-    node_ids.emplace_back(scheduling::NodeID(string_id));
+    node_ids.emplace_back(string_id);
     ASSERT_EQ(node_ids.back().Binary(), string_id);
   }
   ASSERT_EQ(node_ids[0], scheduling::NodeID(string_ids[0]));
