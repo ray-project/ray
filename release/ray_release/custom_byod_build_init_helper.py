@@ -4,21 +4,18 @@ import yaml
 from ray_release.configs.global_config import get_global_config
 from ray_release.logger import logger
 from ray_release.test import Test
+import hashlib
 
 
 def generate_custom_build_step_key(image: str) -> str:
-    # Buildkite step key cannot contain special characters, so they need to be replaced.
-    # Buildkite also limits step key length to 80 characters.
-    image_name = (
-        image.replace("/", "_").replace(":", "_").replace(".", "_").replace("-", "_")
-    )
-    return "custom_build_" + image_name[:30] + image_name[-30:]
+    return hashlib.sha256(image.encode()).hexdigest()[:20]
 
 
-def get_images_from_tests(tests: List[Test]) -> List[Tuple[str, str, str]]:
+def get_images_from_tests(
+    tests: List[Test], build_id: str
+) -> List[Tuple[str, str, str]]:
     """Get a list of custom BYOD images to build from a list of tests."""
     custom_byod_images = set()
-    build_id = os.environ.get("RAYCI_BUILD_ID", "") or "$$RAYCI_BUILD_ID"
     for test in tests:
         if not test.require_custom_byod_image():
             continue
@@ -38,7 +35,7 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
     config = get_global_config()
     if not config or not config.get("byod_ecr_region") or not config.get("byod_ecr"):
         raise ValueError("byod_ecr_region and byod_ecr must be set in the config")
-    custom_byod_images = get_images_from_tests(tests)
+    custom_byod_images = get_images_from_tests(tests, "$$RAYCI_BUILD_ID")
     if not custom_byod_images:
         return
     build_config = {"group": "Custom images build", "steps": []}

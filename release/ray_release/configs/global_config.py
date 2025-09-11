@@ -21,9 +21,9 @@ class GlobalConfig(TypedDict):
     ci_pipeline_premerge: List[str]
     ci_pipeline_postmerge: List[str]
     ci_pipeline_buildkite_secret: str
-    image_build_step: str
-    image_build_step_ml: str
-    image_build_step_llm: str
+    release_image_step_ray: str
+    release_image_step_ray_ml: str
+    release_image_step_ray_llm: str
 
 
 config = None
@@ -109,12 +109,12 @@ def _init_global_config(config_file: str):
             "buildkite_secret"
         ),
         kuberay_disabled=config_content.get("kuberay", {}).get("disabled", 0) == 1,
-        image_build_step=config_content.get("release_byod", {}).get("image_build_step"),
-        image_build_step_ml=config_content.get("release_byod", {}).get(
-            "image_build_step_ml"
+        release_image_step_ray=config_content.get("release_image_step", {}).get("ray"),
+        release_image_step_ray_ml=config_content.get("release_image_step", {}).get(
+            "ray_ml"
         ),
-        image_build_step_llm=config_content.get("release_byod", {}).get(
-            "image_build_step_llm"
+        release_image_step_ray_llm=config_content.get("release_image_step", {}).get(
+            "ray_llm"
         ),
     )
     # setup GCP workload identity federation
