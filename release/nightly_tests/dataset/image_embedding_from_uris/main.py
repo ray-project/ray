@@ -46,6 +46,13 @@ INFERENCE_LATENCY_PER_IMAGE_S = 0.0094
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        "--inference-concurrency",
+        nargs=2,
+        type=int,
+        required=True,
+        help="The minimum and maximum concurrency for the inference operator.",
+    )
+    parser.add_argument(
         "--sf",
         dest="scale_factor",
         type=int,
@@ -54,13 +61,6 @@ def parse_args() -> argparse.Namespace:
             "The number of copies of the dataset to read. Use this to simulate a larger "
             "dataset."
         ),
-    )
-    parser.add_argument(
-        "--inference-concurrency",
-        dest="inference_concurrency",
-        type=int,
-        default=100,
-        help="The number of inference workers to use.",
     )
     parser.add_argument(
         "--chaos",
