@@ -370,8 +370,8 @@ class TestTaskConsumerWithRayServe:
         )
         metrics = adapter_instance.get_metrics_sync()
 
-        assert len(metrics) > 0
-        worker_name = list(metrics.keys())[0]
+        assert len(metrics) == 1
+        worker_name = next(iter(metrics))
         worker_stats = metrics[worker_name]
 
         # Check that the total number of processed tasks is correct.
@@ -407,8 +407,10 @@ class TestTaskConsumerWithRayServe:
         health_status = adapter_instance.health_check_sync()
         assert len(health_status) == 1
 
-        worker_name = list(health_status[0].keys())[0]
-        assert health_status[0][worker_name] == {"ok": "pong"}
+        worker_reply = health_status[0]
+        assert len(worker_reply) == 1
+        worker_name = next(iter(worker_reply))
+        assert worker_reply[worker_name] == {"ok": "pong"}
 
     def test_task_processor_with_cancel_tasks(
         self, external_redis, serve_instance  # noqa: F811
