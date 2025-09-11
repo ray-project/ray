@@ -510,7 +510,7 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
         Cancels a task synchronously. Only supported for Redis and RabbitMQ brokers by Celery.
         More details can be found here: https://docs.celeryq.dev/en/stable/userguide/workers.html#revoke-revoking-tasks
         """
-        return self._app.control.revoke(task_id, terminate=True)
+        return self._app.control.revoke(task_id)
 
     def get_metrics_sync(self) -> Dict[str, Any]:
         """

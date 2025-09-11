@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 import tempfile
 from collections import defaultdict
@@ -407,6 +408,63 @@ class TestTaskConsumerWithRayServe:
 
         worker_name = list(health_status[0].keys())[0]
         assert health_status[0][worker_name] == {"ok": "pong"}
+
+    def test_task_processor_with_cancel_tasks(serve_instance, external_redis):
+        """Test the cancel task functionality with celery broker."""
+        redis_address = os.environ.get("RAY_REDIS_ADDRESS")
+
+        processor_config = TaskProcessorConfig(
+            queue_name="my_app_queue",
+            adapter_config=CeleryAdapterConfig(
+                broker_url=f"redis://{redis_address}/0",
+                backend_url=f"redis://{redis_address}/1",
+                worker_concurrency=1,
+            ),
+        )
+
+        signal = SignalActor.remote()
+
+        @serve.deployment
+        @task_consumer(task_processor_config=processor_config)
+        class MyTaskConsumer:
+            def __init__(self, signal_actor):
+                self._signal = signal_actor
+                self.message_received = []
+
+            @task_handler(name="process")
+            def process(self, data):
+                ray.get(self._signal.wait.remote())
+                self.message_received.append(data)
+
+            def get_message_received(self):
+                return self.message_received
+
+        handle = serve.run(MyTaskConsumer.bind(signal), name="app_v1")
+
+        task_ids = []
+        for i in range(2):
+            task_id_ref = send_request_to_queue.remote(
+                processor_config, f"test_data_{i}", task_name="process"
+            )
+            task_ids.append(ray.get(task_id_ref))
+
+        adapter_instance = instantiate_adapter_from_config(
+            task_processor_config=processor_config
+        )
+        adapter_instance.cancel_task_sync(task_ids[1])
+
+        ray.get(signal.send.remote())
+
+        def check_revoked():
+            status = adapter_instance.get_task_status_sync(task_ids[1])
+            return status.status == "REVOKED"
+
+        wait_for_condition(check_revoked, timeout=20)
+
+        assert "test_data_0" in handle.get_message_received.remote().result()
+        assert "test_data_1" not in handle.get_message_received.remote().result()
+
+        serve.delete("app_v1")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
