@@ -375,7 +375,6 @@ class ServeControllerClient:
                     cur_status = StatusOverview.from_proto(
                         StatusOverviewProto.FromString(cur_status_bytes)
                     )
-                    logger.info(f"@@@@@@@@@ delete_apps::Application {cur_status.name} status: {cur_status.app_status.status}")
                     if cur_status.app_status.status != ApplicationStatus.NOT_STARTED:
                         all_deleted = False
                 if all_deleted:

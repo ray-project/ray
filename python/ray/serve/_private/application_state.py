@@ -412,22 +412,6 @@ class ApplicationState:
                 f"Deleting app '{self._name}'.",
                 extra={"log_to_stderr": False},
             )
-        # If there is an in-progress build task, cancel it to prevent it from
-        # racing with deletion and re-applying a new target state.
-        if self._build_app_task_info and not self._build_app_task_info.finished:
-            try:
-                logger.info(
-                    f"Cancelling in-progress build for app '{self._name}' due to deletion.",
-                    extra={"log_to_stderr": False},
-                )
-                ray.cancel(self._build_app_task_info.obj_ref)
-            except Exception:
-                # Best-effort cancellation; if it fails, the update loop will
-                # still ignore build results while deleting.
-                logger.debug(
-                    f"Failed to cancel build task for app '{self._name}' during deletion.",
-                    exc_info=True,
-                )
         self._set_target_state_deleting()
 
     def is_deleted(self) -> bool:
