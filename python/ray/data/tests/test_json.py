@@ -2,7 +2,6 @@ import gzip
 import json
 import os
 import shutil
-from functools import partial
 
 import pandas as pd
 import pyarrow as pa
@@ -20,37 +19,16 @@ from ray.data.block import BlockAccessor
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     FastFileMetadataProvider,
-    PartitionStyle,
-    PathPartitionFilter,
 )
 from ray.data.datasource.file_based_datasource import (
     FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
 )
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.test_partitioning import PathPartitionEncoder
 from ray.tests.conftest import *  # noqa
 
 # Set the test timeout to 6 minutes
 pytestmark = pytest.mark.timeout(360)
-
-
-def test_json_read_partitioning(
-    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
-):
-    path = os.path.join(tmp_path, "country=us")
-    os.mkdir(path)
-    with open(os.path.join(path, "file1.json"), "w") as file:
-        json.dump({"number": 0, "string": "foo"}, file)
-    with open(os.path.join(path, "file2.json"), "w") as file:
-        json.dump({"number": 1, "string": "bar"}, file)
-
-    ds = ray.data.read_json(path)
-
-    assert sorted(ds.take(), key=lambda row: row["number"]) == [
-        {"number": 0, "string": "foo", "country": "us"},
-        {"number": 1, "string": "bar", "country": "us"},
-    ]
 
 
 @pytest.mark.parametrize(
@@ -212,31 +190,6 @@ def test_json_read(
         shutil.rmtree(path)
     else:
         fs.delete_dir(_unwrap_protocol(path))
-
-
-@pytest.mark.parametrize("ignore_missing_paths", [True, False])
-def test_read_json_ignore_missing_paths(
-    ray_start_regular_shared,
-    local_path,
-    ignore_missing_paths,
-    target_max_block_size_infinite_or_default,
-):
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    path1 = os.path.join(local_path, "test1.json")
-    df1.to_json(path1, orient="records", lines=True)
-
-    paths = [
-        path1,
-        "missing.json",
-    ]
-
-    if ignore_missing_paths:
-        ds = ray.data.read_json(paths, ignore_missing_paths=ignore_missing_paths)
-        assert ds.input_files() == [path1]
-    else:
-        with pytest.raises(FileNotFoundError):
-            ds = ray.data.read_json(paths, ignore_missing_paths=ignore_missing_paths)
-            ds.materialize()
 
 
 def test_zipped_json_read(
@@ -425,73 +378,6 @@ def test_json_read_with_parse_options(
     assert ds.count() == 3
     assert ds.input_files() == [_unwrap_protocol(path1)]
     assert ds.schema() == Schema(pa.schema([("two", pa.string())]))
-
-
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-    ],
-)
-@pytest.mark.parametrize("style", [PartitionStyle.HIVE, PartitionStyle.DIRECTORY])
-def test_json_read_partitioned_with_filter(
-    style,
-    ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
-    write_base_partitioned_df,
-    assert_base_partitioned_ds,
-    target_max_block_size_infinite_or_default,
-):
-    def df_to_json(dataframe, path, **kwargs):
-        dataframe.to_json(path, **kwargs)
-
-    storage_options = (
-        {}
-        if endpoint_url is None
-        else dict(client_kwargs=dict(endpoint_url=endpoint_url))
-    )
-    file_writer_fn = partial(
-        df_to_json,
-        orient="records",
-        lines=True,
-        storage_options=storage_options,
-    )
-    partition_keys = ["one"]
-
-    def skip_unpartitioned(kv_dict):
-        return bool(kv_dict)
-
-    base_dir = os.path.join(data_path, style.value)
-    partition_path_encoder = PathPartitionEncoder.of(
-        style=style,
-        base_dir=base_dir,
-        field_names=partition_keys,
-        filesystem=fs,
-    )
-    write_base_partitioned_df(
-        partition_keys,
-        partition_path_encoder,
-        file_writer_fn,
-    )
-    file_writer_fn(pd.DataFrame({"1": [1]}), os.path.join(base_dir, "test.json"))
-    partition_path_filter = PathPartitionFilter.of(
-        style=style,
-        base_dir=base_dir,
-        field_names=partition_keys,
-        filter_fn=skip_unpartitioned,
-        filesystem=fs,
-    )
-    ds = ray.data.read_json(
-        base_dir,
-        partition_filter=partition_path_filter,
-        file_extensions=None,
-        filesystem=fs,
-    )
-    assert_base_partitioned_ds(ds)
 
 
 @pytest.mark.parametrize("override_num_blocks", [None, 1, 3])

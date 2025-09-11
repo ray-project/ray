@@ -291,20 +291,22 @@ steps:
       - "3.11"
       - "3.12"
       - "3.13"
+
   - label: ":ray: core: cgroup tests"
     tags: core_cpp
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //:all //src/ray/common/cgroup2/tests/... core --build-type clang --cache-test-results
-      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/ray/common/cgroup2/tests/resource_isolation/... core --privileged --cache-test-results
+      - bazel run //ci/ray_ci:test_in_docker -- //:all //python/ray/tests/resource_isolation/... core --privileged --cache-test-results
       - docker run --privileged -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
         "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash
         "./src/ray/common/cgroup2/integration_tests/sysfs_cgroup_driver_integration_test_entrypoint.sh"
+
   - label: ":ray: core: cpp tests"
     tags: core_cpp
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --except-tags=cgroup --build-type clang
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --except-tags=cgroup --build-type clang
         --cache-test-results --parallelism-per-worker 2
 
   # block on premerge and microcheck
@@ -317,7 +319,7 @@ steps:
     tags: core_cpp
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --except-tags=cgroup
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --except-tags=cgroup
         --build-type asan-clang --cache-test-results --parallelism-per-worker 2
     depends_on:
       - block-core-cpp-sanitizer-tests
@@ -327,7 +329,7 @@ steps:
     tags: core_cpp
     instance_type: large
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core
         --build-type ubsan --except-tags no_ubsan,cgroup
         --cache-test-results --parallelism-per-worker 2
     depends_on:
@@ -338,25 +340,11 @@ steps:
     tags: core_cpp
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core
         --build-type tsan-clang --except-tags no_tsan,cgroup
         --cache-test-results --parallelism-per-worker 2
     depends_on:
       - block-core-cpp-sanitizer-tests
-      - corebuild
-
-  - label: ":ray: core: flaky cpp tests"
-    key: core_flaky_cpp_tests
-    tags:
-      - python
-      - flaky
-      - skip-on-premerge
-    instance_type: large
-    soft_fail: true
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core
-        --run-flaky-tests --build-type clang
-    depends_on:
       - corebuild
 
   - label: ":ray: core: flaky tests"

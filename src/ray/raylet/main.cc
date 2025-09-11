@@ -32,6 +32,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
+#include "ray/core_worker/metrics.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/object_manager/ownership_object_directory.h"
 #include "ray/raylet/local_object_manager.h"
@@ -268,12 +269,6 @@ int main(int argc, char *argv[]) {
         << "Failed to start up raylet. If enable_resource_isolation is set to true, "
            "system_reserved_memory_byres must be set to a value > 0";
 
-#ifndef __linux__
-    RAY_LOG(WARNING)
-        << "Resource isolation with cgroups is only supported in linux. Please set "
-           "enable_resource_isolation to false. This is likely a misconfiguration.";
-#endif
-
     std::unique_ptr<ray::SysFsCgroupDriver> cgroup_driver =
         std::make_unique<ray::SysFsCgroupDriver>();
     ray::StatusOr<std::unique_ptr<ray::CgroupManager>> cgroup_manager_s =
@@ -289,6 +284,12 @@ int main(int argc, char *argv[]) {
         << cgroup_manager_s.ToString();
 
     cgroup_manager = std::move(cgroup_manager_s.value());
+
+#ifndef __linux__
+    RAY_LOG(WARNING)
+        << "Resource isolation with cgroups is only supported in linux. Please set "
+           "enable_resource_isolation to false. This is likely a misconfiguration.";
+#endif
   }
 
   // Configuration for the node manager.
