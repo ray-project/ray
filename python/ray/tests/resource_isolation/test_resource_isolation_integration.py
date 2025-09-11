@@ -5,22 +5,31 @@ import pytest
 from click.testing import CliRunner
 
 import ray
+import ray._private.ray_constants as ray_constants
 import ray._private.utils as utils
 import ray.scripts.scripts as scripts
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 
-
 # These tests is intended to run in CI inside a container.
 # If you want to run this test locally, you will need to create a cgroup that
 # the raylet can manage and delegate to the correct user.
+#
+# Run these commands locally before running the test suite:
 #  sudo mkdir -p /sys/fs/cgroup/resource_isolation_test
 #  sudo chown -R $(whoami):$(whoami) /sys/fs/cgroup/resource_isolation_test/
 #  sudo chmod -R u+rwx /sys/fs/cgroup/resource_isolation_test/
 #  echo $$ | sudo tee /sys/fs/cgroup/resource_isolation_test/cgroup.procs
+#
+# Uncomment the following line.
+# _BASE_CGROUP_PATH = "/sys/fs/cgroup/resource_isolation_test"
+#
+# Comment the following line out.
+_BASE_CGROUP_PATH = "/sys/fs/cgroup"
+
+
 def test_resource_isolation_enabled_creates_cgroup_hierarchy(ray_start_cluster):
     cluster = ray_start_cluster
-    # change this to /sys/fs/cgroup/resource_isolation_test if running locally.
-    base_cgroup = "/sys/fs/cgroup"
+    base_cgroup = _BASE_CGROUP_PATH
     resource_isolation_config = ResourceIsolationConfig(
         enable_resource_isolation=True,
         cgroup_path=base_cgroup,
@@ -79,13 +88,14 @@ def test_resource_isolation_enabled_creates_cgroup_hierarchy(ray_start_cluster):
     assert not node_cgroup.is_dir()
 
 
-# Test that resource isolation can be enabled from cli
+# The following tests will test integration of resource isolation
+# with the 'ray start' command.
 @pytest.fixture
 def cleanup_ray():
     """Shutdown all ray instances"""
     yield
     runner = CliRunner()
-    runner.invoke(scripts.stop, ["--force"])
+    runner.invoke(scripts.stop)
     ray.shutdown()
 
 
@@ -101,9 +111,8 @@ def test_ray_start_invalid_resource_isolation_config(cleanup_ray):
 
 def test_ray_start_resource_isolation_config_default_values(monkeypatch, cleanup_ray):
     monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: 16)
-    # Uncomment this line to run this test locally. The default cgroup for ray is
-    # /sys/fs/cgroup (defined as ray.constrants.DEFAULT_CGROUP_PATH).
-    # monkeypatch.setattr(ray_constants, "DEFAULT_CGROUP_PATH", "/sys/fs/cgroup/resource_isolation_test")
+    # The DEFAULT_CGROUP_PATH override is only relevant when running locally.
+    monkeypatch.setattr(ray_constants, "DEFAULT_CGROUP_PATH", _BASE_CGROUP_PATH)
 
     runner = CliRunner()
     result = runner.invoke(
@@ -115,7 +124,8 @@ def test_ray_start_resource_isolation_config_default_values(monkeypatch, cleanup
     assert result.exit_code == 0
 
 
-# Test that resource isolation can be enabled from ray.init
+# The following tests will test integration of resource isolation
+# with the ray.init() function.
 @pytest.fixture
 def ray_shutdown():
     yield
@@ -132,9 +142,8 @@ def test_ray_init_resource_isolation_disabled_by_default(ray_shutdown):
 def test_ray_init_with_resource_isolation_default_values(monkeypatch, ray_shutdown):
     total_system_cpu = 10
     monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: total_system_cpu)
-    # Uncomment this line to run this test locally. The default cgroup for ray is
-    # /sys/fs/cgroup (defined as ray.constrants.DEFAULT_CGROUP_PATH).
-    # monkeypatch.setattr(ray_constants, "DEFAULT_CGROUP_PATH", "/sys/fs/cgroup/resource_isolation_test")
+    # The DEFAULT_CGROUP_PATH override is only relevant when running locally.
+    monkeypatch.setattr(ray_constants, "DEFAULT_CGROUP_PATH", _BASE_CGROUP_PATH)
     ray.init(address="local", enable_resource_isolation=True)
     node = ray._private.worker._global_node
     assert node is not None
@@ -142,7 +151,7 @@ def test_ray_init_with_resource_isolation_default_values(monkeypatch, ray_shutdo
 
 
 def test_ray_init_with_resource_isolation_override_defaults(monkeypatch, ray_shutdown):
-    cgroup_path = "/sys/fs/cgroup"
+    cgroup_path = _BASE_CGROUP_PATH
     system_reserved_cpu = 1
     system_reserved_memory = 1 * 10**9
     total_system_cpu = 10

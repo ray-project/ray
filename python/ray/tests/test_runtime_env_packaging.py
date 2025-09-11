@@ -676,6 +676,99 @@ class TestAbfssProtocol:
                     Protocol.ABFSS.download_remote_uri(invalid_uri, str(dest_file))
 
 
+class TestS3Protocol:
+    """Test S3 protocol implementation with public bucket fallback."""
+
+    def test_s3_client_creation_with_credentials(self):
+        """Test S3 client creation when credentials are available."""
+        import sys
+        import unittest.mock as mock
+
+        # Mock boto3 and smart_open modules
+        mock_boto3 = mock.MagicMock()
+        mock_smart_open = mock.MagicMock()
+
+        # Setup successful credential scenario
+        mock_session = mock.MagicMock()
+        mock_s3_client = mock.MagicMock()
+        mock_credentials = mock.MagicMock()  # Non-None credentials
+
+        mock_boto3.Session.return_value = mock_session
+        mock_session.get_credentials.return_value = mock_credentials
+        mock_session.client.return_value = mock_s3_client
+
+        with mock.patch.dict(
+            sys.modules,
+            {
+                "boto3": mock_boto3,
+                "smart_open": mock_smart_open,
+            },
+        ):
+            mock_smart_open.open = mock.MagicMock()
+
+            from ray._private.runtime_env.protocol import ProtocolsProvider
+
+            open_file, transport_params = ProtocolsProvider._handle_s3_protocol()
+
+            # Verify that Session was created and get_credentials was called
+            mock_boto3.Session.assert_called_once()
+            mock_session.get_credentials.assert_called_once()
+            # Verify that session.client was called to create signed S3 client
+            mock_session.client.assert_called_with("s3")
+            # Verify that the signed client is returned
+            assert transport_params["client"] == mock_s3_client
+
+    def test_s3_client_creation_without_credentials(self):
+        """Test S3 client creation falls back to unsigned when no credentials."""
+        import sys
+        import unittest.mock as mock
+
+        # Mock boto3 and botocore modules
+        mock_boto3 = mock.MagicMock()
+        mock_botocore = mock.MagicMock()
+        mock_smart_open = mock.MagicMock()
+
+        # Setup no credentials scenario
+        mock_session = mock.MagicMock()
+        mock_unsigned_client = mock.MagicMock()
+
+        mock_boto3.Session.return_value = mock_session
+        mock_session.get_credentials.return_value = None  # No credentials found
+        mock_boto3.client.return_value = mock_unsigned_client
+
+        # Mock Config and UNSIGNED
+        mock_config_class = mock.MagicMock()
+        mock_config = mock.MagicMock()
+        mock_config_class.return_value = mock_config
+        mock_botocore.config.Config = mock_config_class
+        mock_botocore.UNSIGNED = "UNSIGNED"
+
+        with mock.patch.dict(
+            sys.modules,
+            {
+                "boto3": mock_boto3,
+                "botocore": mock_botocore,
+                "botocore.config": mock_botocore.config,
+                "smart_open": mock_smart_open,
+            },
+        ):
+            mock_smart_open.open = mock.MagicMock()
+
+            from ray._private.runtime_env.protocol import ProtocolsProvider
+
+            open_file, transport_params = ProtocolsProvider._handle_s3_protocol()
+
+            # Verify that Session was created and get_credentials was called
+            mock_boto3.Session.assert_called_once()
+            mock_session.get_credentials.assert_called_once()
+            # Verify that boto3.client was called for unsigned client with config
+            mock_boto3.client.assert_called_with("s3", config=mock_config)
+            # Verify Config was created with UNSIGNED signature
+            mock_config_class.assert_called_with(signature_version="UNSIGNED")
+            # Verify that the unsigned client is returned
+            assert transport_params["client"] == mock_unsigned_client
+
+
 @pytest.mark.asyncio
 class TestDownloadAndUnpackPackage:
     async def test_download_and_unpack_package_with_gcs_uri_without_gcs_client(
