@@ -558,7 +558,7 @@ class ServeApplicationSchema(BaseModel):
     )
 
     autoscaling_policy: Optional[AutoscalingPolicy] = Field(
-        default=DEFAULT.VALUE,
+        default=None,
         description=(
             "Cross deployment autoscaling policy "
             "name of the custom autoscaling policy for the application. "
