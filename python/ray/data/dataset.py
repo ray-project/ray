@@ -1737,6 +1737,9 @@ class Dataset:
         *,
         seed: Optional[int] = None,
         num_blocks: Optional[int] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Randomly shuffle the rows of this :class:`Dataset`.
@@ -1760,6 +1763,11 @@ class Dataset:
         Args:
             seed: Fix the random seed to use, otherwise one is chosen
                 based on system randomness.
+            num_cpus: The number of CPUs to reserve for each parallel shuffle worker.
+            num_gpus: The number of GPUs to reserve for each parallel shuffle worker. For
+                example, specify `num_gpus=1` to request 1 GPU for each parallel shuffle
+                worker.
+            memory: The heap memory in bytes to reserve for each parallel shuffle worker.
 
         Returns:
             The shuffled :class:`Dataset`.
@@ -1772,6 +1780,12 @@ class Dataset:
                 "repartition() instead.",  # noqa: E501
             )
         plan = self._plan.copy()
+        ray_remote_args = merge_resources_to_ray_remote_args(
+            num_cpus,
+            num_gpus,
+            memory,
+            ray_remote_args,
+        )
         op = RandomShuffle(
             self._logical_plan.dag,
             seed=seed,
