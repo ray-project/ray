@@ -14,9 +14,6 @@ from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.exceptions import RayTaskError
-from ray.serve._private.common import DeploymentID
-from ray.serve.exceptions import DeploymentIsBeingDeletedError
-from ray.serve.schema import ScaleDeploymentRequest
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -182,6 +179,10 @@ class ServeHead(SubprocessModule):
     @dashboard_optional_utils.init_ray_and_catch_exceptions()
     @validate_endpoint()
     async def scale_deployment(self, req: Request) -> Response:
+        from ray.serve._private.common import DeploymentID
+        from ray.serve.exceptions import DeploymentIsBeingDeletedError
+        from ray.serve.schema import ScaleDeploymentRequest
+
         # Extract path parameters
         application_name = req.match_info.get("application_name")
         deployment_name = req.match_info.get("deployment_name")
