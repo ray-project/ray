@@ -599,25 +599,24 @@ void GcsNodeManager::UpdateAliveNode(
     return;
   }
 
-  auto snapshot = maybe_node_info.value()->state_snapshot();
+  auto new_node_info = *maybe_node_info.value();
+  auto snapshot = new_node_info.mutable_state_snapshot();
 
   if (resource_view_sync_message.idle_duration_ms() > 0) {
-    snapshot.set_state(rpc::NodeSnapshot::IDLE);
-    snapshot.set_idle_duration_ms(resource_view_sync_message.idle_duration_ms());
+    snapshot->set_state(rpc::NodeSnapshot::IDLE);
+    snapshot->set_idle_duration_ms(resource_view_sync_message.idle_duration_ms());
   } else {
-    snapshot.set_state(rpc::NodeSnapshot::ACTIVE);
-    snapshot.mutable_node_activity()->CopyFrom(
+    snapshot->set_state(rpc::NodeSnapshot::ACTIVE);
+    snapshot->mutable_node_activity()->CopyFrom(
         resource_view_sync_message.node_activity());
   }
   if (resource_view_sync_message.is_draining()) {
-    snapshot.set_state(rpc::NodeSnapshot::DRAINING);
+    snapshot->set_state(rpc::NodeSnapshot::DRAINING);
   }
 
   // N.B. For thread safety, all updates to alive_nodes_ need to follow a
   // read/modify/write sort of pattern.  This is because the underlying map contains const
   // variables
-  auto new_node_info = *maybe_node_info.value();
-  *new_node_info.mutable_state_snapshot() = std::move(snapshot);
   alive_nodes_[node_id] =
       std::make_shared<const rpc::GcsNodeInfo>(std::move(new_node_info));
 }
