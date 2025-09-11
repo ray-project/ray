@@ -8,7 +8,7 @@ tensorflow-datasets; python_version < '3.12'
 --extra-index-url https://download.pytorch.org/whl/cu121  # for GPU versions of torch, torchvision
 --find-links https://data.pyg.org/whl/torch-2.3.0+cu121.html  # for GPU versions of torch-scatter, torch-sparse, torch-cluster, torch-spline-conv
 # specifying explicit plus-notation below so pip overwrites the existing cpu verisons
-torch==2.3.0+cu121
+torch==2.8.0+cpu
 torchvision==0.18.0+cu121
 torch-scatter==2.1.2+pt23cu121
 torch-sparse==0.6.18+pt23cu121
