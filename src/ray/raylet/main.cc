@@ -613,7 +613,7 @@ int main(int argc, char *argv[]) {
           node_manager->MarkObjectsAsFailed(error_type, {ref}, ray::JobID::Nil());
         });
 
-    auto object_store_runner = std::make_shared<ray::ObjectStoreRunner>(
+    auto object_store_runner = std::make_unique<ray::ObjectStoreRunner>(
         object_manager_config,
         /*spill_objects_callback=*/
         [&]() {
@@ -695,7 +695,7 @@ int main(int argc, char *argv[]) {
           node_manager->MarkObjectsAsFailed(error_type, {ref}, ray::JobID::Nil());
         },
         std::make_shared<plasma::PlasmaClient>(),
-        object_store_runner,
+        std::move(object_store_runner),
         [&](const std::string &address,
             const int port,
             ray::rpc::ClientCallManager &call_manager) {

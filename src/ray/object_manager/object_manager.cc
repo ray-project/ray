@@ -69,7 +69,7 @@ ObjectManager::ObjectManager(
     std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
     std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request,
     const std::shared_ptr<plasma::PlasmaClientInterface> &buffer_pool_store_client,
-    const std::shared_ptr<ObjectStoreRunner> &object_store_internal,
+    std::unique_ptr<ObjectStoreRunner> object_store_internal,
     std::function<std::shared_ptr<rpc::ObjectManagerClientInterface>(
         const std::string &address,
         const int port,
@@ -80,7 +80,7 @@ ObjectManager::ObjectManager(
       config_(config),
       gcs_client_(gcs_client),
       object_directory_(object_directory),
-      object_store_internal_(object_store_internal),
+      object_store_internal_(std::move(object_store_internal)),
       buffer_pool_store_client_(buffer_pool_store_client),
       buffer_pool_(buffer_pool_store_client_, config_.object_chunk_size),
       rpc_service_(rpc_service),

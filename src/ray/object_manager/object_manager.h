@@ -109,7 +109,7 @@ class ObjectManagerInterface {
   virtual bool PullManagerHasPullsQueued() const = 0;
   virtual int64_t GetMemoryCapacity() const = 0;
   virtual std::string DebugString() const = 0;
-  virtual void FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const = 0;
+  virtual void FillObjectStoreStats(rpc::GetNodeStatsReply *repOly) const = 0;
   virtual double GetUsedMemoryPercentage() const = 0;
   virtual void Stop() = 0;
   virtual void RecordMetrics() = 0;
@@ -185,7 +185,7 @@ class ObjectManager : public ObjectManagerInterface,
       std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
       std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request,
       const std::shared_ptr<plasma::PlasmaClientInterface> &buffer_pool_store_client,
-      const std::shared_ptr<ObjectStoreRunner> &object_store_internal,
+      std::unique_ptr<ObjectStoreRunner> object_store_internal,
       std::function<std::shared_ptr<rpc::ObjectManagerClientInterface>(
           const std::string &address,
           const int port,
@@ -420,7 +420,7 @@ class ObjectManager : public ObjectManagerInterface,
   IObjectDirectory *object_directory_;
 
   /// Object store runner.
-  std::shared_ptr<ObjectStoreRunner> object_store_internal_;
+  std::unique_ptr<ObjectStoreRunner> object_store_internal_;
 
   /// Used by the buffer pool to read and write objects in the local store
   /// during object transfers.
