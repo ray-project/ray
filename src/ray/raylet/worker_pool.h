@@ -304,7 +304,6 @@ class WorkerPool : public WorkerPoolInterface {
   /// \param ray_debugger_external Ray debugger in workers will be started in a way
   /// that they are accessible from outside the node.
   /// \param get_time A callback to get the current time in milliseconds.
-  /// \param enable_resource_isolation If true, core worker enables resource isolation by
   /// adding itself into appropriate cgroup.
   WorkerPool(instrumented_io_context &io_service,
              const NodeID &node_id,
@@ -320,8 +319,7 @@ class WorkerPool : public WorkerPoolInterface {
              std::string native_library_path,
              std::function<void()> starting_worker_timeout_callback,
              int ray_debugger_external,
-             std::function<absl::Time()> get_time,
-             bool enable_resource_isolation);
+             std::function<absl::Time()> get_time);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   ~WorkerPool() override;
@@ -911,10 +909,6 @@ class WorkerPool : public WorkerPoolInterface {
   int64_t process_failed_rate_limited_ = 0;
   int64_t process_failed_pending_registration_ = 0;
   int64_t process_failed_runtime_env_setup_failed_ = 0;
-
-  // If true, core worker enables resource isolation by adding itself into appropriate
-  // cgroup after it is created.
-  bool enable_resource_isolation_ = false;
 
   /// Ray metrics
   ray::stats::Sum ray_metric_num_workers_started_{
