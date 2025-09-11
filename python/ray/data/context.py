@@ -70,6 +70,10 @@ DEFAULT_STREAMING_READ_BUFFER_SIZE = 32 * 1024 * 1024
 
 DEFAULT_ENABLE_PANDAS_BLOCK = True
 
+DEFAULT_PANDAS_BLOCK_IGNORE_METADATA = bool(
+    os.environ.get("RAY_DATA_PANDAS_BLOCK_IGNORE_METADATA", 0)
+)
+
 DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
 
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
@@ -140,7 +144,7 @@ DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION = env_bool(
     "RAY_DATA_ENABLE_PROGRESS_BAR_NAME_TRUNCATION", True
 )
 
-DEFAULT_ENFORCE_SCHEMAS = env_bool("RAY_DATA_ALLOW_ENFORCE_SCHEMAS", False)
+DEFAULT_ENFORCE_SCHEMAS = env_bool("RAY_DATA_ENFORCE_SCHEMAS", False)
 
 DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
 
@@ -540,6 +544,8 @@ class DataContext:
     downstream_capacity_backpressure_max_queued_bundles: int = None
 
     enforce_schemas: bool = DEFAULT_ENFORCE_SCHEMAS
+
+    pandas_block_ignore_metadata: bool = DEFAULT_PANDAS_BLOCK_IGNORE_METADATA
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
