@@ -497,9 +497,7 @@ def test_deploy_does_not_affect_dynamic_apps(serve_instance):
     assert httpx.post(url).text == "wonderful world"
 
     wait_for_condition(check_running, app_name="dynamic-app")
-    wait_for_condition(
-        check_target_groups_ready, client=client, app_name="dynamic-app"
-    )
+    wait_for_condition(check_target_groups_ready, client=client, app_name="dynamic-app")
     url = get_application_url(app_name="dynamic-app")
     assert httpx.post(url).text == "Hello!"
 
