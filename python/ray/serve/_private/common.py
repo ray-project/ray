@@ -847,9 +847,16 @@ class DeploymentSnapshot:
         time_since_last_collected_metrics_s: Optional[float],
         look_back_period_s: Optional[float],
     ) -> str:
+        """
+        - < 1s  -> integer milliseconds
+        - >= 1s -> seconds with two decimals
+        """
         if time_since_last_collected_metrics_s is None:
             return "unknown"
-        return f"{float(time_since_last_collected_metrics_s)}s"
+        val = float(time_since_last_collected_metrics_s)
+        if val < 1.0:
+            return f"{val * 1000:.0f}ms"
+        return f"{val:.2f}s"
 
     @staticmethod
     def summarize_decisions(
