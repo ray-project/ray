@@ -289,6 +289,18 @@ def _reconcile_field(
         # Recursively unify
         unified_struct = unify_schemas(struct_schemas, promote_types=promote_types)
         return pyarrow.struct(list(unified_struct))
+
+    # 4. Null-typed list fields (Need this pyarrow < 14.0.0)
+    null_lists = [
+        t
+        for t in non_null_types
+        if pyarrow.types.is_list(t) and pyarrow.types.is_null(t.value_type)
+    ]
+    if null_lists:
+        # Find first non-null list type
+        for t in non_null_types:
+            if not (pyarrow.types.is_list(t) and pyarrow.types.is_null(t.value_type)):
+                return t
     # Let PyArrow handle other cases
     return None
 
