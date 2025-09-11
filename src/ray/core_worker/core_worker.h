@@ -1340,6 +1340,11 @@ class CoreWorker {
             const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes =
                 nullptr);
 
+  /// Forcefully exit the worker immediately without draining/cleanup.
+  /// \param exit_type The reason why this worker process is disconnected.
+  /// \param exit_detail The detailed reason for a given exit.
+  void ForceExit(const rpc::WorkerExitType exit_type, const std::string &detail);
+
   void AsyncRetryTask(TaskSpecification &spec, uint32_t delay_ms);
 
  private:
@@ -1397,12 +1402,6 @@ class CoreWorker {
                         const std::string &task_name);
 
   void SetActorId(const ActorID &actor_id);
-
-  /// Forcefully exit the worker. `Force` means it will exit actor without draining
-  /// or cleaning any resources.
-  /// \param exit_type The reason why this worker process is disconnected.
-  /// \param exit_detail The detailed reason for a given exit.
-  void ForceExit(const rpc::WorkerExitType exit_type, const std::string &detail);
 
   /// Forcefully kill child processes. User code running in actors or tasks
   /// can spawn processes that don't get terminated. If those processes

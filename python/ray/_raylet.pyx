@@ -3118,6 +3118,24 @@ cdef class CoreWorker:
         with nogil:
             CCoreWorkerProcess.GetCoreWorker().Exit(c_exit_type, detail, null_ptr)
 
+    def force_exit_worker(self, exit_type: str, c_string detail):
+        """
+        Force exit the current worker process immediately (no draining).
+        Should only be used by a worker (not driver).
+        """
+        cdef CWorkerExitType c_exit_type
+        if exit_type == "user":
+            c_exit_type = WORKER_EXIT_TYPE_USER_ERROR
+        elif exit_type == "system":
+            c_exit_type = WORKER_EXIT_TYPE_SYSTEM_ERROR
+        elif exit_type == "intentional_system_exit":
+            c_exit_type = WORKER_EXIT_TYPE_INTENTIONAL_SYSTEM_ERROR
+        else:
+            raise ValueError(f"Invalid exit type: {exit_type}")
+        assert not self.is_driver
+        with nogil:
+            CCoreWorkerProcess.GetCoreWorker().ForceExit(c_exit_type, detail)
+
     def get_current_task_name(self) -> str:
         """Return the current task name.
 
