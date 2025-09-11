@@ -5,6 +5,7 @@ import pytest
 from click.testing import CliRunner
 
 import ray
+import ray._private.ray_constants as ray_constants  # noqa
 import ray._private.utils as utils
 import ray.scripts.scripts as scripts
 from ray._private.resource_isolation_config import ResourceIsolationConfig
@@ -20,6 +21,7 @@ from ray._private.resource_isolation_config import ResourceIsolationConfig
 def test_resource_isolation_enabled_creates_cgroup_hierarchy(ray_start_cluster):
     cluster = ray_start_cluster
     # change this to /sys/fs/cgroup/resource_isolation_test if running locally.
+    # base_cgroup = "/sys/fs/cgroup/resource_isolation_test"
     base_cgroup = "/sys/fs/cgroup"
     resource_isolation_config = ResourceIsolationConfig(
         enable_resource_isolation=True,
@@ -85,7 +87,7 @@ def cleanup_ray():
     """Shutdown all ray instances"""
     yield
     runner = CliRunner()
-    runner.invoke(scripts.stop, ["--force"])
+    runner.invoke(scripts.stop)
     ray.shutdown()
 
 
@@ -102,7 +104,7 @@ def test_ray_start_invalid_resource_isolation_config(cleanup_ray):
 def test_ray_start_resource_isolation_config_default_values(monkeypatch, cleanup_ray):
     monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: 16)
     # Uncomment this line to run this test locally. The default cgroup for ray is
-    # /sys/fs/cgroup (defined as ray.constrants.DEFAULT_CGROUP_PATH).
+    # /sys/fs/cgroup (defined as ray.constants.DEFAULT_CGROUP_PATH).
     # monkeypatch.setattr(ray_constants, "DEFAULT_CGROUP_PATH", "/sys/fs/cgroup/resource_isolation_test")
 
     runner = CliRunner()
@@ -142,7 +144,9 @@ def test_ray_init_with_resource_isolation_default_values(monkeypatch, ray_shutdo
 
 
 def test_ray_init_with_resource_isolation_override_defaults(monkeypatch, ray_shutdown):
-    cgroup_path = "/sys/fs/cgroup"
+    # testing locally uncomment
+    # cgroup_path = "/sys/fs/cgroup/resource_isolation_test"
+    cgroup_path = "/sys/fs/cgroup/"
     system_reserved_cpu = 1
     system_reserved_memory = 1 * 10**9
     total_system_cpu = 10

@@ -3,6 +3,7 @@ load("@rules_python//python:defs.bzl", "py_library", "py_test")
 py_library(
     name = "conftest",
     srcs = ["conftest.py"],
+    deps = ["//python/ray/tests:conftest"],
 )
 
 py_test(
