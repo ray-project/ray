@@ -33,7 +33,7 @@ steps:
     instance_type: medium
     commands:
       # build placeholder wheel for all python versions
-      - ./ci/build/build-placeholder-wheel.sh
+      - bash ci/build/build-placeholder-wheel.sh
       # compile rayimg dependencies
       - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/rayimg.depsets.yaml
     job_env: manylinux
