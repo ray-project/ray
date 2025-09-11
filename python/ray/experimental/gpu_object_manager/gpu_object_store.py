@@ -268,11 +268,11 @@ class GPUObjectStore:
                 len(queue) == 0
             ), "The primary copy holder should never have more than one ref for its object id."
             del self._gpu_object_store[obj_id]
-            self._object_freed_cv.notify_all()
             for tensor in gpu_object.data:
                 self._tensor_to_object_ids[tensor].remove(obj_id)
                 if len(self._tensor_to_object_ids[tensor]) == 0:
                     self._tensor_to_object_ids.pop(tensor)
+            self._object_freed_cv.notify_all()
 
     def pop_object(self, obj_id: str) -> List["torch.Tensor"]:
         with self._lock:
