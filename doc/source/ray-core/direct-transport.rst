@@ -11,12 +11,12 @@ Ray objects are normally stored in Ray's CPU-based object store and copied and d
 For GPU data specifically, this can lead to unnecessary and expensive data transfers.
 For example, passing a CUDA ``torch.Tensor`` from one Ray task to another would require a copy from GPU to CPU memory, then back again to GPU memory.
 
-*Ray Direct Transport (RDT)* is a new feature that allows Ray to store and pass objects directly between Ray actors, avoiding unnecessary serialization and copies to and from the Ray object store.
-For GPU data specifically, this feature augments the familiar Ray :class:`ObjectRef <ray.ObjectRef>` API by:
+*Ray Direct Transport (RDT)* is a new feature that allows Ray to store and pass objects directly between Ray actors.
+This feature augments the familiar Ray :class:`ObjectRef <ray.ObjectRef>` API by:
 
-- Keeping data in GPU memory until a transfer is needed
-- Avoiding expensive serialization and copies to and from CPU memory
-- Using efficient data transports like collective communication libraries or RDMA (via `NVIDIA's NIXL <https://github.com/ai-dynamo/nixl>`__) to transfer data between GPUs
+- Keeping GPU data in GPU memory until a transfer is needed
+- Avoiding expensive serialization and copies to and from the Ray object store
+- Using efficient data transports like collective communication libraries (`Gloo <https://github.com/pytorch/gloo>`__ or `NCCL <https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/index.html>`__) or point-to-point RDMA (via `NVIDIA's NIXL <https://github.com/ai-dynamo/nixl>`__) to transfer data directly between devices, including both CPU and GPUs
 
 .. note::
    RDT is currently in **alpha**. Not all Ray Core APIs are supported yet. Future releases may introduce breaking API changes. See the :ref:`limitations <limitations>` section for more details.
@@ -73,12 +73,12 @@ Adding this decorator will change Ray's behavior in the following ways:
 1. When returning the tensor, Ray will store a *reference* to the tensor instead of copying it to CPU memory.
 2. When the :class:`ray.ObjectRef` is passed to another task, Ray will use Gloo to transfer the tensor to the destination task.
 
-For (2) to work, we must first create a *collective group* of actors.
+Note that for (2) to work, the :func:`@ray.method(tensor_transport) <ray.method>` decorator only needs to be added to the actor task that *returns* the tensor. It should not be added to actor tasks that *consume* the tensor (unless those tasks also return tensors).
+
+Also, for (2) to work, we must first create a *collective group* of actors.
 
 Creating a collective group
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-.. Add API pages for collective group APIs.
 
 To create a collective group for use with RDT:
 
@@ -108,6 +108,8 @@ Here is a full example:
    :end-before: __gloo_full_example_end__
 
 When the :class:`ray.ObjectRef` is passed to another task, Ray will use Gloo to transfer the tensor directly from the source actor to the destination actor instead of the default object store.
+Note that the :func:`@ray.method(tensor_transport) <ray.method>` decorator is only added to the actor task that *returns* the tensor; once this hint has been added, the receiving actor task `receiver.sum` will automatically use Gloo to receive the tensor.
+In this example, because `MyActor.sum` does not have the :func:`@ray.method(tensor_transport) <ray.method>` decorator, it will use the default Ray object store transport to return `torch.sum(tensor)`.
 
 RDT also supports passing tensors nested inside Python data structures, as well as actor tasks that return multiple tensors, like in this example:
 
