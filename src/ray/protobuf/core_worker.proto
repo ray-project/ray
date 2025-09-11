@@ -498,11 +498,10 @@ service CoreWorkerService {
   rpc WaitForActorRefDeleted(WaitForActorRefDeletedRequest)
       returns (WaitForActorRefDeletedReply);
 
-  /// The long polling request sent to the core worker for pubsub operations.
-  /// It is replied once there are batch of objects that need to be published to
-  /// the caller (subscriber).
-  /// Failure: Pubsub system handles failures. TODO: all clients need subscribe failure
-  /// callbacks
+  // The long polling request sent to the core worker for pubsub operations.
+  // It is replied once there are batch of objects that need to be published to
+  // the caller (subscriber).
+  // Failure: Retries on failures, see pubsub/README.md for more details.
   rpc PubsubLongPolling(PubsubLongPollingRequest) returns (PubsubLongPollingReply);
 
   // The RPC to report the intermediate task return from the executor worker to the owner
@@ -513,7 +512,7 @@ service CoreWorkerService {
 
   // The pubsub command batch request used by the subscriber.
   // Subscribe / unsubscribe commands to the publisher worker.
-  // Failure: TODO: Does not handle failures.
+  // Failure: Retries on failures, see pubsub/README.md for more details.
   rpc PubsubCommandBatch(PubsubCommandBatchRequest) returns (PubsubCommandBatchReply);
 
   // Update the batched object location information to the ownership-based object
