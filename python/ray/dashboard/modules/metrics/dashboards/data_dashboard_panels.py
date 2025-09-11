@@ -3,13 +3,13 @@
 from ray.dashboard.modules.metrics.dashboards.common import (
     DashboardConfig,
     Panel,
-    Target,
     Row,
     TargetTemplate,
     PanelTemplate,
     PanelOptions,
     Color,
     LEGACY_COLOR_BLUES,
+    Target,
 )
 
 # When adding a new panels for an OpRuntimeMetric, follow this format:
@@ -487,7 +487,7 @@ TASK_COMPLETION_TIME_PANEL = Panel(
     unit="s",
     targets=[
         Target(
-            expr='sum by (le) (rate(ray_data_task_completion_time_bucket{{{global_filters}, operator=~\"$Operator\", le!=\"+Inf\"}}[$__rate_interval]))',
+            expr='sum by (le) (rate(ray_data_task_completion_time_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__rate_interval]))',
             legend="{{le}}",
             template=TargetTemplate.HEATMAP,
         ),
@@ -512,7 +512,7 @@ BLOCK_COMPLETION_TIME_PANEL = Panel(
     unit="s",
     targets=[
         Target(
-            expr='sum by (le) (rate(ray_data_block_completion_time_bucket{{{global_filters}, operator=~\"$Operator\", le!=\"+Inf\"}}[$__rate_interval]))',
+            expr='sum by (le) (rate(ray_data_block_completion_time_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__rate_interval]))',
             legend="{{le}}",
             template=TargetTemplate.HEATMAP,
         ),
@@ -537,7 +537,7 @@ BLOCK_SIZE_BYTES_PANEL = Panel(
     unit="bytes",
     targets=[
         Target(
-            expr='sum by (le) (rate(ray_data_block_size_bytes_bucket{{{global_filters}, operator=~\"$Operator\", le!=\"+Inf\"}}[$__rate_interval]))',
+            expr='sum by (le) (rate(ray_data_block_size_bytes_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__rate_interval]))',
             legend="{{le}}",
             template=TargetTemplate.HEATMAP,
         ),
@@ -562,7 +562,7 @@ BLOCK_SIZE_ROWS_PANEL = Panel(
     unit="rows",
     targets=[
         Target(
-            expr='sum by (le) (rate(ray_data_block_size_rows_bucket{{{global_filters}, operator=~\"$Operator\", le!=\"+Inf\"}}[$__rate_interval]))',
+            expr='sum by (le) (rate(ray_data_block_size_rows_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__rate_interval]))',
             legend="{{le}}",
             template=TargetTemplate.HEATMAP,
         ),
@@ -770,7 +770,7 @@ ITERATION_INITIALIZATION_PANEL = Panel(
     unit="s",
     targets=[
         Target(
-            expr='sum(ray_data_iter_initialize_seconds{{{global_filters}, operator=~"$Operator"}}) by (dataset)',
+            expr="sum(ray_data_iter_initialize_seconds{{{global_filters}}}) by (dataset)",
             legend="Seconds: {{dataset}}, {{operator}}",
         )
     ],
@@ -785,7 +785,7 @@ ITERATION_BLOCKED_PANEL = Panel(
     unit="s",
     targets=[
         Target(
-            expr='sum(ray_data_iter_total_blocked_seconds{{{global_filters}, operator=~"$Operator"}}) by (dataset)',
+            expr="sum(ray_data_iter_total_blocked_seconds{{{global_filters}}}) by (dataset)",
             legend="Seconds: {{dataset}}",
         )
     ],
@@ -800,7 +800,7 @@ ITERATION_USER_PANEL = Panel(
     unit="s",
     targets=[
         Target(
-            expr='sum(ray_data_iter_user_seconds{{{global_filters}, operator=~"$Operator"}}) by (dataset)',
+            expr="sum(ray_data_iter_user_seconds{{{global_filters}}}) by (dataset)",
             legend="Seconds: {{dataset}}",
         )
     ],
@@ -816,7 +816,7 @@ SCHEDULING_LOOP_DURATION_PANEL = Panel(
     unit="s",
     targets=[
         Target(
-            expr='sum(ray_data_sched_loop_duration_s{{{global_filters}, operator=~"$Operator"}}) by (dataset)',
+            expr="sum(ray_data_sched_loop_duration_s{{{global_filters}}}) by (dataset)",
             legend="Scheduling Loop Duration: {{dataset}}",
         )
     ],
@@ -899,6 +899,29 @@ OBJECT_STORE_MEMORY_BUDGET_PANEL = Panel(
     fill=0,
     stack=False,
 )
+
+ALL_RESOURCES_UTILIZATION_PANEL = Panel(
+    id=57,
+    title="All logical resources utilization",
+    description=(
+        "Shows all logical resources utilization on a single graph. Filtering by operator is recommended."
+    ),
+    unit="cores",
+    targets=[
+        Target(
+            expr='sum(ray_data_cpu_usage_cores{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            legend="CPU: {{dataset}}, {{operator}}",
+        ),
+        Target(
+            expr='sum(ray_data_gpu_usage_cores{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            legend="GPU: {{dataset}}, {{operator}}",
+        ),
+    ],
+    fill=0,
+    stack=False,
+)
+
+OPERATOR_PANELS = [TASK_THROUGHPUT_BY_NODE_PANEL, ALL_RESOURCES_UTILIZATION_PANEL]
 
 DATA_GRAFANA_ROWS = [
     # Overview Row
@@ -1025,6 +1048,13 @@ DATA_GRAFANA_ROWS = [
             ITERATION_BLOCKED_PANEL,
             ITERATION_USER_PANEL,
         ],
+        collapsed=True,
+    ),
+    # Operator Panels Row (these graphs should only be viewed when filtering down to a single operator)
+    Row(
+        title="Operator Panels",
+        id=108,
+        panels=[ALL_RESOURCES_UTILIZATION_PANEL],
         collapsed=True,
     ),
 ]

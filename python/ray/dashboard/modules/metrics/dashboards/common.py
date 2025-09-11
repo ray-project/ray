@@ -2,7 +2,10 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Optional, Dict, Any
 
+from ray.util.annotations import DeveloperAPI
 
+
+@DeveloperAPI
 @dataclass
 class GridPos:
     x: int
@@ -30,11 +33,13 @@ HEATMAP_TARGET_TEMPLATE = {
 }
 
 
+@DeveloperAPI
 class TargetTemplate(Enum):
     GRAPH = GRAPH_TARGET_TEMPLATE
     HEATMAP = HEATMAP_TARGET_TEMPLATE
 
 
+@DeveloperAPI
 @dataclass
 class Target:
     """Defines a Grafana target (time-series query) within a panel.
@@ -111,7 +116,7 @@ HEATMAP_TEMPLATE = {
         "logBase": 1,
         "splitFactor": None,
         "min": None,
-        "max": None
+        "max": None,
     },
 }
 
@@ -369,6 +374,7 @@ PIE_CHART_TEMPLATE = {
 }
 
 
+@DeveloperAPI
 class PanelTemplate(Enum):
     GRAPH = GRAPH_PANEL_TEMPLATE
     HEATMAP = HEATMAP_TEMPLATE
@@ -382,18 +388,24 @@ LEGACY_COLOR_BLUES = {
     "cardColor": "#5794F2",
     "colorScale": "sqrt",
     "exponent": 0.5,
-    "colorScheme": "interpolateBlues"
+    "colorScheme": "interpolateBlues",
 }
 
+
+@DeveloperAPI
 @dataclass
 class Color:
     mode: str
     scheme: str
 
+
+@DeveloperAPI
 @dataclass
 class PanelOptions:
     color: Color
 
+
+@DeveloperAPI
 @dataclass
 class Panel:
     """Defines a Grafana panel (graph) for the Ray dashboard page.
@@ -429,6 +441,7 @@ class Panel:
     dataFormat: Optional[str] = None
 
 
+@DeveloperAPI
 @dataclass
 class Row:
     """Defines a Grafana row that can contain multiple panels.
@@ -445,6 +458,7 @@ class Row:
     collapsed: bool = False
 
 
+@DeveloperAPI
 @dataclass
 class DashboardConfig:
     # This dashboard name is an internal key used to determine which env vars

@@ -401,7 +401,9 @@ class _StatsActor:
         per_node_metrics: Optional[Dict[str, Dict[str, Union[int, float]]]] = None,
     ):
         def _record(
-            prom_metric: Metric, value: Union[int, float, List[int]], tags: Dict[str, str] = None
+            prom_metric: Metric,
+            value: Union[int, float, List[int]],
+            tags: Dict[str, str] = None,
         ):
             if isinstance(prom_metric, Gauge):
                 prom_metric.set(value, tags)
@@ -411,7 +413,11 @@ class _StatsActor:
                 # Add list of bucket counts to histogram metric
                 if isinstance(value, list):
                     for i in range(len(value)):
-                        bucket_value = prom_metric.boundaries[i - 1] if i > 0 else prom_metric.boundaries[0]
+                        bucket_value = (
+                            prom_metric.boundaries[i - 1]
+                            if i > 0
+                            else prom_metric.boundaries[0]
+                        )
                         for _ in range(value[i]):
                             prom_metric.observe(bucket_value, tags)
 
@@ -779,17 +785,29 @@ class _StatsManager:
 
                                 formatted_execution_stats = []
 
-                                for dataset_tag, op_metrics, operator_tags, state, per_node_metrics in self._last_execution_stats.values():
-                                    op_metrics_dicts = [metric.as_dict() for metric in op_metrics]
+                                for (
+                                    dataset_tag,
+                                    op_metrics,
+                                    operator_tags,
+                                    state,
+                                    per_node_metrics,
+                                ) in self._last_execution_stats.values():
+                                    op_metrics_dicts = [
+                                        metric.as_dict() for metric in op_metrics
+                                    ]
                                     for metric in op_metrics:
                                         metric.reset_histogram_metrics()
-                                    args = (dataset_tag, op_metrics_dicts, operator_tags, state, per_node_metrics)
+                                    args = (
+                                        dataset_tag,
+                                        op_metrics_dicts,
+                                        operator_tags,
+                                        state,
+                                        per_node_metrics,
+                                    )
                                     formatted_execution_stats.append(args)
 
                                 stats_actor.update_metrics.remote(
-                                    execution_metrics=list(
-                                        formatted_execution_stats
-                                    ),
+                                    execution_metrics=list(formatted_execution_stats),
                                     iteration_metrics=list(
                                         self._last_iteration_stats.values()
                                     ),
@@ -855,7 +873,13 @@ class _StatsManager:
             op_metrics_dicts = [metric.as_dict() for metric in op_metrics]
             for metric in op_metrics:
                 metric.reset_histogram_metrics()
-            args = (dataset_tag, op_metrics_dicts, operator_tags, state, per_node_metrics)
+            args = (
+                dataset_tag,
+                op_metrics_dicts,
+                operator_tags,
+                state,
+                per_node_metrics,
+            )
             self._get_or_create_stats_actor().update_execution_metrics.remote(*args)
         else:
             args = (dataset_tag, op_metrics, operator_tags, state, per_node_metrics)

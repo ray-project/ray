@@ -9,11 +9,12 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 import requests
 import yaml
 
 import ray
+from ray._common.network_utils import build_address
+from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import DEFAULT_DASHBOARD_AGENT_LISTEN_PORT
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
@@ -25,7 +26,6 @@ from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     wait_until_server_available,
 )
-from ray._common.network_utils import build_address
 from ray.dashboard.modules.job.common import (
     JOB_ACTOR_NAME_TEMPLATE,
     SUPERVISOR_ACTOR_RAY_NAMESPACE,

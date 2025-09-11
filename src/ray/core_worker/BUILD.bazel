@@ -13,9 +13,6 @@ ray_cc_library(
         "core_worker_rpc_proxy.h",
         "core_worker_shutdown_executor.h",
     ],
-    implementation_deps = [
-        "//src/ray/util:time",
-    ],
     deps = [
         ":actor_handle",
         ":actor_manager",
@@ -60,6 +57,7 @@ ray_cc_library(
         "//src/ray/util:shared_lru",
         "//src/ray/util:stream_redirection",
         "//src/ray/util:stream_redirection_options",
+        "//src/ray/util:time",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_prod",
@@ -107,7 +105,6 @@ ray_cc_library(
         "//src/ray/common:id",
         "//src/ray/common:ray_object",
         "//src/ray/common:status",
-        "//src/ray/common:task_common",
         "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//src/ray/util:process",
     ],
@@ -158,10 +155,20 @@ ray_cc_library(
 
 ray_cc_library(
     name = "actor_creator",
+    srcs = ["actor_creator.cc"],
     hdrs = ["actor_creator.h"],
+    visibility = [":__subpackages__"],
     deps = [
-        "//src/ray/common:ray_config",
         "//src/ray/gcs/gcs_client:gcs_client_lib",
+    ],
+)
+
+ray_cc_library(
+    name = "fake_actor_creator",
+    hdrs = ["fake_actor_creator.h"],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":actor_creator",
     ],
 )
 
@@ -306,7 +313,6 @@ ray_cc_library(
         "//src/ray/common:ray_config",
         "//src/ray/common:ray_object",
         "//src/ray/common:status",
-        "//src/ray/common:task_common",
         "//src/ray/object_manager:object_manager_common",
         "//src/ray/object_manager/plasma:plasma_client",
         "//src/ray/util:time",
@@ -387,7 +393,6 @@ ray_cc_library(
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
-        "//src/ray/common:task_common",
         "//src/ray/ipc:raylet_ipc_client_interface",
         "//src/ray/object_manager/plasma:plasma_client",
         "//src/ray/protobuf:common_cc_proto",

@@ -6,7 +6,11 @@ from dataclasses import asdict
 from typing import List, Tuple
 
 import ray
-from ray.dashboard.modules.metrics.dashboards.common import DashboardConfig, Panel, PanelTemplate
+from ray.dashboard.modules.metrics.dashboards.common import (
+    DashboardConfig,
+    Panel,
+    PanelTemplate,
+)
 from ray.dashboard.modules.metrics.dashboards.data_dashboard_panels import (
     data_dashboard_config,
 )
