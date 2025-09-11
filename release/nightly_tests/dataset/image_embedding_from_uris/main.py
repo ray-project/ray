@@ -11,7 +11,6 @@ from PIL import Image
 from torchvision.models import vit_b_16, ViT_B_16_Weights
 import albumentations as A
 import ray
-from ray.data import ActorPoolStrategy
 import copy
 import itertools
 from typing import List
@@ -219,7 +218,7 @@ def main(args: argparse.Namespace):
                 EmbedPatches,
                 num_gpus=1,
                 batch_size=BATCH_SIZE,
-                compute=ActorPoolStrategy(tuple(args.inference_concurrency)),
+                concurrency=tuple(args.inference_concurrency),
                 fn_constructor_kwargs={"model": model_ref, "device": "cuda"},
             )
             .write_parquet(WRITE_PATH)
