@@ -2740,8 +2740,11 @@ class Dataset:
                 concurrency=target_partitions,
             )
 
-            # Ensure the result has the expected number of partitions to match regular join behavior
-            result = result.repartition(target_partitions)
+            # Only repartition if the target is different from current partitions
+            # and avoid unnecessary repartitioning for small datasets to prevent timeouts
+            current_partitions = result.num_blocks()
+            if target_partitions != current_partitions and target_partitions > 1:
+                result = result.repartition(target_partitions)
 
             return result
         else:
