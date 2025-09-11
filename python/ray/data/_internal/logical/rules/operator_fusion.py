@@ -212,8 +212,8 @@ class FuseOperators(Rule):
             return False
 
         if not self._can_merge_target_max_block_size(
-            up_op.target_max_block_size,
-            down_op.target_max_block_size,
+            up_op.target_max_block_size_override,
+            down_op.target_max_block_size_override,
             up_op.data_context,
         ):
             return False
@@ -302,7 +302,7 @@ class FuseOperators(Rule):
         )
 
         target_max_block_size = self._get_merged_target_max_block_size(
-            up_op.target_max_block_size, down_op.target_max_block_size
+            up_op.target_max_block_size_override, down_op.target_max_block_size_override
         )
 
         compute = self._fuse_compute_strategy(
@@ -436,7 +436,7 @@ class FuseOperators(Rule):
         input_op = input_deps[0]
 
         target_max_block_size = self._get_merged_target_max_block_size(
-            up_op.target_max_block_size, down_op.target_max_block_size
+            up_op.target_max_block_size_override, down_op.target_max_block_size_override
         )
 
         assert up_op.data_context is down_op.data_context
@@ -444,7 +444,7 @@ class FuseOperators(Rule):
             fused_all_to_all_transform_fn,
             input_op,
             up_op.data_context,
-            target_max_block_size=target_max_block_size,
+            target_max_block_size_override=target_max_block_size,
             num_outputs=down_op._num_outputs,
             # Transfer over the existing sub-progress bars from
             # the AllToAllOperator (if any) into the fused operator.

@@ -121,7 +121,7 @@ def test_all_to_all_operator():
         dummy_all_transform,
         input_op,
         DataContext.get_current(),
-        target_max_block_size=DataContext.get_current().target_max_block_size,
+        target_max_block_size_override=DataContext.get_current().target_max_block_size,
         num_outputs=2,
         sub_progress_bar_names=["Test1", "Test2"],
         name="TestAll",
@@ -172,7 +172,7 @@ def test_num_outputs_total():
         dummy_all_transform,
         input_op=op1,
         data_context=DataContext.get_current(),
-        target_max_block_size=DataContext.get_current().target_max_block_size,
+        target_max_block_size_override=DataContext.get_current().target_max_block_size,
         name="TestAll",
     )
     assert op2.num_outputs_total() is None

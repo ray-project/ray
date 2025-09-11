@@ -89,7 +89,7 @@ class MapTransformFn:
     def output_block_size_option(self):
         return self._output_block_size_option
 
-    def set_target_max_block_size(self, target_max_block_size: Optional[int]):
+    def override_target_max_block_size(self, target_max_block_size: Optional[int]):
         self._output_block_size_option = OutputBlockSizeOption(
             target_max_block_size=target_max_block_size
         )
@@ -163,7 +163,7 @@ class MapTransformer:
         """Get the transform functions."""
         return self._transform_fns
 
-    def set_target_max_block_size(self, target_max_block_size: int):
+    def override_target_max_block_size(self, target_max_block_size: Optional[int]):
         if target_max_block_size is not None:
             self._output_block_size_option = OutputBlockSizeOption(
                 target_max_block_size=target_max_block_size
@@ -221,7 +221,7 @@ class MapTransformer:
         """Apply the transform functions to the input blocks."""
         for transform_fn in self._transform_fns:
             if not transform_fn.output_block_size_option:
-                transform_fn.set_target_max_block_size(self.target_max_block_size)
+                transform_fn.override_target_max_block_size(self.target_max_block_size)
 
         iter = input_blocks
         # Apply the transform functions sequentially to the input iterable.
@@ -251,7 +251,7 @@ class MapTransformer:
 
         fused_transform_fns = self._transform_fns + other._transform_fns
         transformer = MapTransformer(fused_transform_fns, init_fn=fused_init_fn)
-        transformer.set_target_max_block_size(target_max_block_size)
+        transformer.override_target_max_block_size(target_max_block_size)
         return transformer
 
     def udf_time(self) -> float:
