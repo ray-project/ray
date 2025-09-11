@@ -37,7 +37,12 @@ def is_remote_path(path: str) -> bool:
     Returns:
         True if the path is a remote path, False otherwise.
     """
-    return path.startswith("s3://") or path.startswith("gs://")
+    return (
+        path.startswith("s3://")
+        or path.startswith("gs://")
+        or path.startswith("abfss://")
+        or path.startswith("azure://")
+    )
 
 
 class ExtraFiles(BaseModelExtended):
@@ -46,10 +51,10 @@ class ExtraFiles(BaseModelExtended):
 
 
 class CloudMirrorConfig(BaseModelExtended):
-    """Unified mirror config for cloud storage (S3 or GCS).
+    """Unified mirror config for cloud storage (S3, GCS, or Azure).
 
     Args:
-        bucket_uri: URI of the bucket (s3:// or gs://)
+        bucket_uri: URI of the bucket (s3://, gs://, abfss://, or azure://)
         extra_files: Additional files to download
     """
 
@@ -65,19 +70,23 @@ class CloudMirrorConfig(BaseModelExtended):
         if not is_remote_path(value):
             raise ValueError(
                 f'Got invalid value "{value}" for bucket_uri. '
-                'Expected a URI that starts with "s3://" or "gs://".'
+                'Expected a URI that starts with "s3://", "gs://", "abfss://", or "azure://".'
             )
         return value
 
     @property
     def storage_type(self) -> str:
-        """Returns the storage type ('s3' or 'gcs') based on the URI prefix."""
+        """Returns the storage type ('s3', 'gcs', or 'azure') based on the URI prefix."""
         if self.bucket_uri is None:
             return None
         elif self.bucket_uri.startswith("s3://"):
             return "s3"
         elif self.bucket_uri.startswith("gs://"):
             return "gcs"
+        elif self.bucket_uri.startswith("abfss://") or self.bucket_uri.startswith(
+            "azure://"
+        ):
+            return "azure"
         return None
 
 
@@ -96,13 +105,13 @@ class LoraMirrorConfig(BaseModelExtended):
         if not is_remote_path(value):
             raise ValueError(
                 f'Got invalid value "{value}" for bucket_uri. '
-                'Expected a URI that starts with "s3://" or "gs://".'
+                'Expected a URI that starts with "s3://", "gs://", "abfss://", or "azure://".'
             )
         return value
 
     @property
     def _bucket_name_and_path(self) -> str:
-        for prefix in ["s3://", "gs://"]:
+        for prefix in ["s3://", "gs://", "abfss://", "azure://"]:
             if self.bucket_uri.startswith(prefix):
                 return self.bucket_uri[len(prefix) :]
         return self.bucket_uri
