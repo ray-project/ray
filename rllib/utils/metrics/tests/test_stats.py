@@ -1,6 +1,7 @@
 import pytest
 import time
 import numpy as np
+import re
 
 from ray.rllib.utils.metrics.stats import Stats, merge_stats
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
@@ -1179,12 +1180,16 @@ def test_percentiles():
 
     # Test validation - percentiles must be None for other reduce methods
     with pytest.raises(
-        ValueError, match="`reduce` must be `None` when `percentiles` is not `False"
+        ValueError, match="`reduce` must be `None` when `percentiles` is not `False`"
     ):
         Stats(reduce="mean", window=5, percentiles=[50])
 
     with pytest.raises(
-        ValueError, match="`reduce_per_index_on_aggregate` must be `False`"
+        ValueError,
+        match=re.escape(
+            "`reduce_per_index_on_aggregate` (True) must be `False` "
+            "when `percentiles` is not `False`!"
+        ),
     ):
         Stats(
             reduce=None, reduce_per_index_on_aggregate=True, percentiles=True, window=5
