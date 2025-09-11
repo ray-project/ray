@@ -55,7 +55,7 @@ examples:
       - natural language processing
     contributor: community
     link: examples/intel_gaudi/bert
-  - title: Getting Started with PyTorch Fully Sharded Data Parallel (FSDP2) and Ray Train
+  - title: Get started with PyTorch Fully Sharded Data Parallel (FSDP2) and Ray Train
     skill_level: intermediate 
     frameworks:
       - pytorch
