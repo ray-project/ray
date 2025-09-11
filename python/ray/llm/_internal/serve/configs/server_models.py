@@ -103,8 +103,8 @@ class LoraConfig(BaseModelExtended):
             return value
 
         assert is_remote_path(value), (
-            "Only AWS S3 and Google Cloud Storage are supported. The "
-            'dynamic_lora_loading_path must start with "s3://" or "gs://". '
+            "Only AWS S3, Google Cloud Storage, and Azure Storage are supported. The "
+            'dynamic_lora_loading_path must start with "s3://", "gs://", "abfss://", or "azure://". '
             f'Got "{value}" instead.'
         )
         return value.rstrip("/")
