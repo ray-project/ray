@@ -5,7 +5,7 @@ This module contains the planning logic for converting FillNa logical operators
 into physical execution plans.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import pyarrow as pa
 import pyarrow.compute as pc
