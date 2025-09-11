@@ -195,6 +195,7 @@ def _setup_cluster_for_test(request, ray_start_cluster):
     # Add a head node.
     cluster.add_node(
         _system_config={
+            "metrics_report_interval_ms": 1000,
             "event_stats_print_interval_ms": 500,
             "event_stats": True,
             "enable_metrics_collection": enable_metrics_collection,
