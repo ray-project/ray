@@ -21,7 +21,10 @@ py_test_run_all_subdirectory(
 
 py_test_module_list(
     size = "medium",
-    env = {"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1"},
+    env = {
+        "RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1",
+        "RAY_SERVE_FAIL_ON_RANK_ERROR": "1",
+    },
     files = [
         "test_deployment_scheduler.py",
         "test_deployment_state.py",
@@ -43,6 +46,7 @@ py_test_module_list_with_env_variants(
         "with_metr_disab": {
             "env": {
                 "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
+                "RAY_SERVE_FAIL_ON_RANK_ERROR": "1",
             },
             "name_suffix": "_with_metr_disab",
         },
@@ -50,6 +54,7 @@ py_test_module_list_with_env_variants(
             "env": {
                 "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER": "1",
                 "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "1",
+                "RAY_SERVE_FAIL_ON_RANK_ERROR": "1",
             },
             "name_suffix": "_with_metr_agg_at_controller",
         },
@@ -57,6 +62,7 @@ py_test_module_list_with_env_variants(
             "env": {
                 "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER": "1",
                 "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
+                "RAY_SERVE_FAIL_ON_RANK_ERROR": "1",
             },
             "name_suffix": "_with_metr_agg_at_controller_and_metr_on_replicas",
         },

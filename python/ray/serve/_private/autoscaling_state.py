@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set
 
 from ray.serve._private.common import (
+    RUNNING_REQUESTS_KEY,
     DeploymentID,
     HandleMetricReport,
     ReplicaID,
@@ -161,10 +162,6 @@ class AutoscalingState:
         self, replica_metric_report: ReplicaMetricReport
     ) -> None:
         """Records average number of ongoing requests at a replica."""
-
-        if replica_metric_report.avg_running_requests is None:
-            return
-
         replica_id = replica_metric_report.replica_id
         send_timestamp = replica_metric_report.timestamp
         if (
@@ -180,7 +177,6 @@ class AutoscalingState:
         """Records average number of queued and running requests at a handle for this
         deployment.
         """
-
         handle_id = handle_metric_report.handle_id
         send_timestamp = handle_metric_report.timestamp
         if (
@@ -272,16 +268,15 @@ class AutoscalingState:
 
     def _collect_replica_running_requests(self) -> List[Dict[str, List]]:
         """Collect running requests metrics from replicas for aggregation."""
-        RUNNING_REQUESTS_KEY = "running_requests"
         metrics_timeseries_dicts = []
 
         for replica_id in self._running_replicas:
             if replica_id in self._replica_requests:
                 metrics_timeseries_dicts.append(
                     {
-                        RUNNING_REQUESTS_KEY: self._replica_requests[
-                            replica_id
-                        ].running_requests
+                        k: self._replica_requests[replica_id].metrics[k]
+                        for k in self._replica_requests[replica_id].metrics
+                        if k == RUNNING_REQUESTS_KEY  # only collect running requests
                     }
                 )
 
@@ -298,20 +293,19 @@ class AutoscalingState:
         self, metrics_collected_on_replicas: bool
     ) -> List[Dict[str, List]]:
         """Collect running requests metrics from handles when not collected on replicas."""
-        RUNNING_REQUESTS_KEY = "running_requests"
         metrics_timeseries_dicts = []
 
         if not metrics_collected_on_replicas:
             for handle_metric in self._handle_requests.values():
                 for replica_id in self._running_replicas:
-                    if replica_id in handle_metric.running_requests:
-                        metrics_timeseries_dicts.append(
-                            {
-                                RUNNING_REQUESTS_KEY: handle_metric.running_requests[
-                                    replica_id
-                                ]
-                            }
-                        )
+                    metrics_timeseries_dicts.append(
+                        {
+                            k: handle_metric.metrics.get(k, {}).get(replica_id, [])
+                            for k in handle_metric.metrics
+                            if k
+                            == RUNNING_REQUESTS_KEY  # only collect running requests
+                        }
+                    )
 
         return metrics_timeseries_dicts
 
@@ -319,7 +313,6 @@ class AutoscalingState:
         self, metrics_timeseries_dicts: List[Dict[str, List]]
     ) -> float:
         """Aggregate and average running requests from timeseries data."""
-        RUNNING_REQUESTS_KEY = "running_requests"
 
         if not metrics_timeseries_dicts:
             return 0.0
@@ -366,12 +359,11 @@ class AutoscalingState:
         """Calculate total requests using simple metrics mode."""
         total_requests = 0
 
-        # Sum average running requests from replicas
-        for replica_id in self._running_replicas:
-            if replica_id in self._replica_requests:
-                total_requests += self._replica_requests[
-                    replica_id
-                ].avg_running_requests
+        for id in self._running_replicas:
+            if id in self._replica_requests:
+                total_requests += self._replica_requests[id].aggregated_metrics.get(
+                    RUNNING_REQUESTS_KEY
+                )
 
         metrics_collected_on_replicas = total_requests > 0
 
@@ -382,8 +374,12 @@ class AutoscalingState:
             # Add running requests from handles if not collected on replicas
             if not metrics_collected_on_replicas:
                 for replica_id in self._running_replicas:
-                    if replica_id in handle_metric.running_requests:
-                        total_requests += handle_metric.avg_running_requests[replica_id]
+                    if replica_id in handle_metric.aggregated_metrics.get(
+                        RUNNING_REQUESTS_KEY, {}
+                    ):
+                        total_requests += handle_metric.aggregated_metrics.get(
+                            RUNNING_REQUESTS_KEY
+                        ).get(replica_id)
 
         return total_requests
 

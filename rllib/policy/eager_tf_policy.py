@@ -17,7 +17,7 @@ from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import OldAPIStack, override
-from ray.rllib.utils.deprecation import (
+from ray._common.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
 )
