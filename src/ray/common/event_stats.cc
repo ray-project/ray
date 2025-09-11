@@ -142,13 +142,13 @@ void EventTracker::RecordExecution(const std::function<void()> &fn,
 
   if (handle->emit_stats) {
     // Update event-specific stats.
-    ray::stats::STATS_operation_run_time_ms.Record(
-        execution_time_ns / 1000000, handle->context_name.value_or(handle->event_name));
+    // ray::stats::STATS_operation_run_time_ms.Record(
+    //     execution_time_ns / 1000000, handle->context_name.value_or(handle->event_name));
     ray::stats::STATS_operation_active_count.Record(
         curr_count, handle->context_name.value_or(handle->event_name));
     // Update global stats.
-    ray::stats::STATS_operation_queue_time_ms.Record(
-        queue_time_ns / 1000000, handle->context_name.value_or(handle->event_name));
+    // ray::stats::STATS_operation_queue_time_ms.Record(
+    //     queue_time_ns / 1000000, handle->context_name.value_or(handle->event_name));
   }
 
   {
