@@ -61,7 +61,7 @@ class RpcFailureManager {
         std::vector<std::string> colon_split = absl::StrSplit(equal_split[1], ':');
         RAY_CHECK_EQ(colon_split.size(), 3UL);
         auto [iter, _] = failable_methods_.emplace(equal_split[0],
-                                                   Failable{std::stoi(colon_split[0]),
+                                                   Failable{std::stol(colon_split[0]),
                                                             std::stoul(colon_split[1]),
                                                             std::stoul(colon_split[2])});
         const auto &failable = iter->second;
@@ -111,7 +111,7 @@ class RpcFailureManager {
 
   // call name -> (num_remaining_failures, req_failure_prob, resp_failure_prob)
   struct Failable {
-    int num_remaining_failures;
+    int64_t num_remaining_failures;
     size_t req_failure_prob;
     size_t resp_failure_prob;
   };
