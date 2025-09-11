@@ -1,6 +1,7 @@
-import pytest
 from typing import List
 from unittest.mock import patch
+
+import pytest
 
 import ray._private.thirdparty.pynvml as pynvml
 
