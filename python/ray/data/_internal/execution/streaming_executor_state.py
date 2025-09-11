@@ -497,7 +497,7 @@ def process_completed_tasks(
     # Process completed Ray tasks and notify operators.
     num_errored_blocks = 0
     if active_tasks:
-        ready, _ = ray.wait(
+        ready, remaining = ray.wait(
             list(active_tasks.keys()),
             num_returns=len(active_tasks),
             fetch_local=False,
@@ -513,6 +513,12 @@ def process_completed_tasks(
         for ref in ready:
             state, task = active_tasks[ref]
             ready_tasks_by_op[state].append(task)
+        for ref in remaining:
+            state, task = active_tasks[ref]
+            # If there are pending blocks, try to process them even if streaming_gen is not ready
+            # This may be because the (block, meta) pair processing encountered exceptions or timeouts, leaving data unconsumed
+            if isinstance(task, DataOpTask) and task.pending_block_pair:
+                ready_tasks_by_op[state].append(task)
 
         for state, ready_tasks in ready_tasks_by_op.items():
             ready_tasks = sorted(ready_tasks, key=lambda t: t.task_index())
