@@ -1104,13 +1104,18 @@ class ApplicationStateManager:
     def get_app_source(self, name: str) -> APIType:
         return self._application_states[name].api_type
 
-
-    def list_app_statuses(self, source: Optional[APIType] = None) -> Dict[str, ApplicationStatusInfo]:
+    def list_app_statuses(
+        self, source: Optional[APIType] = None
+    ) -> Dict[str, ApplicationStatusInfo]:
         """Return a dictionary with {app name: application info}
-        
+
         Args:
-            source: Optional API type filter. If provided, only returns apps 
+            source: Optional API type filter. If provided, only returns apps
                    deployed via the specified API type.
+
+        Returns:
+            Dict[str, ApplicationStatusInfo]: A dictionary mapping application names
+                to their corresponding status information.
         """
         if source is None:
             return {

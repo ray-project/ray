@@ -89,7 +89,7 @@ class ServeHead(SubprocessModule):
 
         if api_type_str:
             try:
-                api_type = APIType(api_type_str)
+                api_type = APIType(api_type_str.lower())
             except ValueError:
                 # Handle invalid api_type values gracefully
                 return Response(
