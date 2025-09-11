@@ -3,6 +3,7 @@ import dataclasses
 import json
 import logging
 from functools import wraps
+from typing import Optional
 
 import aiohttp
 from aiohttp.web import Request, Response
@@ -81,7 +82,24 @@ class ServeHead(SubprocessModule):
     @dashboard_optional_utils.init_ray_and_catch_exceptions()
     @validate_endpoint()
     async def get_serve_instance_details(self, req: Request) -> Response:
-        from ray.serve.schema import ServeInstanceDetails
+        from ray.serve.schema import APIType, ServeInstanceDetails
+
+        api_type: Optional[APIType] = None
+        api_type_str = req.query.get("api_type")
+
+        if api_type_str:
+            try:
+                api_type = APIType(api_type_str.lower())
+            except ValueError:
+                # Handle invalid api_type values gracefully
+                return Response(
+                    status=400,
+                    text=(
+                        f"Invalid 'api_type' value: '{api_type_str}'. "
+                        f"Must be one of: {', '.join([e.value for e in APIType])}"
+                    ),
+                    content_type="text/plain",
+                )
 
         controller = await self.get_serve_controller()
 
@@ -90,7 +108,9 @@ class ServeHead(SubprocessModule):
             details = ServeInstanceDetails.get_empty_schema_dict()
         else:
             try:
-                details = await controller.get_serve_instance_details.remote()
+                details = await controller.get_serve_instance_details.remote(
+                    source=api_type
+                )
             except ray.exceptions.RayTaskError as e:
                 # Task failure sometimes are due to GCS
                 # failure. When GCS failed, we expect a longer time
