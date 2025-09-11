@@ -76,16 +76,16 @@ class CloudMirrorConfig(BaseModelExtended):
 
     @property
     def storage_type(self) -> str:
-        """Returns the storage type ('s3', 'gcs', or 'azure') based on the URI prefix."""
+        """Returns the storage type ('s3', 'gcs', 'abfss', or 'azure') based on the URI prefix."""
         if self.bucket_uri is None:
             return None
         elif self.bucket_uri.startswith("s3://"):
             return "s3"
         elif self.bucket_uri.startswith("gs://"):
             return "gcs"
-        elif self.bucket_uri.startswith("abfss://") or self.bucket_uri.startswith(
-            "azure://"
-        ):
+        elif self.bucket_uri.startswith("abfss://"):
+            return "abfss"
+        elif self.bucket_uri.startswith("azure://"):
             return "azure"
         return None
 
