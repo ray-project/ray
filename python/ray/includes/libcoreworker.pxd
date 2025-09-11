@@ -260,7 +260,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                     const c_vector[CObjectID] &contained_object_ids,
                     CObjectID *object_id, shared_ptr[CBuffer] *data,
                     const unique_ptr[CAddress] &owner_address,
-                    c_bool inline_small_object)
+                    c_bool inline_small_object,
+                    CTensorTransport tensor_transport)
         CRayStatus CreateExisting(const shared_ptr[CBuffer] &metadata,
                                   const size_t data_size,
                                   const CObjectID &object_id,
