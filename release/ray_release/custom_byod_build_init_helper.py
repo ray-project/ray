@@ -1,5 +1,4 @@
 from typing import List, Tuple
-import os
 import yaml
 from ray_release.configs.global_config import get_global_config
 from ray_release.logger import logger
@@ -58,11 +57,11 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
             ],
         }
         if "ray-ml" in image:
-            step["depends_on"] = config["image_build_step_ml"]
+            step["depends_on"] = config["release_image_step_ray_ml"]
         elif "ray-llm" in image:
-            step["depends_on"] = config["image_build_step_llm"]
+            step["depends_on"] = config["release_image_step_ray_llm"]
         else:
-            step["depends_on"] = config["image_build_step"]
+            step["depends_on"] = config["release_image_step_ray"]
         build_config["steps"].append(step)
 
     logger.info(f"Build config: {build_config}")

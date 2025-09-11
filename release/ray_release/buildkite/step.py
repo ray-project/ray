@@ -198,10 +198,10 @@ def get_step(
         step["depends_on"] = generate_custom_build_step_key(image)
     else:
         if "ray-ml" in image:
-            step["depends_on"] = config["image_build_step_ml"]
+            step["depends_on"] = config["release_image_step_ray_ml"]
         elif "ray-llm" in image:
-            step["depends_on"] = config["image_build_step_llm"]
+            step["depends_on"] = config["release_image_step_ray_llm"]
         else:
-            step["depends_on"] = config["image_build_step"]
+            step["depends_on"] = config["release_image_step_ray"]
 
     return step
