@@ -1169,6 +1169,11 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                     rpc::TaskStatus::FAILED,
                     worker::TaskStatusEvent::TaskStateUpdate(error_info));
       task_entry.MarkRetry();
+      // Push the error to the driver if the task will still retry.
+      push_error_callback_(task_entry.spec_.JobId(),
+                           rpc::ErrorType_Name(error_info.error_type()),
+                           error_info.error_message(),
+                           current_time_ms());
 
       // Mark the new status and also include task spec info for the new attempt.
       SetTaskStatus(task_entry,
