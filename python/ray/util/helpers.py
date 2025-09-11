@@ -1,4 +1,5 @@
 from typing import TYPE_CHECKING, Any, Iterable, Iterator, Optional, Sequence, Union
+
 import ray
 from ray.util.annotations import PublicAPI
 

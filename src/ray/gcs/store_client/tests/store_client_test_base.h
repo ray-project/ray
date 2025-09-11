@@ -26,9 +26,10 @@
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/asio/io_service_pool.h"
 #include "ray/common/id.h"
-#include "ray/common/test_util.h"
+#include "ray/common/test_utils.h"
 #include "ray/gcs/store_client/store_client.h"
 #include "ray/util/logging.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
