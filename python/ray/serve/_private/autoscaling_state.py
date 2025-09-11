@@ -415,14 +415,14 @@ class AutoscalingStateManager:
     def register_application(
         self, app_name: ApplicationName, config: ServeApplicationSchema
     ):
-        deployment_autoscaling_states = {}
-        for deployment_name in config.deployment_names:
-            deployment_id = DeploymentID(deployment_name, app_name)
-            if deployment_id in self._deployment_autoscaling_states:
-                deployment_autoscaling_states[
-                    deployment_id
-                ] = self._deployment_autoscaling_states[deployment_id]
         if app_name not in self._app_autoscaling_states:
+            deployment_autoscaling_states = {}
+            for deployment_name in config.deployment_names:
+                deployment_id = DeploymentID(deployment_name, app_name)
+                if deployment_id in self._deployment_autoscaling_states:
+                    deployment_autoscaling_states[
+                        deployment_id
+                    ] = self._deployment_autoscaling_states[deployment_id]
             self._app_autoscaling_states[app_name] = ApplicationAutoscalingState(
                 app_name, deployment_autoscaling_states
             )
