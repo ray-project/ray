@@ -420,6 +420,10 @@ class SharedHandleMetricsPusher:
         self._controller_handler = controller_handle
 
         self._metrics_pusher = MetricsPusher()
+
+        # We use a WeakSet to store the `RouterMetricsManager`s
+        # so that we don't prevent them from being garbage-collected
+        # if they run out of references elsewhere.
         self._router_metrics_managers: weakref.WeakSet[
             RouterMetricsManager
         ] = weakref.WeakSet()
@@ -1014,8 +1018,9 @@ class SharedRouterLongPollClient:
         self.controller_handler = controller_handle
         self.event_loop = event_loop
 
-        # We use a WeakSet to store the Routers so that we don't prevent them
-        # from being garbage-collected.
+        # We use a WeakSet to store the `Router`s
+        # so that we don't prevent them from being garbage-collected
+        # if they run out of references elsewhere.
         self.routers: MutableMapping[
             DeploymentID, weakref.WeakSet[AsyncioRouter]
         ] = defaultdict(weakref.WeakSet)

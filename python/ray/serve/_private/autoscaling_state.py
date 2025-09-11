@@ -251,6 +251,10 @@ class AutoscalingState:
         received an update for too long.
         """
 
+        # We set the timeout to be 2.5x the metric push interval instead of just 2x
+        # to account for some jitter in the metric push timing.
+        # If it's been 2.5x the interval since the last update, then we can
+        # be pretty confident that we've missed two updates in a row.
         timeout_s = 2.5 * RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S
         for handle_id, handle_metric in list(self._handle_requests.items()):
             # Drop metrics for handles that are on Serve proxy/replica
