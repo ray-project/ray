@@ -838,13 +838,23 @@ def install_unified_signal_handlers(is_driver: bool):
                     pass
             t = threading.Thread(target=_bg, daemon=True)
             t.start()
-        # Workers will be picked up by check_signals path.
+        else:
+            # Workers: trigger graceful path via check_signals by raising SystemExit
+            # with a custom message (preserves Intentional exit semantics).
+            try:
+                from ray import _raylet
+                _raylet.raise_sys_exit_with_custom_error_message(
+                    "The process receives a SIGTERM.", exit_code=1
+                )
+            except BaseException:
+                # If import path changes, fallback to generic SystemExit
+                raise SystemExit(1)
 
     def _force(detail: str):
         try:
-            # Map to intentional system exit for signals.
-            # This uses existing forced path.
-            ray._raylet.worker_context().force_exit_worker(
+            # Use existing forced path on the CoreWorker wrapper.
+            from ray._private.worker import global_worker
+            global_worker.core_worker.force_exit_worker(
                 "intentional_system_exit", detail.encode("utf-8")
             )
         except Exception:
