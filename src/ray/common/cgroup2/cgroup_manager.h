@@ -69,6 +69,19 @@ class CgroupManager : public CgroupManagerInterface {
   CgroupManager(CgroupManager &&);
   CgroupManager &operator=(CgroupManager &&);
 
+  /**
+    Moves a process into the system cgroup i.e. base/ray_node/system/leaf. To move the
+    pid, the user must have read, write, and execute permissions to the cgroup the pid
+    is currently in, the base/ray_node/system/leaf cgroup, and their lowest common
+    ancestor.
+
+    @param pid of the process to move into the system cgroup.
+
+    @return Status::OK if pid moved successfully.
+    @return Status::NotFound if the system cgroup does not exist.
+    @return Status::PermissionDenied if the user doesn't have adequate permissions.
+    @return Status::InvalidArgument if invalid pid or pid doesn't exist.
+  */
   Status AddProcessToSystemCgroup(const std::string &pid) override;
 
   /**

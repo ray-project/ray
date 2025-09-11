@@ -45,6 +45,14 @@ class CgroupManagerInterface {
   // TODO(#54703): These will be implemented in a later PR to move processes
   // into a cgroup.
   // virtual Status AddProcessToApplicationCgroup(int) = 0;
+
+  /**
+    TODO(#54703): Document failure modes.
+
+    @param pid of the system process to move into the system cgroup
+
+    @return Status::OK
+  */
   virtual Status AddProcessToSystemCgroup(const std::string &pid) = 0;
 
   /**

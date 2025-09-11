@@ -208,8 +208,21 @@ class CgroupDriverInterface {
       const std::string &cgroup) = 0;
 
   /**
+    Adds the process to the specified cgroup. To move the process, the user must have
+    read, write, execute permissions for the cgroup the process currently is in, the
+    destination cgroup, and their lowest common ancestor.
+
+    @param cgroup to move the process into.
+    @param pid pid of the process that will be moved.
+
+    @return Status::OK if the process was moved successfully into the cgroup.
+    @return Status::NotFound if the cgroup does not exist.
+    @return Status::PermissionDenied if current user doesn't have read, write, and execute
+    permissions for the cgroup.
+    @return Status::InvalidArgument if the pid is invalid, does not exist, or any other
+    error.
    */
   virtual Status AddProcessToCgroup(const std::string &cgroup,
-                                    const std::string &process) = 0;
+                                    const std::string &pid) = 0;
 };
 }  // namespace ray
