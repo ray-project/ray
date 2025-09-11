@@ -242,13 +242,14 @@ class TrainContext:
             persisted_checkpoint = self.storage_context.persist_current_checkpoint(
                 checkpoint, checkpoint_dir_name
             )
-        except FileNotFoundError as e:
+        except FileNotFoundError:
             logger.exception(
                 f"Failed to find local checkpoint {checkpoint} when attempting to upload it. "
-                "This can happen when you upload 2 checkpoints from the same directory on "
-                "the same node."
+                "This could be caused by multiple workers on a node attempting to upload the "
+                "same directory, and then one of the workers deletes the directory before the "
+                "others finish."
             )
-            raise e
+            raise
         # TODO: consider deleting local checkpoint as async callback instead
         if delete_local_checkpoint_after_upload:
             try:
@@ -298,18 +299,6 @@ class TrainContext:
         """
         Upload checkpoint to remote storage and put a training
         result on the result queue of this worker process.
-
-        Args:
-            metrics: The metrics to report.
-            checkpoint: The checkpoint to report.
-            checkpoint_dir_name: The name of the checkpoint dir
-                in this iteration. Note: If not set, the checkpoint will
-                be stored in the default storage path. If set, make sure
-                this value is unique for each iteration.
-            checkpoint_upload_mode: The manner in which we want to upload the checkpoint.
-                Defaults to uploading the checkpoint synchronously.
-                This works when no checkpoint is provided but is not useful in that case.
-            delete_local_checkpoint_after_upload: Whether to delete the checkpoint after it is uploaded.
 
         TODO: the report function should be implemented in the worker instead
         of in the train context. The train context should only keep the train

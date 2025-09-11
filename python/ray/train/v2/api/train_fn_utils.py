@@ -98,7 +98,7 @@ def report(
     """
     if delete_local_checkpoint_after_upload is None:
         delete_local_checkpoint_after_upload = (
-            checkpoint_upload_mode.default_delete_local_checkpoint_after_upload()
+            checkpoint_upload_mode._default_delete_local_checkpoint_after_upload()
         )
 
     get_train_fn_utils().report(
