@@ -55,7 +55,19 @@ def test_plasma_store_operation_after_raylet_dies(ray_start_cluster):
     (RayletDiedError).
     """
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=1)
+    # Required for reducing the retry time of RequestWorkerLease. The call to kill the raylet will also kill the plasma store on the raylet
+    # meaning the call to put will fail. This will trigger worker death, and the driver will try to queue the task again and request a new worker lease
+    # from the now dead raylet.
+    system_configs = {
+        "raylet_rpc_server_reconnect_timeout_s": 0,
+        "health_check_initial_delay_ms": 0,
+        "health_check_timeout_ms": 10,
+        "health_check_failure_threshold": 1,
+    }
+    cluster.add_node(
+        num_cpus=1,
+        _system_config=system_configs,
+    )
     cluster.wait_for_nodes()
 
     ray.init(address=cluster.address)
