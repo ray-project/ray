@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "absl/container/flat_hash_map.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
@@ -40,14 +41,14 @@ class PlacementGroupSpecification : public MessageWrapper<rpc::PlacementGroupSpe
   ///
   /// \param message The protobuf message.
   explicit PlacementGroupSpecification(rpc::PlacementGroupSpec message)
-      : MessageWrapper(message) {
+      : MessageWrapper(std::move(message)) {
     ConstructBundles();
   }
   /// Construct from a protobuf message shared_ptr.
   ///
   /// \param message The protobuf message.
   explicit PlacementGroupSpecification(std::shared_ptr<rpc::PlacementGroupSpec> message)
-      : MessageWrapper(message) {
+      : MessageWrapper(std::move(message)) {
     ConstructBundles();
   }
   /// Return the placement group id.
