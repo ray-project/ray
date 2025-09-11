@@ -7,9 +7,7 @@ import hashlib
 
 
 def generate_custom_build_step_key(image: str) -> str:
-    print(f"Generating custom build step key for image: {image}")
     result = hashlib.sha256(image.encode()).hexdigest()[:20]
-    print(f"Hash: {result}")
     return result
 
 
