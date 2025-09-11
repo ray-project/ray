@@ -23,6 +23,7 @@ class AggregateNumRows(PhysicalOperator):
             "AggregateNumRows",
             input_dependencies,
             data_context,
+            target_max_block_size=None,
         )
 
         self._column_name = column_name

@@ -20,7 +20,7 @@ namespace ray {
 namespace rpc {
 namespace testing {
 
-enum class RpcFailure : uint8_t {
+enum class RpcFailure {
   None,
   // Failure before server receives the request
   Request,
