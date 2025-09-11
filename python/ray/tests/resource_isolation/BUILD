@@ -6,6 +6,9 @@ py_library(
     deps = ["//python/ray/tests:conftest"],
 )
 
+# TODO(#54703): The tests in this file are being tagged
+# as manual because they shouldn't be run as part of
+# bazel test //python/ray/tests/...
 py_test(
     name = "test_resource_isolation_integration",
     size = "medium",
@@ -13,6 +16,7 @@ py_test(
     tags = [
         "cgroup",
         "exclusive",
+        "manual",
         "team:core",
     ],
     target_compatible_with = [
@@ -30,6 +34,7 @@ py_test(
     srcs = ["test_resource_isolation_config.py"],
     tags = [
         "exclusive",
+        "manual",
         "team:core",
     ],
     deps = [
