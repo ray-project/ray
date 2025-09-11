@@ -22,20 +22,6 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @dataclass
-class ReplicaMetricReport:
-    """Report from a replica on ongoing requests.
-
-    Args:
-        running_requests: Average number of running requests at the
-            replica.
-        timestamp: The time at which this report was received.
-    """
-
-    running_requests: float
-    timestamp: float
-
-
-@dataclass
 class AutoscalingContext:
     """Rich context provided to custom autoscaling policies."""
 

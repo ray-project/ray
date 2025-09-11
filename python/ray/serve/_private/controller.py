@@ -3,7 +3,6 @@ import logging
 import os
 import pickle
 import time
-from collections.abc import Sequence
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
@@ -12,10 +11,7 @@ from ray._common.utils import run_background_task
 from ray._raylet import GcsClient
 from ray.actor import ActorHandle
 from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
-from ray.serve._private.autoscaling_state import (
-    AutoscalingStateManager,
-    HandleMetricReport,
-)
+from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     DeploymentID,
@@ -287,12 +283,9 @@ class ServeController:
 
     def record_handle_metrics(self, handle_metric_report: HandleMetricReport) -> None:
         logger.debug(
-            f"Received metrics from handle {handle_metric_report.handle_id} "
-            f"for deployment {handle_metric_report.deployment_id}: "
-            f"{handle_metric_report.queued_requests} queued requests "
-            f"and {handle_metric_report.aggregated_metrics[RUNNING_REQUESTS_KEY]} running requests"
+            f"Received metrics from handle {handle_metric_report.handle_id} for deployment {handle_metric_report.deployment_id}: "
+            f"{handle_metric_report.queued_requests} queued requests and {handle_metric_report.aggregated_metrics[RUNNING_REQUESTS_KEY]} running requests"
         )
-
         latency = time.time() - handle_metric_report.timestamp
         latency_ms = latency * 1000
         if latency_ms > RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS:
@@ -302,8 +295,9 @@ class ServeController:
                 f"This is greater than the warning threshold RPC latency of {RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS}ms. "
                 "This may indicate a performance issue with the controller try increasing the RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS environment variable."
             )
-
-        self.autoscaling_state_manager.record_request_metrics_for_handle(handle_metric_report)
+        self.autoscaling_state_manager.record_request_metrics_for_handle(
+            handle_metric_report
+        )
 
     def bulk_record_handle_metrics(self, reports: List[HandleMetricReport]) -> None:
         logger.debug(f"Received {len(reports)} bulk handle metrics reports")

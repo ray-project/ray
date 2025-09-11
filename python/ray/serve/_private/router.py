@@ -26,7 +26,6 @@ from typing import (
 import ray
 from ray.actor import ActorHandle
 from ray.exceptions import ActorDiedError, ActorUnavailableError, RayError
-from ray.serve._private.autoscaling_state import HandleMetricReport
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     DeploymentHandleSource,
@@ -279,9 +278,6 @@ class RouterMetricsManager:
                     self._controller_handle
                 )
                 shared.register(self)
-                logger.info(
-                    f"Registered {self._handle_id} with shared metrics pusher {shared}."
-                )
             else:
                 self.metrics_pusher.register_or_update_task(
                     self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
@@ -450,7 +446,6 @@ class SharedHandleMetricsPusher:
     def get_or_create(cls, controller_handle: ActorHandle) -> SharedHandleMetricsPusher:
         pusher = cls(controller_handle=controller_handle)
         pusher.start()
-        logger.info(f"Started {pusher}.")
         return pusher
 
     def register(self, router_metrics_manager: RouterMetricsManager) -> None:
