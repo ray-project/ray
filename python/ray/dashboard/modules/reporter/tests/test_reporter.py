@@ -9,22 +9,22 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from ray._common.test_utils import wait_for_condition
 import requests
 from google.protobuf import text_format
 
 import ray
 import ray._common.usage.usage_lib as ray_usage_lib
+from ray._common.network_utils import build_address
+from ray._common.test_utils import wait_for_condition
 from ray._private import ray_constants
 from ray._private.metrics_agent import fix_grpc_metric
-from ray._common.network_utils import build_address
 from ray._private.test_utils import (
     fetch_prometheus,
     format_web_url,
     wait_until_server_available,
 )
 from ray.core.generated.metrics_pb2 import Metric
-from ray.dashboard.modules.reporter.gpu_providers import NvidiaGpuProvider, MB
+from ray.dashboard.modules.reporter.gpu_providers import MB, NvidiaGpuProvider
 from ray.dashboard.modules.reporter.reporter_agent import (
     ReporterAgent,
     TpuUtilizationInfo,
@@ -270,11 +270,8 @@ def test_prometheus_physical_stats_record(
                 break
         return str(raylet_proc.process.pid) == str(raylet_pid)
 
-    wait_for_condition(
-        lambda: test_case_stats_exist() and test_case_ip_correct(),
-        timeout=30,
-        retry_interval_ms=1000,
-    )
+    wait_for_condition(test_case_stats_exist, timeout=30, retry_interval_ms=1000)
+    wait_for_condition(test_case_ip_correct, timeout=30, retry_interval_ms=1000)
 
 
 @pytest.mark.skipif(
@@ -313,6 +310,7 @@ def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_
 
 def test_report_stats():
     dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
     agent = ReporterAgent(dashboard_agent)
     # Assume it is a head node.
     agent._is_head_node = True
@@ -374,6 +372,7 @@ def test_report_stats():
 
 def test_report_stats_gpu():
     dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
     agent = ReporterAgent(dashboard_agent)
     # Assume it is a head node.
     agent._is_head_node = True
@@ -494,6 +493,7 @@ def test_report_stats_gpu():
 
 def test_report_per_component_stats_gpu():
     dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
     agent = ReporterAgent(dashboard_agent)
     # Assume it is a head node.
     agent._is_head_node = True
@@ -857,6 +857,7 @@ def test_report_per_component_stats_gpu():
 
 def test_get_tpu_usage():
     dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
     agent = ReporterAgent(dashboard_agent)
 
     fake_metrics_content = """
@@ -913,6 +914,7 @@ def test_get_tpu_usage():
 
 def test_report_stats_tpu():
     dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
     agent = ReporterAgent(dashboard_agent)
 
     STATS_TEMPLATE["tpus"] = [
@@ -985,6 +987,7 @@ def test_report_stats_tpu():
 
 def test_report_per_component_stats():
     dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
     agent = ReporterAgent(dashboard_agent)
     # Assume it is a head node.
     agent._is_head_node = True

@@ -1,14 +1,13 @@
 import gc
 import os
-import sys
 import signal
+import sys
 
 import pytest
 
 import ray
 from ray._common.test_utils import wait_for_condition
-from ray.core.generated import gcs_pb2
-from ray.core.generated import common_pb2
+from ray.core.generated import common_pb2, gcs_pb2
 
 
 @pytest.mark.parametrize("deterministic_failure", ["request", "response"])
