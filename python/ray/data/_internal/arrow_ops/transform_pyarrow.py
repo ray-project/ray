@@ -201,8 +201,8 @@ def _reconcile_diverging_fields(
                     f"Found columns with both objects and tensors: {field_name}"
                 )
 
-            # Reconcile immediately if it's a special type
-            if any(flags[flag] for flag in flags):
+            # Reconcile immediately if it's a special type and if it's divergent.
+            if any(flags.values()) and len(field_types[field_name]) > 1:
                 reconciled_value = _reconcile_field(
                     non_null_types=field_types[field_name],
                     promote_types=promote_types,
