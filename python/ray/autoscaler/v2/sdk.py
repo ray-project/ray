@@ -37,8 +37,7 @@ def request_cluster_resources(
         gcs_address: The GCS address to query.
         to_request: A list of resource requests to request the cluster to have.
             Each resource request is a tuple of resource bundles and label_selectors
-            to apply per-bundle. Each bundle is a dict of resource name to resource
-            quantity, e.g: [{"CPU": 1}, {"GPU": 1}].
+            to apply per-bundle.
         timeout: Timeout in seconds for the request to be timeout
 
     """
