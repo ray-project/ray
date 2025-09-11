@@ -1,7 +1,7 @@
 import logging
 import math
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List
+from typing import Iterator, List
 from urllib.parse import urlparse
 
 import pyarrow as pa
@@ -33,6 +33,13 @@ def plan_download_op(
     """Plan the download operation with partitioning and downloading stages."""
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
+
+    upstream_op_is_download = False
+    if len(input_physical_dag._logical_operators) == 1 and isinstance(
+        input_physical_dag._logical_operators[0], Download
+    ):
+        upstream_op_is_download = True
+
     uri_column_name = op.uri_column_name
     output_bytes_column_name = op.output_bytes_column_name
     ray_remote_args = op.ray_remote_args
@@ -43,23 +50,32 @@ def plan_download_op(
         _get_udf,
     )
 
-    # PartitionActor is a callable class, so we need ActorPoolStrategy
-    partition_compute = ActorPoolStrategy(size=1)  # Use single actor for partitioning
+    # only include partion actors if the upstream op is not a download operator. we do this
+    # because a single partition actor can bottleneck the download process and the download
+    # operator is responsible for outputting appropriately sized blocks.
+    partition_map_operator = None
+    if not upstream_op_is_download:
+        # PartitionActor is a callable class, so we need ActorPoolStrategy
+        partition_compute = ActorPoolStrategy(
+            size=1
+        )  # Use single actor for partitioning
 
-    fn, init_fn = _get_udf(PartitionActor, (), {}, (uri_column_name, data_context), {})
-    block_fn = _generate_transform_fn_for_map_batches(fn)
-    partition_transform_fns = [
-        BlockMapTransformFn(block_fn),
-    ]
-    partition_map_transformer = MapTransformer(partition_transform_fns, init_fn)
-    partition_map_operator = MapOperator.create(
-        partition_map_transformer,
-        input_physical_dag,
-        data_context,
-        name="URIPartitioner",
-        compute_strategy=partition_compute,  # Use actor-based compute for callable class
-        ray_remote_args=ray_remote_args,
-    )
+        fn, init_fn = _get_udf(
+            PartitionActor, (), {}, (uri_column_name, data_context), {}
+        )
+        block_fn = _generate_transform_fn_for_map_batches(fn)
+        partition_transform_fns = [
+            BlockMapTransformFn(block_fn),
+        ]
+        partition_map_transformer = MapTransformer(partition_transform_fns, init_fn)
+        partition_map_operator = MapOperator.create(
+            partition_map_transformer,
+            input_physical_dag,
+            data_context,
+            name="URIPartitioner",
+            compute_strategy=partition_compute,  # Use actor-based compute for callable class
+            ray_remote_args=ray_remote_args,
+        )
 
     fn, init_fn = _get_udf(
         download_bytes_threaded,
@@ -76,7 +92,7 @@ def plan_download_op(
     download_compute = TaskPoolStrategy()
     download_map_operator = MapOperator.create(
         download_map_transformer,
-        partition_map_operator,
+        partition_map_operator if partition_map_operator else input_physical_dag,
         data_context,
         name="URIDownloader",
         compute_strategy=download_compute,
@@ -95,12 +111,23 @@ def uri_to_path(uri: str) -> str:
     return parsed.netloc + parsed.path
 
 
+def _arrow_batcher(table: pa.Table, n: int):
+    """Batch a PyArrow table into smaller tables of size n using zero-copy slicing."""
+    num_rows = table.num_rows
+    for i in range(0, num_rows, n):
+        end_idx = min(i + n, num_rows)
+        # Use PyArrow's zero-copy slice operation
+        batch_table = table.slice(i, end_idx - i)
+        print(f"Yielding batch with len(batch): {batch_table.num_rows}")
+        yield batch_table
+
+
 def download_bytes_threaded(
-    block,
-    uri_column_name,
+    block: pa.Table,
+    uri_column_name: str,
     output_bytes_column_name,
     data_context: DataContext,
-):
+) -> Iterator[pa.Table]:
     """Optimized version that uses make_async_gen for concurrent downloads."""
     if not isinstance(block, pa.Table):
         block = BlockAccessor.for_block(block).to_arrow()
@@ -132,9 +159,18 @@ def download_bytes_threaded(
     )
 
     # Add the new column to the PyArrow table
-    return block.add_column(
+    output_block = block.add_column(
         len(block.column_names), output_bytes_column_name, pa.array(uri_bytes)
     )
+    output_block_size = output_block.nbytes
+    ctx = ray.data.context.DatasetContext.get_current()
+    max_bytes = ctx.target_max_block_size
+    if max_bytes is not None and output_block_size > max_bytes:
+        num_blocks = math.ceil(output_block_size / max_bytes)
+        num_rows = output_block.num_rows
+        yield from _arrow_batcher(output_block, num_rows // num_blocks)
+    else:
+        yield output_block
 
 
 class PartitionActor:
@@ -147,7 +183,7 @@ class PartitionActor:
         self._data_context = data_context
         self._batch_size_estimate = None
 
-    def _sample_sizes(self, uris):
+    def _sample_sizes(self, uris: List[str]) -> List[int]:
         """Fetch file sizes in parallel using ThreadPoolExecutor."""
 
         def get_file_size(uri_path, fs):
@@ -185,16 +221,7 @@ class PartitionActor:
 
         return file_sizes
 
-    def _arrow_batcher(self, table, n):
-        """Batch a PyArrow table into smaller tables of size n using zero-copy slicing."""
-        num_rows = table.num_rows
-        for i in range(0, num_rows, n):
-            end_idx = min(i + n, num_rows)
-            # Use PyArrow's zero-copy slice operation
-            batch_table = table.slice(i, end_idx - i)
-            yield batch_table
-
-    def __call__(self, block):
+    def __call__(self, block: pa.Table) -> Iterator[pa.Table]:
         if not isinstance(block, pa.Table):
             block = BlockAccessor.for_block(block).to_arrow()
 
@@ -216,4 +243,4 @@ class PartitionActor:
                 max_bytes = ctx.target_max_block_size
                 self._batch_size_estimate = math.floor(max_bytes / file_size_estimate)
 
-        yield from self._arrow_batcher(block, self._batch_size_estimate)
+        yield from _arrow_batcher(block, self._batch_size_estimate)
