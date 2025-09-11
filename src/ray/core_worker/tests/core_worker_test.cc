@@ -606,20 +606,14 @@ TEST_F(CoreWorkerTest, HandlePubsubLongPollingIdempotency) {
   EXPECT_EQ(reply1.pub_messages_size(), 1);
   EXPECT_EQ(reply2.pub_messages_size(), 1);
 
-  for (int i = 0; i < reply1.pub_messages_size(); ++i) {
-    const auto &msg1 = reply1.pub_messages(i);
-    const auto &msg2 = reply2.pub_messages(i);
+  const auto &msg1 = reply1.pub_messages(0);
+  const auto &msg2 = reply2.pub_messages(0);
 
-    EXPECT_EQ(msg1.channel_type(), msg2.channel_type());
-    EXPECT_EQ(msg1.key_id(), msg2.key_id());
-    EXPECT_EQ(msg1.sequence_id(), msg2.sequence_id());
-
-    if (msg1.has_worker_object_eviction_message() &&
-        msg2.has_worker_object_eviction_message()) {
-      EXPECT_EQ(msg1.worker_object_eviction_message().object_id(),
-                msg2.worker_object_eviction_message().object_id());
-    }
-  }
+  EXPECT_EQ(msg1.channel_type(), msg2.channel_type());
+  EXPECT_EQ(msg1.key_id(), msg2.key_id());
+  EXPECT_EQ(msg1.sequence_id(), msg2.sequence_id());
+  EXPECT_EQ(msg1.worker_object_eviction_message().object_id(),
+            msg2.worker_object_eviction_message().object_id());
 }
 
 namespace {
