@@ -931,12 +931,7 @@ class ServeController:
         grpc_config = self.get_grpc_config()
         applications = {}
 
-        if source:
-            app_statuses = self.application_state_manager.filter_app_statuses_by_source(
-                source=source
-            )
-        else:
-            app_statuses = self.application_state_manager.list_app_statuses()
+        app_statuses = self.application_state_manager.list_app_statuses(source=source)
 
         # If there are no app statuses, there's no point getting the app configs.
         # Moreover, there might be no app statuses because the GCS is down,
