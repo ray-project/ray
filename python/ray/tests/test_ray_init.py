@@ -322,6 +322,12 @@ def py_module_whl():
     os.unlink(f.name)
 
 
+@pytest.fixture
+def ray_shutdown():
+    yield
+    ray.shutdown()
+
+
 def test_ray_init_with_runtime_env_as_dict(
     runtime_env_working_dir, py_module_whl, ray_shutdown
 ):
