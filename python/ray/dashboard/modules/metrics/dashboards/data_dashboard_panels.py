@@ -810,6 +810,29 @@ OBJECT_STORE_MEMORY_BUDGET_PANEL = Panel(
     stack=False,
 )
 
+ALL_RESOURCES_UTILIZATION_PANEL = Panel(
+    id=57,
+    title="All logical resources utilization",
+    description=(
+        "Shows all logical resources utilization on a single graph. Filtering by operator is recommended."
+    ),
+    unit="cores",
+    targets=[
+        Target(
+            expr='sum(ray_data_cpu_usage_cores{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            legend="CPU: {{dataset}}, {{operator}}",
+        ),
+        Target(
+            expr='sum(ray_data_gpu_usage_cores{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            legend="GPU: {{dataset}}, {{operator}}",
+        ),
+    ],
+    fill=0,
+    stack=False,
+)
+
+OPERATOR_PANELS = [TASK_THROUGHPUT_BY_NODE_PANEL, ALL_RESOURCES_UTILIZATION_PANEL]
+
 DATA_GRAFANA_ROWS = [
     # Overview Row
     Row(
@@ -932,6 +955,13 @@ DATA_GRAFANA_ROWS = [
             ITERATION_BLOCKED_PANEL,
             ITERATION_USER_PANEL,
         ],
+        collapsed=True,
+    ),
+    # Operator Panels Row (these graphs should only be viewed when filtering down to a single operator)
+    Row(
+        title="Operator Panels",
+        id=108,
+        panels=[ALL_RESOURCES_UTILIZATION_PANEL],
         collapsed=True,
     ),
 ]
