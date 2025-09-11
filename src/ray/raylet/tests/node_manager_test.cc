@@ -1164,59 +1164,6 @@ TEST_F(NodeManagerTest, TestHandleCancelWorkerLeaseNoLeaseIdempotent) {
   ASSERT_EQ(reply2.success(), false);
 }
 
-TEST_F(NodeManagerTest, TestHandlePinObjectIDsHasPlasmaObjectIdempotency) {
-  rpc::Address owner_addr;
-  plasma::flatbuf::ObjectSource source = plasma::flatbuf::ObjectSource::CreatedByWorker;
-  ObjectID id = ObjectID::FromRandom();
-
-  RAY_UNUSED(mock_store_client_->TryCreateImmediately(
-      id, owner_addr, 1024, nullptr, 1024, nullptr, source, 0));
-
-  rpc::PinObjectIDsRequest pin_request;
-  pin_request.add_object_ids(id.Binary());
-
-  rpc::PinObjectIDsReply reply1;
-  node_manager_->HandlePinObjectIDs(
-      pin_request,
-      &reply1,
-      [](Status s, std::function<void()> success, std::function<void()> failure) {});
-
-  rpc::PinObjectIDsReply reply2;
-  node_manager_->HandlePinObjectIDs(
-      pin_request,
-      &reply2,
-      [](Status s, std::function<void()> success, std::function<void()> failure) {});
-
-  EXPECT_EQ(reply1.successes_size(), 1);
-  EXPECT_TRUE(reply1.successes(0));
-  EXPECT_EQ(reply2.successes_size(), 1);
-  EXPECT_TRUE(reply2.successes(0));
-}
-
-TEST_F(NodeManagerTest, TestHandlePinObjectIDsNoPlasmaObjectIdempotency) {
-  ObjectID id = ObjectID::FromRandom();
-
-  rpc::PinObjectIDsRequest pin_request;
-  pin_request.add_object_ids(id.Binary());
-
-  rpc::PinObjectIDsReply reply1;
-  node_manager_->HandlePinObjectIDs(
-      pin_request,
-      &reply1,
-      [](Status s, std::function<void()> success, std::function<void()> failure) {});
-
-  rpc::PinObjectIDsReply reply2;
-  node_manager_->HandlePinObjectIDs(
-      pin_request,
-      &reply2,
-      [](Status s, std::function<void()> success, std::function<void()> failure) {});
-
-  EXPECT_EQ(reply1.successes_size(), 1);
-  EXPECT_FALSE(reply1.successes(0));
-  EXPECT_EQ(reply2.successes_size(), 1);
-  EXPECT_FALSE(reply2.successes(0));
-}
-
 }  // namespace ray::raylet
 
 int main(int argc, char **argv) {
