@@ -65,7 +65,6 @@ class ActorPoolMapOperator(MapOperator):
         map_transformer: MapTransformer,
         input_op: PhysicalOperator,
         data_context: DataContext,
-        target_max_block_size: Optional[int],
         compute_strategy: ActorPoolStrategy,
         name: str = "ActorPoolMap",
         min_rows_per_bundle: Optional[int] = None,
@@ -73,6 +72,7 @@ class ActorPoolMapOperator(MapOperator):
         map_task_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        target_max_block_size_override: Optional[int] = None,
     ):
         """Create an ActorPoolMapOperator instance.
 
@@ -81,8 +81,6 @@ class ActorPoolMapOperator(MapOperator):
                 to each ref bundle input.
             input_op: Operator generating input data for this op.
             data_context: The DataContext instance containing configuration settings.
-            target_max_block_size: The target maximum number of bytes to
-                include in an output block.
             compute_strategy: `ComputeStrategy` used for this operator.
             name: The name of this operator.
             min_rows_per_bundle: The number of rows to gather per batch passed to the
@@ -100,13 +98,15 @@ class ActorPoolMapOperator(MapOperator):
                 advanced, experimental feature.
             ray_remote_args: Customize the ray remote args for this op's tasks.
                 See :func:`ray.remote` for details.
+            target_max_block_size_override: The target maximum number of bytes to
+                include in an output block.
         """
         super().__init__(
             map_transformer,
             input_op,
             data_context,
             name,
-            target_max_block_size,
+            target_max_block_size_override,
             min_rows_per_bundle,
             supports_fusion,
             map_task_kwargs,
@@ -301,7 +301,7 @@ class ActorPoolMapOperator(MapOperator):
             ctx = TaskContext(
                 task_idx=self._next_data_task_idx,
                 op_name=self.name,
-                target_max_block_size=self.actual_target_max_block_size,
+                target_max_block_size_override=self.actual_target_max_block_size,
             )
             gen = actor.submit.options(
                 num_returns="streaming",

@@ -142,7 +142,6 @@ def test_disallow_non_unique_operators():
         "test_combine",
         [o2, o3],
         DataContext.get_current(),
-        target_max_block_size=None,
     )
     with pytest.raises(ValueError):
         build_streaming_topology(o4, ExecutionOptions(verbose_progress=True))
