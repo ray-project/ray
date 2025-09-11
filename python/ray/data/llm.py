@@ -28,6 +28,11 @@ class ProcessorConfig(_ProcessorConfig):
         accelerator_type: The accelerator type used by the LLM stage in a processor.
             Default to None, meaning that only the CPU will be used.
         concurrency: The number of workers for data parallelism. Default to 1.
+            If ``concurrency`` is a ``tuple`` ``(m, n)``, Ray creates an autoscaling
+            actor pool that scales between ``m`` and ``n`` workers (``1 <= m <= n``).
+            If ``concurrency`` is an ``int`` ``n``, Ray uses either a fixed pool of ``n``
+            workers or an autoscaling pool from ``1`` to ``n`` workers, depending on
+            the processor and stage.
     """
 
     pass
@@ -41,7 +46,9 @@ class HttpRequestProcessorConfig(_HttpRequestProcessorConfig):
         batch_size: The batch size to send to the HTTP request.
         url: The URL to send the HTTP request to.
         headers: The headers to send with the HTTP request.
-        concurrency: The number of concurrent requests to send.
+        concurrency: The number of concurrent requests to send. Default to 1.
+            If ``concurrency`` is a ``tuple`` ``(m, n)``,
+            autoscaling strategy is used (``1 <= m <= n``).
 
     Examples:
         .. testcode::
@@ -116,6 +123,10 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
         accelerator_type: The accelerator type used by the LLM stage in a processor.
             Default to None, meaning that only the CPU will be used.
         concurrency: The number of workers for data parallelism. Default to 1.
+            If ``concurrency`` is a tuple ``(m, n)``, Ray creates an autoscaling
+            actor pool that scales between ``m`` and ``n`` workers (``1 <= m <= n``).
+            If ``concurrency`` is an ``int`` ``n``, CPU stages use an autoscaling
+            pool from ``(1, n)``, while GPU stages use a fixed pool of ``n`` workers.
 
     Examples:
 
@@ -177,7 +188,7 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
 
     Args:
         model_source: The model source to use for the SGLang engine.
-        batch_size: The batch size to send to the vLLM engine. Large batch sizes are
+        batch_size: The batch size to send to the SGLang engine. Large batch sizes are
             likely to saturate the compute resources and could achieve higher throughput.
             On the other hand, small batch sizes are more fault-tolerant and could
             reduce bubbles in the data pipeline. You can tune the batch size to balance
@@ -197,12 +208,16 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
         apply_chat_template: Whether to apply chat template.
         chat_template: The chat template to use. This is usually not needed if the
             model checkpoint already contains the chat template.
-        tokenize: Whether to tokenize the input before passing it to the vLLM engine.
-            If not, vLLM will tokenize the prompt in the engine.
+        tokenize: Whether to tokenize the input before passing it to the SGLang engine.
+            If not, SGLang will tokenize the prompt in the engine.
         detokenize: Whether to detokenize the output.
         accelerator_type: The accelerator type used by the LLM stage in a processor.
             Default to None, meaning that only the CPU will be used.
         concurrency: The number of workers for data parallelism. Default to 1.
+            If ``concurrency`` is a tuple ``(m, n)``, Ray creates an autoscaling
+            actor pool that scales between ``m`` and ``n`` workers (``1 <= m <= n``).
+            If ``concurrency`` is an ``int`` ``n``, CPU stages use an autoscaling
+            pool from ``(1, n)``, while GPU stages use a fixed pool of ``n`` workers.
 
     Examples:
         .. testcode::

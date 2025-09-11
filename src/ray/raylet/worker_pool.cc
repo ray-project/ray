@@ -461,6 +461,7 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     // Support forking in gRPC.
     env.insert({"GRPC_ENABLE_FORK_SUPPORT", "True"});
     env.insert({"GRPC_POLL_STRATEGY", "poll"});
+    env.insert({"RAY_start_python_gc_manager_thread", "0"});
   }
 
   return {std::move(worker_command_args), std::move(env)};
