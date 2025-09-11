@@ -103,3 +103,21 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+ray_cc_test(
+    name = "object_manager_test",
+    size = "medium",
+    srcs = [
+        "object_manager_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//:ray_mock",
+        "//src/fakes/ray/object_manager/plasma:fake_plasma_client",
+        "//src/ray/common:test_utils",
+        "//src/ray/object_manager",
+        "//src/ray/rpc/object_manager:fake_object_manager_client",
+        "//src/ray/util:temporary_directory",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
