@@ -8,7 +8,6 @@ srcs:
   - python/deplocks/llm/rayllm_test_py311_cpu.lock
   - python/deplocks/llm/rayllm_test_py311_cu128.lock
   - python/deplocks/llm/rayllm_test_py311_cu121.lock
-  - python/deplocks/examples/entity-recognition-with-llms/llm_example_py311_cu128.lock
 tags:
   - cr.ray.io/rayproject/$IMAGE_TO
 build_args:

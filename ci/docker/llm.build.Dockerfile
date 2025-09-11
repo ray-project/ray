@@ -10,8 +10,6 @@ SHELL ["/bin/bash", "-ice"]
 
 COPY . .
 
-RUN echo "test"
-
 RUN <<EOF
 #!/bin/bash
 
