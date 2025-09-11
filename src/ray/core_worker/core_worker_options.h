@@ -25,7 +25,6 @@
 #include "ray/common/ray_object.h"
 #include "ray/common/status.h"
 #include "ray/common/task/task_common.h"
-#include "ray/common/task/task_spec.h"
 #include "ray/core_worker/common.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/util/process.h"
