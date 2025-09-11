@@ -136,7 +136,8 @@ def download_bytes_threaded(
     uris = block.column(uri_column_name).to_pylist()
 
     if len(uris) == 0:
-        return block
+        yield block
+        return
 
     paths, fs = _resolve_paths_and_filesystem(uris)
     fs = RetryingPyFileSystem.wrap(fs, retryable_errors=data_context.retried_io_errors)
@@ -168,7 +169,7 @@ def download_bytes_threaded(
     if max_bytes is not None and output_block_size > max_bytes:
         num_blocks = math.ceil(output_block_size / max_bytes)
         num_rows = output_block.num_rows
-        yield from _arrow_batcher(output_block, num_rows // num_blocks)
+        yield from _arrow_batcher(output_block, int(math.ceil(num_rows / num_blocks)))
     else:
         yield output_block
 
