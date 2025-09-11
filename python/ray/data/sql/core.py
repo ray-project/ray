@@ -634,7 +634,7 @@ def register_table(name: str, dataset: Dataset) -> None:
     get_engine().register_table(name, dataset)
 
 
-@PublicAPI
+@PublicAPI(stability="alpha")
 def list_tables() -> List[str]:
     """List all registered table names.
 
@@ -644,7 +644,7 @@ def list_tables() -> List[str]:
     return get_engine().list_tables()
 
 
-@PublicAPI
+@PublicAPI(stability="alpha")
 def get_schema(table_name: str) -> Optional[Dict[str, str]]:
     """Get the schema for a registered table.
 
@@ -657,7 +657,7 @@ def get_schema(table_name: str) -> Optional[Dict[str, str]]:
     return get_engine().get_schema(table_name)
 
 
-@PublicAPI
+@PublicAPI(stability="alpha")
 def clear_tables() -> None:
     """Clear all registered tables."""
     get_engine().clear_tables()

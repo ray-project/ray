@@ -8,7 +8,7 @@ from typing import Optional
 from ray.util.annotations import PublicAPI
 
 
-@PublicAPI
+@PublicAPI(stability="alpha")
 class LogLevel(Enum):
     """Logging levels for the SQL engine.
 
@@ -25,7 +25,7 @@ class LogLevel(Enum):
     ERROR = "ERROR"
 
 
-@PublicAPI
+@PublicAPI(stability="alpha")
 class SQLDialect(Enum):
     """SQL dialects supported by the Ray Data SQL engine.
 
@@ -64,7 +64,7 @@ class SQLDialect(Enum):
         return mapping[self]
 
 
-@PublicAPI
+@PublicAPI(stability="alpha")
 @dataclass
 class SQLConfig:
     """Configuration for Ray Data SQL engine.
