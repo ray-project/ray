@@ -59,6 +59,11 @@ void OutOfOrderActorSchedulingQueue::Stop() {
   if (fiber_state_manager_) {
     fiber_state_manager_->Stop();
   }
+  {
+    absl::MutexLock lock(&mu_);
+    CancelAllPendingUnsafe(Status::SchedulingCancelled(
+        "Out-of-order actor scheduling queue stopped; canceling pending tasks"));
+  }
 }
 
 bool OutOfOrderActorSchedulingQueue::TaskQueueEmpty() const {

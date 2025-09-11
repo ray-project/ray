@@ -310,13 +310,7 @@ void TaskReceiver::Stop() {
     stopping_ = true;
   }
   for (const auto &[_, scheduling_queue] : actor_scheduling_queues_) {
-    // Stop executors first.
     scheduling_queue->Stop();
-    // Then cancel all pending-but-not-executed tasks to avoid hanging shutdowns.
-    RAY_LOG(INFO)
-        << "Canceling queued actor tasks due to shutdown; they were not started";
-    scheduling_queue->CancelAllPending(
-        Status::SchedulingCancelled("Actor is shutting down; canceling queued tasks"));
   }
 }
 

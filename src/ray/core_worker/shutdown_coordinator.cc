@@ -223,11 +223,11 @@ void ShutdownCoordinator::ExecuteWorkerShutdown(
              reason == ShutdownReason::kOutOfMemory ||
              reason == ShutdownReason::kActorKilled) {
     TryTransitionToDisconnecting();
-    executor_->ExecuteWorkerExit(GetExitTypeString(), detail, timeout_ms);
+    executor_->ExecuteExit(GetExitTypeString(), detail, timeout_ms, nullptr);
   } else if (reason == ShutdownReason::kIdleTimeout ||
              reason == ShutdownReason::kJobFinished) {
     TryTransitionToDisconnecting();
-    executor_->ExecuteHandleExit(GetExitTypeString(), detail, timeout_ms);
+    executor_->ExecuteExitIfIdle(GetExitTypeString(), detail, timeout_ms);
   } else {
     ExecuteGracefulShutdown(detail, timeout_ms);
   }

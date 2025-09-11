@@ -112,7 +112,7 @@ class TaskReceiver {
  private:
   /// Guard for shutdown state.
   absl::Mutex stop_mu_;
-  /// True once shutdown begins. New PushTask RPCs should be rejected.
+  // True once shutdown begins. Requests to execute new tasks will be rejected.
   bool stopping_ ABSL_GUARDED_BY(stop_mu_) = false;
   /// Set up the configs for an actor.
   /// This should be called once for the actor creation task.

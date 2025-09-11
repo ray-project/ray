@@ -32,30 +32,26 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
     std::string_view exit_type,
     std::string_view detail,
     std::chrono::milliseconds timeout_ms) {
-  RAY_LOG(INFO) << "Executing graceful shutdown: " << exit_type << " - " << detail
-                << " (timeout: " << timeout_ms.count() << "ms)";
+  RAY_LOG(DEBUG) << "Executing graceful shutdown: " << exit_type << " - " << detail
+                 << " (timeout: " << timeout_ms.count() << "ms)";
 
   if (core_worker_->options_.worker_type == WorkerType::WORKER) {
     // For asyncio actors, terminate the asyncio thread early to prevent coroutines
     // from accessing torn-down C++ state during shutdown.
     if (!core_worker_->worker_context_->GetCurrentActorID().IsNil() &&
         core_worker_->worker_context_->CurrentActorIsAsync()) {
-      RAY_LOG(INFO) << "Terminating asyncio thread early for actor shutdown";
+      RAY_LOG(DEBUG) << "Terminating asyncio thread early for actor shutdown";
       core_worker_->options_.terminate_asyncio_thread();
     }
 
     // For actors, perform Python-side cleanup before shutdown proceeds.
     if (!core_worker_->worker_context_->GetCurrentActorID().IsNil() &&
         core_worker_->actor_shutdown_callback_) {
-      RAY_LOG(INFO) << "Calling actor shutdown callback";
+      RAY_LOG(DEBUG) << "Calling actor shutdown callback";
       core_worker_->actor_shutdown_callback_();
     }
 
-    // Running in a main thread.
-    // Asyncio coroutines could still run after CoreWorker is removed because it is
-    // running in a different thread. This can cause segfault because coroutines try to
-    // access CoreWorker methods that are already garbage collected. We should complete
-    // all coroutines before shutting down in order to prevent this.
+    // Python shutdown hooks have run; stop task execution service next.
     core_worker_->task_execution_service_.stop();
   }
 
@@ -96,12 +92,6 @@ void CoreWorkerShutdownExecutor::ExecuteForceShutdown(std::string_view exit_type
   KillChildProcessesImmediately();
   DisconnectServices(exit_type, detail, nullptr);
   QuickExit();
-}
-
-void CoreWorkerShutdownExecutor::ExecuteWorkerExit(std::string_view exit_type,
-                                                   std::string_view detail,
-                                                   std::chrono::milliseconds timeout_ms) {
-  ExecuteExit(exit_type, detail, timeout_ms, nullptr);
 }
 
 void CoreWorkerShutdownExecutor::ExecuteExit(
@@ -196,7 +186,7 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
   core_worker_->task_manager_->DrainAndShutdown(drain_references_callback);
 }
 
-void CoreWorkerShutdownExecutor::ExecuteHandleExit(std::string_view exit_type,
+void CoreWorkerShutdownExecutor::ExecuteExitIfIdle(std::string_view exit_type,
                                                    std::string_view detail,
                                                    std::chrono::milliseconds timeout_ms) {
   RAY_LOG(INFO) << "Executing handle exit: " << exit_type << " - " << detail
@@ -208,7 +198,7 @@ void CoreWorkerShutdownExecutor::ExecuteHandleExit(std::string_view exit_type,
       actual_timeout = std::chrono::milliseconds{10000};  // 10s default
     }
 
-    ExecuteWorkerExit(exit_type, detail, actual_timeout);
+    ExecuteExit(exit_type, detail, actual_timeout, nullptr);
   } else {
     RAY_LOG(INFO) << "Worker not idle, ignoring exit request: " << detail;
   }
