@@ -178,6 +178,8 @@ class FakePlasmaClient : public plasma::PlasmaClientInterface {
 
   int64_t store_capacity() { return 1; }
 
+  StatusOr<std::string> GetMemoryUsage() override { return std::string("fake"); }
+
  private:
   absl::flat_hash_set<ObjectID> objects_ids_in_plasma_;
   absl::flat_hash_map<ObjectID, std::pair<std::vector<uint8_t>, std::vector<uint8_t>>>
@@ -1001,6 +1003,86 @@ TEST_P(NodeManagerReturnWorkerLeaseIdempotentTest, TestDifferentRequestArgs) {
 INSTANTIATE_TEST_SUITE_P(NodeManagerReturnWorkerLeaseIdempotentVariations,
                          NodeManagerReturnWorkerLeaseIdempotentTest,
                          testing::Combine(testing::Bool(), testing::Bool()));
+
+TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseIdempotent) {
+  auto lease_spec = BuildLeaseSpec({});
+  rpc::RequestWorkerLeaseRequest request;
+  rpc::RequestWorkerLeaseReply reply1;
+  rpc::RequestWorkerLeaseReply reply2;
+  LeaseID lease_id = LeaseID::FromRandom();
+  lease_spec.GetMutableMessage().set_lease_id(lease_id.Binary());
+  request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
+  request.set_backlog_size(1);
+  request.set_grant_or_reject(true);
+  request.set_is_selected_based_on_locality(true);
+  auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
+  PopWorkerCallback pop_worker_callback;
+  EXPECT_CALL(mock_worker_pool_, PopWorker(_, _))
+      .Times(1)
+      .WillOnce([&](const LeaseSpecification &ls, const PopWorkerCallback &callback) {
+        pop_worker_callback = callback;
+      });
+  node_manager_->HandleRequestWorkerLease(
+      request,
+      &reply1,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  pop_worker_callback(worker, PopWorkerStatus::OK, "");
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(leased_workers_[lease_id]->GetGrantedLeaseId(), lease_id);
+  request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
+  node_manager_->HandleRequestWorkerLease(
+      request,
+      &reply2,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(leased_workers_[lease_id]->GetGrantedLeaseId(), lease_id);
+  ASSERT_EQ(leased_workers_[lease_id]->WorkerId(),
+            WorkerID::FromBinary(reply1.worker_address().worker_id()));
+  ASSERT_EQ(reply1.worker_address(), reply2.worker_address());
+}
+
+TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseInfeasibleIdempotent) {
+  auto lease_spec = BuildLeaseSpec({{"CPU", 1}});
+  lease_spec.GetMutableMessage()
+      .mutable_scheduling_strategy()
+      ->mutable_node_affinity_scheduling_strategy()
+      ->set_soft(false);  // Hard constraint
+
+  rpc::RequestWorkerLeaseRequest request;
+  rpc::RequestWorkerLeaseReply reply1;
+  rpc::RequestWorkerLeaseReply reply2;
+  LeaseID lease_id = LeaseID::FromRandom();
+  lease_spec.GetMutableMessage().set_lease_id(lease_id.Binary());
+  request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
+  request.set_backlog_size(1);
+  request.set_grant_or_reject(true);
+  request.set_is_selected_based_on_locality(true);
+  node_manager_->HandleRequestWorkerLease(
+      request,
+      &reply1,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(reply1.canceled(), true);
+  ASSERT_EQ(reply1.failure_type(),
+            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE);
+  request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
+  node_manager_->HandleRequestWorkerLease(
+      request,
+      &reply2,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(reply1.canceled(), reply2.canceled());
+  ASSERT_EQ(reply1.failure_type(), reply2.failure_type());
+  ASSERT_EQ(reply1.scheduling_failure_message(), reply2.scheduling_failure_message());
+}
 
 size_t GetPendingLeaseWorkerCount(const LocalLeaseManager &local_lease_manager) {
   return local_lease_manager.waiting_lease_queue_.size() +

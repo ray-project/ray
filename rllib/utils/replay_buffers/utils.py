@@ -4,9 +4,9 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 
-from ray.rllib.utils import deprecation_warning
+from ray._common.deprecation import deprecation_warning
 from ray.rllib.utils.annotations import OldAPIStack
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray._common.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics import ALL_MODULES, TD_ERROR_KEY
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
