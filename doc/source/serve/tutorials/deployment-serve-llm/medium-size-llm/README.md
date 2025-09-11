@@ -8,11 +8,11 @@ Modify notebook.ipynb instead, then regenerate this file with:
 jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
 -->
 
-# Deploying a medium size LLM
+# Deploy a medium-sized LLM
 
 A medium LLM typically runs on a single node with 4-8 GPUs. It offers a balance between performance and efficiency. These models provide stronger accuracy and reasoning than small models while remaining more affordable and resource-friendly than very large ones. This makes them a solid choice for production workloads that need good quality at lower cost. They're also ideal for scaling applications where large models would be too slow or expensive.
 
-This tutorial deploys a medium-sized LLM using Ray Serve LLM. For smaller models, see [Deploying a small-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/small-size-llm/README.html), and for larger models, see [Deploying a large-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/large-size-llm/README.html).
+This tutorial deploys a medium-sized LLM using Ray Serve LLM. For smaller models, see [Deploy a small-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/small-size-llm/README.html), and for larger models, see [Deploy a large-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/large-size-llm/README.html).
 
 ---
 
@@ -43,7 +43,7 @@ llm_config = LLMConfig(
             max_replicas=4,
         )
     ),
-    ### If your model is not gated, you can skip `hf_token`
+    ### If your model is not gated, you can skip `HF_TOKEN`
     # Share your Hugging Face token with the vllm engine so it can access the gated Llama 3.
     # Type `export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>` in a terminal
     runtime_env=dict(env_vars={"HF_TOKEN": os.environ.get("HF_TOKEN")}),
@@ -58,7 +58,7 @@ app = build_openai_app({"llm_configs": [llm_config]})
 
 ```
 
-**Note:** Before moving to a production setup, migrate to using a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html) to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. See [Serving LLMs: production guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.
+**Note:** Before moving to a production setup, migrate to using a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html) to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. See [Serving LLMs - Quickstart Examples: Production Guide](https://docs.ray.io/en/latest/serve/llm/quick-start.html#production-deployment) for an example.
 
 ---
 
@@ -87,6 +87,7 @@ In a terminal, run:
 
 ```bash
 %%bash
+export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>
 serve run serve_llama_3_1_70b:app --non-blocking
 ```
 
@@ -106,10 +107,7 @@ Example curl:
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Authorization: Bearer FAKE_KEY" \
   -H "Content-Type: application/json" \
-  -d '{ \
-        "model": "my-llama-3.1-70b", \
-        "messages": [{"role": "user", "content": "What is 2 + 2?"}] \
-      }'
+  -d '{ "model": "my-llama-3.1-70b", "messages": [{"role": "user", "content": "What is 2 + 2?"}] }'
 ```
 
 Example Python:
@@ -120,10 +118,10 @@ Example Python:
 from urllib.parse import urljoin
 from openai import OpenAI
 
-api_key = "FAKE_KEY"
-base_url = "http://localhost:8000"
+API_KEY = "FAKE_KEY"
+BASE_URL = "http://localhost:8000"
 
-client = OpenAI(base_url=urljoin(base_url, "v1"), api_key=api_key)
+client = OpenAI(BASE_URL=urljoin(BASE_URL, "v1"), API_KEY=API_KEY)
 
 response = client.chat.completions.create(
     model="my-llama-3.1-70b",
@@ -165,16 +163,16 @@ Anyscale provides out-of-the-box images (`anyscale/ray-llm`), which come pre-loa
 
 Create your Anyscale service configuration in a new `service.yaml` file:
 ```yaml
-#service.yaml
+# service.yaml
 name: deploy-llama-3-70b
-image_uri: anyscale/ray-llm:2.49.0-py311-cu128
+image_uri: anyscale/ray-llm:2.49.0-py311-cu128 # Anyscale Ray Serve LLM image. Use `containerfile: ./Dockerfile` to use a custom Dockerfile.
 compute_config:
   auto_select_worker_config: true 
 working_dir: .
 cloud:
 applications:
-# Point to your app in your Python module
-- import_path: serve_llama_3_1_70b:app
+  # Point to your app in your Python module
+  - import_path: serve_llama_3_1_70b:app
 ```
 
 Deploy your service. Make sure you forward your Hugging Face token to the command.
