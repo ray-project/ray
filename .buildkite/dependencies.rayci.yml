@@ -24,7 +24,7 @@ steps:
     tags: always
     instance_type: small
     commands:
-      - ci/compile_llm_requirements.sh
+      - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/rayllm.depsets.yaml --check
       - chown -R 2000:100 /artifact-mount
       - cp python/deplocks/llm/* /artifact-mount/
     job_env: oss-ci-base_test-py3.11
