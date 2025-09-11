@@ -285,7 +285,7 @@ class Dataset:
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
-        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -371,6 +371,9 @@ class Dataset:
 
                 * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n)``, Ray
                   Data uses an autoscaling actor pool from ``m`` to ``n`` workers.
+
+                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n, initial)``, Ray
+                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
 
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
                   method raises an error.
@@ -466,7 +469,7 @@ class Dataset:
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
-        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -631,6 +634,9 @@ class Dataset:
                 * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n)``, Ray
                   Data uses an autoscaling actor pool from ``m`` to ``n`` workers.
 
+                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n, initial)``, Ray
+                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
+
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
                   method raises an error.
 
@@ -721,7 +727,7 @@ class Dataset:
         num_cpus: Optional[float],
         num_gpus: Optional[float],
         memory: Optional[float],
-        concurrency: Optional[Union[int, Tuple[int, int]]],
+        concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]],
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
         **ray_remote_args,
     ):
@@ -1176,7 +1182,7 @@ class Dataset:
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
-        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
         **ray_remote_args,
     ):
         """Rename columns in the dataset.
@@ -1321,7 +1327,7 @@ class Dataset:
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
-        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -1402,6 +1408,9 @@ class Dataset:
                 * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n)``, Ray
                   Data uses an autoscaling actor pool from ``m`` to ``n`` workers.
 
+                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n, initial)``, Ray
+                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
+
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
                   method raises an error.
 
@@ -1465,7 +1474,7 @@ class Dataset:
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
-        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -1525,6 +1534,9 @@ class Dataset:
 
                 * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n)``, Ray
                   Data uses an autoscaling actor pool from ``m`` to ``n`` workers.
+
+                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n, initial)``, Ray
+                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
 
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
                   method raises an error.
