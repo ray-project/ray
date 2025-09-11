@@ -256,6 +256,24 @@ class GPUObjectStore:
                     f"ObjectRef({obj_id}) not found in RDT object store after {timeout}s, transfer may have failed. Please report this issue on GitHub: https://github.com/ray-project/ray/issues/new/choose"
                 )
 
+    def free_object_primary_copy(self, obj_id: str) -> None:
+        # Expected to be idempotent when called from FreeActorObject because the
+        # primary copy holder should always only have one ref in the deque.
+        with self._lock:
+            if not self.has_object(obj_id):
+                return
+            queue = self._gpu_object_store.get(obj_id)
+            gpu_object = queue.popleft()
+            assert (
+                len(queue) == 0
+            ), "The primary copy holder should never have more than one ref for its object id."
+            del self._gpu_object_store[obj_id]
+            self._object_freed_cv.notify_all()
+            for tensor in gpu_object.data:
+                self._tensor_to_object_ids[tensor].remove(obj_id)
+                if len(self._tensor_to_object_ids[tensor]) == 0:
+                    self._tensor_to_object_ids.pop(tensor)
+
     def pop_object(self, obj_id: str) -> List["torch.Tensor"]:
         with self._lock:
             assert self.has_object(

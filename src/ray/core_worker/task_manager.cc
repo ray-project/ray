@@ -318,7 +318,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
             rpc::FreeActorObjectRequest request;
             request.set_object_id(object_id.Binary());
             rpc_client.value()->FreeActorObject(
-                request,
+                std::move(request),
                 [object_id, actor_id](const Status &status,
                                       const rpc::FreeActorObjectReply &reply) {
                   if (!status.ok()) {
