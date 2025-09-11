@@ -199,7 +199,7 @@ Compared to the :ref:`Gloo example <direct-transport-gloo>`, the main code diffe
 Summary
 -------
 
-RDT allows Ray to store and pass objects directly between Ray actors, using accelerated transports like NCCL and NIXL.
+RDT allows Ray to store and pass objects directly between Ray actors, using accelerated transports like GLOO, NCCL, and NIXL.
 Here are the main points to keep in mind:
 
 * If using a collective-based tensor transport (Gloo or NCCL), a collective group must be created ahead of time. NIXL just requires all involved actors to have NIXL installed.
