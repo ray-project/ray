@@ -4,6 +4,9 @@ ray_cc_library(
     name = "fake_raylet_client",
     hdrs = ["raylet_client.h"],
     deps = [
+        "//src/ray/common:id",
+        "//src/ray/common:status",
+        "//src/ray/common/scheduling:scheduling_ids",
         "//src/ray/rpc:raylet_client_interface",
     ],
 )

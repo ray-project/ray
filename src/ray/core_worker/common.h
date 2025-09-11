@@ -22,7 +22,6 @@
 
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
-#include "ray/common/scheduling/label_selector.h"
 #include "ray/common/task/task_spec.h"
 #include "src/ray/protobuf/common.pb.h"
 

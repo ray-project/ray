@@ -24,7 +24,6 @@ ray_cc_library(
     visibility = [":__subpackages__"],
     deps = [
         "//src/ray/common:id",
-        "//src/ray/common:lease",
         "//src/ray/object_manager",
         "//src/ray/util:counter_map",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -44,6 +43,8 @@ ray_cc_library(
         ":worker_pool",
         "//src/ray/common:lease",
         "//src/ray/common:ray_object",
+        "//src/ray/common/scheduling:cluster_resource_data",
+        "//src/ray/common/scheduling:placement_group_util",
         "//src/ray/object_manager:object_manager_common",
         "//src/ray/raylet/scheduling:cluster_resource_scheduler",
         "//src/ray/raylet/scheduling:local_lease_manager_interface",

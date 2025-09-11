@@ -24,7 +24,6 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/bundle_location_index.h"
 #include "ray/common/id.h"
-#include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
