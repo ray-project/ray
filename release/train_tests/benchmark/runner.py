@@ -201,6 +201,7 @@ class TrainLoopRunner:
             self._metrics["validation/rows_processed"].add(
                 self.benchmark_config.dataloader_config.validation_batch_size
             )
+        assert num_rows > 0, "Validation dataset yielded no batches."
 
         return {"validation/loss": total_loss.item() / num_rows}
 
