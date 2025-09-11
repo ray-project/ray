@@ -186,7 +186,7 @@ def debug_status(
 def request_resources(
     num_cpus: Optional[int] = None,
     bundles: Optional[List[dict]] = None,
-    bundle_label_selector: Optional[List[dict]] = None,
+    bundle_label_selectors: Optional[List[dict]] = None,
 ) -> None:
     """Remotely request some CPU or GPU resources from the autoscaler.
 
