@@ -1,6 +1,7 @@
 import pytest
 import time
 import numpy as np
+import re
 
 from ray.rllib.utils.metrics.stats import Stats, merge_stats
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
@@ -343,7 +344,7 @@ def test_similar_to():
     # Test that adding to the similar stats does not affect the original stats
     similar.push(10)
     check(original.peek(), 3)
-    check(original.get_reduce_history(), [[np.nan], [np.nan], [3]])
+    check(original._last_reduced, [3])
 
 
 def test_reduce_history():
@@ -359,19 +360,19 @@ def test_reduce_history():
     )
 
     # Initially history should contain NaN values
-    check(stats.get_reduce_history(), [[np.nan], [np.nan], [np.nan]])
+    check(stats._last_reduced, [np.nan])
 
     # Push values and reduce
     stats.push(1)
     stats.push(2)
     check(stats.reduce(), 3)
-    check(stats.get_reduce_history(), [[np.nan], [np.nan], [3]])
+    check(stats._last_reduced, [3])
 
     # Push more values and reduce
     stats.push(3)
     stats.push(4)
     check(stats.reduce(), 10)
-    check(stats.get_reduce_history(), [[np.nan], [3], [10]])
+    check(stats._last_reduced, [10])
 
 
 def test_reduce_history_with_clear():
@@ -390,13 +391,13 @@ def test_reduce_history_with_clear():
     stats.push(1)
     stats.push(2)
     check(stats.reduce(), 3)
-    check(stats.get_reduce_history(), [[np.nan], [np.nan], [3]])
+    check(stats._last_reduced, [3])
     check(len(stats), 0)  # Values should be cleared
 
     stats.push(3)
     stats.push(4)
     check(stats.reduce(), 7)
-    check(stats.get_reduce_history(), [[np.nan], [3], [7]])
+    check(stats._last_reduced, [7])
     check(len(stats), 0)
 
 
@@ -1179,12 +1180,16 @@ def test_percentiles():
 
     # Test validation - percentiles must be None for other reduce methods
     with pytest.raises(
-        ValueError, match="`reduce` must be `None` when `percentiles` is not `False"
+        ValueError, match="`reduce` must be `None` when `percentiles` is not `False`"
     ):
         Stats(reduce="mean", window=5, percentiles=[50])
 
     with pytest.raises(
-        ValueError, match="`reduce_per_index_on_aggregate` must be `False`"
+        ValueError,
+        match=re.escape(
+            "`reduce_per_index_on_aggregate` (True) must be `False` "
+            "when `percentiles` is not `False`!"
+        ),
     ):
         Stats(
             reduce=None, reduce_per_index_on_aggregate=True, percentiles=True, window=5
