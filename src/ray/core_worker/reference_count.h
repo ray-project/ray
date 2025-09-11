@@ -345,8 +345,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
                                    const std::function<void(const ObjectID &)> callback)
       override ABSL_LOCKS_EXCLUDED(mutex_);
 
-  /// So we call HandleRefRemovedInternal to publish when we are no longer borrowing
-  /// this object (when our ref count goes to 0).
+  /// So we call PublishRefRemovedInternal when we are no longer borrowing this object
+  /// (when our ref count goes to 0).
   ///
   /// \param[in] object_id The object ID to set the callback for.
   /// \param[in] contained_in_id The object ID that contains object_id, if any.
@@ -354,10 +354,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// submitted. Then, as long as we have contained_in_id in scope, we are
   /// borrowing object_id.
   /// \param[in] owner_address The owner of object_id's address.
-  void SetRefRemovedCallback(const ObjectID &object_id,
-                             const ObjectID &contained_in_id,
-                             const rpc::Address &owner_address)
-      ABSL_LOCKS_EXCLUDED(mutex_);
+  void SubscribeRefRemoved(const ObjectID &object_id,
+                           const ObjectID &contained_in_id,
+                           const rpc::Address &owner_address) ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Set a callback to call whenever a Reference that we own is deleted. A
   /// Reference can only be deleted if:
@@ -368,8 +367,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] callback The callback to call.
   void SetReleaseLineageCallback(const LineageReleasedCallback &callback);
 
-  /// Just calls HandleRefRemovedInternal with a lock.
-  void HandleRefRemoved(const ObjectID &object_id) ABSL_LOCKS_EXCLUDED(mutex_);
+  /// Just calls PublishRefRemovedInternal with a lock.
+  void PublishRefRemoved(const ObjectID &object_id) ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Returns the total number of ObjectIDs currently in scope.
   size_t NumObjectIDsInScope() const ABSL_LOCKS_EXCLUDED(mutex_);
@@ -808,9 +807,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// Callback that will be called when the object ref is deleted
     /// from the reference table (all refs including lineage ref count go to 0).
     std::function<void(const ObjectID &)> on_object_ref_delete;
-    /// If this is set, we'll call HandleRefRemovedInternal whenthis process is no longer
-    /// a borrower (RefCount() == 0).
-    bool call_handle_ref_removed = false;
+    /// If this is set, we'll call PublishRefRemovedInternal when this process is no
+    /// longer a borrower (RefCount() == 0).
+    bool publish_ref_removed = false;
 
     /// For objects that have been spilled to external storage, the URL from which
     /// they can be retrieved.
@@ -986,7 +985,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// To respond to the object's owner once we are no longer borrowing it.  The
   /// sender is the owner of the object ID. We will send the reply when our
   /// RefCount() for the object ID goes to 0.
-  void HandleRefRemovedInternal(const ObjectID &object_id)
+  void PublishRefRemovedInternal(const ObjectID &object_id)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Erase the Reference from the table. Assumes that the entry has no more

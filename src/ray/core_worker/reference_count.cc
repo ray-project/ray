@@ -558,7 +558,7 @@ int64_t ReferenceCounter::ReleaseLineageReferences(ReferenceTable::iterator ref)
       OnObjectOutOfScopeOrFreed(arg_it);
     }
     if (arg_it->second.ShouldDelete(lineage_pinning_enabled_)) {
-      RAY_CHECK(!arg_it->second.call_handle_ref_removed);
+      RAY_CHECK(!arg_it->second.publish_ref_removed);
       lineage_bytes_evicted += ReleaseLineageReferences(arg_it);
       EraseReference(arg_it);
     }
@@ -683,10 +683,10 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
                                                std::vector<ObjectID> *deleted) {
   const ObjectID id = it->first;
   RAY_LOG(DEBUG) << "Attempting to delete object " << id;
-  if (it->second.RefCount() == 0 && it->second.call_handle_ref_removed) {
-    RAY_LOG(DEBUG) << "Calling HandleRefRemoved for object " << id;
-    HandleRefRemovedInternal(id);
-    it->second.call_handle_ref_removed = false;
+  if (it->second.RefCount() == 0 && it->second.publish_ref_removed) {
+    RAY_LOG(DEBUG) << "Calling PublishRefRemoved for object " << id;
+    PublishRefRemovedInternal(id);
+    it->second.publish_ref_removed = false;
   }
 
   PRINT_REF_COUNT(it);
@@ -1253,13 +1253,13 @@ void ReferenceCounter::AddNestedObjectIdsInternal(const ObjectID &object_id,
   }
 }
 
-void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id) {
+void ReferenceCounter::PublishRefRemoved(const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
-  HandleRefRemovedInternal(object_id);
+  PublishRefRemovedInternal(object_id);
 }
 
-void ReferenceCounter::HandleRefRemovedInternal(const ObjectID &object_id) {
-  RAY_LOG(DEBUG).WithField(object_id) << "HandleRefRemoved ";
+void ReferenceCounter::PublishRefRemovedInternal(const ObjectID &object_id) {
+  RAY_LOG(DEBUG).WithField(object_id) << "PublishRefRemoved ";
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
     PRINT_REF_COUNT(it);
@@ -1289,9 +1289,9 @@ void ReferenceCounter::HandleRefRemovedInternal(const ObjectID &object_id) {
   object_info_publisher_->Publish(std::move(pub_message));
 }
 
-void ReferenceCounter::SetRefRemovedCallback(const ObjectID &object_id,
-                                             const ObjectID &contained_in_id,
-                                             const rpc::Address &owner_address) {
+void ReferenceCounter::SubscribeRefRemoved(const ObjectID &object_id,
+                                           const ObjectID &contained_in_id,
+                                           const rpc::Address &owner_address) {
   absl::MutexLock lock(&mutex_);
   RAY_LOG(DEBUG).WithField(object_id)
       << "Received WaitForRefRemoved object contained in " << contained_in_id;
@@ -1315,23 +1315,23 @@ void ReferenceCounter::SetRefRemovedCallback(const ObjectID &object_id,
         << "Ref count for borrowed object is already 0, responding to WaitForRefRemoved";
     // We already stopped borrowing the object ID. Respond to the owner
     // immediately.
-    HandleRefRemovedInternal(object_id);
+    PublishRefRemovedInternal(object_id);
     DeleteReferenceInternal(it, nullptr);
   } else {
     // We are still borrowing the object ID. Respond to the owner once we have
     // stopped borrowing it.
-    if (reference.call_handle_ref_removed) {
+    if (reference.publish_ref_removed) {
       // TODO(swang): If the owner of an object dies and and is re-executed, it
       // is possible that we will receive a duplicate request to set
-      // call_handle_ref_removed. If messages are delayed and we overwrite the
+      // publish_ref_removed. If messages are delayed and we overwrite the
       // callback here, it's possible we will drop the request that was sent by
       // the more recent owner. We should fix this by setting multiple
       // callbacks or by versioning the owner requests.
       RAY_LOG(WARNING).WithField(object_id)
-          << "call_handle_ref_removed already set for object. The owner task must have "
+          << "publish_ref_removed already set for object. The owner task must have "
              "died and been re-executed.";
     }
-    reference.call_handle_ref_removed = true;
+    reference.publish_ref_removed = true;
   }
 }
 

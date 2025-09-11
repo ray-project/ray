@@ -319,7 +319,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
     auto r = num_requests_;
 
     auto borrower_callback = [=]() {
-      rc_.SetRefRemovedCallback(object_id, contained_in_id, owner_address);
+      rc_.SubscribeRefRemoved(object_id, contained_in_id, owner_address);
     };
     borrower_callbacks_[r] = borrower_callback;
 
