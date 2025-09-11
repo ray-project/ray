@@ -734,10 +734,6 @@ def check_target_groups_ready(
         for target_group in target_groups
         if target_group.protocol == protocol
     ]
-    if len(target_groups) == 0:
-        raise ValueError(
-            f"No target group found for app {app_name} with protocol {protocol}."
-        )
     all_targets = [
         target for target_group in target_groups for target in target_group.targets
     ]
