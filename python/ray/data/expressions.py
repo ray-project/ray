@@ -43,6 +43,7 @@ class Operation(Enum):
     EQ = "eq"
     AND = "and"
     OR = "or"
+    NOT = "not"
 
 
 @DeveloperAPI(stability="alpha")
@@ -157,6 +158,10 @@ class Expr(ABC):
         """Logical OR operator (|)."""
         return self._bin(other, Operation.OR)
 
+    def __invert__(self) -> "Expr":
+        """Logical NOT operator (~)."""
+        return UnaryExpr(Operation.NOT, self)
+
 
 @DeveloperAPI(stability="alpha")
 @dataclass(frozen=True, eq=False)
@@ -254,6 +259,38 @@ class BinaryExpr(Expr):
             and self.op is other.op
             and self.left.structurally_equals(other.left)
             and self.right.structurally_equals(other.right)
+        )
+
+
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False)
+class UnaryExpr(Expr):
+    """Expression that represents a unary operation on a single expression.
+
+    This expression type represents an operation with one operand.
+    Currently used primarily for the NOT operation (~).
+
+    Args:
+        op: The operation to perform (from Operation enum)
+        operand: The operand expression
+
+    Example:
+        >>> from ray.data.expressions import col, Operation
+        >>> # Manually create a unary expression (usually done via operators)
+        >>> expr = UnaryExpr(Operation.NOT, col("is_active"))
+        >>> # This is equivalent to: ~col("is_active")
+    """
+
+    op: Operation
+    operand: Expr
+
+    data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
+
+    def structurally_equals(self, other: Any) -> bool:
+        return (
+            isinstance(other, UnaryExpr)
+            and self.op is other.op
+            and self.operand.structurally_equals(other.operand)
         )
 
 
@@ -389,7 +426,11 @@ class WhenExpr(Expr):
                     and self.next_when.structurally_equals(other.next_when)
                 )
             )
+        )
 
+
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False)
 class UDFExpr(Expr):
     """Expression that represents a user-defined function call.
 
@@ -403,7 +444,6 @@ class UDFExpr(Expr):
         fn: The user-defined function to call
         args: List of argument expressions (positional arguments)
         kwargs: Dictionary of keyword argument expressions
-        function_name: Optional name for the function (for debugging)
 
     Example:
         >>> from ray.data.expressions import col, udf
@@ -686,17 +726,41 @@ def case(when_clauses: List[Tuple[Expr, Expr]], default: Expr) -> CaseExpr:
         ...     ], default=lit("Young")))
     """
     if not when_clauses:
-        raise ValueError("case() must have at least one when clause")
+        raise ValueError(
+            "case() requires at least one when clause. "
+            "Usage: case([(condition, value)], default=default_value)"
+        )
 
     # Validate that each when_clause is a proper (condition, value) tuple
     for i, when_clause in enumerate(when_clauses):
         if not isinstance(when_clause, tuple) or len(when_clause) != 2:
             raise ValueError(
                 f"when_clauses[{i}] must be a tuple with exactly 2 elements "
-                f"(condition, value), got {when_clause!r}"
+                f"(condition, value), got {when_clause!r}. "
+                f"Expected format: (col('column') > value, lit('result'))"
             )
 
+        condition, value = when_clause
+        if not isinstance(condition, Expr):
+            raise ValueError(
+                f"when_clauses[{i}] condition must be an Expr instance, "
+                f"got {type(condition).__name__}. Use col(), lit(), or other expression functions."
+            )
+        if not isinstance(value, Expr):
+            raise ValueError(
+                f"when_clauses[{i}] value must be an Expr instance, "
+                f"got {type(value).__name__}. Use lit() to wrap literal values."
+            )
+
+    # Validate default parameter
+    if not isinstance(default, Expr):
+        raise ValueError(
+            f"default must be an Expr instance, "
+            f"got {type(default).__name__}. Use lit() to wrap literal values."
+        )
+
     return CaseExpr(when_clauses, default)
+
 
 @DeveloperAPI(stability="alpha")
 def download(uri_column_name: str) -> DownloadExpr:
@@ -726,7 +790,6 @@ def download(uri_column_name: str) -> DownloadExpr:
     return DownloadExpr(uri_column_name=uri_column_name)
 
 
-
 # ──────────────────────────────────────
 # Public API for evaluation
 # ──────────────────────────────────────
@@ -740,6 +803,7 @@ __all__ = [
     "ColumnExpr",
     "LiteralExpr",
     "BinaryExpr",
+    "UnaryExpr",
     "CaseExpr",
     "WhenExpr",
     "col",

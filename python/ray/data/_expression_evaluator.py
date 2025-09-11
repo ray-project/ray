@@ -16,8 +16,9 @@ from ray.data.expressions import (
     Expr,
     LiteralExpr,
     Operation,
-    WhenExpr,
     UDFExpr,
+    UnaryExpr,
+    WhenExpr,
 )
 
 _PANDAS_EXPR_OPS_MAP = {
@@ -32,6 +33,7 @@ _PANDAS_EXPR_OPS_MAP = {
     Operation.EQ: operator.eq,
     Operation.AND: operator.and_,
     Operation.OR: operator.or_,
+    Operation.NOT: operator.not_,
 }
 
 _ARROW_EXPR_OPS_MAP = {
@@ -46,6 +48,7 @@ _ARROW_EXPR_OPS_MAP = {
     Operation.EQ: pc.equal,
     Operation.AND: pc.and_,
     Operation.OR: pc.or_,
+    Operation.NOT: pc.invert,
 }
 
 
@@ -64,6 +67,11 @@ def _eval_expr_recursive(
         return ops[expr.op](
             _eval_expr_recursive(expr.left, batch, ops),
             _eval_expr_recursive(expr.right, batch, ops),
+        )
+
+    if isinstance(expr, UnaryExpr):
+        return ops[expr.op](
+            _eval_expr_recursive(expr.operand, batch, ops),
         )
 
     if isinstance(expr, CaseExpr):
@@ -116,8 +124,6 @@ def _eval_expr_recursive(
             "WhenExpr cannot be evaluated directly. Use .otherwise() to complete the case statement."
         )
 
-    raise TypeError(f"Unsupported expression node: {type(expr).__name__}")
-
     if isinstance(expr, UDFExpr):
         args = [_eval_expr_recursive(arg, batch, ops) for arg in expr.args]
         kwargs = {
@@ -134,6 +140,7 @@ def _eval_expr_recursive(
             )
 
         return result
+
     raise TypeError(f"Unsupported expression node: {type(expr).__name__}")
 
 
