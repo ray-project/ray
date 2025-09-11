@@ -6,7 +6,7 @@ set -exo pipefail
 # pip3 install --no-cache-dir -r https://raw.githubusercontent.com/anyscale/e2e-llm-workflows/refs/heads/main/lockfile.txt
 
 # Install Python dependencies
-uv pip sync llm_example_py311_cu128.lock --system
+uv pip sync llm_example_py311_cu128.lock --system --index-strategy unsafe-best-match
 
 # Env vars
 export HF_HUB_ENABLE_HF_TRANSFER=1

@@ -21,7 +21,7 @@ depsets:
       - python/deplocks/llm/rayllm_${PYTHON_VERSION}_${CUDA_CODE}.lock
     requirements:
       - python/requirements.txt
-    output: python/deplocks/examples/llm_subset_${PYTHON_VERSION}_${CUDA_CODE}.lock
+    output: python/deplocks/examples/entity_recognition_with_llms/llm_subset_${PYTHON_VERSION}_${CUDA_CODE}.lock
     <<: *common_settings
 
 
@@ -32,5 +32,5 @@ depsets:
     operation: expand
     requirements:
       - doc/source/ray-overview/examples/entity-recognition-with-llms/requirements.txt
-    output: python/deplocks/examples/entity-recognition-with-llms/llm_example_${PYTHON_VERSION}_${CUDA_CODE}.lock
+    output: python/deplocks/examples/entity_recognition_with_llms/llm_example_${PYTHON_VERSION}_${CUDA_CODE}.lock
     <<: *common_settings
