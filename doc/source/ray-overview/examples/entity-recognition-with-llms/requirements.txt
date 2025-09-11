@@ -12,3 +12,4 @@ hf_transfer==0.1.9
 tensorboard==2.19.0
 llamafactory==0.9.3
 transformers==4.52.4
+certifi==2025.1.31
