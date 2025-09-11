@@ -1,3 +1,9 @@
+from ray.data._internal.datasource.delta_sharing_datasource import (
+    DeltaSharingDatasource,
+)
+from ray.data._internal.datasource.mcap_datasource import (
+    MCAPDatasource,
+)
 from ray.data._internal.datasource.sql_datasource import Connection
 from ray.data._internal.savemode import SaveMode
 from ray.data.datasource.datasink import (
@@ -34,12 +40,6 @@ from ray.data.datasource.partitioning import (
     PartitionStyle,
     PathPartitionFilter,
     PathPartitionParser,
-)
-from ray.data._internal.datasource.mcap_datasource import (
-    MCAPDatasource,
-)
-from ray.data._internal.datasource.delta_sharing_datasource import (
-    DeltaSharingDatasource,
 )
 
 # Note: HuggingFaceDatasource should NOT be imported here, because
