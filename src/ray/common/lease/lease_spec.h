@@ -55,6 +55,7 @@ class LeaseSpecification : public MessageWrapper<rpc::LeaseSpec> {
   const ResourceSet &GetRequiredResources() const;
   const ResourceSet &GetRequiredPlacementResources() const;
   const LabelSelector &GetLabelSelector() const;
+  const std::vector<LabelSelector> &GetFallbackStrategy() const;
   const rpc::SchedulingStrategy &GetSchedulingStrategy() const;
   bool IsNodeAffinitySchedulingStrategy() const;
   NodeID GetNodeAffinitySchedulingStrategyNodeId() const;
@@ -105,6 +106,7 @@ class LeaseSpecification : public MessageWrapper<rpc::LeaseSpec> {
   std::shared_ptr<ResourceSet> required_resources_;
   std::shared_ptr<ResourceSet> required_placement_resources_;
   std::shared_ptr<LabelSelector> label_selector_;
+  std::shared_ptr<std::vector<LabelSelector>> fallback_strategy_;
 
   std::vector<rpc::ObjectReference> dependencies_;
 

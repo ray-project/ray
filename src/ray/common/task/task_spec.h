@@ -81,23 +81,27 @@ struct SchedulingClassDescriptor {
                                      LabelSelector ls,
                                      FunctionDescriptor fd,
                                      int64_t d,
-                                     rpc::SchedulingStrategy sched_strategy)
+                                     rpc::SchedulingStrategy sched_strategy,
+                                     std::vector<LabelSelector> fallback_strategy_p)
       : resource_set(std::move(rs)),
         label_selector(std::move(ls)),
         function_descriptor(std::move(fd)),
         depth(d),
-        scheduling_strategy(std::move(sched_strategy)) {}
+        scheduling_strategy(std::move(sched_strategy)),
+        fallback_strategy(std::move(fallback_strategy_p)) {}
   ResourceSet resource_set;
   LabelSelector label_selector;
   FunctionDescriptor function_descriptor;
   int64_t depth;
   rpc::SchedulingStrategy scheduling_strategy;
+  std::vector<LabelSelector> fallback_strategy;
 
   bool operator==(const SchedulingClassDescriptor &other) const {
     return depth == other.depth && resource_set == other.resource_set &&
            label_selector == other.label_selector &&
            function_descriptor == other.function_descriptor &&
-           scheduling_strategy == other.scheduling_strategy;
+           scheduling_strategy == other.scheduling_strategy &&
+           fallback_strategy == other.fallback_strategy;
   }
 
   std::string DebugString() const {
@@ -126,6 +130,25 @@ struct SchedulingClassDescriptor {
     }
     buffer << "}}";
 
+    // Add fallback strategy LabelSelectors.
+    buffer << "fallback_strategy=[";
+    for (const auto &selector : fallback_strategy) {
+      buffer << "{";
+      for (const auto &constraint : selector.GetConstraints()) {
+        buffer << constraint.GetLabelKey() << " "
+               << (constraint.GetOperator() == ray::LabelSelectorOperator::LABEL_IN
+                       ? "in"
+                       : "!in")
+               << " (";
+        for (const auto &val : constraint.GetLabelValues()) {
+          buffer << val << ", ";
+        }
+        buffer << "), ";
+      }
+      buffer << "}, ";
+    }
+    buffer << "], ";
+
     return buffer.str();
   }
 
@@ -147,7 +170,8 @@ H AbslHashValue(H h, const SchedulingClassDescriptor &sched_cls) {
                     sched_cls.function_descriptor->Hash(),
                     sched_cls.depth,
                     sched_cls.scheduling_strategy,
-                    sched_cls.label_selector);
+                    sched_cls.label_selector,
+                    sched_cls.fallback_strategy);
 }
 }  // namespace ray
 
@@ -426,6 +450,12 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return The labels that are required for the execution of this task on a node.
   const LabelSelector &GetLabelSelector() const;
 
+  /// Return the list of label selectors for fallback strategy scheduling.
+  /// this task on.
+  ///
+  /// \return Label selectors to fall back on when scheduling a task on a node.
+  const std::vector<LabelSelector> &GetFallbackStrategy() const;
+
   const rpc::SchedulingStrategy &GetSchedulingStrategy() const;
 
   bool IsNodeAffinitySchedulingStrategy() const;
@@ -579,6 +609,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   // Field storing label selector for scheduling Task on a node. Initialized in constuctor
   // in ComputeResources() call.
   std::shared_ptr<LabelSelector> label_selector_;
+  // Field storing the fallback scheduling strategy. This is a list of
+  // LabelSelectors to try in-order.
+  std::shared_ptr<std::vector<LabelSelector>> fallback_strategy_;
   /// Below static fields could be mutated in `ComputeResources` concurrently due to
   /// multi-threading, we need a mutex to protect it.
   static absl::Mutex mutex_;
