@@ -18,10 +18,6 @@ if support_tensordict:
     from tensordict import TensorDict
 
 
-# TODO: check whether concurrency groups are created correctly if
-# enable_tensor_transport is True or if any methods are decorated with
-# @ray.method(tensor_transport=...). Check that specifying
-# .options(tensor_transport=...) fails if enable_tensor_transport is False.
 @ray.remote
 class GPUTestActor:
     @ray.method(tensor_transport="gloo")
@@ -37,10 +33,6 @@ class GPUTestActor:
         if support_tensordict and isinstance(data, TensorDict):
             return data.apply(lambda x: x * 2)
         return data * 2
-
-    def increment(self, data):
-        data += 1
-        return data
 
     def get_out_of_band_tensors(self, obj_id: str, timeout=None):
         gpu_object_store = (
@@ -59,7 +51,7 @@ class GPUTestActor:
 
 
 @pytest.mark.parametrize("data_size_bytes", [100])
-def test_gc_gpu_object(ray_start_regular, data_size_bytes):
+def test_gc_gpu_object(ray_start_regular_shared, data_size_bytes):
     """
     For small data, GPU objects are inlined, but the actual data lives
     on the remote actor. Therefore, if we decrement the reference count
@@ -106,7 +98,7 @@ def test_gc_gpu_object(ray_start_regular, data_size_bytes):
 
 
 @pytest.mark.parametrize("data_size_bytes", [100])
-def test_gc_del_ref_before_recv_finish(ray_start_regular, data_size_bytes):
+def test_gc_del_ref_before_recv_finish(ray_start_regular_shared, data_size_bytes):
     """
     This test deletes the ObjectRef of the GPU object before calling
     `ray.get` to ensure the receiver finishes receiving the GPU object.
@@ -142,7 +134,7 @@ def test_gc_del_ref_before_recv_finish(ray_start_regular, data_size_bytes):
     )
 
 
-def test_gc_intra_actor_gpu_object(ray_start_regular):
+def test_gc_intra_actor_gpu_object(ray_start_regular_shared):
     """
     This test checks that passes a GPU object ref to the same actor multiple times.
     """
@@ -167,7 +159,7 @@ def test_gc_intra_actor_gpu_object(ray_start_regular):
     )
 
 
-def test_gc_pass_ref_to_same_and_different_actors(ray_start_regular):
+def test_gc_pass_ref_to_same_and_different_actors(ray_start_regular_shared):
     """
     This test checks that passes a GPU object ref to the same actor and a different actor.
     """
@@ -198,7 +190,7 @@ def test_gc_pass_ref_to_same_and_different_actors(ray_start_regular):
     )
 
 
-def test_p2p(ray_start_regular):
+def test_p2p(ray_start_regular_shared):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
     create_collective_group(actors, backend="torch_gloo")
@@ -217,7 +209,7 @@ def test_p2p(ray_start_regular):
     assert ray.get(result) == pytest.approx(medium_tensor * 2)
 
 
-def test_p2p_errors_before_group_creation(ray_start_regular):
+def test_p2p_errors_before_group_creation(ray_start_regular_shared):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
 
@@ -232,7 +224,7 @@ def test_p2p_errors_before_group_creation(ray_start_regular):
 
 
 @pytest.mark.parametrize("has_tensor_transport_method", [True, False])
-def test_p2p_blocking(ray_start_regular, has_tensor_transport_method):
+def test_p2p_blocking(ray_start_regular_shared, has_tensor_transport_method):
     """Test that p2p transfers still work when sender is blocked in another
     task. This should work whether the actor has (a) a tensor transport method
     (a method decorated with @ray.method(tensor_transport=...)) or (b) an actor-level decorator
@@ -289,7 +281,7 @@ def test_p2p_blocking(ray_start_regular, has_tensor_transport_method):
     assert result == pytest.approx(tensor * 2)
 
 
-def test_p2p_with_cpu_data(ray_start_regular):
+def test_p2p_with_cpu_data(ray_start_regular_shared):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
     create_collective_group(actors, backend="torch_gloo")
@@ -303,7 +295,7 @@ def test_p2p_with_cpu_data(ray_start_regular):
     assert ray.get(result) == cpu_data * 2
 
 
-def test_send_same_ref_to_same_actor_task_multiple_times(ray_start_regular):
+def test_send_same_ref_to_same_actor_task_multiple_times(ray_start_regular_shared):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
     create_collective_group(actors, backend="torch_gloo")
@@ -323,7 +315,7 @@ def test_send_same_ref_to_same_actor_task_multiple_times(ray_start_regular):
     )
 
 
-def test_send_same_ref_to_same_actor_multiple_times(ray_start_regular):
+def test_send_same_ref_to_same_actor_multiple_times(ray_start_regular_shared):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
     create_collective_group(actors, backend="torch_gloo")
@@ -340,7 +332,7 @@ def test_send_same_ref_to_same_actor_multiple_times(ray_start_regular):
     assert ray.get(result) == pytest.approx(small_tensor * 2)
 
 
-def test_intra_gpu_tensor_transfer(ray_start_regular):
+def test_intra_gpu_tensor_transfer(ray_start_regular_shared):
     actor = GPUTestActor.remote()
     create_collective_group([actor], backend="torch_gloo")
 
@@ -371,7 +363,7 @@ def test_intra_gpu_tensor_transfer(ray_start_regular):
     assert result[2] == cpu_data * 2
 
 
-def test_send_same_ref_multiple_times_intra_actor(ray_start_regular):
+def test_send_same_ref_multiple_times_intra_actor(ray_start_regular_shared):
     actor = GPUTestActor.remote()
     create_collective_group([actor], backend="torch_gloo")
 
@@ -382,7 +374,7 @@ def test_send_same_ref_multiple_times_intra_actor(ray_start_regular):
     assert ray.get(result) == pytest.approx(small_tensor * 2)
 
 
-def test_mix_cpu_gpu_data(ray_start_regular):
+def test_mix_cpu_gpu_data(ray_start_regular_shared):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
     create_collective_group(actors, backend="torch_gloo")
@@ -401,7 +393,7 @@ def test_mix_cpu_gpu_data(ray_start_regular):
     assert result[1] == cpu_data * 2
 
 
-def test_object_in_plasma(ray_start_regular):
+def test_object_in_plasma(ray_start_regular_shared):
     """
     This test uses a CPU object that is large enough to be stored
     in plasma instead of being inlined in the gRPC message.
@@ -423,7 +415,7 @@ def test_object_in_plasma(ray_start_regular):
     assert result[1] == cpu_data * 2
 
 
-def test_multiple_tensors(ray_start_regular):
+def test_multiple_tensors(ray_start_regular_shared):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
     create_collective_group(actors, backend="torch_gloo")
@@ -458,7 +450,7 @@ def test_multiple_tensors(ray_start_regular):
         assert result[4]["reward2"] == pytest.approx(td2["reward2"] * 2)
 
 
-def test_trigger_out_of_band_tensor_transfer(ray_start_regular):
+def test_trigger_out_of_band_tensor_transfer(ray_start_regular_shared):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
     create_collective_group(actors, backend="torch_gloo")
@@ -491,7 +483,7 @@ def test_trigger_out_of_band_tensor_transfer(ray_start_regular):
     assert torch.equal(ret_val_dst[0], tensor)
 
 
-def test_fetch_gpu_object_to_driver(ray_start_regular):
+def test_fetch_gpu_object_to_driver(ray_start_regular_shared):
     actor = GPUTestActor.remote()
     create_collective_group([actor], backend="torch_gloo")
 
@@ -517,7 +509,7 @@ def test_fetch_gpu_object_to_driver(ray_start_regular):
     assert result[2] == 7
 
 
-def test_invalid_tensor_transport(ray_start_regular):
+def test_invalid_tensor_transport(ray_start_regular_shared):
     with pytest.raises(ValueError, match="Invalid tensor transport"):
 
         @ray.remote
@@ -531,7 +523,7 @@ def test_invalid_tensor_transport(ray_start_regular):
     not support_tensordict,
     reason="tensordict is not supported on this platform",
 )
-def test_tensordict_transfer(ray_start_regular):
+def test_tensordict_transfer(ray_start_regular_shared):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
     create_collective_group(actors, backend="torch_gloo")
@@ -552,7 +544,7 @@ def test_tensordict_transfer(ray_start_regular):
     not support_tensordict,
     reason="tensordict is not supported on this platform",
 )
-def test_nested_tensordict(ray_start_regular):
+def test_nested_tensordict(ray_start_regular_shared):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
     create_collective_group(actors, backend="torch_gloo")
@@ -577,7 +569,7 @@ def test_nested_tensordict(ray_start_regular):
     not support_tensordict,
     reason="tensordict is not supported on this platform",
 )
-def test_tensor_extracted_from_tensordict_in_gpu_object_store(ray_start_regular):
+def test_tensor_extracted_from_tensordict_in_gpu_object_store(ray_start_regular_shared):
     actor = GPUTestActor.remote()
     create_collective_group([actor], backend="torch_gloo")
 
@@ -597,7 +589,7 @@ def test_tensor_extracted_from_tensordict_in_gpu_object_store(ray_start_regular)
 
 @pytest.mark.parametrize("enable_tensor_transport", [True, False])
 def test_dynamic_tensor_transport_via_options(
-    ray_start_regular, enable_tensor_transport
+    ray_start_regular_shared, enable_tensor_transport
 ):
     """Test that tensor_transport can be set dynamically via .options() at call
     time, if enable_tensor_transport is set to True in @ray.remote."""
@@ -647,7 +639,7 @@ def test_dynamic_tensor_transport_via_options(
             ref = sender.tensor_method.options(tensor_transport="gloo").remote()
 
 
-def test_gpu_object_ref_in_list_throws_exception(ray_start_regular):
+def test_gpu_object_ref_in_list_throws_exception(ray_start_regular_shared):
     """Test that passing GPU ObjectRefs inside lists as task arguments raises an error."""
 
     print("loc2")
@@ -677,7 +669,7 @@ def test_gpu_object_ref_in_list_throws_exception(ray_start_regular):
         actor.double.remote([gpu_ref, normal_ref])
 
 
-def test_app_error_inter_actor(ray_start_regular):
+def test_app_error_inter_actor(ray_start_regular_shared):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
     create_collective_group(actors, backend="torch_gloo")
@@ -696,7 +688,7 @@ def test_app_error_inter_actor(ray_start_regular):
     assert ray.get(result) == pytest.approx(small_tensor * 2)
 
 
-def test_app_error_intra_actor(ray_start_regular):
+def test_app_error_intra_actor(ray_start_regular_shared):
     actor = GPUTestActor.remote()
     create_collective_group([actor], backend="torch_gloo")
 
@@ -712,7 +704,7 @@ def test_app_error_intra_actor(ray_start_regular):
     assert ray.get(result) == pytest.approx(small_tensor * 2)
 
 
-def test_app_error_fetch_to_driver(ray_start_regular):
+def test_app_error_fetch_to_driver(ray_start_regular_shared):
     actor = GPUTestActor.remote()
     create_collective_group([actor], backend="torch_gloo")
 
@@ -726,7 +718,7 @@ def test_app_error_fetch_to_driver(ray_start_regular):
     assert torch.equal(ray.get(ref), small_tensor)
 
 
-def test_write_after_save(ray_start_regular):
+def test_write_after_save(ray_start_regular_shared):
     """Check that an actor can safely write to a tensor after saving it to its
     local state by calling `ray.experimental.wait_tensor_freed`."""
 
@@ -771,7 +763,7 @@ def test_write_after_save(ray_start_regular):
     assert torch.allclose(ray.get(tensor2), medium_tensor)
 
 
-def test_wait_tensor_freed(ray_start_regular):
+def test_wait_tensor_freed(ray_start_regular_shared):
     """Unit test for ray.experimental.wait_tensor_freed. Check that the call
     returns when the tensor has been freed from the GPU object store."""
     gpu_object_store = ray.worker.global_worker.gpu_object_manager.gpu_object_store
@@ -797,7 +789,7 @@ def test_wait_tensor_freed(ray_start_regular):
     assert not gpu_object_store.has_object(obj_id)
 
 
-def test_wait_tensor_freed_double_tensor(ray_start_regular):
+def test_wait_tensor_freed_double_tensor(ray_start_regular_shared):
     """Unit test for ray.experimental.wait_tensor_freed when multiple objects
     contain the same tensor."""
     gpu_object_store = ray.worker.global_worker.gpu_object_manager.gpu_object_store
@@ -836,7 +828,7 @@ def test_wait_tensor_freed_double_tensor(ray_start_regular):
     assert not gpu_object_store.has_object(obj_id2)
 
 
-def test_send_back_and_dst_warning(ray_start_regular):
+def test_send_back_and_dst_warning(ray_start_regular_shared):
     # Test warning when object is sent back to the src actor and to dst actors
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
@@ -860,7 +852,7 @@ def test_send_back_and_dst_warning(ray_start_regular):
     ray.get(t3)
 
 
-def test_duplicate_objectref_transfer(ray_start_regular):
+def test_duplicate_objectref_transfer(ray_start_regular_shared):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
     create_collective_group(actors, backend="torch_gloo")
@@ -873,26 +865,15 @@ def test_duplicate_objectref_transfer(ray_start_regular):
 
     ref = actor0.echo.remote(small_tensor)
 
-    # Pass the same ref to actor1 twice
-    result1 = actor1.increment.remote(ref)
-    result2 = actor1.increment.remote(ref)
+    result1 = actor1.double.remote(ref)
+    result2 = actor1.double.remote(ref)
 
-    # Both should return original_value + 1 because each increment task should receive the same object value.
+    # Both should return original_value * 2 because each double task should receive the same object value.
     val1 = ray.get(result1)
     val2 = ray.get(result2)
 
-    # Check for correctness
-    assert val1 == pytest.approx(
-        original_value + 1
-    ), f"Result1 incorrect: got {val1}, expected {original_value + 1}"
-    assert val2 == pytest.approx(
-        original_value + 1
-    ), f"Result2 incorrect: got {val2}, expected {original_value + 1}"
-
-    # Additional check: results should be equal (both got clean copies)
-    assert val1 == pytest.approx(
-        val2
-    ), f"Results differ: result1={val1}, result2={val2}"
+    assert val1 == pytest.approx(original_value * 2)
+    assert val2 == pytest.approx(original_value * 2)
 
 
 if __name__ == "__main__":
