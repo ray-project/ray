@@ -683,7 +683,13 @@ void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
       if (node_id == self_node_id_) {
         continue;
       }
-      [[maybe_unused]] auto rpc_client = GetRpcClient(node_id);
+      if (!remote_object_manager_clients_.contains(node_id)) {
+        auto object_manager_client =
+            std::make_shared<rpc::ObjectManagerClient>(node_info.node_manager_address(),
+                                                       node_info.object_manager_port(),
+                                                       client_call_manager_);
+        remote_object_manager_clients_.emplace(node_id, std::move(object_manager_client));
+      }
     }
     rpc_service_.post([this, object_ids]() { SpreadFreeObjectsRequest(object_ids); },
                       "ObjectManager.FreeObjects");
