@@ -978,9 +978,9 @@ class RequestRouter(ABC):
                 start_time = time.time()
                 backoff_index = 0
                 pending_request = self._get_next_pending_request_to_route()
-                if pending_request is None: 
+                if pending_request is None:
                     continue
-                request_metadata = pending_request.metadata 
+                request_metadata = pending_request.metadata
                 gen_choose_replicas_with_backoff = self._choose_replicas_with_backoff(
                     pending_request
                 )
