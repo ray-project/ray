@@ -684,7 +684,7 @@ def test_get_serve_instance_details_invalid_api_type(ray_start_stop):
     response = requests.get(SERVE_HEAD_URL + "?api_type=invalid_type", timeout=15)
     assert response.status_code == 400
     assert "Invalid 'api_type' value" in response.text
-    assert "Must be one of: imperative, declarative, unknown" in response.text
+    assert "Must be one of: unknown, imperative, declarative" in response.text
 
     # Test with another invalid value
     response = requests.get(SERVE_HEAD_URL + "?api_type=python", timeout=15)
