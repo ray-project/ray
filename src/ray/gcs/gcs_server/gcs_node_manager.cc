@@ -600,7 +600,7 @@ void GcsNodeManager::UpdateAliveNode(
   }
 
   auto new_node_info = *maybe_node_info.value();
-  auto snapshot = new_node_info.mutable_state_snapshot();
+  auto *snapshot = new_node_info.mutable_state_snapshot();
 
   if (resource_view_sync_message.idle_duration_ms() > 0) {
     snapshot->set_state(rpc::NodeSnapshot::IDLE);

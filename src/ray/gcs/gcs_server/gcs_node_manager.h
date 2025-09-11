@@ -143,7 +143,6 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   absl::flat_hash_map<NodeID, std::shared_ptr<const rpc::GcsNodeInfo>> GetAllDeadNodes()
       const {
     absl::ReaderMutexLock lock(&mutex_);
-    // returns a copy for thread safety
     return dead_nodes_;
   }
 

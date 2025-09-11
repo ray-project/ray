@@ -75,8 +75,7 @@ TEST_F(GcsNodeManagerTest, TestListener) {
 
   std::vector<std::shared_ptr<const rpc::GcsNodeInfo>> added_nodes;
   node_manager.AddNodeAddedListener(
-      [&added_nodes, &callbacks_remaining](
-          std::shared_ptr<const rpc::GcsNodeInfo> node) {
+      [&added_nodes, &callbacks_remaining](std::shared_ptr<const rpc::GcsNodeInfo> node) {
         added_nodes.emplace_back(std::move(node));
         --callbacks_remaining;
       },
