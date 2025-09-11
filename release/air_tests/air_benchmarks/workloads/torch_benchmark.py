@@ -1,8 +1,9 @@
+from dataclasses import dataclass
 import json
 import os
 import time
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Any, Dict, Tuple
 
 import click
 import numpy as np
@@ -16,6 +17,16 @@ from torchvision.transforms import ToTensor
 
 CONFIG = {"lr": 1e-3, "batch_size": 64}
 VANILLA_RESULT_JSON = "/tmp/vanilla_out.json"
+
+
+@dataclass
+class EpochMetrics:
+    total_batches: int = 0
+    total_batch_fetch_time: float = 0
+    total_loss_calc_time: float = 0
+    total_backprop_time: float = 0
+    time_to_first_batch: float = 0
+    total_time: float = 0
 
 
 # Define model
@@ -45,9 +56,8 @@ def train_epoch(
     optimizer,
     world_size: int,
     local_rank: int,
-    epoch: int,
-    use_ray: bool,
-):
+) -> EpochMetrics:
+    train_epoch_start_time = time.monotonic()
     size = len(dataloader.dataset) // world_size
     model.train()
     total_batches = 0
@@ -81,12 +91,13 @@ def train_epoch(
         if batch % 100 == 0:
             loss, current = loss.item(), batch * len(X)
             print(f"[rank={local_rank}] loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
-    print(
-        f"On epoch {epoch} with use_ray = {use_ray} on rank {local_rank} and total batches {total_batches}:\n"
-        f"Average time taken to fetch batches: {total_batch_fetch_time / total_batches:.2f} seconds\n"
-        f"Average time taken to calculate loss: {total_loss_calc_time / total_batches:.2f} seconds\n"
-        f"Average time taken to backprop: {total_backprop_time / total_batches:.2f} seconds\n"
-        f"Time taken to fetch first batch: {time_to_first_batch:.2f} seconds"
+    return EpochMetrics(
+        total_batches=total_batches,
+        total_batch_fetch_time=total_batch_fetch_time,
+        total_loss_calc_time=total_loss_calc_time,
+        total_backprop_time=total_backprop_time,
+        time_to_first_batch=time_to_first_batch,
+        total_time=time.monotonic() - train_epoch_start_time,
     )
 
 
@@ -96,9 +107,8 @@ def validate_epoch(
     loss_fn,
     world_size: int,
     local_rank: int,
-    epoch: int,
-    use_ray: bool,
-):
+) -> Tuple[float, EpochMetrics]:
+    validate_epoch_start_time = time.monotonic()
     size = len(dataloader.dataset) // world_size
     num_batches = len(dataloader)
     model.eval()
@@ -131,17 +141,18 @@ def validate_epoch(
         f"Accuracy: {(100 * correct):>0.1f}%, "
         f"Avg loss: {test_loss:>8f} \n"
     )
-    print(
-        f"On epoch {epoch} with use_ray = {use_ray} on rank {local_rank} and total batches {total_batches}:\n"
-        f"Average time taken to fetch batches: {total_batch_fetch_time / total_batches:.2f} seconds\n"
-        f"Average time taken to calculate loss: {total_loss_calc_time / total_batches:.2f} seconds\n"
-        f"Time taken to fetch first batch: {time_to_first_batch:.2f} seconds"
+    return test_loss, EpochMetrics(
+        total_batches=total_batches,
+        total_batch_fetch_time=total_batch_fetch_time,
+        total_loss_calc_time=total_loss_calc_time,
+        time_to_first_batch=time_to_first_batch,
+        total_time=time.monotonic() - validate_epoch_start_time,
     )
-    return test_loss
 
 
 def train_func(use_ray: bool, config: Dict):
     local_start_time = time.monotonic()
+    prev_report_time = None
 
     if use_ray:
         import ray.train as train
@@ -230,7 +241,6 @@ def train_func(use_ray: bool, config: Dict):
     model = NeuralNetwork()
 
     # Prepare model
-    # TODO: consolidate with train_benchmark.py
     prepare_model_start_time = time.monotonic()
     if use_ray:
         model = train.torch.prepare_model(model)
@@ -243,10 +253,7 @@ def train_func(use_ray: bool, config: Dict):
             )
         else:
             model = nn.parallel.DistributedDataParallel(model)
-    print(
-        f"Time taken to prepare model when use_ray = {use_ray} on rank {local_rank}: "
-        f"{time.monotonic() - prepare_model_start_time:.2f} seconds"
-    )
+    prepare_model_time = time.monotonic() - prepare_model_start_time
 
     loss_fn = nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
@@ -255,50 +262,42 @@ def train_func(use_ray: bool, config: Dict):
         if world_size > 1:
             train_dataloader.sampler.set_epoch(epoch)
 
-        train_epoch_start_time = time.monotonic()
-        train_epoch(
+        train_epoch_metrics = train_epoch(
             train_dataloader,
             model,
             loss_fn,
             optimizer,
             world_size=world_size,
             local_rank=local_rank,
-            epoch=epoch,
-            use_ray=use_ray,
         )
-        print(
-            f"Time taken to train epoch {epoch} when use_ray = {use_ray} on rank {local_rank}: "
-            f"{time.monotonic() - train_epoch_start_time:.2f} seconds"
-        )
-        validate_epoch_start_time = time.monotonic()
-        loss = validate_epoch(
+
+        loss, validate_epoch_metrics = validate_epoch(
             test_dataloader,
             model,
             loss_fn,
             world_size=world_size,
             local_rank=local_rank,
-            epoch=epoch,
-            use_ray=use_ray,
-        )
-        print(
-            f"Time taken to validate epoch {epoch} when use_ray = {use_ray} on rank {local_rank}: "
-            f"{time.monotonic() - validate_epoch_start_time:.2f} seconds"
         )
 
         local_time_taken = time.monotonic() - local_start_time
 
         report_start_time = time.monotonic()
+        metrics = {
+            "loss": loss,
+            "local_time_taken": local_time_taken,
+            "train_epoch_metrics": train_epoch_metrics,
+            "validate_epoch_metrics": validate_epoch_metrics,
+            "prepare_model_time": prepare_model_time,
+            "prev_report_time": prev_report_time,
+        }
         if use_ray:
-            train.report(dict(loss=loss, local_time_taken=local_time_taken))
+            train.report(metrics=metrics)
         else:
             print(f"Reporting loss: {loss:.4f}")
             if local_rank == 0:
                 with open(VANILLA_RESULT_JSON, "w") as f:
-                    json.dump({"loss": loss, "local_time_taken": local_time_taken}, f)
-        print(
-            f"Time taken to report epoch {epoch} when use_ray = {use_ray} on rank {local_rank}: "
-            f"{time.monotonic() - report_start_time:.2f} seconds"
-        )
+                    json.dump(metrics, f)
+        prev_report_time = time.monotonic() - report_start_time
 
 
 def train_torch_ray_air(
@@ -307,7 +306,7 @@ def train_torch_ray_air(
     num_workers: int = 4,
     cpus_per_worker: int = 8,
     use_gpu: bool = False,
-) -> Tuple[float, float, float]:
+) -> Tuple[float, Dict[str, Any]]:
     # This function is kicked off by the main() function and runs a full training
     # run using Ray AIR.
     from ray.train import ScalingConfig
@@ -331,7 +330,7 @@ def train_torch_ray_air(
     time_taken = time.monotonic() - start_time
 
     print(f"Last result: {result.metrics}")
-    return time_taken, result.metrics["local_time_taken"], result.metrics["loss"]
+    return time_taken, result.metrics
 
 
 def train_torch_vanilla_worker(
@@ -368,7 +367,7 @@ def train_torch_vanilla(
     num_workers: int = 4,
     cpus_per_worker: int = 8,
     use_gpu: bool = False,
-) -> Tuple[float, float, float]:
+) -> Tuple[float, Dict[str, Any]]:
     # This function is kicked off by the main() function and subsequently kicks
     # off tasks that run train_torch_vanilla_worker() on the worker nodes.
     from benchmark_util import (
@@ -453,14 +452,12 @@ def train_torch_vanilla(
     run_commands_on_actors(actors=actors, cmds=cmds)
     time_taken = time.monotonic() - start_time
 
-    loss = 0.0
+    result = None
     if os.path.exists(VANILLA_RESULT_JSON):
         with open(VANILLA_RESULT_JSON, "r") as f:
             result = json.load(f)
-        loss = result["loss"]
-        local_time_taken = result["local_time_taken"]
 
-    return time_taken, local_time_taken, loss
+    return time_taken, result
 
 
 @click.group(help="Run Torch benchmarks")
@@ -518,12 +515,14 @@ def run(
 
         print(f"[Run {run}/{num_runs}] Running Torch Ray benchmark")
 
-        time_ray, time_local_ray, loss_ray = train_torch_ray_air(
+        time_ray, metrics_ray = train_torch_ray_air(
             num_workers=num_workers,
             cpus_per_worker=cpus_per_worker,
             use_gpu=use_gpu,
             config=config,
         )
+        time_local_ray = metrics_ray["local_time_taken"]
+        loss_ray = metrics_ray["loss"]
 
         print(
             f"[Run {run}/{num_runs}] Finished Ray training ({num_epochs} epochs) in "
@@ -535,12 +534,14 @@ def run(
 
         print(f"[Run {run}/{num_runs}] Running Torch vanilla benchmark")
 
-        time_vanilla, time_local_vanilla, loss_vanilla = train_torch_vanilla(
+        time_vanilla, metrics_vanilla = train_torch_vanilla(
             num_workers=num_workers,
             cpus_per_worker=cpus_per_worker,
             use_gpu=use_gpu,
             config=config,
         )
+        time_local_vanilla = metrics_vanilla["local_time_taken"]
+        loss_vanilla = metrics_vanilla["loss"]
 
         print(
             f"[Run {run}/{num_runs}] Finished vanilla training ({num_epochs} epochs) "
@@ -615,13 +616,19 @@ def run(
         raise RuntimeError(
             f"Training on Ray took an average of {times_local_ray_mean:.2f} seconds, "
             f"which is more than {target_ratio:.2f}x of the average vanilla training "
-            f"time of {times_local_vanilla_mean:.2f} seconds ({ratio:.2f}x). FAILED"
+            f"time of {times_local_vanilla_mean:.2f} seconds ({ratio:.2f}x). "
+            f"Here are some additional metrics from Ray training: {metrics_ray}. "
+            f"Here are some additional metrics from vanilla training: {metrics_vanilla}. "
+            "FAILED"
         )
 
     print(
         f"Training on Ray took an average of {times_local_ray_mean:.2f} seconds, "
         f"which is less than {target_ratio:.2f}x of the average vanilla training "
-        f"time of {times_local_vanilla_mean:.2f} seconds ({ratio:.2f}x). PASSED"
+        f"time of {times_local_vanilla_mean:.2f} seconds ({ratio:.2f}x). "
+        f"Here are some additional metrics from Ray training: {metrics_ray}. "
+        f"Here are some additional metrics from vanilla training: {metrics_vanilla}. "
+        "PASSED"
     )
 
 
