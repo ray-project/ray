@@ -15,17 +15,20 @@ class MyActor:
         return torch.sum(tensor)
 
 
+# No collective group is needed. The two actors just need to have NIXL
+# installed.
 sender, receiver = MyActor.remote(), MyActor.remote()
 
 # The tensor will be stored by the `sender` actor instead of in Ray's object
 # store.
 tensor = sender.random_tensor.remote()
 result = receiver.sum.remote(tensor)
+ray.get(result)
 # __nixl_full_example_end__
 
 # __nixl_get_start__
 # The :func:`ray.get <ray.get>` function will also use NIXL to retrieve the
 # result.
-print(ray.get(result))
+print(ray.get(tensor))
 # torch.Tensor(...)
 # __nixl_get_end__

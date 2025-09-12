@@ -140,7 +140,7 @@ For example:
 ``ray.get``
 ^^^^^^^^^^^
 
-The :func:`ray.get <ray.get>` function can be used as usual to retrieve the result of an RDT object, via Ray's object store.
+The :func:`ray.get <ray.get>` function can also be used as usual to retrieve the result of an RDT object, via Ray's object store.
 
 .. TODO: This example needs to be updated once we change the default transport for ray.get to match the ray.method transport.
 
@@ -168,8 +168,7 @@ The main code differences are:
 Usage with NIXL (CPUs or NVIDIA GPUs)
 -------------------------------------
 
-NIXL uses RDMA to transfer data between devices, including CPUs and NVIDIA GPUs.
-One advantage of this tensor transport is that it doesn't require a collective group to be created ahead of time.
+NIXL can transfer data between different devices, including CPUs and NVIDIA GPUs, but doesn't require a collective group to be created ahead of time.
 This means that any actor that has NIXL installed in its environment can be used to create and pass an RDT object.
 
 Otherwise, the usage is the same as in the :ref:`Gloo example <direct-transport-gloo>`.

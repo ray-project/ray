@@ -23,4 +23,5 @@ group = create_collective_group([sender, receiver], backend="nccl")
 # store.
 tensor = sender.random_tensor.remote()
 result = receiver.sum.remote(tensor)
+ray.get(result)
 # __nccl_full_example_end__
