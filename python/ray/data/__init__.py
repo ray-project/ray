@@ -73,24 +73,23 @@ from ray.data.read_api import (  # noqa: F401
     read_webdataset,
 )
 
-# Import SQL API
+# Import simplified SQL API
 try:
+    from ray.data.sql_api import (
+        clear_tables,
+        list_tables,
+        register,
+        sql,
+        sql_config,
+    )
+
+    # Import exceptions for error handling
     from ray.data.sql import (
         ColumnNotFoundError,
-        LogLevel,
-        RaySQL,
-        SQLConfig,
         SQLError,
         SQLExecutionError,
         SQLParseError,
         TableNotFoundError,
-        clear_tables,
-        get_engine,
-        get_registry,
-        get_schema,
-        list_tables,
-        register_table,
-        sql,
     )
 except ImportError:
     # SQL module not available, skip import
@@ -197,17 +196,13 @@ __all__ = [
     "read_webdataset",
     "Preprocessor",
     "TFXReadOptions",
-    # SQL API exports
+    # Simplified SQL API exports
     "sql",
-    "register_table",
+    "register",
     "list_tables",
-    "get_schema",
     "clear_tables",
-    "get_engine",
-    "get_registry",
-    "RaySQL",
-    "SQLConfig",
-    "LogLevel",
+    "sql_config",
+    # SQL exceptions
     "SQLError",
     "SQLParseError",
     "SQLExecutionError",

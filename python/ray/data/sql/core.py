@@ -598,46 +598,95 @@ def get_config_summary() -> Dict[str, Any]:
 
 # Public API functions
 @PublicAPI(stability="alpha")
-def sql(
-    query: str, default_dataset: Optional[Dataset] = None, optimizer: str = "auto"
-) -> Dataset:
-    """Execute a SQL query on registered datasets with advanced optimization.
+def sql(query: str, **datasets) -> Dataset:
+    """Execute a SQL query on Ray Datasets with automatic variable discovery.
 
-    This function uses SQLGlot for query optimization
-    while preserving all Ray Dataset native operations for execution.
+    This function provides a simple, Pythonic SQL interface similar to DuckDB.
+    Ray Datasets can be referenced directly in SQL queries by their variable names,
+    or passed explicitly as keyword arguments.
 
     Args:
         query: SQL query string.
-        default_dataset: Default dataset for queries without FROM clause.
-        optimizer: Optimizer to use ("auto" or "sqlglot").
+        **datasets: Optional explicit dataset mappings (name=dataset).
 
     Returns:
-        Dataset containing the query results (using Ray Dataset native operations).
+        Dataset containing the query results.
 
     Examples:
-        Basic usage (auto-selects best optimizer):
-            >>> import ray.data.sql
+        Automatic dataset discovery (DuckDB-style):
+            >>> import ray.data
             >>> users = ray.data.from_items([{"id": 1, "name": "Alice"}])
-            >>> ray.data.sql.register_table("users", users)
+            >>> orders = ray.data.from_items([{"id": 1, "user_id": 1, "amount": 100}])
+            >>> # Datasets automatically available by variable name
             >>> result = ray.data.sql("SELECT * FROM users WHERE id = 1")
+            >>> result = ray.data.sql("SELECT u.name, o.amount FROM users u JOIN orders o ON u.id = o.user_id")
 
-        With specific optimizer:
-            >>> # Use SQLGlot optimization + Ray Dataset execution
-            >>> result = ray.data.sql("SELECT * FROM users JOIN orders ON users.id = orders.user_id", optimizer="sqlglot")
-            >>> # Internally uses dataset.join() with SQLGlot-optimized parameters
+        Explicit dataset passing:
+            >>> result = ray.data.sql("SELECT * FROM my_table", my_table=users)
+
+        Mixed usage:
+            >>> ds = ray.data.from_items([{"x": 1}, {"x": 2}])
+            >>> result = ray.data.sql("SELECT * FROM ds WHERE x > 1")
     """
-    # Try to use advanced optimizers if available
-    if optimizer != "sqlglot":
-        try:
-            from ray.data.sql.optimizers import execute_optimized_sql
+    import inspect
+    from ray.data.sql.utils import extract_table_names_from_query
 
-            return execute_optimized_sql(query, optimizer)
-        except ImportError:
-            # Optimizers not available, use current implementation
-            pass
+    # Get the caller's frame to access their local variables
+    caller_frame = inspect.currentframe().f_back
+    caller_locals = caller_frame.f_locals
+    caller_globals = caller_frame.f_globals
 
-    # Fallback to current Ray SQL implementation
-    return get_engine().sql(query, default_dataset)
+    # Extract table names from the SQL query
+    try:
+        table_names = extract_table_names_from_query(query)
+    except Exception:
+        # If we can't parse table names, fall back to current behavior
+        engine = get_engine()
+        return engine.sql(query)
+
+    # Auto-register datasets from caller's namespace
+    engine = get_engine()
+    auto_registered = []
+
+    for table_name in table_names:
+        # Skip if already registered
+        if table_name in engine.registry.list_tables():
+            continue
+
+        # Look for dataset in explicit kwargs first
+        if table_name in datasets:
+            dataset = datasets[table_name]
+            if isinstance(dataset, Dataset):
+                engine.register_table(table_name, dataset)
+                auto_registered.append(table_name)
+            continue
+
+        # Look for dataset in caller's local variables
+        if table_name in caller_locals:
+            var = caller_locals[table_name]
+            if isinstance(var, Dataset):
+                engine.register_table(table_name, var)
+                auto_registered.append(table_name)
+                continue
+
+        # Look for dataset in caller's global variables
+        if table_name in caller_globals:
+            var = caller_globals[table_name]
+            if isinstance(var, Dataset):
+                engine.register_table(table_name, var)
+                auto_registered.append(table_name)
+
+    try:
+        # Execute the query
+        result = engine.sql(query)
+        return result
+    finally:
+        # Clean up auto-registered tables to avoid namespace pollution
+        for table_name in auto_registered:
+            try:
+                engine.unregister_table(table_name)
+            except Exception:
+                pass  # Ignore cleanup errors
 
 
 @PublicAPI(stability="alpha")
