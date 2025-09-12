@@ -124,7 +124,7 @@ class EncodingUDF:
             model,
             device=device,
             token=token,
-            model_kwargs={"torch_dtype": "bfloat16"},
+            model_kwargs={"torch_dtype": torch.bfloat16},
         )
 
     def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:

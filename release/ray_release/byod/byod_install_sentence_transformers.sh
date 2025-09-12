@@ -3,4 +3,4 @@
 
 set -exo pipefail
 
-pip3 install --no-cache-dir sentence-transformers==3.4.1 torch==2.6.0 --upgrade-strategy only-if-needed
+pip3 install --no-cache-dir sentence-transformers==3.0.1 --upgrade-strategy only-if-needed
