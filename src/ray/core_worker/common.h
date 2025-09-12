@@ -114,7 +114,7 @@ struct TaskOptions {
 
 /// Options for actor creation tasks.
 struct ActorCreationOptions {
-  ActorCreationOptions() = default;
+  ActorCreationOptions() {}
   ActorCreationOptions(int64_t max_restarts_p,
                        int64_t max_task_retries_p,
                        int max_concurrency_p,
