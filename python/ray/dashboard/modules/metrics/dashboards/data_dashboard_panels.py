@@ -583,8 +583,8 @@ INTERNAL_OUTQUEUE_BYTES_PANEL = Panel(
 
 EXTERNAL_INQUEUE_BLOCKS_PANEL = Panel(
     id=2,
-    title="Operator External OutQueue Size (Blocks)",
-    description="Number of blocks in operator's external output queue",
+    title="Operator External InQueue Size (Blocks)",
+    description="Number of blocks in operator's external input queue",
     unit="blocks",
     targets=[
         Target(
@@ -598,12 +598,12 @@ EXTERNAL_INQUEUE_BLOCKS_PANEL = Panel(
 
 EXTERNAL_INQUEUE_BYTES_PANEL = Panel(
     id=27,
-    title="Operator External OutQueue Size (bytes)",
-    description="Byte size of blocks in operator's external output queue",
+    title="Operator External InQueue Size (bytes)",
+    description="Byte size of blocks in operator's external input queue",
     unit="bytes",
     targets=[
         Target(
-            expr='sum(ray_data_num_external_inqueue_blocks{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='sum(ray_data_num_external_inqueue_bytes{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
             legend="Number of Bytes: {{dataset}}, {{operator}}",
         )
     ],
