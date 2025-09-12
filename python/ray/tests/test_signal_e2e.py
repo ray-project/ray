@@ -1,5 +1,6 @@
 import os
 import signal
+import sys
 import time
 
 import pytest
@@ -98,3 +99,7 @@ def test_asyncio_actor_signal(ray_start):
 )
 def test_raylet_sigterm_no_regression():
     pass
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 import ray
@@ -29,3 +31,7 @@ def test_asyncio_actor_force_exit_is_immediate():
         ray.get(a.force_quit.remote())
 
     ray.shutdown()
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))
