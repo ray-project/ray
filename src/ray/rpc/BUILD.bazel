@@ -159,7 +159,7 @@ ray_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":raylet_client_interface",
-        "//src/ray/gcs_client:gcs_client_lib",
+        "//src/ray/gcs_client:gcs_client",
     ],
 )
 
@@ -193,7 +193,7 @@ ray_cc_library(
         ":raylet_client_pool",
         "//src/ray/common:id",
         "//src/ray/common:status",
-        "//src/ray/gcs_client:gcs_client_lib",
+        "//src/ray/gcs_client:gcs_client",
         "//src/ray/protobuf:core_worker_cc_grpc",
         "//src/ray/pubsub:subscriber",
         "//src/ray/util:logging",

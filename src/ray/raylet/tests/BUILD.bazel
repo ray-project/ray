@@ -50,7 +50,7 @@ ray_cc_test(
         "//:ray_mock",
         "//src/ray/common:asio",
         "//src/ray/common:id",
-        "//src/ray/gcs/gcs_client:gcs_client_lib",
+        "//src/ray/gcs_client:gcs_client",
         "//src/ray/object_manager:ownership_object_directory",
         "//src/ray/protobuf:core_worker_cc_grpc",
         "//src/ray/pubsub:subscriber",

@@ -21,7 +21,7 @@
 #include "ray/common/test_utils.h"
 #include "ray/util/path_utils.h"
 #include "ray/util/raii.h"
-#include "mock/ray/gcs/gcs_client/gcs_client.h"
+#include "mock/ray/gcs_client/gcs_client.h"
 // clang-format on
 
 namespace ray {

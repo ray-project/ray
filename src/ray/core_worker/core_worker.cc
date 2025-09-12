@@ -42,7 +42,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/task/task_util.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/gcs_client/gcs_client.h"
 #include "ray/rpc/event_aggregator_client.h"
 #include "ray/util/container_util.h"
 #include "ray/util/event.h"

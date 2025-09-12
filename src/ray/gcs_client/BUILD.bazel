@@ -31,7 +31,7 @@ ray_cc_library(
     srcs = ["global_state_accessor.cc"],
     hdrs = ["global_state_accessor.h"],
     deps = [
-        ":gcs_client_lib",
+        ":gcs_client",
         "//src/ray/util:time",
     ],
 )
