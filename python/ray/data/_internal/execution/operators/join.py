@@ -142,8 +142,8 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
             )
 
         # We cannot rely on row_count because it can return a non-zero row count
-        # for an empty-schema
-        # Only index if we have unjoinable columns AND the join type includes that side
+        # for an empty-schema.
+        # Only index if we have unjoinable columns AND the join type includes that side.
         should_index_l = (
             joinable_l.schema
             and unjoinable_l.schema
@@ -222,25 +222,22 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
 
     def _split_joinable_columns(
         self, table: "pa.Table"
-    ) -> Tuple[List["pa.Table"], List["pa.Table"]]:
+    ) -> Tuple["pa.Table", "pa.Table"]:
         accessor = ArrowBlockAccessor(table)
         joinable, unjoinable = [], []
         for name in accessor.column_names():
             column: "pa.ChunkedArray" = table.column(name)
 
-            type = column.type
+            col_type = column.type
             if _is_column_extension_type(column):
-                type = column.type.storage_type
+                col_type = column.type.storage_type
 
-            if is_unjoinable_type(type):
+            if is_unjoinable_type(col_type):
                 unjoinable.append(name)
             else:
                 joinable.append(name)
 
-        return (
-            accessor.select(joinable),
-            accessor.select(unjoinable),
-        )
+        return (accessor.select(joinable), accessor.select(unjoinable))
 
     def _get_partition_builder(self, *, input_seq_id: int, partition_id: int):
         if input_seq_id == 0:
@@ -260,7 +257,6 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
 def is_unjoinable_type(type: "pa.DataType") -> bool:
     import pyarrow as pa
 
-    # TODO: need to handle custom extension arrays
     return (
         pa.types.is_map(type)
         or pa.types.is_union(type)

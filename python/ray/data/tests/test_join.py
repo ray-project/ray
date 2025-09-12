@@ -1,6 +1,7 @@
 from typing import Optional
 from unittest.mock import MagicMock
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -587,6 +588,39 @@ def test_join_on_unjoinable_keys_raises_error(ray_start_regular_shared_2_cpus):
         )
 
 
+# Helper functions to reduce test code bloat
+def _assert_columns_match(result, expected_columns):
+    """Assert that result has the expected column schema."""
+    actual_columns = set(result[0].keys())
+    assert actual_columns == expected_columns
+
+
+def _assert_list_values(result_by_id, expected_values):
+    """Assert list column values match expected values."""
+    for row_id, expected_list in expected_values.items():
+        assert result_by_id[row_id]["list_col"] == expected_list
+
+
+def _assert_tensor_values(result_by_id, expected_values):
+    """Assert tensor column values match expected tensor data."""
+    for row_id, expected_tensor in expected_values.items():
+        assert np.array_equal(result_by_id[row_id]["tensor_col"], expected_tensor)
+
+
+def _assert_none_values(result_by_id, none_checks):
+    """Assert that specified columns are None for specified row IDs."""
+    for row_id, columns in none_checks.items():
+        for column in columns:
+            assert result_by_id[row_id][column] is None
+
+
+def _assert_scalar_values(result_by_id, expected_values):
+    """Assert scalar column values match expected values."""
+    for row_id, column_values in expected_values.items():
+        for column, expected_value in column_values.items():
+            assert result_by_id[row_id][column] == expected_value
+
+
 @pytest.mark.parametrize(
     "join_type",
     [
@@ -605,20 +639,42 @@ def test_join_with_unjoinable_non_key_columns(
 ):
     """Test that joins work correctly when non-key columns have unjoinable types."""
     # Left dataset with joinable key but unjoinable non-key columns
-    import numpy as np
 
-    # Create tensor data - proper multidimensional tensors (unjoinable extension type)
-    tensor_data = [
-        np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32),  # 2x2 tensor
-        np.array([[5.0, 6.0], [7.0, 8.0]], dtype=np.float32),  # 2x2 tensor
-        np.array([[9.0, 10.0], [11.0, 12.0]], dtype=np.float32),  # 2x2 tensor
+    # Create test data - centralized for clarity and maintainability
+    list_data = [
+        [1, 2, 3],  # list for id=0
+        [4, 5, 6],  # list for id=1
+        [7, 8, 9],  # list for id=2
     ]
+
+    tensor_data = [
+        np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32),  # 2x2 tensor for id=0
+        np.array([[5.0, 6.0], [7.0, 8.0]], dtype=np.float32),  # 2x2 tensor for id=1
+        np.array([[9.0, 10.0], [11.0, 12.0]], dtype=np.float32),  # 2x2 tensor for id=2
+    ]
+
+    scalar_data = ["a", "b", "c"]  # scalar data for id=0,1,2
 
     left_ds = ray.data.from_items(
         [
-            {"id": 0, "list_col": [1, 2, 3], "tensor_col": tensor_data[0], "data": "a"},
-            {"id": 1, "list_col": [4, 5, 6], "tensor_col": tensor_data[1], "data": "b"},
-            {"id": 2, "list_col": [7, 8, 9], "tensor_col": tensor_data[2], "data": "c"},
+            {
+                "id": 0,
+                "list_col": list_data[0],
+                "tensor_col": tensor_data[0],
+                "data": scalar_data[0],
+            },
+            {
+                "id": 1,
+                "list_col": list_data[1],
+                "tensor_col": tensor_data[1],
+                "data": scalar_data[1],
+            },
+            {
+                "id": 2,
+                "list_col": list_data[2],
+                "tensor_col": tensor_data[2],
+                "data": scalar_data[2],
+            },
         ]
     )
 
@@ -644,87 +700,80 @@ def test_join_with_unjoinable_non_key_columns(
         # Should have 2 rows (id=0 and id=1 match)
         assert len(result) == 2
         # Verify unjoinable columns are preserved
-        assert result_by_id[0]["list_col"] == [1, 2, 3]
-        assert result_by_id[1]["list_col"] == [4, 5, 6]
-        # Verify tensor columns are preserved
-        assert np.array_equal(result_by_id[0]["tensor_col"], tensor_data[0])
-        assert np.array_equal(result_by_id[1]["tensor_col"], tensor_data[1])
+        _assert_list_values(result_by_id, {i: list_data[i] for i in [0, 1]})
+        _assert_tensor_values(result_by_id, {i: tensor_data[i] for i in [0, 1]})
 
     elif join_type == "left_outer":
         # Should have 3 rows (all from left: id=0, 1, 2)
         assert len(result) == 3
         # All left unjoinable columns preserved
-        assert result_by_id[0]["list_col"] == [1, 2, 3]
-        assert result_by_id[1]["list_col"] == [4, 5, 6]
-        assert result_by_id[2]["list_col"] == [7, 8, 9]
-        # All left tensor columns preserved
-        assert np.array_equal(result_by_id[0]["tensor_col"], tensor_data[0])
-        assert np.array_equal(result_by_id[1]["tensor_col"], tensor_data[1])
-        assert np.array_equal(result_by_id[2]["tensor_col"], tensor_data[2])
-        # Unmatched left row (id=2) should have None for right unjoinable columns
-        assert result_by_id[2]["value"] is None
+        _assert_list_values(result_by_id, {i: list_data[i] for i in [0, 1, 2]})
+        _assert_tensor_values(result_by_id, {i: tensor_data[i] for i in [0, 1, 2]})
+        # Unmatched left row (id=2) should have None for right columns
+        _assert_none_values(result_by_id, {2: ["value"]})
 
     elif join_type == "right_outer":
         # Should have 3 rows (all from right: id=0, 1, 3)
         assert len(result) == 3
         # Matched rows should have unjoinable columns from left
-        assert result_by_id[0]["list_col"] == [1, 2, 3]
-        assert result_by_id[1]["list_col"] == [4, 5, 6]
-        assert np.array_equal(result_by_id[0]["tensor_col"], tensor_data[0])
-        assert np.array_equal(result_by_id[1]["tensor_col"], tensor_data[1])
-        assert result_by_id[3]["value"] == "z"
+        _assert_list_values(result_by_id, {i: list_data[i] for i in [0, 1]})
+        _assert_tensor_values(result_by_id, {i: tensor_data[i] for i in [0, 1]})
+        _assert_scalar_values(result_by_id, {3: {"value": "z"}})
         # Unmatched right row (id=3) should have None for left unjoinable columns
-        assert result_by_id[3]["list_col"] is None
-        assert result_by_id[3]["tensor_col"] is None
-        assert result_by_id[3]["data"] is None
+        _assert_none_values(result_by_id, {3: ["list_col", "tensor_col"]})
+
+    elif join_type == "full_outer":
+        # Should have 4 rows (all from both sides: id=0, 1, 2, 3)
+        assert len(result) == 4
+        # Matched rows (id=0, 1) should have data from both sides
+        _assert_list_values(result_by_id, {i: list_data[i] for i in [0, 1, 2]})
+        _assert_tensor_values(result_by_id, {i: tensor_data[i] for i in [0, 1, 2]})
+        _assert_scalar_values(
+            result_by_id,
+            {
+                0: {"value": "x"},
+                1: {"value": "y"},
+                2: {"data": scalar_data[2]},
+                3: {"value": "z", "score": 30},
+            },
+        )
+        # Unmatched rows should have None for columns from the other side
+        _assert_none_values(
+            result_by_id, {2: ["value", "score"], 3: ["list_col", "tensor_col", "data"]}
+        )
 
     elif join_type == "left_semi":
         # Should return left rows that have matches in right (id=0, 1)
         assert len(result) == 2
-        expected_columns = {"id", "list_col", "tensor_col", "data"}
-        actual_columns = set(result[0].keys())
-        assert expected_columns == actual_columns
-        assert result_by_id[0]["list_col"] == [1, 2, 3]
-        assert result_by_id[1]["list_col"] == [4, 5, 6]
-        assert np.array_equal(result_by_id[0]["tensor_col"], tensor_data[0])
-        assert np.array_equal(result_by_id[1]["tensor_col"], tensor_data[1])
+        _assert_columns_match(result, {"id", "list_col", "tensor_col", "data"})
+        _assert_list_values(result_by_id, {i: list_data[i] for i in [0, 1]})
+        _assert_tensor_values(result_by_id, {i: tensor_data[i] for i in [0, 1]})
 
     elif join_type == "left_anti":
         # Should return left rows that DON'T have matches in right (id=2)
         assert len(result) == 1
-        expected_columns = {"id", "list_col", "tensor_col", "data"}
-        actual_columns = set(result[0].keys())
-        assert expected_columns == actual_columns
-        assert result_by_id[2]["list_col"] == [7, 8, 9]
-        assert result_by_id[2]["data"] == "c"
-        assert np.array_equal(result_by_id[2]["tensor_col"], tensor_data[2])
+        _assert_columns_match(result, {"id", "list_col", "tensor_col", "data"})
+        _assert_list_values(result_by_id, {2: list_data[2]})
+        _assert_tensor_values(result_by_id, {2: tensor_data[2]})
+        _assert_scalar_values(result_by_id, {2: {"data": scalar_data[2]}})
 
     elif join_type == "right_semi":
         # Should return right rows that have matches in left (id=0, 1)
         assert len(result) == 2
-        expected_columns = {"id", "value", "score"}
-        actual_columns = set(result[0].keys())
-        assert expected_columns == actual_columns
-        assert result_by_id[0]["value"] == "x"
-        assert result_by_id[1]["value"] == "y"
+        _assert_columns_match(result, {"id", "value", "score"})
+        _assert_scalar_values(result_by_id, {0: {"value": "x"}, 1: {"value": "y"}})
 
     elif join_type == "right_anti":
         # Should return right rows that DON'T have matches in left (id=3)
         assert len(result) == 1
-        expected_columns = {"id", "value", "score"}
-        actual_columns = set(result[0].keys())
-        assert expected_columns == actual_columns
-        assert result_by_id[3]["value"] == "z"
-        assert result_by_id[3]["score"] == 30
+        _assert_columns_match(result, {"id", "value", "score"})
+        _assert_scalar_values(result_by_id, {3: {"value": "z", "score": 30}})
 
     # For outer joins, ensure unjoinable columns are present
-    if (
-        join_type in ["inner", "left_outer", "right_outer", "full_outer"]
-        and len(result) > 0
-    ):
-        expected_columns = {"id", "list_col", "tensor_col", "data", "value", "score"}
-        actual_columns = set(result[0].keys())
-        assert expected_columns == actual_columns
+    if join_type in ["inner", "left_outer", "right_outer", "full_outer"]:
+        _assert_columns_match(
+            result, {"id", "list_col", "tensor_col", "data", "value", "score"}
+        )
 
 
 if __name__ == "__main__":
