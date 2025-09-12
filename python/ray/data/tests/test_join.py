@@ -570,12 +570,12 @@ def test_anti_join_multi_key(
 def test_join_on_unjoinable_keys_raises_error(ray_start_regular_shared_2_cpus):
     """Test that joining ON unjoinable column types raises appropriate errors."""
     # Dataset with proper list column (unjoinable)
-    list_ds = ray.data.from_pydict(
-        {"list_col": [[1, 2], [3, 4], [5, 6]], "data": [10, 20, 30]}
+    list_ds = ray.data.from_items(
+        [{"list_col": [[1, 2], [3, 4], [5, 6]], "data": [10, 20, 30]}]
     )
 
     # Simple joinable dataset
-    simple_ds = ray.data.from_pydict({"id": [1, 2, 3], "value": ["a", "b", "c"]})
+    simple_ds = ray.data.from_items([{"id": [1, 2, 3], "value": ["a", "b", "c"]}])
 
     # Test that joining ON list column raises ValueError
     with pytest.raises(ValueError):
@@ -584,8 +584,8 @@ def test_join_on_unjoinable_keys_raises_error(ray_start_regular_shared_2_cpus):
             join_type="inner",
             on=("list_col",),
             right_on=("id",),
-            num_partitions=2,
-        )
+            num_partitions=1,
+        ).materialize()
 
 
 # Helper functions to reduce test code bloat
@@ -689,7 +689,7 @@ def test_join_with_unjoinable_non_key_columns(
     )
 
     # This should work - join on joinable keys, handle unjoinable non-key columns
-    joined = left_ds.join(right_ds, join_type=join_type, on=("id",), num_partitions=2)
+    joined = left_ds.join(right_ds, join_type=join_type, on=("id",), num_partitions=1)
 
     # Verify the join worked and includes unjoinable columns
     result = joined.take_all()

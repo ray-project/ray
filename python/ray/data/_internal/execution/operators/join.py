@@ -244,8 +244,10 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
 
         # We cannot rely on row_count because it can return a non-zero row count
         # for an empty-schema.
-        joinable = joinable if joinable.schema else accessor._empty_table()
-        unjoinable = unjoinable if unjoinable.schema else accessor._empty_table()
+        joinable = accessor.select(joinable) if joinable else accessor._empty_table()
+        unjoinable = (
+            accessor.select(unjoinable) if unjoinable else accessor._empty_table()
+        )
 
         return joinable, unjoinable
 
