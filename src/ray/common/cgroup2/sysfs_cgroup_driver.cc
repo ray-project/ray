@@ -37,6 +37,13 @@
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
 
+// Used to identify if a filesystem is mounted using cgroupv2.
+// See: https://docs.kernel.org/admin-guide/cgroup-v2.html#mounting
+#ifndef CGROUP2_SUPER_MAGIC
+#define CGROUP2_SUPER_MAGIC 0x63677270
+#endif
+
+
 namespace ray {
 Status SysFsCgroupDriver::CheckCgroupv2Enabled() {
   FILE *fp = setmntent(mount_file_path_.c_str(), "r");

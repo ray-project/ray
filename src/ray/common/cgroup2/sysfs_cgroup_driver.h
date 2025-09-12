@@ -13,8 +13,10 @@
 // limitations under the License.
 #pragma once
 
-#include <linux/magic.h>
-#include <mntent.h>
+// TODO(#54703): SysFsCgroupDriver should not be a public target.
+// It will be hidden behind a CgroupManagerFactory which will create
+// an appropriate depending on configuration and platform.
+// #include <mntent.h>
 
 #include <string>
 #include <unordered_set>
@@ -23,12 +25,6 @@
 #include "ray/common/cgroup2/cgroup_driver_interface.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
-
-// Used to identify if a filesystem is mounted using cgroupv2.
-// See: https://docs.kernel.org/admin-guide/cgroup-v2.html#mounting
-#ifndef CGROUP2_SUPER_MAGIC
-#define CGROUP2_SUPER_MAGIC 0x63677270
-#endif
 
 namespace ray {
 
@@ -51,7 +47,7 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
    *
    * @param mount_file_path only used for testing.
    */
-  explicit SysFsCgroupDriver(std::string mount_file_path = MOUNTED)
+  explicit SysFsCgroupDriver(std::string mount_file_path = kMountFilePath)
       : mount_file_path_(std::move(mount_file_path)) {}
 
   ~SysFsCgroupDriver() override = default;
@@ -280,5 +276,6 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
   static constexpr std::string_view kCgroupSubtreeControlFilename =
       "cgroup.subtree_control";
   static constexpr std::string_view kCgroupControllersFilename = "cgroup.controllers";
+  static inline std::string kMountFilePath = "/mnt/mtab";
 };
 }  // namespace ray
