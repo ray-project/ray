@@ -29,10 +29,10 @@
 #include "absl/strings/str_split.h"
 #include "ray/common/constants.h"
 #include "ray/common/lease/lease_spec.h"
+#include "ray/common/protobuf_utils.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/status.h"
-#include "ray/gcs/pb_util.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 #include "ray/util/network_util.h"
@@ -101,8 +101,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
                        std::string native_library_path,
                        std::function<void()> starting_worker_timeout_callback,
                        int ray_debugger_external,
-                       std::function<absl::Time()> get_time,
-                       bool enable_resource_isolation)
+                       std::function<absl::Time()> get_time)
     : worker_startup_token_counter_(0),
       io_service_(&io_service),
       node_id_(node_id),
@@ -123,8 +122,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
           std::min(num_prestarted_python_workers, maximum_startup_concurrency_)),
       num_prestart_python_workers(num_prestarted_python_workers),
       periodical_runner_(PeriodicalRunner::Create(io_service)),
-      get_time_(std::move(get_time)),
-      enable_resource_isolation_(enable_resource_isolation) {
+      get_time_(std::move(get_time)) {
   RAY_CHECK_GT(maximum_startup_concurrency_, 0);
   // We need to record so that the metric exists. This way, we report that 0
   // processes have started before a task runs on the node (as opposed to the
@@ -443,12 +441,6 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
                                   serialized_preload_python_modules);
   }
 
-  // Pass resource isolation flag to python worker.
-  if (language == Language::PYTHON && worker_type == rpc::WorkerType::WORKER) {
-    worker_command_args.emplace_back(absl::StrFormat(
-        "--enable-resource-isolation=%s", enable_resource_isolation_ ? "true" : "false"));
-  }
-
   // We use setproctitle to change python worker process title,
   // causing the process's /proc/PID/environ being empty.
   // Add `SPT_NOENV` env to prevent setproctitle breaking /proc/PID/environ.
@@ -461,6 +453,7 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     // Support forking in gRPC.
     env.insert({"GRPC_ENABLE_FORK_SUPPORT", "True"});
     env.insert({"GRPC_POLL_STRATEGY", "poll"});
+    env.insert({"RAY_start_python_gc_manager_thread", "0"});
   }
 
   return {std::move(worker_command_args), std::move(env)};
@@ -876,7 +869,7 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
                                   const rpc::JobConfig &job_config,
                                   std::function<void(Status, int)> send_reply_callback) {
   int port;
-  RAY_CHECK(!driver->GetGrantedLeaseId().IsNil());
+  RAY_CHECK(driver->GetGrantedLeaseId().IsNil());
   Status status = GetNextFreePort(&port);
   if (!status.ok()) {
     send_reply_callback(status, /*port=*/0);
@@ -1052,6 +1045,8 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   // Since the worker is now idle, verify that it has no assigned lease ID.
   RAY_CHECK(worker->GetGrantedLeaseId().IsNil())
       << "Idle workers cannot have an assigned lease ID";
+  RAY_CHECK(worker->GetWorkerType() != rpc::WorkerType::DRIVER)
+      << "Idle workers cannot be drivers";
   // Find a lease that this worker can fit. If there's none, put it in the idle pool.
   // First find in pending_registration_requests, then in pending_start_requests.
   std::shared_ptr<PopWorkerRequest> pop_worker_request = nullptr;

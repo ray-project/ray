@@ -16,7 +16,6 @@
 #include <gtest/gtest_prod.h>
 
 #include <memory>
-#include <queue>
 #include <string>
 #include <utility>
 #include <vector>
@@ -25,18 +24,13 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
-#include "ray/common/scheduling/scheduling_ids.h"
-#include "ray/common/task/task_spec.h"
 #include "ray/gcs/gcs_server/gcs_actor.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/raylet/scheduling/cluster_lease_manager.h"
-#include "ray/raylet_client/raylet_client.h"
-#include "ray/rpc/node_manager/node_manager_client.h"
-#include "ray/rpc/node_manager/raylet_client_pool.h"
-#include "ray/rpc/worker/core_worker_client.h"
+#include "ray/rpc/raylet/raylet_client_interface.h"
+#include "ray/rpc/raylet/raylet_client_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
-#include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
 using raylet::ClusterLeaseManager;

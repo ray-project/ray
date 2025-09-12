@@ -14,16 +14,17 @@
 
 #include "ray/common/lease/lease_spec.h"
 
-#include "ray/common/common_protocol.h"
 #include "ray/common/function_descriptor.h"
 #include "ray/common/runtime_env_common.h"
 
 namespace ray {
 
+using SchedulingClass = int;
+
 LeaseSpecification::LeaseSpecification(const rpc::TaskSpec &task_spec)
     : MessageWrapper(std::make_shared<rpc::LeaseSpec>()) {
-  RAY_CHECK(task_spec.type() == TaskType::NORMAL_TASK ||
-            task_spec.type() == TaskType::ACTOR_CREATION_TASK);
+  RAY_CHECK(task_spec.type() == rpc::TaskType::NORMAL_TASK ||
+            task_spec.type() == rpc::TaskType::ACTOR_CREATION_TASK);
   message_->set_job_id(task_spec.job_id());
   message_->mutable_caller_address()->CopyFrom(task_spec.caller_address());
   message_->mutable_required_resources()->insert(task_spec.required_resources().begin(),
@@ -74,14 +75,14 @@ const rpc::Address &LeaseSpecification::CallerAddress() const {
   return message_->caller_address();
 }
 
-Language LeaseSpecification::GetLanguage() const { return message_->language(); }
+rpc::Language LeaseSpecification::GetLanguage() const { return message_->language(); }
 
 bool LeaseSpecification::IsNormalTask() const {
-  return message_->type() == TaskType::NORMAL_TASK;
+  return message_->type() == rpc::TaskType::NORMAL_TASK;
 }
 
 bool LeaseSpecification::IsActorCreationTask() const {
-  return message_->type() == TaskType::ACTOR_CREATION_TASK;
+  return message_->type() == rpc::TaskType::ACTOR_CREATION_TASK;
 }
 
 bool LeaseSpecification::IsNodeAffinitySchedulingStrategy() const {
@@ -322,7 +323,7 @@ void LeaseSpecification::ComputeResources() {
   auto sched_cls_desc = SchedulingClassDescriptor(
       resource_set, label_selector, function_descriptor, depth, GetSchedulingStrategy());
   // Map the scheduling class descriptor to an integer for performance.
-  sched_cls_id_ = TaskSpecification::GetSchedulingClass(sched_cls_desc);
+  sched_cls_id_ = SchedulingClassToIds::GetSchedulingClass(sched_cls_desc);
   RAY_CHECK_GT(sched_cls_id_, 0);
 
   runtime_env_hash_ = CalculateRuntimeEnvHash(SerializedRuntimeEnv());

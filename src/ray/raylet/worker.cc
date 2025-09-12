@@ -31,7 +31,7 @@ namespace raylet {
 Worker::Worker(const JobID &job_id,
                int runtime_env_hash,
                const WorkerID &worker_id,
-               const Language &language,
+               const rpc::Language &language,
                rpc::WorkerType worker_type,
                const std::string &ip_address,
                std::shared_ptr<ClientConnection> connection,
@@ -120,7 +120,7 @@ void Worker::SetStartupToken(StartupToken startup_token) {
   startup_token_ = startup_token;
 }
 
-Language Worker::GetLanguage() const { return language_; }
+rpc::Language Worker::GetLanguage() const { return language_; }
 
 const std::string Worker::IpAddress() const { return ip_address_; }
 
@@ -176,6 +176,7 @@ void Worker::Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client)
 void Worker::GrantLeaseId(const LeaseID &lease_id) {
   lease_id_ = lease_id;
   if (!lease_id.IsNil()) {
+    RAY_CHECK(worker_type_ != rpc::WorkerType::DRIVER);
     lease_grant_time_ = absl::Now();
   }
 };

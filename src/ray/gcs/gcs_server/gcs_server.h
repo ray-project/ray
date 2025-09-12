@@ -33,16 +33,17 @@
 #include "ray/gcs/gcs_server/pubsub_handler.h"
 #include "ray/gcs/gcs_server/runtime_env_handler.h"
 #include "ray/gcs/gcs_server/usage_stats_client.h"
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/observable_store_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
+#include "ray/observability/ray_event_recorder.h"
+#include "ray/pubsub/gcs_publisher.h"
 #include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/rpc/client_call.h"
-#include "ray/rpc/gcs/gcs_rpc_server.h"
+#include "ray/rpc/grpc_server.h"
 #include "ray/rpc/metrics_agent_client.h"
-#include "ray/rpc/node_manager/raylet_client_pool.h"
+#include "ray/rpc/raylet/raylet_client_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/throttler.h"
 
@@ -247,7 +248,7 @@ class GcsServer {
   /// The autoscaler state manager.
   std::unique_ptr<GcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
   /// A publisher for publishing gcs messages.
-  std::unique_ptr<GcsPublisher> gcs_publisher_;
+  std::unique_ptr<pubsub::GcsPublisher> gcs_publisher_;
   /// The gcs node manager.
   std::unique_ptr<GcsNodeManager> gcs_node_manager_;
   /// The health check manager.
@@ -267,6 +268,11 @@ class GcsServer {
   std::unique_ptr<GcsInternalKVManager> kv_manager_;
   /// Job info handler.
   std::unique_ptr<GcsJobManager> gcs_job_manager_;
+  /// The Ray event recorder that is used to record events (e.g. job events, node events,
+  /// etc.).
+  rpc::ClientCallManager event_aggregator_client_call_manager_;
+  std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client_;
+  std::unique_ptr<observability::RayEventRecorder> ray_event_recorder_;
 
   /// Ray Syncer related fields.
   std::unique_ptr<syncer::RaySyncer> ray_syncer_;

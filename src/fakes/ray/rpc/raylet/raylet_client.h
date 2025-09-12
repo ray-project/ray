@@ -14,7 +14,10 @@
 
 #pragma once
 
-#include "ray/raylet_client/raylet_client.h"
+#include "ray/common/scheduling/scheduling_ids.h"
+#include "ray/rpc/raylet/raylet_client_interface.h"
+#include "src/ray/common/id.h"
+#include "src/ray/common/status.h"
 
 namespace ray {
 
@@ -36,17 +39,16 @@ class FakeRayletClient : public RayletClientInterface {
     callbacks.push_back(callback);
   }
 
-  ray::Status ReturnWorkerLease(int worker_port,
-                                const WorkerID &worker_id,
-                                bool disconnect_worker,
-                                const std::string &disconnect_worker_error_detail,
-                                bool worker_exiting) override {
+  void ReturnWorkerLease(int worker_port,
+                         const LeaseID &lease_id,
+                         bool disconnect_worker,
+                         const std::string &disconnect_worker_error_detail,
+                         bool worker_exiting) override {
     if (disconnect_worker) {
       num_workers_disconnected++;
     } else {
       num_workers_returned++;
     }
-    return Status::OK();
   }
 
   void PrestartWorkers(

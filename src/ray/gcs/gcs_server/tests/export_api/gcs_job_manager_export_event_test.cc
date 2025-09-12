@@ -14,6 +14,7 @@
 
 #include <gtest/gtest.h>
 
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <vector>
@@ -21,10 +22,11 @@
 #include "mock/ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "mock/ray/pubsub/publisher.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
+#include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
-#include "ray/gcs/tests/gcs_test_util.h"
+#include "ray/observability/fake_ray_event_recorder.h"
 
 using json = nlohmann::json;
 
@@ -42,7 +44,7 @@ class GcsJobManagerTest : public ::testing::Test {
     });
     promise.get_future().get();
 
-    gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
+    gcs_publisher_ = std::make_shared<pubsub::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>();
     gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(store_client_);
@@ -58,6 +60,7 @@ class GcsJobManagerTest : public ::testing::Test {
           return std::make_shared<rpc::MockCoreWorkerClientConfigurableRunningTasks>(
               address.port());
         });
+    fake_ray_event_recorder_ = std::make_unique<observability::FakeRayEventRecorder>();
     log_dir_ = "event_12345";
   }
 
@@ -72,15 +75,54 @@ class GcsJobManagerTest : public ::testing::Test {
   std::unique_ptr<std::thread> thread_io_service_;
   std::shared_ptr<gcs::StoreClient> store_client_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
+  std::shared_ptr<pubsub::GcsPublisher> gcs_publisher_;
   std::unique_ptr<gcs::GCSFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   std::unique_ptr<gcs::FakeInternalKVInterface> fake_kv_;
   std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
+  std::unique_ptr<observability::FakeRayEventRecorder> fake_ray_event_recorder_;
   RuntimeEnvManager runtime_env_manager_;
   const std::chrono::milliseconds timeout_ms_{5000};
   std::string log_dir_;
 };
+
+TEST_F(GcsJobManagerTest, TestRayEventDriverJobEvents) {
+  RayConfig::instance().initialize(
+      R"(
+{
+  "enable_ray_event": true
+}
+  )");
+  gcs::GcsJobManager gcs_job_manager(*gcs_table_storage_,
+                                     *gcs_publisher_,
+                                     runtime_env_manager_,
+                                     *function_manager_,
+                                     *fake_kv_,
+                                     io_service_,
+                                     *worker_client_pool_,
+                                     *fake_ray_event_recorder_,
+                                     "test_session_name");
+  gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
+  gcs_job_manager.Initialize(gcs_init_data);
+  auto job_api_job_id = JobID::FromInt(100);
+  std::string submission_id = "submission_id_100";
+  auto add_job_request = GenAddJobRequest(job_api_job_id, "namespace_100", submission_id);
+  rpc::AddJobReply empty_reply;
+  std::promise<bool> promise;
+  gcs_job_manager.HandleAddJob(
+      *add_job_request,
+      &empty_reply,
+      [&promise](Status, std::function<void()>, std::function<void()>) {
+        promise.set_value(true);
+      });
+  promise.get_future().get();
+  auto buffer = fake_ray_event_recorder_->FlushBuffer();
+
+  ASSERT_EQ(buffer.size(), 2);
+  ASSERT_EQ(buffer[0]->GetEventType(),
+            rpc::events::RayEvent::DRIVER_JOB_DEFINITION_EVENT);
+  ASSERT_EQ(buffer[1]->GetEventType(), rpc::events::RayEvent::DRIVER_JOB_EXECUTION_EVENT);
+}
 
 TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
   // Test adding and marking a driver job as finished, and that corresponding
@@ -104,15 +146,16 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
                                      *function_manager_,
                                      *fake_kv_,
                                      io_service_,
-                                     *worker_client_pool_);
+                                     *worker_client_pool_,
+                                     *fake_ray_event_recorder_,
+                                     "test_session_name");
 
   gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
   gcs_job_manager.Initialize(gcs_init_data);
 
   auto job_api_job_id = JobID::FromInt(100);
   std::string submission_id = "submission_id_100";
-  auto add_job_request =
-      Mocker::GenAddJobRequest(job_api_job_id, "namespace_100", submission_id);
+  auto add_job_request = GenAddJobRequest(job_api_job_id, "namespace_100", submission_id);
   rpc::AddJobReply empty_reply;
   std::promise<bool> promise;
   gcs_job_manager.HandleAddJob(
@@ -124,8 +167,7 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
   promise.get_future().get();
 
   std::vector<std::string> vc;
-  Mocker::ReadContentFromFile(vc,
-                              log_dir_ + "/export_events/event_EXPORT_DRIVER_JOB.log");
+  ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_DRIVER_JOB.log");
   ASSERT_EQ((int)vc.size(), 1);
   json event_data = json::parse(vc[0])["event_data"].get<json>();
   ASSERT_EQ(event_data["is_dead"], false);
@@ -144,8 +186,7 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
   job_finished_promise.get_future().get();
 
   vc.clear();
-  Mocker::ReadContentFromFile(vc,
-                              log_dir_ + "/export_events/event_EXPORT_DRIVER_JOB.log");
+  ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_DRIVER_JOB.log");
   ASSERT_EQ((int)vc.size(), 2);
   event_data = json::parse(vc[1])["event_data"].get<json>();
   ASSERT_EQ(event_data["is_dead"], true);

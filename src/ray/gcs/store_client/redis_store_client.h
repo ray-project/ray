@@ -22,14 +22,11 @@
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
-#include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/postable.h"
 #include "ray/gcs/store_client/redis_context.h"
 #include "ray/gcs/store_client/store_client.h"
-#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
@@ -96,8 +93,8 @@ struct RedisClientOptions {
   int port;
 
   // Redis username and password.
-  std::string username = "";
-  std::string password = "";
+  std::string username;
+  std::string password;
 
   // Whether to use TLS/SSL for the connection.
   bool enable_ssl = false;
@@ -135,42 +132,42 @@ class RedisStoreClient : public StoreClient {
   explicit RedisStoreClient(instrumented_io_context &io_service,
                             const RedisClientOptions &options);
 
-  Status AsyncPut(const std::string &table_name,
-                  const std::string &key,
-                  std::string data,
-                  bool overwrite,
-                  Postable<void(bool)> callback) override;
+  void AsyncPut(const std::string &table_name,
+                const std::string &key,
+                std::string data,
+                bool overwrite,
+                Postable<void(bool)> callback) override;
 
-  Status AsyncGet(const std::string &table_name,
-                  const std::string &key,
-                  ToPostable<OptionalItemCallback<std::string>> callback) override;
+  void AsyncGet(const std::string &table_name,
+                const std::string &key,
+                ToPostable<OptionalItemCallback<std::string>> callback) override;
 
-  Status AsyncGetAll(
+  void AsyncGetAll(
       const std::string &table_name,
       Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) override;
 
-  Status AsyncMultiGet(
+  void AsyncMultiGet(
       const std::string &table_name,
       const std::vector<std::string> &keys,
       Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) override;
 
-  Status AsyncDelete(const std::string &table_name,
-                     const std::string &key,
-                     Postable<void(bool)> callback) override;
+  void AsyncDelete(const std::string &table_name,
+                   const std::string &key,
+                   Postable<void(bool)> callback) override;
 
-  Status AsyncBatchDelete(const std::string &table_name,
-                          const std::vector<std::string> &keys,
-                          Postable<void(int64_t)> callback) override;
+  void AsyncBatchDelete(const std::string &table_name,
+                        const std::vector<std::string> &keys,
+                        Postable<void(int64_t)> callback) override;
 
-  Status AsyncGetNextJobID(Postable<void(int)> callback) override;
+  void AsyncGetNextJobID(Postable<void(int)> callback) override;
 
-  Status AsyncGetKeys(const std::string &table_name,
-                      const std::string &prefix,
-                      Postable<void(std::vector<std::string>)> callback) override;
+  void AsyncGetKeys(const std::string &table_name,
+                    const std::string &prefix,
+                    Postable<void(std::vector<std::string>)> callback) override;
 
-  Status AsyncExists(const std::string &table_name,
-                     const std::string &key,
-                     Postable<void(bool)> callback) override;
+  void AsyncExists(const std::string &table_name,
+                   const std::string &key,
+                   Postable<void(bool)> callback) override;
 
   // Check if Redis is available.
   //
@@ -261,9 +258,9 @@ class RedisStoreClient : public StoreClient {
   std::vector<std::function<void()>> TakeRequestsFromSendingQueue(
       const std::vector<RedisConcurrencyKey> &keys) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  Status DeleteByKeys(const std::string &table_name,
-                      const std::vector<std::string> &keys,
-                      Postable<void(int64_t)> callback);
+  void DeleteByKeys(const std::string &table_name,
+                    const std::vector<std::string> &keys,
+                    Postable<void(int64_t)> callback);
 
   // Send the redis command to the server. This method will make request to be
   // serialized for each key in keys. At a given time, only one request for a {table_name,

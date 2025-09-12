@@ -56,7 +56,7 @@ class WorkerInterface {
   /// Return the worker process's startup token
   virtual StartupToken GetStartupToken() const = 0;
   virtual void SetProcess(Process proc) = 0;
-  virtual Language GetLanguage() const = 0;
+  virtual rpc::Language GetLanguage() const = 0;
   virtual const std::string IpAddress() const = 0;
   virtual void AsyncNotifyGCSRestart() = 0;
   /// Connect this worker's gRPC client.
@@ -144,7 +144,7 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   Worker(const JobID &job_id,
          int runtime_env_hash,
          const WorkerID &worker_id,
-         const Language &language,
+         const rpc::Language &language,
          rpc::WorkerType worker_type,
          const std::string &ip_address,
          std::shared_ptr<ClientConnection> connection,
@@ -169,7 +169,7 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   /// Return the worker process's startup token
   StartupToken GetStartupToken() const;
   void SetProcess(Process proc);
-  Language GetLanguage() const;
+  rpc::Language GetLanguage() const;
   const std::string IpAddress() const;
   void AsyncNotifyGCSRestart();
   /// Connect this worker's gRPC client.
@@ -244,10 +244,10 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   bool IsRegistered() { return rpc_client_ != nullptr; }
 
   bool IsAvailableForScheduling() const {
-    return !IsDead()                       // Not dead
-           && GetGrantedLeaseId().IsNil()  // No assigned lease
-           && !IsBlocked()                 // Not blocked
-           && GetActorId().IsNil();        // No assigned actor
+    return !IsDead()                        // Not dead
+           && !GetGrantedLeaseId().IsNil()  // Has assigned lease
+           && !IsBlocked()                  // Not blocked
+           && GetActorId().IsNil();         // No assigned actor
   }
 
   rpc::CoreWorkerClientInterface *rpc_client() {
@@ -269,7 +269,7 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   /// The worker's process's startup_token
   StartupToken startup_token_;
   /// The language type of this worker.
-  Language language_;
+  rpc::Language language_;
   /// The type of the worker.
   rpc::WorkerType worker_type_;
   /// IP address of this worker.
@@ -284,6 +284,7 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   /// Connection state of a worker.
   std::shared_ptr<ClientConnection> connection_;
   /// The lease id of the worker's currently assigned lease.
+  /// It is always Nil for the driver.
   LeaseID lease_id_;
   /// Job ID for the worker's current assigned lease.
   JobID assigned_job_id_;

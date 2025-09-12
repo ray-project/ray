@@ -27,7 +27,8 @@
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/grpc_service_interfaces.h"
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
+#include "ray/observability/ray_event_recorder_interface.h"
+#include "ray/pubsub/gcs_publisher.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/event.h"
@@ -49,17 +50,17 @@ inline std::string JobDataKey(const std::string &submission_id) {
 using JobFinishListenerCallback =
     rpc::JobInfoGcsServiceHandler::JobFinishListenerCallback;
 
-class GcsPublisher;
-
 class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
  public:
   explicit GcsJobManager(GcsTableStorage &gcs_table_storage,
-                         GcsPublisher &gcs_publisher,
+                         pubsub::GcsPublisher &gcs_publisher,
                          RuntimeEnvManager &runtime_env_manager,
                          GCSFunctionManager &function_manager,
                          InternalKVInterface &internal_kv,
                          instrumented_io_context &io_context,
-                         rpc::CoreWorkerClientPool &worker_client_pool)
+                         rpc::CoreWorkerClientPool &worker_client_pool,
+                         observability::RayEventRecorderInterface &ray_event_recorder,
+                         const std::string &session_name)
       : gcs_table_storage_(gcs_table_storage),
         gcs_publisher_(gcs_publisher),
         runtime_env_manager_(runtime_env_manager),
@@ -67,6 +68,8 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
         internal_kv_(internal_kv),
         io_context_(io_context),
         worker_client_pool_(worker_client_pool),
+        ray_event_recorder_(ray_event_recorder),
+        session_name_(session_name),
         export_event_write_enabled_(IsExportAPIEnabledDriverJob()) {}
 
   void Initialize(const GcsInitData &gcs_init_data);
@@ -101,7 +104,8 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
   /// \param node_id The specified node id.
   void OnNodeDead(const NodeID &node_id);
 
-  void WriteDriverJobExportEvent(rpc::JobTableData job_data) const;
+  void WriteDriverJobExportEvent(rpc::JobTableData job_data,
+                                 rpc::events::DriverJobExecutionEvent::State state) const;
 
   // Verify if export events should be written for EXPORT_DRIVER_JOB source types
   bool IsExportAPIEnabledDriverJob() const {
@@ -134,7 +138,7 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
   int64_t finished_jobs_count_ = 0;
 
   GcsTableStorage &gcs_table_storage_;
-  GcsPublisher &gcs_publisher_;
+  pubsub::GcsPublisher &gcs_publisher_;
 
   /// Listeners which monitors the finish of jobs.
   std::vector<JobFinishListenerCallback> job_finished_listeners_;
@@ -147,6 +151,8 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
   InternalKVInterface &internal_kv_;
   instrumented_io_context &io_context_;
   rpc::CoreWorkerClientPool &worker_client_pool_;
+  observability::RayEventRecorderInterface &ray_event_recorder_;
+  std::string session_name_;
 
   /// If true, driver job events are exported for Export API
   bool export_event_write_enabled_ = false;
