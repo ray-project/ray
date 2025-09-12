@@ -280,14 +280,13 @@ class AutoscalingState:
             target_for_record = decision_num_replicas
         else:
             target_for_record = self.apply_bounds(decision_num_replicas)
-
         self._decision_history.append(
             _DecisionRecord(
                 timestamp_s=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 prev_num_replicas=int(ctx.current_num_replicas),
                 curr_num_replicas=int(target_for_record),
                 reason=f"current={ctx.current_num_replicas}, target={target_for_record}",
-                policy_name=getattr(self._config, "name", None),
+                policy_name=getattr(ctx.config.policy, "name", None),
             )
         )
         if len(self._decision_history) > AUTOSCALER_SUMMARIZER_DECISION_HISTORY_MAX:
@@ -402,7 +401,7 @@ class AutoscalingState:
             min_replicas=int(min_replicas) if min_replicas is not None else None,
             max_replicas=int(max_replicas) if max_replicas is not None else None,
             scaling_status=scaling_status,
-            policy_name=getattr(self._config, "name", "default"),
+            policy_name=getattr(ctx.config.policy, "name", None),
             look_back_period_s=look_back_period_s,
             queued_requests=float(queued_requests),
             total_requests=float(ctx.total_num_requests),
