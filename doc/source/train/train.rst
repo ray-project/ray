@@ -11,6 +11,7 @@ Ray Train: Scalable Model Training
     PyTorch Lightning Guide <getting-started-pytorch-lightning>
     Hugging Face Transformers Guide <getting-started-transformers>
     XGBoost Guide <getting-started-xgboost>
+    Jax Guide <getting-started-jax>
     more-frameworks
     User Guides <user-guides>
     Examples <examples>
@@ -128,6 +129,21 @@ Get started
             :expand:
 
             Try Ray Train with Transformers
+
+    .. grid-item-card::
+
+        **Jax**
+        ^^^
+
+        Get started on distributed model training with Ray Train and Jax.
+
+        +++
+        .. button-ref:: train-jax
+            :color: primary
+            :outline:
+            :expand:
+
+            Try Ray Train with Jax
 
 Learn more
 ----------
