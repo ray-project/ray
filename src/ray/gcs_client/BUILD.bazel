@@ -48,7 +48,7 @@ ray_cc_library(
     hdrs = [
       "rpc_client.h",
     ],
-    visibility = [":__pkg__"],
+  visibility = [":__pkg__", "//src/ray/pubsub:__pkg__"],
     deps = [
         "//src/ray/rpc:client_call",
         "//src/ray/rpc:retryable_grpc_client",

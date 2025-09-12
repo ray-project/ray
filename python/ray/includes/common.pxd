@@ -390,7 +390,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
         const CNodeID &GetSpilledNodeID() const
         const c_bool GetDidSpill() const
 
-cdef extern from "ray/gcs/gcs_client/python_callbacks.h" namespace "ray::gcs":
+cdef extern from "ray/gcs_client/python_callbacks.h" namespace "ray::gcs":
     cdef cppclass MultiItemPyCallback[T]:
         MultiItemPyCallback(
             object (*)(CRayStatus, c_vector[T]) nogil,
@@ -409,7 +409,7 @@ cdef extern from "ray/gcs/gcs_client/python_callbacks.h" namespace "ray::gcs":
             void (object, object) nogil,
             object) nogil
 
-cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
+cdef extern from "ray/gcs_client/accessor.h" nogil:
     cdef cppclass CActorInfoAccessor "ray::gcs::ActorInfoAccessor":
         void AsyncGetAllByFilter(
             const optional[CActorID] &actor_id,
@@ -615,7 +615,7 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
         )
 
 
-cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
+cdef extern from "ray/gcs_client/gcs_client.h" nogil:
     cdef enum CGrpcStatusCode "grpc::StatusCode":
         UNAVAILABLE "grpc::StatusCode::UNAVAILABLE",
         UNKNOWN "grpc::StatusCode::UNKNOWN",
@@ -645,7 +645,7 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
 
     cdef CRayStatus ConnectOnSingletonIoContext(CGcsClient &gcs_client, int timeout_ms)
 
-cdef extern from "ray/gcs/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
+cdef extern from "ray/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
     unordered_map[c_string, double] PythonGetResourcesTotal(
         const CGcsNodeInfo& node_info)
 
@@ -671,7 +671,7 @@ cdef extern from "ray/pubsub/python_gcs_subscriber.h" nogil:
 cdef extern from "ray/pubsub/python_gcs_subscriber.h" namespace "ray::pubsub" nogil:
     c_vector[c_string] PythonGetLogBatchLines(CLogBatch log_batch)
 
-cdef extern from "ray/gcs/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
+cdef extern from "ray/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
     unordered_map[c_string, c_string] PythonGetNodeLabels(
         const CGcsNodeInfo& node_info)
 
