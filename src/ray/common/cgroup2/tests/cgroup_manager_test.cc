@@ -281,7 +281,6 @@ TEST(CgroupManagerTest, CreateSucceedsWithCleanupInOrder) {
   ASSERT_EQ((*deleted_cgroups)[2].second, system_leaf_cgroup_path);
   ASSERT_EQ((*deleted_cgroups)[3].second, system_cgroup_path);
   ASSERT_EQ((*deleted_cgroups)[4].second, node_cgroup_path);
-
 }
 
 }  // namespace ray

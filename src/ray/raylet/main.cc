@@ -256,7 +256,6 @@ int main(int argc, char *argv[]) {
   RAY_LOG(INFO) << "Setting cluster ID to: " << cluster_id;
   gflags::ShutDownCommandLineFlags();
 
-
   std::unique_ptr<ray::CgroupManager> cgroup_manager;
 
   // TODO(#54703): Link OSS documentation once it's available in the error messages.
