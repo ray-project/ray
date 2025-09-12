@@ -398,7 +398,6 @@ int main(int argc, char *argv[]) {
     raylet->Stop();
     gcs_client->Disconnect();
     ray::stats::Shutdown();
-    main_service.stop();
     object_manager_rpc_service.stop();
     for (size_t i = 0; i < object_manager_rpc_threads.size(); i++) {
       if (object_manager_rpc_threads[i].joinable()) {
@@ -406,6 +405,7 @@ int main(int argc, char *argv[]) {
       }
     }
     remove(raylet_socket_name.c_str());
+    main_service.stop();
   };
 
   // Shut down raylet gracefully, in a synchronous fashion.
