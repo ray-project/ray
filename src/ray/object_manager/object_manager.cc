@@ -143,7 +143,7 @@ ObjectManager::~ObjectManager() { Stop(); }
 void ObjectManager::Stop() {
   // Stop the GRPC server before stopping the object store. This is to make sure when
   // we stop the object server, there will be no ongoing or future GRPC requests.
-  StopRpcService();
+  object_manager_server_.Shutdown();
   if (plasma::plasma_store_runner) {
     plasma::plasma_store_runner->Stop();
   }
@@ -159,11 +159,6 @@ void ObjectManager::StartRpcService() {
       std::make_unique<rpc::ObjectManagerGrpcService>(rpc_service_, *this),
       false /* token_auth */);
   object_manager_server_.Run();
-}
-
-void ObjectManager::StopRpcService() {
-  rpc_service_.stop();
-  object_manager_server_.Shutdown();
 }
 
 void ObjectManager::HandleObjectAdded(const ObjectInfo &object_info) {

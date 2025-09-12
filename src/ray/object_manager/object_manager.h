@@ -334,7 +334,6 @@ class ObjectManager : public ObjectManagerInterface,
   /// Handle starting, running, and stopping asio rpc_service.
   void StartRpcService();
   void RunRpcService(int index);
-  void StopRpcService();
 
   /// Handle an object being added to this node. This adds the object to the
   /// directory, pushes the object to other nodes if necessary, and cancels any

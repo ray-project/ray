@@ -16,8 +16,8 @@
 
 #include <memory>
 #include <string>
-#include <vector>
 #include <utility>
+#include <vector>
 
 #include "fakes/ray/object_manager/plasma/fake_plasma_client.h"
 #include "gmock/gmock.h"
@@ -83,17 +83,17 @@ class ObjectManagerTest : public ::testing::Test {
 
   NodeID local_node_id_;
 
-  std::unique_ptr<gcs::MockGcsClient> mock_gcs_client_;
-  std::unique_ptr<MockObjectDirectory> mock_object_directory_;
-  std::unique_ptr<ObjectManager> object_manager_;
-  std::shared_ptr<plasma::FakePlasmaClient> fake_plasma_client_;
-
   instrumented_io_context io_context_{/*enable_lag_probe=*/false,
                                       /*running_on_single_thread=*/true};
   instrumented_io_context rpc_context_{/*enable_lag_probe=*/false,
                                        /*running_on_single_thread=*/true};
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> rpc_work_;
+
+  std::unique_ptr<gcs::MockGcsClient> mock_gcs_client_;
+  std::unique_ptr<MockObjectDirectory> mock_object_directory_;
+  std::unique_ptr<ObjectManager> object_manager_;
+  std::shared_ptr<plasma::FakePlasmaClient> fake_plasma_client_;
 };
 
 uint32_t NumRemoteFreeObjectsRequests(const ObjectManager &object_manager) {
