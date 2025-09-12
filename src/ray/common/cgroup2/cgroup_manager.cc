@@ -294,27 +294,19 @@ Status CgroupManager::Initialize(int64_t system_reserved_cpu_weight,
 }
 
 Status CgroupManager::AddProcessToSystemCgroup(const std::string &pid) {
-  // It's probably a fatal error if you cannot add a process to the
-  // system cgroup.
   Status s = cgroup_driver_->AddProcessToCgroup(system_leaf_cgroup_, pid);
-  // This should not happen. This means the cgroup hierachy/permissions were
-  // modified outside of the CgroupManager while the system is running.
   // TODO(#54703): Add link to OSS documentation once available.
-  // TODO(#): Fix the RAY_CHECK_WITH_DISPLAY macro so it can be used in this way.
-  RAY_CHECK_WITH_DISPLAY(!s.IsNotFound(),
-                         "Failed to move process "
-                             << pid << " into system cgroup " << system_leaf_cgroup_
-                             << "because the cgroup was not found."
+  RAY_CHECK(!s.IsNotFound()) << "Failed to move process " << pid << " into system cgroup "
+                             << system_leaf_cgroup_
+                             << "because the cgroup was not found. "
                                 "If resource isolation is enabled, Ray's cgroup "
-                                "hierarchy should not be modified "
-                                "while Ray is running.");
-  RAY_CHECK_WITH_DISPLAY(
-      !s.IsPermissionDenied(),
-      "Failed to move process "
-          << pid << " into system cgroup " << system_leaf_cgroup_
-          << " because Ray does not have read, write, and execute "
-             "permissions for the cgroup. If resource isolation is enabled, Ray's cgroup "
-             "hierarchy should not be modified while Ray is running.");
+                                "hierarchy must not be modified "
+                                "while Ray is running.";
+  RAY_CHECK(!s.IsPermissionDenied())
+      << "Failed to move process " << pid << " into system cgroup " << system_leaf_cgroup_
+      << " because Ray does not have read, write, and execute "
+         "permissions for the cgroup. If resource isolation is enabled, Ray's cgroup "
+         "hierarchy must not be modified while Ray is running.";
 
   return s;
 }

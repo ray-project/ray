@@ -208,16 +208,19 @@ class CgroupDriverInterface {
       const std::string &cgroup) = 0;
 
   /**
-    Adds the process to the specified cgroup. To move the process, the user must have
-    read, write, execute permissions for the cgroup the process currently is in, the
-    destination cgroup, and their lowest common ancestor.
+    Adds the process to the specified cgroup.
+
+    To move the pid, the process must have read, write, and execute permissions for the
+      1) the cgroup the pid is currently in i.e. the source cgroup.
+      2) the destination cgroup.
+      3) the lowest common ancestor of the source and destination cgroups.
 
     @param cgroup to move the process into.
-    @param pid pid of the process that will be moved.
+    @param pid of the process that will be moved.
 
     @return Status::OK if the process was moved successfully into the cgroup.
     @return Status::NotFound if the cgroup does not exist.
-    @return Status::PermissionDenied if current user doesn't have read, write, and execute
+    @return Status::PermissionDenied if process doesn't have read, write, and execute
     permissions for the cgroup.
     @return Status::InvalidArgument if the pid is invalid, does not exist, or any other
     error.

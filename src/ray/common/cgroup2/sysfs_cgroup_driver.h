@@ -263,8 +263,15 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
                        const std::string &constraint_value) override;
 
   /**
-    Adds the process to the specified cgroup by writing it to the cgroup.procs
-    file.
+    Attempts to write pid to the cgroup.procs file of the specified cgroup.
+
+    To write a pid to a cgroup.procs file, the process must have read, write, and execute
+    to the source, destination, and lowest-common ancestor of source and destination
+    cgroups.
+
+    For more details, see the documentation:
+    - @see https://docs.kernel.org/admin-guide/cgroup-v2.html#delegation-containment
+    - @see https://docs.kernel.org/admin-guide/cgroup-v2.html#core-interface-files
 
     @param cgroup to move the process into.
     @param pid pid of the process that will be moved.
