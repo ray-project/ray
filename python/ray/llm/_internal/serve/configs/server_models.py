@@ -560,18 +560,22 @@ class LLMConfig(BaseModelExtended):
         # Configure DP deployment options.
         # TODO(rui): move the following to DPServer, e.g.,
         # deployment_options = DPServer.get_deployment_options(llm_config)
-        dp_size = self.engine_kwargs.get("data_parallel_size", None)
-        if dp_size is not None:
+        dp_size = self.engine_kwargs.get("data_parallel_size", 1)
+        if not (isinstance(dp_size, int) and dp_size > 0):
+            raise ValueError(
+                f"Invalid data_parallel_size: {dp_size}, expecting " "positive integer."
+            )
+        if dp_size != 1:
             if "num_replicas" in deployment_options:
                 raise ValueError(
                     "num_replicas should not be specified for DP deployment, "
-                    "use engine_kwargs.data_parallel_size instead."
+                    f"use engine_kwargs.data_parallel_size={dp_size} instead."
                 )
             if "autoscaling_config" in deployment_options:
                 raise ValueError(
                     "autoscaling_config is not supported for DP deployment, "
-                    "use engine_kwargs.data_parallel_size to set a fixed number "
-                    "of replicas instead."
+                    f"use engine_kwargs.data_parallel_size={dp_size} to set a "
+                    "fixed number of replicas instead."
                 )
             deployment_options["num_replicas"] = dp_size
             deployment_options["max_ongoing_requests"] = DEFAULT_MAX_ONGOING_REQUESTS
