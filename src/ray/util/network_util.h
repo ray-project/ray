@@ -15,6 +15,8 @@
 #pragma once
 
 #include <array>
+#include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/ip/udp.hpp>
 #include <memory>
 #include <optional>
 #include <string>
@@ -48,6 +50,28 @@ std::string BuildAddress(const std::string &host, int port);
 /// \param address The address string to parse (e.g., "localhost:8000", "[::1]:8000").
 /// \return Optional array with [host, port] if port found, nullopt if no colon separator.
 std::optional<std::array<std::string, 2>> ParseAddress(const std::string &address);
+
+/// IP address by which the local node can be reached *from* the `address`.
+/// If no address is given, defaults to public DNS servers for detection. For
+/// performance, the result is cached when using the default address (empty string).
+/// When a specific address is provided, detection is performed fresh every time.
+/// \param address The IP address and port of any known live service on the
+///                network you care about.
+/// \return The IP address by which the local node can be reached from the address.
+std::string GetNodeIpAddressFromPerspective(const std::string &address = "");
+
+/// Check if an IP string is IPv6 format (contains colons).
+/// \param ip The IP address string to check (must be pure IP, no port).
+/// \return true if the IP is IPv6, false if IPv4.
+bool IsIPv6IP(const std::string &ip);
+
+/// Create a TCP socket with the appropriate family (IPv4 or IPv6) based on the node IP
+/// address. This function automatically detects the node IP using
+/// GetNodeIpAddressFromPerspective and creates the corresponding TCP socket.
+/// \param io_context The IO context to use for the socket.
+/// \return A TCP socket configured for the node's IP family.
+std::unique_ptr<boost::asio::ip::tcp::socket> CreateTcpSocket(
+    boost::asio::io_context &io_context);
 
 /// Check whether the given port is available, via attempt to bind a socket to the port.
 /// Notice, the check could be non-authentic if there're concurrent port assignments.

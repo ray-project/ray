@@ -8,6 +8,8 @@ import sys
 import threading
 import time
 
+from ray._common.network_utils import create_socket
+
 _logger = logging.getLogger("ray.util.spark.utils")
 
 
@@ -99,7 +101,7 @@ def is_port_in_use(host, port):
     import socket
     from contextlib import closing
 
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
+    with closing(create_socket(socket.SOCK_STREAM)) as sock:
         return sock.connect_ex((host, port)) == 0
 
 

@@ -5,6 +5,7 @@ import time
 import gymnasium as gym
 import numpy as np
 
+from ray._common.network_utils import create_socket
 from ray.rllib.core import (
     Columns,
     COMPONENT_RL_MODULE,
@@ -32,7 +33,7 @@ def _dummy_external_client(port: int = 5556):
     while True:
         try:
             print(f"Trying to connect to localhost:{port} ...")
-            sock_ = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock_ = create_socket(socket.SOCK_STREAM)
             sock_.connect(("localhost", port))
             break
         except ConnectionRefusedError:
