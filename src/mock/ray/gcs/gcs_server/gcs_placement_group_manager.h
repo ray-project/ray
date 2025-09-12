@@ -16,7 +16,7 @@
 
 #include <gmock/gmock.h>
 
-#include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
+#include "ray/gcs/gcs_placement_group_manager.h"
 
 namespace ray {
 namespace gcs {

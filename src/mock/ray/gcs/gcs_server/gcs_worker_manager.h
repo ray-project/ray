@@ -16,7 +16,7 @@
 
 #include <gmock/gmock.h>
 
-#include "ray/gcs/gcs_server/gcs_worker_manager.h"
+#include "ray/gcs/gcs_worker_manager.h"
 
 namespace ray {
 namespace gcs {
