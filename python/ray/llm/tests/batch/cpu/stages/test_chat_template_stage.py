@@ -90,6 +90,95 @@ async def test_chat_template_udf_multiple_messages(mock_tokenizer_setup):
 
 
 @pytest.mark.asyncio
+async def test_chat_template_udf_chat_template_kwargs(mock_tokenizer_setup):
+    mock_tokenizer = mock_tokenizer_setup
+
+    def side_effect_func(conversation, **kwargs):
+        enable_thinking = kwargs.get("enable_thinking", True)
+        if enable_thinking is False:
+            return "Answer without thinking"
+        else:
+            return "<think>thinking</think>"
+
+    mock_tokenizer.apply_chat_template.side_effect = side_effect_func
+
+    # Test with enable_thinking=False
+    udf_no_thinking = ChatTemplateUDF(
+        data_column="__data",
+        expected_input_keys=["messages"],
+        model="test-model",
+        chat_template_kwargs={"enable_thinking": False},
+    )
+
+    batch = {
+        "__data": [
+            {
+                "messages": MagicMock(
+                    tolist=lambda: [{"role": "user", "content": "Hello AI"}]
+                )
+            }
+        ]
+    }
+
+    results = []
+    async for result in udf_no_thinking(batch):
+        results.extend(result["__data"])
+
+    assert len(results) == 1
+    assert results[0]["prompt"] == "Answer without thinking"
+
+    # Test with enable_thinking=True (explicit)
+    udf_with_thinking = ChatTemplateUDF(
+        data_column="__data",
+        expected_input_keys=["messages"],
+        model="test-model",
+        chat_template_kwargs={"enable_thinking": True},
+    )
+
+    batch_2 = {
+        "__data": [
+            {
+                "messages": MagicMock(
+                    tolist=lambda: [{"role": "user", "content": "Hello AI"}]
+                )
+            }
+        ]
+    }
+
+    results = []
+    async for result in udf_with_thinking(batch_2):
+        results.extend(result["__data"])
+
+    assert len(results) == 1
+    assert results[0]["prompt"] == "<think>thinking</think>"
+
+    # Test with no enable_thinking parameter (default should be True)
+    udf_default = ChatTemplateUDF(
+        data_column="__data",
+        expected_input_keys=["messages"],
+        model="test-model",
+        chat_template_kwargs={},
+    )
+
+    batch_3 = {
+        "__data": [
+            {
+                "messages": MagicMock(
+                    tolist=lambda: [{"role": "user", "content": "Hello AI"}]
+                )
+            }
+        ]
+    }
+
+    results = []
+    async for result in udf_default(batch_3):
+        results.extend(result["__data"])
+
+    assert len(results) == 1
+    assert results[0]["prompt"] == "<think>thinking</think>"
+
+
+@pytest.mark.asyncio
 async def test_chat_template_udf_assistant_prefill(mock_tokenizer_setup):
     mock_tokenizer = mock_tokenizer_setup
     mock_tokenizer.apply_chat_template.side_effect = [
