@@ -21,8 +21,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/core_worker/reference_count.h"
-#include "ray/common/task/task_spec.h"
-#include "ray/common/test_util.h"
+#include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 

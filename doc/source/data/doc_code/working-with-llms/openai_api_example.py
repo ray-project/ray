@@ -114,7 +114,9 @@ def run_test():
     """Test function that validates the example works including API configuration."""
     import sys
 
-    suppress_output = "pytest" in sys.modules
+    # Run comprehensive tests in pytest environment
+    in_pytest = "pytest" in sys.modules
+    suppress_output = in_pytest
 
     try:
         # Test 1: HTTP configuration structure

@@ -412,7 +412,7 @@ For tasks classified as a single-threaded Actor or a multi-threaded Actor,
 Ray offers no mechanism for interruption.
 
 **Running async actor tasks**:
-For Tasks classified as `async Actors <_async-actors>`, Ray seeks to cancel the associated `asyncio.Task`.
+For Tasks classified as :ref:`async Actors <async-actors>`, Ray seeks to cancel the associated `asyncio.Task`.
 This cancellation approach aligns with the standards presented in
 `asyncio task cancellation <https://docs.python.org/3/library/asyncio-task.html#task-cancellation>`__.
 Note that `asyncio.Task` won't be interrupted in the middle of execution if you don't `await` within the async function.

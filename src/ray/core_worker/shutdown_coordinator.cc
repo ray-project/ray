@@ -22,14 +22,13 @@
 #include <string_view>
 #include <utility>
 
-#include "ray/common/buffer.h"       // LocalMemoryBuffer
-#include "ray/core_worker/common.h"  // for WorkerType alias
+#include "ray/common/buffer.h"  // LocalMemoryBuffer
 namespace ray {
 
 namespace core {
 
 ShutdownCoordinator::ShutdownCoordinator(
-    std::unique_ptr<ShutdownExecutorInterface> executor, WorkerType worker_type)
+    std::unique_ptr<ShutdownExecutorInterface> executor, rpc::WorkerType worker_type)
     : executor_(std::move(executor)), worker_type_(worker_type) {
   RAY_CHECK(executor_)
       << "ShutdownCoordinator requires a non-null ShutdownExecutorInterface. "
@@ -81,11 +80,6 @@ bool ShutdownCoordinator::RequestShutdown(
   ExecuteShutdownSequence(
       execute_force, detail, timeout_ms, creation_task_exception_pb_bytes);
   return true;
-}
-
-bool ShutdownCoordinator::TryInitiateShutdown(ShutdownReason reason) {
-  // Legacy compatibility - delegate to graceful shutdown by default
-  return RequestShutdown(false, reason, "", kInfiniteTimeout, nullptr);
 }
 
 bool ShutdownCoordinator::TryTransitionToDisconnecting() {
@@ -156,12 +150,12 @@ void ShutdownCoordinator::ExecuteShutdownSequence(
     std::chrono::milliseconds timeout_ms,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   switch (worker_type_) {
-  case WorkerType::DRIVER:
+  case rpc::WorkerType::DRIVER:
     ExecuteDriverShutdown(force_shutdown, detail, timeout_ms);
     break;
-  case WorkerType::WORKER:
-  case WorkerType::SPILL_WORKER:
-  case WorkerType::RESTORE_WORKER:
+  case rpc::WorkerType::WORKER:
+  case rpc::WorkerType::SPILL_WORKER:
+  case rpc::WorkerType::RESTORE_WORKER:
     ExecuteWorkerShutdown(
         force_shutdown, detail, timeout_ms, creation_task_exception_pb_bytes);
     break;

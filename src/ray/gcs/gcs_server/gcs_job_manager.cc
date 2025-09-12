@@ -22,7 +22,9 @@
 #include <vector>
 
 #include "absl/strings/match.h"
-#include "ray/gcs/pb_util.h"
+#include "ray/common/protobuf_utils.h"
+#include "ray/observability/ray_driver_job_definition_event.h"
+#include "ray/observability/ray_driver_job_execution_event.h"
 #include "ray/stats/metric.h"
 #include "ray/util/time.h"
 
@@ -42,16 +44,31 @@ void GcsJobManager::Initialize(const GcsInitData &gcs_init_data) {
   }
 }
 
-void GcsJobManager::WriteDriverJobExportEvent(rpc::JobTableData job_data) const {
+void GcsJobManager::WriteDriverJobExportEvent(
+    rpc::JobTableData job_data, rpc::events::DriverJobExecutionEvent::State state) const {
   /// Write job_data as a export driver job event if
   /// enable_export_api_write() is enabled and if this job is
   /// not in the _ray_internal_ namespace.
-  if (!export_event_write_enabled_) {
-    return;
-  }
   if (absl::StartsWith(job_data.config().ray_namespace(), kRayInternalNamespacePrefix)) {
     // Namespace of this job starts with _ray_internal_ so
     // don't write export event.
+    return;
+  }
+  if (RayConfig::instance().enable_ray_event()) {
+    std::vector<std::unique_ptr<observability::RayEventInterface>> events;
+    if (state == rpc::events::DriverJobExecutionEvent::CREATED) {
+      // Job definition event is emitted once when the job is created.
+      events.push_back(std::make_unique<observability::RayDriverJobDefinitionEvent>(
+          job_data, session_name_));
+    }
+    events.push_back(std::make_unique<observability::RayDriverJobExecutionEvent>(
+        job_data, state, session_name_));
+    ray_event_recorder_.AddEvents(std::move(events));
+    return;
+  }
+
+  // TODO(#56391): to be deprecated once the Ray Event system is stable.
+  if (!export_event_write_enabled_) {
     return;
   }
   std::shared_ptr<rpc::ExportDriverJobEventData> export_driver_job_data_ptr =
@@ -105,7 +122,8 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
                   reply,
                   send_reply_callback =
                       std::move(send_reply_callback)](const Status &status) mutable {
-    WriteDriverJobExportEvent(job_table_data);
+    WriteDriverJobExportEvent(job_table_data,
+                              rpc::events::DriverJobExecutionEvent::CREATED);
     if (!status.ok()) {
       RAY_LOG(ERROR).WithField(job_id).WithField("driver_pid",
                                                  job_table_data.driver_pid())
@@ -129,8 +147,8 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  RAY_UNUSED(gcs_table_storage_.JobTable().Put(
-      job_id, mutable_job_table_data, {std::move(on_done), io_context_}));
+  gcs_table_storage_.JobTable().Put(
+      job_id, mutable_job_table_data, {std::move(on_done), io_context_});
 }
 
 void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
@@ -155,7 +173,8 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
       RAY_LOG(DEBUG).WithField(job_id) << "Marked job as finished.";
     }
     function_manager_.RemoveJobReference(job_id);
-    WriteDriverJobExportEvent(job_table_data);
+    WriteDriverJobExportEvent(job_table_data,
+                              rpc::events::DriverJobExecutionEvent::FINISHED);
 
     // Update running job status.
     // Note: This operation must be idempotent since MarkJobFinished can be called
@@ -172,11 +191,8 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
     done_callback(status);
   };
 
-  Status status =
-      gcs_table_storage_.JobTable().Put(job_id, job_table_data, {on_done, io_context_});
-  if (!status.ok()) {
-    on_done(status);
-  }
+  gcs_table_storage_.JobTable().Put(
+      job_id, job_table_data, {std::move(on_done), io_context_});
 }
 
 void GcsJobManager::HandleMarkJobFinished(rpc::MarkJobFinishedRequest request,
@@ -189,7 +205,7 @@ void GcsJobManager::HandleMarkJobFinished(rpc::MarkJobFinishedRequest request,
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  Status status = gcs_table_storage_.JobTable().Get(
+  gcs_table_storage_.JobTable().Get(
       job_id,
       {[this, job_id, send_reply](Status get_status,
                                   std::optional<rpc::JobTableData> result) {
@@ -210,9 +226,6 @@ void GcsJobManager::HandleMarkJobFinished(rpc::MarkJobFinishedRequest request,
          send_reply(get_status);
        },
        io_context_});
-  if (!status.ok()) {
-    send_reply(status);
-  }
 }
 
 void GcsJobManager::ClearJobInfos(const rpc::JobTableData &job_data) {
@@ -444,10 +457,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
           "job", job_api_data_keys, {kv_multi_get_callback, io_context_});
     }
   };
-  Status status = gcs_table_storage_.JobTable().GetAll({on_done, io_context_});
-  if (!status.ok()) {
-    on_done(absl::flat_hash_map<JobID, rpc::JobTableData>());
-  }
+  gcs_table_storage_.JobTable().GetAll({std::move(on_done), io_context_});
 }
 
 void GcsJobManager::HandleReportJobError(rpc::ReportJobErrorRequest request,
@@ -466,7 +476,7 @@ void GcsJobManager::HandleGetNextJobID(rpc::GetNextJobIDRequest request,
     reply->set_job_id(job_id);
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
-  RAY_CHECK_OK(gcs_table_storage_.AsyncGetNextJobID({std::move(callback), io_context_}));
+  gcs_table_storage_.AsyncGetNextJobID({std::move(callback), io_context_});
 }
 
 std::shared_ptr<rpc::JobConfig> GcsJobManager::GetJobConfig(const JobID &job_id) const {
@@ -498,7 +508,7 @@ void GcsJobManager::OnNodeDead(const NodeID &node_id) {
     }
   };
 
-  RAY_CHECK_OK(gcs_table_storage_.JobTable().GetAll({on_done, io_context_}));
+  gcs_table_storage_.JobTable().GetAll({std::move(on_done), io_context_});
 }
 
 void GcsJobManager::RecordMetrics() {

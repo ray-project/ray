@@ -1,15 +1,17 @@
 import asyncio
-import signal
-import time
-import os
 import json
-import queue
-from concurrent.futures import ThreadPoolExecutor
-import threading
 import logging
-from urllib3.util import Retry
+import os
+import queue
+import signal
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+
 from requests import Session
 from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
+
 from ray._private.protobuf_compat import message_to_json
 
 try:
@@ -19,14 +21,14 @@ except ImportError:
     prometheus_client = None
 
 import ray
+import ray.dashboard.consts as dashboard_consts
+import ray.dashboard.utils as dashboard_utils
 from ray._common.utils import get_or_create_event_loop
 from ray._private import ray_constants
-import ray.dashboard.utils as dashboard_utils
-import ray.dashboard.consts as dashboard_consts
 from ray.core.generated import (
+    events_base_event_pb2,
     events_event_aggregator_service_pb2,
     events_event_aggregator_service_pb2_grpc,
-    events_base_event_pb2,
 )
 
 logger = logging.getLogger(__name__)
@@ -74,12 +76,13 @@ METRICS_UPDATE_INTERVAL_SECONDS = ray_constants.env_float(
 # Event filtering configurations
 # Comma-separated list of event types that are allowed to be exposed to external services
 # Valid values: TASK_DEFINITION_EVENT, TASK_EXECUTION_EVENT, ACTOR_TASK_DEFINITION_EVENT, ACTOR_TASK_EXECUTION_EVENT
-# The list of all supported event types can be found in src/ray/protobuf/events_base_event.proto (EventType enum)
+# The list of all supported event types can be found in src/ray/protobuf/public/events_base_event.proto (EventType enum)
 # By default TASK_PROFILE_EVENT is not exposed to external services
 DEFAULT_EXPOSABLE_EVENT_TYPES = (
     "TASK_DEFINITION_EVENT,TASK_EXECUTION_EVENT,"
     "ACTOR_TASK_DEFINITION_EVENT,ACTOR_TASK_EXECUTION_EVENT,"
-    "DRIVER_JOB_DEFINITION_EVENT,DRIVER_JOB_EXECUTION_EVENT"
+    "DRIVER_JOB_DEFINITION_EVENT,DRIVER_JOB_EXECUTION_EVENT,"
+    "ACTOR_DEFINITION_EVENT,ACTOR_LIFECYCLE_EVENT"
 )
 EXPOSABLE_EVENT_TYPES = os.environ.get(
     f"{env_var_prefix}_EXPOSABLE_EVENT_TYPES", DEFAULT_EXPOSABLE_EVENT_TYPES

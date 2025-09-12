@@ -9,6 +9,7 @@ This guide shows you how to use :ref:`ray.data.llm <llm-ref>` to:
 
 * :ref:`Perform batch inference with LLMs <batch_inference_llm>`
 * :ref:`Configure vLLM for LLM inference <vllm_llm>`
+* :ref:`Batch inference with embedding models <embedding_models>`
 * :ref:`Query deployed models with an OpenAI compatible API endpoint <openai_compatible_api_endpoint>`
 
 .. _batch_inference_llm:
@@ -22,12 +23,11 @@ logic for performing batch inference with LLMs on a Ray Data dataset.
 You can use the :func:`build_llm_processor <ray.data.llm.build_llm_processor>` API to construct a processor.
 The following example uses the :class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>` to construct a processor for the `unsloth/Llama-3.1-8B-Instruct` model.
 
-To run this example, install vLLM, which is a popular and optimized LLM inference engine.
+To start, install Ray Data + LLMs. This also installs vLLM, which is a popular and optimized LLM inference engine.
 
 .. code-block:: bash
 
-    # Later versions *should* work but are not tested yet.
-    pip install -U vllm==0.7.2
+    pip install -U "ray[data, llm]>=2.49.1"
 
 The :class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>` is a configuration object for the vLLM engine.
 It contains the model name, the number of GPUs to use, and the number of shards to use, along with other vLLM engine configurations.
@@ -45,14 +45,16 @@ Here's a simple configuration example:
     :start-after: __basic_config_example_start__
     :end-before: __basic_config_example_end__
 
+The configuration includes detailed comments explaining:
+
+- **`concurrency`**: Number of vLLM engine replicas (typically 1 per node)
+- **`batch_size`**: Number of samples processed per batch (reduce if GPU memory is limited)
+- **`max_num_batched_tokens`**: Maximum tokens processed simultaneously (reduce if CUDA OOM occurs)
+- **`accelerator_type`**: Specify GPU type for optimal resource allocation
+
 Each processor requires specific input columns based on the model and configuration. The vLLM processor expects input in OpenAI chat format with a 'messages' column.
 
-Here's the basic configuration pattern you can use throughout this guide:
-
-.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
-    :language: python
-    :start-after: __simple_config_example_start__
-    :end-before: __simple_config_example_end__
+This basic configuration pattern is used throughout this guide and includes helpful comments explaining key parameters.
 
 This configuration creates a processor that expects:
 
@@ -87,7 +89,7 @@ if specified).
 To optimize model loading, you can configure the `load_format` to `runai_streamer` or `tensorizer`.
 
 .. note::
-    In this case, install vLLM with runai dependencies: `pip install -U "vllm[runai]==0.7.2"`
+    In this case, install vLLM with runai dependencies: `pip install -U "vllm[runai]>=0.10.1"`
 
 .. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
     :language: python
@@ -160,6 +162,70 @@ Finally, run the VLM inference:
     :end-before: # __vlm_example_end__
     :dedent: 0
 
+.. _embedding_models:
+
+Batch inference with embedding models
+---------------------------------------
+
+Ray Data LLM supports batch inference with embedding models using vLLM:
+
+.. testcode::
+
+    import ray
+    from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
+
+    embedding_config = vLLMEngineProcessorConfig(
+        model_source="sentence-transformers/all-MiniLM-L6-v2",
+        task_type="embed",
+        engine_kwargs=dict(
+            enable_prefix_caching=False,
+            enable_chunked_prefill=False,
+            max_model_len=256,
+            enforce_eager=True,
+        ),
+        batch_size=32,
+        concurrency=1,
+        apply_chat_template=False,
+        detokenize=False,
+    )
+
+    embedding_processor = build_llm_processor(
+        embedding_config,
+        preprocess=lambda row: dict(prompt=row["text"]),
+        postprocess=lambda row: {
+            "text": row["prompt"],
+            "embedding": row["embeddings"],
+        },
+    )
+
+    texts = [
+        "Hello world",
+        "This is a test sentence",
+        "Embedding models convert text to vectors",
+    ]
+    ds = ray.data.from_items([{"text": text} for text in texts])
+
+    embedded_ds = embedding_processor(ds)
+    embedded_ds.show(limit=1)
+
+.. testoutput::
+    :options: +MOCK
+
+    {'text': 'Hello world', 'embedding': [0.1, -0.2, 0.3, ...]}
+
+Key differences for embedding models:
+
+- Set ``task_type="embed"``
+- Set ``apply_chat_template=False`` and ``detokenize=False``
+- Use direct ``prompt`` input instead of ``messages``
+- Access embeddings through``row["embeddings"]``
+
+For a complete embedding configuration example, see:
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __embedding_config_example_start__
+    :end-before: __embedding_config_example_end__
 
 .. _openai_compatible_api_endpoint:
 
@@ -226,6 +292,28 @@ as long as each replica (TP * PP) fits into a single node. The number of
 replicas is configured by the `concurrency` argument in
 :class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>`.
 
+.. _gpu_memory_management:
+
+GPU Memory Management and CUDA OOM Prevention
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you encounter CUDA out of memory errors, Ray Data LLM provides several configuration options to optimize GPU memory usage:
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __gpu_memory_config_example_start__
+    :end-before: __gpu_memory_config_example_end__
+
+**Key strategies for handling GPU memory issues:**
+
+- **Reduce batch size**: Start with smaller batches (8-16) and increase gradually
+- **Lower `max_num_batched_tokens`**: Reduce from 4096 to 2048 or 1024
+- **Decrease `max_model_len`**: Use shorter context lengths when possible
+- **Set `gpu_memory_utilization`**: Use 0.75-0.85 instead of default 0.90
+- **Use smaller models**: Consider using smaller model variants for resource-constrained environments
+
+If you run into CUDA out of memory, your batch size is likely too large. Set an explicit small batch size or use a smaller model, or a larger GPU.
+
 .. _model_cache:
 
 How to cache model weight to remote object storage
@@ -254,11 +342,3 @@ And later you can use remote object store URI as `model_source` in the config.
     :language: python
     :start-after: __s3_config_example_start__
     :end-before: __s3_config_example_end__
-
-For a more comprehensive S3 configuration example with environment variables:
-
-.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
-    :language: python
-    :start-after: def create_s3_config():
-    :end-before: def create_lora_config():
-    :dedent: 4

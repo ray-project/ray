@@ -4,8 +4,9 @@ from ray.serve._private.constants_utils import (
     get_env_bool,
     get_env_float,
     get_env_float_non_negative,
-    get_env_float_non_zero_with_warning,
+    get_env_float_positive,
     get_env_int,
+    get_env_int_non_negative,
     get_env_int_positive,
     get_env_str,
     parse_latency_buckets,
@@ -52,15 +53,20 @@ HTTP_PROXY_TIMEOUT = 60
 
 #: Max retry count for allowing failures in replica constructor.
 #: If no replicas at target version is running by the time we're at
-#: max construtor retry count, deploy() is considered failed.
+#: max constructor retry count, deploy() is considered failed.
 #: By default we set threshold as min(num_replicas * 3, this value)
 MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT = get_env_int(
-    "MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT", 20
+    "RAY_SERVE_MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT",
+    get_env_int("MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT", 20),
 )
 
 # Max retry on deployment constructor is
 # min(num_replicas * MAX_PER_REPLICA_RETRY_COUNT, MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT)
-MAX_PER_REPLICA_RETRY_COUNT = get_env_int("MAX_PER_REPLICA_RETRY_COUNT", 3)
+MAX_PER_REPLICA_RETRY_COUNT = get_env_int(
+    "RAY_SERVE_MAX_PER_REPLICA_RETRY_COUNT",
+    get_env_int("MAX_PER_REPLICA_RETRY_COUNT", 3),
+)
+
 
 # If you are wondering why we are using histogram buckets, please refer to
 # https://prometheus.io/docs/practices/histograms/
@@ -101,11 +107,19 @@ DEFAULT_LATENCY_BUCKET_MS = [
 # RAY_SERVE_MODEL_LOAD_LATENCY_BUCKET_MS="1,2,3,4"
 #: Histogram buckets for request latency.
 REQUEST_LATENCY_BUCKETS_MS = parse_latency_buckets(
-    get_env_str("REQUEST_LATENCY_BUCKETS_MS", ""), DEFAULT_LATENCY_BUCKET_MS
+    get_env_str(
+        "RAY_SERVE_REQUEST_LATENCY_BUCKETS_MS",
+        get_env_str("REQUEST_LATENCY_BUCKETS_MS", ""),
+    ),
+    DEFAULT_LATENCY_BUCKET_MS,
 )
 #: Histogram buckets for model load/unload latency.
 MODEL_LOAD_LATENCY_BUCKETS_MS = parse_latency_buckets(
-    get_env_str("MODEL_LOAD_LATENCY_BUCKETS_MS", ""), DEFAULT_LATENCY_BUCKET_MS
+    get_env_str(
+        "RAY_SERVE_MODEL_LOAD_LATENCY_BUCKETS_MS",
+        get_env_str("MODEL_LOAD_LATENCY_BUCKETS_MS", ""),
+    ),
+    DEFAULT_LATENCY_BUCKET_MS,
 )
 
 #: Name of deployment health check method implemented by user.
@@ -118,11 +132,16 @@ SERVE_ROOT_URL_ENV_KEY = "RAY_SERVE_ROOT_URL"
 
 #: Limit the number of cached handles because each handle has long poll
 #: overhead. See https://github.com/ray-project/ray/issues/18980
-MAX_CACHED_HANDLES = get_env_int_positive("MAX_CACHED_HANDLES", 100)
+MAX_CACHED_HANDLES = get_env_int_positive(
+    "RAY_SERVE_MAX_CACHED_HANDLES", get_env_int_positive("MAX_CACHED_HANDLES", 100)
+)
 
 #: Because ServeController will accept one long poll request per handle, its
 #: concurrency needs to scale as O(num_handles)
-CONTROLLER_MAX_CONCURRENCY = get_env_int_positive("CONTROLLER_MAX_CONCURRENCY", 15_000)
+CONTROLLER_MAX_CONCURRENCY = get_env_int_positive(
+    "RAY_SERVE_CONTROLLER_MAX_CONCURRENCY",
+    get_env_int_positive("CONTROLLER_MAX_CONCURRENCY", 15_000),
+)
 
 DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
 DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2
@@ -132,14 +151,14 @@ DEFAULT_MAX_ONGOING_REQUESTS = 5
 DEFAULT_TARGET_ONGOING_REQUESTS = 2
 
 # HTTP Proxy health check configs
-PROXY_HEALTH_CHECK_TIMEOUT_S = get_env_float_non_zero_with_warning(
+PROXY_HEALTH_CHECK_TIMEOUT_S = get_env_float_positive(
     "RAY_SERVE_PROXY_HEALTH_CHECK_TIMEOUT_S", 10.0
 )
 
-PROXY_HEALTH_CHECK_PERIOD_S = get_env_float_non_zero_with_warning(
+PROXY_HEALTH_CHECK_PERIOD_S = get_env_float_positive(
     "RAY_SERVE_PROXY_HEALTH_CHECK_PERIOD_S", 10.0
 )
-PROXY_READY_CHECK_TIMEOUT_S = get_env_float_non_zero_with_warning(
+PROXY_READY_CHECK_TIMEOUT_S = get_env_float_positive(
     "RAY_SERVE_PROXY_READY_CHECK_TIMEOUT_S", 5.0
 )
 
@@ -148,7 +167,7 @@ PROXY_READY_CHECK_TIMEOUT_S = get_env_float_non_zero_with_warning(
 PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD = 3
 
 # The minimum drain period for a HTTP proxy.
-PROXY_MIN_DRAINING_PERIOD_S = get_env_float_non_zero_with_warning(
+PROXY_MIN_DRAINING_PERIOD_S = get_env_float_positive(
     "RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", 30.0
 )
 # The time in seconds that the http proxy state waits before
@@ -167,9 +186,7 @@ CLIENT_POLLING_INTERVAL_S = 1.0
 CLIENT_CHECK_CREATION_POLLING_INTERVAL_S = 0.1
 
 # Timeout for GCS internal KV service
-RAY_SERVE_KV_TIMEOUT_S = get_env_float_non_zero_with_warning(
-    "RAY_SERVE_KV_TIMEOUT_S", None
-)
+RAY_SERVE_KV_TIMEOUT_S = get_env_float_positive("RAY_SERVE_KV_TIMEOUT_S", None)
 
 # Timeout for GCS RPC request
 RAY_GCS_RPC_TIMEOUT_S = 3.0
@@ -228,13 +245,15 @@ SERVE_LOG_UNWANTED_ATTRS = {
     "skip_context_filter",
 }
 
-RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S = get_env_int(
+RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S = get_env_int_non_negative(
     "RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S", 0
 )
 
 RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
-    get_env_float("RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0.0)
-    or get_env_float("SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0.0)
+    get_env_float_non_negative(
+        "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S",
+        get_env_float_non_negative("SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0.0),
+    )
     or None
 )
 
@@ -289,11 +308,11 @@ RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S = get_env_float(
 
 # Serve multiplexed matching timeout.
 # This is the timeout for the matching process of multiplexed requests. To avoid
-# thundering herd problem, the timeout value will be randomed between this value
+# thundering herd problem, the timeout value will be randomized between this value
 # and this value * 2. The unit is second.
 # If the matching process takes longer than the timeout, the request will be
 # fallen to the default routing strategy.
-RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S = get_env_float(
+RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S = get_env_float_non_negative(
     "RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S", 1.0
 )
 
@@ -328,7 +347,7 @@ RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S = get_env_float(
 )
 
 # Length of time to respect entries in the queue length cache when routing requests.
-RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S = get_env_float(
+RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S = get_env_float_non_negative(
     "RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S", 10.0
 )
 
@@ -356,7 +375,7 @@ RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE = get_env_bool(
     "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", "1"
 )
 
-RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S = get_env_float(
+RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S = get_env_float_non_negative(
     "RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S", 10.0
 )
 
@@ -462,5 +481,23 @@ RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE = get_env_int(
     "RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE", 1
 )
 
+# Feature flag to fail the deployment if the rank is not set.
+# TODO (abrar): Remove this flag after the feature is stable.
+RAY_SERVE_FAIL_ON_RANK_ERROR = get_env_bool("RAY_SERVE_FAIL_ON_RANK_ERROR", "0")
+
 # The message to return when the replica is healthy.
 HEALTHY_MESSAGE = "success"
+
+# If throughput optimized Ray Serve is enabled, set the following constants.
+# This should be at the end.
+RAY_SERVE_THROUGHPUT_OPTIMIZED = get_env_bool("RAY_SERVE_THROUGHPUT_OPTIMIZED", "0")
+if RAY_SERVE_THROUGHPUT_OPTIMIZED:
+    RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD = False
+    RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE = 1000
+    RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP = False
+    RAY_SERVE_LOG_TO_STDERR = False
+
+# The maximum allowed RPC latency in milliseconds.
+# This is used to detect and warn about long RPC latencies
+# between the controller and the replicas.
+RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS = 2000

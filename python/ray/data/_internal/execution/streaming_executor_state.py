@@ -284,7 +284,10 @@ class OpState:
         """Move a bundle produced by the operator to its outqueue."""
 
         ref, diverged = dedupe_schemas_with_validation(
-            self._schema, ref, warn=not self._warned_on_schema_divergence
+            self._schema,
+            ref,
+            warn=not self._warned_on_schema_divergence,
+            enforce_schemas=self.op.data_context.enforce_schemas,
         )
         self._schema = ref.schema
         self._warned_on_schema_divergence |= diverged
@@ -757,7 +760,7 @@ def dedupe_schemas_with_validation(
     old_schema: Optional["Schema"],
     bundle: "RefBundle",
     warn: bool = True,
-    allow_divergent: bool = False,
+    enforce_schemas: bool = False,
 ) -> Tuple["RefBundle", bool]:
     """Unify/Dedupe two schemas, warning if warn=True
 
@@ -766,7 +769,7 @@ def dedupe_schemas_with_validation(
             the new schema will be used as the old schema.
         bundle: The new `RefBundle` to unify with the old schema.
         warn: Raise a warning if the schemas diverge.
-        allow_divergent: If `True`, allow the schemas to diverge and return unified schema.
+        enforce_schemas: If `True`, allow the schemas to diverge and return unified schema.
             If `False`, but keep the old schema.
 
     Returns:
@@ -787,13 +790,13 @@ def dedupe_schemas_with_validation(
         return bundle, diverged
 
     diverged = True
-    if warn:
+    if warn and enforce_schemas:
         logger.warning(
             f"Operator produced a RefBundle with a different schema "
             f"than the previous one. Previous schema: {old_schema}, "
             f"new schema: {bundle.schema}. This may lead to unexpected behavior."
         )
-    if allow_divergent:
+    if enforce_schemas:
         old_schema = unify_schemas_with_validation([old_schema, bundle.schema])
 
     return (

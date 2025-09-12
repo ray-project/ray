@@ -21,7 +21,6 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/common_protocol.h"
 #include "ray/object_manager/plasma/store_runner.h"
 #include "ray/object_manager/spilled_object_reader.h"
 #include "ray/stats/metric_defs.h"
@@ -67,58 +66,41 @@ ObjectManager::ObjectManager(
     IObjectDirectory *object_directory,
     RestoreSpilledObjectCallback restore_spilled_object,
     std::function<std::string(const ObjectID &)> get_spilled_object_url,
-    SpillObjectsCallback spill_objects_callback,
-    std::function<void()> object_store_full_callback,
-    AddObjectCallback add_object_callback,
-    DeleteObjectCallback delete_object_callback,
     std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
-    const std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request)
+    std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request,
+    const std::shared_ptr<plasma::PlasmaClientInterface> &buffer_pool_store_client,
+    std::unique_ptr<ObjectStoreRunner> object_store_internal,
+    std::function<std::shared_ptr<rpc::ObjectManagerClientInterface>(
+        const std::string &address,
+        const int port,
+        rpc::ClientCallManager &client_call_manager)> object_manager_client_factory,
+    instrumented_io_context &rpc_service)
     : main_service_(&main_service),
       self_node_id_(self_node_id),
       config_(config),
       gcs_client_(gcs_client),
       object_directory_(object_directory),
-      object_store_internal_(std::make_unique<ObjectStoreRunner>(
-          config,
-          spill_objects_callback,
-          object_store_full_callback,
-          /*add_object_callback=*/
-          [this, add_object_callback = std::move(add_object_callback)](
-              const ObjectInfo &object_info) {
-            main_service_->post(
-                [this, object_info, &add_object_callback]() {
-                  HandleObjectAdded(object_info);
-                  add_object_callback(object_info);
-                },
-                "ObjectManager.ObjectAdded");
-          },
-          /*delete_object_callback=*/
-          [this, delete_object_callback = std::move(delete_object_callback)](
-              const ObjectID &object_id) {
-            main_service_->post(
-                [this, object_id, &delete_object_callback]() {
-                  HandleObjectDeleted(object_id);
-                  delete_object_callback(object_id);
-                },
-                "ObjectManager.ObjectDeleted");
-          })),
-      buffer_pool_store_client_(std::make_shared<plasma::PlasmaClient>()),
+      object_store_internal_(std::move(object_store_internal)),
+      buffer_pool_store_client_(buffer_pool_store_client),
       buffer_pool_(buffer_pool_store_client_, config_.object_chunk_size),
-      rpc_work_(rpc_service_.get_executor()),
+      rpc_service_(rpc_service),
       object_manager_server_("ObjectManager",
                              config_.object_manager_port,
                              config_.object_manager_address == "127.0.0.1",
-                             ClusterID::Nil(),
                              config_.rpc_service_threads_number),
       client_call_manager_(main_service,
                            /*record_stats=*/true,
                            ClusterID::Nil(),
                            config_.rpc_service_threads_number),
-      restore_spilled_object_(restore_spilled_object),
+      restore_spilled_object_(std::move(restore_spilled_object)),
       get_spilled_object_url_(std::move(get_spilled_object_url)),
       pull_retry_timer_(*main_service_,
                         boost::posix_time::milliseconds(config.timer_freq_ms)),
-      push_manager_(std::make_unique<PushManager>(config_.max_bytes_in_flight)) {
+      push_manager_(std::make_unique<PushManager>(/* max_chunks_in_flight= */ std::max(
+          static_cast<int64_t>(1L),
+          static_cast<int64_t>(config_.max_bytes_in_flight /
+                               config_.object_chunk_size)))),
+      object_manager_client_factory_(std::move(object_manager_client_factory)) {
   RAY_CHECK_GT(config_.rpc_service_threads_number, 0);
 
   pull_retry_timer_.async_wait([this](const boost::system::error_code &e) { Tick(e); });
@@ -172,16 +154,7 @@ bool ObjectManager::IsPlasmaObjectSpillable(const ObjectID &object_id) {
   return plasma::plasma_store_runner->IsPlasmaObjectSpillable(object_id);
 }
 
-void ObjectManager::RunRpcService(int index) {
-  SetThreadName(absl::StrFormat("rpc.obj.mgr.%d", index));
-  rpc_service_.run();
-}
-
 void ObjectManager::StartRpcService() {
-  rpc_threads_.resize(config_.rpc_service_threads_number);
-  for (int i = 0; i < config_.rpc_service_threads_number; i++) {
-    rpc_threads_[i] = std::thread(&ObjectManager::RunRpcService, this, i);
-  }
   object_manager_server_.RegisterService(
       std::make_unique<rpc::ObjectManagerGrpcService>(rpc_service_, *this),
       false /* token_auth */);
@@ -190,11 +163,6 @@ void ObjectManager::StartRpcService() {
 
 void ObjectManager::StopRpcService() {
   rpc_service_.stop();
-  for (int i = 0; i < config_.rpc_service_threads_number; i++) {
-    if (rpc_threads_[i].joinable()) {
-      rpc_threads_[i].join();
-    }
-  }
   object_manager_server_.Shutdown();
 }
 
@@ -490,13 +458,8 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
       << ", total data size: " << chunk_reader->GetObject().GetObjectSize();
 
   auto push_id = UniqueID::FromRandom();
-  uint64_t push_max_chunk_size = chunk_reader->ChunkSize();
   push_manager_->StartPush(
-      node_id,
-      object_id,
-      chunk_reader->GetNumChunks(),
-      push_max_chunk_size,
-      [=](int64_t chunk_id) {
+      node_id, object_id, chunk_reader->GetNumChunks(), [=](int64_t chunk_id) {
         rpc_service_.post(
             [=]() {
               // Post to the multithreaded RPC event loop so that data is copied
@@ -507,14 +470,11 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
                   node_id,
                   chunk_id,
                   rpc_client,
-                  [this, push_max_chunk_size](const Status &status) {
+                  [=](const Status &status) {
                     // Post back to the main event loop because the
                     // PushManager is not thread-safe.
-                    this->main_service_->post(
-                        [this, push_max_chunk_size]() {
-                          this->push_manager_->OnChunkComplete(push_max_chunk_size);
-                        },
-                        "ObjectManager.Push");
+                    main_service_->post([this]() { push_manager_->OnChunkComplete(); },
+                                        "ObjectManager.Push");
                   },
                   chunk_reader,
                   from_disk);
@@ -523,14 +483,15 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
       });
 }
 
-void ObjectManager::SendObjectChunk(const UniqueID &push_id,
-                                    const ObjectID &object_id,
-                                    const NodeID &node_id,
-                                    uint64_t chunk_index,
-                                    std::shared_ptr<rpc::ObjectManagerClient> rpc_client,
-                                    std::function<void(const Status &)> on_complete,
-                                    std::shared_ptr<ChunkObjectReader> chunk_reader,
-                                    bool from_disk) {
+void ObjectManager::SendObjectChunk(
+    const UniqueID &push_id,
+    const ObjectID &object_id,
+    const NodeID &node_id,
+    uint64_t chunk_index,
+    std::shared_ptr<rpc::ObjectManagerClientInterface> rpc_client,
+    std::function<void(const Status &)> on_complete,
+    std::shared_ptr<ChunkObjectReader> chunk_reader,
+    bool from_disk) {
   double start_time = absl::GetCurrentTimeNanos() / 1e9;
   rpc::PushRequest push_request;
   // Set request header
@@ -678,9 +639,11 @@ void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
                                 bool local_only) {
   buffer_pool_.FreeObjects(object_ids);
   if (!local_only) {
-    std::vector<std::shared_ptr<rpc::ObjectManagerClient>> rpc_clients;
+    std::vector<std::shared_ptr<rpc::ObjectManagerClientInterface>> rpc_clients;
+    // TODO(#56414): optimize this so we don't have to send a free objects request for
+    // every object to every node
     const auto &node_info_map = gcs_client_.Nodes().GetAll();
-    for (const auto &[node_id, node_info] : node_info_map) {
+    for (const auto &[node_id, _] : node_info_map) {
       if (node_id == self_node_id_) {
         continue;
       }
@@ -699,7 +662,7 @@ void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
 
 void ObjectManager::SpreadFreeObjectsRequest(
     const std::vector<ObjectID> &object_ids,
-    const std::vector<std::shared_ptr<rpc::ObjectManagerClient>> &rpc_clients) {
+    const std::vector<std::shared_ptr<rpc::ObjectManagerClientInterface>> &rpc_clients) {
   // This code path should be called from node manager.
   rpc::FreeObjectsRequest free_objects_request;
   for (const auto &e : object_ids) {
@@ -718,7 +681,7 @@ void ObjectManager::SpreadFreeObjectsRequest(
   }
 }
 
-std::shared_ptr<rpc::ObjectManagerClient> ObjectManager::GetRpcClient(
+std::shared_ptr<rpc::ObjectManagerClientInterface> ObjectManager::GetRpcClient(
     const NodeID &node_id) {
   auto it = remote_object_manager_clients_.find(node_id);
   if (it != remote_object_manager_clients_.end()) {
@@ -729,9 +692,9 @@ std::shared_ptr<rpc::ObjectManagerClient> ObjectManager::GetRpcClient(
     return nullptr;
   }
   auto object_manager_client =
-      std::make_shared<rpc::ObjectManagerClient>(node_info->node_manager_address(),
-                                                 node_info->object_manager_port(),
-                                                 client_call_manager_);
+      object_manager_client_factory_(node_info->node_manager_address(),
+                                     node_info->object_manager_port(),
+                                     client_call_manager_);
 
   RAY_LOG(DEBUG) << "Get rpc client, address: " << node_info->node_manager_address()
                  << ", port: " << node_info->object_manager_port()

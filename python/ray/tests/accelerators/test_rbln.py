@@ -1,11 +1,12 @@
-import pytest
 import os
 import sys
 
+import pytest
+
 from ray._private.accelerators.rbln import (
-    RBLNAcceleratorManager,
-    RBLN_RT_VISIBLE_DEVICES_ENV_VAR,
     NOSET_RBLN_RT_VISIBLE_DEVICES_ENV_VAR,
+    RBLN_RT_VISIBLE_DEVICES_ENV_VAR,
+    RBLNAcceleratorManager,
 )
 
 

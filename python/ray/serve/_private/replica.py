@@ -33,14 +33,16 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 import ray
 from ray import cloudpickle
+from ray._common.filters import CoreContextFilter
 from ray._common.utils import get_or_create_event_loop
-from ray._private.ray_logging.filters import CoreContextFilter
 from ray.actor import ActorClass, ActorHandle
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
 from ray.serve._private.common import (
+    RUNNING_REQUESTS_KEY,
     DeploymentID,
     ReplicaID,
+    ReplicaMetricReport,
     ReplicaQueueLengthInfo,
     RequestMetadata,
     ServeComponentType,
@@ -115,6 +117,7 @@ ReplicaMetadata = Tuple[
     Optional[float],
     Optional[int],
     Optional[str],
+    int,
 ]
 
 
@@ -327,12 +330,22 @@ class ReplicaMetricsManager:
 
     def _push_autoscaling_metrics(self) -> Dict[str, Any]:
         look_back_period = self._autoscaling_config.look_back_period_s
-        self._controller_handle.record_autoscaling_metrics.remote(
+        self._metrics_store.prune_keys_and_compact_data(time.time() - look_back_period)
+        replica_metric_report = ReplicaMetricReport(
             replica_id=self._replica_id,
-            window_avg=self._metrics_store.window_average(
-                self._replica_id, time.time() - look_back_period
-            ),
-            send_timestamp=time.time(),
+            timestamp=time.time(),
+            aggregated_metrics={
+                RUNNING_REQUESTS_KEY: self._metrics_store.aggregate_avg(
+                    [self._replica_id]
+                )[0]
+                or 0.0
+            },
+            metrics={
+                RUNNING_REQUESTS_KEY: self._metrics_store.data.get(self._replica_id, [])
+            },
+        )
+        self._controller_handle.record_autoscaling_metrics_from_replica.remote(
+            replica_metric_report
         )
 
     def _add_autoscaling_metrics_point(self) -> None:
@@ -356,6 +369,7 @@ class ReplicaBase(ABC):
         version: DeploymentVersion,
         ingress: bool,
         route_prefix: str,
+        rank: int,
     ):
         self._version = version
         self._replica_id = replica_id
@@ -402,7 +416,7 @@ class ReplicaBase(ABC):
 
         # Set metadata for logs and metrics.
         # servable_object will be populated in `initialize_and_get_metadata`.
-        self._set_internal_replica_context(servable_object=None)
+        self._set_internal_replica_context(servable_object=None, rank=rank)
 
         self._metrics_manager = create_replica_metrics_manager(
             replica_id=replica_id,
@@ -411,8 +425,10 @@ class ReplicaBase(ABC):
             ingress=ingress,
         )
 
-        self._port: Optional[int] = None
+        self._internal_grpc_port: Optional[int] = None
         self._docs_path: Optional[str] = None
+        self._http_port: Optional[int] = None
+        self._grpc_port: Optional[int] = None
 
     @property
     def max_ongoing_requests(self) -> int:
@@ -422,19 +438,29 @@ class ReplicaBase(ABC):
         return self._metrics_manager.get_num_ongoing_requests()
 
     def get_metadata(self) -> ReplicaMetadata:
+        current_rank = ray.serve.context._get_internal_replica_context().rank
         return (
             self._version.deployment_config,
             self._version,
             self._initialization_latency,
-            self._port,
+            self._internal_grpc_port,
             self._docs_path,
+            self._http_port,
+            self._grpc_port,
+            current_rank,
         )
 
-    def _set_internal_replica_context(self, *, servable_object: Callable = None):
+    def _set_internal_replica_context(
+        self, *, servable_object: Callable = None, rank: int = None
+    ):
+        # Calculate world_size from deployment config instead of storing it
+        world_size = self._deployment_config.num_replicas
         ray.serve.context._set_internal_replica_context(
             replica_id=self._replica_id,
             servable_object=servable_object,
             _deployment_config=self._deployment_config,
+            rank=rank,
+            world_size=world_size,
         )
 
     def _configure_logger_and_profilers(
@@ -752,7 +778,10 @@ class ReplicaBase(ABC):
             raise RuntimeError(traceback.format_exc()) from None
 
     async def reconfigure(
-        self, deployment_config: DeploymentConfig, route_prefix: Optional[str] = None
+        self,
+        deployment_config: DeploymentConfig,
+        rank: int,
+        route_prefix: Optional[str] = None,
     ):
         try:
             user_config_changed = (
@@ -782,9 +811,10 @@ class ReplicaBase(ABC):
                 )
 
             # We need to update internal replica context to reflect the new
-            # deployment_config.
+            # deployment_config and rank.
             self._set_internal_replica_context(
-                servable_object=self._user_callable_wrapper.user_callable
+                servable_object=self._user_callable_wrapper.user_callable,
+                rank=rank,
             )
 
             self._route_prefix = self._version.route_prefix
@@ -894,8 +924,11 @@ class ReplicaBase(ABC):
 
 class Replica(ReplicaBase):
     async def _on_initialized(self):
+        # Get current rank from replica context during initialization
+        current_rank = ray.serve.context._get_internal_replica_context().rank
         self._set_internal_replica_context(
-            servable_object=self._user_callable_wrapper.user_callable
+            servable_object=self._user_callable_wrapper.user_callable,
+            rank=current_rank,
         )
 
         # Save the initialization latency if the replica is initializing
@@ -969,6 +1002,7 @@ class ReplicaActor:
         version: DeploymentVersion,
         ingress: bool,
         route_prefix: str,
+        rank: int,
     ):
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
@@ -985,6 +1019,7 @@ class ReplicaActor:
             version=version,
             ingress=ingress,
             route_prefix=route_prefix,
+            rank=rank,
         )
 
     def push_proxy_handle(self, handle: ActorHandle):
@@ -1047,9 +1082,9 @@ class ReplicaActor:
         return await self._replica_impl.record_routing_stats()
 
     async def reconfigure(
-        self, deployment_config, route_prefix: Optional[str] = None
+        self, deployment_config, rank: int, route_prefix: Optional[str] = None
     ) -> ReplicaMetadata:
-        await self._replica_impl.reconfigure(deployment_config, route_prefix)
+        await self._replica_impl.reconfigure(deployment_config, rank, route_prefix)
         return self._replica_impl.get_metadata()
 
     def _preprocess_request_args(
