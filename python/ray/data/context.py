@@ -364,6 +364,8 @@ class DataContext:
             to use.
         use_ray_tqdm: Whether to enable distributed tqdm.
         enable_progress_bars: Whether to enable progress bars.
+        enable_operator_progress_bars: Whether to enable progress bars for individual
+            operators during execution.
         enable_progress_bar_name_truncation: If True, the name of the progress bar
             (often the operator name) will be truncated if it exceeds
             `ProgressBar.MAX_NAME_LENGTH`. Otherwise, the full operator name is shown.
@@ -379,7 +381,8 @@ class DataContext:
             retry. This follows same format as :ref:`retry_exceptions <task-retries>` in
             Ray Core. Default to `False` to not retry on any errors. Set to `True` to
             retry all errors, or set to a list of errors to retry.
-        enable_op_resource_reservation: Whether to reserve resources for each operator.
+        op_resource_reservation_enabled: Whether to enable resource reservation for
+            operators to prevent resource contention.
         op_resource_reservation_ratio: The ratio of the total resources to reserve for
             each operator.
         max_errored_blocks: Max number of blocks that are allowed to have errors,
@@ -409,10 +412,42 @@ class DataContext:
         retried_io_errors: A list of substrings of error messages that should
             trigger a retry when reading or writing files. This is useful for handling
             transient errors when reading from remote storage systems.
+        default_hash_shuffle_parallelism: Default parallelism level for hash-based
+            shuffle operations if the number of partitions is unspecifed.
+        max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
+            provisioned for hash-shuffle aggregations.
+        min_hash_shuffle_aggregator_wait_time_in_s: Minimum time to wait for hash
+            shuffle aggregators to become available, in seconds.
+        hash_shuffle_aggregator_health_warning_interval_s: Interval for health warning
+            checks on hash shuffle aggregators, in seconds.
+        max_hash_shuffle_finalization_batch_size: Maximum batch size for concurrent
+            hash-shuffle finalization tasks. If `None`, defaults to
+            `max_hash_shuffle_aggregators`.
+        join_operator_actor_num_cpus_per_partition_override: Override CPU allocation
+            per partition for join operator actors.
+        hash_shuffle_operator_actor_num_cpus_per_partition_override: Override CPU
+            allocation per partition for hash shuffle operator actors.
+        hash_aggregate_operator_actor_num_cpus_per_partition_override: Override CPU
+            allocation per partition for hash aggregate operator actors.
+        use_polars_sort: Whether to use Polars for tabular dataset sorting operations.
         enable_per_node_metrics: Enable per node metrics reporting for Ray Data,
             disabled by default.
+        override_object_store_memory_limit_fraction: Override the fraction of object
+            store memory limit. If `None`, uses Ray's default.
         memory_usage_poll_interval_s: The interval to poll the USS of map tasks. If `None`,
             map tasks won't record memory stats.
+        dataset_logger_id: Optional logger ID for dataset operations. If `None`, uses
+            default logging configuration.
+        issue_detectors_config: Configuration for issue detection and monitoring during
+            dataset operations.
+        downstream_capacity_backpressure_ratio: Ratio for downstream capacity
+            backpressure control. A higher ratio causes backpressure to kick-in
+            later. If `None`, this type of backpressure is disabled.
+        downstream_capacity_backpressure_max_queued_bundles: Maximum number of queued
+            bundles before applying backpressure. If `None`, no limit is applied.
+        enforce_schemas: Whether to enforce schema consistency across dataset operations.
+        pandas_block_ignore_metadata: Whether to ignore pandas metadata when converting
+            between Arrow and pandas formats for better type inference.
     """
 
     # `None` means the block size is infinite.
@@ -440,7 +475,7 @@ class DataContext:
 
     # Default hash-shuffle parallelism level (will be used when not
     # provided explicitly)
-    default_hash_shuffle_parallelism = DEFAULT_MIN_PARALLELISM
+    default_hash_shuffle_parallelism: int = DEFAULT_MIN_PARALLELISM
 
     # Max number of aggregating actors that could be provisioned
     # to perform aggregations on partitions produced during hash-shuffling
