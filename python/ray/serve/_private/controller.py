@@ -230,6 +230,10 @@ class ServeController:
 
         # Caches for autoscaling observability
         self._last_autoscaling_snapshots: Dict[DeploymentID, DeploymentSnapshot] = {}
+        self._autoscaling_enabled_deployments_cache: List[
+            Tuple[str, str, DeploymentDetails, Any]
+        ] = []
+        self._refresh_autoscaling_deployments_cache()
 
     def reconfigure_global_logging_config(self, global_logging_config: LoggingConfig):
         if (
@@ -388,8 +392,8 @@ class ServeController:
         new_proxy_nodes.add(self._controller_node_id)
         self._proxy_nodes = new_proxy_nodes
 
-    def _list_deployments_for_autoscaling(self):
-        """List (app_name, dep_name, details, autoscaling_config) for deployments with autoscaling enabled."""
+    def _refresh_autoscaling_deployments_cache(self) -> None:
+        result = []
         for app_name in self.application_state_manager.list_app_names():
             deployment_details = self.application_state_manager.list_deployment_details(
                 app_name
@@ -397,7 +401,11 @@ class ServeController:
             for dep_name, details in deployment_details.items():
                 autoscaling_config = details.deployment_config.autoscaling_config
                 if autoscaling_config:
-                    yield app_name, dep_name, details, autoscaling_config
+                    result.append((app_name, dep_name, details, autoscaling_config))
+        self._autoscaling_enabled_deployments_cache = result
+
+    def _list_deployments_for_autoscaling(self):
+        return iter(self._autoscaling_enabled_deployments_cache)
 
     def _emit_deployment_autoscaling_snapshots(self) -> None:
         """Emit a structured snapshot log per autoscaling-enabled deployment."""
@@ -508,8 +516,9 @@ class ServeController:
 
         try:
             asm_update_start_time = time.time()
-            self.application_state_manager.update()
-
+            any_target_state_changed = self.application_state_manager.update()
+            if any_recovering or any_target_state_changed:
+                self._refresh_autoscaling_deployments_cache()
             self.asm_update_duration_gauge_s.set(time.time() - asm_update_start_time)
         except Exception:
             logger.exception("Exception updating application state.")

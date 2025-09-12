@@ -1122,7 +1122,11 @@ class ApplicationStateManager:
         return self._application_states[name].list_deployment_details()
 
     def update(self):
-        """Update each application state."""
+        """
+        Update each application state.
+        Returns:
+            bool: True if any application's target state changed during this update.
+        """
         apps_to_be_deleted = []
         any_target_state_changed = False
         for name, app in self._application_states.items():
@@ -1142,6 +1146,7 @@ class ApplicationStateManager:
         if any_target_state_changed:
             self.save_checkpoint()
             self._deployment_state_manager.save_checkpoint()
+        return any_target_state_changed
 
     def shutdown(self) -> None:
         self._shutting_down = True
