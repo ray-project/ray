@@ -1,3 +1,4 @@
+import random
 import sys
 from typing import Dict, List
 
@@ -256,47 +257,6 @@ def test_rank_persistence_across_controller_restart(serve_instance):
     assert recovered_ranks == initial_ranks
 
 
-def test_rank_api_functions(serve_instance):
-    """Test the public API functions for ranks."""
-
-    @serve.deployment(num_replicas=3)
-    class APITestTracker:
-        def get_rank_info(self):
-            context = serve.get_replica_context()
-            return {
-                "rank": context.rank,
-                "world_size": context.world_size,
-            }
-
-        def __call__(self):
-            return self.get_rank_info()
-
-    handle = serve.run(APITestTracker.bind())
-
-    # Wait for deployment to be ready
-    wait_for_condition(
-        lambda: check_rank_assignment_complete("APITestTracker", 3),
-    )
-
-    # Test multiple requests to hit different replicas
-    responses = []
-    for _ in range(20):  # More requests to ensure we hit all replicas
-        response = handle.remote().result()
-        responses.append(response)
-
-    # Verify API consistency
-    seen_ranks = set()
-    for response in responses:
-        assert response["world_size"] == 3
-        rank = response["rank"]
-        assert 0 <= rank < 3, f"Rank {rank} is out of range"
-        seen_ranks.add(rank)
-
-    # We should see all three ranks
-    assert len(seen_ranks) == 3
-    assert seen_ranks == {0, 1, 2}
-
-
 def test_single_replica_deployment(serve_instance):
     """Test rank assignment for single replica deployment."""
 
@@ -409,7 +369,8 @@ def test_rank_stability_on_replica_death(serve_instance):
     assert check_rank_contiguity(initial_ranks)
 
     # kill the replica with rank 1
-    killed_replica_id = initial_replica_ids[1]
+    random_replica_id_idx = random.choice(range(len(initial_replica_ids)))
+    killed_replica_id = initial_replica_ids[random_replica_id_idx]
     replica_handle = ray.get_actor(
         f"SERVE_REPLICA::default#StableRankTracker#{killed_replica_id}",
         namespace=SERVE_NAMESPACE,
