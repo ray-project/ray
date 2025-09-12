@@ -36,7 +36,7 @@ from ray._common.utils import get_or_create_event_loop
 from ray._private import (
     ray_constants,
 )
-from ray._private.internal_api import memory_summary
+from ray._private.internal_api import memory_summary, node_stats
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray._private.worker import RayContext
 from ray._raylet import Config, GcsClientOptions, GlobalStateAccessor
@@ -2013,3 +2013,16 @@ def _execute_command_on_node(command: str, node_ip: str):
     except subprocess.CalledProcessError as e:
         print("Exit code:", e.returncode)
         print("Stderr:", e.stderr)
+
+
+def get_cluster_memory_usage():
+    """Returns total memory usage across all alive nodes in bytes"""
+    total_usage = 0
+    nodes = ray.nodes()
+    for node_info in nodes:
+        if node_info["Alive"]:
+            node_address = node_info["NodeManagerAddress"]
+            node_port = node_info["NodeManagerPort"]
+            stats = node_stats(node_address, node_port)
+            total_usage += stats.store_stats.object_store_bytes_used
+    return total_usage
