@@ -111,10 +111,9 @@ class CgroupManager : public CgroupManagerInterface {
   Status Initialize(const int64_t system_reserved_cpu_weight,
                     const int64_t system_reserved_memory_bytes);
 
-  // The Register* methods register a callback that will execute in the destructor
-  // in FILO order. All callbacks required the cgroup_driver_ to be available to
-  // remove the cgroup hierarchy.
-  void RegisterDeleteCgroup(const std::string &cgroup);
+  // TODO(#54703): This is a placeholder for cleanup. This will be implemented in the a
+  // future PR.
+  void RegisterDeleteCgroup(const std::string &cgroup_path);
   void RegisterMoveAllProcesses(const std::string &from, const std::string &to);
   template <typename T>
   void RegisterRemoveConstraint(const std::string &cgroup,
