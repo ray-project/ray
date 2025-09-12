@@ -32,10 +32,6 @@ steps:
     tags: always
     instance_type: medium
     commands:
-      - python --version
-      - which uv
-      - uv --version
-      - uv build -h
       # build placeholder wheel for all python versions
       - bash ci/build/build-placeholder-wheel.sh
       # compile rayimg dependencies
