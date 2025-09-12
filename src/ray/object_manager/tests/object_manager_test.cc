@@ -14,13 +14,10 @@
 
 #include "ray/object_manager/object_manager.h"
 
-#include <unistd.h>
-
-#include <cstdlib>
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
+#include <utility>
 
 #include "fakes/ray/object_manager/plasma/fake_plasma_client.h"
 #include "gmock/gmock.h"
@@ -28,13 +25,11 @@
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 #include "mock/ray/object_manager/object_directory.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/buffer.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/common.h"
 #include "ray/rpc/object_manager/fake_object_manager_client.h"
-#include "ray/util/temporary_directory.h"
 
 namespace ray {
 
