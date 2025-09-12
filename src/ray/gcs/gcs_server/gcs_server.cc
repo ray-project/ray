@@ -113,6 +113,16 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                   });
             });
       }),
+      event_aggregator_client_call_manager_(
+          io_context_provider_.GetIOContext<observability::RayEventRecorder>(),
+          /*record_stats=*/true,
+          ClusterID::Nil(),
+          RayConfig::instance().gcs_server_rpc_client_thread_num()),
+      event_aggregator_client_(std::make_unique<rpc::EventAggregatorClientImpl>(
+          config_.metrics_agent_port, event_aggregator_client_call_manager_)),
+      ray_event_recorder_(std::make_unique<observability::RayEventRecorder>(
+          *event_aggregator_client_,
+          io_context_provider_.GetIOContext<observability::RayEventRecorder>())),
       pubsub_periodical_runner_(PeriodicalRunner::Create(
           io_context_provider_.GetIOContext<pubsub::GcsPublisher>())),
       periodical_runner_(
@@ -255,9 +265,10 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   InitGcsAutoscalerStateManager(gcs_init_data);
   InitUsageStatsClient();
 
-  // Init OpenTelemetry exporter.
+  // Init metrics and event exporter.
   metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
     stats::InitOpenTelemetryExporter(config_.metrics_agent_port, server_status);
+    ray_event_recorder_->StartExportingEvents();
   });
 
   // Start RPC server when all tables have finished loading initial
@@ -446,7 +457,9 @@ void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
                                       *function_manager_,
                                       kv_manager_->GetInstance(),
                                       io_context_provider_.GetDefaultIOContext(),
-                                      worker_client_pool_);
+                                      worker_client_pool_,
+                                      *ray_event_recorder_,
+                                      config_.session_name);
   gcs_job_manager_->Initialize(gcs_init_data);
 
   rpc_server_.RegisterService(std::make_unique<rpc::JobInfoGrpcService>(
