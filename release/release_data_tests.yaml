@@ -492,7 +492,7 @@
 
 # 300 GB image classification parquet data up to 10 GPUs
 # 10 g4dn.12xlarge.
-- name: "batch_inference_{{scaling}}"
+- name: "image_classification_{{scaling}}"
   group: batch-inference
 
   cluster:
@@ -508,7 +508,7 @@
       python gpu_batch_inference.py
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
 
-- name: batch_inference_chaos
+- name: image_classification_chaos
   stable: False
   # Don't use 'nightly_tests/dataset' as the working directory because we need to run
   # the 'setup_chaos.py' script.
@@ -525,7 +525,7 @@
       python dataset/gpu_batch_inference.py
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet --chaos-test
 
-- name: batch_inference_chaos_no_scale_back
+- name: image_classification_chaos_no_scale_back
   stable: False
   working_dir: nightly_tests
   group: batch-inference
@@ -542,7 +542,7 @@
 
 
 - name: image_embedding_from_uris_{{case}}
-  frequency: manual
+  frequency: weekly
   group: batch-inference
 
   matrix:
@@ -572,8 +572,8 @@
     script: python image_embedding_from_uris/main.py {{args}}
 
 
-- name: batch_inference_hetero_{{case}}
-  frequency: manual
+- name: image_embedding_from_jsonl_{{case}}
+  frequency: weekly
   group: batch-inference
 
   matrix:
@@ -596,16 +596,16 @@
           args: --inference-concurrency 40 40 --chaos
 
   cluster:
-    cluster_compute: batch_inference_hetero/{{cluster_type}}_cluster_compute.yaml
+    cluster_compute: image_embedding_from_jsonl/{{cluster_type}}_cluster_compute.yaml
     byod:
       post_build_script: byod_install_pybase64.sh
 
   run:
     timeout: 3600
-    script: python batch_inference_hetero/main.py {{args}}
+    script: python image_embedding_from_jsonl/main.py {{args}}
 
 - name: text_embedding_{{case}}
-  frequency: manual
+  frequency: weekly
   group: batch-inference
 
   matrix:
