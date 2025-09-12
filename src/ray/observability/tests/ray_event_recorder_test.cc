@@ -91,7 +91,7 @@ TEST_F(RayEventRecorderTest, TestRecordEvents) {
   events.push_back(
       std::make_unique<RayDriverJobDefinitionEvent>(data1, "test_session_name_1"));
   events.push_back(std::make_unique<RayDriverJobExecutionEvent>(
-      data2, rpc::events::DriverJobExecutionEvent::SUCCESS, "test_session_name_2"));
+      data2, rpc::events::DriverJobExecutionEvent::FINISHED, "test_session_name_2"));
   recorder_->AddEvents(std::move(events));
   io_service_.run_one();
 

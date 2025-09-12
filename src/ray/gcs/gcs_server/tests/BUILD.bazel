@@ -128,6 +128,7 @@ ray_cc_test(
         "//src/ray/gcs/gcs_server:gcs_job_manager",
         "//src/ray/gcs/gcs_server:gcs_kv_manager",
         "//src/ray/gcs/store_client:in_memory_store_client",
+        "//src/ray/observability:fake_ray_event_recorder",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -395,6 +396,7 @@ ray_cc_test(
         "//src/ray/gcs/gcs_server:gcs_job_manager",
         "//src/ray/gcs/gcs_server:gcs_kv_manager",
         "//src/ray/gcs/store_client:in_memory_store_client",
+        "//src/ray/observability:fake_ray_event_recorder",
         "@com_google_googletest//:gtest_main",
     ],
 )

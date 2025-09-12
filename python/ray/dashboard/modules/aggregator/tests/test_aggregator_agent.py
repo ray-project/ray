@@ -839,7 +839,7 @@ def test_aggregator_agent_receive_driver_job_execution_event(
                                 timestamp=Timestamp(seconds=1234567890),
                             ),
                             DriverJobExecutionEvent.StateTimestamp(
-                                state=DriverJobExecutionEvent.State.FAILURE,
+                                state=DriverJobExecutionEvent.State.FINISHED,
                                 timestamp=Timestamp(seconds=1234567890),
                             ),
                         ],
@@ -862,7 +862,7 @@ def test_aggregator_agent_receive_driver_job_execution_event(
     )
     assert len(req_json[0]["driverJobExecutionEvent"]["states"]) == 2
     assert req_json[0]["driverJobExecutionEvent"]["states"][0]["state"] == "CREATED"
-    assert req_json[0]["driverJobExecutionEvent"]["states"][1]["state"] == "FAILURE"
+    assert req_json[0]["driverJobExecutionEvent"]["states"][1]["state"] == "FINISHED"
 
 
 if __name__ == "__main__":
