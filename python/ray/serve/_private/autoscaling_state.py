@@ -163,10 +163,7 @@ class AutoscalingState:
     ) -> None:
         """Records average number of ongoing requests at a replica."""
 
-        if (
-            not replica_metric_report
-            or replica_metric_report.metrics.get(RUNNING_REQUESTS_KEY, None) is None
-        ):
+        if not replica_metric_report:
             return
 
         replica_id = replica_metric_report.replica_id
