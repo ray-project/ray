@@ -178,7 +178,9 @@ def create_collective_group(
             internal_kv._internal_kv_del(metadata_key)
 
     # Group was successfully created.
-    comm = CommunicatorHandle(actors, name, backend)
+    # Register GLOO groups under TORCH_GLOO since GLOO uses torch.distributed.
+    registration_backend = Backend.TORCH_GLOO if backend == Backend.GLOO else backend
+    comm = CommunicatorHandle(actors, name, registration_backend)
     manager.add_remote_communicator(comm)
     return comm
 
