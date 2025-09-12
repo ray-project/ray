@@ -612,13 +612,14 @@
           args: --inference-concurrency 100 100 --chaos
 
   cluster:
-    cluster_compute: text_embeddings/{{cluster_type}}_cluster_compute.yaml
+    cluster_compute: text_embedding/{{cluster_type}}_cluster_compute.yaml
     byod:
-      post_build_script: byod_install_sentence_transformers.sh
+      type: cu123
+      post_build_script: byod_install_text_embedding.sh
 
   run:
     timeout: 3600
-    script: python text_embeddings/main.py {{args}}
+    script: python text_embedding/main.py {{args}}
 
 ##############
 # TPCH Queries
