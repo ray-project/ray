@@ -388,6 +388,13 @@ if __name__ == "__main__":
         default="",
         help="The filepath to dump dashboard agent stderr.",
     )
+    parser.add_argument(
+        "--events-export-address",
+        required=False,
+        type=str,
+        default=None,
+        help="An HTTP endpoint to send Ray events to. If not provided, events will not be sent.",
+    )
 
     args = parser.parse_args()
 
@@ -432,6 +439,7 @@ if __name__ == "__main__":
             log_dir=args.log_dir,
             metrics_export_port=args.metrics_export_port,
             node_manager_port=args.node_manager_port,
+            events_export_addr=args.events_export_address,
             listen_port=args.listen_port,
             object_store_name=args.object_store_name,
             raylet_name=args.raylet_name,

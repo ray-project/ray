@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 from google.protobuf.timestamp_pb2 import Timestamp
 
+import ray
 import ray.dashboard.consts as dashboard_consts
 from ray._private import ray_constants
 from ray._private.test_utils import (
@@ -135,25 +136,7 @@ def test_aggregator_agent_http_target_not_enabled(
     assert agent._event_processing_enabled == expected_event_processing_enabled
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster_head_with_env_vars",
-    [
-        {
-            "env_vars": {
-                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": "",
-            },
-        },
-    ],
-    indirect=True,
-)
-def test_aggregator_agent_event_processing_disabled(
-    ray_start_cluster_head_with_env_vars, httpserver, fake_timestamp
-):
-    cluster = ray_start_cluster_head_with_env_vars
-    stub = get_event_aggregator_grpc_stub(
-        cluster.gcs_address, cluster.head_node.node_id
-    )
-
+def _receive_publish_events_normally(stub, httpserver, fake_timestamp):
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
 
     request = AddEventsRequest(
@@ -174,6 +157,56 @@ def test_aggregator_agent_event_processing_disabled(
         )
     )
     stub.AddEvents(request)
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_env_vars",
+    [
+        {
+            "env_vars": {
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": "",
+            },
+        },
+    ],
+    indirect=True,
+)
+def test_aggregator_agent_event_processing_disabled(
+    ray_start_cluster_head_with_env_vars, httpserver, fake_timestamp
+):
+    cluster = ray_start_cluster_head_with_env_vars
+    stub = get_event_aggregator_grpc_stub(
+        cluster.gcs_address, cluster.head_node.node_id
+    )
+    _receive_publish_events_normally(stub, httpserver, fake_timestamp)
+
+
+@pytest.mark.parametrize(
+    "call_ray_start",
+    [f"ray start --head --events-export-address {_EVENT_AGGREGATOR_AGENT_TARGET_ADDR}"],
+    indirect=True,
+)
+def test_aggregator_agent_target_endpoint_through_cli_receive_events_normally(
+    call_ray_start, httpserver, fake_timestamp
+):
+
+    context = ray.init(address=call_ray_start)
+    stub = get_event_aggregator_grpc_stub(
+        context.address_info["gcs_address"],
+        context.address_info["node_id"],
+    )
+
+    _receive_publish_events_normally(stub, httpserver, fake_timestamp)
+
+
+@_with_aggregator_port
+def test_aggregator_agent_target_endpoint_through_env_var_receive_events_normally(
+    ray_start_cluster_head_with_env_vars, httpserver, fake_timestamp
+):
+    cluster = ray_start_cluster_head_with_env_vars
+    stub = get_event_aggregator_grpc_stub(
+        cluster.gcs_address, cluster.head_node.node_id
+    )
+    _receive_publish_events_normally(stub, httpserver, fake_timestamp)
 
 
 @_with_aggregator_port
