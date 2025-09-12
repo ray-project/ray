@@ -17,7 +17,7 @@ import traceback
 import uuid
 from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
@@ -59,6 +59,7 @@ REDIS_EXECUTABLE = os.path.join(
 )
 
 try:
+    from prometheus_client.core import Metric
     from prometheus_client.parser import Sample, text_string_to_metric_families
 except (ImportError, ModuleNotFoundError):
 
@@ -978,6 +979,45 @@ def fetch_prometheus(prom_addresses):
     return components_dict, metric_descriptors, metric_samples
 
 
+@dataclass
+class PrometheusTimeseries:
+    """A collection of timeseries from multiple addresses. Each timeseries is a
+    collection of samples with the same metric name and labels. Concretely:
+    - components_dict: a dictionary of addresses to the Component labels
+    - metric_descriptors: a dictionary of metric names to the Metric object
+    - metric_samples: the latest value of each label
+    """
+
+    components_dict: Dict[str, Set[str]] = field(default_factory=defaultdict)
+    metric_descriptors: dict = field(default_factory=defaultdict)  # Dict[str, Metric]
+    metric_samples: dict = field(default_factory=defaultdict)  # Dict[frozenset, Sample]
+
+    def flush(self):
+        self.components_dict.clear()
+        self.metric_descriptors.clear()
+        self.metric_samples.clear()
+
+
+def fetch_prometheus_timeseries(
+    prom_addreses: List[str],
+    result: PrometheusTimeseries,
+) -> PrometheusTimeseries:
+    components_dict, metric_descriptors, metric_samples = fetch_prometheus(
+        prom_addreses
+    )
+    for address, components in components_dict.items():
+        if address not in result.components_dict:
+            result.components_dict[address] = set()
+        result.components_dict[address].update(components)
+    result.metric_descriptors.update(metric_descriptors)
+    for sample in metric_samples:
+        # udpate sample to the latest value
+        result.metric_samples[
+            frozenset(list(sample.labels.items()) + [("_metric_name_", sample.name)])
+        ] = sample
+    return result
+
+
 def fetch_prometheus_metrics(prom_addresses: List[str]) -> Dict[str, List[Any]]:
     """Return prometheus metrics from the given addresses.
 
@@ -988,6 +1028,18 @@ def fetch_prometheus_metrics(prom_addresses: List[str]) -> Dict[str, List[Any]]:
         Dict mapping from metric name to list of samples for the metric.
     """
     _, _, samples = fetch_prometheus(prom_addresses)
+    samples_by_name = defaultdict(list)
+    for sample in samples:
+        samples_by_name[sample.name].append(sample)
+    return samples_by_name
+
+
+def fetch_prometheus_metric_timeseries(
+    prom_addresses: List[str], result: PrometheusTimeseries
+) -> Dict[str, List[Any]]:
+    samples = fetch_prometheus_timeseries(
+        prom_addresses, result
+    ).metric_samples.values()
     samples_by_name = defaultdict(list)
     for sample in samples:
         samples_by_name[sample.name].append(sample)
@@ -1006,6 +1058,15 @@ def raw_metrics(info: RayContext) -> Dict[str, List[Any]]:
     metrics_page = "localhost:{}".format(info.address_info["metrics_export_port"])
     print("Fetch metrics from", metrics_page)
     return fetch_prometheus_metrics([metrics_page])
+
+
+def raw_metric_timeseries(
+    info: RayContext, result: PrometheusTimeseries
+) -> Dict[str, List[Any]]:
+    """Return prometheus timeseries from a RayContext"""
+    metrics_page = "localhost:{}".format(info.address_info["metrics_export_port"])
+    print("Fetch metrics from", metrics_page)
+    return fetch_prometheus_metric_timeseries([metrics_page], result)
 
 
 def get_test_config_path(config_file_name):
