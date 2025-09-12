@@ -297,25 +297,6 @@ class DataIterator(abc.ABC):
             {'id': tensor([4, 5, 6, 7])}
             {'id': tensor([ 8,  9, 10, 11])}
 
-            Use the ``collate_fn`` to customize how the tensor batch is created.
-
-            >>> from typing import Any, Dict
-            >>> import torch
-            >>> import numpy as np
-            >>> import ray
-            >>> def collate_fn(batch: Dict[str, np.ndarray]) -> Any:
-            ...     return torch.stack(
-            ...         [torch.as_tensor(array) for array in batch.values()],
-            ...         axis=1
-            ...     )
-            >>> iterator = ray.data.from_items([
-            ...     {"col_1": 1, "col_2": 2},
-            ...     {"col_1": 3, "col_2": 4}]).iterator()
-            >>> for batch in iterator.iter_torch_batches(collate_fn=collate_fn):
-            ...     print(batch)
-            tensor([[1, 2],
-                    [3, 4]])
-
             Use the ``ArrowBatchCollateFn`` to customize how the tensor batch is created
             from an Arrow batch.
 
