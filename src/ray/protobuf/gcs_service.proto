@@ -255,6 +255,36 @@ message GetAllNodeInfoReply {
   int64 num_filtered = 4;
 }
 
+// Request for getting lightweight node info (without labels)
+message GetAllNodeInfoLightRequest {
+  message NodeSelector {
+    oneof node_selector {
+      bytes node_id = 1;
+      string node_name = 2;
+      string node_ip_address = 3;
+    }
+  }
+  // If not specified, get all nodes.
+  repeated NodeSelector node_selectors = 1;
+
+  // Maximum number of entries to return.
+  // If not specified, return all entries without truncation.
+  optional int64 limit = 2;
+
+  // If specified, filter the reply by nodes' state.
+  optional GcsNodeInfo.GcsNodeState state_filter = 3;
+}
+
+// Reply for getting lightweight node info (without labels)
+message GetAllNodeInfoLightReply {
+  GcsStatus status = 1;
+  repeated GcsNodeInfo node_info_list = 2;
+  // Length of the corresponding resource without truncation.
+  int64 total = 3;
+  // Number of results filtered out from the source.
+  int64 num_filtered = 4;
+}
+
 message CheckAliveRequest {
   repeated bytes node_ids = 1;
 }
@@ -754,6 +784,8 @@ service NodeInfoGcsService {
   rpc DrainNode(DrainNodeRequest) returns (DrainNodeReply);
   // Get information of all nodes from GCS Service.
   rpc GetAllNodeInfo(GetAllNodeInfoRequest) returns (GetAllNodeInfoReply);
+  // Get lightweight information of all nodes from GCS Service (without labels).
+  rpc GetAllNodeInfoLight(GetAllNodeInfoLightRequest) returns (GetAllNodeInfoLightReply);
   // Check alive.
   rpc CheckAlive(CheckAliveRequest) returns (CheckAliveReply);
 }

@@ -22,6 +22,8 @@
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "google/protobuf/field_mask.pb.h"
+#include "google/protobuf/util/field_mask_util.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/util/logging.h"
 #include "ray/util/time.h"
@@ -278,6 +280,164 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
               node_names.contains(node_info_ptr->node_name()) ||
               node_ip_addresses.contains(node_info_ptr->node_manager_address())) {
             *reply->add_node_info_list() = *node_info_ptr;
+            num_added += 1;
+          }
+        }
+      };
+
+  if (request.has_state_filter()) {
+    switch (request.state_filter()) {
+    case rpc::GcsNodeInfo::ALIVE:
+      if (!has_node_selectors) {
+        reply->mutable_node_info_list()->Reserve(alive_nodes_.size());
+      }
+      add_to_response(alive_nodes_);
+      break;
+    case rpc::GcsNodeInfo::DEAD:
+      if (!has_node_selectors) {
+        reply->mutable_node_info_list()->Reserve(dead_nodes_.size());
+      }
+      add_to_response(dead_nodes_);
+      break;
+    default:
+      RAY_LOG(ERROR) << "Unexpected state filter: " << request.state_filter();
+      break;
+    }
+  } else {
+    if (!has_node_selectors) {
+      reply->mutable_node_info_list()->Reserve(alive_nodes_.size() + dead_nodes_.size());
+    }
+    add_to_response(alive_nodes_);
+    add_to_response(dead_nodes_);
+  }
+
+  reply->set_total(total_num_nodes);
+  reply->set_num_filtered(total_num_nodes - reply->node_info_list_size());
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
+}
+
+// Utility function to filter GcsNodeInfo using a FieldMask
+void FilterGcsNodeInfo(const rpc::GcsNodeInfo &source,
+                       const google::protobuf::FieldMask &field_mask,
+                       rpc::GcsNodeInfo *destination) {
+  // Start with a default (empty) GcsNodeInfo
+  destination->Clear();
+
+  // Use protobuf's FieldMask utility to merge only specified fields
+  google::protobuf::util::FieldMaskUtil::MergeFields(
+      source, field_mask, destination);
+}
+
+// Create a static FieldMask for lightweight node info (excludes labels)
+google::protobuf::FieldMask CreateNodeInfoLightFieldMask() {
+  google::protobuf::FieldMask field_mask;
+
+  // Include all fields except 'labels'
+  std::vector<std::string> paths = {
+    "node_id",
+    "node_manager_address",
+    "raylet_socket_name",
+    "object_store_socket_name",
+    "node_manager_port",
+    "object_manager_port",
+    "state",
+    "node_manager_hostname",
+    "metrics_export_port",
+    "runtime_env_agent_port",
+    "resources_total",
+    "node_name",
+    "instance_id",
+    "node_type_name",
+    "instance_type_name",
+    "start_time_ms",
+    "end_time_ms",
+    "is_head_node",
+    // Note: intentionally exclude "labels"
+    "state_snapshot",
+    "death_info"
+  };
+
+  for (const auto &path : paths) {
+    field_mask.add_paths(path);
+  }
+
+  return field_mask;
+}
+
+void GcsNodeManager::HandleGetAllNodeInfoLight(rpc::GetAllNodeInfoLightRequest request,
+                                               rpc::GetAllNodeInfoLightReply *reply,
+                                               rpc::SendReplyCallback send_reply_callback) {
+  int64_t limit =
+      (request.limit() > 0) ? request.limit() : std::numeric_limits<int64_t>::max();
+  absl::flat_hash_set<NodeID> node_ids;
+  absl::flat_hash_set<std::string> node_names;
+  absl::flat_hash_set<std::string> node_ip_addresses;
+  bool only_node_id_filters = true;
+  for (auto &selector : *request.mutable_node_selectors()) {
+    switch (selector.node_selector_case()) {
+    case rpc::GetAllNodeInfoLightRequest_NodeSelector::kNodeId:
+      node_ids.insert(NodeID::FromBinary(selector.node_id()));
+      break;
+    case rpc::GetAllNodeInfoLightRequest_NodeSelector::kNodeName:
+      node_names.insert(std::move(*selector.mutable_node_name()));
+      only_node_id_filters = false;
+      break;
+    case rpc::GetAllNodeInfoLightRequest_NodeSelector::kNodeIpAddress:
+      node_ip_addresses.insert(std::move(*selector.mutable_node_ip_address()));
+      only_node_id_filters = false;
+      break;
+    case rpc::GetAllNodeInfoLightRequest_NodeSelector::NODE_SELECTOR_NOT_SET:
+      continue;
+    }
+  }
+  const size_t total_num_nodes = alive_nodes_.size() + dead_nodes_.size();
+  int64_t num_added = 0;
+
+  // Create the field mask for lightweight node info (excludes labels)
+  static const auto light_field_mask = CreateNodeInfoLightFieldMask();
+
+  if (request.node_selectors_size() > 0 && only_node_id_filters) {
+    // optimized path if request only wants specific node ids
+    for (const auto &node_id : node_ids) {
+      if (!request.has_state_filter() ||
+          request.state_filter() == rpc::GcsNodeInfo::ALIVE) {
+        auto iter = alive_nodes_.find(node_id);
+        if (iter != alive_nodes_.end()) {
+          auto *node_info = reply->add_node_info_list();
+          FilterGcsNodeInfo(*iter->second, light_field_mask, node_info);
+          ++num_added;
+        }
+      }
+      if (!request.has_state_filter() ||
+          request.state_filter() == rpc::GcsNodeInfo::DEAD) {
+        auto iter = dead_nodes_.find(node_id);
+        if (iter != dead_nodes_.end()) {
+          auto *node_info = reply->add_node_info_list();
+          FilterGcsNodeInfo(*iter->second, light_field_mask, node_info);
+          ++num_added;
+        }
+      }
+    }
+    reply->set_total(total_num_nodes);
+    reply->set_num_filtered(total_num_nodes - num_added);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+    ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
+    return;
+  }
+
+  const bool has_node_selectors = request.node_selectors_size() > 0;
+  auto add_to_response =
+      [&](const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &nodes) {
+        for (const auto &[node_id, node_info_ptr] : nodes) {
+          if (num_added >= limit) {
+            break;
+          }
+          if (!has_node_selectors || node_ids.contains(node_id) ||
+              node_names.contains(node_info_ptr->node_name()) ||
+              node_ip_addresses.contains(node_info_ptr->node_manager_address())) {
+            auto *node_info = reply->add_node_info_list();
+            FilterGcsNodeInfo(*node_info_ptr, light_field_mask, node_info);
             num_added += 1;
           }
         }
