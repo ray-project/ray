@@ -27,8 +27,7 @@ message DriverJobExecutionEvent {
   enum State {
     UNSPECIFIED = 0;
     CREATED = 1;
-    FAILURE = 2;
-    SUCCESS = 3;
+    FINISHED = 2;
   }
 
   message StateTimestamp {
