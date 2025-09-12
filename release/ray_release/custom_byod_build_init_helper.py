@@ -8,10 +8,12 @@ import os
 
 
 def generate_custom_build_step_key(image: str) -> str:
-    image = image.replace("$$RAYCI_BUILD_ID", "")
-    image = image.replace(os.environ.get("RAYCI_BUILD_ID", ""), "")
-    logger.info(f"Image: {image}")
-    result = hashlib.sha256(image.encode()).hexdigest()[:20]
+    image_repository, tag = image.split(":")
+    tag_variants = tag.split("-")
+    # Remove build id from the tag name to make hash consistent
+    image_name_without_id = f"{image_repository}:{'-'.join(tag_variants[1:])}"
+    logger.info(f"Image: {image_name_without_id}")
+    result = hashlib.sha256(image_name_without_id.encode()).hexdigest()[:20]
     logger.info(f"Result: {result}")
     return result
 
@@ -62,9 +64,11 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
                 f"bazelisk run //release:custom_byod_build -- --image-name {image} --base-image {base_image} --post-build-script {post_build_script}",
             ],
         }
-        if "ray-ml" in image:
+        image_repository, _ = image.split(":")
+        image_name = image_repository.split("/")[-1]
+        if image_name == "ray-ml":
             step["depends_on"] = config["release_image_step_ray_ml"]
-        elif "ray-llm" in image:
+        elif image_name == "ray-llm":
             step["depends_on"] = config["release_image_step_ray_llm"]
         else:
             step["depends_on"] = config["release_image_step_ray"]

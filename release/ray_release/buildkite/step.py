@@ -199,9 +199,11 @@ def get_step(
             test.get_anyscale_byod_image(build_id="")
         )
     else:
-        if "ray-ml" in image:
+        image_repository, _ = image.split(":")
+        image_name = image_repository.split("/")[-1]
+        if image_name == "ray-ml":
             step["depends_on"] = config["release_image_step_ray_ml"]
-        elif "ray-llm" in image:
+        elif image_name == "ray-llm":
             step["depends_on"] = config["release_image_step_ray_llm"]
         else:
             step["depends_on"] = config["release_image_step_ray"]
