@@ -5,7 +5,10 @@ import pytest
 from unittest import mock
 import yaml
 
-from ray_release.custom_byod_build_init_helper import create_custom_build_yaml
+from ray_release.custom_byod_build_init_helper import (
+    create_custom_build_yaml,
+    get_prerequisite_step,
+)
 from ray_release.configs.global_config import init_global_config
 from ray_release.bazel import bazel_runfile
 from ray_release.test import Test
@@ -71,6 +74,22 @@ def test_create_custom_build_yaml(mock_get_images_from_tests):
                 f"--image-name {custom_byod_images[2][0]}"
                 in content["steps"][1]["commands"][3]
             )
+
+
+def test_get_prerequisite_step():
+    config = get_global_config()
+    assert (
+        get_prerequisite_step("ray-project/ray-ml:abc123-custom")
+        == config["release_image_step_ray_ml"]
+    )
+    assert (
+        get_prerequisite_step("ray-project/ray-llm:abc123-custom")
+        == config["release_image_step_ray_llm"]
+    )
+    assert (
+        get_prerequisite_step("ray-project/ray:abc123-custom")
+        == config["release_image_step_ray"]
+    )
 
 
 if __name__ == "__main__":
