@@ -510,25 +510,25 @@ def test_metrics_export_event_aggregator_agent(
         _, metric_descriptors, _ = fetch_prometheus(prom_addresses)
         metrics_names = metric_descriptors.keys()
         event_aggregator_metrics = [
-            "ray_event_aggregator_agent_events_received_total",
-            "ray_event_aggregator_agent_http_publisher_published_events_total",
-            "ray_event_aggregator_agent_http_publisher_filtered_events_total",
-            "ray_event_aggregator_agent_http_publisher_queue_dropped_events_total",
-            "ray_event_aggregator_agent_http_publisher_consecutive_failures_since_last_success",
-            "ray_event_aggregator_agent_http_publisher_time_since_last_success_seconds",
-            "ray_event_aggregator_agent_http_publisher_publish_duration_seconds_bucket",
-            "ray_event_aggregator_agent_http_publisher_publish_duration_seconds_count",
-            "ray_event_aggregator_agent_http_publisher_publish_duration_seconds_sum",
+            "ray_aggregator_agent_events_received_total",
+            "ray_aggregator_agent_http_publisher_published_events_total",
+            "ray_aggregator_agent_http_publisher_filtered_events_total",
+            "ray_aggregator_agent_http_publisher_queue_dropped_events_total",
+            "ray_aggregator_agent_http_publisher_consecutive_failures_since_last_success",
+            "ray_aggregator_agent_http_publisher_time_since_last_success_seconds",
+            "ray_aggregator_agent_http_publisher_publish_duration_seconds_bucket",
+            "ray_aggregator_agent_http_publisher_publish_duration_seconds_count",
+            "ray_aggregator_agent_http_publisher_publish_duration_seconds_sum",
         ]
         return all(metric in metrics_names for metric in event_aggregator_metrics)
 
     def test_case_value_correct():
         _, _, metric_samples = fetch_prometheus(prom_addresses)
         expected_metrics_values = {
-            "ray_event_aggregator_agent_events_received_total": 3.0,
-            "ray_event_aggregator_agent_http_publisher_published_events_total": 1.0,
-            "ray_event_aggregator_agent_http_publisher_filtered_events_total": 1.0,
-            "ray_event_aggregator_agent_http_publisher_queue_dropped_events_total": 1.0,
+            "ray_aggregator_agent_events_received_total": 3.0,
+            "ray_aggregator_agent_http_publisher_published_events_total": 1.0,
+            "ray_aggregator_agent_http_publisher_filtered_events_total": 1.0,
+            "ray_aggregator_agent_http_publisher_queue_dropped_events_total": 1.0,
         }
         for descriptor, expected_value in expected_metrics_values.items():
             samples = [m for m in metric_samples if m.name == descriptor]

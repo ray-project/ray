@@ -52,6 +52,9 @@ from ray.core.generated.runtime_environment_pb2 import (
     RuntimeEnvUris,
 )
 from ray.dashboard.modules.aggregator.aggregator_agent import AggregatorAgent
+from ray.dashboard.modules.aggregator.publisher.configs import (
+    PUBLISHER_MAX_BUFFER_SEND_INTERVAL_SECONDS,
+)
 from ray.dashboard.tests.conftest import *  # noqa
 
 _EVENT_AGGREGATOR_AGENT_TARGET_PORT = find_free_port()
@@ -910,7 +913,10 @@ def test_aggregator_agent_http_svc_publish_disabled(
         RuntimeError, match="The condition wasn't met before the timeout expired."
     ):
         # Wait for up to 2 seconds (publish interval + 1second buffer) to ensure that the event is never published to the external HTTP service
-        wait_for_condition(lambda: len(httpserver.log) > 0, 2)
+        wait_for_condition(
+            lambda: len(httpserver.log) > 0,
+            1 + PUBLISHER_MAX_BUFFER_SEND_INTERVAL_SECONDS,
+        )
 
     assert len(httpserver.log) == 0
 

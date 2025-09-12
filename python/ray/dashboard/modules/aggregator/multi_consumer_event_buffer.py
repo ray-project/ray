@@ -12,6 +12,7 @@ from ray.core.generated import (
     events_base_event_pb2,
 )
 from ray.core.generated.events_base_event_pb2 import RayEvent
+from ray.dashboard.modules.aggregator.constants import aggregator_agent_metric_prefix
 
 
 @dataclass
@@ -171,9 +172,8 @@ class MultiConsumerEventBuffer:
         """
         async with self._lock:
             consumer_id = str(uuid.uuid4())
-            _metric_prefix = "event_aggregator_agent"
             evicted_events_metric_name = (
-                f"{_metric_prefix}_{consumer_name}_queue_dropped_events_total"
+                f"{aggregator_agent_metric_prefix}_{consumer_name}_queue_dropped_events"
             )
 
             # Register the counter metric

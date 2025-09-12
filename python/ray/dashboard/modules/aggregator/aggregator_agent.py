@@ -4,6 +4,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 
 import ray
+from ray.dashboard.modules.aggregator.constants import aggregator_agent_metric_prefix
 import ray.dashboard.utils as dashboard_utils
 from ray._private import ray_constants
 from ray._private.telemetry.open_telemetry_metric_recorder import (
@@ -86,7 +87,7 @@ class AggregatorAgent(
             "ip": self._ip,
             "pid": str(self._pid),
             "Version": ray.__version__,
-            "Component": "event_aggregator_agent",
+            "Component": "aggregator_agent",
             "SessionName": self.session_name,
         }
 
@@ -97,7 +98,7 @@ class AggregatorAgent(
         )
         self._executor = ThreadPoolExecutor(
             max_workers=THREAD_POOL_EXECUTOR_MAX_WORKERS,
-            thread_name_prefix="event_aggregator_agent_executor",
+            thread_name_prefix="aggregator_agent_executor",
         )
 
         self._lock = asyncio.Lock()
@@ -134,18 +135,19 @@ class AggregatorAgent(
             self._http_endpoint_publisher = NoopPublisher()
 
         # Metrics
-        _metric_prefix = "event_aggregator_agent"
         self._open_telemetry_metric_recorder = OpenTelemetryMetricRecorder()
 
         # Register counter metrics
-        self._events_received_metric_name = f"{_metric_prefix}_events_received_total"
+        self._events_received_metric_name = (
+            f"{aggregator_agent_metric_prefix}_events_received_total"
+        )
         self._open_telemetry_metric_recorder.register_counter_metric(
             self._events_received_metric_name,
             "Total number of events received via AddEvents gRPC.",
         )
 
         self._events_failed_to_add_metric_name = (
-            f"{_metric_prefix}_events_buffer_add_failures_total"
+            f"{aggregator_agent_metric_prefix}_events_buffer_add_failures_total"
         )
         self._open_telemetry_metric_recorder.register_counter_metric(
             self._events_failed_to_add_metric_name,
