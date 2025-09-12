@@ -566,6 +566,144 @@ def test_anti_join_multi_key(
     pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
 
 
+def test_join_on_unjoinable_keys_raises_error(ray_start_regular_shared_2_cpus):
+    """Test that joining ON unjoinable column types raises appropriate errors."""
+    # Dataset with proper list column (unjoinable)
+    list_ds = ray.data.from_pydict(
+        {"list_col": [[1, 2], [3, 4], [5, 6]], "data": [10, 20, 30]}
+    )
+
+    # Simple joinable dataset
+    simple_ds = ray.data.from_pydict({"id": [1, 2, 3], "value": ["a", "b", "c"]})
+
+    # Test that joining ON list column raises ValueError
+    with pytest.raises(ValueError):
+        list_ds.join(
+            simple_ds,
+            join_type="inner",
+            on=("list_col",),
+            right_on=("id",),
+            num_partitions=2,
+        )
+
+
+@pytest.mark.parametrize(
+    "join_type",
+    [
+        "inner",
+        "left_outer",
+        "right_outer",
+        "full_outer",
+        "left_semi",
+        "right_semi",
+        "left_anti",
+        "right_anti",
+    ],
+)
+def test_join_with_unjoinable_non_key_columns(
+    ray_start_regular_shared_2_cpus, join_type
+):
+    """Test that joins work correctly when non-key columns have unjoinable types."""
+    # Left dataset with joinable key but unjoinable non-key columns
+    left_ds = ray.data.from_items(
+        [
+            {"id": 0, "list_col": [1, 2, 3], "data": "a"},
+            {"id": 1, "list_col": [4, 5, 6], "data": "b"},
+            {"id": 2, "list_col": [7, 8, 9], "data": "c"},
+        ]
+    )
+
+    # Right dataset with joinable key and columns
+    # ids: 0, 1, 3 (so id=2 from left won't match, id=3 from right won't match)
+    right_ds = ray.data.from_items(
+        [
+            {"id": 0, "value": "x", "score": 10},
+            {"id": 1, "value": "y", "score": 20},
+            {"id": 3, "value": "z", "score": 30},
+        ]
+    )
+
+    # This should work - join on joinable keys, handle unjoinable non-key columns
+    joined = left_ds.join(right_ds, join_type=join_type, on=("id",), num_partitions=2)
+
+    # Verify the join worked and includes unjoinable columns
+    result = joined.take_all()
+    result_by_id = {row["id"]: row for row in result}
+
+    # Basic validation - join should succeed with unjoinable non-key columns
+    if join_type == "inner":
+        # Should have 2 rows (id=0 and id=1 match)
+        assert len(result) == 2
+        # Verify unjoinable columns are preserved
+        assert result_by_id[0]["list_col"] == [1, 2, 3]
+        assert result_by_id[1]["list_col"] == [4, 5, 6]
+
+    elif join_type == "left_outer":
+        # Should have 3 rows (all from left: id=0, 1, 2)
+        assert len(result) == 3
+        # All left unjoinable columns preserved
+        assert result_by_id[0]["list_col"] == [1, 2, 3]
+        assert result_by_id[1]["list_col"] == [4, 5, 6]
+        assert result_by_id[2]["list_col"] == [7, 8, 9]
+        # Unmatched left row (id=2) should have None for right unjoinable columns
+        assert result_by_id[2]["value"] is None
+
+    elif join_type == "right_outer":
+        # Should have 3 rows (all from right: id=0, 1, 3)
+        assert len(result) == 3
+        # Matched rows should have unjoinable columns from left
+        assert result_by_id[0]["list_col"] == [1, 2, 3]
+        assert result_by_id[1]["list_col"] == [4, 5, 6]
+        assert result_by_id[3]["value"] == "z"
+        # Unmatched right row (id=3) should have None for left unjoinable columns
+        assert result_by_id[3]["data"] is None
+
+    elif join_type == "left_semi":
+        # Should return left rows that have matches in right (id=0, 1)
+        assert len(result) == 2
+        expected_columns = {"id", "list_col", "data"}
+        actual_columns = set(result[0].keys())
+        assert expected_columns == actual_columns
+        assert result_by_id[0]["list_col"] == [1, 2, 3]
+        assert result_by_id[1]["list_col"] == [4, 5, 6]
+
+    elif join_type == "left_anti":
+        # Should return left rows that DON'T have matches in right (id=2)
+        assert len(result) == 1
+        expected_columns = {"id", "list_col", "data"}
+        actual_columns = set(result[0].keys())
+        assert expected_columns == actual_columns
+        assert result_by_id[2]["list_col"] == [7, 8, 9]
+        assert result_by_id[2]["data"] == "c"
+
+    elif join_type == "right_semi":
+        # Should return right rows that have matches in left (id=0, 1)
+        assert len(result) == 2
+        expected_columns = {"id", "value", "score"}
+        actual_columns = set(result[0].keys())
+        assert expected_columns == actual_columns
+        assert result_by_id[0]["value"] == "x"
+        assert result_by_id[1]["value"] == "y"
+
+    elif join_type == "right_anti":
+        # Should return right rows that DON'T have matches in left (id=3)
+        assert len(result) == 1
+        expected_columns = {"id", "value", "score"}
+        actual_columns = set(result[0].keys())
+        assert expected_columns == actual_columns
+        assert result_by_id[3]["value"] == "z"
+        assert result_by_id[3]["score"] == 30
+
+    # For outer joins, ensure unjoinable columns are present
+    if (
+        join_type in ["inner", "left_outer", "right_outer", "full_outer"]
+        and len(result) > 0
+    ):
+        expected_columns = {"id", "list_col", "data", "value", "score"}
+        actual_columns = set(result[0].keys())
+        assert expected_columns == actual_columns
+
+
 if __name__ == "__main__":
     import sys
 

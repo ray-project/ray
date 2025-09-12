@@ -1,9 +1,9 @@
 import logging
 import math
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type
 
 from ray.data import DataContext
-from ray.data._internal.arrow_block import ArrowBlockBuilder
+from ray.data._internal.arrow_block import ArrowBlockAccessor, ArrowBlockBuilder
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.hash_shuffle import (
     HashShufflingOperatorBase,
@@ -12,6 +12,9 @@ from ray.data._internal.execution.operators.hash_shuffle import (
 from ray.data._internal.logical.operators.join_operator import JoinType
 from ray.data._internal.util import GiB
 from ray.data.block import Block
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP = {
     JoinType.INNER: "inner",
@@ -115,20 +118,122 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
         )
 
         arrow_join_type = _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP[self._join_type]
-        joined = left_seq_partition.join(
-            right_seq_partition,
+
+        # Get joinable columns
+        joinable_l, unjoinable_l = self._split_joinable_columns(left_seq_partition)
+        joinable_r, unjoinable_r = self._split_joinable_columns(right_seq_partition)
+
+        # handle joins on non-joinable columns
+        conflicting_columns = set(unjoinable_l.column_names) & set(left_on)
+        if conflicting_columns:
+            raise ValueError(
+                f"Cannot join on columns with unjoinable types. "
+                f"Left join key columns {conflicting_columns} have unjoinable types "
+                f"(map, union, list, struct, etc.) which cannot be used for join operations."
+            )
+
+        conflicting_columns = set(unjoinable_r.column_names) & set(right_on)
+        if conflicting_columns:
+            raise ValueError(
+                f"Cannot join on columns with unjoinable types. "
+                f"Right join key columns {conflicting_columns} have unjoinable types "
+                f"(map, union, list, struct, etc.) which cannot be used for join operations."
+            )
+
+        # We cannot rely on row_count because it can return a non-zero row count
+        # for an empty-schema
+        # Only index if we have unjoinable columns AND the join type includes that side
+        should_index_l = (
+            joinable_l.schema
+            and unjoinable_l.schema
+            and self._join_type not in [JoinType.RIGHT_SEMI, JoinType.RIGHT_ANTI]
+        )
+        should_index_r = (
+            joinable_r.schema
+            and unjoinable_r.schema
+            and self._join_type not in [JoinType.LEFT_SEMI, JoinType.LEFT_ANTI]
+        )
+
+        # Add index columns for back-referencing if we have unjoinable columns
+        # TODO: what are the chances of a collision with the index column?
+        index_name_l = self._get_index_col_name(0)
+        if should_index_l:
+            joinable_l = self.append_index_column(
+                table=joinable_l, col_name=index_name_l
+            )
+        index_name_r = self._get_index_col_name(1)
+        if should_index_r:
+            joinable_r = self.append_index_column(
+                table=joinable_r, col_name=index_name_r
+            )
+
+        # Perform the join on joinable columns
+        joined = joinable_l.join(
+            joinable_r,
             join_type=arrow_join_type,
             keys=left_on,
             right_keys=right_on,
             left_suffix=self._left_columns_suffix,
             right_suffix=self._right_columns_suffix,
         )
+        # Add back unjoinable columns (join type logic is in should_index_* variables)
+        if should_index_l:
+            joined = self._combine_unjoinable_columns(
+                joined_table=joined,
+                unjoinable_table=unjoinable_l,
+                index_col_name=index_name_l,
+            )
+
+        if should_index_r:
+            joined = self._combine_unjoinable_columns(
+                joined_table=joined,
+                unjoinable_table=unjoinable_r,
+                index_col_name=index_name_r,
+            )
 
         return joined
 
     def clear(self, partition_id: int):
         self._left_input_seq_partition_builders.pop(partition_id)
         self._right_input_seq_partition_builders.pop(partition_id)
+
+    def append_index_column(self, table: "pa.Table", col_name: str) -> "pa.Table":
+        import numpy as np
+        import pyarrow as pa
+
+        index_col = pa.array(np.arange(table.num_rows))
+        return table.append_column(col_name, index_col)
+
+    def _combine_unjoinable_columns(
+        self,
+        joined_table: "pa.Table",
+        unjoinable_table: "pa.Table",
+        index_col_name: str,
+    ) -> "pa.Table":
+        # Extract the index column array and drop the column from the joined table
+        i = joined_table.schema.get_field_index(index_col_name)
+        indices = joined_table.column(i)
+        joined_table = joined_table.remove_column(i)
+
+        # Project the unjoinable columns using the indices and combine with joined table
+        projected = ArrowBlockAccessor(unjoinable_table).take(indices)
+        return ArrowBlockAccessor(joined_table).hstack(projected)
+
+    def _split_joinable_columns(
+        self, table: "pa.Table"
+    ) -> Tuple[List["pa.Table"], List["pa.Table"]]:
+        accessor = ArrowBlockAccessor(table)
+        joinable, unjoinable = [], []
+        for name in accessor.column_names():
+            if is_unjoinable_type(table.column(name).type):
+                unjoinable.append(name)
+            else:
+                joinable.append(name)
+
+        return (
+            accessor.select(joinable),
+            accessor.select(unjoinable),
+        )
 
     def _get_partition_builder(self, *, input_seq_id: int, partition_id: int):
         if input_seq_id == 0:
@@ -140,6 +245,27 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
                 f"Unexpected inpt sequence id of '{input_seq_id}' (expected 0 or 1)"
             )
         return partition_builder
+
+    def _get_index_col_name(self, index: int) -> str:
+        return f"__index_level_{index}__"
+
+
+def is_unjoinable_type(type: "pa.DataType") -> bool:
+    import pyarrow as pa
+
+    return (
+        pa.types.is_map(type)
+        or pa.types.is_union(type)
+        or pa.types.is_list(type)
+        or pa.types.is_binary_view(type)
+        or pa.types.is_struct(type)
+        or pa.types.is_null(type)
+        or pa.types.is_large_list(type)
+        or pa.types.is_fixed_size_list(type)
+        or pa.types.is_run_end_encoded(type)
+        or pa.types.is_string_view(type)
+        or pa.types.is_list_view(type)
+    )
 
 
 class JoinOperator(HashShufflingOperatorBase):

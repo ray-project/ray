@@ -378,6 +378,15 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def rename_columns(self, columns_rename: Dict[str, str]) -> "pyarrow.Table":
         return self._table.rename_columns(columns_rename)
 
+    def hstack(self, other_block: "pyarrow.Table") -> "pyarrow.Table":
+
+        result_table = self._table
+        for column_name in other_block.schema.names:
+            column_data = other_block.column(column_name)
+            result_table = result_table.append_column(column_name, column_data)
+
+        return result_table
+
     def _sample(self, n_samples: int, sort_key: "SortKey") -> "pyarrow.Table":
         indices = random.sample(range(self._table.num_rows), n_samples)
         table = self._table.select(sort_key.get_columns())
