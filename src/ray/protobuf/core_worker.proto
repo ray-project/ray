@@ -72,6 +72,8 @@ message ActorHandle {
 
   // The key-value labels for actor.
   map<string, string> labels = 15;
+
+  bool enable_tensor_transport = 16;
 }
 
 message PushTaskRequest {
