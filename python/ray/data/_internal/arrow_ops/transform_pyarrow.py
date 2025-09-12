@@ -182,6 +182,10 @@ def _reconcile_diverging_fields(
     # Process schemas and reconcile on-the-fly
     for schema in unique_schemas:
         for field_name in schema.names:
+            if field_name in reconciled_fields:
+                # If the field has already been reconciled, skip it.
+                continue
+
             field_type = schema.field(field_name).type
             field_types[field_name].add(field_type)
             flags = field_flags[field_name]
