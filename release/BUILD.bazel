@@ -284,6 +284,7 @@ sh_binary(
 py_binary(
     name = "run_release_test",
     srcs = ["ray_release/scripts/run_release_test.py"],
+    exec_compatible_with = ["//:hermetic_python"],
     data = glob(
         ["**/*.yaml"],
         exclude = ["ray_release/**/*.yaml"],

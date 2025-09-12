@@ -195,7 +195,9 @@ def get_step(
 
     image = test.get_anyscale_byod_image()
     if test.require_custom_byod_image():
-        step["depends_on"] = generate_custom_build_step_key(image)
+        step["depends_on"] = generate_custom_build_step_key(
+            test.get_anyscale_byod_image(build_id="")
+        )
     else:
         if "ray-ml" in image:
             step["depends_on"] = config["release_image_step_ray_ml"]

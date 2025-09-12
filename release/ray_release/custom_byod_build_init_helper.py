@@ -7,9 +7,8 @@ import hashlib
 
 
 def generate_custom_build_step_key(image: str) -> str:
-    logger.info(f"Generating custom build step key for image: {image}")
+    image = image.replace("$RAYCI_BUILD_ID", "")
     result = hashlib.sha256(image.encode()).hexdigest()[:20]
-    logger.info(f"Hash: {result}")
     return result
 
 
