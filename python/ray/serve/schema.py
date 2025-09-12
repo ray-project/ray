@@ -590,7 +590,8 @@ class ServeApplicationSchema(BaseModel):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.serialize_autoscaling_policy()
+        if self.autoscaling_policy:
+            self.serialize_autoscaling_policy()
 
     def serialize_autoscaling_policy(self) -> None:
         """Serialize policy with cloudpickle.
