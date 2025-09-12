@@ -64,16 +64,22 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
                 f"bazelisk run //release:custom_byod_build -- --image-name {image} --base-image {base_image} --post-build-script {post_build_script}",
             ],
         }
-        image_repository, _ = image.split(":")
-        image_name = image_repository.split("/")[-1]
-        if image_name == "ray-ml":
-            step["depends_on"] = config["release_image_step_ray_ml"]
-        elif image_name == "ray-llm":
-            step["depends_on"] = config["release_image_step_ray_llm"]
-        else:
-            step["depends_on"] = config["release_image_step_ray"]
+        step["depends_on"] = get_prerequisite_step(image)
         build_config["steps"].append(step)
 
     logger.info(f"Build config: {build_config}")
     with open(destination_file, "w") as f:
         yaml.dump(build_config, f, default_flow_style=False, sort_keys=False)
+
+
+def get_prerequisite_step(image: str) -> str:
+    """Get the base image build step for a job that depends on it."""
+    config = get_global_config()
+    image_repository, _ = image.split(":")
+    image_name = image_repository.split("/")[-1]
+    if image_name == "ray-ml":
+        return config["release_image_step_ray_ml"]
+    elif image_name == "ray-llm":
+        return config["release_image_step_ray_llm"]
+    else:
+        return config["release_image_step_ray"]
