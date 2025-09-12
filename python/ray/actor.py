@@ -894,6 +894,7 @@ class ActorMethod:
             "is_generator": self._is_generator,
             "generator_backpressure_num_objects": self._generator_backpressure_num_objects,  # noqa
             "enable_task_events": self._enable_task_events,
+            "_tensor_transport": self._tensor_transport,
         }
 
     def __setstate__(self, state):
@@ -907,6 +908,7 @@ class ActorMethod:
             state["generator_backpressure_num_objects"],
             state["enable_task_events"],
             state["decorator"],
+            state["_tensor_transport"],
         )
 
 
@@ -1795,6 +1797,7 @@ class ActorClass(Generic[T]):
             labels=actor_options.get("_labels"),
             label_selector=actor_options.get("label_selector"),
             allow_out_of_order_execution=allow_out_of_order_execution,
+            enable_tensor_transport=meta.enable_tensor_transport,
         )
 
         if _actor_launch_hook:
@@ -1892,6 +1895,7 @@ class ActorHandle(Generic[T]):
         _ray_actor_creation_function_descriptor: The function descriptor
             of the actor creation task.
         _ray_allow_out_of_order_execution: Whether the actor can execute tasks out of order.
+        _ray_enable_tensor_transport: Whether tensor transport is enabled for this actor.
     """
 
     def __init__(
