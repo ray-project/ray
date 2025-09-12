@@ -201,7 +201,9 @@ def plan_filter_op(
     input_physical_dag = physical_children[0]
 
     expression = op._filter_expr
+    predicate_expr = op._predicate_expr
     compute = get_compute(op._compute)
+
     if expression is not None:
 
         def filter_batch_fn(block: "pa.Table") -> "pa.Table":
@@ -216,6 +218,22 @@ def plan_filter_op(
             batch_size=None,
             batch_format="pyarrow",
             zero_copy_batch=True,
+        )
+    elif predicate_expr is not None:
+        # Ray Data expression path using BlockAccessor
+        def filter_block_fn(block: Block) -> Block:
+            try:
+                block_accessor = BlockAccessor.for_block(block)
+                if not block_accessor.num_rows():
+                    return block
+                return block_accessor.filter(predicate_expr)
+
+            except Exception as e:
+                _try_wrap_udf_exception(e)
+
+        transform_fn = _generate_transform_fn_for_map_block(filter_block_fn)
+        map_transformer = _create_map_transformer_for_block_based_map_op(
+            transform_fn,
         )
     else:
         udf_is_callable_class = isinstance(op._fn, CallableClass)

@@ -714,7 +714,10 @@ def test_filter_mutex(
     parquet_ds = ray.data.read_parquet(str(parquet_file))
 
     # Filter using lambda (UDF)
-    with pytest.raises(ValueError, match="Exactly one of 'fn' or 'expr'"):
+    with pytest.raises(
+        ValueError,
+        match="Exactly one of 'fn', 'expr', or 'predicate' must be provided.",
+    ):
         parquet_ds.filter(
             fn=lambda r: r["sepal.length"] > 5.0, expr="sepal.length > 5.0"
         )
@@ -800,6 +803,332 @@ def test_filter_with_invalid_expression(
     fake_column_ds = parquet_ds.filter(expr="sepal_length_123 > 1")
     with pytest.raises(UserCodeException):
         fake_column_ds.to_pandas()
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="predicate expressions require PyArrow >= 20.0.0",
+)
+@pytest.mark.parametrize(
+    "predicate_expr, test_data, expected_indices, test_description",
+    [
+        # Simple comparison filters
+        pytest.param(
+            col("age") >= 21,
+            [
+                {"age": 20, "name": "Alice"},
+                {"age": 21, "name": "Bob"},
+                {"age": 25, "name": "Charlie"},
+                {"age": 30, "name": "David"},
+            ],
+            [1, 2, 3],  # Indices of rows that should remain
+            "age_greater_equal_filter",
+        ),
+        pytest.param(
+            col("score") > 50,
+            [
+                {"score": 30, "status": "fail"},
+                {"score": 50, "status": "borderline"},
+                {"score": 70, "status": "pass"},
+                {"score": 90, "status": "excellent"},
+            ],
+            [2, 3],
+            "score_greater_than_filter",
+        ),
+        pytest.param(
+            col("category") == "premium",
+            [
+                {"category": "basic", "price": 10},
+                {"category": "premium", "price": 50},
+                {"category": "standard", "price": 25},
+                {"category": "premium", "price": 75},
+            ],
+            [1, 3],
+            "equality_string_filter",
+        ),
+        # Complex logical filters
+        pytest.param(
+            (col("age") >= 18) & (col("active")),
+            [
+                {"age": 17, "active": True},
+                {"age": 18, "active": False},
+                {"age": 25, "active": True},
+                {"age": 30, "active": True},
+            ],
+            [2, 3],
+            "logical_and_filter",
+        ),
+        pytest.param(
+            (col("status") == "approved") | (col("priority") == "high"),
+            [
+                {"status": "pending", "priority": "low"},
+                {"status": "approved", "priority": "low"},
+                {"status": "pending", "priority": "high"},
+                {"status": "rejected", "priority": "high"},
+            ],
+            [1, 2, 3],
+            "logical_or_filter",
+        ),
+        # Null handling filters
+        pytest.param(
+            col("value").is_not_null(),
+            [
+                {"value": None, "id": 1},
+                {"value": 0, "id": 2},
+                {"value": None, "id": 3},
+                {"value": 42, "id": 4},
+            ],
+            [1, 3],
+            "not_null_filter",
+        ),
+        pytest.param(
+            col("name").is_null(),
+            [
+                {"name": "Alice", "id": 1},
+                {"name": None, "id": 2},
+                {"name": "Bob", "id": 3},
+                {"name": None, "id": 4},
+            ],
+            [1, 3],
+            "is_null_filter",
+        ),
+        # Complex multi-condition filters
+        pytest.param(
+            col("value").is_not_null() & (col("value") > 0),
+            [
+                {"value": None, "type": "missing"},
+                {"value": -5, "type": "negative"},
+                {"value": 0, "type": "zero"},
+                {"value": 10, "type": "positive"},
+            ],
+            [3],
+            "null_aware_positive_filter",
+        ),
+        # String operations
+        pytest.param(
+            col("name").is_not_null() & (col("name") != "excluded"),
+            [
+                {"name": "included", "id": 1},
+                {"name": "excluded", "id": 2},
+                {"name": None, "id": 3},
+                {"name": "allowed", "id": 4},
+            ],
+            [0, 3],
+            "string_exclusion_filter",
+        ),
+        # Membership operations
+        pytest.param(
+            col("category").isin(["A", "B"]),
+            [
+                {"category": "A", "value": 1},
+                {"category": "B", "value": 2},
+                {"category": "C", "value": 3},
+                {"category": "D", "value": 4},
+                {"category": "A", "value": 5},
+            ],
+            [0, 1, 4],
+            "membership_filter",
+        ),
+        # Negation operations
+        pytest.param(
+            ~(col("category") == "reject"),
+            [
+                {"category": "accept", "id": 1},
+                {"category": "reject", "id": 2},
+                {"category": "pending", "id": 3},
+                {"category": "reject", "id": 4},
+            ],
+            [0, 2],
+            "negation_filter",
+        ),
+        # Nested complex expressions
+        pytest.param(
+            (col("score") >= 50) & (col("grade") != "F") & col("active"),
+            [
+                {"score": 45, "grade": "F", "active": True},
+                {"score": 55, "grade": "D", "active": True},
+                {"score": 75, "grade": "B", "active": False},
+                {"score": 85, "grade": "A", "active": True},
+            ],
+            [1, 3],
+            "complex_nested_filter",
+        ),
+    ],
+)
+def test_filter_with_predicate_expressions(
+    ray_start_regular_shared,
+    predicate_expr,
+    test_data,
+    expected_indices,
+    test_description,
+    target_max_block_size_infinite_or_default,
+):
+    """Test filter() with Ray Data predicate expressions."""
+    # Create dataset from test data
+    ds = ray.data.from_items(test_data)
+
+    # Apply filter with predicate expression
+    filtered_ds = ds.filter(predicate=predicate_expr)
+
+    # Convert to list and verify results
+    result_data = filtered_ds.to_pandas().to_dict("records")
+    expected_data = [test_data[i] for i in expected_indices]
+
+    # Use pandas testing for consistent comparison
+    result_df = pd.DataFrame(result_data)
+    expected_df = pd.DataFrame(expected_data)
+
+    pd.testing.assert_frame_equal(
+        result_df.reset_index(drop=True),
+        expected_df.reset_index(drop=True),
+        check_dtype=False,
+    )
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="predicate expressions require PyArrow >= 20.0.0",
+)
+def test_filter_predicate_expr_vs_function_consistency(
+    ray_start_regular_shared, target_max_block_size_infinite_or_default
+):
+    """Test that predicate expressions produce the same results as equivalent functions."""
+    test_data = [
+        {"age": 20, "score": 85, "active": True},
+        {"age": 25, "score": 45, "active": False},
+        {"age": 30, "score": 95, "active": True},
+        {"age": 18, "score": 60, "active": True},
+    ]
+
+    ds = ray.data.from_items(test_data)
+
+    # Test simple comparison
+    predicate_result = ds.filter(predicate=col("age") >= 21).to_pandas()
+    function_result = ds.filter(fn=lambda row: row["age"] >= 21).to_pandas()
+    pd.testing.assert_frame_equal(predicate_result, function_result, check_dtype=False)
+
+    # Test complex logical expression
+    complex_predicate = (col("age") >= 21) & (col("score") > 80) & col("active")
+    predicate_result = ds.filter(predicate=complex_predicate).to_pandas()
+    function_result = ds.filter(
+        fn=lambda row: row["age"] >= 21 and row["score"] > 80 and row["active"]
+    ).to_pandas()
+    pd.testing.assert_frame_equal(predicate_result, function_result, check_dtype=False)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="predicate expressions require PyArrow >= 20.0.0",
+)
+@pytest.mark.parametrize(
+    "filter_args, expected_error_match",
+    [
+        # Test that exactly one parameter must be provided
+        pytest.param(
+            {},
+            "Exactly one of 'fn', 'expr', or 'predicate' must be provided",
+            id="no_parameters",
+        ),
+        pytest.param(
+            {"fn": lambda x: True, "predicate": col("x") > 0},
+            "Exactly one of 'fn', 'expr', or 'predicate' must be provided",
+            id="fn_and_predicate",
+        ),
+        pytest.param(
+            {"expr": "x > 0", "predicate": col("x") > 0},
+            "Exactly one of 'fn', 'expr', or 'predicate' must be provided",
+            id="expr_and_predicate",
+        ),
+        pytest.param(
+            {"fn": lambda x: True, "expr": "x > 0", "predicate": col("x") > 0},
+            "Exactly one of 'fn', 'expr', or 'predicate' must be provided",
+            id="all_three_parameters",
+        ),
+        pytest.param(
+            {"fn": lambda x: True, "expr": "x > 0"},
+            "Exactly one of 'fn', 'expr', or 'predicate' must be provided",
+            id="fn_and_expr",
+        ),
+        # Test that predicate is incompatible with function-specific parameters
+        pytest.param(
+            {"predicate": col("x") > 0, "fn_args": [1, 2]},
+            "when 'predicate' is used, 'fn_args/fn_kwargs' or 'fn_constructor_args/fn_constructor_kwargs' cannot be used",
+            id="predicate_with_fn_args",
+        ),
+        pytest.param(
+            {"predicate": col("x") > 0, "fn_kwargs": {"key": "value"}},
+            "when 'predicate' is used, 'fn_args/fn_kwargs' or 'fn_constructor_args/fn_constructor_kwargs' cannot be used",
+            id="predicate_with_fn_kwargs",
+        ),
+        pytest.param(
+            {"predicate": col("x") > 0, "fn_constructor_args": [1, 2]},
+            "when 'predicate' is used, 'fn_args/fn_kwargs' or 'fn_constructor_args/fn_constructor_kwargs' cannot be used",
+            id="predicate_with_fn_constructor_args",
+        ),
+        pytest.param(
+            {"predicate": col("x") > 0, "fn_constructor_kwargs": {"key": "value"}},
+            "when 'predicate' is used, 'fn_args/fn_kwargs' or 'fn_constructor_args/fn_constructor_kwargs' cannot be used",
+            id="predicate_with_fn_constructor_kwargs",
+        ),
+    ],
+)
+def test_filter_predicate_parameter_validation(
+    ray_start_regular_shared,
+    target_max_block_size_infinite_or_default,
+    filter_args,
+    expected_error_match,
+):
+    """Test that filter() properly validates predicate parameter usage."""
+    ds = ray.data.from_items([{"x": 1}, {"x": 2}])
+
+    with pytest.raises(ValueError, match=expected_error_match):
+        ds.filter(**filter_args)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="predicate expressions require PyArrow >= 20.0.0",
+)
+def test_filter_predicate_with_different_block_formats(
+    ray_start_regular_shared, target_max_block_size_infinite_or_default
+):
+    """Test that predicate expressions work with different block formats (pandas/arrow)."""
+    test_data = [
+        {"category": "A", "value": 10},
+        {"category": "B", "value": 20},
+        {"category": "A", "value": 30},
+        {"category": "C", "value": 40},
+    ]
+
+    # Test with different data sources that produce different block formats
+
+    # From items (typically arrow)
+    ds_items = ray.data.from_items(test_data)
+    result_items = ds_items.filter(predicate=col("category") == "A").to_pandas()
+
+    # From pandas (pandas blocks)
+    df = pd.DataFrame(test_data)
+    ds_pandas = ray.data.from_pandas([df])
+    result_pandas = ds_pandas.filter(predicate=col("category") == "A").to_pandas()
+
+    # Results should be identical (reset indices for comparison)
+    expected_df = pd.DataFrame(
+        [
+            {"category": "A", "value": 10},
+            {"category": "A", "value": 30},
+        ]
+    )
+
+    pd.testing.assert_frame_equal(
+        result_items.reset_index(drop=True),
+        expected_df.reset_index(drop=True),
+        check_dtype=False,
+    )
+    pd.testing.assert_frame_equal(
+        result_pandas.reset_index(drop=True),
+        expected_df.reset_index(drop=True),
+        check_dtype=False,
+    )
 
 
 def test_drop_columns(
@@ -2709,6 +3038,472 @@ def test_with_column_udf_invalid_return_type_validation(
         assert f"returned invalid type {expected_type_name}" in error_message
         assert "Expected type" in error_message
         assert "pandas.Series" in error_message and "numpy.ndarray" in error_message
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+@pytest.mark.parametrize(
+    "expression, expected_column_data, test_description",
+    [
+        # Floor division operations
+        pytest.param(
+            col("id") // 2,
+            [0, 0, 1, 1, 2],  # [0//2, 1//2, 2//2, 3//2, 4//2]
+            "floor_division_by_literal",
+        ),
+        pytest.param(
+            lit(10) // (col("id") + 2),
+            [5, 3, 2, 2, 1],  # [10//(0+2), 10//(1+2), 10//(2+2), 10//(3+2), 10//(4+2)]
+            "literal_floor_division_by_expression",
+        ),
+        # Not equal operations
+        pytest.param(
+            col("id") != 2,
+            [True, True, False, True, True],  # [0!=2, 1!=2, 2!=2, 3!=2, 4!=2]
+            "not_equal_operation",
+        ),
+        # Null checking operations
+        pytest.param(
+            col("id").is_null(),
+            [False, False, False, False, False],  # None of the values are null
+            "is_null_operation",
+        ),
+        pytest.param(
+            col("id").is_not_null(),
+            [True, True, True, True, True],  # All values are not null
+            "is_not_null_operation",
+        ),
+        # Logical NOT operations
+        pytest.param(
+            ~(col("id") == 2),
+            [True, True, False, True, True],  # ~[0==2, 1==2, 2==2, 3==2, 4==2]
+            "logical_not_operation",
+        ),
+    ],
+)
+def test_with_column_floor_division_and_logical_operations(
+    ray_start_regular_shared,
+    expression,
+    expected_column_data,
+    test_description,
+):
+    """Test floor division, not equal, null checks, and logical NOT operations with with_column."""
+    ds = ray.data.range(5)
+    result_ds = ds.with_column("result", expression)
+
+    # Convert to pandas and assert on the whole dataframe
+    result_df = result_ds.to_pandas()
+    expected_df = pd.DataFrame({"id": [0, 1, 2, 3, 4], "result": expected_column_data})
+
+    pd.testing.assert_frame_equal(result_df, expected_df, check_dtype=False)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+@pytest.mark.parametrize(
+    "test_data, expression, expected_results, test_description",
+    [
+        # Test with null values
+        pytest.param(
+            [{"value": 1}, {"value": None}, {"value": 3}],
+            col("value").is_null(),
+            [False, True, False],
+            "is_null_with_actual_nulls",
+        ),
+        pytest.param(
+            [{"value": 1}, {"value": None}, {"value": 3}],
+            col("value").is_not_null(),
+            [True, False, True],
+            "is_not_null_with_actual_nulls",
+        ),
+        # Test isin operations
+        pytest.param(
+            [{"value": 1}, {"value": 2}, {"value": 3}],
+            col("value").isin([1, 3]),
+            [True, False, True],
+            "isin_operation",
+        ),
+        pytest.param(
+            [{"value": 1}, {"value": 2}, {"value": 3}],
+            col("value").not_in([1, 3]),
+            [False, True, False],
+            "not_in_operation",
+        ),
+        # Test string operations
+        pytest.param(
+            [{"name": "Alice"}, {"name": "Bob"}, {"name": "Charlie"}],
+            col("name") == "Bob",
+            [False, True, False],
+            "string_equality",
+        ),
+        pytest.param(
+            [{"name": "Alice"}, {"name": "Bob"}, {"name": "Charlie"}],
+            col("name") != "Bob",
+            [True, False, True],
+            "string_not_equal",
+        ),
+        # Filter with string operations - accept engine's null propagation
+        pytest.param(
+            [
+                {"name": "included"},
+                {"name": "excluded"},
+                {"name": None},
+            ],
+            col("name").is_not_null() & (col("name") != "excluded"),
+            [True, False, False],
+            "string_filter",
+        ),
+    ],
+)
+def test_with_column_null_checks_and_membership_operations(
+    ray_start_regular_shared,
+    test_data,
+    expression,
+    expected_results,
+    test_description,
+    target_max_block_size_infinite_or_default,
+):
+    """Test null checking, isin/not_in membership operations, and string comparisons with with_column."""
+    ds = ray.data.from_items(test_data)
+    result_ds = ds.with_column("result", expression)
+
+    # Convert to pandas and assert on the whole dataframe
+    result_df = result_ds.to_pandas()
+
+    # Create expected dataframe from test data
+    expected_data = {}
+    for key in test_data[0].keys():
+        expected_data[key] = [row[key] for row in test_data]
+    expected_data["result"] = expected_results
+
+    expected_df = pd.DataFrame(expected_data)
+
+    pd.testing.assert_frame_equal(result_df, expected_df, check_dtype=False)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+@pytest.mark.parametrize(
+    "expression_factory, expected_results, test_description",
+    [
+        # Complex boolean expressions
+        pytest.param(
+            lambda: (col("age") > 18) & (col("country") == "USA"),
+            [
+                True,
+                False,
+                False,
+            ],  # [(25>18)&("USA"=="USA"), (17>18)&("Canada"=="USA"), (30>18)&("UK"=="USA")]
+            "complex_and_expression",
+        ),
+        pytest.param(
+            lambda: (col("age") < 18) | (col("country") == "USA"),
+            [
+                True,
+                True,
+                False,
+            ],  # [(25<18)|("USA"=="USA"), (17<18)|("Canada"=="USA"), (30<18)|("UK"=="USA")]
+            "complex_or_expression",
+        ),
+        pytest.param(
+            lambda: ~((col("age") < 25) & (col("country") != "USA")),
+            [
+                True,
+                False,
+                True,
+            ],  # ~[(25<25)&("USA"!="USA"), (17<25)&("Canada"!="USA"), (30<25)&("UK"!="USA")]
+            "complex_not_expression",
+        ),
+        # Age group calculation (common use case)
+        pytest.param(
+            lambda: col("age") // 10 * 10,
+            [20, 10, 30],  # [25//10*10, 17//10*10, 30//10*10]
+            "age_group_calculation",
+        ),
+        # Eligibility flags
+        pytest.param(
+            lambda: (col("age") >= 21)
+            & (col("score") >= 10)
+            & col("active").is_not_null()
+            & (col("active") == lit(True)),
+            [
+                True,
+                False,
+                False,
+            ],
+            "eligibility_flag",
+        ),
+    ],
+)
+def test_with_column_complex_boolean_expressions(
+    ray_start_regular_shared,
+    expression_factory,
+    expected_results,
+    test_description,
+    target_max_block_size_infinite_or_default,
+):
+    """Test complex boolean expressions with AND, OR, NOT operations commonly used for filtering and flagging."""
+    test_data = [
+        {"age": 25, "country": "USA", "active": True, "score": 20},
+        {"age": 17, "country": "Canada", "active": False, "score": 10},
+        {"age": 30, "country": "UK", "active": None, "score": 20},
+    ]
+
+    ds = ray.data.from_items(test_data)
+    expression = expression_factory()
+    result_ds = ds.with_column("result", expression)
+
+    # Convert to pandas and assert on the whole dataframe
+    result_df = result_ds.to_pandas()
+    expected_df = pd.DataFrame(
+        {
+            "age": [25, 17, 30],
+            "country": ["USA", "Canada", "UK"],
+            "active": [True, False, None],
+            "score": [20, 10, 20],
+            "result": expected_results,
+        }
+    )
+
+    pd.testing.assert_frame_equal(result_df, expected_df, check_dtype=False)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+def test_with_column_chained_expression_operations(
+    ray_start_regular_shared, target_max_block_size_infinite_or_default
+):
+    """Test chaining multiple expression operations together in a data transformation pipeline."""
+    test_data = [
+        {"age": 25, "salary": 50000, "active": True, "score": 20},
+        {"age": 17, "salary": 0, "active": False, "score": 10},
+        {"age": 35, "salary": 75000, "active": None, "score": 20},
+    ]
+
+    ds = ray.data.from_items(test_data)
+
+    # Chain multiple operations
+    result_ds = (
+        ds.with_column("is_adult", col("age") >= 18)
+        .with_column("age_group", (col("age") // 10) * 10)
+        .with_column("has_salary", col("salary") != 0)
+        .with_column(
+            "is_active_adult", (col("age") >= 18) & col("active").is_not_null()
+        )
+        .with_column("salary_tier", (col("salary") // 25000) * 25000)
+        .with_column("score_tier", (col("score") // 20) * 20)
+    )
+
+    # Convert to pandas and assert on the whole dataframe
+    result_df = result_ds.to_pandas()
+    expected_df = pd.DataFrame(
+        {
+            "age": [25, 17, 35],
+            "salary": [50000, 0, 75000],
+            "active": [True, False, None],
+            "score": [20, 10, 20],  # Add the missing score column
+            "is_adult": [True, False, True],
+            "age_group": [20, 10, 30],  # age // 10 * 10
+            "has_salary": [True, False, True],  # salary != 0
+            "is_active_adult": [
+                True,
+                False,
+                False,
+            ],  # (age >= 18) & (active is not null)
+            "salary_tier": [50000, 0, 75000],  # salary // 25000 * 25000
+            "score_tier": [20, 0, 20],  # score // 20 * 20
+        }
+    )
+
+    pd.testing.assert_frame_equal(result_df, expected_df, check_dtype=False)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+@pytest.mark.parametrize(
+    "filter_expr, test_data, expected_flags, test_description",
+    [
+        # Simple filter expressions
+        pytest.param(
+            col("age") >= 21,
+            [
+                {"age": 20, "name": "Alice"},
+                {"age": 21, "name": "Bob"},
+                {"age": 25, "name": "Charlie"},
+            ],
+            [False, True, True],
+            "age_filter",
+        ),
+        pytest.param(
+            col("score") > 50,
+            [
+                {"score": 30, "status": "fail"},
+                {"score": 50, "status": "pass"},
+                {"score": 70, "status": "pass"},
+            ],
+            [False, False, True],
+            "score_filter",
+        ),
+        # Complex filter with multiple conditions
+        pytest.param(
+            (col("age") >= 18) & col("active"),
+            [
+                {"age": 17, "active": True},
+                {"age": 18, "active": False},
+                {"age": 25, "active": True},
+            ],
+            [False, False, True],
+            "complex_and_filter",
+        ),
+        pytest.param(
+            (col("status") == "approved") | (col("priority") == "high"),
+            [
+                {"status": "pending", "priority": "low"},
+                {"status": "approved", "priority": "low"},
+                {"status": "pending", "priority": "high"},
+            ],
+            [False, True, True],
+            "complex_or_filter",
+        ),
+        # Filter with null handling
+        pytest.param(
+            col("value").is_not_null() & (col("value") > 0),
+            [
+                {"value": None},
+                {"value": -5},
+                {"value": 10},
+            ],
+            [
+                False,
+                False,
+                True,
+            ],
+            "null_aware_filter",
+        ),
+        # Filter with string operations - reorder to check null first
+        pytest.param(
+            col("name").is_not_null() & (col("name") != "excluded"),
+            [
+                {"name": "included"},
+                {"name": "excluded"},
+                {"name": None},
+            ],
+            [True, False, False],
+            "string_filter",
+        ),
+        # Filter with membership operations
+        pytest.param(
+            col("category").isin(["A", "B"]),
+            [
+                {"category": "A"},
+                {"category": "B"},
+                {"category": "C"},
+                {"category": "D"},
+            ],
+            [True, True, False, False],
+            "membership_filter",
+        ),
+        # Nested filter expressions
+        pytest.param(
+            (col("score") >= 50) & (col("grade") != "F"),
+            [
+                {"score": 45, "grade": "F"},
+                {"score": 55, "grade": "D"},
+                {"score": 75, "grade": "B"},
+                {"score": 30, "grade": "F"},
+            ],
+            [False, True, True, False],
+            "nested_filters",
+        ),
+    ],
+)
+def test_with_column_filter_expressions(
+    ray_start_regular_shared,
+    filter_expr,
+    test_data,
+    expected_flags,
+    test_description,
+):
+    """Test filter() expression functionality with with_column for creating boolean flag columns."""
+    ds = ray.data.from_items(test_data)
+    result_ds = ds.with_column("is_filtered", filter_expr)
+
+    # Convert to pandas and verify the filter results
+    result_df = result_ds.to_pandas()
+
+    # Build expected dataframe
+    expected_df = pd.DataFrame(test_data)
+    expected_df["is_filtered"] = expected_flags
+
+    pd.testing.assert_frame_equal(result_df, expected_df, check_dtype=False)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+def test_with_column_filter_in_pipeline(ray_start_regular_shared):
+    """Test filter() expressions used in a data processing pipeline with multiple transformations."""
+    # Create test data for a sales analysis pipeline
+    test_data = [
+        {"product": "A", "quantity": 10, "price": 100, "region": "North"},
+        {"product": "B", "quantity": 5, "price": 200, "region": "South"},
+        {"product": "C", "quantity": 20, "price": 50, "region": "North"},
+        {"product": "D", "quantity": 15, "price": 75, "region": "East"},
+        {"product": "E", "quantity": 3, "price": 300, "region": "West"},
+    ]
+
+    ds = ray.data.from_items(test_data)
+
+    # Build a pipeline with multiple filter expressions
+    result_ds = (
+        ds
+        # Calculate total revenue
+        .with_column("revenue", col("quantity") * col("price"))
+        # Flag high-value transactions
+        .with_column("is_high_value", col("revenue") >= 1000)
+        # Flag bulk orders
+        .with_column("is_bulk_order", col("quantity") >= 10)
+        # Flag premium products
+        .with_column("is_premium", col("price") >= 100)
+        # Create composite filter for special handling
+        .with_column(
+            "needs_special_handling",
+            (col("is_high_value")) | (col("is_bulk_order") & col("is_premium")),
+        )
+        # Regional filter
+        .with_column("is_north_region", col("region") == "North")
+    )
+
+    # Convert to pandas and verify
+    result_df = result_ds.to_pandas()
+
+    expected_df = pd.DataFrame(
+        {
+            "product": ["A", "B", "C", "D", "E"],
+            "quantity": [10, 5, 20, 15, 3],
+            "price": [100, 200, 50, 75, 300],
+            "region": ["North", "South", "North", "East", "West"],
+            "revenue": [1000, 1000, 1000, 1125, 900],
+            "is_high_value": [True, True, True, True, False],
+            "is_bulk_order": [True, False, True, True, False],
+            "is_premium": [True, True, False, False, True],
+            "needs_special_handling": [True, True, True, True, False],
+            "is_north_region": [True, False, True, False, False],
+        }
+    )
+
+    pd.testing.assert_frame_equal(result_df, expected_df, check_dtype=False)
 
 
 if __name__ == "__main__":
