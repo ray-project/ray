@@ -4,10 +4,12 @@ from ray_release.configs.global_config import get_global_config
 from ray_release.logger import logger
 from ray_release.test import Test
 import hashlib
+import os
 
 
 def generate_custom_build_step_key(image: str) -> str:
     image = image.replace("$$RAYCI_BUILD_ID", "")
+    image = image.replace(os.environ.get("RAYCI_BUILD_ID", ""), "")
     logger.info(f"Image: {image}")
     result = hashlib.sha256(image.encode()).hexdigest()[:20]
     logger.info(f"Result: {result}")
