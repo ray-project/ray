@@ -116,3 +116,12 @@ ray_cc_library(
         "@com_google_absl//absl/time",
     ],
 )
+
+ray_cc_library(
+    name = "fake_ray_event_recorder",
+    hdrs = ["fake_ray_event_recorder.h"],
+    deps = [
+        ":ray_event_interface",
+        ":ray_event_recorder_interface",
+    ],
+)
