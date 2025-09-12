@@ -14,6 +14,8 @@
 
 #include "ray/common/cgroup2/cgroup_manager.h"
 
+#include <unistd.h>
+
 #include <algorithm>
 #include <filesystem>
 #include <memory>
@@ -138,6 +140,7 @@ StatusOr<std::unique_ptr<CgroupManager>> CgroupManager::Create(
 
 void CgroupManager::RegisterDeleteCgroup(const std::string &cgroup_path) {
   cleanup_operations_.emplace_back([this, cgroup = cgroup_path]() {
+    RAY_LOG(INFO) << absl::StrFormat("[Cleanup]: DeleteCgroup cgroup=%s", cgroup);
     Status s = this->cgroup_driver_->DeleteCgroup(cgroup);
     if (!s.ok()) {
       RAY_LOG(WARNING) << absl::StrFormat(
@@ -149,6 +152,8 @@ void CgroupManager::RegisterDeleteCgroup(const std::string &cgroup_path) {
 void CgroupManager::RegisterMoveAllProcesses(const std::string &from,
                                              const std::string &to) {
   cleanup_operations_.emplace_back([this, from_cgroup = from, to_cgroup = to]() {
+    RAY_LOG(INFO) << absl::StrFormat(
+        "[Cleanup]: MoveAllProcesses from=%s, to=%s", from_cgroup, to_cgroup);
     Status s = this->cgroup_driver_->MoveAllProcesses(from_cgroup, to_cgroup);
     if (!s.ok()) {
       RAY_LOG(WARNING) << absl::StrFormat(
@@ -165,6 +170,10 @@ void CgroupManager::RegisterRemoveConstraint(const std::string &cgroup,
                                              const Constraint<T> &constraint) {
   cleanup_operations_.emplace_back(
       [this, constrained_cgroup = cgroup, constraint_to_remove = constraint]() {
+        RAY_LOG(INFO) << absl::StrFormat(
+            "[Cleanup]: RemoveConstraint cgroup=%s, constraint=%s",
+            constrained_cgroup,
+            constraint_to_remove.name_);
         std::string default_value = std::to_string(constraint_to_remove.default_value_);
         Status s = this->cgroup_driver_->AddConstraint(constrained_cgroup,
                                                        constraint_to_remove.controller_,
@@ -186,6 +195,10 @@ void CgroupManager::RegisterDisableController(const std::string &cgroup_path,
                                               const std::string &controller) {
   cleanup_operations_.emplace_back(
       [this, cgroup = cgroup_path, controller_to_disable = controller]() {
+        RAY_LOG(INFO) << absl::StrFormat(
+            "[Cleanup]: DisableController cgroup=%s, controller=%s",
+            cgroup,
+            controller_to_disable);
         Status s = this->cgroup_driver_->DisableController(cgroup, controller_to_disable);
         if (!s.ok()) {
           RAY_LOG(WARNING) << absl::StrFormat(
@@ -255,6 +268,8 @@ Status CgroupManager::Initialize(int64_t system_reserved_cpu_weight,
   // that the no internal process constraint is not violated. This is relevant
   // when the base_cgroup is not a root cgroup for the system. This is likely
   // the case if Ray is running inside a container.
+
+  // TODO(irabbani): How do I make this work? I need this to destruct befor
   RAY_RETURN_NOT_OK(cgroup_driver_->MoveAllProcesses(base_cgroup_, system_leaf_cgroup_));
   RegisterMoveAllProcesses(system_leaf_cgroup_, base_cgroup_);
 
@@ -298,7 +313,7 @@ Status CgroupManager::AddProcessToSystemCgroup(const std::string &pid) {
   // TODO(#54703): Add link to OSS documentation once available.
   RAY_CHECK(!s.IsNotFound()) << "Failed to move process " << pid << " into system cgroup "
                              << system_leaf_cgroup_
-                             << "because the cgroup was not found. "
+                             << " because the cgroup was not found. "
                                 "If resource isolation is enabled, Ray's cgroup "
                                 "hierarchy must not be modified "
                                 "while Ray is running.";

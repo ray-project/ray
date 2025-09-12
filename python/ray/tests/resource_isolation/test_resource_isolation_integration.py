@@ -1,3 +1,5 @@
+import os
+import random
 import sys
 from pathlib import Path
 
@@ -5,8 +7,6 @@ import pytest
 from click.testing import CliRunner
 
 import ray
-import ray._private.ray_constants as ray_constants
-import ray._private.utils as utils
 import ray.scripts.scripts as scripts
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 
@@ -16,6 +16,7 @@ from ray._private.resource_isolation_config import ResourceIsolationConfig
 #
 # Run these commands locally before running the test suite:
 #  sudo mkdir -p /sys/fs/cgroup/resource_isolation_test
+#  echo "+cpu +memory" | sudo tee -a /sys/fs/cgroup/resource_isolation_test/cgroup.subtree_control
 #  sudo chown -R $(whoami):$(whoami) /sys/fs/cgroup/resource_isolation_test/
 #  sudo chmod -R u+rwx /sys/fs/cgroup/resource_isolation_test/
 #  echo $$ | sudo tee /sys/fs/cgroup/resource_isolation_test/cgroup.procs
@@ -24,47 +25,39 @@ from ray._private.resource_isolation_config import ResourceIsolationConfig
 _BASE_CGROUP_PATH = "/sys/fs/cgroup"
 #
 # Uncomment the following line.
-# _BASE_CGROUP_PATH = "/sys/fs/cgroup/resource_isolation_test"
+_BASE_CGROUP_PATH = "/sys/fs/cgroup/resource_isolation_test"
 
 
-def test_resource_isolation_enabled_creates_cgroup_hierarchy(ray_start_cluster):
-    cluster = ray_start_cluster
-    base_cgroup = _BASE_CGROUP_PATH
-    resource_isolation_config = ResourceIsolationConfig(
-        enable_resource_isolation=True,
-        cgroup_path=base_cgroup,
-        system_reserved_memory=1024**3,
-        system_reserved_cpu=1,
-    )
-    # Need to use a worker node because the driver cannot delete the head node.
-    cluster.add_node(num_cpus=0)
-    ray.init(address=cluster.address)
+def generate_node_id():
+    """Returns a random 56 character string.
+    TODO(#54703): This might have to be exposed properly through cython. Needs
+    to be cleaned up before closing the issue.
+    """
+    return f"{random.getrandbits(56 * 4):056x}"
 
-    worker_node = cluster.add_node(
-        num_cpus=1, resource_isolation_config=resource_isolation_config
-    )
-    worker_node_id = worker_node.node_id
-    cluster.wait_for_nodes()
 
-    # Make sure the worker node is up and running.
-    @ray.remote
-    def task():
-        return "hellodarknessmyoldfriend"
-
-    ray.get(task.remote(), timeout=5)
-
-    # TODO(#54703): This test is deliberately overspecified right now. The test shouldn't
-    # care about the cgroup hierarchy. It should just verify that application and system processes
-    # are started in a cgroup with the correct constraints. This will be updated once cgroup
-    # process management is completed.
-    node_cgroup = Path(base_cgroup) / f"ray_node_{worker_node_id}"
+# TODO(#54703): This test is deliberately overspecified right now. The test shouldn't
+# care about the cgroup hierarchy. It should just verify that application and system processes
+# are started in a cgroup with the correct constraints. This will be updated once cgroup
+# process management is completed.
+def assert_cgroup_hierarchy_exists_for_node(
+    node_id: str, resource_isolation_config: ResourceIsolationConfig
+):
+    """ """
+    base_cgroup_for_node = resource_isolation_config.cgroup_path
+    node_cgroup = Path(base_cgroup_for_node) / f"ray_node_{node_id}"
     system_cgroup = node_cgroup / "system"
+    system_leaf_cgroup = system_cgroup / "leaf"
     application_cgroup = node_cgroup / "application"
+    application_leaf_cgroup = application_cgroup / "leaf"
 
     # 1) Check that the cgroup hierarchy is created correctly for the node.
     assert node_cgroup.is_dir()
     assert system_cgroup.is_dir()
+    assert system_cgroup.is_dir()
+    assert system_leaf_cgroup.is_dir()
     assert application_cgroup.is_dir()
+    assert application_leaf_cgroup.is_dir()
 
     # 2) Verify the constraints are applied correctly.
     system_cgroup_memory_min = system_cgroup / "memory.min"
@@ -82,14 +75,24 @@ def test_resource_isolation_enabled_creates_cgroup_hierarchy(ray_start_cluster):
             10000 - resource_isolation_config.system_reserved_cpu_weight
         )
 
-    # 3) Gracefully shutting down the node cleans up everything. Don't need to check
-    # everything. If the base_cgroup is deleted, then all clean up succeeded.
-    cluster.remove_node(worker_node)
+    # 3) Check to see that all system pids are inside the system cgroup
+    system_leaf_cgroup_procs = system_leaf_cgroup / "cgroup.procs"
+    # At least the raylet process is always moved.
+    with open(system_leaf_cgroup_procs, "r") as cgroup_procs_file:
+        lines = cgroup_procs_file.readlines()
+        assert (
+            len(lines) > 0
+        ), f"Expected only system process passed into the raylet. Found {lines}"
+
+
+def assert_cgroup_hierarchy_cleaned_up_for_node(
+    node_id: str, resource_isolation_config: ResourceIsolationConfig
+):
+    base_cgroup_for_node = resource_isolation_config.cgroup_path
+    node_cgroup = Path(base_cgroup_for_node) / f"ray_node_{node_id}"
     assert not node_cgroup.is_dir()
 
 
-# The following tests will test integration of resource isolation
-# with the 'ray start' command.
 @pytest.fixture
 def cleanup_ray():
     """Shutdown all ray instances"""
@@ -109,19 +112,42 @@ def test_ray_start_invalid_resource_isolation_config(cleanup_ray):
     assert isinstance(result.exception, ValueError)
 
 
-def test_ray_start_resource_isolation_config_default_values(monkeypatch, cleanup_ray):
-    monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: 16)
-    # The DEFAULT_CGROUP_PATH override is only relevant when running locally.
-    monkeypatch.setattr(ray_constants, "DEFAULT_CGROUP_PATH", _BASE_CGROUP_PATH)
-
+def test_ray_start_resource_isolation_creates_cgroup_hierarchy_and_cleans_up(
+    monkeypatch, cleanup_ray
+):
+    object_store_memory = 1024**3
+    system_reserved_memory = 1024**3
+    system_reserved_cpu = 1
+    resource_isolation_config = ResourceIsolationConfig(
+        cgroup_path=_BASE_CGROUP_PATH,
+        enable_resource_isolation=True,
+        system_reserved_cpu=system_reserved_cpu,
+        system_reserved_memory=system_reserved_memory,
+    )
+    node_id = generate_node_id()
+    os.environ["RAY_OVERRIDE_NODE_ID_FOR_TESTING"] = node_id
     runner = CliRunner()
     result = runner.invoke(
         scripts.start,
-        ["--head", "--enable-resource-isolation"],
+        [
+            "--head",
+            "--enable-resource-isolation",
+            "--cgroup-path",
+            _BASE_CGROUP_PATH,
+            "--system-reserved-cpu",
+            system_reserved_cpu,
+            "--system-reserved-memory",
+            system_reserved_memory,
+            "--object-store-memory",
+            object_store_memory,
+        ],
     )
-    # TODO(#54703): This only checks to see that we start up, it doesn't check to see that we start
-    # up with default values. Need to test the side-effect.
+
     assert result.exit_code == 0
+    resource_isolation_config.add_object_store_memory(object_store_memory)
+    assert_cgroup_hierarchy_exists_for_node(node_id, resource_isolation_config)
+    runner.invoke(scripts.stop)
+    assert_cgroup_hierarchy_cleaned_up_for_node(node_id, resource_isolation_config)
 
 
 # The following tests will test integration of resource isolation
@@ -139,45 +165,31 @@ def test_ray_init_resource_isolation_disabled_by_default(ray_shutdown):
     assert not node.resource_isolation_config.is_enabled()
 
 
-def test_ray_init_with_resource_isolation_default_values(monkeypatch, ray_shutdown):
-    total_system_cpu = 10
-    monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: total_system_cpu)
-    # The DEFAULT_CGROUP_PATH override is only relevant when running locally.
-    monkeypatch.setattr(ray_constants, "DEFAULT_CGROUP_PATH", _BASE_CGROUP_PATH)
-    ray.init(address="local", enable_resource_isolation=True)
-    node = ray._private.worker._global_node
-    assert node is not None
-    assert node.resource_isolation_config.is_enabled()
-
-
-def test_ray_init_with_resource_isolation_override_defaults(monkeypatch, ray_shutdown):
-    cgroup_path = _BASE_CGROUP_PATH
+def test_ray_init_with_resource_isolation_override_defaults(ray_shutdown):
     system_reserved_cpu = 1
-    system_reserved_memory = 1 * 10**9
-    total_system_cpu = 10
-    total_system_memory = 10 * 10**9
-    object_store_memory = 1 * 10**9
-    monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: total_system_cpu)
-    monkeypatch.setattr(
-        utils, "get_system_memory", lambda *args, **kwargs: total_system_memory
+    system_reserved_memory = 1024**3
+    object_store_memory = 1024**3
+    resource_isolation_config = ResourceIsolationConfig(
+        enable_resource_isolation=True,
+        cgroup_path=_BASE_CGROUP_PATH,
+        system_reserved_cpu=system_reserved_cpu,
+        system_reserved_memory=system_reserved_memory,
     )
+    resource_isolation_config.add_object_store_memory(object_store_memory)
     ray.init(
         address="local",
         enable_resource_isolation=True,
-        _cgroup_path=cgroup_path,
+        _cgroup_path=_BASE_CGROUP_PATH,
         system_reserved_cpu=system_reserved_cpu,
         system_reserved_memory=system_reserved_memory,
         object_store_memory=object_store_memory,
     )
     node = ray._private.worker._global_node
-    # TODO(#54703): Need to check side-effects on cgroups.
     assert node is not None
-    assert node.resource_isolation_config.is_enabled()
-    assert node.resource_isolation_config.system_reserved_cpu_weight == 1000
-    assert (
-        node.resource_isolation_config.system_reserved_memory
-        == system_reserved_memory + object_store_memory
-    )
+    node_id = node.node_id
+    assert_cgroup_hierarchy_exists_for_node(node_id, resource_isolation_config)
+    ray.shutdown()
+    assert_cgroup_hierarchy_cleaned_up_for_node(node_id, resource_isolation_config)
 
 
 if __name__ == "__main__":

@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_split.h"
 #include "gflags/gflags.h"
 #include "nlohmann/json.hpp"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -137,8 +138,12 @@ DEFINE_int64(system_reserved_cpu_weight,
 DEFINE_int64(system_reserved_memory_bytes,
              -1,
              "The amount of memory in bytes reserved for ray system processes. It will "
-             "be applied as a memory.min constraint to the system cgroup. If "
+             "be applied as a memory.min constraint to the sytem cgroup. If "
              "enable-resource-isolation is true, then this cannot be -1");
+
+DEFINE_string(system_pids,
+              "",
+              "A comma-separated list of pids to move into the system cgroup.");
 
 absl::flat_hash_map<std::string, std::string> parse_node_labels(
     const std::string &labels_json_str) {
@@ -250,10 +255,12 @@ int main(int argc, char *argv[]) {
   const std::string cgroup_path = FLAGS_cgroup_path;
   const int64_t system_reserved_cpu_weight = FLAGS_system_reserved_cpu_weight;
   const int64_t system_reserved_memory_bytes = FLAGS_system_reserved_memory_bytes;
+  const std::string system_pids = FLAGS_system_pids;
 
   RAY_CHECK_NE(FLAGS_cluster_id, "") << "Expected cluster ID.";
   ray::ClusterID cluster_id = ray::ClusterID::FromHex(FLAGS_cluster_id);
   RAY_LOG(INFO) << "Setting cluster ID to: " << cluster_id;
+  RAY_LOG(INFO) << "system_pids = " << system_pids;
   gflags::ShutDownCommandLineFlags();
 
   std::unique_ptr<ray::CgroupManager> cgroup_manager;
@@ -268,10 +275,11 @@ int main(int argc, char *argv[]) {
            "system_reserved_cpu_weight must be set to a value between [1,10000]";
     RAY_CHECK_NE(system_reserved_memory_bytes, -1)
         << "Failed to start up raylet. If enable_resource_isolation is set to true, "
-           "system_reserved_memory_byres must be set to a value > 0";
+           "system_reserved_memory_bytes must be set to a value > 0";
 
     std::unique_ptr<ray::SysFsCgroupDriver> cgroup_driver =
         std::make_unique<ray::SysFsCgroupDriver>();
+
     ray::StatusOr<std::unique_ptr<ray::CgroupManager>> cgroup_manager_s =
         ray::CgroupManager::Create(std::move(cgroup_path),
                                    node_id,
@@ -291,6 +299,20 @@ int main(int argc, char *argv[]) {
         << "Resource isolation with cgroups is only supported in linux. Please set "
            "enable_resource_isolation to false. This is likely a misconfiguration.";
 #endif
+
+    // Move system processes into the system cgroup.
+    std::vector<std::string> system_pids_to_move = absl::StrSplit(system_pids, ",");
+    system_pids_to_move.emplace_back(std::to_string(ray::GetPID()));
+    for (const auto &pid : system_pids_to_move) {
+      RAY_LOG(INFO) << "Moving process into system cgroup: " << pid;
+      ray::Status s = cgroup_manager->AddProcessToSystemCgroup(pid);
+      // This should probably still be FATAL. If this is not okay, you passed in a system
+      // process which crashed.
+      if (!s.ok()) {
+        RAY_LOG(WARNING)
+            << "Attempted to move process into system cgroup which no longer exists.";
+      }
+    }
   }
 
   // Configuration for the node manager.

@@ -1185,6 +1185,9 @@ class Node:
             create_err=True,
         )
 
+        system_pids = self._get_system_processes_for_resource_isolation()
+        self.resource_isolation_config.add_system_pids(system_pids)
+
         process_info = ray._private.services.start_raylet(
             self.redis_address,
             self.gcs_address,
@@ -1426,6 +1429,10 @@ class Node:
             self.start_log_monitor()
 
         self.start_raylet(plasma_directory, fallback_directory, object_store_memory)
+
+    def _get_system_processes_for_resource_isolation(self) -> str:
+        """Returns a list of system processes that will be isolated by raylet."""
+        return ",".join(str(p[0].process.pid) for p in self.all_processes.values())
 
     def _kill_process_type(
         self,
