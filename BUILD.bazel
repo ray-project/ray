@@ -384,8 +384,8 @@ pkg_files(
 )
 
 pkg_files(
-    name = "gcs_files",
-    srcs = ["//src/ray/gcs"],
+    name = "gcs_server_files",
+    srcs = ["//src/ray/gcs:gcs_server"],
     attributes = pkg_attributes(mode = "755"),
     prefix = "ray/core/src/ray",
     visibility = ["//visibility:private"],
