@@ -518,45 +518,36 @@
       python dataset/gpu_batch_inference.py
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet --chaos-test
 
-- name: batch_inference_mock_image_pipeline
+
+- name: image_embedding_from_uris_{{case}}
   frequency: manual
-  working_dir: nightly_tests
+
+  matrix:
+    setup:
+      case: []
+      cluster_type: []
+      args: []
+    adjustments:
+      - with:
+          case: fixed_size
+          cluster_type: fixed_size
+          args: --inference-concurrency 100 100
+      - with:
+          case: autoscaling
+          cluster_type: autoscaling
+          args: --inference-concurrency 1 100
+      - with:
+          case: fixed_size_chaos
+          cluster_type: fixed_size
+          args: --inference-concurrency 100 100 --chaos
 
   cluster:
-    cluster_compute: dataset/autoscaling_100_cpu_compute.yaml
+    cluster_compute: image_embedding_from_uris/{{cluster_type}}_cluster_compute.yaml
 
   run:
     timeout: 3600
-    script: >
-      python dataset/batch_inference_mock_image_pipeline.py
+    script: python image_embedding_from_uris/main.py {{args}}
 
-  variations:
-    - __suffix__: regular
-    - __suffix__: chaos
-      run:
-        prepare: >
-          python setup_chaos.py --chaos TerminateEC2InstanceWithGracePeriod
-          --batch-size-to-kill 10 --max-to-kill 100 --kill-delay 120
-
-- name: batch_inference_mock_image_pipeline_fixed
-  frequency: manual
-  working_dir: nightly_tests
-
-  cluster:
-    cluster_compute: dataset/fixed_size_100_cpu_compute.yaml
-
-  run:
-    timeout: 3600
-    script: >
-      python dataset/batch_inference_mock_image_pipeline.py
-
-  variations:
-    - __suffix__: regular
-    - __suffix__: chaos
-      run:
-        prepare: >
-          python setup_chaos.py --chaos TerminateEC2InstanceWithGracePeriod
-          --batch-size-to-kill 10 --max-to-kill 100 --kill-delay 120
 
 - name: batch_inference_hetero_{{case}}
   frequency: manual
@@ -589,6 +580,37 @@
     timeout: 3600
     script: python batch_inference_hetero/main.py {{args}}
 
+- name: text_embedding_{{case}}
+  frequency: manual
+
+  matrix:
+    setup:
+      case: []
+      cluster_type: []
+      args: []
+    adjustments:
+      - with:
+          case: fixed_size
+          cluster_type: fixed_size
+          args: --inference-concurrency 100 100
+      - with:
+          case: autoscaling
+          cluster_type: autoscaling
+          args: --inference-concurrency 1 100
+      - with:
+          case: fixed_size_chaos
+          cluster_type: fixed_size
+          args: --inference-concurrency 100 100 --chaos
+
+  cluster:
+    cluster_compute: text_embedding/{{cluster_type}}_cluster_compute.yaml
+    byod:
+      type: cu123
+      post_build_script: byod_install_text_embedding.sh
+
+  run:
+    timeout: 3600
+    script: python text_embedding/main.py {{args}}
 
 ##############
 # TPCH Queries
