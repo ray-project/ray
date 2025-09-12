@@ -56,6 +56,14 @@ class NormalSchedulingQueue : public SchedulingQueue {
   /// Schedules as many requests as possible in sequence.
   void ScheduleRequests() override;
 
+  void CancelAllPending(const Status &status) override {
+    absl::MutexLock lock(&mu_);
+    for (auto it = pending_normal_tasks_.begin(); it != pending_normal_tasks_.end();) {
+      it->Cancel(status);
+      it = pending_normal_tasks_.erase(it);
+    }
+  }
+
  private:
   /// Protects access to the dequeue below.
   mutable absl::Mutex mu_;
