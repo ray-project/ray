@@ -43,7 +43,6 @@
 #define CGROUP2_SUPER_MAGIC 0x63677270
 #endif
 
-
 namespace ray {
 Status SysFsCgroupDriver::CheckCgroupv2Enabled() {
   FILE *fp = setmntent(mount_file_path_.c_str(), "r");
