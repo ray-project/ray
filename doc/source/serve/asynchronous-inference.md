@@ -17,10 +17,10 @@ Some inference workloads (such as video processing or large document indexing) t
 ## Key concepts
 
 - **Task**: A user-defined function invocation with arguments to execute asynchronously.
-- **Task Consumer Deployment**: A Serve deployment that consumes and executes tasks from a queue.
-- **Task Handler**: A method inside the consumer marked to handle a named task.
-- **Task Processor Adapter**: Pluggable adapter that interfaces with a task processor or broker (such as Celery).
-- **Task Result**: A model representing task metadata, status, and optional return value.
+- **Task consumer deployment**: A Serve deployment that consumes and executes tasks from a queue.
+- **Task handler**: A method inside the consumer marked to handle a named task.
+- **Task processor adapter**: Pluggable adapter that interfaces with a task processor or broker (such as Celery).
+- **Task result**: A model representing task metadata, status, and optional return value.
 
 ## Components and APIs
 
