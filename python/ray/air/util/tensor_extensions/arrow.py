@@ -521,9 +521,7 @@ class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
         return _to_ndarray_helper(shape, value_type, offset, data_buffer)
 
     def __str__(self) -> str:
-        return (
-            f"numpy.ndarray(shape={self.shape}, dtype={self.storage_type.value_type})"
-        )
+        return f"{self.__class__.__name__}(shape={self.shape}, dtype={self.storage_type.value_type})"
 
     def __repr__(self) -> str:
         return str(self)
@@ -1110,7 +1108,7 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
 
     def __str__(self) -> str:
         dtype = self.storage_type["data"].type.value_type
-        return f"numpy.ndarray(ndim={self.ndim}, dtype={dtype})"
+        return f"ArrowVariableShapedTensorType(ndim={self.ndim}, dtype={dtype})"
 
     def __repr__(self) -> str:
         return str(self)

@@ -310,7 +310,7 @@ def range_tensor(
         >>> import ray
         >>> ds = ray.data.range_tensor(1000, shape=(2, 2))
         >>> ds
-        Dataset(num_rows=1000, schema={data: numpy.ndarray(shape=(2, 2), dtype=int64)})
+        Dataset(num_rows=1000, schema={data: ArrowTensorTypeV2(shape=(2, 2), dtype=int64)})
         >>> ds.map_batches(lambda row: {"data": row["data"] * 2}).take(2)
         [{'data': array([[0, 0],
                [0, 0]])}, {'data': array([[2, 2],
@@ -466,7 +466,7 @@ def read_audio(
         >>> ds.schema()
         Column       Type
         ------       ----
-        amplitude    numpy.ndarray(shape=(1, 191760), dtype=float)
+        amplitude    ArrowTensorTypeV2(shape=(1, 191760), dtype=float)
         sample_rate  int64
 
     Args:
@@ -557,7 +557,7 @@ def read_videos(
         >>> ds.schema()
         Column       Type
         ------       ----
-        frame        numpy.ndarray(shape=(720, 1280, 3), dtype=uint8)
+        frame        ArrowTensorTypeV2(shape=(720, 1280, 3), dtype=uint8)
         frame_index  int64
 
     Args:
@@ -1000,7 +1000,7 @@ def read_images(
         >>> ds.schema()
         Column  Type
         ------  ----
-        image   numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
+        image   ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
 
         If you need image file paths, set ``include_paths=True``.
 
@@ -1008,7 +1008,7 @@ def read_images(
         >>> ds.schema()
         Column  Type
         ------  ----
-        image   numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
+        image   ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
         path    string
         >>> ds.take(1)[0]["path"]
         'ray-example-data/batoidea/JPEGImages/1.jpeg'
@@ -1034,7 +1034,7 @@ def read_images(
         >>> ds.schema()
         Column  Type
         ------  ----
-        image   numpy.ndarray(shape=(224, 224, 3), dtype=uint8)
+        image   ArrowTensorTypeV2(shape=(224, 224, 3), dtype=uint8)
         class   string
 
     Args:
@@ -3472,7 +3472,7 @@ def from_tf(
             num_rows=50000,
             schema={
                 id: binary,
-                image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8),
+                image: ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8),
                 label: int64
             }
         )
