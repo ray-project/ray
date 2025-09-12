@@ -108,7 +108,7 @@ if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
 
 INITIAL_BACKOFF_PERIOD_SEC = 0.05
 MAX_BACKOFF_PERIOD_SEC = 5
-
+MAX_RESPONSE_SIZE_IN_BYTES = 10 * 1024 * 1024  # 10 MB
 DRAINING_MESSAGE = "This node is being drained."
 
 
@@ -974,6 +974,10 @@ class HTTPProxy(GenericProxy):
 
                     yield asgi_message
                     response_started = True
+
+                    if len(asgi_message.get("body", "")) > MAX_RESPONSE_SIZE_IN_BYTES:
+                        asgi_message["body"] = b""
+
         except BaseException as e:
             status = get_http_response_status(e, self.request_timeout_s, request_id)
             for asgi_message in send_http_response_on_exception(
