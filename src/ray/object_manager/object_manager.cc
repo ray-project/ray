@@ -645,7 +645,7 @@ void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
     // every object to every node
     const auto &node_info_map = gcs_client_.Nodes().GetAll();
     for (const auto &[node_id, node_info] : node_info_map) {
-      if (node_id == self_node_id_) {
+      if (node_id == self_node_id_ || node_info.state() == rpc::GcsNodeInfo::DEAD) {
         continue;
       }
       if (!remote_object_manager_clients_.contains(node_id)) {
