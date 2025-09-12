@@ -2096,6 +2096,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       ray_namespace,
       actor_creation_options.max_pending_calls,
       actor_creation_options.allow_out_of_order_execution,
+      actor_creation_options.enable_tensor_transport,
       actor_creation_options.enable_task_events,
       actor_creation_options.labels);
   std::string serialized_actor_handle;
