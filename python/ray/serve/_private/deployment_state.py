@@ -2195,7 +2195,7 @@ class DeploymentState:
         """Set the target state for the deployment to the provided info."""
         self._target_state.target_num_replicas = target_num_replicas
 
-        ServeUsageTag.NUM_REPLICAS_LIGHTWEIGHT_UPDATED.record("True")
+        ServeUsageTag.NUM_REPLICAS_VIA_API_CALL_UPDATED.record("True")
 
     def _stop_or_update_outdated_version_replicas(self, max_to_stop=math.inf) -> bool:
         """Stop or update replicas with outdated versions.
