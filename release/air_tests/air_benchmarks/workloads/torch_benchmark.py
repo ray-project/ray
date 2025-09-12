@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 import json
 import os
 import time
@@ -285,8 +285,8 @@ def train_func(use_ray: bool, config: Dict):
         metrics = {
             "loss": loss,
             "local_time_taken": local_time_taken,
-            "train_epoch_metrics": train_epoch_metrics,
-            "validate_epoch_metrics": validate_epoch_metrics,
+            "train_epoch_metrics": asdict(train_epoch_metrics),
+            "validate_epoch_metrics": asdict(validate_epoch_metrics),
             "prepare_model_time": prepare_model_time,
             "prev_report_time": prev_report_time,
         }
