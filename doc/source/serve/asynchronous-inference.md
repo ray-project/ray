@@ -24,9 +24,9 @@ Some inference workloads (for example, video processing or large document indexi
 
 ## Components and APIs
 
-Below are the core classes and decorators exposed for asynchronous inference, with minimal examples to get you started.
+Below are the core APIs exposed for asynchronous inference, with minimal examples to get you started.
 
-### CeleryAdapterConfig
+### `CeleryAdapterConfig`
 Specific configuration for the Celery adapter: broker and backend URLs and worker settings.
 
 Example:
@@ -40,7 +40,7 @@ celery_config = CeleryAdapterConfig(
 )
 ```
 
-### TaskProcessorConfig
+### `TaskProcessorConfig`
 Configures the task processor, including queue name, adapter (default is Celery), adapter config, retry limits, and dead-letter queues.
 
 Example:
@@ -58,7 +58,7 @@ processor_config = TaskProcessorConfig(
 )
 ```
 
-### TaskResult
+### `TaskResult`
 Represents a task's identity, status, timestamp, and optional result.
 
 Example:
@@ -73,7 +73,7 @@ result = TaskResult(
 print(result.id, result.status)
 ```
 
-### @task_consumer
+### `@task_consumer`
 Decorator to turn a Serve deployment into a task consumer using the provided `TaskProcessorConfig`.
 
 Example:
@@ -87,7 +87,7 @@ class SimpleConsumer:
     pass
 ```
 
-### @task_handler
+### `@task_handler`
 Decorator to register a method on the consumer as a named task handler.
 
 :::{note}
@@ -104,7 +104,7 @@ class SimpleConsumer:
         return f"processed: {data}"
 ```
 
-### instantiate_adapter_from_config
+### `instantiate_adapter_from_config`
 Factory function that returns a task processor adapter instance for the given `TaskProcessorConfig`. You can use the returned object to enqueue tasks, fetch status, retrieve metrics, and more.
 
 Example:
@@ -223,13 +223,11 @@ In this example:
 
 ## Concurrency and Reliability
 
-- **Concurrency**: Configure consumer-side concurrency via the adapter config (for example, `worker_concurrency` in `CeleryAdapterConfig`).
-- **At-least-once processing**: Adapters should acknowledge tasks only after successful execution. Failed tasks are retried up to `max_retries`; if they continue to fail, they are routed to the failed-task DLQ when configured. The default Celery adapter acknowledges on success to provide at-least-once processing.
+For managing concurrency, you can configure consumer-side concurrency via the adapter config (for example, `worker_concurrency` in `CeleryAdapterConfig`). To ensure at-least-once processing, adapters should acknowledge tasks only after successful execution. Failed tasks are retried up to `max_retries`; if they continue to fail, they are routed to the failed-task DLQ when configured. The default Celery adapter acknowledges on success to provide at-least-once processing.
 
 ## Dead Letter Queues (DLQs)
 
-- **Unprocessable Tasks**: Tasks with no matching handler, deserialization issues, or argument/type mismatches are routed to `unprocessable_task_queue_name` if set.
-- **Failed Tasks**: Tasks that raise application exceptions after exhausting retries are routed to `failed_task_queue_name` if set.
+Dead Letter Queues handle two types of problematic tasks. Unprocessable tasks, which include those with no matching handler are routed to `unprocessable_task_queue_name` if set. Failed tasks that raise application exceptions after exhausting retries, mismatched arguments, etc. are routed to `failed_task_queue_name` if set.
 
 ## Rollouts and Compatibility
 
