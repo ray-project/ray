@@ -2,7 +2,7 @@
 SQL query optimizers for Ray Data SQL API.
 
 This module provides a unified interface to multiple SQL optimization frameworks
-(Apache Calcite, Substrait, SQLGlot) while ensuring all execution uses Ray Dataset
+SQLGlot while ensuring all execution uses Ray Dataset
 native operations.
 
 Key Design Principle: Optimizers enhance query planning and optimization,
@@ -157,90 +157,14 @@ class CalciteOptimizer:
         return OptimizedPlan(query, "sqlglot", {"fallback": True})
 
 
-class SubstraitOptimizer:
-    """Substrait optimizer integration preserving Ray Dataset operations."""
-
-    def __init__(self):
-        self.available = self._check_availability()
-        self._logger = logging.getLogger(__name__)
-
-    def _check_availability(self) -> bool:
-        """Check if Substrait is available."""
-        try:
-            import substrait
-
-            return True
-        except ImportError:
-            return False
-
-    def is_available(self) -> bool:
-        return self.available
-
-    def optimize(self, query: str, table_stats: Optional[Dict] = None) -> OptimizedPlan:
-        """Optimize query using Substrait while preserving Ray Dataset execution."""
-        if not self.available:
-            return self._fallback_plan(query)
-
-        try:
-            # Use Substrait for optimization
-            substrait_plan = self._generate_substrait_plan(query)
-
-            # Convert to Ray Dataset execution plan
-            optimized_plan = OptimizedPlan(
-                query, "substrait", substrait_plan["optimizations"]
-            )
-
-            # Plan Ray Dataset operations based on Substrait optimization
-            self._plan_ray_operations(substrait_plan, optimized_plan)
-
-            return optimized_plan
-
-        except Exception as e:
-            self._logger.warning(f"Substrait optimization failed: {e}")
-            return self._fallback_plan(query)
-
-    def _generate_substrait_plan(self, query: str) -> Dict:
-        """Generate optimized plan using Substrait - currently not implemented."""
-        # Substrait integration is not yet implemented
-        # Return fallback plan that uses SQLGlot
-        return {
-            "query": query,
-            "optimizations": {"fallback": True},
-            "execution_strategy": "sqlglot",
-        }
-
-    def _plan_ray_operations(self, substrait_plan: Dict, optimized_plan: OptimizedPlan):
-        """Plan Ray Dataset operations based on Substrait optimization."""
-        # Convert Substrait's optimized plan to Ray Dataset operation sequence
-        optimized_plan.add_ray_operation("FROM", "registry.get", {"table": "users"})
-        optimized_plan.add_ray_operation(
-            "FILTER",
-            "dataset.filter",
-            {
-                "optimized_predicate": True,  # Substrait-optimized
-                "streaming": True,  # Substrait-enabled streaming
-            },
-        )
-        optimized_plan.add_ray_operation(
-            "JOIN",
-            "dataset.join",
-            {
-                "optimized_order": True,  # Substrait-optimized join order
-                "streaming": True,  # Substrait-enabled streaming
-            },
-        )
-
-    def _fallback_plan(self, query: str) -> OptimizedPlan:
-        """Create fallback plan using current SQLGlot implementation."""
-        return OptimizedPlan(query, "sqlglot", {"fallback": True})
+# Substrait optimizer removed - was placeholder implementation with no actual functionality
 
 
 class UnifiedSQLOptimizer:
-    """Unified optimizer that can use Calcite, Substrait, or SQLGlot while preserving Ray operations."""
+    """Unified optimizer using SQLGlot while preserving Ray Dataset operations."""
 
     def __init__(self):
         self.calcite = CalciteOptimizer()
-        self.substrait = SubstraitOptimizer()
         self._logger = logging.getLogger(__name__)
 
     def optimize(
@@ -250,7 +174,7 @@ class UnifiedSQLOptimizer:
 
         Args:
             query: SQL query string.
-            optimizer: "auto", "substrait", or "sqlglot".
+            optimizer: "auto" or "sqlglot".
             table_stats: Optional table statistics for cost-based optimization.
 
         Returns:
@@ -258,16 +182,10 @@ class UnifiedSQLOptimizer:
         """
         # Auto-select best available optimizer
         if optimizer == "auto":
-            if self.substrait.is_available():
-                optimizer = "substrait"  # Prefer Substrait for advanced optimization
-            else:
-                optimizer = "sqlglot"  # Current implementation as fallback
+            optimizer = "sqlglot"  # Use proven SQLGlot implementation
 
-        # Generate optimized plan
-        if optimizer == "substrait" and self.substrait.is_available():
-            plan = self.substrait.optimize(query, table_stats)
-        else:
-            plan = self._sqlglot_plan(query)
+        # Generate optimized plan using SQLGlot
+        plan = self._sqlglot_plan(query)
 
         self._logger.debug(
             f"Query optimized using {plan.optimizer}: {len(plan.optimizations)} optimizations applied"
@@ -280,16 +198,12 @@ class UnifiedSQLOptimizer:
 
     def get_available_optimizers(self) -> List[str]:
         """Get list of available optimizers."""
-        optimizers = ["sqlglot"]  # Always available
-        if self.substrait.is_available():
-            optimizers.append("substrait")
-        return optimizers
+        return ["sqlglot"]  # Always available
 
     def get_optimizer_info(self) -> Dict[str, Any]:
         """Get information about available optimizers and their capabilities."""
         return {
             "available_optimizers": self.get_available_optimizers(),
-            "substrait_available": self.substrait.is_available(),
             "execution_layer": "Ray Dataset API (native operations)",
             "preserved_operations": [
                 "dataset.join()",
@@ -303,8 +217,7 @@ class UnifiedSQLOptimizer:
                 "dataset.aggregate()",
             ],
             "optimization_benefits": {
-                "substrait": "Cross-engine compatibility, vectorized execution",
-                "sqlglot": "Reliable baseline, fast parsing",
+                "sqlglot": "Reliable baseline, fast parsing, proven optimization",
             },
         }
 
@@ -312,7 +225,7 @@ class UnifiedSQLOptimizer:
 class RayDatasetExecutor:
     """Executes optimized plans using Ray Dataset native operations.
 
-    This executor takes optimized plans from any optimizer (Calcite, Substrait, SQLGlot)
+    This executor takes optimized plans from SQLGlot optimizer
     and executes them using Ray Dataset's native API, ensuring consistent behavior
     and performance characteristics.
     """
@@ -353,7 +266,7 @@ class RayDatasetExecutor:
 
         # Execute using current Ray SQL engine
         # In full implementation, this would:
-        # 1. Use optimized join orders from Calcite/Substrait
+        # 1. Use optimized join orders from SQLGlot
         # 2. Apply optimized predicate placement
         # 3. Use optimized aggregation strategies
         # 4. But still call dataset.join(), dataset.filter(), etc.
@@ -367,7 +280,7 @@ _global_executor = RayDatasetExecutor()
 
 
 def get_unified_optimizer() -> UnifiedSQLOptimizer:
-    """Get the unified SQL optimizer supporting Calcite, Substrait, and SQLGlot."""
+    """Get the unified SQL optimizer using SQLGlot."""
     return _global_optimizer
 
 
@@ -382,25 +295,25 @@ def execute_optimized_sql(
     """Execute SQL query with advanced optimization while preserving Ray Dataset operations.
 
     This function demonstrates the complete integration: advanced optimization
-    frameworks (Calcite/Substrait) enhance query planning, while Ray Dataset API
+    SQLGlot framework enhances query planning, while Ray Dataset API
     handles all actual execution.
 
     Args:
         query: SQL query string.
-        optimizer: "auto", "substrait", or "sqlglot".
+        optimizer: "auto" or "sqlglot".
         table_stats: Optional table statistics for cost-based optimization.
 
     Returns:
         Dataset containing query results (using Ray Dataset native operations).
 
     Examples:
-        >>> # Use Substrait optimization with Ray Dataset execution
-        >>> result = execute_optimized_sql("SELECT * FROM users JOIN orders ON users.id = orders.user_id", "substrait")
-        >>> # Internally uses dataset.join() with Substrait-optimized parameters
+        >>> # Use SQLGlot optimization with Ray Dataset execution
+        >>> result = execute_optimized_sql("SELECT * FROM users JOIN orders ON users.id = orders.user_id", "sqlglot")
+        >>> # Internally uses dataset.join() with SQLGlot-optimized parameters
 
-        >>> # Use Substrait optimization with Ray Dataset execution
-        >>> result = execute_optimized_sql("SELECT city, COUNT(*) FROM users GROUP BY city", "substrait")
-        >>> # Internally uses dataset.groupby().aggregate() with Substrait-optimized strategy
+        >>> # Use auto optimization with Ray Dataset execution
+        >>> result = execute_optimized_sql("SELECT city, COUNT(*) FROM users GROUP BY city", "auto")
+        >>> # Internally uses dataset.groupby().aggregate() with optimized strategy
     """
     # Step 1: Optimize query plan
     optimizer_engine = get_unified_optimizer()

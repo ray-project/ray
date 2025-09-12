@@ -63,12 +63,6 @@ try:
         get_ray_executor,
         get_unified_optimizer,
     )
-    from ray.data.sql.substrait_integration import (
-        configure_sql_optimizer,
-        is_substrait_available,
-        sql_with_optimizer,
-        sql_with_substrait,
-    )
 
     ADVANCED_OPTIMIZERS_AVAILABLE = True
 except ImportError:
@@ -119,13 +113,9 @@ __all__ = [
 if ADVANCED_OPTIMIZERS_AVAILABLE:
     __all__.extend(
         [
-            "sql_with_substrait",
-            "sql_with_optimizer",
-            "configure_sql_optimizer",
             "execute_optimized_sql",
             "get_unified_optimizer",
             "get_ray_executor",
-            "is_substrait_available",
         ]
     )
 

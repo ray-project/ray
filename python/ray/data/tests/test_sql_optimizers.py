@@ -1,7 +1,7 @@
 """
 Tests for SQL optimizer integration with Ray Data.
 
-This module tests the integration of Apache Calcite and Substrait optimizers
+This module tests the SQLGlot-based SQL optimizer integration
 while ensuring all underlying execution uses Ray Dataset native operations.
 """
 
@@ -17,11 +17,9 @@ from ray.data.sql import (
 # Test optimizer integration if available
 try:
     from ray.data.sql import (
-        configure_sql_optimizer,
         execute_optimized_sql,
         get_ray_executor,
         get_unified_optimizer,
-        sql_with_optimizer,
     )
 
     OPTIMIZERS_AVAILABLE = True
@@ -78,14 +76,11 @@ def test_sql_with_auto_optimizer(optimizer_test_data):
 )
 def test_optimizer_configuration(optimizer_test_data):
     """Test optimizer configuration while preserving Ray Dataset operations."""
-    # Test configuring different optimizers
-    available_optimizers = ["auto", "sqlglot"]  # Always available
-
+    # Test with available optimizers
     optimizer = get_unified_optimizer()
     available = optimizer.get_available_optimizers()
 
     for opt in available:
-        configure_sql_optimizer(opt)
         result = sql("SELECT name FROM users WHERE age > 25")
 
         # Verify Ray Dataset operations are preserved
@@ -136,40 +131,7 @@ def test_calcite_optimization_preserves_ray_operations(optimizer_test_data):
         pytest.skip("Calcite optimizer not available")
 
 
-@pytest.mark.skipif(
-    not OPTIMIZERS_AVAILABLE, reason="Advanced optimizers not available"
-)
-def test_substrait_optimization_preserves_ray_operations(optimizer_test_data):
-    """Test that Substrait optimization preserves Ray Dataset operations."""
-    try:
-        # Test aggregation with Substrait optimization
-        result = sql_with_optimizer(
-            """
-            SELECT city, COUNT(*) as user_count, AVG(age) as avg_age
-            FROM users 
-            GROUP BY city
-        """,
-            optimizer="substrait",
-        )
-
-        # Verify it's still a Ray Dataset
-        assert isinstance(result, ray.data.Dataset)
-
-        # Verify Ray Dataset operations work
-        rows = result.take_all()
-        assert len(rows) >= 1
-
-        # Chain with Ray Dataset operations
-        sorted_result = result.sort("user_count", descending=True)
-        assert isinstance(sorted_result, ray.data.Dataset)
-
-        # Use Ray Dataset filtering
-        filtered = result.filter(lambda row: row["user_count"] > 1)
-        assert isinstance(filtered, ray.data.Dataset)
-
-    except Exception:
-        # Substrait not available, test passes
-        pytest.skip("Substrait optimizer not available")
+# Substrait tests removed - Substrait integration was not implemented
 
 
 @pytest.mark.skipif(
@@ -177,10 +139,10 @@ def test_substrait_optimization_preserves_ray_operations(optimizer_test_data):
 )
 def test_optimizer_fallback_behavior(optimizer_test_data):
     """Test that optimizer fallback preserves Ray Dataset operations."""
-    # Test with non-existent optimizer (should fallback to SQLGlot)
-    result = sql_with_optimizer("SELECT * FROM users", optimizer="nonexistent")
+    # Test with current SQLGlot implementation
+    result = sql("SELECT * FROM users")
 
-    # Should still work with Ray Dataset operations
+    # Should work with Ray Dataset operations
     assert isinstance(result, ray.data.Dataset)
     rows = result.take_all()
     assert len(rows) == 3
@@ -299,16 +261,16 @@ def test_performance_with_optimizers(optimizer_test_data):
 if __name__ == "__main__":
     # Run basic validation
     print("Testing SQL optimizer integration...")
-    print("Key principle: Optimizers enhance planning, Ray Dataset handles execution")
+    print("Key principle: SQLGlot enhances planning, Ray Dataset handles execution")
 
     if OPTIMIZERS_AVAILABLE:
         optimizer = get_unified_optimizer()
         info = optimizer.get_optimizer_info()
         print(f"Available optimizers: {info['available_optimizers']}")
         print(f"Execution layer: {info['execution_layer']}")
-        print(
-            "✅ Advanced optimizers available with Ray Dataset operation preservation"
-        )
+        print("✅ SQLGlot optimizer available with Ray Dataset operation preservation")
     else:
-        print("ℹ️  Advanced optimizers not available, using SQLGlot implementation")
+        print(
+            "ℹ️  Advanced optimizers not available, using standard SQLGlot implementation"
+        )
         print("✅ Ray Dataset operations preserved in baseline implementation")
