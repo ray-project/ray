@@ -606,6 +606,12 @@ def get_compute_strategy(
                 "``fn_constructor_args`` can only be specified if providing a "
                 f"callable class instance for ``fn``, but got: {fn}."
             )
+        if max_tasks_in_flight_per_actor is not None:
+            raise ValueError(
+                "``max_tasks_in_flight_per_actor`` can only be specified for "
+                "callable classes (actors), but ``fn`` is not a callable class: "
+                f"{fn}."
+            )
 
     if compute is not None:
         # Legacy code path to support `compute` argument.
@@ -672,12 +678,6 @@ def get_compute_strategy(
                     max_tasks_in_flight_per_actor=max_tasks_in_flight_per_actor,
                 )
             else:
-                if max_tasks_in_flight_per_actor is not None:
-                    raise ValueError(
-                        "``max_tasks_in_flight_per_actor`` can only be specified for "
-                        "callable classes (actors), but ``fn`` is not a callable class: "
-                        f"{fn}."
-                    )
                 return TaskPoolStrategy(size=concurrency)
         else:
             raise ValueError(
@@ -691,12 +691,6 @@ def get_compute_strategy(
                 "For example, use ``concurrency=n`` for a pool of ``n`` workers."
             )
         else:
-            if max_tasks_in_flight_per_actor is not None:
-                raise ValueError(
-                    "``max_tasks_in_flight_per_actor`` can only be specified for "
-                    "callable classes (actors), but ``fn`` is not a callable class: "
-                    f"{fn}."
-                )
             return TaskPoolStrategy()
 
 

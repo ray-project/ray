@@ -59,17 +59,17 @@ def test_specifying_num_cpus_and_num_gpus_logs_warning(
 
 
 def test_invalid_max_tasks_in_flight_raises_error():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="max_tasks_in_flight_per_actor must be >= 1"):
         ray.data.ActorPoolStrategy(max_tasks_in_flight_per_actor=0)
 
     class UDF:
         def __call__(self, row):
             return row
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="max_tasks_in_flight_per_actor must be >= 1"):
         ray.data.range(1).map(UDF, concurrency=1, max_tasks_in_flight_per_actor=0)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="``concurrency`` must be specified"):
         ray.data.range(1).map(UDF, max_tasks_in_flight_per_actor=0)
 
     with pytest.raises(ValueError, match="``fn`` is not a callable class:"):
