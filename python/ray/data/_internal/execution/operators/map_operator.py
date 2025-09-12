@@ -9,6 +9,7 @@ from typing import (
     Callable,
     Deque,
     Dict,
+    Iterable,
     Iterator,
     List,
     Optional,
@@ -45,6 +46,9 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.map_transformer import (
     ApplyAdditionalSplitToOutputBlocks,
     MapTransformer,
+    MapTransformFn,
+    MapTransformFnCategory,
+    MapTransformFnDataType,
 )
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.stats import StatsDict
@@ -178,6 +182,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         map_task_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        per_block_limit: Optional[int] = None,
     ) -> "MapOperator":
         """Create a MapOperator.
 
@@ -208,9 +213,16 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
             ray_remote_args: Customize the :func:`ray.remote` args for this op's tasks.
+            per_block_limit: Maximum number of rows to process per block, for early termination.
         """
         if compute_strategy is None:
             compute_strategy = TaskPoolStrategy()
+
+        # Apply per-block limit to the map transformer if set
+        if per_block_limit is not None:
+            map_transformer = _wrap_transformer_with_limit(
+                map_transformer, per_block_limit
+            )
 
         if isinstance(compute_strategy, TaskPoolStrategy):
             from ray.data._internal.execution.operators.task_pool_map_operator import (
@@ -772,3 +784,70 @@ def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, 
         ray_remote_args["num_cpus"] = 1
 
     return ray_remote_args
+
+
+def _wrap_transformer_with_limit(
+    map_transformer: MapTransformer, per_block_limit: int
+) -> MapTransformer:
+    """Wrap a MapTransformer with per-block limit functionality."""
+
+    # Create a new limit transform function that goes at the end
+    limit_transform_fn = _PerBlockLimitTransformFn(per_block_limit)
+
+    # Add the limit transform as the last step
+    # Appending at the end so that the cap applies to the final output
+    # blocks after all prior transforms.
+    existing_transform_fns = map_transformer.get_transform_fns()
+    new_transform_fns = existing_transform_fns + [limit_transform_fn]
+
+    # Create new transformer with the limit added
+    new_transformer = MapTransformer(new_transform_fns, map_transformer._init_fn)
+    if map_transformer._output_block_size_option:
+        new_transformer.set_target_max_block_size(map_transformer.target_max_block_size)
+
+    return new_transformer
+
+
+class _PerBlockLimitTransformFn(MapTransformFn):
+    """A transform function that applies per-block row limits."""
+
+    def __init__(self, per_block_limit: int):
+        self._per_block_limit = per_block_limit
+        super().__init__(
+            MapTransformFnDataType.Block,
+            MapTransformFnDataType.Block,
+            category=MapTransformFnCategory.PostProcess,
+        )
+        # This is used to track the number of rows processed within this task.
+        # It is used to implement the per-block limit.
+        self._processed_rows = 0
+
+    def __call__(self, input: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
+        """Apply per-block limit to the input blocks."""
+        from ray.data.block import BlockAccessor
+
+        for block in input:
+            if self._processed_rows >= self._per_block_limit:
+                # We've hit the limit, stop processing
+                break
+
+            block_accessor = BlockAccessor.for_block(block)
+            block_rows = block_accessor.num_rows()
+
+            if self._processed_rows + block_rows <= self._per_block_limit:
+                # Entire block fits within limit
+                self._processed_rows += block_rows
+                yield block
+            else:
+                # Need to truncate this block
+                remaining_rows = self._per_block_limit - self._processed_rows
+                if remaining_rows > 0:
+                    truncated_block = block_accessor.slice(
+                        0, remaining_rows, copy=False
+                    )
+                    self._processed_rows += remaining_rows
+                    yield truncated_block
+                break
+
+    def __repr__(self) -> str:
+        return f"_PerBlockLimitTransformFn(limit={self._per_block_limit})"
