@@ -603,7 +603,7 @@ EXTERNAL_INQUEUE_BYTES_PANEL = Panel(
     unit="bytes",
     targets=[
         Target(
-            expr='sum(ray_data_num_external_inqueue_blocks{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='sum(ray_data_num_external_inqueue_bytes{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
             legend="Number of Bytes: {{dataset}}, {{operator}}",
         )
     ],
