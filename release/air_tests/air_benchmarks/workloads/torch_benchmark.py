@@ -617,8 +617,8 @@ def run(
             f"Training on Ray took an average of {times_local_ray_mean:.2f} seconds, "
             f"which is more than {target_ratio:.2f}x of the average vanilla training "
             f"time of {times_local_vanilla_mean:.2f} seconds ({ratio:.2f}x). "
-            f"Here are some additional metrics from Ray training: {metrics_ray}. "
-            f"Here are some additional metrics from vanilla training: {metrics_vanilla}. "
+            f"Here are some additional metrics from the last epoch of Ray training: {metrics_ray}. "
+            f"Here are some additional metrics from the last epoch of vanilla training: {metrics_vanilla}. "
             "FAILED"
         )
 
@@ -626,8 +626,8 @@ def run(
         f"Training on Ray took an average of {times_local_ray_mean:.2f} seconds, "
         f"which is less than {target_ratio:.2f}x of the average vanilla training "
         f"time of {times_local_vanilla_mean:.2f} seconds ({ratio:.2f}x). "
-        f"Here are some additional metrics from Ray training: {metrics_ray}. "
-        f"Here are some additional metrics from vanilla training: {metrics_vanilla}. "
+        f"Here are some additional metrics from the last epoch of Ray training: {metrics_ray}. "
+        f"Here are some additional metrics from the last epoch of vanilla training: {metrics_vanilla}. "
         "PASSED"
     )
 
