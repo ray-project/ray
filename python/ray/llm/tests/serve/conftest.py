@@ -36,13 +36,44 @@ def disable_placement_bundles():
     Fixture to disable placement bundles for tests that don't need GPU hardware.
 
     Use this fixture in tests that would otherwise require GPU hardware but
-    don't actually need to test placement bundle logic.
+    don't actually need to test placement bundle logic. This fixture patches
+    the placement logic to avoid accelerator type annotations that would cause
+    resource starvation in test environments.
     """
     with patch.object(
         VLLMEngineConfig,
         "placement_bundles",
         new_callable=lambda: property(lambda self: []),
-    ):
+    ), patch(
+        "ray.llm._internal.serve.configs.server_models.LLMConfig._apply_default_placement_config"
+    ) as mock_apply:
+
+        # Let the new placement logic run but without accelerator type annotations
+        def test_friendly_placement_config(
+            deployment_config, replica_actor_resources, engine_config
+        ):
+            # For tests, use the same topology-aware logic but without accelerator annotations
+            tp_size = getattr(engine_config, "tensor_parallel_degree", 1)
+            pp_size = getattr(engine_config, "pipeline_parallel_degree", 1)
+
+            # Create topology-aware bundles: one bundle per PP stage, each with tp_size GPUs
+            bundle_template = {
+                "CPU": 1,  # Each bundle gets 1 CPU
+                "GPU": tp_size,  # Each bundle gets tp_size GPUs (for TP ranks)
+            }
+            # Note: No accelerator type annotations in test environment
+
+            # Create pp_size bundles (one per PP stage)
+            topology_bundles = [bundle_template.copy() for _ in range(pp_size)]
+
+            deployment_config.update(
+                {
+                    "placement_group_bundles": topology_bundles,
+                    "placement_group_strategy": "PACK",
+                }
+            )
+
+        mock_apply.side_effect = test_friendly_placement_config
         yield
 
 
