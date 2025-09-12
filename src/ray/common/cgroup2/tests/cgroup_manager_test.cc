@@ -267,7 +267,9 @@ TEST(CgroupManagerTest, CreateSucceedsWithCleanupInOrder) {
 
   // Processes were moved third.
   ASSERT_EQ(processes_moved->size(), 1);
+
   ASSERT_EQ((*processes_moved)[0].second.from_, system_leaf_cgroup_path);
+
   ASSERT_EQ((*processes_moved)[0].second.to_, base_cgroup_path);
   ASSERT_LT(constraints_disabled->back().first, processes_moved->front().first);
 

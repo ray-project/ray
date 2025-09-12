@@ -3,7 +3,6 @@ import io
 import uuid
 from typing import Any, Dict
 
-import boto3
 import numpy as np
 import pandas as pd
 import torch
@@ -12,19 +11,22 @@ from PIL import Image
 from torchvision.models import vit_b_16, ViT_B_16_Weights
 import albumentations as A
 import ray
-from ray.data import ActorPoolStrategy, DataContext
 import copy
 import itertools
 from typing import List
 import string
 import random
 import time
+from ray.data.expressions import download
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray._private.test_utils import EC2InstanceTerminatorWithGracePeriod
+
 
 WRITE_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
 BUCKET = "ray-benchmark-data-internal-us-west-2"
 
 # Assumptions: homogenously shaped images, homogenous images
-# Each iamge is 2048 * 2048 * 3 = 12.58 MB -> 11 images / block. 8 blocks per task, so ~88 images per task.
+# Each image is 2048 * 2048 * 3 = 12.58 MB -> 11 images / block. 8 blocks per task, so ~88 images per task.
 IMAGES_PER_BLOCK = 11
 BLOCKS_PER_TASK = 8
 NUM_UNITS = 1380
@@ -43,6 +45,13 @@ INFERENCE_LATENCY_PER_IMAGE_S = 0.0094
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        "--inference-concurrency",
+        nargs=2,
+        type=int,
+        required=True,
+        help="The minimum and maximum concurrency for the inference operator.",
+    )
+    parser.add_argument(
         "--sf",
         dest="scale_factor",
         type=int,
@@ -50,6 +59,14 @@ def parse_args() -> argparse.Namespace:
         help=(
             "The number of copies of the dataset to read. Use this to simulate a larger "
             "dataset."
+        ),
+    )
+    parser.add_argument(
+        "--chaos",
+        action="store_true",
+        help=(
+            "Whether to enable chaos. If set, this script terminates one worker node "
+            "every minute with a grace period."
         ),
     )
     return parser.parse_args()
@@ -70,10 +87,9 @@ def create_metadata(scale_factor: int):
                 "metadata_6": "".join(random.choices(string.ascii_letters, k=16)),
                 "container_order_read_id": f"{i:04d}_{j:04d}",
                 "container_id": i,
-                "channel_keys": [
-                    f"15TiB-high-resolution-images/group={i:04d}/{j:04d}_{k}.png"
-                    for k in range(3)
-                ],
+                "channel0_uris": f"s3://{BUCKET}/15TiB-high-resolution-images/group={i:04d}/{j:04d}_{0}.png",
+                "channel1_uris": f"s3://{BUCKET}/15TiB-high-resolution-images/group={i:04d}/{j:04d}_{1}.png",
+                "channel2_uris": f"s3://{BUCKET}/15TiB-high-resolution-images/group={i:04d}/{j:04d}_{2}.png",
                 "applied_scale": 1,
             }
             for j in range(NUM_UNITS)
@@ -82,20 +98,16 @@ def create_metadata(scale_factor: int):
     )
 
 
-class LoadImage:
-    def __init__(self):
-        self._client = boto3.client("s3")
+def combine_channels(row: Dict[str, Any]) -> Dict[str, np.ndarray]:
+    channels = []
+    for i in range(3):
+        data = io.BytesIO(row.pop(f"channel{i}"))
+        image = Image.open(data)
+        channels.append(np.array(image))
 
-    def __call__(self, row):
-        channels = []
-        for key in row["channel_keys"]:
-            data = io.BytesIO()
-            self._client.download_fileobj(BUCKET, key, data)
-            image = Image.open(data)
-            channels.append(np.array(image))
+    row["image"] = np.dstack(channels)
 
-        row["image"] = np.dstack(channels)
-        return row
+    return row
 
 
 def process_image(row: Dict[str, Any]) -> Dict[str, np.ndarray]:
@@ -177,11 +189,14 @@ class FakeEmbedPatches:
             return batch
 
 
-def main(scale_factor: int):
+def main(args: argparse.Namespace):
     benchmark = Benchmark()
 
+    if args.chaos:
+        start_chaos()
+
     print("Creating metadata")
-    metadata = create_metadata(scale_factor=scale_factor)
+    metadata = create_metadata(scale_factor=args.scale_factor)
 
     def benchmark_fn():
         weights = ViT_B_16_Weights.DEFAULT
@@ -189,28 +204,21 @@ def main(scale_factor: int):
         transform = weights.transforms()
         model_ref = ray.put(model)
 
-        # Toggle on features that are required for the pipeline to work.
-        ctx = DataContext.get_current()
-        ctx.enable_fallback_to_arrow_object_ext_type = True
-        ctx.execution_options.actor_locality_enabled = True
-
-        print(f"Starting pipeline with {OVERRIDE_NUM_BLOCKS} blocks")
         (
-            ray.data.from_pandas(metadata, override_num_blocks=OVERRIDE_NUM_BLOCKS)
-            .map(
-                LoadImage,
-                # TODO(mowen): When we fix the deadlocking bug we should increase this to 800.
-                compute=ActorPoolStrategy(min_size=1, max_size=700),
-                max_concurrency=4,  # needed to prevent image loading from becoming the bottleneck
-            )
+            ray.data.from_pandas(metadata)
+            .with_column("channel0", download("channel0_uris"))
+            .with_column("channel1", download("channel1_uris"))
+            .with_column("channel2", download("channel2_uris"))
+            .map(combine_channels)
             .filter(lambda row: row["image"].size != 0)
             .map(process_image)
             .flat_map(patch_image)
             .map_batches(ProcessPatches(transform))
             .map_batches(
-                FakeEmbedPatches,
+                EmbedPatches,
+                num_gpus=1,
                 batch_size=BATCH_SIZE,
-                compute=ActorPoolStrategy(min_size=1, max_size=100),
+                concurrency=tuple(args.inference_concurrency),
                 fn_constructor_kwargs={"model": model_ref, "device": "cuda"},
             )
             .write_parquet(WRITE_PATH)
@@ -220,7 +228,23 @@ def main(scale_factor: int):
     benchmark.write_result()
 
 
+def start_chaos():
+    assert ray.is_initialized()
+
+    head_node_id = ray.get_runtime_context().get_node_id()
+    scheduling_strategy = NodeAffinitySchedulingStrategy(
+        node_id=head_node_id, soft=False
+    )
+    resource_killer = EC2InstanceTerminatorWithGracePeriod.options(
+        scheduling_strategy=scheduling_strategy
+    ).remote(head_node_id, max_to_kill=None)
+
+    ray.get(resource_killer.ready.remote())
+
+    resource_killer.run.remote()
+
+
 if __name__ == "__main__":
     args = parse_args()
-    scale_factor = args.scale_factor
-    main(scale_factor)
+    ray.init()
+    main(args)
