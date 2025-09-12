@@ -110,10 +110,14 @@ py_test_module_list(
 # Medium tests, don't run on windows.
 py_test_module_list(
     size = "medium",
+    env = {
+        "RAY_SERVE_FAIL_ON_RANK_ERROR": "1",
+    },
     files = [
         "test_fastapi.py",
         "test_gcs_failure.py",
         "test_gradio.py",
+        "test_replica_ranks.py",
     ],
     tags = [
         "exclusive",
