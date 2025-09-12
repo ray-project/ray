@@ -32,6 +32,7 @@ steps:
     tags: always
     instance_type: medium
     commands:
+      - which python
       # build placeholder wheel for all python versions
       - bash ci/build/build-placeholder-wheel.sh
       # compile rayimg dependencies
