@@ -45,7 +45,8 @@ repos:
       - id: ruff
         args: [ --select, "I", --fix, --exit-non-zero-on-fix ]
 
-
+  # pydoclint-local is for local commits only due to pre-commit-hook only passing
+  # updated files to the hook and overwriting the baseline text file
   - repo: https://github.com/jsh9/pydoclint
     rev: "0.6.6"
     hooks:
@@ -69,6 +70,7 @@ repos:
         types: [python]
         files: '^python/ray/'
 
+  # pydoclint-ci is for CI, overwrites the baseline text file, and is run with the manual stage flag
   - repo: https://github.com/jsh9/pydoclint
     rev: "0.6.6"
     hooks:
