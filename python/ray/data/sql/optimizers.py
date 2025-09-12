@@ -75,16 +75,8 @@ class CalciteOptimizer:
 
     def _check_availability(self) -> bool:
         """Check if Calcite is available."""
-        try:
-            # Check for Calcite JVM integration
-            from py4j.java_gateway import JavaGateway
-
-            gateway = JavaGateway()
-            # Test Calcite connection
-            calcite_optimizer = gateway.entry_point.getCalciteOptimizer()
-            return calcite_optimizer is not None
-        except Exception:
-            return False
+        # Calcite integration removed - was placeholder implementation
+        return False
 
     def is_available(self) -> bool:
         return self.available
@@ -118,19 +110,13 @@ class CalciteOptimizer:
     def _generate_calcite_plan(
         self, query: str, table_stats: Optional[Dict] = None
     ) -> Dict:
-        """Generate optimized plan using Calcite (placeholder implementation)."""
-        # This would interface with Calcite's cost-based optimizer
+        """Generate optimized plan using Calcite - currently not implemented."""
+        # Calcite integration was removed due to placeholder implementation
+        # Return fallback plan
         return {
             "query": query,
-            "optimizations": {
-                "join_reordering": True,
-                "predicate_pushdown": True,
-                "projection_pushdown": True,
-                "cost_based_join_selection": True,
-                "statistics_driven_optimization": bool(table_stats),
-            },
-            "estimated_cost": 1000,  # Calcite's cost estimation
-            "execution_strategy": "optimized",
+            "optimizations": {"fallback": True},
+            "execution_strategy": "sqlglot",
         }
 
     def _plan_ray_operations(self, calcite_plan: Dict, optimized_plan: OptimizedPlan):
@@ -214,17 +200,13 @@ class SubstraitOptimizer:
             return self._fallback_plan(query)
 
     def _generate_substrait_plan(self, query: str) -> Dict:
-        """Generate optimized plan using Substrait (placeholder implementation)."""
-        # This would interface with Substrait's optimizer
+        """Generate optimized plan using Substrait - currently not implemented."""
+        # Substrait integration is not yet implemented
+        # Return fallback plan that uses SQLGlot
         return {
             "query": query,
-            "optimizations": {
-                "predicate_pushdown": True,
-                "projection_pushdown": True,
-                "join_optimization": True,
-                "expression_optimization": True,
-            },
-            "execution_strategy": "streaming",
+            "optimizations": {"fallback": True},
+            "execution_strategy": "sqlglot",
         }
 
     def _plan_ray_operations(self, substrait_plan: Dict, optimized_plan: OptimizedPlan):
@@ -268,7 +250,7 @@ class UnifiedSQLOptimizer:
 
         Args:
             query: SQL query string.
-            optimizer: "auto", "calcite", "substrait", or "sqlglot".
+            optimizer: "auto", "substrait", or "sqlglot".
             table_stats: Optional table statistics for cost-based optimization.
 
         Returns:
@@ -276,17 +258,13 @@ class UnifiedSQLOptimizer:
         """
         # Auto-select best available optimizer
         if optimizer == "auto":
-            if self.calcite.is_available():
-                optimizer = "calcite"  # Prefer Calcite for advanced optimization
-            elif self.substrait.is_available():
-                optimizer = "substrait"  # Substrait as second choice
+            if self.substrait.is_available():
+                optimizer = "substrait"  # Prefer Substrait for advanced optimization
             else:
                 optimizer = "sqlglot"  # Current implementation as fallback
 
         # Generate optimized plan
-        if optimizer == "calcite" and self.calcite.is_available():
-            plan = self.calcite.optimize(query, table_stats)
-        elif optimizer == "substrait" and self.substrait.is_available():
+        if optimizer == "substrait" and self.substrait.is_available():
             plan = self.substrait.optimize(query, table_stats)
         else:
             plan = self._sqlglot_plan(query)
@@ -303,8 +281,6 @@ class UnifiedSQLOptimizer:
     def get_available_optimizers(self) -> List[str]:
         """Get list of available optimizers."""
         optimizers = ["sqlglot"]  # Always available
-        if self.calcite.is_available():
-            optimizers.append("calcite")
         if self.substrait.is_available():
             optimizers.append("substrait")
         return optimizers
@@ -313,7 +289,6 @@ class UnifiedSQLOptimizer:
         """Get information about available optimizers and their capabilities."""
         return {
             "available_optimizers": self.get_available_optimizers(),
-            "calcite_available": self.calcite.is_available(),
             "substrait_available": self.substrait.is_available(),
             "execution_layer": "Ray Dataset API (native operations)",
             "preserved_operations": [
@@ -328,7 +303,6 @@ class UnifiedSQLOptimizer:
                 "dataset.aggregate()",
             ],
             "optimization_benefits": {
-                "calcite": "Cost-based optimization, advanced join reordering",
                 "substrait": "Cross-engine compatibility, vectorized execution",
                 "sqlglot": "Reliable baseline, fast parsing",
             },
@@ -413,16 +387,16 @@ def execute_optimized_sql(
 
     Args:
         query: SQL query string.
-        optimizer: "auto", "calcite", "substrait", or "sqlglot".
+        optimizer: "auto", "substrait", or "sqlglot".
         table_stats: Optional table statistics for cost-based optimization.
 
     Returns:
         Dataset containing query results (using Ray Dataset native operations).
 
     Examples:
-        >>> # Use Calcite optimization with Ray Dataset execution
-        >>> result = execute_optimized_sql("SELECT * FROM users JOIN orders ON users.id = orders.user_id", "calcite")
-        >>> # Internally uses dataset.join() with Calcite-optimized parameters
+        >>> # Use Substrait optimization with Ray Dataset execution
+        >>> result = execute_optimized_sql("SELECT * FROM users JOIN orders ON users.id = orders.user_id", "substrait")
+        >>> # Internally uses dataset.join() with Substrait-optimized parameters
 
         >>> # Use Substrait optimization with Ray Dataset execution
         >>> result = execute_optimized_sql("SELECT city, COUNT(*) FROM users GROUP BY city", "substrait")

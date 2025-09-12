@@ -25,7 +25,9 @@ processing capabilities, ensuring efficient execution on large-scale data.
 """
 
 from ray.data.sql.execution.engine import SQLExecutionEngine
+from ray.data.sql.execution.types import JoinInfo
 
 __all__ = [
     "SQLExecutionEngine",
+    "JoinInfo",
 ]

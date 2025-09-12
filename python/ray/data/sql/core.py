@@ -603,13 +603,13 @@ def sql(
 ) -> Dataset:
     """Execute a SQL query on registered datasets with advanced optimization.
 
-    This function can use Apache Calcite or Substrait for advanced query optimization
+    This function can use Substrait for advanced query optimization
     while preserving all Ray Dataset native operations for execution.
 
     Args:
         query: SQL query string.
         default_dataset: Default dataset for queries without FROM clause.
-        optimizer: Optimizer to use ("auto", "calcite", "substrait", or "sqlglot").
+        optimizer: Optimizer to use ("auto", "substrait", or "sqlglot").
 
     Returns:
         Dataset containing the query results (using Ray Dataset native operations).
@@ -622,9 +622,9 @@ def sql(
             >>> result = ray.data.sql("SELECT * FROM users WHERE id = 1")
 
         With specific optimizer:
-            >>> # Use Calcite for cost-based optimization + Ray Dataset execution
-            >>> result = ray.data.sql("SELECT * FROM users JOIN orders ON users.id = orders.user_id", optimizer="calcite")
-            >>> # Internally uses dataset.join() with Calcite-optimized parameters
+            >>> # Use Substrait for advanced optimization + Ray Dataset execution
+            >>> result = ray.data.sql("SELECT * FROM users JOIN orders ON users.id = orders.user_id", optimizer="substrait")
+            >>> # Internally uses dataset.join() with Substrait-optimized parameters
     """
     # Try to use advanced optimizers if available
     if optimizer != "sqlglot":

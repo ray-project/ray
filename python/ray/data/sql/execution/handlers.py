@@ -13,7 +13,7 @@ import ray
 from ray.data import Dataset
 from ray.data.sql.compiler import ExpressionCompiler
 from ray.data.sql.config import SQLConfig
-from ray.data.sql.execution.engine import JoinInfo
+from ray.data.sql.execution.types import JoinInfo
 from ray.data.sql.schema import DatasetRegistry
 from ray.data.sql.utils import (
     create_column_mapping,

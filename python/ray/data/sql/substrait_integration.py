@@ -19,20 +19,8 @@ try:
 except ImportError:
     SUBSTRAIT_AVAILABLE = False
 
-try:
-    # Optional Calcite dependency
-    # Note: Calcite requires JVM integration (py4j, JPype, or pycalcite)
-    from py4j.java_gateway import JavaGateway
-
-    # Initialize Calcite connection
-    gateway = JavaGateway()
-    calcite = gateway.entry_point.getCalciteOptimizer()
-    CALCITE_AVAILABLE = True
-except ImportError:
-    CALCITE_AVAILABLE = False
-except Exception:
-    # Calcite JVM not available
-    CALCITE_AVAILABLE = False
+# Calcite integration removed - was placeholder implementation
+CALCITE_AVAILABLE = False
 
 from ray.data import Dataset
 from ray.data.sql.core import get_engine
@@ -84,38 +72,31 @@ def sql_with_substrait(
 
 
 def _sql_to_substrait_plan(query: str):
-    """Convert SQL query to Substrait plan (placeholder)."""
-    # This would use Substrait's SQL parsing capabilities
-    # For now, return a placeholder that indicates Substrait processing
-    return {"query": query, "optimized": False}
+    """Convert SQL query to Substrait plan - currently not implemented."""
+    # Substrait integration is not yet implemented
+    # This is a placeholder that falls back to SQLGlot
+    return {"query": query, "optimized": False, "engine": "fallback"}
 
 
 def _optimize_substrait_plan(plan):
-    """Apply Substrait optimizations to the plan (placeholder)."""
-    # This would apply Substrait's optimization passes:
-    # - Predicate pushdown
-    # - Join reordering
-    # - Projection pushdown
-    # - Common subexpression elimination
-    plan["optimized"] = True
+    """Apply Substrait optimizations to the plan - currently not implemented."""
+    # Substrait optimization is not yet implemented
+    # This is a placeholder that returns the plan unchanged
+    plan["optimized"] = False  # Honest about lack of optimization
+    plan["engine"] = "fallback"
     return plan
 
 
 def _execute_substrait_plan_with_ray(
     plan, default_dataset: Optional[Dataset] = None
 ) -> Dataset:
-    """Execute Substrait plan using Ray Dataset operations.
+    """Execute Substrait plan using Ray Dataset operations - currently falls back to SQLGlot.
 
-    This is the key function that preserves Ray Dataset API usage while
-    benefiting from Substrait's advanced optimization.
+    This function currently provides no Substrait optimization and falls back
+    to the standard SQLGlot-based execution path.
     """
-    # For now, fallback to current implementation
-    # In a full implementation, this would:
-    # 1. Extract optimized operations from Substrait plan
-    # 2. Convert them to Ray Dataset API calls
-    # 3. Execute using dataset.join(), dataset.filter(), etc.
-    # 4. Maintain all Ray Dataset patterns and lazy evaluation
-
+    # Currently no Substrait optimization - direct fallback to SQLGlot engine
+    # Ray Dataset API usage is preserved through the standard execution path
     return get_engine().sql(plan["query"], default_dataset)
 
 
@@ -180,16 +161,15 @@ def configure_sql_optimizer(optimizer: str = "auto") -> None:
     """Configure the SQL query optimizer while preserving Ray Dataset operations.
 
     Args:
-        optimizer: "auto", "calcite", "substrait", or "sqlglot".
+        optimizer: "auto", "substrait", or "sqlglot".
 
     Examples:
-        >>> ray.data.sql.configure_sql_optimizer("calcite")  # Use Calcite optimization
         >>> ray.data.sql.configure_sql_optimizer("substrait")  # Use Substrait optimization
         >>> ray.data.sql.configure_sql_optimizer("auto")  # Auto-select best available
         >>> # All Ray Dataset operations (join, filter, etc.) remain unchanged!
     """
     global _SQL_OPTIMIZER
-    valid_optimizers = {"auto", "calcite", "substrait", "sqlglot"}
+    valid_optimizers = {"auto", "substrait", "sqlglot"}
     if optimizer not in valid_optimizers:
         raise ValueError(
             f"Invalid optimizer '{optimizer}'. Must be one of {valid_optimizers}"
@@ -212,70 +192,27 @@ def sql_with_optimizer(
         Dataset containing query results (same as regular sql() function).
 
     Examples:
-        >>> # Use Calcite optimization with Ray Dataset execution
-        >>> result = ray.data.sql.sql_with_optimizer("SELECT * FROM users", "calcite")
+        >>> # Use Substrait optimization with Ray Dataset execution
+        >>> result = ray.data.sql.sql_with_optimizer("SELECT * FROM users", "substrait")
         >>> # Uses dataset.filter(), dataset.join(), etc. - all Ray operations preserved!
     """
     selected_optimizer = optimizer or _SQL_OPTIMIZER
 
     if selected_optimizer == "auto":
         # Auto-select best available optimizer
-        if CALCITE_AVAILABLE:
-            selected_optimizer = "calcite"
-        elif SUBSTRAIT_AVAILABLE:
+        if SUBSTRAIT_AVAILABLE:
             selected_optimizer = "substrait"
         else:
             selected_optimizer = "sqlglot"
 
-    if selected_optimizer == "calcite" and CALCITE_AVAILABLE:
-        return _sql_with_calcite(query, default_dataset)
-    elif selected_optimizer == "substrait" and SUBSTRAIT_AVAILABLE:
+    if selected_optimizer == "substrait" and SUBSTRAIT_AVAILABLE:
         return sql_with_substrait(query, default_dataset)
     else:
         # Fallback to current SQLGlot implementation
         return get_engine().sql(query, default_dataset)
 
 
-def _sql_with_calcite(query: str, default_dataset: Optional[Dataset] = None) -> Dataset:
-    """Execute SQL with Calcite optimization + Ray Dataset execution."""
-    try:
-        # Use Calcite for advanced cost-based optimization
-        optimized_plan = _generate_calcite_plan(query)
-
-        # Execute using Ray Dataset operations (all preserved!)
-        return _execute_calcite_plan_with_ray(optimized_plan, default_dataset)
-
-    except Exception:
-        # Graceful fallback to current implementation
-        return get_engine().sql(query, default_dataset)
-
-
-def _generate_calcite_plan(query: str):
-    """Generate optimized plan using Apache Calcite (placeholder)."""
-    # This would use Calcite's cost-based optimizer
-    # For now, return a placeholder
-    return {"query": query, "optimizer": "calcite", "optimized": True}
-
-
-def _execute_calcite_plan_with_ray(
-    plan, default_dataset: Optional[Dataset] = None
-) -> Dataset:
-    """Execute Calcite plan using Ray Dataset operations (placeholder)."""
-    # This would convert Calcite's optimized plan to Ray Dataset operations
-    # Key point: ALL Ray Dataset operations preserved!
-    # - dataset.join() with Calcite-optimized parameters
-    # - dataset.filter() with Calcite-optimized predicates
-    # - dataset.groupby() with Calcite-optimized strategies
-
-    # For now, fallback to current implementation
-    # In full implementation, this would execute Calcite-optimized operations:
-    # - dataset.join() with cost-based join order and algorithm selection
-    # - dataset.filter() with optimized predicate placement and evaluation
-    # - dataset.groupby() with memory-optimized aggregation strategies
-    # - dataset.sort() with optimal sorting algorithms
-    # All Ray Dataset operations preserved with enhanced optimization!
-
-    return get_engine().sql(plan["query"], default_dataset)
+# Calcite functions removed - were placeholder implementations with no actual functionality
 
 
 def is_substrait_available() -> bool:
@@ -288,7 +225,7 @@ def is_substrait_available() -> bool:
 
 
 # Global optimizer configuration
-_SQL_OPTIMIZER = "auto"  # "auto", "calcite", "substrait", or "sqlglot"
+_SQL_OPTIMIZER = "auto"  # "auto", "substrait", or "sqlglot"
 
 
 # Enhanced public API that preserves Ray Dataset operations
