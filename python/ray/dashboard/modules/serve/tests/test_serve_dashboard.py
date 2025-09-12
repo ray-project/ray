@@ -666,11 +666,11 @@ def test_get_serve_instance_details_api_type_filtering(ray_start_stop):
     for app in serve_details.applications.values():
         assert app.source == "imperative"
 
-    # Test 4: Filter by unknown - should return empty (since no apps have unknown source)
+    # Test 4: Filter by unknown - should return 400 error (unknown is not a valid user input)
     response = requests.get(SERVE_HEAD_URL + "?api_type=unknown", timeout=15)
-    assert response.status_code == 200
-    serve_details = ServeInstanceDetails(**response.json())
-    assert len(serve_details.applications) == 0
+    assert response.status_code == 400
+    assert "Invalid 'api_type' value" in response.text
+    assert "Must be one of: imperative, declarative" in response.text
 
 
 @pytest.mark.skipif(
@@ -684,7 +684,7 @@ def test_get_serve_instance_details_invalid_api_type(ray_start_stop):
     response = requests.get(SERVE_HEAD_URL + "?api_type=invalid_type", timeout=15)
     assert response.status_code == 400
     assert "Invalid 'api_type' value" in response.text
-    assert "Must be one of: unknown, imperative, declarative" in response.text
+    assert "Must be one of: imperative, declarative" in response.text
 
     # Test with another invalid value
     response = requests.get(SERVE_HEAD_URL + "?api_type=python", timeout=15)

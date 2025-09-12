@@ -88,18 +88,21 @@ class ServeHead(SubprocessModule):
         api_type_str = req.query.get("api_type")
 
         if api_type_str:
-            try:
-                api_type = APIType(api_type_str.lower())
-            except ValueError:
-                # Handle invalid api_type values gracefully
+            api_type_lower = api_type_str.lower()
+            valid_values = APIType.get_valid_user_values()
+
+            if api_type_lower not in valid_values:
+                # Explicitly check against valid user values (excludes 'unknown')
                 return Response(
                     status=400,
                     text=(
                         f"Invalid 'api_type' value: '{api_type_str}'. "
-                        f"Must be one of: {', '.join([e.value for e in APIType])}"
+                        f"Must be one of: {', '.join(valid_values)}"
                     ),
                     content_type="text/plain",
                 )
+
+            api_type = APIType(api_type_lower)
 
         controller = await self.get_serve_controller()
 
