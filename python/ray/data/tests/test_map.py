@@ -83,8 +83,6 @@ def test_invalid_max_tasks_in_flight_raises_error():
 
 @pytest.mark.parametrize("concurrency", [(2, 1), -1])
 def test_invalid_concurrency_raises_error(shutdown_only, concurrency):
-    ray.init()
-
     class UDF:
         def __call__(self, row):
             return row
