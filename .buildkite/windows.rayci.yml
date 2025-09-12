@@ -137,6 +137,7 @@ steps:
     key: windows_serve_flaky_tests
     tags:
       - flaky
+    job_env: WINDOWS
     instance_type: windows
     commands:
       - bash ci/ray_ci/windows/install_tools.sh
