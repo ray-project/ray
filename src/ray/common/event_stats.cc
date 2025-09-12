@@ -96,8 +96,8 @@ void EventTracker::RecordEnd(std::shared_ptr<StatsHandle> handle) {
 
   if (handle->emit_stats) {
     // Update event-specific stats.
-    ray::stats::STATS_operation_run_time_ms.Record(
-        execution_time_ns / 1000000, handle->context_name.value_or(handle->event_name));
+    // ray::stats::STATS_operation_run_time_ms.Record(
+    //     execution_time_ns / 1000000, handle->context_name.value_or(handle->event_name));
     ray::stats::STATS_operation_active_count.Record(
         curr_count, handle->context_name.value_or(handle->event_name));
   }
