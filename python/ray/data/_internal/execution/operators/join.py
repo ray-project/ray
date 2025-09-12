@@ -169,14 +169,14 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
         )
         # Add back unjoinable columns (join type logic is in should_index_* variables)
         if should_index_l:
-            joined = self._combine_unjoinable_columns(
+            joined = self._add_back_unjoinable_columns(
                 joined_table=joined,
                 unjoinable_table=unjoinable_l,
                 index_col_name=index_name_l,
             )
 
         if should_index_r:
-            joined = self._combine_unjoinable_columns(
+            joined = self._add_back_unjoinable_columns(
                 joined_table=joined,
                 unjoinable_table=unjoinable_r,
                 index_col_name=index_name_r,
@@ -195,7 +195,7 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
         index_col = pa.array(np.arange(table.num_rows))
         return table.append_column(col_name, index_col)
 
-    def _combine_unjoinable_columns(
+    def _add_back_unjoinable_columns(
         self,
         joined_table: "pa.Table",
         unjoinable_table: "pa.Table",
