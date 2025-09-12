@@ -336,7 +336,7 @@ class ApplicationAutoscalingState:
         self._policy = self._config.get_autoscaling_policy()
         self._policy_state = {}
 
-    def get_deployment_decisions(
+    def get_scaling_decisions(
         self, deployments: Dict[str, DeploymentDetails], _skip_bound_check: bool = False
     ) -> Dict[str, int]:
         autoscaling_contexts: Dict[str, AutoscalingContext] = {}
@@ -419,8 +419,19 @@ class AutoscalingStateManager:
             self._deployment_autoscaling_states[
                 deployment_id
             ] = DeploymentAutoscalingState(deployment_id)
+
+        if self.is_part_of_autoscaling_application(deployment_id):
+            logger.warning(
+                f"Deployment '{deployment_id}' is part of an autoscaling application. "
+                "Deployment scaling policy may be overridden by application-level autoscaling policy."
+            )
+
         return self._deployment_autoscaling_states[deployment_id].register(
-            info, curr_target_num_replicas
+            info,
+            curr_target_num_replicas,
+            is_part_of_autoscaling_application=self.is_part_of_autoscaling_application(
+                deployment_id
+            ),
         )
 
     def deregister_deployment(self, deployment_id: DeploymentID):
@@ -469,17 +480,19 @@ class AutoscalingStateManager:
 
         self._app_autoscaling_states[app_name].register(config)
 
-    def deregister_application(self, app_name: ApplicationName):
+    def deregister_application(
+        self, app_name: ApplicationName, deployment_names: List[str]
+    ):
         """Remove application from tracking."""
-
+        for deployment_name in deployment_names:
+            deployment_id = DeploymentID(deployment_name, app_name)
+            self._deployment_autoscaling_states.pop(deployment_id, None)
         self._app_autoscaling_states.pop(app_name, None)
 
-    def get_deployment_decisions(
+    def get_scaling_decisions_for_application(
         self, app_name: ApplicationName, deployments: Dict[str, DeploymentDetails]
     ) -> Dict[str, int]:
-        return self._app_autoscaling_states[app_name].get_deployment_decisions(
-            deployments
-        )
+        return self._app_autoscaling_states[app_name].get_scaling_decisions(deployments)
 
     def is_part_of_autoscaling_application(self, deployment_id: DeploymentID):
         return deployment_id.app_name in self._app_autoscaling_states
@@ -504,7 +517,7 @@ class AutoscalingStateManager:
             for deployment_id in self._deployment_autoscaling_states
         }
 
-    def get_target_num_replicas(
+    def get_scaling_decision_for_deployment(
         self, deployment_id: DeploymentID, curr_target_num_replicas: int
     ) -> int:
         return self._deployment_autoscaling_states[

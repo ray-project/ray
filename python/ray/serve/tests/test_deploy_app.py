@@ -900,10 +900,8 @@ def app_level_custom_autoscaling_policy(ctxs: Dict[str, AutoscalingContext]):
         AutoscalingPolicy(name=app_level_custom_autoscaling_policy),
     ],
 )
-def test_application_autoscaling_policy_config(serve_instance, policy):
-    client = serve_instance
-    signal = SignalActor.options(name="signal123").remote()
-
+def test_application_autoscaling_policy_config(serve_instance_with_signal, policy):
+    client, signal = serve_instance_with_signal
     config_template = {
         "import_path": "ray.serve.tests.test_config_files.get_signal.app",
         "autoscaling_policy": policy,

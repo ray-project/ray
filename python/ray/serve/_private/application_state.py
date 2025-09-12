@@ -232,6 +232,8 @@ class ApplicationState:
             name: Application name.
             deployment_state_manager: State manager for all deployments
                 in the cluster.
+            autoscaling_state_manager: State manager for autoscaling
+                decisions in the cluster.
             endpoint_state: State manager for endpoints in the system.
         """
 
@@ -450,7 +452,7 @@ class ApplicationState:
         deployments: Dict[str, DeploymentDetails] = self.list_deployment_details()
         decisions: Dict[
             str, int
-        ] = self._autoscaling_state_manager.get_deployment_decisions(
+        ] = self._autoscaling_state_manager.get_scaling_decisions_for_application(
             self._name, deployments
         )
 
@@ -996,6 +998,7 @@ class ApplicationStateManager:
                 app_state = ApplicationState(
                     app_name,
                     self._deployment_state_manager,
+                    self._autoscaling_state_manager,
                     self._endpoint_state,
                     self._logging_config,
                 )
@@ -1190,7 +1193,9 @@ class ApplicationStateManager:
 
         if len(apps_to_be_deleted) > 0:
             for app_name in apps_to_be_deleted:
-                self._autoscaling_state_manager.deregister_application(app_name)
+                self._autoscaling_state_manager.deregister_application(
+                    app_name, self.get_deployments(app_name)
+                )
                 del self._application_states[app_name]
             ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
 

@@ -2163,7 +2163,7 @@ class DeploymentState:
             return False
 
         decision_num_replicas = (
-            self._autoscaling_state_manager.get_target_num_replicas(
+            self._autoscaling_state_manager.get_scaling_decision_for_deployment(
                 deployment_id=self._id,
                 curr_target_num_replicas=self._target_state.target_num_replicas,
             )
