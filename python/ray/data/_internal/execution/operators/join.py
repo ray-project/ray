@@ -242,14 +242,7 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
             else:
                 joinable.append(name)
 
-        # We cannot rely on row_count because it can return a non-zero row count
-        # for an empty-schema.
-        joinable = accessor.select(joinable) if joinable else accessor._empty_table()
-        unjoinable = (
-            accessor.select(unjoinable) if unjoinable else accessor._empty_table()
-        )
-
-        return joinable, unjoinable
+        return (accessor.select(joinable), accessor.select(unjoinable))
 
     def _get_partition_builder(self, *, input_seq_id: int, partition_id: int):
         if input_seq_id == 0:
@@ -282,8 +275,10 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
         Returns:
             True if an index column should be created for this side
         """
-        # Must have both joinable and unjoinable columns to need indexing
-        if not (joinable_table and unjoinable_table):
+        # Must have both joinable and unjoinable columns to need indexing.
+        # We cannot rely on row_count because it can return a non-zero row count
+        # for an empty-schema.
+        if not (joinable_table.schema and unjoinable_table.schema):
             return False
 
         # For semi/anti joins, only index the side that appears in the result
