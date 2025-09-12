@@ -35,7 +35,7 @@ def mock_build_dir():
         with open(os.path.join(tmpdir, "WORKSPACE"), "w") as f:
             f.write('workspace(name = "fake_workspace")\n')
         with open(os.path.join(tmpdir, ".bazelversion"), "w") as f:
-            f.write("6.5.0\n")
+            f.write("7.5.0\n")
 
         os.makedirs(os.path.join(tmpdir, WORKSPACE_KEY), exist_ok=True)
 
