@@ -42,9 +42,6 @@ namespace ray {
 class SysFsCgroupDriver : public CgroupDriverInterface {
  public:
   /**
-   * MOUNTED is defined in mntent.h (and typically refers to /etc/mtab)
-   * @see https://www.gnu.org/software/libc/manual/2.24/html_node/Mount-Information.html
-   *
    * @param mount_file_path only used for testing.
    */
   explicit SysFsCgroupDriver(std::string mount_file_path = kMountFilePath)
@@ -276,6 +273,6 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
   static constexpr std::string_view kCgroupSubtreeControlFilename =
       "cgroup.subtree_control";
   static constexpr std::string_view kCgroupControllersFilename = "cgroup.controllers";
-  static inline std::string kMountFilePath = "/mnt/mtab";
+  static inline std::string kMountFilePath = "/etc/mtab";
 };
 }  // namespace ray
