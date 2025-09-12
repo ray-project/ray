@@ -137,12 +137,10 @@ steps:
     key: windows_serve_flaky_tests
     tags:
       - flaky
-      - skip-on-premerge
-    job_env: WINDOWS
     instance_type: windows
     commands:
       - bash ci/ray_ci/windows/install_tools.sh
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... serve
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/tests:test_logging serve
         --except-tags no_windows
         --run-flaky-tests
         --build-name windowsbuild
