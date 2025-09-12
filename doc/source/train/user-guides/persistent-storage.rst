@@ -82,6 +82,26 @@ Ensure that all nodes in the Ray cluster have access to the shared filesystem, e
 so that outputs can be saved to there.
 In this example, all files are saved to ``/mnt/cluster_storage/experiment_name`` for further processing.
 
+Azure Files
+~~~~~~~~~~~
+
+Ray supports **Azure Files** as a persistent storage option for checkpoints, logs, and artifacts.
+
+**Setup**
+
+1. Create an Azure Storage Account and a File Share.
+2. Mount the file share on each Ray node (e.g., ``/mnt/azurefiles``).
+3. Configure Ray to write to this location by setting:
+
+   .. code-block:: bash
+
+      export RAY_STORAGE_PATH=/mnt/azurefiles
+
+**Notes**
+
+- Ensure the share is mounted with read/write permissions on all nodes (head + workers).
+- For Kubernetes deployments, mount the Azure Files share as a volume on every pod and set ``RAY_STORAGE_PATH`` as an environment variable.
+- For high-throughput training, consider using Premium tiers of Azure Files.
 
 Local storage
 -------------
