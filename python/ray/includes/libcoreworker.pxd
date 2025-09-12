@@ -117,6 +117,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         int MaxTaskRetries() const
         c_bool EnableTaskEvents() const
         c_bool AllowOutOfOrderExecution() const
+        c_bool EnableTensorTransport() const
 
     cdef cppclass CCoreWorker "ray::core::CoreWorker":
         CWorkerType GetWorkerType()

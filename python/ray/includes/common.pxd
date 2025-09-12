@@ -365,6 +365,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
             const c_vector[CConcurrencyGroup] &concurrency_groups,
             c_bool allow_out_of_order_execution,
             int32_t max_pending_calls,
+            c_bool enable_tensor_transport,
             c_bool enable_task_events,
             const unordered_map[c_string, c_string] &labels,
             const unordered_map[c_string, c_string] &label_selector)
@@ -765,9 +766,9 @@ cdef extern from "src/ray/protobuf/autoscaler.pb.h" nogil:
 cdef extern from "ray/common/task/task_spec.h" nogil:
     cdef cppclass CConcurrencyGroup "ray::ConcurrencyGroup":
         CConcurrencyGroup(
-            const c_string &name,
+            c_string name,
             uint32_t max_concurrency,
-            const c_vector[CFunctionDescriptor] &c_fds)
+            c_vector[CFunctionDescriptor] c_fds)
         CConcurrencyGroup()
         c_string GetName() const
         uint32_t GetMaxConcurrency() const
