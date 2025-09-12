@@ -649,11 +649,11 @@ def lit(value: Any) -> LiteralExpr:
 
 @PublicAPI(stability="beta")
 def when(condition: Expr, value: Expr) -> WhenExpr:
-    """Start building a case statement using method chaining.
+    """Create conditional case statements using method chaining.
 
-    This function initiates the method chaining pattern for building case statements,
-    similar to PySpark's when() function. It returns a WhenExpr that can be
-    chained with more .when() calls and completed with .otherwise().
+    This function creates case statements similar to PySpark and Polars, using
+    an intuitive method chaining pattern. Chain multiple conditions with .when()
+    and complete with .otherwise() for the default case.
 
     Args:
         condition: The boolean condition expression for the first WHEN clause
@@ -668,98 +668,26 @@ def when(condition: Expr, value: Expr) -> WhenExpr:
         >>> # Simple case statement
         >>> expr = when(col("age") > 30, lit("Senior")).otherwise(lit("Junior"))
         >>>
-        >>> # Multiple conditions
+        >>> # Multiple conditions (evaluated in order)
         >>> expr = when(col("age") > 50, lit("Elder")) \
         ...        .when(col("age") > 30, lit("Adult")) \
-        ...        .otherwise(lit("Young"))
+        ...        .when(col("age") > 18, lit("Young")) \
+        ...        .otherwise(lit("Minor"))
         >>>
-        >>> # Use with Dataset.with_column()
+        >>> # Complex conditions
+        >>> expr = when((col("age") > 30) & (col("income") > 50000), lit("Target")) \
+        ...        .otherwise(lit("Other"))
+        >>>
+        >>> # Use with Dataset operations
         >>> import ray
         >>> ds = ray.data.from_items([{"age": 25}, {"age": 35}, {"age": 55}])
-        >>> ds = ds.with_column("age_group", when(col("age") > 50, lit("Elder")) \
-        ...        .when(col("age") > 30, lit("Adult")) \
-        ...        .otherwise(lit("Young")))
+        >>> ds = ds.with_column("age_group",
+        ...     when(col("age") > 50, lit("Elder"))
+        ...     .when(col("age") > 30, lit("Adult"))
+        ...     .otherwise(lit("Young"))
+        ... )
     """
     return WhenExpr(condition, value)
-
-
-@PublicAPI(stability="beta")
-def case(when_clauses: List[Tuple[Expr, Expr]], default: Expr) -> CaseExpr:
-    """Create a conditional case statement expression (function-based approach).
-
-    This function creates a SQL-like CASE WHEN statement that evaluates
-    multiple conditional branches and returns the corresponding value
-    for the first condition that evaluates to True.
-
-    Note: This is the function-based approach. For better readability and
-    consistency with PySpark, consider using the method chaining approach:
-    when().when().otherwise()
-
-    Args:
-        when_clauses: List of (condition, value) tuples representing WHEN-THEN
-            pairs. Each condition should be a boolean expression, and each value
-            can be any expression type.
-        default: Default value expression when no conditions match.
-
-    Returns:
-        A CaseExpr representing the conditional logic
-
-    Example:
-        >>> from ray.data.expressions import col, lit, case
-        >>> # Simple case statement: CASE WHEN age > 30 THEN 'Senior' ELSE 'Junior' END
-        >>> expr = case([
-        ...     (col("age") > 30, lit("Senior"))
-        ... ], default=lit("Junior"))
-        >>>
-        >>> # Multiple conditions: CASE WHEN age > 50 THEN 'Elder' WHEN age > 30 THEN 'Adult' ELSE 'Young' END
-        >>> expr = case([
-        ...         (col("age") > 50, lit("Elder")),
-        ...         (col("age") > 30, lit("Adult"))
-        ...     ], default=lit("Young"))
-        >>>
-        >>> # Use with Dataset.with_column()
-        >>> import ray
-        >>> ds = ray.data.from_items([{"age": 25}, {"age": 35}, {"age": 55}])
-        >>> ds = ds.with_column("age_group", case([
-        ...         (col("age") > 50, lit("Elder")),
-        ...         (col("age") > 30, lit("Adult"))
-        ...     ], default=lit("Young")))
-    """
-    if not when_clauses:
-        raise ValueError(
-            "case() requires at least one when clause. "
-            "Usage: case([(condition, value)], default=default_value)"
-        )
-
-    # Validate that each when_clause is a proper (condition, value) tuple
-    for i, when_clause in enumerate(when_clauses):
-        if not isinstance(when_clause, tuple) or len(when_clause) != 2:
-            raise ValueError(
-                f"when_clauses[{i}] must be a tuple with exactly 2 elements "
-                f"(condition, value), got {when_clause!r}. "
-                f"Expected format: (col('column') > value, lit('result'))"
-            )
-
-        condition, value = when_clause
-        if not isinstance(condition, Expr):
-            raise ValueError(
-                f"when_clauses[{i}] condition must be an Expr instance, "
-                f"got {type(condition).__name__}. Use col(), lit(), or other expression functions."
-            )
-        if not isinstance(value, Expr):
-            raise ValueError(
-                f"when_clauses[{i}] value must be an Expr instance, "
-                f"got {type(value).__name__}. Use lit() to wrap literal values."
-            )
-
-    # Validate default parameter
-    if not isinstance(default, Expr):
-        raise ValueError(
-            f"default must be an Expr instance, "
-            f"got {type(default).__name__}. Use lit() to wrap literal values."
-        )
-
-    return CaseExpr(when_clauses, default)
 
 
 @DeveloperAPI(stability="alpha")
@@ -809,11 +737,8 @@ __all__ = [
     "col",
     "lit",
     "when",
-    "case",
     "UDFExpr",
     "udf",
     "DownloadExpr",
-    "col",
-    "lit",
     "download",
 ]
