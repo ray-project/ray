@@ -35,20 +35,20 @@ class GcsNodeManagerTest : public ::testing::Test {
         });
     gcs_publisher_ = std::make_unique<pubsub::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
-    io_context_ = std::make_unique<InstrumentedIOContextWithThread>("GcsNodeManagerTest");
+    io_context_ = std::make_unique<instrumented_io_context>("GcsNodeManagerTest");
   }
 
  protected:
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::unique_ptr<rpc::RayletClientPool> client_pool_;
   std::unique_ptr<pubsub::GcsPublisher> gcs_publisher_;
-  std::unique_ptr<InstrumentedIOContextWithThread> io_context_;
+  std::unique_ptr<instrumented_io_context> io_context_;
 };
 
 TEST_F(GcsNodeManagerTest, TestManagement) {
   gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
                                    gcs_table_storage_.get(),
-                                   io_context_->GetIoService(),
+                                   *io_context_,
                                    client_pool_.get(),
                                    ClusterID::Nil());
   // Test Add/Get/Remove functionality.
@@ -66,7 +66,7 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
 TEST_F(GcsNodeManagerTest, TestListener) {
   gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
                                    gcs_table_storage_.get(),
-                                   io_context_->GetIoService(),
+                                   *io_context_,
                                    client_pool_.get(),
                                    ClusterID::Nil());
   // Test AddNodeAddedListener.
@@ -79,7 +79,7 @@ TEST_F(GcsNodeManagerTest, TestListener) {
         added_nodes.emplace_back(std::move(node));
         --callbacks_remaining;
       },
-      io_context_->GetIoService());
+      *io_context_);
   for (int i = 0; i < node_count; ++i) {
     auto node = GenNodeInfo();
     node_manager.AddNode(node);
@@ -87,7 +87,7 @@ TEST_F(GcsNodeManagerTest, TestListener) {
 
   // Block until all callbacks have processed
   while (callbacks_remaining > 0) {
-    io_context_->GetIoService().run_one();
+    io_context_->run_one();
   }
 
   ASSERT_EQ(node_count, added_nodes.size());
@@ -110,7 +110,7 @@ TEST_F(GcsNodeManagerTest, TestListener) {
         removed_nodes.emplace_back(std::move(node));
         --callbacks_remaining;
       },
-      io_context_->GetIoService());
+      *io_context_);
   rpc::NodeDeathInfo death_info;
   for (int i = 0; i < node_count; ++i) {
     node_manager.RemoveNode(NodeID::FromBinary(added_nodes[i]->node_id()),
@@ -121,7 +121,7 @@ TEST_F(GcsNodeManagerTest, TestListener) {
 
   // Block until all callbacks have processed
   while (callbacks_remaining > 0) {
-    io_context_->GetIoService().run_one();
+    io_context_->run_one();
   }
 
   ASSERT_EQ(node_count, removed_nodes.size());
@@ -138,7 +138,7 @@ TEST_F(GcsNodeManagerTest, TestListener) {
 TEST_F(GcsNodeManagerTest, TestAddNodeListenerCallbackDeadlock) {
   gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
                                    gcs_table_storage_.get(),
-                                   io_context_->GetIoService(),
+                                   *io_context_,
                                    client_pool_.get(),
                                    ClusterID::Nil());
   int node_count = 10;
@@ -153,13 +153,13 @@ TEST_F(GcsNodeManagerTest, TestAddNodeListenerCallbackDeadlock) {
                                 1000);
         --callbacks_remaining;
       },
-      io_context_->GetIoService());
+      *io_context_);
   for (int i = 0; i < node_count; ++i) {
     auto node = GenNodeInfo();
     node_manager.AddNode(node);
   }
   while (callbacks_remaining > 0) {
-    io_context_->GetIoService().run_one();
+    io_context_->run_one();
   }
   ASSERT_EQ(0, node_manager.GetAllAliveNodes().size());
 }
@@ -167,7 +167,7 @@ TEST_F(GcsNodeManagerTest, TestAddNodeListenerCallbackDeadlock) {
 TEST_F(GcsNodeManagerTest, TestUpdateAliveNode) {
   gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
                                    gcs_table_storage_.get(),
-                                   io_context_->GetIoService(),
+                                   *io_context_,
                                    client_pool_.get(),
                                    ClusterID::Nil());
 
