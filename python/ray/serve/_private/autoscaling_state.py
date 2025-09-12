@@ -17,7 +17,10 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
-from ray.serve._private.metrics_utils import merge_timeseries_dicts
+from ray.serve._private.metrics_utils import (
+    merge_timeseries_dicts_instantaneous,
+    time_weighted_average,
+)
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -312,27 +315,32 @@ class AutoscalingState:
     def _aggregate_running_requests(
         self, metrics_timeseries_dicts: List[Dict[str, List]]
     ) -> float:
-        """Aggregate and average running requests from timeseries data."""
+        """Aggregate and average running requests from timeseries data using instantaneous merge."""
 
         if not metrics_timeseries_dicts:
             return 0.0
 
-        # Window the timeseries to the metrics interval for stability during merging.
-        # Use a minimum window of 1.0s to avoid noise from small metrics intervals.
-        aggregated_metrics = merge_timeseries_dicts(
+        # Use instantaneous merge approach - no arbitrary windowing needed
+        # TTL is set to 3x metrics interval to prevent unbounded memory growth
+        ttl = 3.0 * self._config.metrics_interval_s
+        aggregated_metrics = merge_timeseries_dicts_instantaneous(
             *metrics_timeseries_dicts,
-            # TODO (abrar): revisit this choice of window size. This is probably incorrect.
-            # Choosing self._config.metrics_interval_s causes the tests to fail. Needs
-            # investigation.
-            window_s=max(1.0, self._config.metrics_interval_s),
+            ttl=ttl,
         )
 
         running_requests_timeseries = aggregated_metrics.get(RUNNING_REQUESTS_KEY, [])
         if running_requests_timeseries:
-            avg_running = sum(
-                point.value for point in running_requests_timeseries
-            ) / len(running_requests_timeseries)
-            return avg_running
+            # Use time-weighted average over the last metrics interval
+            # This gives a mathematically correct average of the instantaneous values
+            import time
+
+            now = time.time()
+            window_start = now - self._config.metrics_interval_s
+
+            avg_running = time_weighted_average(
+                running_requests_timeseries, window_start, now
+            )
+            return avg_running if avg_running is not None else 0.0
 
         return 0.0
 
@@ -365,12 +373,12 @@ class AutoscalingState:
             running requests are collected.
 
         Timeseries Aggregation:
-            Raw timeseries data from multiple sources is merged using a tumbling window
-            approach with a window size of max(1.0s, metrics_interval_s). This provides
-            stability during metric collection and reduces noise.
+            Raw timeseries data from multiple sources is merged using an instantaneous
+            approach that treats gauges as right-continuous step functions. This provides
+            mathematically correct totals without arbitrary windowing bias.
 
         Example with Numbers:
-            Assume metrics_interval_s = 0.5s, so window_size = max(1.0s, 0.5s) = 1.0s
+            Assume metrics_interval_s = 0.5s, current time = 2.0s
 
             Step 1: Collect raw timeseries from 2 replicas (r1, r2)
             replica_metrics = [
@@ -384,17 +392,17 @@ class AutoscalingState:
             Step 3: No handle metrics needed (replica metrics available)
             handle_metrics = []
 
-            Step 4: Merge timeseries with 1.0s window
-            # Window alignment: earliest=0.1, start=0.0, windows=[0,1), [1,2)
-            # Window 0 [0.1,1.1): r1 latest=7 (t=0.8), r2 latest=4 (t=0.9) → sum=11
-            # Window 1 [1.1,2.1): r1 latest=6 (t=1.5), r2 latest=8 (t=1.2) → sum=14
-            merged_timeseries = {"running_requests": [(t=0.1, val=11), (t=1.1, val=14)]}
+            Step 4: Merge timeseries using instantaneous approach
+            # Create delta events: r1 starts at 5 (t=0.2), changes to 7 (t=0.8), then 6 (t=1.5)
+            #                      r2 starts at 3 (t=0.1), changes to 4 (t=0.9), then 8 (t=1.2)
+            # Merged instantaneous total: [(t=0.1, val=3), (t=0.2, val=8), (t=0.8, val=10), (t=0.9, val=11), (t=1.2, val=15), (t=1.5, val=14)]
+            merged_timeseries = {"running_requests": [(0.1, 3), (0.2, 8), (0.8, 10), (0.9, 11), (1.2, 15), (1.5, 14)]}
 
-            Step 5: Calculate average running requests
-            running_points = [11, 14]
-            avg_running = (11 + 14) / 2 = 12.5
+            Step 5: Calculate time-weighted average over last 0.5s (t=1.5 to t=2.0)
+            # Value is constant at 14 over the entire interval
+            avg_running = 14.0
 
-            Final result: total_requests = avg_running + queued = 12.5 + 5 = 17.5
+            Final result: total_requests = avg_running + queued = 14.0 + 5 = 19.0
 
         Returns:
             Total number of requests (average running + queued) calculated from

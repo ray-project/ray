@@ -12,7 +12,10 @@ from ray.serve._private.metrics_utils import (
     TimeStampedValue,
     _bucket_latest_by_window,
     _merge_two_timeseries,
+    merge_instantaneous_total,
     merge_timeseries_dicts,
+    merge_timeseries_dicts_instantaneous,
+    time_weighted_average,
 )
 from ray.serve._private.test_utils import MockAsyncTimer
 
@@ -578,6 +581,218 @@ class TestInMemoryMetricsStore:
         # 0.1 + 0.2 should equal 0.3 exactly
         assert len(result["key1"]) == 1
         assert abs(result["key1"][0].value - 0.3) < 1e-10
+
+
+class TestInstantaneousMerge:
+    """Test the new instantaneous merge functionality."""
+
+    def test_merge_instantaneous_total_empty(self):
+        """Test merge_instantaneous_total with empty input."""
+        result = merge_instantaneous_total([])
+        assert result == []
+
+        result = merge_instantaneous_total([[], []])
+        assert result == []
+
+    def test_merge_instantaneous_total_single_replica(self):
+        """Test merge_instantaneous_total with single replica."""
+        series = [
+            TimeStampedValue(1.0, 5.0),
+            TimeStampedValue(2.0, 7.0),
+            TimeStampedValue(3.0, 3.0),
+        ]
+        result = merge_instantaneous_total([series])
+
+        expected = [
+            TimeStampedValue(1.0, 5.0),
+            TimeStampedValue(2.0, 7.0),
+            TimeStampedValue(3.0, 3.0),
+        ]
+        assert_timeseries_equal(result, expected)
+
+    def test_merge_instantaneous_total_two_replicas(self):
+        """Test merge_instantaneous_total with two replicas."""
+        series1 = [
+            TimeStampedValue(1.0, 5.0),
+            TimeStampedValue(3.0, 7.0),
+        ]
+        series2 = [
+            TimeStampedValue(2.0, 3.0),
+            TimeStampedValue(4.0, 1.0),
+        ]
+        result = merge_instantaneous_total([series1, series2])
+
+        # Expected: t=1.0: +5 (total=5), t=2.0: +3 (total=8), t=3.0: +2 (total=10), t=4.0: -2 (total=8)
+        expected = [
+            TimeStampedValue(1.0, 5.0),
+            TimeStampedValue(2.0, 8.0),
+            TimeStampedValue(3.0, 10.0),
+            TimeStampedValue(4.0, 8.0),
+        ]
+        assert_timeseries_equal(result, expected)
+
+    def test_merge_instantaneous_total_with_ttl(self):
+        """Test merge_instantaneous_total with TTL expiry."""
+        series = [TimeStampedValue(1.0, 5.0)]
+        result = merge_instantaneous_total([series], ttl=2.0)
+
+        # Should have initial value and expiry
+        expected = [
+            TimeStampedValue(1.0, 5.0),
+            TimeStampedValue(3.0, 0.0),  # expires at t=1.0+2.0=3.0
+        ]
+        assert_timeseries_equal(result, expected)
+
+    def test_merge_instantaneous_total_complex_scenario(self):
+        """Test complex scenario matching the autoscaling example."""
+        # r1: starts at 5 (t=0.2), changes to 7 (t=0.8), then 6 (t=1.5)
+        series1 = [
+            TimeStampedValue(0.2, 5.0),
+            TimeStampedValue(0.8, 7.0),
+            TimeStampedValue(1.5, 6.0),
+        ]
+        # r2: starts at 3 (t=0.1), changes to 4 (t=0.9), then 8 (t=1.2)
+        series2 = [
+            TimeStampedValue(0.1, 3.0),
+            TimeStampedValue(0.9, 4.0),
+            TimeStampedValue(1.2, 8.0),
+        ]
+        result = merge_instantaneous_total([series1, series2])
+
+        expected = [
+            TimeStampedValue(0.1, 3.0),  # r2 starts
+            TimeStampedValue(0.2, 8.0),  # r1 starts: 3+5=8
+            TimeStampedValue(0.8, 10.0),  # r1 changes: 8+(7-5)=10
+            TimeStampedValue(0.9, 11.0),  # r2 changes: 10+(4-3)=11
+            TimeStampedValue(1.2, 15.0),  # r2 changes: 11+(8-4)=15
+            TimeStampedValue(1.5, 14.0),  # r1 changes: 15+(6-7)=14
+        ]
+        assert_timeseries_equal(result, expected)
+
+    def test_time_weighted_average_empty(self):
+        """Test time_weighted_average with empty series."""
+        result = time_weighted_average([], 0.0, 1.0)
+        assert result is None
+
+    def test_time_weighted_average_no_overlap(self):
+        """Test time_weighted_average with no data overlap."""
+        series = [TimeStampedValue(2.0, 5.0)]
+        result = time_weighted_average(series, 0.0, 1.0)
+        assert result == 0.0  # Default value before first point
+
+    def test_time_weighted_average_constant_value(self):
+        """Test time_weighted_average with constant value."""
+        series = [TimeStampedValue(0.5, 10.0)]
+        result = time_weighted_average(series, 1.0, 2.0)
+        assert result == 10.0
+
+    def test_time_weighted_average_step_function(self):
+        """Test time_weighted_average with step function."""
+        series = [
+            TimeStampedValue(0.0, 5.0),
+            TimeStampedValue(1.0, 10.0),
+            TimeStampedValue(2.0, 15.0),
+        ]
+        # Average over [0.5, 1.5): 0.5s at value 5, 0.5s at value 10
+        result = time_weighted_average(series, 0.5, 1.5)
+        expected = (5.0 * 0.5 + 10.0 * 0.5) / 1.0
+        assert abs(result - expected) < 1e-10
+
+    def test_merge_timeseries_dicts_instantaneous_basic(self):
+        """Test merge_timeseries_dicts_instantaneous basic functionality."""
+        s1 = InMemoryMetricsStore()
+        s2 = InMemoryMetricsStore()
+
+        s1.add_metrics_point({"metric1": 5, "metric2": 10}, timestamp=1.0)
+        s1.add_metrics_point({"metric1": 7}, timestamp=2.0)
+
+        s2.add_metrics_point({"metric1": 3, "metric3": 20}, timestamp=1.5)
+
+        result = merge_timeseries_dicts_instantaneous(s1.data, s2.data)
+
+        # metric1: s1 starts at 5 (t=1.0), s2 starts at 3 (t=1.5), s1 changes to 7 (t=2.0)
+        expected_metric1 = [
+            TimeStampedValue(1.0, 5.0),
+            TimeStampedValue(1.5, 8.0),  # 5+3=8
+            TimeStampedValue(2.0, 10.0),  # 3+(7-5)=10
+        ]
+        assert_timeseries_equal(result["metric1"], expected_metric1)
+
+        # metric2: only from s1
+        expected_metric2 = [TimeStampedValue(1.0, 10.0)]
+        assert_timeseries_equal(result["metric2"], expected_metric2)
+
+        # metric3: only from s2
+        expected_metric3 = [TimeStampedValue(1.5, 20.0)]
+        assert_timeseries_equal(result["metric3"], expected_metric3)
+
+    def test_merge_timeseries_dicts_instantaneous_with_ttl(self):
+        """Test merge_timeseries_dicts_instantaneous with TTL."""
+        s1 = InMemoryMetricsStore()
+        s1.add_metrics_point({"metric1": 5}, timestamp=1.0)
+
+        result = merge_timeseries_dicts_instantaneous(s1.data, ttl=2.0)
+
+        expected = [
+            TimeStampedValue(1.0, 5.0),
+            TimeStampedValue(3.0, 0.0),  # expires at t=1.0+2.0=3.0
+        ]
+        assert_timeseries_equal(result["metric1"], expected)
+
+    def test_merge_instantaneous_vs_windowed_comparison(self):
+        """Compare instantaneous merge vs windowed approach."""
+        # Create test data that highlights the difference
+        s1 = InMemoryMetricsStore()
+        s2 = InMemoryMetricsStore()
+
+        # Replica 1: 10 requests at t=0.1, then 5 at t=0.9
+        s1.add_metrics_point({"requests": 10}, timestamp=0.1)
+        s1.add_metrics_point({"requests": 5}, timestamp=0.9)
+
+        # Replica 2: 3 requests at t=0.5, then 8 at t=1.1
+        s2.add_metrics_point({"requests": 3}, timestamp=0.5)
+        s2.add_metrics_point({"requests": 8}, timestamp=1.1)
+
+        # Windowed approach (1s window)
+        windowed = merge_timeseries_dicts(s1.data, s2.data, window_s=1.0)
+
+        # Instantaneous approach
+        instantaneous = merge_timeseries_dicts_instantaneous(s1.data, s2.data)
+
+        # The instantaneous approach should provide more accurate event timing
+        # Windowed loses timing information by bucketing
+        assert len(instantaneous["requests"]) >= len(windowed["requests"])
+
+        # Instantaneous should have: t=0.1: 10, t=0.5: 13, t=0.9: 8, t=1.1: 13
+        expected_instantaneous = [
+            TimeStampedValue(0.1, 10.0),
+            TimeStampedValue(0.5, 13.0),  # 10+3=13
+            TimeStampedValue(0.9, 8.0),  # 3+(5-10)=8
+            TimeStampedValue(1.1, 13.0),  # 5+(8-3)=13
+        ]
+        assert_timeseries_equal(instantaneous["requests"], expected_instantaneous)
+
+    def test_instantaneous_merge_handles_zero_deltas(self):
+        """Test that zero deltas are properly filtered out."""
+        series1 = [
+            TimeStampedValue(1.0, 5.0),
+            TimeStampedValue(2.0, 5.0),  # No change
+            TimeStampedValue(3.0, 7.0),
+        ]
+        series2 = [
+            TimeStampedValue(1.5, 3.0),
+            TimeStampedValue(2.5, 3.0),  # No change
+        ]
+
+        result = merge_instantaneous_total([series1, series2])
+
+        # Should skip zero deltas
+        expected = [
+            TimeStampedValue(1.0, 5.0),
+            TimeStampedValue(1.5, 8.0),  # 5+3=8
+            TimeStampedValue(3.0, 10.0),  # 8+(7-5)=10
+        ]
+        assert_timeseries_equal(result, expected)
 
 
 if __name__ == "__main__":

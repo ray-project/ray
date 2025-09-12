@@ -356,6 +356,176 @@ def _merge_two_timeseries(
     return merged
 
 
+def merge_instantaneous_total(
+    replicas_timeseries: List[List[TimeStampedValue]],
+    ttl: Optional[float] = None,
+) -> List[TimeStampedValue]:
+    """
+    Merge multiple gauge time series (right-continuous, LOCF) into an
+    instantaneous total time series as a step function.
+
+    This approach treats each replica's gauge as right-continuous, last-observation-
+    carried-forward (LOCF), which matches gauge semantics. It produces an exact
+    instantaneous total across replicas without bias from arbitrary windowing.
+
+    Args:
+        replicas_timeseries: List of time series, one per replica. Each time series
+            is a list of TimeStampedValue objects sorted by timestamp.
+        ttl: Optional time-to-live for values. If specified, values expire after
+            this duration and are removed from the total.
+
+    Returns:
+        A list of TimeStampedValue representing the instantaneous total at event times.
+        Between events, the total remains constant (step function).
+    """
+    if not replicas_timeseries or not any(replicas_timeseries):
+        return []
+
+    # Build delta events per replica
+    # events[t] = total delta at time t across all replicas
+    events = defaultdict(float)  # time -> delta
+
+    if ttl is not None:
+        # expiry bookkeeping: last value + last time per replica
+        last_time = [None] * len(replicas_timeseries)
+        last_val = [0.0] * len(replicas_timeseries)
+
+    for rid, series in enumerate(replicas_timeseries):
+        if not series:
+            continue
+
+        # initial delta
+        t0, v0 = series[0].timestamp, series[0].value
+        events[t0] += v0
+        prev_t, prev_v = t0, v0
+
+        if ttl is not None:
+            last_time[rid], last_val[rid] = t0, v0
+            events[t0 + ttl] += -v0  # schedule initial expiry
+
+        for point in series[1:]:
+            t, v = point.timestamp, point.value
+            dv = v - prev_v
+            if dv != 0.0:
+                events[t] += dv
+            if ttl is not None:
+                # cancel previous expiry by adding back, then schedule new expiry
+                # (net effect: move expiry to t+ttl with the then-current value)
+                events[prev_t + ttl] += +prev_v  # cancel old expiry
+                events[t + ttl] += -v  # schedule new expiry
+                last_time[rid], last_val[rid] = t, v
+            prev_t, prev_v = t, v
+
+    # Sweep events (coalesce identical timestamps)
+    timeline = sorted(events.items())  # [(t, delta_sum_at_t), ...]
+    merged: List[TimeStampedValue] = []
+    current_sum = 0.0
+
+    for t, delta in timeline:
+        if delta == 0.0:
+            continue
+        current_sum += delta
+        # Record instantaneous total right after applying deltas at t
+        if merged and merged[-1].timestamp == t:
+            merged[-1] = TimeStampedValue(
+                t, current_sum
+            )  # coalesce exact same timestamp
+        else:
+            merged.append(TimeStampedValue(t, current_sum))
+
+    return merged
+
+
+def time_weighted_average(
+    step_series: List[TimeStampedValue],
+    window_start: float,
+    window_end: float,
+) -> Optional[float]:
+    """
+    Compute time-weighted average of a step function over a time interval.
+
+    Args:
+        step_series: Step function as list of (timestamp, value) points, sorted by time.
+            Values are right-continuous (constant until next change).
+        window_start: Start of averaging window (inclusive).
+        window_end: End of averaging window (exclusive).
+
+    Returns:
+        Time-weighted average over the interval, or None if no data overlaps.
+    """
+    if not step_series or window_end <= window_start:
+        return None
+
+    total_weighted_value = 0.0
+    total_duration = 0.0
+
+    # Find the value at window_start (LOCF)
+    current_value = 0.0  # Default if no data before window_start
+    for point in step_series:
+        if point.timestamp <= window_start:
+            current_value = point.value
+        else:
+            break
+
+    current_time = window_start
+
+    # Process each segment that overlaps with the window
+    for point in step_series:
+        if point.timestamp <= window_start:
+            continue  # Already processed above
+        if point.timestamp >= window_end:
+            break  # Beyond our window
+
+        # Add contribution of current segment
+        segment_end = min(point.timestamp, window_end)
+        duration = segment_end - current_time
+        if duration > 0:
+            total_weighted_value += current_value * duration
+            total_duration += duration
+
+        current_value = point.value
+        current_time = segment_end
+
+    # Add final segment if it extends to window_end
+    if current_time < window_end:
+        duration = window_end - current_time
+        total_weighted_value += current_value * duration
+        total_duration += duration
+
+    return total_weighted_value / total_duration if total_duration > 0 else None
+
+
+def merge_timeseries_dicts_instantaneous(
+    *timeseries_dicts: DefaultDict[Hashable, List[TimeStampedValue]],
+    ttl: Optional[float] = None,
+) -> DefaultDict[Hashable, List[TimeStampedValue]]:
+    """
+    Merge multiple time-series dictionaries using instantaneous merge approach.
+
+    This is a drop-in replacement for merge_timeseries_dicts that uses the
+    mathematically correct instantaneous merge instead of windowing.
+    """
+    merged: DefaultDict[Hashable, List[TimeStampedValue]] = defaultdict(list)
+
+    # Collect all unique keys
+    all_keys = set()
+    for ts_dict in timeseries_dicts:
+        all_keys.update(ts_dict.keys())
+
+    # Merge each key separately
+    for key in all_keys:
+        # Collect all series for this key across dictionaries
+        replicas_series = []
+        for ts_dict in timeseries_dicts:
+            if key in ts_dict:
+                replicas_series.append(ts_dict[key])
+
+        # Merge using instantaneous approach
+        merged[key] = merge_instantaneous_total(replicas_series, ttl=ttl)
+
+    return merged
+
+
 def merge_timeseries_dicts(
     *timeseries_dicts: DefaultDict[Hashable, List[TimeStampedValue]],
     window_s: float,
@@ -365,6 +535,10 @@ def merge_timeseries_dicts(
     InMemoryMetricsStore().data. For the same key across stores, time series
     are merged with a windowed sum, where each series keeps only its latest
     value per window before summing.
+
+    DEPRECATED: This windowed approach has known issues with arbitrary window sizing
+    and temporal alignment bias. Consider using merge_timeseries_dicts_instantaneous
+    for mathematically correct gauge merging.
     """
     merged: DefaultDict[Hashable, List[TimeStampedValue]] = defaultdict(list)
     for timeseries_dict in timeseries_dicts:
