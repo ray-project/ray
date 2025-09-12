@@ -141,9 +141,8 @@ steps:
     instance_type: windows
     commands:
       - bash ci/ray_ci/windows/install_tools.sh
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/tests:test_logging serve
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... serve
         --except-tags no_windows
-        --run-flaky-tests
         --build-name windowsbuild
         --operating-system windows
         --test-env=CI="1"
