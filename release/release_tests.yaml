@@ -291,7 +291,7 @@
 
   run:
     timeout: 3600
-    script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 2
+    script: RAY_TRAIN_V2_ENABLED=1 python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 2
 
   variations:
     - __suffix__: aws
