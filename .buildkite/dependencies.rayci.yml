@@ -2,6 +2,17 @@ group: dependencies
 depends_on:
   - forge
 steps:
+  # build raydepsets binary
+  - label: ":tapioca: build: raydepsets binary"
+    key: build_raydepsets_binary
+    tags: always
+    instance_type: small
+    commands:
+      - bazel build //ci/raydepsets:raydepsets --build_python_zip --enable_runfiles --incompatible_use_python_toolchains=false --python_path=python
+      - cp bazel-bin/ci/raydepsets/raydepsets.zip /artifact-mount/
+    job_env: oss-ci-base_test-py3.11
+    depends_on: oss-ci-base_test-multipy
+
   # dependencies
   - label: ":tapioca: build: pip-compile dependencies"
     key: pip_compile_dependencies
@@ -23,6 +34,9 @@ steps:
     key: raydepsets_compile_llm_dependencies
     tags: always
     instance_type: small
-    command: ./ci/test_compile_llm_requirements.sh
+    commands:
+      - buildkite-agent artifact download build.zip tmp/ --step build_raydepsets_binary
+      - chmod +x tmp/raydepsets.zip
+      - ./ci/test_compile_llm_requirements.sh
     job_env: oss-ci-base_test-py3.11
-    depends_on: oss-ci-base_test-multipy
+    depends_on: build_raydepsets_binary
