@@ -1111,6 +1111,15 @@ class ServeController:
         """
         self.deployment_state_manager.record_request_routing_info(info)
 
+    def _get_replica_ranks_mapping(self, deployment_id: DeploymentID) -> Dict[str, int]:
+        """Get the current rank mapping for all replicas in a deployment.
+        Args:
+            deployment_id: The deployment ID to get ranks for.
+        Returns:
+            Dictionary mapping replica_id to rank.
+        """
+        return self.deployment_state_manager._get_replica_ranks_mapping(deployment_id)
+
     async def graceful_shutdown(self, wait: bool = True):
         """Set the shutting down flag on controller to signal shutdown in
         run_control_loop().
