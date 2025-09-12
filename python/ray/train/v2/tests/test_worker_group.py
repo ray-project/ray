@@ -452,7 +452,7 @@ def test_flush_worker_result_queue(queue_backlog_length):
 
         status = wg.poll_status()
         assert all(
-            worker_status.training_result
+            worker_status.training_report
             for worker_status in status.worker_statuses.values()
         )
 

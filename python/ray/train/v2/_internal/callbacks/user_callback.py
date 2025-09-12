@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Optional
 
 from ray.train import Checkpoint
+from ray.train._internal.session import _ValidationSpec
 from ray.train.v2._internal.execution.callback import (
     ReportCallback,
     WorkerGroupCallback,
@@ -26,7 +27,10 @@ class UserCallbackHandler(WorkerGroupCallback, ReportCallback):
     # --------------------------
 
     def after_report(
-        self, metrics: List[Dict[str, Any]], checkpoint: Optional[Checkpoint]
+        self,
+        metrics: List[Dict[str, Any]],
+        checkpoint: Optional[Checkpoint],
+        validation_spec: Optional[_ValidationSpec],
     ):
         for user_callback in self._user_callbacks:
             user_callback.after_report(

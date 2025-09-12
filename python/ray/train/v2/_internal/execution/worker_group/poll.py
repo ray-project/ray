@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Dict, Optional
 
 from ray._private.ray_logging import NUMBERS
-from ray.train._internal.session import _TrainingResult
+from ray.train._internal.session import _TrainingReport
 from ray.train.v2._internal.exceptions import WorkerHealthCheckFailedError
 from ray.train.v2.api.exceptions import WorkerGroupError
 from ray.types import ObjectRef
@@ -36,7 +36,7 @@ def _truncate_error_string(error_str: str) -> str:
 class WorkerStatus:
     running: bool
     error: Optional[Exception] = None
-    training_result: Optional[_TrainingResult] = None
+    training_report: Optional[_TrainingReport] = None
 
 
 @dataclass(frozen=True)

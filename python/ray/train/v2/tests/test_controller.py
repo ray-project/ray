@@ -10,10 +10,11 @@ from ray.train.v2._internal.exceptions import (
 )
 from ray.train.v2._internal.execution.callback import ControllerCallback
 from ray.train.v2._internal.execution.context import TrainRunContext
-from ray.train.v2._internal.execution.controller import TrainController
+from ray.train.v2._internal.execution.controller import TrainController, controller
 from ray.train.v2._internal.execution.controller.state import (
     AbortedState,
     ErroredState,
+    FinishedState,
     InitializingState,
     ReschedulingState,
     ResizingState,
@@ -29,6 +30,7 @@ from ray.train.v2._internal.execution.scaling_policy import (
 )
 from ray.train.v2.api.config import ScalingConfig
 from ray.train.v2.tests.util import (
+    DummyCheckpointManager,
     DummyObjectRefWrapper,
     DummyWorkerGroup,
     MockFailurePolicy,
@@ -42,6 +44,7 @@ pytestmark = pytest.mark.usefixtures("mock_runtime_context")
 @pytest.fixture(autouse=True)
 def patch_worker_group(monkeypatch):
     monkeypatch.setattr(TrainController, "worker_group_cls", DummyWorkerGroup)
+    monkeypatch.setattr(controller, "CheckpointManager", DummyCheckpointManager)
     # Make polling interval 0 to speed up tests
     monkeypatch.setenv(HEALTH_CHECK_INTERVAL_S_ENV_VAR, "0")
     yield
@@ -171,6 +174,37 @@ async def test_failure_handling():
     failure_policy.queue_decision(FailureDecision.RAISE)
     await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), ErroredState)
+
+
+@pytest.mark.asyncio
+async def test_finish_with_checkpoint_manager():
+    # Start TrainController
+    scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
+    train_run_context = create_dummy_run_context()
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=train_run_context,
+        scaling_policy=scaling_policy,
+        failure_policy=MockFailurePolicy(failure_config=None),
+    )
+    assert isinstance(controller.get_state(), InitializingState)
+
+    # Get to RunningState
+    scaling_policy.queue_recovery_decision(
+        ResizeDecision(num_workers=1, resources_per_worker={})
+    )
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), SchedulingState)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), RunningState)
+
+    # Verify that you need both worker group finished and checkpoint manager not pending to finish
+    controller.get_worker_group().finish_worker(0)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), RunningState)
+    DummyCheckpointManager.set_has_pending_validations(False)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), FinishedState)
 
 
 @pytest.mark.parametrize(
