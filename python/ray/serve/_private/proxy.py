@@ -1025,8 +1025,6 @@ class ProxyActorInterface(ABC):
 
     def __init__(
         self,
-        http_options: HTTPOptions,
-        grpc_options: gRPCOptions,
         *,
         node_id: NodeId,
         node_ip_address: str,
@@ -1035,16 +1033,12 @@ class ProxyActorInterface(ABC):
         """Initialize the proxy actor.
 
         Args:
-            http_options: HTTP configuration options
-            grpc_options: gRPC configuration options
             node_id: ID of the node this proxy is running on
             node_ip_address: IP address of the node
             logging_config: Logging configuration
         """
         self._node_id = node_id
         self._node_ip_address = node_ip_address
-        self._http_options = http_options
-        self._grpc_options = grpc_options
         self._logging_config = logging_config
 
     @abstractmethod
@@ -1140,8 +1134,6 @@ class ProxyActor(ProxyActorInterface):
         long_poll_client: Optional[LongPollClient] = None,
     ):  # noqa: F821
         super().__init__(
-            http_options,
-            grpc_options,
             node_id=node_id,
             node_ip_address=node_ip_address,
             logging_config=logging_config,
