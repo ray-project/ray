@@ -248,6 +248,7 @@ from ray._private.utils import DeferSigint
 from ray._private.object_ref_generator import DynamicObjectRefGenerator
 from ray.util.annotations import PublicAPI
 from ray._private.custom_types import TensorTransportEnum
+from ray._private.gc_collect_manager import PythonGCThread
 
 # Expose GCC & Clang macro to report
 # whether C++ optimizations were enabled during compilation.
@@ -260,6 +261,13 @@ GRPC_STATUS_CODE_RESOURCE_EXHAUSTED = CGrpcStatusCode.RESOURCE_EXHAUSTED
 GRPC_STATUS_CODE_UNIMPLEMENTED = CGrpcStatusCode.UNIMPLEMENTED
 
 logger = logging.getLogger(__name__)
+
+import warnings
+class NumReturnsWarning(UserWarning):
+    """Warning when num_returns=0 but the task returns a non-None value."""
+    pass
+
+warnings.filterwarnings("once", category=NumReturnsWarning)
 
 # The currently running task, if any. These are used to synchronize task
 # interruption for ray.cancel.
@@ -2496,14 +2504,21 @@ cdef CRayStatus check_signals() nogil:
 
 
 cdef void gc_collect(c_bool triggered_by_global_gc) nogil:
-    with gil:
-        start = time.perf_counter()
-        num_freed = gc.collect()
-        end = time.perf_counter()
-        if num_freed > 0:
-            logger.debug(
-                "gc.collect() freed {} refs in {} seconds".format(
-                    num_freed, end - start))
+     with gil:
+        if RayConfig.instance().start_python_gc_manager_thread():
+            start = time.perf_counter()
+            worker = ray._private.worker.global_worker
+            worker.core_worker.trigger_gc()
+            end = time.perf_counter()
+            logger.debug("GC event triggered in {} seconds".format(end - start))
+        else:
+            start = time.perf_counter()
+            num_freed = gc.collect()
+            end = time.perf_counter()
+            if num_freed > 0:
+                logger.debug(
+                    "gc.collect() freed {} refs in {} seconds".format(
+                        num_freed, end - start))
 
 
 cdef c_vector[c_string] spill_objects_handler(
@@ -3054,6 +3069,11 @@ cdef class CoreWorker:
         self._task_id_to_future = {}
         self.event_loop_executor = None
 
+        self._gc_thread = None
+        if RayConfig.instance().start_python_gc_manager_thread():
+            self._gc_thread = PythonGCThread(min_interval_s=ray_constants.RAY_GC_MIN_COLLECT_INTERVAL)
+            self._gc_thread.start()
+
     def shutdown_driver(self):
         # If it's a worker, the core worker process should have been
         # shutdown. So we can't call
@@ -3061,6 +3081,9 @@ cdef class CoreWorker:
         # Instead, we use the cached `is_driver` flag to test if it's a
         # driver.
         assert self.is_driver
+        if self._gc_thread is not None:
+            self._gc_thread.stop()
+            self._gc_thread = None
         with nogil:
             CCoreWorkerProcess.Shutdown()
 
@@ -3399,11 +3422,12 @@ cdef class CoreWorker:
             owner_address,
             c_bool inline_small_object,
             c_bool _is_experimental_channel,
+            int tensor_transport_val=0
     ):
         """Create an object reference with the current worker as the owner.
         """
         created_object = self.put_serialized_object_and_increment_local_ref(
-            serialized_object, pin_object, owner_address, inline_small_object, _is_experimental_channel)
+            serialized_object, pin_object, owner_address, inline_small_object, _is_experimental_channel, tensor_transport_val)
         if owner_address is None:
             owner_address = CCoreWorkerProcess.GetCoreWorker().GetRpcAddress().SerializeAsString()
 
@@ -3412,7 +3436,8 @@ cdef class CoreWorker:
         return ObjectRef(
             created_object,
             owner_address,
-            skip_adding_local_ref=True
+            skip_adding_local_ref=True,
+            tensor_transport_val=tensor_transport_val
         )
 
     def put_serialized_object_and_increment_local_ref(
@@ -3422,6 +3447,7 @@ cdef class CoreWorker:
             owner_address=None,
             c_bool inline_small_object=True,
             c_bool _is_experimental_channel=False,
+            int tensor_transport_val=0
             ):
         cdef:
             CObjectID c_object_id
@@ -3435,6 +3461,7 @@ cdef class CoreWorker:
                 serialized_object.contained_object_refs)
             size_t total_bytes = serialized_object.total_bytes
 
+        c_tensor_transport_val = <CTensorTransport>tensor_transport_val
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()
                 .CreateOwnedAndIncrementLocalRef(
@@ -3445,7 +3472,8 @@ cdef class CoreWorker:
                     &c_object_id,
                     &data,
                     c_owner_address,
-                    inline_small_object))
+                    inline_small_object,
+                    c_tensor_transport_val))
 
         if (data.get() == NULL):
             # Object already exists
@@ -4397,6 +4425,17 @@ cdef class CoreWorker:
             num_returns = returns[0].size()
 
         if num_returns == 0:
+            if outputs is not None and len(outputs) > 0:
+                # Warn if num_returns=0 but the task returns a non-None value (likely unintended).
+                task_name = self.get_current_task_name()
+                obj_value = repr(outputs)
+                warnings.warn(
+                    f"Task '{task_name}' has num_returns=0 but returned a non-None value '{obj_value}'. "
+                    "The return value will be ignored.",
+                    NumReturnsWarning,
+                    stacklevel=2
+                )
+
             return num_outputs_stored
 
         task_output_inlined_bytes = 0
@@ -4436,7 +4475,9 @@ cdef class CoreWorker:
             if <int>c_tensor_transport != <int>TENSOR_TRANSPORT_OBJECT_STORE:
                 # `output` contains tensors. We need to retrieve these tensors from `output`
                 # and store them in the GPUObjectManager.
-                serialized_object = context.serialize_and_store_gpu_objects(output, return_id.Hex())
+                serialized_object, tensors = context.serialize_gpu_objects(output)
+                context.store_gpu_objects(return_id.Hex().decode("ascii"), tensors)
+
             else:
                 serialized_object = context.serialize(output)
             data_size = serialized_object.total_bytes
@@ -4718,6 +4759,9 @@ cdef class CoreWorker:
             self.current_runtime_env = serialized_env
 
         return self.current_runtime_env
+
+    def trigger_gc(self):
+        self._gc_thread.trigger_gc()
 
     def get_pending_children_task_ids(self, parent_task_id: TaskID):
         cdef:
