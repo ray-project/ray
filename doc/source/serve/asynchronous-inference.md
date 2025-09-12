@@ -1,41 +1,41 @@
 (serve-asynchronous-inference)=
 
-# Asynchronous Inference in Ray Serve
+# Asynchronous inference in Ray Serve
 
-This guide shows how to run long-running inference asynchronously in Ray Serve using background task processing. With async tasks, your HTTP APIs stay responsive while work is performed in the background.
+This guide shows how to run long-running inference asynchronously in Ray Serve using background task processing. With async tasks, your HTTP APIs stay responsive while the system performs work in the background.
 
-## Why Asynchronous Inference?
+## Why asynchronous inference?
 
-Some inference workloads (for example, video processing or large document indexing) take longer than typical HTTP timeouts. Asynchronous task processing lets you enqueue work to a background queue and immediately return, decoupling request lifetime from compute time while still leveraging Serve's scalability.
+Some inference workloads (such as video processing or large document indexing) take longer than typical HTTP timeouts. Asynchronous task processing lets you enqueue work to a background queue and immediately return, decoupling request lifetime from compute time while still leveraging Serve's scalability.
 
-## Use Cases
+## Use cases
 
 - **Video inference**: Transcoding, detection, transcription over long videos.
-- **Document indexing**: Ingestion, parsing, vectorization of large files/batches.
-- **Any long-running ML task** where immediate results are not required.
+- **Document indexing**: Ingestion, parsing, vectorization of large files or batches.
+- **Any long-running ML task** where immediate results aren't required.
 
-## Key Concepts
+## Key concepts
 
 - **Task**: A user-defined function invocation with arguments to execute asynchronously.
 - **Task Consumer Deployment**: A Serve deployment that consumes and executes tasks from a queue.
 - **Task Handler**: A method inside the consumer marked to handle a named task.
-- **Task Processor Adapter**: Pluggable adapter that interfaces with a task processor/broker (e.g., Celery).
+- **Task Processor Adapter**: Pluggable adapter that interfaces with a task processor or broker (such as Celery).
 - **Task Result**: A model representing task metadata, status, and optional return value.
 
 ## Components and APIs
 
-Below are the core APIs exposed for asynchronous inference, with minimal examples to get you started.
+The following sections describe the core APIs for asynchronous inference, with minimal examples to get you started.
 
 ### `CeleryAdapterConfig`
-Specific configuration for the Celery adapter: broker and backend URLs and worker settings.
+Configuration for the Celery adapter, including broker and backend URLs and worker settings.
 
-Example:
+The following example shows a Celery adapter configuration:
 ```python
 from ray.serve.schema import CeleryAdapterConfig
 
 celery_config = CeleryAdapterConfig(
-    broker_url="redis://localhost:6379/0",     # or "filesystem://" for local testing
-    backend_url="redis://localhost:6379/1",    # result backend (optional for fire-and-forget)
+    broker_url="redis://localhost:6379/0",     # Or "filesystem://" for local testing
+    backend_url="redis://localhost:6379/1",    # Result backend (optional for fire-and-forget)
     worker_concurrency=10,
 )
 ```
@@ -43,25 +43,25 @@ celery_config = CeleryAdapterConfig(
 ### `TaskProcessorConfig`
 Configures the task processor, including queue name, adapter (default is Celery), adapter config, retry limits, and dead-letter queues.
 
-Example:
+The following example shows how to configure the task processor:
 ```python
 from ray.serve.schema import TaskProcessorConfig
 
 processor_config = TaskProcessorConfig(
     queue_name="my_queue",
-    # Optional: override default adapter string; default is Celery
+    # Optional: Override default adapter string (default is Celery)
     # adapter="ray.serve.task_processor.CeleryTaskProcessorAdapter",
     adapter_config=celery_config,
     max_retries=5,
-    failed_task_queue_name="failed_tasks",              # application errors after retries
-    unprocessable_task_queue_name="unprocessable_tasks" # missing handler/deserialization
+    failed_task_queue_name="failed_tasks",              # Application errors after retries
+    unprocessable_task_queue_name="unprocessable_tasks" # Missing handler or deserialization errors
 )
 ```
 
 ### `TaskResult`
-Represents a task's identity, status, timestamp, and optional result.
+Represents a task's ID, status, timestamp, and optional result.
 
-Example:
+The following example demonstrates creating and accessing a task result:
 ```python
 from ray.serve.schema import TaskResult
 
@@ -74,9 +74,9 @@ print(result.id, result.status)
 ```
 
 ### `@task_consumer`
-Decorator to turn a Serve deployment into a task consumer using the provided `TaskProcessorConfig`.
+Decorator that turns a Serve deployment into a task consumer using the provided `TaskProcessorConfig`.
 
-Example:
+The following code creates a task consumer:
 ```python
 from ray import serve
 from ray.serve.task_consumer import task_consumer
@@ -88,13 +88,13 @@ class SimpleConsumer:
 ```
 
 ### `@task_handler`
-Decorator to register a method on the consumer as a named task handler.
+Decorator that registers a method on the consumer as a named task handler.
 
 :::{note}
-Only synchronous handlers are supported at the moment. Declaring an `async def` handler raises `NotImplementedError`.
+Ray Serve currently supports only synchronous handlers. Declaring an `async def` handler raises `NotImplementedError`.
 :::
 
-Example:
+The following example shows how to define a task handler:
 ```python
 from ray.serve.task_consumer import task_handler
 
@@ -107,21 +107,21 @@ class SimpleConsumer:
 ### `instantiate_adapter_from_config`
 Factory function that returns a task processor adapter instance for the given `TaskProcessorConfig`. You can use the returned object to enqueue tasks, fetch status, retrieve metrics, and more.
 
-Example:
+The following example demonstrates creating an adapter and enqueuing tasks:
 ```python
 from ray.serve.task_consumer import instantiate_adapter_from_config
 
 adapter = instantiate_adapter_from_config(task_processor_config=processor_config)
-# Enqueue synchronously (returns TaskResult with id)
+# Enqueue synchronously (returns TaskResult with ID)
 result = adapter.enqueue_task_sync("process_request", args=["hello"])
 # Later, fetch status synchronously
 status = adapter.get_task_status_sync(result.id)
 ```
 
-### Submitting Tasks from Outside Serve (Producers)
-You can enqueue tasks from external producers (non-Serve code) as long as they share the same `TaskProcessorConfig`.
+### Submit tasks from outside Serve (producers)
+You can enqueue tasks from external producers (non-Serve code) if they share the same `TaskProcessorConfig`.
 
-Example:
+The following example shows how to enqueue tasks from external code:
 ```python
 from ray.serve.task_consumer import instantiate_adapter_from_config
 from ray.serve.schema import TaskProcessorConfig, CeleryAdapterConfig
@@ -134,12 +134,12 @@ processor_config = TaskProcessorConfig(queue_name="my_queue", adapter_config=cel
 
 adapter = instantiate_adapter_from_config(task_processor_config=processor_config)
 result = adapter.enqueue_task_sync("process_request", args=["payload"])
-print("enqueued:", result.id)
+print("Enqueued:", result.id)
 ```
 
-## End-to-End Example: Document Indexing
+## End-to-end example: Document indexing
 
-The following example shows how to configure the processor, build a consumer with a handler, enqueue tasks from an ingress deployment, and check task status.
+This example shows how to configure the processor, build a consumer with a handler, enqueue tasks from an ingress deployment, and check task status.
 
 ```python
 import ray
@@ -155,8 +155,8 @@ from ray.serve.task_consumer import (
 
 # 1) Configure the Celery adapter
 celery_config = CeleryAdapterConfig(
-    broker_url="redis://localhost:6379/0",   # broker
-    backend_url="redis://localhost:6379/1",  # optional result backend
+    broker_url="redis://localhost:6379/0",   # Broker URL
+    backend_url="redis://localhost:6379/1",  # Optional result backend
     worker_concurrency=10,
 )
 
@@ -169,12 +169,12 @@ processor_config = TaskProcessorConfig(
     unprocessable_task_queue_name="doc_unprocessable",
 )
 
-# 3) Define the consumer deployment responsible for background processing
+# 3) Define the consumer deployment for background processing
 @serve.deployment(num_replicas=2)
 @task_consumer(task_processor_config=processor_config)
 class DocumentIndexingConsumer:
     def __init__(self):
-        self.indexer = DocumentIndexingEngine()  # your implementation
+        self.indexer = DocumentIndexingEngine()  # Your implementation
 
     @task_handler(name="index_document")
     def index_document(self, document_id: str, document_url: str) -> dict:
@@ -198,7 +198,7 @@ class API:
     @app.post("/submit")
     async def submit(self, request: Request):
         data = await request.json()
-        # Enqueue synchronously; returns TaskResult containing id
+        # Enqueue synchronously; returns TaskResult containing ID
         task: TaskResult = self.adapter.enqueue_task_sync(
             "index_document", kwargs=data
         )
@@ -206,7 +206,7 @@ class API:
 
     @app.get("/status/{task_id}")
     async def status(self, task_id: str):
-        # Synchronously fetch current status/result
+        # Synchronously fetch current status or result
         return self.adapter.get_task_status_sync(task_id)
 
 # 5) Build and run the application
@@ -218,33 +218,35 @@ serve.run(app_graph)
 
 In this example:
 - `DocumentIndexingConsumer` reads tasks from `document_indexing_queue` and processes them.
-- `API` enqueues tasks via `enqueue_task_sync` and fetches status via `get_task_status_sync`.
+- `API` enqueues tasks through `enqueue_task_sync` and fetches status through `get_task_status_sync`.
 - Passing `consumer` into `API.__init__` ensures both deployments are part of the Serve application graph.
 
-## Concurrency and Reliability
+## Concurrency and reliability
 
-For managing concurrency, you can configure consumer-side concurrency via the adapter config (for example, `worker_concurrency` in `CeleryAdapterConfig`). To ensure at-least-once processing, adapters should acknowledge tasks only after successful execution. Failed tasks are retried up to `max_retries`; if they continue to fail, they are routed to the failed-task DLQ when configured. The default Celery adapter acknowledges on success to provide at-least-once processing.
+To manage concurrency, configure consumer-side concurrency through the adapter config (such as `worker_concurrency` in `CeleryAdapterConfig`). To ensure at-least-once processing, adapters should acknowledge tasks only after successful execution. The system retries failed tasks up to `max_retries` times; if they continue to fail, the system routes them to the failed-task DLQ when configured. The default Celery adapter acknowledges on success to provide at-least-once processing.
 
-## Dead Letter Queues (DLQs)
+## Dead letter queues (DLQs)
 
-Dead Letter Queues handle two types of problematic tasks. Unprocessable tasks, which include those with no matching handler are routed to `unprocessable_task_queue_name` if set. Failed tasks that raise application exceptions after exhausting retries, mismatched arguments, etc. are routed to `failed_task_queue_name` if set.
+Dead letter queues handle two types of problematic tasks:
+- **Unprocessable tasks**: The system routes tasks with no matching handler to `unprocessable_task_queue_name` if set.
+- **Failed tasks**: The system routes tasks that raise application exceptions after exhausting retries, have mismatched arguments, and other errors to `failed_task_queue_name` if set.
 
-## Rollouts and Compatibility
+## Rollouts and compatibility
 
 During deployment upgrades, both old and new consumer replicas may run concurrently and pull from the same queue. If task schemas or names change, either version may see incompatible tasks.
 
 Recommendations:
 - **Version task names and payloads** to allow coexistence across versions.
-- **Avoid removing handlers** until old tasks are drained.
-- **Monitor DLQs** for deserialization/handler resolution failures and re-enqueue or transform as needed.
+- **Don't remove handlers** until you drain old tasks.
+- **Monitor DLQs** for deserialization or handler resolution failures and re-enqueue or transform as needed.
 
 ## Limitations
 
-- Only synchronous `@task_handler` methods are supported currently.
+- Ray Serve supports only synchronous `@task_handler` methods.
 - External (non-Serve) workers are out of scope; all consumers run as Serve deployments.
-- Delivery guarantees ultimately depend on the configured broker. Results are optional when a result backend is not configured.
+- Delivery guarantees ultimately depend on the configured broker. Results are optional when you don't configure a result backend.
 
 :::{note}
-APIs in this guide reflect the current alpha interfaces in `ray.serve.schema` and `ray.serve.task_consumer`.
+The APIs in this guide reflect the alpha interfaces in `ray.serve.schema` and `ray.serve.task_consumer`.
 :::
 
