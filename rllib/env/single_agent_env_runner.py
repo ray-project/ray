@@ -326,6 +326,13 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     metrics_prefix_key=(MODULE_TO_ENV_CONNECTOR,),
                 )
 
+                #TEST:
+                for env_index in range(self.num_envs):
+                    if episodes[env_index].is_done:
+                        # Create a new episode object with no data in it and execute
+                        # `on_episode_created` callback (before the `env.reset()` call).
+                        self._new_episode(env_index, episodes)
+
             # Extract the (vectorized) actions (to be sent to the env) from the
             # module/connector output. Note that these actions are fully ready (e.g.
             # already unsquashed/clipped) to be sent to the environment) and might not
@@ -422,10 +429,6 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     if eps == num_episodes:
                         break
 
-                    # Create a new episode object with no data in it and execute
-                    # `on_episode_created` callback (before the `env.reset()` call).
-                    self._new_episode(env_index, episodes)
-
         # Return done episodes ...
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
         # ... and all ongoing episode chunks.
@@ -437,6 +440,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         # episode and continue building it on the next call to `sample()`.
         if num_timesteps is not None:
             ongoing_episodes_continuations = [
+                eps if eps.is_done else
                 eps.cut(len_lookback_buffer=self.config.episode_lookback_horizon)
                 for eps in self._episodes
             ]
@@ -444,7 +448,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             for eps in self._episodes:
                 # Just started Episodes do not have to be returned. There is no data
                 # in them anyway.
-                if eps.t == 0:
+                if eps.t == 0 or eps.is_done:
                     continue
                 eps.validate()
                 self._ongoing_episodes_for_metrics[eps.id_].append(eps)

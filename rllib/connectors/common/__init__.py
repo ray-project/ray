@@ -1,6 +1,9 @@
 from ray.rllib.connectors.common.add_observations_from_episodes_to_batch import (
     AddObservationsFromEpisodesToBatch,
 )
+from ray.rllib.connectors.common.add_infos_from_episodes_to_batch import (
+    AddInfosFromEpisodesToBatch,
+)
 from ray.rllib.connectors.common.add_states_from_episodes_to_batch import (
     AddStatesFromEpisodesToBatch,
 )
