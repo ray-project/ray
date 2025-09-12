@@ -4,6 +4,9 @@ from typing import Optional
 from unittest.mock import MagicMock
 
 from ray.train.context import TrainContext
+from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
+    CheckpointManager,
+)
 from ray.train.v2._internal.execution.context import (
     DistributedContext,
     TrainRunContext,
@@ -88,6 +91,17 @@ class DummyWorkerGroup(WorkerGroup):
     @classmethod
     def set_start_failure(cls, start_failure):
         cls._start_failure = start_failure
+
+
+class DummyCheckpointManager(CheckpointManager):
+    _has_pending_validations = True
+
+    def has_pending_validations(self):
+        return self._has_pending_validations
+
+    @classmethod
+    def set_has_pending_validations(cls, has_pending_validations):
+        cls._has_pending_validations = has_pending_validations
 
 
 class MockScalingPolicy(ScalingPolicy):

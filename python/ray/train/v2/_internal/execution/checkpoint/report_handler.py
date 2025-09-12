@@ -11,7 +11,7 @@ from ray.train.v2._internal.execution.worker_group import (
 )
 
 if TYPE_CHECKING:
-    from ray.train._internal.session import _TrainingResult
+    from ray.train._internal.session import _TrainingReport
 
 
 class ReportCallbackHandler(WorkerGroupCallback):
@@ -26,8 +26,8 @@ class ReportCallbackHandler(WorkerGroupCallback):
         # When a worker group shutdown, self._num_workers is set to None,
         # waiting to be updated when a new worker group status is received again.
         self._num_workers: Optional[int] = None
-        # A list of queues holding training results from workers.
-        self._training_result_queues: Optional[List[Deque[_TrainingResult]]] = None
+        # A list of queues holding training reports from workers.
+        self._training_reports_queues: Optional[List[Deque[_TrainingReport]]] = None
 
         self._report_callbacks = report_callbacks
 
@@ -44,10 +44,10 @@ class ReportCallbackHandler(WorkerGroupCallback):
         a consolidated training result.
         """
         # Step 1: If self._num_workers is None, we need to initialize the number
-        # of workers and training_results_queues from the worker group status. This
+        # of workers and training_reports_queues from the worker group status. This
         # happens when the handler receives the worker group status for the first time.
         assert (
-            self._num_workers and self._training_result_queues
+            self._num_workers and self._training_reports_queues
         ), "Need to call initialize state with `after_worker_group_start` first."
 
         assert self._num_workers == len(worker_group_status.worker_statuses), (
@@ -55,28 +55,31 @@ class ReportCallbackHandler(WorkerGroupCallback):
             f"Expected: {self._num_workers}, got: {len(worker_group_status.worker_statuses)}"
         )
 
-        # Step 2: Update training_results_queues with poll_results.
+        # Step 2: Update training_reports_queues with poll_results.
         for i in range(self._num_workers):
-            training_result = worker_group_status.worker_statuses[i].training_result
-            if training_result:
-                self._training_result_queues[i].append(training_result)
+            training_report = worker_group_status.worker_statuses[i].training_report
+            if training_report:
+                self._training_reports_queues[i].append(training_report)
 
         # Directly return if any of the worker result queues are empty.
-        if not all(self._training_result_queues):
+        if not all(self._training_reports_queues):
             return
 
-        training_results = [q.popleft() for q in self._training_result_queues]
+        training_reports = [q.popleft() for q in self._training_reports_queues]
 
         # Step 3: Consolidate a list of checkpoints to single checkpoint.
         # Use the first checkpoint as the consolidated checkpoint.
         checkpoint_results = [
-            tr for tr in training_results if tr.checkpoint is not None
+            tr for tr in training_reports if tr.training_result.checkpoint is not None
         ]
 
         consolidated_checkpoint = None
+        validation_spec = None
         if checkpoint_results:
             # Double check the storage path of the checkpoints in the training results.
-            unique_checkpoint_paths = {tr.checkpoint.path for tr in checkpoint_results}
+            unique_checkpoint_paths = {
+                tr.training_result.checkpoint.path for tr in checkpoint_results
+            }
             if len(unique_checkpoint_paths) > 1:
                 # TODO: Support for inconsistent checkpoints path from workers
                 # instead of hard raising error. Maybe drop this iteration of
@@ -88,22 +91,25 @@ class ReportCallbackHandler(WorkerGroupCallback):
                     f"{unique_checkpoint_paths}\n"
                     "This is unexpected -- please file a Github issue."
                 )
-            consolidated_checkpoint = checkpoint_results[0].checkpoint
+            consolidated_checkpoint = checkpoint_results[0].training_result.checkpoint
+            validation_spec = checkpoint_results[0].validation_spec
 
         # Step 4: Invoke all dependent `ReportCallback`s.
         metrics_per_worker = [
-            training_result.metrics for training_result in training_results
+            training_report.training_result.metrics
+            for training_report in training_reports
         ]
         for callback in self._report_callbacks:
             callback.after_report(
                 metrics=metrics_per_worker,
                 checkpoint=consolidated_checkpoint,
+                validation_spec=validation_spec,
             )
 
     def after_worker_group_start(self, worker_group: WorkerGroup) -> None:
         """Handle worker group start. Initialize internal states."""
         self._num_workers = len(worker_group)
-        self._training_result_queues = [deque() for _ in range(self._num_workers)]
+        self._training_reports_queues = [deque() for _ in range(self._num_workers)]
 
     def before_worker_group_shutdown(self, worker_group: WorkerGroup) -> None:
         """Handle worker group shutdown. Clear internal states.
@@ -111,4 +117,4 @@ class ReportCallbackHandler(WorkerGroupCallback):
         None of the partial reported results are valid at this point.
         """
         self._num_workers = None
-        self._training_result_queues = None
+        self._training_reports_queues = None

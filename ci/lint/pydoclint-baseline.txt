@@ -1993,9 +1993,6 @@ python/ray/train/v2/_internal/callbacks/accelerators.py
     DOC101: Function `_get_visible_accelerator_ids_per_worker`: Docstring contains fewer arguments than in function signature.
     DOC103: Function `_get_visible_accelerator_ids_per_worker`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [accelerator_name: str, worker_metadatas: List[ActorMetadata]].
 --------------------
-python/ray/train/v2/_internal/execution/checkpoint/checkpoint_manager.py
-    DOC103: Method `CheckpointManager.register_checkpoint`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [checkpoint_result: _TrainingResult]. Arguments in the docstring but not in the function signature: [checkpoint: ].
---------------------
 python/ray/train/v2/_internal/execution/storage.py
     DOC101: Method `_ExcludingLocalFilesystem.__init__`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `_ExcludingLocalFilesystem.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: ].
