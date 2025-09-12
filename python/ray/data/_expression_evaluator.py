@@ -89,6 +89,10 @@ def _eval_expr_recursive(
         ]
         default = _eval_expr_recursive(expr.default, batch, ops)
 
+        # Handle edge case: no when clauses (just return default)
+        if not conditions:
+            return default
+
         # Use appropriate vectorized operation based on batch type
         if isinstance(batch, pd.DataFrame):
             # For pandas, use numpy.select which handles Series efficiently

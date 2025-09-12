@@ -309,15 +309,23 @@ class CaseExpr(Expr):
         default: Default value expression when no conditions match
 
     Example:
-        >>> from ray.data.expressions import col, lit, case
+        >>> from ray.data.expressions import col, lit, when
         >>> # Create a case expression: CASE WHEN age > 30 THEN 'Senior' ELSE 'Junior' END
-        >>> expr = case([
-        ...     (col("age") > 30, lit("Senior"))
-        ... ], default=lit("Junior"))
+        >>> expr = when(col("age") > 30, lit("Senior")).otherwise(lit("Junior"))
     """
 
     when_clauses: List[Tuple[Expr, Expr]]
     default: Expr
+
+    data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
+
+    def __post_init__(self):
+        """Validate CaseExpr construction."""
+        if not self.when_clauses:
+            raise ValueError(
+                "CaseExpr requires at least one when clause. "
+                "Use when(condition, value).otherwise(default) to create case expressions."
+            )
 
     def structurally_equals(self, other: Any) -> bool:
         if not isinstance(other, CaseExpr):
@@ -368,6 +376,8 @@ class WhenExpr(Expr):
     condition: Expr
     value: Expr
     next_when: Optional["WhenExpr"] = None
+
+    data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
 
     def when(self, condition: Expr, value: Expr) -> "WhenExpr":
         """Add another WHEN clause to the case statement.
