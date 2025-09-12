@@ -453,7 +453,9 @@ class TestTaskConsumerWithRayServe:
             )
             task_ids.append(ray.get(task_id_ref))
 
-        wait_for_condition(ray.get(signal.cur_num_waiters.remote()) == 1, timeout=10)
+        wait_for_condition(
+            lambda: ray.get(signal.cur_num_waiters.remote()) == 1, timeout=10
+        )
 
         adapter_instance = instantiate_adapter_from_config(
             task_processor_config=processor_config
