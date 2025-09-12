@@ -17,7 +17,7 @@ class MyActor:
 
 
 sender, receiver = MyActor.remote(), MyActor.remote()
-group = create_collective_group([sender, receiver], tensor_transport="nccl")
+group = create_collective_group([sender, receiver], backend="nccl")
 
 # The tensor will be stored by the `sender` actor instead of in Ray's object
 # store.

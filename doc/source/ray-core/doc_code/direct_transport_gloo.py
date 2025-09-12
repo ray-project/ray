@@ -42,7 +42,7 @@ class MyActor:
 sender, receiver = MyActor.remote(), MyActor.remote()
 # The tensor_transport specified here must match the one used in the @ray.method
 # decorator.
-group = create_collective_group([sender, receiver], tensor_transport="gloo")
+group = create_collective_group([sender, receiver], backend="torch_gloo")
 # __gloo_group_end__
 
 # __gloo_group_destroy_start__
@@ -68,7 +68,7 @@ class MyActor:
 
 
 sender, receiver = MyActor.remote(), MyActor.remote()
-group = create_collective_group([sender, receiver], tensor_transport="gloo")
+group = create_collective_group([sender, receiver], backend="torch_gloo")
 
 # The tensor will be stored by the `sender` actor instead of in Ray's object
 # store.
@@ -94,7 +94,7 @@ class MyActor:
 
 
 sender, receiver = MyActor.remote(), MyActor.remote()
-group = create_collective_group([sender, receiver], tensor_transport="gloo")
+group = create_collective_group([sender, receiver], backend="torch_gloo")
 
 # Both tensor values in the dictionary will be stored by the `sender` actor
 # instead of in Ray's object store.

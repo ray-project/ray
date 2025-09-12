@@ -83,7 +83,7 @@ Creating a collective group
 To create a collective group for use with RDT:
 
 1. Create multiple Ray actors.
-2. Create a collective group on the actors using the :func:`ray.experimental.collective.create_collective_group <ray.experimental.collective.create_collective_group>` function. The tensor transport specified must match the one used in the :func:`@ray.method <ray.method>` decorator.
+2. Create a collective group on the actors using the :func:`ray.experimental.collective.create_collective_group <ray.experimental.collective.create_collective_group>` function. The `backend` specified must match the `tensor_transport` used in the :func:`@ray.method <ray.method>` decorator.
 
 Here is an example:
 
