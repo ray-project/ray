@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Type
 
 from ray.air.util.transform_pyarrow import _is_column_extension_type
 from ray.data import DataContext
@@ -125,7 +125,7 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
         joinable_r, unjoinable_r = self._split_joinable_columns(right_seq_partition)
 
         # handle joins on non-joinable columns
-        conflicting_columns = set(unjoinable_l.column_names) & set(left_on)
+        conflicting_columns: Set[str] = set(unjoinable_l.column_names) & set(left_on)
         if conflicting_columns:
             raise ValueError(
                 f"Cannot join on columns with unjoinable types. "
@@ -133,7 +133,7 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
                 f"(map, union, list, struct, etc.) which cannot be used for join operations."
             )
 
-        conflicting_columns = set(unjoinable_r.column_names) & set(right_on)
+        conflicting_columns: Set[str] = set(unjoinable_r.column_names) & set(right_on)
         if conflicting_columns:
             raise ValueError(
                 f"Cannot join on columns with unjoinable types. "
@@ -141,19 +141,9 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
                 f"(map, union, list, struct, etc.) which cannot be used for join operations."
             )
 
-        # We cannot rely on row_count because it can return a non-zero row count
-        # for an empty-schema.
-        # Only index if we have unjoinable columns AND the join type includes that side.
-        should_index_l = (
-            joinable_l.schema
-            and unjoinable_l.schema
-            and self._join_type not in [JoinType.RIGHT_SEMI, JoinType.RIGHT_ANTI]
-        )
-        should_index_r = (
-            joinable_r.schema
-            and unjoinable_r.schema
-            and self._join_type not in [JoinType.LEFT_SEMI, JoinType.LEFT_ANTI]
-        )
+        # Index if we have unjoinable columns
+        should_index_l = self._should_index_side("left", joinable_l, unjoinable_l)
+        should_index_r = self._should_index_side("right", joinable_r, unjoinable_r)
 
         # Add index columns for back-referencing if we have unjoinable columns
         # TODO: what are the chances of a collision with the index column?
@@ -223,6 +213,21 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
     def _split_joinable_columns(
         self, table: "pa.Table"
     ) -> Tuple["pa.Table", "pa.Table"]:
+        """
+        Split a PyArrow table into two tables based on column joinability.
+
+        Separates columns into joinable types and unjoinable types (lists,
+        structs, maps, unions, extension types, etc.) that cannot be
+        directly joined on but should be preserved in results.
+
+        Args:
+            table: Input PyArrow table to split
+
+        Returns:
+            Tuple of (joinable_table, unjoinable_table) where:
+            - joinable_table contains columns with primitive/joinable types
+            - unjoinable_table contains columns with complex/unjoinable types
+        """
         accessor = ArrowBlockAccessor(table)
         joinable, unjoinable = [], []
         for name in accessor.column_names():
@@ -237,7 +242,12 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
             else:
                 joinable.append(name)
 
-        return (accessor.select(joinable), accessor.select(unjoinable))
+        # We cannot rely on row_count because it can return a non-zero row count
+        # for an empty-schema.
+        joinable = joinable if joinable.schema else accessor._empty_table()
+        unjoinable = unjoinable if unjoinable.schema else accessor._empty_table()
+
+        return joinable, unjoinable
 
     def _get_partition_builder(self, *, input_seq_id: int, partition_id: int):
         if input_seq_id == 0:
@@ -252,6 +262,35 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
 
     def _get_index_col_name(self, index: int) -> str:
         return f"__index_level_{index}__"
+
+    def _should_index_side(
+        self, side: str, joinable_table: "pa.Table", unjoinable_table: "pa.Table"
+    ) -> bool:
+        """
+        Determine whether to create an index column for a given side of the join.
+
+        Index columns are needed when we have both joinable and unjoinable columns
+        on a side, and that side's columns will appear in the final result.
+
+        Args:
+            side: "left" or "right" to indicate which side of the join
+            joinable_table: Table containing joinable columns
+            unjoinable_table: Table containing unjoinable columns
+
+        Returns:
+            True if an index column should be created for this side
+        """
+        # Must have both joinable and unjoinable columns to need indexing
+        if not (joinable_table and unjoinable_table):
+            return False
+
+        # For semi/anti joins, only index the side that appears in the result
+        if side == "left":
+            # Left side appears in result for all joins except right_semi/right_anti
+            return self._join_type not in [JoinType.RIGHT_SEMI, JoinType.RIGHT_ANTI]
+        else:  # side == "right"
+            # Right side appears in result for all joins except left_semi/left_anti
+            return self._join_type not in [JoinType.LEFT_SEMI, JoinType.LEFT_ANTI]
 
 
 def is_unjoinable_type(type: "pa.DataType") -> bool:
