@@ -515,6 +515,10 @@ class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
         """
         Convert an ExtensionScalar to a tensor element.
         """
+        # Handle None/null values (e.g., from outer joins)
+        if scalar.value is None or not scalar.is_valid:
+            return None
+
         raw_values = scalar.value.values
         shape = scalar.type.shape
         value_type = raw_values.type
@@ -1121,6 +1125,11 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
         """
         Convert an ExtensionScalar to a tensor element.
         """
+
+        # Handle None/null values (e.g., from outer joins)
+        if scalar.value is None or not scalar.is_valid:
+            return None
+
         data = scalar.value.get("data")
         raw_values = data.values
 

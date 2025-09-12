@@ -2,6 +2,7 @@ import logging
 import math
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type
 
+from ray.air.util.transform_pyarrow import _is_column_extension_type
 from ray.data import DataContext
 from ray.data._internal.arrow_block import ArrowBlockAccessor, ArrowBlockBuilder
 from ray.data._internal.execution.interfaces import PhysicalOperator
@@ -225,7 +226,13 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
         accessor = ArrowBlockAccessor(table)
         joinable, unjoinable = [], []
         for name in accessor.column_names():
-            if is_unjoinable_type(table.column(name).type):
+            column: "pa.ChunkedArray" = table.column(name)
+
+            type = column.type
+            if _is_column_extension_type(column):
+                type = column.type.storage_type
+
+            if is_unjoinable_type(type):
                 unjoinable.append(name)
             else:
                 joinable.append(name)
@@ -253,6 +260,7 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
 def is_unjoinable_type(type: "pa.DataType") -> bool:
     import pyarrow as pa
 
+    # TODO: need to handle custom extension arrays
     return (
         pa.types.is_map(type)
         or pa.types.is_union(type)

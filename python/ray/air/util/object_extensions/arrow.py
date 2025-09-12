@@ -80,6 +80,10 @@ class ArrowPythonObjectScalar(pa.ExtensionScalar):
     """Scalar class for ArrowPythonObjectType"""
 
     def as_py(self, **kwargs) -> typing.Any:
+        # Handle None/null values (e.g., from outer joins)
+        if self.value is None or not self.is_valid:
+            return None
+
         if not isinstance(self.value, pa.LargeBinaryScalar):
             raise RuntimeError(
                 f"{type(self.value)} is not the expected LargeBinaryScalar"
