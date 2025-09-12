@@ -598,23 +598,45 @@ def get_config_summary() -> Dict[str, Any]:
 
 # Public API functions
 @PublicAPI(stability="alpha")
-def sql(query: str, default_dataset: Optional[Dataset] = None) -> Dataset:
-    """Execute a SQL query on registered datasets.
+def sql(
+    query: str, default_dataset: Optional[Dataset] = None, optimizer: str = "auto"
+) -> Dataset:
+    """Execute a SQL query on registered datasets with advanced optimization.
+
+    This function can use Apache Calcite or Substrait for advanced query optimization
+    while preserving all Ray Dataset native operations for execution.
 
     Args:
         query: SQL query string.
         default_dataset: Default dataset for queries without FROM clause.
+        optimizer: Optimizer to use ("auto", "calcite", "substrait", or "sqlglot").
 
     Returns:
-        Dataset containing the query results.
+        Dataset containing the query results (using Ray Dataset native operations).
 
     Examples:
-        >>> import ray.data.sql
-        >>> users = ray.data.from_items([{"id": 1, "name": "Alice"}])
-        >>> ray.data.sql.register_table("users", users)
-        >>> result = ray.data.sql("SELECT * FROM users WHERE id = 1")
-        >>> print(result.take_all())
+        Basic usage (auto-selects best optimizer):
+            >>> import ray.data.sql
+            >>> users = ray.data.from_items([{"id": 1, "name": "Alice"}])
+            >>> ray.data.sql.register_table("users", users)
+            >>> result = ray.data.sql("SELECT * FROM users WHERE id = 1")
+
+        With specific optimizer:
+            >>> # Use Calcite for cost-based optimization + Ray Dataset execution
+            >>> result = ray.data.sql("SELECT * FROM users JOIN orders ON users.id = orders.user_id", optimizer="calcite")
+            >>> # Internally uses dataset.join() with Calcite-optimized parameters
     """
+    # Try to use advanced optimizers if available
+    if optimizer != "sqlglot":
+        try:
+            from ray.data.sql.optimizers import execute_optimized_sql
+
+            return execute_optimized_sql(query, optimizer)
+        except ImportError:
+            # Optimizers not available, use current implementation
+            pass
+
+    # Fallback to current Ray SQL implementation
     return get_engine().sql(query, default_dataset)
 
 

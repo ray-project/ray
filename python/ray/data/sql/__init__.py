@@ -56,6 +56,24 @@ from ray.data.sql.exceptions import (
     UnsupportedOperationError,
 )
 
+# Optional advanced optimizer integration (preserves Ray Dataset operations)
+try:
+    from ray.data.sql.optimizers import (
+        execute_optimized_sql,
+        get_ray_executor,
+        get_unified_optimizer,
+    )
+    from ray.data.sql.substrait_integration import (
+        configure_sql_optimizer,
+        is_substrait_available,
+        sql_with_optimizer,
+        sql_with_substrait,
+    )
+
+    ADVANCED_OPTIMIZERS_AVAILABLE = True
+except ImportError:
+    ADVANCED_OPTIMIZERS_AVAILABLE = False
+
 # Public API exports
 __all__ = [
     # Core public API
@@ -96,6 +114,20 @@ __all__ = [
     "SchemaError",
     "UnsupportedOperationError",
 ]
+
+# Add advanced optimizer integration to exports if available
+if ADVANCED_OPTIMIZERS_AVAILABLE:
+    __all__.extend(
+        [
+            "sql_with_substrait",
+            "sql_with_optimizer",
+            "configure_sql_optimizer",
+            "execute_optimized_sql",
+            "get_unified_optimizer",
+            "get_ray_executor",
+            "is_substrait_available",
+        ]
+    )
 
 # Module-level documentation
 __version__ = "1.0.0"

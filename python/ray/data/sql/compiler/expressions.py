@@ -122,15 +122,12 @@ class ExpressionCompiler:
         """
         expr_type = type(expr)
 
-        # Optimized column references
+        # Column references
         if isinstance(expr, exp.Column):
             col_name = str(expr.name)
-            # Handle table-qualified column names efficiently
             if "." in col_name:
                 col_name = col_name.split(".")[-1]
-
-            # Use optimized column accessor for better performance
-            return cls._create_column_accessor(col_name)
+            return lambda row: row.get(col_name)
 
         # Literal values
         if isinstance(expr, exp.Literal):

@@ -138,13 +138,12 @@ class QueryExecutor:
         if self._has_only_literals(select_exprs):
             return self._execute_literal_query(ast, select_exprs)
 
-        # Handle empty dataset - use take(1) instead of expensive count()
+        # Handle empty dataset efficiently
         try:
             first_row = dataset.take(1)
             if not first_row:
                 return self._handle_empty_dataset(ast)
         except Exception:
-            # If take(1) fails, dataset might be empty or have other issues
             return self._handle_empty_dataset(ast)
 
         # Apply operations in sequence following Ray Dataset API patterns
@@ -353,10 +352,9 @@ class QueryExecutor:
         dataset = self.join_handler.apply_joins(dataset, ast, self.registry)
         dataset = self.filter_handler.apply_where_clause(dataset, ast)
 
-        # Check if dataset is empty using take(1) instead of expensive count()
+        # Check if dataset is empty
         try:
-            first_row = dataset.take(1)
-            if not first_row:
+            if not dataset.take(1):
                 return ray.data.from_items([])
         except Exception:
             return ray.data.from_items([])
@@ -417,10 +415,9 @@ class QueryExecutor:
         if not aggregates:
             raise ValueError("No aggregates found in aggregate-only query")
 
-        # Check if dataset is empty using take(1) instead of expensive count()
+        # Check if dataset is empty
         try:
-            first_row = dataset.take(1)
-            if not first_row:
+            if not dataset.take(1):
                 return self._create_empty_aggregate_result(aggregates)
         except Exception:
             return self._create_empty_aggregate_result(aggregates)

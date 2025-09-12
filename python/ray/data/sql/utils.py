@@ -34,6 +34,17 @@ def setup_logger(name: str = "RaySQL") -> logging.Logger:
     return logger
 
 
+def extract_column_name(expr) -> str:
+    """Extract column name from expression, handling table qualifiers."""
+    if isinstance(expr, exp.Column):
+        col_name = str(expr.name)
+        return col_name.split(".")[-1] if "." in col_name else col_name
+    elif hasattr(expr, "name"):
+        return str(expr.name)
+    else:
+        return str(expr)
+
+
 def normalize_identifier(name: str, case_sensitive: bool = False) -> str:
     """Normalize SQL identifiers for case-insensitive matching.
 
