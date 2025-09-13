@@ -47,9 +47,16 @@ def test_owner_assign_bug(ray_start_regular):
     ],
 )
 def test_owner_assign_when_put(ray_start_cluster, actor_resources):
-    cluster_node_config = [
-        {"num_cpus": 1, "resources": {f"node{i+1}": 10}} for i in range(3)
-    ]
+    system_config = {
+        "core_worker_rpc_server_reconnect_timeout_s": 0,
+        "grpc_client_check_connection_status_interval_milliseconds": 0,
+    }
+    cluster_node_config = []
+    for i in range(3):
+        config = {"num_cpus": 1, "resources": {f"node{i+1}": 10}}
+        if i == 0:  # Add system_config only to the first node (head node)
+            config["_system_config"] = system_config
+        cluster_node_config.append(config)
     cluster = ray_start_cluster
     for kwargs in cluster_node_config:
         cluster.add_node(**kwargs)
