@@ -389,7 +389,6 @@ int main(int argc, char *argv[]) {
   auto shutted_down = std::make_shared<std::atomic<bool>>(false);
 
   auto shutdown_raylet_after_unregistration = [&main_service,
-                                               &object_manager_rpc_service,
                                                &raylet_socket_name,
                                                &raylet,
                                                &gcs_client,
@@ -398,7 +397,6 @@ int main(int argc, char *argv[]) {
     raylet->Stop();
     gcs_client->Disconnect();
     ray::stats::Shutdown();
-    object_manager_rpc_service.stop();
     for (size_t i = 0; i < object_manager_rpc_threads.size(); i++) {
       if (object_manager_rpc_threads[i].joinable()) {
         object_manager_rpc_threads[i].join();
