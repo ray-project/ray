@@ -11,12 +11,11 @@ from ray.data._internal.execution.operators.input_data_buffer import InputDataBu
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
-    BuildOutputBlocksMapTransformFn,
     MapTransformer,
-    MapTransformFn,
 )
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.util import _warn_on_high_parallelism
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
@@ -103,19 +102,23 @@ def plan_read_op(
             yield from read_task()
 
     # Create a MapTransformer for a read operator
-    transform_fns: List[MapTransformFn] = [
-        # First, execute the read tasks.
-        BlockMapTransformFn(do_read),
-    ]
-    transform_fns.append(BuildOutputBlocksMapTransformFn.for_blocks())
-    map_transformer = MapTransformer(transform_fns)
+    map_transformer = MapTransformer(
+        [
+            BlockMapTransformFn(
+                do_read,
+                is_udf=False,
+                output_block_size_option=OutputBlockSizeOption.of(
+                    target_max_block_size=data_context.target_max_block_size,
+                ),
+            ),
+        ]
+    )
 
     return MapOperator.create(
         map_transformer,
         inputs,
         data_context,
         name=op.name,
-        target_max_block_size=None,
         compute_strategy=TaskPoolStrategy(op._concurrency),
         ray_remote_args=op._ray_remote_args,
     )

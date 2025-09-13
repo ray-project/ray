@@ -51,7 +51,8 @@ class InputDataBuffer(PhysicalOperator):
     def start(self, options: ExecutionOptions) -> None:
         if not self._is_input_initialized:
             self._input_data = self._input_data_factory(
-                self.actual_target_max_block_size
+                self.target_max_block_size_override
+                or self.data_context.target_max_block_size
             )
             self._is_input_initialized = True
             self._initialize_metadata()
