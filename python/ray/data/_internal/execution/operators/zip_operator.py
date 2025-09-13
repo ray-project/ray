@@ -89,15 +89,25 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
 
     def all_inputs_done(self) -> None:
         assert len(self._output_buffer) == 0, len(self._output_buffer)
-        self._output_buffer = self._input_buffers[0]
+
+        # Start with the first input buffer
+        while self._input_buffers[0]:
+            refs = self._input_buffers[0].popleft()
+            self._output_buffer.append(refs)
+            self._metrics.on_input_dequeued(refs)
+
+        # Process each additional input buffer
         for input_buffer in self._input_buffers[1:]:
             self._output_buffer, self._stats = self._zip(
                 self._output_buffer, input_buffer
             )
+
+            # Clear the input buffer AFTER using it in _zip
             while input_buffer:
                 refs = input_buffer.popleft()
                 self._metrics.on_input_dequeued(refs)
 
+        # Mark outputs as ready
         for ref in self._output_buffer:
             self._metrics.on_output_queued(ref)
 
@@ -107,7 +117,7 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         return len(self._output_buffer) > 0
 
     def _get_next_inner(self) -> RefBundle:
-        refs = self._output_buffer.pop(0)
+        refs = self._output_buffer.popleft()
         self._metrics.on_output_dequeued(refs)
         return refs
 
@@ -121,7 +131,7 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         self,
         left_input: collections.deque[RefBundle],
         right_input: collections.deque[RefBundle],
-    ) -> Tuple[List[RefBundle], StatsDict]:
+    ) -> Tuple[collections.deque[RefBundle], StatsDict]:
         """Zip the RefBundles from `left_input` and `right_input` together.
 
         Zip is done in 2 steps: aligning blocks, and zipping blocks from
@@ -220,7 +230,7 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
             output_metadata_schema
         )
 
-        output_refs = []
+        output_refs: collections.deque[RefBundle] = collections.deque()
         input_owned = all(b.owns_blocks for b in left_input)
         for block, meta_with_schema in zip(output_blocks, output_metadata_schema):
             output_refs.append(
