@@ -285,6 +285,7 @@ class Dataset:
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+        max_tasks_in_flight_per_actor: Optional[int] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -377,6 +378,11 @@ class Dataset:
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
                   method raises an error.
 
+            max_tasks_in_flight_per_actor: The maximum number of tasks to concurrently
+                send to a single actor worker. Increasing this will increase
+                opportunities for pipelining task dependency prefetching with
+                computation and avoiding actor startup delays, but will also increase
+                queueing delay.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time prior
@@ -401,6 +407,7 @@ class Dataset:
             fn_constructor_args=fn_constructor_args,
             compute=compute,
             concurrency=concurrency,
+            max_tasks_in_flight_per_actor=max_tasks_in_flight_per_actor,
         )
 
         if num_cpus is not None:
@@ -471,6 +478,7 @@ class Dataset:
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+        max_tasks_in_flight_per_actor: Optional[int] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -641,6 +649,11 @@ class Dataset:
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
                   method raises an error.
 
+            max_tasks_in_flight_per_actor: The maximum number of tasks to concurrently
+                send to a single actor worker. Increasing this will increase
+                opportunities for pipelining task dependency prefetching with
+                computation and avoiding actor startup delays, but will also increase
+                queueing delay.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time prior
@@ -709,6 +722,7 @@ class Dataset:
             num_gpus=num_gpus,
             memory=memory,
             concurrency=concurrency,
+            max_tasks_in_flight_per_actor=max_tasks_in_flight_per_actor,
             ray_remote_args_fn=ray_remote_args_fn,
             **ray_remote_args,
         )
@@ -729,6 +743,7 @@ class Dataset:
         num_gpus: Optional[float],
         memory: Optional[float],
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]],
+        max_tasks_in_flight_per_actor: Optional[int],
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
         **ray_remote_args,
     ):
@@ -751,6 +766,7 @@ class Dataset:
             fn_constructor_args=fn_constructor_args,
             compute=compute,
             concurrency=concurrency,
+            max_tasks_in_flight_per_actor=max_tasks_in_flight_per_actor,
         )
 
         if num_cpus is not None:
@@ -1258,6 +1274,7 @@ class Dataset:
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+        max_tasks_in_flight_per_actor: Optional[int] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -1344,6 +1361,11 @@ class Dataset:
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
                   method raises an error.
 
+            max_tasks_in_flight_per_actor: The maximum number of tasks to concurrently
+                send to a single actor worker. Increasing this will increase
+                opportunities for pipelining task dependency prefetching with
+                computation and avoiding actor startup delays, but will also increase
+                queueing delay.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time
@@ -1366,6 +1388,7 @@ class Dataset:
             fn_constructor_args=fn_constructor_args,
             compute=compute,
             concurrency=concurrency,
+            max_tasks_in_flight_per_actor=max_tasks_in_flight_per_actor,
         )
 
         if num_cpus is not None:
@@ -1404,6 +1427,7 @@ class Dataset:
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+        max_tasks_in_flight_per_actor: Optional[int] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -1465,6 +1489,11 @@ class Dataset:
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
                   method raises an error.
 
+            max_tasks_in_flight_per_actor: The maximum number of tasks to concurrently
+                send to a single actor worker. Increasing this will increase
+                opportunities for pipelining task dependency prefetching with
+                computation and avoiding actor startup delays, but will also increase
+                queueing delay.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time
@@ -1511,6 +1540,7 @@ class Dataset:
                     fn_constructor_args=fn_constructor_args,
                     compute=compute,
                     concurrency=concurrency,
+                    max_tasks_in_flight_per_actor=max_tasks_in_flight_per_actor,
                 )
             else:
                 raise ValueError(
