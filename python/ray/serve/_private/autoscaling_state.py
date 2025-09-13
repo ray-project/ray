@@ -1,7 +1,8 @@
 import logging
 import time
+from collections import deque
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Deque, Dict, List, Optional, Set
 
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
@@ -94,7 +95,9 @@ class AutoscalingState:
         self._target_capacity: Optional[float] = None
         self._target_capacity_direction: Optional[TargetCapacityDirection] = None
         self._cached_deployment_snapshot: Optional[DeploymentSnapshot] = None
-        self._decision_history: List[_DecisionRecord] = []
+        self._decision_history: Deque[_DecisionRecord] = deque(
+            maxlen=AUTOSCALER_SUMMARIZER_DECISION_HISTORY_MAX
+        )
 
     def register(self, info: DeploymentInfo, curr_target_num_replicas: int) -> int:
         """Registers an autoscaling deployment's info.
@@ -276,23 +279,19 @@ class AutoscalingState:
 
         decision_num_replicas, self._policy_state = self._policy(ctx)
 
-        if _skip_bound_check:
-            target_for_record = decision_num_replicas
-        else:
-            target_for_record = self.apply_bounds(decision_num_replicas)
+        if not _skip_bound_check:
+            decision_num_replicas = self.apply_bounds(decision_num_replicas)
+        target_for_record = decision_num_replicas
+
         self._decision_history.append(
             _DecisionRecord(
                 timestamp_s=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                prev_num_replicas=int(ctx.current_num_replicas),
-                curr_num_replicas=int(target_for_record),
+                prev_num_replicas=ctx.current_num_replicas,
+                curr_num_replicas=target_for_record,
                 reason=f"current={ctx.current_num_replicas}, target={target_for_record}",
                 policy_name=getattr(ctx.config.policy, "name", None),
             )
         )
-        if len(self._decision_history) > AUTOSCALER_SUMMARIZER_DECISION_HISTORY_MAX:
-            self._decision_history = self._decision_history[
-                -AUTOSCALER_SUMMARIZER_DECISION_HISTORY_MAX:
-            ]
 
         self._cached_deployment_snapshot = self._create_deployment_snapshot(
             ctx=ctx,
@@ -372,15 +371,12 @@ class AutoscalingState:
             scaling_status_raw = DeploymentStatusTrigger.AUTOSCALING_DOWNSCALE
         else:
             scaling_status_raw = DeploymentStatusTrigger.AUTOSCALING_STABLE
+
         scaling_status = DeploymentSnapshot.format_scaling_status(scaling_status_raw)
 
         look_back_period_s = getattr(self._config, "look_back_period_s", None)
         metrics_health = DeploymentSnapshot.format_metrics_health_text(
-            time_since_last_collected_metrics_s=(
-                None
-                if time_since_last_collected_metrics_s is None
-                else float(time_since_last_collected_metrics_s)
-            ),
+            time_since_last_collected_metrics_s=time_since_last_collected_metrics_s,
             look_back_period_s=look_back_period_s,
         )
 
@@ -396,10 +392,10 @@ class AutoscalingState:
             timestamp_s=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             app=self._deployment_id.app_name,
             deployment=self._deployment_id.name,
-            current_replicas=int(current_replicas),
-            target_replicas=int(target_replicas),
-            min_replicas=int(min_replicas) if min_replicas is not None else None,
-            max_replicas=int(max_replicas) if max_replicas is not None else None,
+            current_replicas=current_replicas,
+            target_replicas=target_replicas,
+            min_replicas=min_replicas if min_replicas is not None else None,
+            max_replicas=max_replicas if max_replicas is not None else None,
             scaling_status=scaling_status,
             policy_name=getattr(ctx.config.policy, "name", None),
             look_back_period_s=look_back_period_s,
