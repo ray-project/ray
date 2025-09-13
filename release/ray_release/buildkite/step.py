@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional, List, Tuple
 
 from ray_release.aws import RELEASE_AWS_BUCKET
 from ray_release.buildkite.concurrency import get_concurrency_group
+from ray_release.configs.global_config import get_global_config
 from ray_release.test import Test, TestState
 from ray_release.config import (
     DEFAULT_ANYSCALE_PROJECT,
@@ -12,6 +13,10 @@ from ray_release.config import (
     get_test_project_id,
 )
 from ray_release.env import DEFAULT_ENVIRONMENT, load_environment
+from ray_release.custom_byod_build_init_helper import (
+    generate_custom_build_step_key,
+    get_prerequisite_step,
+)
 from ray_release.template import get_test_env_var
 from ray_release.util import DeferredEnvVar
 
@@ -113,7 +118,7 @@ def get_step(
     global_config: Optional[str] = None,
 ):
     env = env or {}
-
+    config = get_global_config()
     step = copy.deepcopy(DEFAULT_STEP_TEMPLATE)
 
     cmd = [
@@ -190,5 +195,13 @@ def get_step(
     full_label += f" ({label}) ({run_id})"
 
     step["label"] = full_label
+
+    image = test.get_anyscale_byod_image()
+    if test.require_custom_byod_image():
+        step["depends_on"] = generate_custom_build_step_key(
+            test.get_anyscale_byod_image(build_id="")
+        )
+    else:
+        step["depends_on"] = get_prerequisite_step(image)
 
     return step
