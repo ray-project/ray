@@ -13,6 +13,7 @@ import ray
 from ray import cloudpickle
 from ray._common.utils import import_attr
 from ray.exceptions import RuntimeEnvSetupError
+from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.build_app import BuiltApplication, build_app
 from ray.serve._private.common import (
     DeploymentID,
@@ -222,6 +223,7 @@ class ApplicationState:
         self,
         name: str,
         deployment_state_manager: DeploymentStateManager,
+        autoscaling_state_manager: AutoscalingStateManager,
         endpoint_state: EndpointState,
         logging_config: LoggingConfig,
     ):
@@ -230,12 +232,15 @@ class ApplicationState:
             name: Application name.
             deployment_state_manager: State manager for all deployments
                 in the cluster.
+            autoscaling_state_manager: State manager for autoscaling
+                decisions in the cluster.
             endpoint_state: State manager for endpoints in the system.
         """
 
         self._name = name
         self._status_msg = ""
         self._deployment_state_manager = deployment_state_manager
+        self._autoscaling_state_manager = autoscaling_state_manager
         self._endpoint_state = endpoint_state
         self._route_prefix: Optional[str] = None
         self._ingress_deployment_name: Optional[str] = None
@@ -325,6 +330,13 @@ class ApplicationState:
         # the imperatively started application is restarting with controller.
         if checkpoint_data.deployment_infos is not None:
             self._route_prefix = self._check_routes(checkpoint_data.deployment_infos)
+
+        if self.should_autoscale():
+            self._autoscaling_state_manager.register_application(
+                self._name,
+                self._target_state.config,
+                self._target_state.deployment_infos,
+            )
 
     def _set_target_state(
         self,
@@ -430,6 +442,34 @@ class ApplicationState:
         """
         return self._target_state.deleting and len(self._get_live_deployments()) == 0
 
+    def should_autoscale(self) -> bool:
+        return (
+            self._target_state.config is not None
+            and self._target_state.config.autoscaling_policy is not None
+        )
+
+    def autoscale(self) -> bool:
+        deployments: Dict[str, DeploymentDetails] = self.list_deployment_details()
+        decisions: Dict[
+            str, int
+        ] = self._autoscaling_state_manager.get_scaling_decisions_for_application(
+            self._name, deployments
+        )
+
+        target_state_changed = False
+        for deployment_name, decision_num_replicas in decisions.items():
+            deployment_id: DeploymentID = DeploymentID(
+                name=deployment_name, app_name=self._name
+            )
+            target_state_changed = (
+                self._deployment_state_manager.autoscale(
+                    deployment_id, decision_num_replicas
+                )
+                or target_state_changed
+            )
+
+        return target_state_changed
+
     def apply_deployment_info(
         self,
         deployment_name: str,
@@ -499,6 +539,13 @@ class ApplicationState:
             target_capacity=None,
             target_capacity_direction=None,
         )
+
+        if self.should_autoscale():
+            self._autoscaling_state_manager.register_application(
+                self._name,
+                self._target_state.config,
+                self._target_state.deployment_infos,
+            )
 
     def apply_app_config(
         self,
@@ -591,6 +638,13 @@ class ApplicationState:
                 target_capacity_direction=target_capacity_direction,
                 finished=False,
             )
+
+            if self.should_autoscale():
+                self._autoscaling_state_manager.register_application(
+                    self._name,
+                    self._target_state.config,
+                    self._target_state.deployment_infos,
+                )
 
     def _get_live_deployments(self) -> List[str]:
         return self._deployment_state_manager.get_deployments_in_application(self._name)
@@ -919,11 +973,13 @@ class ApplicationStateManager:
     def __init__(
         self,
         deployment_state_manager: DeploymentStateManager,
+        autoscaling_state_manager: AutoscalingStateManager,
         endpoint_state: EndpointState,
         kv_store: KVStoreBase,
         logging_config: LoggingConfig,
     ):
         self._deployment_state_manager = deployment_state_manager
+        self._autoscaling_state_manager = autoscaling_state_manager
         self._endpoint_state = endpoint_state
         self._kv_store = kv_store
         self._logging_config = logging_config
@@ -942,6 +998,7 @@ class ApplicationStateManager:
                 app_state = ApplicationState(
                     app_name,
                     self._deployment_state_manager,
+                    self._autoscaling_state_manager,
                     self._endpoint_state,
                     self._logging_config,
                 )
@@ -988,6 +1045,7 @@ class ApplicationStateManager:
                 self._application_states[name] = ApplicationState(
                     name,
                     self._deployment_state_manager,
+                    self._autoscaling_state_manager,
                     self._endpoint_state,
                     self._logging_config,
                 )
@@ -1038,6 +1096,7 @@ class ApplicationStateManager:
                 self._application_states[app_config.name] = ApplicationState(
                     app_config.name,
                     self._deployment_state_manager,
+                    self._autoscaling_state_manager,
                     endpoint_state=self._endpoint_state,
                     logging_config=self._logging_config,
                 )
@@ -1122,6 +1181,8 @@ class ApplicationStateManager:
         apps_to_be_deleted = []
         any_target_state_changed = False
         for name, app in self._application_states.items():
+            if app.should_autoscale():
+                any_target_state_changed = app.autoscale() or any_target_state_changed
             ready_to_be_deleted, app_target_state_changed = app.update()
             any_target_state_changed = (
                 any_target_state_changed or app_target_state_changed
@@ -1132,6 +1193,9 @@ class ApplicationStateManager:
 
         if len(apps_to_be_deleted) > 0:
             for app_name in apps_to_be_deleted:
+                self._autoscaling_state_manager.deregister_application(
+                    app_name, self.get_deployments(app_name)
+                )
                 del self._application_states[app_name]
             ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
 

@@ -5,16 +5,19 @@ from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set, Union
 from zlib import crc32
 
+from ray import cloudpickle
 from ray._common.pydantic_compat import (
     BaseModel,
     Extra,
     Field,
     NonNegativeInt,
     PositiveInt,
+    PrivateAttr,
     StrictInt,
     root_validator,
     validator,
 )
+from ray._common.utils import import_attr
 from ray._private.ray_logging.constants import LOGRECORD_STANDARD_ATTRS
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
@@ -33,7 +36,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import DEFAULT, validate_ssl_config
-from ray.serve.config import ProxyLocation, RequestRouterConfig
+from ray.serve.config import AutoscalingPolicy, ProxyLocation, RequestRouterConfig
 from ray.util.annotations import PublicAPI
 
 # Shared amongst multiple schemas.
@@ -556,6 +559,15 @@ class ServeApplicationSchema(BaseModel):
             "must be shut down and restarted with the new port instead."
         ),
     )
+
+    autoscaling_policy: Optional[AutoscalingPolicy] = Field(
+        default=None,
+        description=(
+            "Cross deployment autoscaling policy "
+            "name of the custom autoscaling policy for the application. "
+        ),
+    )
+
     deployments: List[DeploymentSchema] = Field(
         default=[],
         description="Deployment options that override options specified in the code.",
@@ -569,9 +581,40 @@ class ServeApplicationSchema(BaseModel):
         description="Logging config for configuring serve application logs.",
     )
 
+    # Cloudpickled policy definition.
+    _serialized_autoscaling_policy_def: bytes = PrivateAttr(default=b"")
+
     @property
     def deployment_names(self) -> List[str]:
         return [d.name for d in self.deployments]
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        if self.autoscaling_policy:
+            self.serialize_autoscaling_policy()
+
+    def serialize_autoscaling_policy(self) -> None:
+        """Serialize policy with cloudpickle.
+
+        Import the policy if it's passed in as a string import path. Then cloudpickle
+        the policy and set `serialized_policy_def` if it's empty.
+        """
+        policy = self.autoscaling_policy
+        policy_name = policy.name
+
+        if isinstance(policy_name, Callable):
+            policy_name = f"{policy_name.__module__}.{policy_name.__name__}"
+
+        if not self._serialized_autoscaling_policy_def:
+            self._serialized_autoscaling_policy_def = cloudpickle.dumps(
+                import_attr(policy_name)
+            )
+
+        self.autoscaling_policy = AutoscalingPolicy(name=policy_name)
+
+    def get_autoscaling_policy(self) -> Callable:
+        """Deserialize policy from cloudpickled bytes."""
+        return cloudpickle.loads(self._serialized_autoscaling_policy_def)
 
     @validator("runtime_env")
     def runtime_env_contains_remote_uris(cls, v):
