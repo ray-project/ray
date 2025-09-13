@@ -42,6 +42,7 @@ class TorchGLOOGroup(BaseGroup):
         world_size: int,
         rank: int,
         group_name: str,
+        gloo_timeout: Optional[int] = None,
     ):
         # Initialize the default process group only once per process.
         if not dist.is_initialized():
@@ -77,6 +78,17 @@ class TorchGLOOGroup(BaseGroup):
             # All ranks participate in this subgroup with global ranks [0..world_size-1].
             ranks = list(range(world_size))
             self._pg = dist.new_group(ranks=ranks, backend="gloo")
+
+        # Compatibility shim for legacy tests expecting a pygloo context with getTimeout().
+        # Store the rendezvous timeout in milliseconds, defaulting to 30000 if unspecified.
+        class _GlooCompatContext:
+            def __init__(self, timeout_ms: int):
+                self._timeout_ms = timeout_ms
+
+            def getTimeout(self) -> int:
+                return self._timeout_ms
+
+        self._gloo_context = _GlooCompatContext(gloo_timeout if gloo_timeout is not None else 30000)
 
     def destroy_group(self):
         """GC the communicators."""

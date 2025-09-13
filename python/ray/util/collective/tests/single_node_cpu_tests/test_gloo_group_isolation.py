@@ -28,7 +28,7 @@ class Worker:
         return g._gloo_context.getTimeout()
 
 
-def test_two_groups_in_one_cluster(ray_start_regular_shared):
+def test_two_groups_in_one_cluster(ray_start_single_node):
     name1 = "name_1"
     name2 = "name_2"
     time1 = 40000
@@ -43,7 +43,7 @@ def test_two_groups_in_one_cluster(ray_start_regular_shared):
     assert ray.get(w2.get_gloo_timeout.remote(name2)) == time2
 
 
-def test_failure_when_initializing(shutdown_only):
+def test_failure_when_initializing():
     # job1
     ray.init()
     w1 = Worker.remote()

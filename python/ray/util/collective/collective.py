@@ -119,7 +119,7 @@ class GroupManager(object):
             logger.debug(
                 "Creating torch.distributed GLOO group: '{}'...".format(group_name)
             )
-            g = TorchGLOOGroup(world_size, rank, group_name)
+            g = TorchGLOOGroup(world_size, rank, group_name, gloo_timeout)
         elif backend == types.Backend.NCCL:
             _check_backend_availability(backend)
             logger.debug("Creating NCCL group: '{}'...".format(group_name))
