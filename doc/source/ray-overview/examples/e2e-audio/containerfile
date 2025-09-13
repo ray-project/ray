@@ -1,0 +1,5 @@
+FROM anyscale/ray-llm:latest-py311-cu128
+
+COPY llm_example_py311_cu128.lock .
+
+RUN uv pip sync llm_example_py311_cu128.lock

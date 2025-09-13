@@ -1,0 +1,25 @@
+build_arg_sets:
+  cu128:
+    PYTHON_VERSION: py311
+    CUDA_CODE: cu128
+
+common_settings: &common_settings
+  override_flags:
+    - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
+  append_flags:
+    - --python-version=3.11
+    - --python-platform=linux
+  build_arg_sets:
+    - cu128
+
+depsets:
+# ---------------------------- LLM EXAMPLES (depends on RayLLM depsets) ----------------------------
+# e2e-audio depset
+  - name: e2e_audio_${PYTHON_VERSION}_${CUDA_CODE}
+    operation: compile
+    requirements:
+      - doc/source/ray-overview/examples/e2e-audio/requirements.in
+    constraints:
+      - python/deplocks/llm/rayllm_${PYTHON_VERSION}_${CUDA_CODE}.lock
+    output: doc/source/ray-overview/examples/e2e-audio/llm_example_${PYTHON_VERSION}_${CUDA_CODE}.lock
+    <<: *common_settings
