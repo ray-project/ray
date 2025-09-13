@@ -412,6 +412,7 @@ class Trial:
                 )
 
         self._state_json = None
+        self._checkpoint_requested_by_user = False
 
     def create_placement_group_factory(self):
         """Compute placement group factory if needed.
@@ -872,6 +873,8 @@ class Trial:
 
     def should_checkpoint(self):
         """Whether this trial is due for checkpointing."""
+        if self._checkpoint_requested_by_user:
+            return True
         result = self.last_result or {}
         if result.get(DONE) and self.checkpoint_at_end:
             return True
@@ -879,6 +882,18 @@ class Trial:
             self.checkpoint_freq
             and result.get(TRAINING_ITERATION, 0) % self.checkpoint_freq == 0
         )
+
+    def checkpoint_now(self) -> None:
+        """
+        Set a flag to request a checkpoint to be taken at the next opportunity.
+        It will be unset on ``on_checkpoint``.
+
+        This function is intended to be used within a ``Callback``,
+        e.g. `on_trial_result`.
+        """
+        # Effect is equivalent to forcing a checkpoint, i.e. by `"should_checkpoint"`
+        # in the result dict.
+        self._checkpoint_requested_by_user = True
 
     def has_checkpoint(self) -> bool:
         return self.checkpoint is not None
@@ -889,6 +904,7 @@ class Trial:
         Args:
             checkpoint: Checkpoint taken.
         """
+        self._checkpoint_requested_by_user = False
         self.run_metadata.checkpoint_manager.register_checkpoint(checkpoint_result)
         # Update the checkpoint index to keep the checkpoint index in sync.
         # This index will get restored when the trial is restored and will

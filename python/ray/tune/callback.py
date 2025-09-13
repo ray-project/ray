@@ -222,7 +222,7 @@ class Callback(metaclass=_CallbackMeta):
             iteration: Number of iterations of the tuning loop.
             trials: List of trials.
             trial: Trial that just sent a result.
-            result: Result that the trial sent.
+            result: Result that the trial sent. Note, this dict is only a copy.
             **info: Kwargs dict for forward compatibility.
         """
         pass
