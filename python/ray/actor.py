@@ -434,13 +434,18 @@ def method(*args, **kwargs):
             to use for the actor method. By default, the actor is
             single-threaded and runs all actor tasks on the same thread.
             See :ref:`Defining Concurrency Groups <defining-concurrency-groups>`.
-        tensor_transport: [Experimental] The tensor transport protocol to
+        tensor_transport: [Alpha] The tensor transport protocol to
             use for the actor method. The valid values are "OBJECT_STORE"
-            (default), "NCCL", or "GLOO" (case-insensitive). torch.Tensors
-            returned by this task will be sent to other tasks using the
-            specified transport. NCCL and GLOO transports require first creating
-            a collective with the involved actors using
-            `ray.experimental.collective.create_collective_group`.
+            (default), "NCCL", "GLOO", or "NIXL" (case-insensitive). If a
+            non-object store transport is specified, Ray will store a
+            *reference* instead of a copy of any torch.Tensors found inside
+            values returned by this task, and the tensors will be sent directly
+            to other tasks using the specified transport. NCCL and GLOO
+            transports require first creating a collective with the involved
+            actors using
+            :func:`ray.experimental.collective.create_collective_group`.
+            See :ref:`Ray Direct Transport (RDT) <direct-transport>` for more
+            details.
     """
     valid_kwargs = [
         "num_returns",
