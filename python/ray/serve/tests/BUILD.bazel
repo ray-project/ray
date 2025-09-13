@@ -321,7 +321,14 @@ py_test_module_list_with_env_variants(
             "name_suffix": "_with_metr_agg_at_controller_and_metr_on_replicas",
         },
     },
-    files = ["test_autoscaling_policy.py"],
+    files = [
+        "test_autoscaling_policy.py",
+        "test_cluster.py",
+        "test_deploy.py",
+        "test_deployment_scheduler.py",
+        "test_standalone_3.py",
+        "test_target_capacity.py",
+    ],
     tags = [
         "autoscaling",
         "exclusive",
