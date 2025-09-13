@@ -88,7 +88,9 @@ class TorchGLOOGroup(BaseGroup):
             def getTimeout(self) -> int:
                 return self._timeout_ms
 
-        self._gloo_context = _GlooCompatContext(gloo_timeout if gloo_timeout is not None else 30000)
+        self._gloo_context = _GlooCompatContext(
+            gloo_timeout if gloo_timeout is not None else 30000
+        )
 
     def destroy_group(self):
         """GC the communicators."""
