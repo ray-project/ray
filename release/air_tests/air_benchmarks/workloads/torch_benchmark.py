@@ -320,6 +320,7 @@ def train_torch_ray_air(
         train_loop_per_worker=train_loop,
         train_loop_config=config,
         scaling_config=ScalingConfig(
+            # TODO: remove this for v2 migration
             trainer_resources={"CPU": 0},
             num_workers=num_workers,
             resources_per_worker={"CPU": cpus_per_worker},
