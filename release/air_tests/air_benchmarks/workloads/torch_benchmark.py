@@ -291,6 +291,7 @@ def train_func(use_ray: bool, config: Dict):
             "prev_report_time": prev_report_time,
         }
         if use_ray:
+            # TODO: report associated checkpoint for v2 migration
             train.report(metrics=metrics)
         else:
             print(f"Reporting loss: {loss:.4f}")
