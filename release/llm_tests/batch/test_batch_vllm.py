@@ -35,6 +35,13 @@ def add_buffer_time_between_tests():
     time.sleep(15)
 
 
+@pytest.fixture(autouse=True)
+def cleanup_ray_resources():
+    """Automatically cleanup Ray resources between tests to prevent conflicts."""
+    yield
+    ray.shutdown()
+
+
 def test_chat_template_with_vllm():
     """Test vLLM with explicit chat template."""
 
@@ -330,6 +337,130 @@ def test_async_udf_queue_capped(concurrency):
 
     outs = ds.take_all()
     assert all(out["large_memory_still_there"] for out in outs)
+
+
+@pytest.mark.parametrize(
+    "placement_group_config",
+    [
+        # Custom placement group with STRICT_PACK strategy
+        dict(
+            bundles=[
+                {"CPU": 1, "GPU": 1},
+                {"CPU": 1, "GPU": 1},
+                {"CPU": 1, "GPU": 1},
+                {"CPU": 1, "GPU": 1},
+            ],
+            strategy="STRICT_PACK",
+        ),
+        # Custom placement group leaving GPU unspecified and PACK strategy
+        dict(
+            bundles=[
+                {"CPU": 1},
+                {"CPU": 1},
+                {"CPU": 1},
+                {"CPU": 1},
+            ],
+            strategy="PACK",
+        ),
+    ],
+)
+def test_vllm_placement_group(placement_group_config):
+    """Test vLLM with different placement group configurations."""
+
+    config = vLLMEngineProcessorConfig(
+        model_source="facebook/opt-1.3b",
+        engine_kwargs=dict(
+            enable_prefix_caching=True,
+            enable_chunked_prefill=True,
+            max_num_batched_tokens=4096,
+            pipeline_parallel_size=2,
+            tensor_parallel_size=2,
+            distributed_executor_backend="ray",
+        ),
+        tokenize=False,
+        detokenize=False,
+        concurrency=1,
+        batch_size=16,
+        apply_chat_template=False,
+        placement_group_config=placement_group_config,
+    )
+
+    processor = build_llm_processor(
+        config,
+        preprocess=lambda row: dict(
+            prompt=f"You are a calculator. {row['id']} ** 3 = ?",
+            sampling_params=dict(
+                temperature=0.3,
+                max_tokens=20,
+                detokenize=True,
+            ),
+        ),
+        postprocess=lambda row: dict(
+            resp=row["generated_text"],
+        ),
+    )
+
+    ds = ray.data.range(60)
+    ds = processor(ds)
+    ds = ds.materialize()
+
+    outs = ds.take_all()
+    assert len(outs) == 60
+    assert all("resp" in out for out in outs)
+
+
+@pytest.mark.parametrize(
+    "placement_group_config,expected_error",
+    [
+        # Bundle with more than 1 GPU
+        (
+            dict(bundles=[{"CPU": 1, "GPU": 2}], strategy="PACK"),
+            "Each bundle must be restricted to a single GPU",
+        ),
+        # Missing "bundles" in placement_group_config
+        (
+            dict(strategy="PACK"),
+            "placement_group_config must contain bundles and strategy",
+        ),
+        # Missing "strategy" in placement_group_config
+        (
+            dict(bundles=[{"CPU": 1, "GPU": 1}, {"CPU": 1, "GPU": 1}]),
+            "placement_group_config must contain bundles and strategy",
+        ),
+    ],
+)
+def test_vllm_engine_processor_invalid_placement_group(
+    placement_group_config, expected_error
+):
+    """Test that ValueError is raised for invalid placement group configurations."""
+
+    with pytest.raises(ValueError, match=expected_error):
+        config = vLLMEngineProcessorConfig(
+            model_source="facebook/opt-1.3b",
+            engine_kwargs=dict(
+                tensor_parallel_size=1,
+                pipeline_parallel_size=2,
+                distributed_executor_backend="ray",
+            ),
+            placement_group_config=placement_group_config,
+        )
+        processor = build_llm_processor(
+            config,
+            preprocess=lambda row: dict(
+                prompt=f"You are a calculator. {row['id']} ** 3 = ?",
+                sampling_params=dict(
+                    temperature=0.3,
+                    max_tokens=20,
+                    detokenize=True,
+                ),
+            ),
+            postprocess=lambda row: dict(
+                resp=row["generated_text"],
+            ),
+        )
+        ds = ray.data.range(1)
+        ds = processor(ds)
+        ds = ds.materialize()
 
 
 if __name__ == "__main__":
