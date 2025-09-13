@@ -14,9 +14,6 @@
 
 #include "ray/object_manager/object_manager.h"
 
-#include <unistd.h>
-
-#include <cstdlib>
 #include <memory>
 #include <string>
 #include <utility>
@@ -28,13 +25,11 @@
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 #include "mock/ray/object_manager/object_directory.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/buffer.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/common.h"
 #include "ray/rpc/object_manager/fake_object_manager_client.h"
-#include "ray/util/temporary_directory.h"
 
 namespace ray {
 
@@ -88,17 +83,17 @@ class ObjectManagerTest : public ::testing::Test {
 
   NodeID local_node_id_;
 
-  std::unique_ptr<gcs::MockGcsClient> mock_gcs_client_;
-  std::unique_ptr<MockObjectDirectory> mock_object_directory_;
-  std::unique_ptr<ObjectManager> object_manager_;
-  std::shared_ptr<plasma::FakePlasmaClient> fake_plasma_client_;
-
   instrumented_io_context io_context_{/*enable_lag_probe=*/false,
                                       /*running_on_single_thread=*/true};
   instrumented_io_context rpc_context_{/*enable_lag_probe=*/false,
                                        /*running_on_single_thread=*/true};
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> rpc_work_;
+
+  std::unique_ptr<gcs::MockGcsClient> mock_gcs_client_;
+  std::unique_ptr<MockObjectDirectory> mock_object_directory_;
+  std::unique_ptr<ObjectManager> object_manager_;
+  std::shared_ptr<plasma::FakePlasmaClient> fake_plasma_client_;
 };
 
 uint32_t NumRemoteFreeObjectsRequests(const ObjectManager &object_manager) {
