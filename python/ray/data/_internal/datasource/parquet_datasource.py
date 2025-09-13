@@ -1,7 +1,6 @@
 import logging
 import math
 import os
-import warnings
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
@@ -48,7 +47,6 @@ from ray.data.datasource.partitioning import (
     PathPartitionParser,
 )
 from ray.data.datasource.path_util import (
-    _has_file_extension,
     _resolve_paths_and_filesystem,
 )
 from ray.util.debug import log_once
@@ -172,7 +170,7 @@ class ParquetDatasource(Datasource):
     cost of some potential performance and/or compatibility penalties.
     """
 
-    _FUTURE_FILE_EXTENSIONS = ["parquet"]
+    _FILE_EXTENSIONS = ["parquet"]
 
     def __init__(
         self,
@@ -322,14 +320,6 @@ class ParquetDatasource(Datasource):
         self._default_batch_size = _estimate_reader_batch_size(
             sampled_file_infos, DataContext.get_current().target_max_block_size
         )
-
-        if file_extensions is None:
-            for path in self._pq_paths:
-                if not _has_file_extension(
-                    path, self._FUTURE_FILE_EXTENSIONS
-                ) and log_once("read_parquet_file_extensions_future_warning"):
-                    emit_file_extensions_future_warning(self._FUTURE_FILE_EXTENSIONS)
-                    break
 
     def estimate_inmemory_data_size(self) -> int:
         return self._estimate_in_mem_size(self._pq_fragments)
@@ -826,16 +816,6 @@ def _add_partition_fields_to_schema(
             schema = schema.append(pa.field(field_name, field_type))
 
     return schema
-
-
-def emit_file_extensions_future_warning(future_file_extensions: List[str]):
-    warnings.warn(
-        "The default `file_extensions` for `read_parquet` will change "
-        f"from `None` to {future_file_extensions} after Ray 2.43, and your dataset "
-        "contains files that don't match the new `file_extensions`. To maintain "
-        "backwards compatibility, set `file_extensions=None` explicitly.",
-        FutureWarning,
-    )
 
 
 def _infer_schema(
