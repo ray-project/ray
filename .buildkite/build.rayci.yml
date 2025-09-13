@@ -19,31 +19,6 @@ steps:
       - manylinux
       - forge
 
-  - label: ":tapioca: build & test placeholder wheel {{matrix}}"
-    key: placeholder_wheels
-    tags:
-      - python
-    instance_type: medium
-    commands:
-      # validate minimal installation
-      - python ./ci/env/check_minimal_install.py --expected-python-version {{matrix}}
-      - python -m pip install --upgrade pip
-      # build placeholder wheel
-      - export RAY_DEBUG_BUILD=deps-only
-      - mkdir -p .whl
-      - pip wheel python/ --no-deps -w .whl/ --use-pep517
-      - ls -a .whl
-      # test placeholder wheel
-      - ./ci/build/test-linux-placeholder-wheel.sh {{matrix}}
-    depends_on:
-      - minbuild-core
-    job_env: minbuild-core-py{{matrix}}
-    matrix:
-      - "3.9"
-      - "3.10"
-      - "3.11"
-      - "3.12"
-
   - label: ":tapioca: build: jar"
     key: java_wheels
     tags:
