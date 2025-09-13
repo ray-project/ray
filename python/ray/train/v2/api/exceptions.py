@@ -41,4 +41,20 @@ class ControllerError(RayTrainError):
         return (self.__class__, (self.controller_failure,))
 
 
+@PublicAPI(stability="alpha")
+class ValidationFailedError(RayTrainError):
+    """Exception raised when a validation fails.
+
+    Args:
+        validation_failure: The exception that occurred during validation.
+    """
+
+    def __init__(self, validation_failure: Exception):
+        super().__init__("Validation failed:\n" + str(validation_failure))
+        self.validation_failure = validation_failure
+
+    def __reduce__(self):
+        return (self.__class__, (self.validation_failure,))
+
+
 TrainingFailedError = Union[WorkerGroupError, ControllerError]

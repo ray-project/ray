@@ -402,8 +402,13 @@ class TrainController:
             return self._execute_resize_decision(controller_state.scaling_decision)
         elif isinstance(controller_state, RunningState):
             worker_group_status: WorkerGroupPollStatus = await self._poll_workers()
+            self._checkpoint_manager.poll_validations()
 
-            if worker_group_status.finished and not worker_group_status.errors:
+            if (
+                worker_group_status.finished
+                and not worker_group_status.errors
+                and not self._checkpoint_manager.has_pending_validations()
+            ):
                 return TrainControllerLoopIterationResult(
                     run_attempt_id=self._get_run_attempt_id(),
                     previous_state=controller_state,
@@ -528,6 +533,7 @@ class TrainController:
             error=self.get_training_failed_error(),
             path=storage.experiment_fs_path,
             best_checkpoints=best_checkpoints,
+            failed_validations=self._checkpoint_manager.failed_validations,
             metrics_dataframe=metrics_dataframe,
             _storage_filesystem=storage.storage_filesystem,
         )
