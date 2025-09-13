@@ -332,8 +332,9 @@ void ActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
     }
 
     queue->second.state_ = rpc::ActorTableData::ALIVE;
-    // Update the mapping so new RPCs go out with the right intended worker id.
+    // So new RPCs go out with the right intended worker id to the right address.
     queue->second.worker_id_ = address.worker_id();
+    queue->second.client_address_ = address;
 
     SendPendingTasks(actor_id);
   }
@@ -536,7 +537,7 @@ void ActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
     // and pending tasks will be sent at that time.
     return;
   }
-  if (!client_queue.client_address_) {
+  if (!client_queue.client_address_.has_value()) {
     if (client_queue.state_ == rpc::ActorTableData::RESTARTING &&
         client_queue.fail_if_actor_unreachable_) {
       // When `fail_if_actor_unreachable` is true, tasks submitted while the actor is in
