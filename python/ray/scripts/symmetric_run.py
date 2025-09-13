@@ -133,9 +133,9 @@ SEPARATOR REQUIREMENT:
 @click.argument("ray_args_and_entrypoint", nargs=-1, type=click.UNPROCESSED)
 def symmetric_run(address, min_nodes, ray_args_and_entrypoint):
     all_args = sys.argv[1:]
-    separator = all_args.index("--")
-
-    if separator == -1:
+    try:
+        separator = all_args.index("--")
+    except ValueError:
         raise click.ClickException("No separator '--' found in arguments.")
 
     run_and_start_args, entrypoint_on_head = (
