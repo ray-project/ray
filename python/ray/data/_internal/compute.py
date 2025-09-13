@@ -118,7 +118,7 @@ class ActorPoolStrategy(ComputeStrategy):
             and max_tasks_in_flight_per_actor < 1
         ):
             raise ValueError(
-                f"max_tasks_in_flight_per_actor must be >= 1, got: {max_tasks_in_flight_per_actor}"
+                f"max_tasks_in_flight_per_actor ({max_tasks_in_flight_per_actor}) must be >= 1"
             )
 
         self.min_size = min_size or 1
@@ -127,7 +127,7 @@ class ActorPoolStrategy(ComputeStrategy):
         # Validate and set initial_size
         if initial_size is not None:
             if initial_size < 1:
-                raise ValueError(f"initial_size must be >= 1, got: {initial_size}")
+                raise ValueError(f"initial_size ({initial_size}) must be >= 1")
             if initial_size < self.min_size:
                 raise ValueError(
                     f"initial_size ({initial_size}) must be >= min_size ({self.min_size})"
