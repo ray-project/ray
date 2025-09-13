@@ -935,13 +935,12 @@ void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive)
       return;
     }
 
-    const auto &client =
-        core_worker_client_pool_.GetOrConnect(*queue->second.client_address_);
     auto request = rpc::CancelTaskRequest();
     request.set_intended_task_id(task_spec.TaskIdBinary());
     request.set_force_kill(force_kill);
     request.set_recursive(recursive);
     request.set_caller_worker_id(task_spec.CallerWorkerIdBinary());
+    auto client = core_worker_client_pool_.GetOrConnect(*queue->second.client_address_);
     client->CancelTask(request,
                        [this, task_spec = std::move(task_spec), recursive, task_id](
                            const Status &status, const rpc::CancelTaskReply &reply) {
