@@ -35,20 +35,20 @@ class GcsNodeManagerTest : public ::testing::Test {
         });
     gcs_publisher_ = std::make_unique<pubsub::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
-    io_context_ = std::make_unique<InstrumentedIOContextWithThread>("GcsNodeManagerTest");
+    io_context_ = std::make_unique<instrumented_io_context>("GcsNodeManagerTest");
   }
 
  protected:
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::unique_ptr<rpc::RayletClientPool> client_pool_;
   std::unique_ptr<pubsub::GcsPublisher> gcs_publisher_;
-  std::unique_ptr<InstrumentedIOContextWithThread> io_context_;
+  std::unique_ptr<instrumented_io_context> io_context_;
 };
 
 TEST_F(GcsNodeManagerTest, TestManagement) {
   gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
                                    gcs_table_storage_.get(),
-                                   io_context_->GetIoService(),
+                                   *io_context_,
                                    client_pool_.get(),
                                    ClusterID::Nil());
   // Test Add/Get/Remove functionality.
@@ -59,57 +59,115 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
   ASSERT_EQ(node, node_manager.GetAliveNode(node_id).value());
 
   rpc::NodeDeathInfo death_info;
-  node_manager.RemoveNode(node_id, death_info);
+  node_manager.RemoveNode(node_id, death_info, rpc::GcsNodeInfo::DEAD, 1000);
   ASSERT_TRUE(!node_manager.GetAliveNode(node_id).has_value());
 }
 
 TEST_F(GcsNodeManagerTest, TestListener) {
   gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
                                    gcs_table_storage_.get(),
-                                   io_context_->GetIoService(),
+                                   *io_context_,
                                    client_pool_.get(),
                                    ClusterID::Nil());
   // Test AddNodeAddedListener.
   int node_count = 1000;
-  std::vector<std::shared_ptr<rpc::GcsNodeInfo>> added_nodes;
+  std::atomic_int callbacks_remaining = node_count;
+
+  std::vector<std::shared_ptr<const rpc::GcsNodeInfo>> added_nodes;
   node_manager.AddNodeAddedListener(
-      [&added_nodes](std::shared_ptr<rpc::GcsNodeInfo> node) {
+      [&added_nodes, &callbacks_remaining](std::shared_ptr<const rpc::GcsNodeInfo> node) {
         added_nodes.emplace_back(std::move(node));
-      });
+        --callbacks_remaining;
+      },
+      *io_context_);
   for (int i = 0; i < node_count; ++i) {
     auto node = GenNodeInfo();
     node_manager.AddNode(node);
   }
+
+  // Block until all callbacks have processed
+  while (callbacks_remaining > 0) {
+    io_context_->run_one();
+  }
+
   ASSERT_EQ(node_count, added_nodes.size());
 
   // Test GetAllAliveNodes.
-  auto &alive_nodes = node_manager.GetAllAliveNodes();
+  auto alive_nodes = node_manager.GetAllAliveNodes();
   ASSERT_EQ(added_nodes.size(), alive_nodes.size());
   for (const auto &node : added_nodes) {
     ASSERT_EQ(1, alive_nodes.count(NodeID::FromBinary(node->node_id())));
   }
 
   // Test AddNodeRemovedListener.
-  std::vector<std::shared_ptr<rpc::GcsNodeInfo>> removed_nodes;
+
+  // reset the counter
+  callbacks_remaining = node_count;
+  std::vector<std::shared_ptr<const rpc::GcsNodeInfo>> removed_nodes;
   node_manager.AddNodeRemovedListener(
-      [&removed_nodes](std::shared_ptr<rpc::GcsNodeInfo> node) {
+      [&removed_nodes,
+       &callbacks_remaining](std::shared_ptr<const rpc::GcsNodeInfo> node) {
         removed_nodes.emplace_back(std::move(node));
-      });
+        --callbacks_remaining;
+      },
+      *io_context_);
   rpc::NodeDeathInfo death_info;
   for (int i = 0; i < node_count; ++i) {
-    node_manager.RemoveNode(NodeID::FromBinary(added_nodes[i]->node_id()), death_info);
+    node_manager.RemoveNode(NodeID::FromBinary(added_nodes[i]->node_id()),
+                            death_info,
+                            rpc::GcsNodeInfo::DEAD,
+                            1000);
   }
+
+  // Block until all callbacks have processed
+  while (callbacks_remaining > 0) {
+    io_context_->run_one();
+  }
+
   ASSERT_EQ(node_count, removed_nodes.size());
   ASSERT_TRUE(node_manager.GetAllAliveNodes().empty());
   for (int i = 0; i < node_count; ++i) {
-    ASSERT_EQ(added_nodes[i], removed_nodes[i]);
+    ASSERT_EQ(added_nodes[i]->node_id(), removed_nodes[i]->node_id());
   }
+}
+
+// Register a node-added listener that calls back into
+// GcsNodeManager::IsNodeAlive(node_id) during notification. Verify no deadlock and that
+// state remains consistent. This validates the "post-notify" approach.
+
+TEST_F(GcsNodeManagerTest, TestAddNodeListenerCallbackDeadlock) {
+  gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
+                                   gcs_table_storage_.get(),
+                                   *io_context_,
+                                   client_pool_.get(),
+                                   ClusterID::Nil());
+  int node_count = 10;
+  std::atomic_int callbacks_remaining = node_count;
+  node_manager.AddNodeAddedListener(
+      [&node_manager,
+       &callbacks_remaining](std::shared_ptr<const rpc::GcsNodeInfo> node) {
+        rpc::NodeDeathInfo death_info;
+        node_manager.RemoveNode(NodeID::FromBinary(node->node_id()),
+                                death_info,
+                                rpc::GcsNodeInfo::DEAD,
+                                1000);
+        --callbacks_remaining;
+      },
+      *io_context_);
+  for (int i = 0; i < node_count; ++i) {
+    auto node = GenNodeInfo();
+    node_manager.AddNode(node);
+  }
+  while (callbacks_remaining > 0) {
+    io_context_->run_one();
+  }
+  ASSERT_EQ(0, node_manager.GetAllAliveNodes().size());
 }
 
 TEST_F(GcsNodeManagerTest, TestUpdateAliveNode) {
   gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
                                    gcs_table_storage_.get(),
-                                   io_context_->GetIoService(),
+                                   *io_context_,
                                    client_pool_.get(),
                                    ClusterID::Nil());
 
@@ -161,6 +219,25 @@ TEST_F(GcsNodeManagerTest, TestUpdateAliveNode) {
     EXPECT_TRUE(updated_node.has_value());
     EXPECT_EQ(updated_node.value()->state_snapshot().state(),
               rpc::NodeSnapshot::DRAINING);
+  }
+
+  // Test 4: Update node with draining state with activity and idle duration (new activity
+  // should be ignored)
+  {
+    rpc::syncer::ResourceViewSyncMessage sync_message;
+    sync_message.set_idle_duration_ms(100);
+    sync_message.set_is_draining(true);
+    sync_message.add_node_activity("Very Busy workers on node.");
+    sync_message.add_node_activity("Oh such very very busy workers on node.");
+
+    node_manager.UpdateAliveNode(node_id, sync_message);
+
+    auto updated_node = node_manager.GetAliveNode(node_id);
+    EXPECT_TRUE(updated_node.has_value());
+    EXPECT_EQ(updated_node.value()->state_snapshot().state(),
+              rpc::NodeSnapshot::DRAINING);
+    EXPECT_FALSE(updated_node.value()->state_snapshot().node_activity_size() == 1);
+    EXPECT_EQ(updated_node.value()->state_snapshot().idle_duration_ms(), 100);
   }
 }
 
