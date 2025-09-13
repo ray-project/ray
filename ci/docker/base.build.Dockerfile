@@ -11,7 +11,7 @@ RUN <<EOF
 set -euo pipefail
 
 apt-get update -y
-apt-get install -y -qq maven openjdk-8-jre openjdk-8-jdk
+apt-get install -y -qq maven openjdk-17-jre openjdk-17-jdk
 
 BUILD=1 ./ci/ci.sh init
 
