@@ -612,6 +612,7 @@ py_test_module_list(
     size = "large",
     files = [
         "gpu_objects/test_gpu_objects_gloo.py",
+        "test_gpu_objects_gloo.py",
     ],
     tags = [
         "exclusive",
