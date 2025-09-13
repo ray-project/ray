@@ -748,6 +748,7 @@ py_test_module_list(
 py_test_module_list(
     size = "small",
     files = [
+        "test_autoscaler_azure.py",
         "test_autoscaler_gcp.py",
         "test_autoscaler_util.py",
     ],
