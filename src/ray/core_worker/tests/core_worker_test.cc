@@ -514,108 +514,6 @@ TEST_F(CoreWorkerTest, HandleGetObjectStatusObjectOutOfScope) {
   EXPECT_EQ(reply2.status(), rpc::GetObjectStatusReply::OUT_OF_SCOPE);
 }
 
-TEST_F(CoreWorkerTest, HandlePubsubCommandBatchIdempotency) {
-  rpc::PubsubCommandBatchRequest command_batch_request;
-  command_batch_request.set_subscriber_id(WorkerID::FromRandom().Binary());
-  auto *command = command_batch_request.add_commands();
-  command->set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
-  command->set_key_id(ObjectID::FromRandom().Binary());
-  auto *sub_message = command->mutable_subscribe_message();
-  auto *real_sub_message = sub_message->mutable_worker_object_eviction_message();
-  real_sub_message->set_intended_worker_id(WorkerID::FromRandom().Binary());
-  real_sub_message->set_object_id(ObjectID::FromRandom().Binary());
-  *real_sub_message->mutable_subscriber_address() = rpc::Address{};
-
-  // Reply is always empty.
-  rpc::PubsubCommandBatchReply reply;
-  core_worker_->HandlePubsubCommandBatch(
-      command_batch_request,
-      &reply,
-      [](const Status &status, std::function<void()>, std::function<void()>) {
-        ASSERT_TRUE(status.ok());
-      });
-  core_worker_->HandlePubsubCommandBatch(
-      command_batch_request,
-      &reply,
-      [](const Status &status, std::function<void()>, std::function<void()>) {
-        ASSERT_TRUE(status.ok());
-      });
-}
-
-TEST_F(CoreWorkerTest, HandlePubsubLongPollingIdempotency) {
-  auto subscriber_id = NodeID::FromRandom();
-  auto object_id = ObjectID::FromRandom();
-
-  rpc::Address owner_address;
-  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
-  reference_counter_->AddOwnedObject(object_id, {}, owner_address, "", 0, false, true);
-
-  rpc::PubsubCommandBatchRequest command_batch_request;
-  command_batch_request.set_subscriber_id(subscriber_id.Binary());
-  auto *command = command_batch_request.add_commands();
-  command->set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
-  command->set_key_id(object_id.Binary());
-  auto *sub_message = command->mutable_subscribe_message();
-  auto *real_sub_message = sub_message->mutable_worker_object_eviction_message();
-  real_sub_message->set_intended_worker_id(core_worker_->GetWorkerID().Binary());
-  real_sub_message->set_object_id(object_id.Binary());
-  *real_sub_message->mutable_subscriber_address() = rpc_address_;
-
-  rpc::PubsubCommandBatchReply command_reply;
-  core_worker_->HandlePubsubCommandBatch(
-      command_batch_request,
-      &command_reply,
-      [](const Status &status, std::function<void()>, std::function<void()>) {
-        ASSERT_TRUE(status.ok());
-      });
-
-  rpc::PubMessage pub_message;
-  pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
-  pub_message.set_key_id(object_id.Binary());
-  auto *worker_object_eviction_message =
-      pub_message.mutable_worker_object_eviction_message();
-  worker_object_eviction_message->set_object_id(object_id.Binary());
-
-  fake_object_info_publisher_->Publish(std::move(pub_message));
-
-  rpc::PubsubLongPollingRequest request;
-  request.set_subscriber_id(subscriber_id.Binary());
-  request.set_max_processed_sequence_id(0);
-  request.set_publisher_id("");
-
-  rpc::PubsubLongPollingReply reply1;
-  rpc::PubsubLongPollingReply reply2;
-
-  core_worker_->HandlePubsubLongPolling(
-      request,
-      &reply1,
-      [](Status s, std::function<void()> success, std::function<void()> failure) {
-        ASSERT_TRUE(s.ok());
-      });
-
-  core_worker_->HandlePubsubLongPolling(
-      request,
-      &reply2,
-      [](Status s, std::function<void()> success, std::function<void()> failure) {
-        ASSERT_TRUE(s.ok());
-      });
-
-  EXPECT_EQ(reply1.publisher_id(), reply2.publisher_id());
-  EXPECT_EQ(reply1.pub_messages_size(), reply2.pub_messages_size());
-
-  EXPECT_EQ(reply1.pub_messages_size(), 1);
-  EXPECT_EQ(reply2.pub_messages_size(), 1);
-
-  const auto &msg1 = reply1.pub_messages(0);
-  const auto &msg2 = reply2.pub_messages(0);
-
-  EXPECT_EQ(msg1.channel_type(), msg2.channel_type());
-  EXPECT_EQ(msg1.key_id(), msg2.key_id());
-  EXPECT_EQ(msg1.sequence_id(), msg2.sequence_id());
-  EXPECT_EQ(msg1.worker_object_eviction_message().object_id(),
-            msg2.worker_object_eviction_message().object_id());
-}
-
 namespace {
 
 ObjectID CreateInlineObjectInMemoryStoreAndRefCounter(CoreWorkerMemoryStore &memory_store,
@@ -640,9 +538,7 @@ ObjectID CreateInlineObjectInMemoryStoreAndRefCounter(CoreWorkerMemoryStore &mem
   memory_store.Put(memory_store_object, inlined_dependency_id);
   return inlined_dependency_id;
 }
-
 }  // namespace
-
 TEST_F(CoreWorkerTest, ActorTaskCancelDuringDepResolution) {
   /*
   See https://github.com/ray-project/ray/pull/56123 for context.
@@ -745,6 +641,226 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
   EXPECT_EQ(observed_batches[0].size(), 2U);
   EXPECT_EQ(observed_batches[1].size(), 2U);
   EXPECT_EQ(observed_batches[2].size(), 1U);
+}
+
+class CoreWorkerPubsubWorkerObjectEvictionChannelTest
+    : public CoreWorkerTest,
+      public ::testing::WithParamInterface<bool> {};
+
+TEST_P(CoreWorkerPubsubWorkerObjectEvictionChannelTest,
+       HandlePubsubCommandBatchIdempotency) {
+  bool should_free_object = GetParam();
+
+  auto subscriber_id = NodeID::FromRandom();
+  auto object_id = ObjectID::FromRandom();
+
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(object_id, {}, owner_address, "", 0, false, true);
+
+  rpc::PubsubCommandBatchRequest command_batch_request;
+  command_batch_request.set_subscriber_id(subscriber_id.Binary());
+  auto *command = command_batch_request.add_commands();
+  command->set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
+  command->set_key_id(object_id.Binary());
+  auto *sub_message = command->mutable_subscribe_message();
+  auto *real_sub_message = sub_message->mutable_worker_object_eviction_message();
+  real_sub_message->set_intended_worker_id(core_worker_->GetWorkerID().Binary());
+  real_sub_message->set_object_id(object_id.Binary());
+  *real_sub_message->mutable_subscriber_address() = rpc_address_;
+
+  rpc::PubsubCommandBatchReply command_reply1;
+  rpc::PubsubCommandBatchReply command_reply2;
+  core_worker_->HandlePubsubCommandBatch(
+      command_batch_request,
+      &command_reply1,
+      [](const Status &status, std::function<void()>, std::function<void()>) {
+        ASSERT_TRUE(status.ok());
+      });
+  core_worker_->HandlePubsubCommandBatch(
+      command_batch_request,
+      &command_reply2,
+      [](const Status &status, std::function<void()>, std::function<void()>) {
+        ASSERT_TRUE(status.ok());
+      });
+
+  if (should_free_object) {
+    reference_counter_->FreePlasmaObjects({object_id});
+  }
+
+  rpc::PubsubLongPollingRequest request;
+  request.set_subscriber_id(subscriber_id.Binary());
+  request.set_max_processed_sequence_id(0);
+  request.set_publisher_id("");
+
+  rpc::PubsubLongPollingReply reply;
+
+  core_worker_->HandlePubsubLongPolling(
+      request,
+      &reply,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+
+  // Each call to HandlePubsubCommandBatch immediately publishes a message since the
+  // object is already freed
+  int expected_messages = should_free_object ? 2 : 0;
+  EXPECT_EQ(reply.pub_messages_size(), expected_messages);
+
+  for (int i = 0; i < expected_messages; i++) {
+    const auto &msg = reply.pub_messages(i);
+    EXPECT_EQ(msg.channel_type(), rpc::ChannelType::WORKER_OBJECT_EVICTION);
+    EXPECT_EQ(msg.key_id(), object_id.Binary());
+    EXPECT_EQ(msg.sequence_id(), i + 1);
+    EXPECT_EQ(msg.worker_object_eviction_message().object_id(), object_id.Binary());
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(WorkerObjectEvictionChannel,
+                         CoreWorkerPubsubWorkerObjectEvictionChannelTest,
+                         ::testing::Values(true, false));
+
+class CoreWorkerPubsubWorkerRefRemovedChannelTest
+    : public CoreWorkerTest,
+      public ::testing::WithParamInterface<bool> {};
+
+TEST_P(CoreWorkerPubsubWorkerRefRemovedChannelTest, HandlePubsubCommandBatchIdempotency) {
+  bool should_remove_ref = GetParam();
+
+  auto subscriber_id = NodeID::FromRandom();
+  auto object_id = ObjectID::FromRandom();
+
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(object_id, {}, owner_address, "", 0, false, true);
+
+  rpc::PubsubCommandBatchRequest command_batch_request;
+  command_batch_request.set_subscriber_id(subscriber_id.Binary());
+  auto *command = command_batch_request.add_commands();
+  command->set_channel_type(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL);
+  command->set_key_id(object_id.Binary());
+  auto *sub_message = command->mutable_subscribe_message();
+  auto *real_sub_message = sub_message->mutable_worker_ref_removed_message();
+  real_sub_message->set_intended_worker_id(core_worker_->GetWorkerID().Binary());
+  real_sub_message->mutable_reference()->set_object_id(object_id.Binary());
+  real_sub_message->set_contained_in_id(ObjectID::FromRandom().Binary());
+  real_sub_message->set_subscriber_worker_id(core_worker_->GetWorkerID().Binary());
+
+  rpc::PubsubCommandBatchReply command_reply1;
+  rpc::PubsubCommandBatchReply command_reply2;
+  core_worker_->HandlePubsubCommandBatch(
+      command_batch_request,
+      &command_reply1,
+      [](const Status &status, std::function<void()>, std::function<void()>) {
+        ASSERT_TRUE(status.ok());
+      });
+  core_worker_->HandlePubsubCommandBatch(
+      command_batch_request,
+      &command_reply2,
+      [](const Status &status, std::function<void()>, std::function<void()>) {
+        ASSERT_TRUE(status.ok());
+      });
+
+  if (should_remove_ref) {
+    reference_counter_->RemoveLocalReference(object_id, nullptr);
+  }
+
+  rpc::PubsubLongPollingRequest request;
+  request.set_subscriber_id(subscriber_id.Binary());
+  request.set_max_processed_sequence_id(0);
+  request.set_publisher_id("");
+
+  rpc::PubsubLongPollingReply reply;
+
+  core_worker_->HandlePubsubLongPolling(
+      request,
+      &reply,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+
+  // The second call to HandlePubsubComandBatch overwrites the callback stored so we only
+  // get one message
+  int expected_messages = should_remove_ref ? 1 : 0;
+  EXPECT_EQ(reply.pub_messages_size(), expected_messages);
+
+  if (should_remove_ref) {
+    const auto &msg1 = reply.pub_messages(0);
+    EXPECT_EQ(msg1.channel_type(), rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL);
+    EXPECT_EQ(msg1.key_id(), object_id.Binary());
+    EXPECT_EQ(msg1.sequence_id(), 1);
+    EXPECT_EQ(msg1.worker_ref_removed_message().borrowed_refs_size(), 0);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(WorkerRefRemovedChannel,
+                         CoreWorkerPubsubWorkerRefRemovedChannelTest,
+                         ::testing::Values(true, false));
+
+TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelIdempotency) {
+  auto subscriber_id = NodeID::FromRandom();
+  auto object_id = ObjectID::FromRandom();
+  auto node_id = NodeID::FromRandom();
+  const uint64_t object_size = 1024;
+
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(
+      object_id, {}, owner_address, "", object_size, false, true);
+  reference_counter_->AddObjectLocation(object_id, node_id);
+
+  rpc::PubsubCommandBatchRequest command_batch_request;
+  command_batch_request.set_subscriber_id(subscriber_id.Binary());
+  auto *command = command_batch_request.add_commands();
+  command->set_channel_type(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
+  command->set_key_id(object_id.Binary());
+  auto *sub_message = command->mutable_subscribe_message();
+  auto *real_sub_message = sub_message->mutable_worker_object_locations_message();
+  real_sub_message->set_intended_worker_id(core_worker_->GetWorkerID().Binary());
+  real_sub_message->set_object_id(object_id.Binary());
+
+  rpc::PubsubCommandBatchReply command_reply1;
+  core_worker_->HandlePubsubCommandBatch(
+      command_batch_request,
+      &command_reply1,
+      [](const Status &status, std::function<void()>, std::function<void()>) {
+        ASSERT_TRUE(status.ok());
+      });
+
+  rpc::PubsubCommandBatchReply command_reply2;
+  core_worker_->HandlePubsubCommandBatch(
+      command_batch_request,
+      &command_reply2,
+      [](const Status &status, std::function<void()>, std::function<void()>) {
+        ASSERT_TRUE(status.ok());
+      });
+
+  rpc::PubsubLongPollingRequest request;
+  request.set_subscriber_id(subscriber_id.Binary());
+  request.set_max_processed_sequence_id(0);
+  request.set_publisher_id("");
+
+  rpc::PubsubLongPollingReply reply;
+
+  core_worker_->HandlePubsubLongPolling(
+      request,
+      &reply,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+
+  // Each call to HandlePubsubCommandBatch immediately publishes a message containing the
+  // object locations
+  EXPECT_EQ(reply.pub_messages_size(), 2);
+
+  for (int i = 0; i < 2; i++) {
+    const auto &msg = reply.pub_messages(i);
+    EXPECT_EQ(msg.channel_type(), rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
+    EXPECT_EQ(msg.key_id(), object_id.Binary());
+    EXPECT_EQ(msg.worker_object_locations_message().node_ids_size(), 1);
+    EXPECT_EQ(msg.worker_object_locations_message().object_size(), object_size);
+    EXPECT_EQ(msg.worker_object_locations_message().node_ids(0), node_id.Binary());
+  }
 }
 
 }  // namespace core
