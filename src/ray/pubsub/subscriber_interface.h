@@ -97,12 +97,12 @@ class SubscriberClientInterface {
  public:
   /// Send a long polling request to a publisher.
   virtual void PubsubLongPolling(
-      const rpc::PubsubLongPollingRequest &request,
+      rpc::PubsubLongPollingRequest &&request,
       const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) = 0;
 
   /// Send a pubsub command batch to a publisher.
   virtual void PubsubCommandBatch(
-      const rpc::PubsubCommandBatchRequest &request,
+      rpc::PubsubCommandBatchRequest &&request,
       const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) = 0;
 
   virtual ~SubscriberClientInterface() = default;

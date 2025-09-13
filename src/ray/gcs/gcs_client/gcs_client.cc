@@ -39,48 +39,40 @@ class GcsSubscriberClient final : public pubsub::SubscriberClientInterface {
       : rpc_client_(rpc_client) {}
 
   void PubsubLongPolling(
-      const rpc::PubsubLongPollingRequest &request,
-      const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) final;
+      rpc::PubsubLongPollingRequest &&request,
+      const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) final {
+    rpc::GcsSubscriberPollRequest req;
+    req.set_subscriber_id(std::move(*request.mutable_subscriber_id()));
+    req.set_max_processed_sequence_id(request.max_processed_sequence_id());
+    req.set_publisher_id(std::move(*request.mutable_publisher_id()));
+    rpc_client_->GcsSubscriberPoll(
+        std::move(req),
+        [callback](const Status &status, rpc::GcsSubscriberPollReply &&poll_reply) {
+          rpc::PubsubLongPollingReply reply;
+          reply.mutable_pub_messages()->Swap(poll_reply.mutable_pub_messages());
+          *reply.mutable_publisher_id() = std::move(*poll_reply.mutable_publisher_id());
+          callback(status, std::move(reply));
+        });
+  }
 
   void PubsubCommandBatch(
-      const rpc::PubsubCommandBatchRequest &request,
-      const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) final;
+      rpc::PubsubCommandBatchRequest &&request,
+      const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) final {
+    rpc::GcsSubscriberCommandBatchRequest req;
+    req.set_subscriber_id(std::move(*request.mutable_subscriber_id()));
+    *req.mutable_commands() = std::move(*request.mutable_commands());
+    rpc_client_->GcsSubscriberCommandBatch(
+        std::move(req),
+        [callback](const Status &status,
+                   rpc::GcsSubscriberCommandBatchReply &&batch_reply) {
+          rpc::PubsubCommandBatchReply reply;
+          callback(status, std::move(reply));
+        });
+  }
 
  private:
   const std::shared_ptr<rpc::GcsRpcClient> rpc_client_;
 };
-
-void GcsSubscriberClient::PubsubLongPolling(
-    const rpc::PubsubLongPollingRequest &request,
-    const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) {
-  rpc::GcsSubscriberPollRequest req;
-  req.set_subscriber_id(request.subscriber_id());
-  req.set_max_processed_sequence_id(request.max_processed_sequence_id());
-  req.set_publisher_id(request.publisher_id());
-  rpc_client_->GcsSubscriberPoll(
-      std::move(req),
-      [callback](const Status &status, rpc::GcsSubscriberPollReply &&poll_reply) {
-        rpc::PubsubLongPollingReply reply;
-        reply.mutable_pub_messages()->Swap(poll_reply.mutable_pub_messages());
-        *reply.mutable_publisher_id() = std::move(*poll_reply.mutable_publisher_id());
-        callback(status, std::move(reply));
-      });
-}
-
-void GcsSubscriberClient::PubsubCommandBatch(
-    const rpc::PubsubCommandBatchRequest &request,
-    const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) {
-  rpc::GcsSubscriberCommandBatchRequest req;
-  req.set_subscriber_id(request.subscriber_id());
-  *req.mutable_commands() = request.commands();
-  rpc_client_->GcsSubscriberCommandBatch(
-      std::move(req),
-      [callback](const Status &status,
-                 rpc::GcsSubscriberCommandBatchReply &&batch_reply) {
-        rpc::PubsubCommandBatchReply reply;
-        callback(status, std::move(reply));
-      });
-}
 
 }  // namespace
 
