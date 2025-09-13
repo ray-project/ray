@@ -14,7 +14,7 @@
 
 syntax = "proto3";
 
-package ray.rpc;
+package ray.rpc.events;
 
 // Message containing the definition of a node, as observed via GCS.
 // The message is expected to be emitted once per node creation.
