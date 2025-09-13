@@ -57,9 +57,8 @@ class ProjectionPushdown(Rule):
     @classmethod
     def _is_projectable_read(cls, op: Project) -> bool:
         # NOTE: Currently only projecting into Parquet is supported
-        return (
-            isinstance(op.input_dependency, Read) and
-            isinstance(op.input_dependency._datasource, ParquetDatasource)
+        return isinstance(op.input_dependency, Read) and isinstance(
+            op.input_dependency._datasource, ParquetDatasource
         )
 
     @staticmethod
