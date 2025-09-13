@@ -49,8 +49,9 @@ RAY_CONFIG(int64_t, ray_cookie, 0x5241590000000000)
 /// warning is logged that the handler is taking too long.
 RAY_CONFIG(int64_t, handler_warning_timeout_ms, 1000)
 
-/// The duration between loads pulled by GCS
-RAY_CONFIG(uint64_t, gcs_pull_resource_loads_period_milliseconds, 1000)
+/// The duration between loads pulled by GCS, can be explicitly set to a static number,
+/// will otherwise be -1 and use a dynamic formula based on the number of alive nodes.
+RAY_CONFIG(uint64_t, gcs_pull_resource_loads_period_milliseconds, -1)
 
 /// The duration between reporting resources sent by the raylets.
 RAY_CONFIG(uint64_t, raylet_report_resources_period_milliseconds, 100)
