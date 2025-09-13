@@ -281,9 +281,7 @@ class ServeController:
             replica_metric_report
         )
 
-    def record_autoscaling_metrics_from_handle(
-        self, handle_metric_report: HandleMetricReport
-    ):
+    def record_handle_metrics(self, handle_metric_report: HandleMetricReport) -> None:
         logger.debug(
             f"Received metrics from handle {handle_metric_report.handle_id} for deployment {handle_metric_report.deployment_id}: "
             f"{handle_metric_report.queued_requests} queued requests and {handle_metric_report.aggregated_metrics[RUNNING_REQUESTS_KEY]} running requests"
@@ -300,6 +298,11 @@ class ServeController:
         self.autoscaling_state_manager.record_request_metrics_for_handle(
             handle_metric_report
         )
+
+    def bulk_record_handle_metrics(self, reports: List[HandleMetricReport]) -> None:
+        logger.debug(f"Received {len(reports)} bulk handle metrics reports")
+        for report in reports:
+            self.record_handle_metrics(report)
 
     def _dump_autoscaling_metrics_for_testing(self):
         return self.autoscaling_state_manager.get_metrics()

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import concurrent.futures
 import logging
@@ -269,17 +271,13 @@ class RouterMetricsManager:
                 self.metrics_pusher.register_or_update_task(
                     self.RECORD_METRICS_TASK_NAME,
                     self._add_autoscaling_metrics_point,
-                    min(
-                        RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
-                        autoscaling_config.metrics_interval_s,
-                    ),
+                    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
                 )
                 # Push metrics to the controller periodically.
-                self.metrics_pusher.register_or_update_task(
-                    self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
-                    self.push_autoscaling_metrics_to_controller,
-                    autoscaling_config.metrics_interval_s,
+                shared = SharedHandleMetricsPusher.get_or_create(
+                    self._controller_handle
                 )
+                shared.register(self)
             else:
                 self.metrics_pusher.register_or_update_task(
                     self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
@@ -383,7 +381,7 @@ class RouterMetricsManager:
             )
 
         # Prevent in memory metrics store memory from growing
-        start_timestamp = time.time() - self.autoscaling_config.look_back_period_s
+        start_timestamp = timestamp - self.autoscaling_config.look_back_period_s
         self.metrics_store.prune_keys_and_compact_data(start_timestamp)
 
     def _get_metrics_report(self) -> HandleMetricReport:
@@ -428,6 +426,45 @@ class RouterMetricsManager:
             await self.metrics_pusher.graceful_shutdown()
 
         self._shutdown = True
+
+
+class SharedHandleMetricsPusher:
+    def __init__(self, controller_handle: ActorHandle):
+        self._controller_handler = controller_handle
+
+        self._metrics_pusher = MetricsPusher()
+
+        # We use a WeakSet to store the `RouterMetricsManager`s
+        # so that we don't prevent them from being garbage-collected
+        # if they run out of references elsewhere.
+        self._router_metrics_managers: weakref.WeakSet[
+            RouterMetricsManager
+        ] = weakref.WeakSet()
+
+    @classmethod
+    @lru_cache(maxsize=None)
+    def get_or_create(cls, controller_handle: ActorHandle) -> SharedHandleMetricsPusher:
+        pusher = cls(controller_handle=controller_handle)
+        pusher.start()
+        return pusher
+
+    def register(self, router_metrics_manager: RouterMetricsManager) -> None:
+        self._router_metrics_managers.add(router_metrics_manager)
+
+    def start(self) -> None:
+        self._metrics_pusher.start()
+
+        self._metrics_pusher.register_or_update_task(
+            "push_metrics_to_controller",
+            self.push_metrics,
+            RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
+        )
+
+    def push_metrics(self) -> None:
+        logger.debug("Gathering handle metrics reports...")
+        reports = [m.metrics_report() for m in self._router_metrics_managers]
+        logger.debug("Pushing handle metrics to controller...")
+        self._controller_handler.bulk_record_handle_metrics.remote(reports)
 
 
 class Router(ABC):
@@ -1010,8 +1047,9 @@ class SharedRouterLongPollClient:
         self.controller_handler = controller_handle
         self.event_loop = event_loop
 
-        # We use a WeakSet to store the Routers so that we don't prevent them
-        # from being garbage-collected.
+        # We use a WeakSet to store the `Router`s
+        # so that we don't prevent them from being garbage-collected
+        # if they run out of references elsewhere.
         self.routers: MutableMapping[
             DeploymentID, weakref.WeakSet[AsyncioRouter]
         ] = defaultdict(weakref.WeakSet)
@@ -1027,7 +1065,7 @@ class SharedRouterLongPollClient:
     @lru_cache(maxsize=None)
     def get_or_create(
         cls, controller_handle: ActorHandle, event_loop: AbstractEventLoop
-    ) -> "SharedRouterLongPollClient":
+    ) -> SharedRouterLongPollClient:
         shared = cls(controller_handle=controller_handle, event_loop=event_loop)
         logger.info(f"Started {shared}.")
         return shared

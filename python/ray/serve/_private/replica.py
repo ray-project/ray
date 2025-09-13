@@ -55,6 +55,7 @@ from ray.serve._private.constants import (
     HEALTH_CHECK_METHOD,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
+    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
@@ -285,16 +286,13 @@ class ReplicaMetricsManager:
             self._metrics_pusher.register_or_update_task(
                 self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
                 self._push_autoscaling_metrics,
-                self._autoscaling_config.metrics_interval_s,
+                RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
             )
             # Collect autoscaling metrics locally periodically.
             self._metrics_pusher.register_or_update_task(
                 self.RECORD_METRICS_TASK_NAME,
                 self._add_autoscaling_metrics_point,
-                min(
-                    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
-                    self._autoscaling_config.metrics_interval_s,
-                ),
+                RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
             )
 
     def inc_num_ongoing_requests(self, request_metadata: RequestMetadata) -> int:
@@ -330,10 +328,11 @@ class ReplicaMetricsManager:
 
     def _push_autoscaling_metrics(self) -> Dict[str, Any]:
         look_back_period = self._autoscaling_config.look_back_period_s
-        self._metrics_store.prune_keys_and_compact_data(time.time() - look_back_period)
+        now = time.time()
+        self._metrics_store.prune_keys_and_compact_data(now - look_back_period)
         replica_metric_report = ReplicaMetricReport(
             replica_id=self._replica_id,
-            timestamp=time.time(),
+            timestamp=now,
             aggregated_metrics={
                 RUNNING_REQUESTS_KEY: self._metrics_store.aggregate_avg(
                     [self._replica_id]
