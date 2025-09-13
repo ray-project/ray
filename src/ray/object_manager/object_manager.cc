@@ -15,17 +15,19 @@
 #include "ray/object_manager/object_manager.h"
 
 #include <algorithm>
+#include <chrono>
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
+#include "ray/common/asio/asio_util.h"
 #include "ray/object_manager/plasma/store_runner.h"
 #include "ray/object_manager/spilled_object_reader.h"
 #include "ray/stats/metric_defs.h"
-
-namespace asio = boost::asio;
+#include "ray/util/exponential_backoff.h"
 
 namespace ray {
 
@@ -639,46 +641,128 @@ void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
                                 bool local_only) {
   buffer_pool_.FreeObjects(object_ids);
   if (!local_only) {
-    std::vector<std::shared_ptr<rpc::ObjectManagerClientInterface>> rpc_clients;
     // TODO(#56414): optimize this so we don't have to send a free objects request for
     // every object to every node
     const auto &node_info_map = gcs_client_.Nodes().GetAll();
-    for (const auto &[node_id, _] : node_info_map) {
-      if (node_id == self_node_id_) {
+    for (const auto &[node_id, node_info] : node_info_map) {
+      if (node_id == self_node_id_ || node_info.state() == rpc::GcsNodeInfo::DEAD) {
         continue;
       }
-      auto rpc_client = GetRpcClient(node_id);
-      if (rpc_client != nullptr) {
-        rpc_clients.push_back(std::move(rpc_client));
+      if (!remote_object_manager_clients_.contains(node_id)) {
+        auto object_manager_client =
+            object_manager_client_factory_(node_info.node_manager_address(),
+                                           node_info.object_manager_port(),
+                                           client_call_manager_);
+        remote_object_manager_clients_.emplace(node_id, std::move(object_manager_client));
       }
     }
-    rpc_service_.post(
-        [this, object_ids, rpc_clients = std::move(rpc_clients)]() {
-          SpreadFreeObjectsRequest(object_ids, rpc_clients);
-        },
-        "ObjectManager.FreeObjects");
+    rpc_service_.post([this, object_ids]() { SpreadFreeObjectsRequest(object_ids); },
+                      "ObjectManager.FreeObjects");
   }
 }
 
-void ObjectManager::SpreadFreeObjectsRequest(
-    const std::vector<ObjectID> &object_ids,
-    const std::vector<std::shared_ptr<rpc::ObjectManagerClientInterface>> &rpc_clients) {
+void ObjectManager::SpreadFreeObjectsRequest(const std::vector<ObjectID> &object_ids) {
   // This code path should be called from node manager.
   rpc::FreeObjectsRequest free_objects_request;
   for (const auto &e : object_ids) {
     free_objects_request.add_object_ids(e.Binary());
   }
 
-  for (auto &rpc_client : rpc_clients) {
-    rpc_client->FreeObjects(free_objects_request,
-                            [](const Status &status, const rpc::FreeObjectsReply &reply) {
-                              if (!status.ok()) {
-                                RAY_LOG(WARNING)
-                                    << "Send free objects request failed due to"
-                                    << status.message();
-                              }
-                            });
+  for (const auto &entry : remote_object_manager_clients_) {
+    entry.second->FreeObjects(
+        free_objects_request,
+        [this, node_id = entry.first, free_objects_request](
+            const Status &status, const rpc::FreeObjectsReply &reply) {
+          if (!status.ok()) {
+            RetryFreeObjects(node_id, 0, free_objects_request);
+          }
+        });
   }
+}
+
+void ObjectManager::RetryFreeObjects(
+    const NodeID &node_id,
+    uint32_t attempt_number,
+    const rpc::FreeObjectsRequest &free_objects_request) {
+  auto default_unavailable_timeout_callback = [this, node_id]() {
+    auto gcs_check_node_alive = [node_id, this]() {
+      this->gcs_client_.Nodes().AsyncGetAll(
+          [node_id, this](const Status &status, std::vector<rpc::GcsNodeInfo> &&nodes) {
+            if (!status.ok()) {
+              // Will try again when unavailable timeout callback is retried.
+              RAY_LOG(INFO) << "Failed to get node info from GCS";
+              return;
+            }
+            if (nodes.empty() || nodes[0].state() != rpc::GcsNodeInfo::ALIVE) {
+              // The node is dead or GCS doesn't know about this node.
+              // There's only two reasons the GCS doesn't know about the node:
+              // 1. The node isn't registered yet.
+              // 2. The GCS erased the dead node based on
+              //    maximum_gcs_dead_node_cached_count.
+              // In this case, it must be 2 since there's no way for a component to
+              // know about a remote node id until the gcs has registered it.
+              RAY_LOG(INFO).WithField(node_id)
+                  << "Disconnecting object manager client because its node is dead";
+              this->remote_object_manager_clients_.erase(node_id);
+              return;
+            }
+          },
+          -1,
+          {node_id});
+    };
+
+    if (this->gcs_client_.Nodes().IsSubscribedToNodeChange()) {
+      auto *node_info =
+          this->gcs_client_.Nodes().Get(node_id, /*filter_dead_nodes=*/false);
+      if (node_info == nullptr) {
+        // Node could be dead or info may have not made it to the subscriber cache yet.
+        // Check with the GCS to confirm if the node is dead.
+        gcs_check_node_alive();
+        return;
+      }
+      if (node_info->state() == rpc::GcsNodeInfo::DEAD) {
+        RAY_LOG(INFO).WithField(node_id)
+            << "Disconnecting raylet client because its node is dead.";
+        this->remote_object_manager_clients_.erase(node_id);
+        return;
+      }
+      // Node is alive so raylet client is alive.
+      return;
+    }
+    // Not subscribed so ask GCS.
+    gcs_check_node_alive();
+  };
+
+  auto delay_ms = ExponentialBackoff::GetBackoffMs(attempt_number, 1000);
+  execute_after(
+      rpc_service_,
+      [this,
+       node_id,
+       attempt_number,
+       default_unavailable_timeout_callback,
+       free_objects_request] {
+        auto it = remote_object_manager_clients_.find(node_id);
+        if (it == remote_object_manager_clients_.end()) {
+          return;
+        }
+
+        it->second->FreeObjects(
+            free_objects_request,
+            [this,
+             node_id,
+             attempt_number,
+             default_unavailable_timeout_callback,
+             free_objects_request](const Status &status,
+                                   const rpc::FreeObjectsReply &reply) {
+              if (!status.ok()) {
+                default_unavailable_timeout_callback();
+                if (remote_object_manager_clients_.contains(node_id)) {
+                  RetryFreeObjects(node_id, attempt_number + 1, free_objects_request);
+                }
+              }
+            });
+      },
+      std::chrono::milliseconds(delay_ms));
 }
 
 std::shared_ptr<rpc::ObjectManagerClientInterface> ObjectManager::GetRpcClient(

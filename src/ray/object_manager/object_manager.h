@@ -18,6 +18,7 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -278,9 +279,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// Spread the Free request to all objects managers.
   ///
   /// \param object_ids the The list of ObjectIDs to be deleted.
-  void SpreadFreeObjectsRequest(
-      const std::vector<ObjectID> &object_ids,
-      const std::vector<std::shared_ptr<rpc::ObjectManagerClientInterface>> &rpc_clients);
+  void SpreadFreeObjectsRequest(const std::vector<ObjectID> &object_ids);
 
   /// Pushing a known local object to a remote object manager.
   ///
@@ -400,6 +399,10 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param object_id Object id
   /// \param client_id Remote server client id
   void SendPullRequest(const ObjectID &object_id, const NodeID &client_id);
+
+  void RetryFreeObjects(const NodeID &node_id,
+                        uint32_t attempt_number,
+                        const rpc::FreeObjectsRequest &free_objects_request);
 
   /// Get the rpc client according to the node ID
   ///
