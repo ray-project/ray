@@ -215,7 +215,7 @@ class MapTransformer:
         last_transform = self._transform_fns[-1]
 
         if self.target_max_block_size_override is not None:
-            last_transform.set_target_max_block_size(
+            last_transform.override_target_max_block_size(
                 self.target_max_block_size_override
             )
 
