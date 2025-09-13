@@ -11,11 +11,14 @@ import pyarrow.compute as pc
 from ray.data.block import DataBatch
 from ray.data.expressions import (
     BinaryExpr,
+    CaseExpr,
     ColumnExpr,
     Expr,
     LiteralExpr,
     Operation,
     UDFExpr,
+    UnaryExpr,
+    WhenExpr,
 )
 
 _PANDAS_EXPR_OPS_MAP = {
@@ -30,6 +33,7 @@ _PANDAS_EXPR_OPS_MAP = {
     Operation.EQ: operator.eq,
     Operation.AND: operator.and_,
     Operation.OR: operator.or_,
+    Operation.NOT: operator.not_,
 }
 
 _ARROW_EXPR_OPS_MAP = {
@@ -44,6 +48,7 @@ _ARROW_EXPR_OPS_MAP = {
     Operation.EQ: pc.equal,
     Operation.AND: pc.and_,
     Operation.OR: pc.or_,
+    Operation.NOT: pc.invert,
 }
 
 
@@ -63,6 +68,66 @@ def _eval_expr_recursive(
             _eval_expr_recursive(expr.left, batch, ops),
             _eval_expr_recursive(expr.right, batch, ops),
         )
+
+    if isinstance(expr, UnaryExpr):
+        return ops[expr.op](
+            _eval_expr_recursive(expr.operand, batch, ops),
+        )
+
+    if isinstance(expr, CaseExpr):
+        # Evaluate case statement using vectorized operations for batch processing
+        # For pandas: use numpy.select for efficient vectorized evaluation
+        # For Arrow: use pyarrow.compute.case_when for efficient vectorized evaluation
+
+        # Evaluate all conditions and values first
+        conditions = [
+            _eval_expr_recursive(condition, batch, ops)
+            for condition, _ in expr.when_clauses
+        ]
+        choices = [
+            _eval_expr_recursive(value, batch, ops) for _, value in expr.when_clauses
+        ]
+        default = _eval_expr_recursive(expr.default, batch, ops)
+
+        # Handle edge case: no when clauses (just return default)
+        if not conditions:
+            return default
+
+        # Use appropriate vectorized operation based on batch type
+        if isinstance(batch, pd.DataFrame):
+            # For pandas, use numpy.select which handles Series efficiently
+            return np.select(conditions, choices, default=default)
+        elif isinstance(batch, pa.Table):
+            # For Arrow, use pyarrow.compute.case_when
+            # PyArrow case_when expects:
+            # - cond: a struct array of boolean conditions
+            # - *cases: the case values (one for each condition, plus default)
+
+            # Create a struct array from the conditions
+            if len(conditions) == 1:
+                # Single condition case
+                cond_struct = pa.StructArray.from_arrays(
+                    [conditions[0]], names=["cond0"]
+                )
+                return pc.case_when(cond_struct, choices[0], default)
+            else:
+                # Multiple conditions case
+                cond_names = [f"cond{i}" for i in range(len(conditions))]
+                cond_struct = pa.StructArray.from_arrays(conditions, names=cond_names)
+                # Pass all choices plus default as separate arguments
+                return pc.case_when(cond_struct, *choices, default)
+        else:
+            # Fallback for other types (should not happen in practice)
+            raise TypeError(
+                f"Unsupported batch type for CaseExpr: {type(batch).__name__}"
+            )
+
+    if isinstance(expr, WhenExpr):
+        # WhenExpr should not be evaluated directly - it should be converted to CaseExpr first
+        raise TypeError(
+            "WhenExpr cannot be evaluated directly. Use .otherwise() to complete the case statement."
+        )
+
     if isinstance(expr, UDFExpr):
         args = [_eval_expr_recursive(arg, batch, ops) for arg in expr.args]
         kwargs = {
@@ -79,6 +144,7 @@ def _eval_expr_recursive(
             )
 
         return result
+
     raise TypeError(f"Unsupported expression node: {type(expr).__name__}")
 
 
