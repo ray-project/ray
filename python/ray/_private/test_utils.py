@@ -30,7 +30,7 @@ import ray._private.memory_monitor as memory_monitor
 import ray._private.services
 import ray._private.services as services
 import ray._private.utils
-from ray._common.network_utils import build_address, parse_address
+from ray._common.network_utils import build_address, create_socket, parse_address
 from ray._common.test_utils import wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray._private import (
@@ -776,7 +776,7 @@ def wait_until_server_available(address, timeout_ms=5000, retry_interval_ms=100)
     time_elapsed = 0
     start = time.time()
     while time_elapsed <= timeout_ms:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s = create_socket(socket.SOCK_STREAM)
         s.settimeout(1)
         try:
             s.connect((ip, port))
@@ -1753,7 +1753,7 @@ def job_hook(**kwargs):
 
 
 def find_free_port() -> int:
-    sock = socket.socket()
+    sock = create_socket()
     sock.bind(("", 0))
     port = sock.getsockname()[1]
     sock.close()
@@ -1884,7 +1884,7 @@ def get_current_unused_port():
         A port number that is not currently in use. (Note that this port
         might become used by the time you try to bind to it.)
     """
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock = create_socket(socket.SOCK_STREAM)
 
     # Bind the socket to a local address with a random port number
     sock.bind(("localhost", 0))

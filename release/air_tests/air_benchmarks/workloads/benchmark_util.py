@@ -5,6 +5,7 @@ from collections import defaultdict
 from contextlib import closing
 from pathlib import Path
 from ray.air.util.node import _force_on_node
+from ray._common.network_utils import create_socket
 
 import ray
 from typing import List, Dict, Union, Callable
@@ -108,7 +109,7 @@ def get_ip_port_actors(actors: List[ray.actor.ActorHandle]) -> List[str]:
 
     def get_ip_port():
         ip = ray.util.get_node_ip_address()
-        with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+        with closing(create_socket(socket.SOCK_STREAM)) as s:
             s.bind(("localhost", 0))
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             port = s.getsockname()[1]

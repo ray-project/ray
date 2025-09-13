@@ -39,15 +39,11 @@ using namespace boost::asio::ip;  // NOLINT
 
 int GetFreePort() {
   io_context io_service;
-  tcp::acceptor acceptor(io_service);
-  tcp::endpoint endpoint;
 
-  // try to bind to port 0 to find a free port
-  acceptor.open(tcp::v4());
-  acceptor.bind(tcp::endpoint(tcp::v4(), 0));
-  endpoint = acceptor.local_endpoint();
-  auto port = endpoint.port();
-  acceptor.close();
+  auto socket = ray::CreateTcpSocket(io_service);
+  socket->bind(tcp::endpoint(socket->local_endpoint().protocol(), 0));
+  auto port = socket->local_endpoint().port();
+  socket->close();
   return port;
 }
 

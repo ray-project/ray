@@ -18,7 +18,7 @@ import ray
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import ray.core.generated.runtime_env_agent_pb2 as runtime_env_agent_pb2
-from ray._common.network_utils import build_address, is_localhost
+from ray._common.network_utils import build_address, create_socket, is_localhost
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.parameter import RayParams
 from ray._private.runtime_env.context import RuntimeEnvContext
@@ -144,7 +144,7 @@ class ProxyManager:
             num_ports = len(self._free_ports)
             for _ in range(num_ports):
                 port = self._free_ports.pop(0)
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s = create_socket(socket.SOCK_STREAM)
                 try:
                     s.bind(("", port))
                 except OSError:

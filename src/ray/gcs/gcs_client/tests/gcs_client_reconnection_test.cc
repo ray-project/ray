@@ -133,8 +133,10 @@ class GcsClientReconnectionTest : public ::testing::Test {
   unsigned short GetFreePort() {
     using namespace boost::asio;  // NOLINT
     io_service service;
-    ip::tcp::acceptor acceptor(service, ip::tcp::endpoint(ip::tcp::v4(), 0));
-    unsigned short port = acceptor.local_endpoint().port();
+
+    auto socket = ray::CreateTcpSocket(service);
+    socket->bind(boost::asio::ip::tcp::endpoint(socket->local_endpoint().protocol(), 0));
+    unsigned short port = socket->local_endpoint().port();
     return port;
   }
 

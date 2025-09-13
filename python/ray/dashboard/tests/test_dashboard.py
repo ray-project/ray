@@ -24,7 +24,7 @@ import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.modules
 import ray.dashboard.utils as dashboard_utils
 import ray.scripts.scripts as scripts
-from ray._common.network_utils import build_address, parse_address
+from ray._common.network_utils import build_address, create_socket, parse_address
 from ray._common.ray_constants import (
     LOGGING_ROTATE_BACKUP_COUNT,
     LOGGING_ROTATE_BYTES,
@@ -1079,7 +1079,7 @@ def test_agent_port_conflict(shutdown_only):
     ray.shutdown()
 
     # ocuppy the port with a socket.
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s = create_socket(socket.SOCK_STREAM)
 
     wait_for_condition(
         lambda: s.connect_ex(
