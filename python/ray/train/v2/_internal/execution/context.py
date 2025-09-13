@@ -293,8 +293,8 @@ class TrainContext:
                 f"Reporting training result {report_call_index}: {training_report}"
             )
             # Update latest checkpoint as the persisted checkpoint.
-            if training_report.checkpoint:
-                self.checkpoint = training_report.checkpoint
+            if training_report.training_result.checkpoint:
+                self.checkpoint = training_report.training_result.checkpoint
             self.get_result_queue().put(training_report)
             self.current_report_index += 1
             self.report_order_condition.notify_all()

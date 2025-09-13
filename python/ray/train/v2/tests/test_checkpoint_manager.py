@@ -121,7 +121,7 @@ async def test_save_load_state_equivalence(
 
     # Register the training results into checkpoint manager
     for i, tr in enumerate(training_results):
-        checkpoint_manager.register_checkpoint(tr)
+        checkpoint_manager.register_checkpoint(tr, None)
         assert checkpoint_manager._current_report_index == i + 1
         loaded_checkpoint_manager = CheckpointManager(
             storage_context=storage_context,
