@@ -462,9 +462,6 @@ def merge_timeseries_dicts(
 ) -> DefaultDict[Hashable, List[TimeStampedValue]]:
     """
     Merge multiple time-series dictionaries using instantaneous merge approach.
-
-    This is a drop-in replacement for merge_timeseries_dicts that uses the
-    mathematically correct instantaneous merge instead of windowing.
     """
     merged: DefaultDict[Hashable, List[TimeStampedValue]] = defaultdict(list)
 
