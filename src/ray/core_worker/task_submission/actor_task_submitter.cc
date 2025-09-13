@@ -935,7 +935,7 @@ void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive)
       return;
     }
 
-    auto request = rpc::CancelTaskRequest();
+    rpc::CancelTaskRequest request;
     request.set_intended_task_id(task_spec.TaskIdBinary());
     request.set_force_kill(force_kill);
     request.set_recursive(recursive);
