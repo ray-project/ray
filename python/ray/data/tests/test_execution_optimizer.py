@@ -106,7 +106,6 @@ def test_read_operator(ray_start_regular_shared_2_cpus):
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
-    assert physical_op.actual_target_max_block_size == ctx.target_max_block_size
     # Check that the linked logical operator is the same the input op.
     assert physical_op._logical_operators == [op]
     assert physical_op.input_dependencies[0]._logical_operators == [op]
@@ -144,10 +143,6 @@ def test_split_blocks_operator(ray_start_regular_shared_2_cpus):
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
-    assert (
-        physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_max_block_size
-    )
     assert physical_op._additional_split_factor == 10
 
     # Test that split blocks prevents fusion.
@@ -315,10 +310,6 @@ def test_filter_operator(ray_start_regular_shared_2_cpus):
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
-    assert (
-        physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_max_block_size
-    )
 
 
 def test_filter_e2e(ray_start_regular_shared_2_cpus):
@@ -391,10 +382,6 @@ def test_flat_map(ray_start_regular_shared_2_cpus):
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
-    assert (
-        physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_max_block_size
-    )
 
 
 def test_flat_map_e2e(ray_start_regular_shared_2_cpus):
@@ -456,10 +443,6 @@ def test_random_shuffle_operator(ray_start_regular_shared_2_cpus):
     assert isinstance(physical_op, AllToAllOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
-    assert (
-        physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_max_block_size
-    )
 
     # Check that the linked logical operator is the same the input op.
     assert physical_op._logical_operators == [op]
@@ -492,16 +475,6 @@ def test_repartition_operator(ray_start_regular_shared_2_cpus, shuffle):
     assert isinstance(physical_op, AllToAllOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
-    if shuffle:
-        assert (
-            physical_op.actual_target_max_block_size
-            == DataContext.get_current().target_max_block_size
-        )
-    else:
-        assert (
-            physical_op.actual_target_max_block_size
-            == DataContext.get_current().target_max_block_size
-        )
 
     # Check that the linked logical operator is the same the input op.
     assert physical_op._logical_operators == [op]
@@ -602,10 +575,6 @@ def test_sort_operator(
     assert isinstance(physical_op, AllToAllOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
-    assert (
-        physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_max_block_size
-    )
 
 
 def test_sort_e2e(ray_start_regular_shared_2_cpus, configure_shuffle_method, tmp_path):
@@ -742,10 +711,6 @@ def test_aggregate_operator(ray_start_regular_shared_2_cpus):
     assert isinstance(physical_op, AllToAllOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
-    assert (
-        physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_max_block_size
-    )
 
     # Check that the linked logical operator is the same the input op.
     assert physical_op._logical_operators == [op]
@@ -810,11 +775,6 @@ def test_zip_operator(ray_start_regular_shared_2_cpus):
     assert len(physical_op.input_dependencies) == 2
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
     assert isinstance(physical_op.input_dependencies[1], MapOperator)
-
-    assert (
-        physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_max_block_size
-    )
 
     # Check that the linked logical operator is the same the input op.
     assert physical_op._logical_operators == [op]

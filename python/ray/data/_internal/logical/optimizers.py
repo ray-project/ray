@@ -17,9 +17,6 @@ from ray.data._internal.logical.rules.inherit_target_max_block_size import (
 from ray.data._internal.logical.rules.limit_pushdown import LimitPushdownRule
 from ray.data._internal.logical.rules.operator_fusion import FuseOperators
 from ray.data._internal.logical.rules.set_read_parallelism import SetReadParallelismRule
-from ray.data._internal.logical.rules.zero_copy_map_fusion import (
-    EliminateBuildOutputBlocks,
-)
 from ray.util.annotations import DeveloperAPI
 
 _LOGICAL_RULESET = Ruleset(
@@ -35,7 +32,6 @@ _PHYSICAL_RULESET = Ruleset(
         InheritTargetMaxBlockSizeRule,
         SetReadParallelismRule,
         FuseOperators,
-        EliminateBuildOutputBlocks,
         ConfigureMapTaskMemoryUsingOutputSize,
     ]
 )

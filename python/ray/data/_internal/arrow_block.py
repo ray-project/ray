@@ -157,8 +157,11 @@ class ArrowBlockBuilder(TableBlockBuilder):
         )
 
     @staticmethod
-    def _concat_tables(tables: List[Block]) -> Block:
-        return transform_pyarrow.concat(tables, promote_types=True)
+    def _combine_tables(tables: List[Block]) -> Block:
+        if len(tables) > 1:
+            return transform_pyarrow.concat(tables, promote_types=True)
+        else:
+            return tables[0]
 
     @staticmethod
     def _concat_would_copy() -> bool:
