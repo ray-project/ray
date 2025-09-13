@@ -60,6 +60,8 @@ The `proxy_location` field configures where to run proxies to handle traffic to 
 - HeadOnly: Only run a single proxy on the head node.
 - Disabled: Don't run proxies at all. Set this value if you are only making calls to your applications using deployment handles.
 
+Note that the Proxy config is global to your Ray cluster, and you can't update it during runtime.
+
 (http-config)=
 
 ## HTTP config 

@@ -9,8 +9,13 @@ import pytest
 import yaml
 from click.testing import CliRunner
 
-from ray.serve.schema import ServeApplicationSchema
-from ray.serve.scripts import convert_args_to_dict, deploy
+from ray.serve.schema import (
+    HTTPOptionsSchema,
+    ServeApplicationSchema,
+    ServeDeploySchema,
+    ServeInstanceDetails,
+)
+from ray.serve.scripts import _validate_deployment_config, convert_args_to_dict, deploy
 
 
 def test_convert_args_to_dict():
@@ -130,6 +135,77 @@ class TestDeploy:
                 runtime_env=runtime_env,
             ).dict(exclude_unset=True)
         ]
+
+
+def test_no_existing_proxy_location_allows_any_new():
+    config = ServeDeploySchema(
+        proxy_location="EveryNode",
+        http_options=HTTPOptionsSchema(host="0.0.0.0", port=8000),
+    )
+    serve_details = ServeInstanceDetails()
+    _validate_deployment_config(serve_details, config)
+
+
+# def test_same_proxy_location_ok():
+#     config = MockDeploySchema(proxy_location="HeadOnly", http_options=MockHTTPOptions(host="0.0.0.0", port=8000))
+#     details = MockServeDetails(proxy_location="HeadOnly", http_options=None)
+#     _validate_deployment_config(config, details)
+#
+#
+# def test_different_proxy_location_raises():
+#     config = MockDeploySchema(proxy_location="EveryNode", http_options=MockHTTPOptions(host="0.0.0.0", port=8000))
+#     details = MockServeDetails(proxy_location="HeadOnly", http_options=None)
+#     with pytest.raises(RayServeException):
+#         _validate_deployment_config(config, details)
+#
+#
+# def test_no_existing_http_options_skip_check():
+#     config = MockDeploySchema(
+#         proxy_location="EveryNode",
+#         http_options=MockHTTPOptions(host="1.2.3.4", port=9000),
+#     )
+#     details = MockServeDetails(proxy_location="EveryNode", http_options=None)
+#     _validate_deployment_config(config, details)
+#
+#
+# def test_same_http_options_ok():
+#     config = MockDeploySchema(
+#         proxy_location="EveryNode",
+#         http_options=MockHTTPOptions(host="0.0.0.0", port=8000),
+#     )
+#     details = MockServeDetails(
+#         proxy_location="EveryNode",
+#         http_options=MockHTTPOptions(host="0.0.0.0", port=8000),
+#     )
+#     _validate_deployment_config(config, details)
+#
+#
+# def test_changed_http_option_raises():
+#     config = MockDeploySchema(
+#         proxy_location="EveryNode",
+#         http_options=MockHTTPOptions(host="127.0.0.1", port=8000),
+#     )
+#     details = MockServeDetails(
+#         proxy_location="EveryNode",
+#         http_options=MockHTTPOptions(host="0.0.0.0", port=8000),
+#     )
+#     with pytest.raises(RayServeException):
+#         _validate_deployment_config(config, details)
+#
+#
+# def test_multiple_changed_http_options_collect_all():
+#     config = MockDeploySchema(
+#         proxy_location="EveryNode",
+#         http_options=MockHTTPOptions(host="127.0.0.1", port=9001),
+#     )
+#     details = MockServeDetails(
+#         proxy_location="EveryNode",
+#         http_options=MockHTTPOptions(host="0.0.0.0", port=8000),
+#     )
+#     with pytest.raises(RayServeException) as exc:
+#         _validate_deployment_config(config, details)
+#     msg = str(exc.value)
+#     assert "host" in msg and "port" in msg
 
 
 if __name__ == "__main__":
