@@ -1,13 +1,17 @@
 import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence
 
 from starlette.types import Scope
 
 import ray
 from ray.actor import ActorHandle
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
+from ray.serve._private.constants import (
+    AUTOSCALER_SUMMARIZER_DECISION_LIMIT,
+    SERVE_DEFAULT_APP_NAME,
+    SERVE_NAMESPACE,
+)
 from ray.serve.generated.serve_pb2 import (
     DeploymentStatus as DeploymentStatusProto,
     DeploymentStatusInfo as DeploymentStatusInfoProto,
@@ -133,6 +137,9 @@ class DeploymentStatusTrigger(str, Enum):
     UPSCALE_COMPLETED = "UPSCALE_COMPLETED"
     DOWNSCALE_COMPLETED = "DOWNSCALE_COMPLETED"
     AUTOSCALING = "AUTOSCALING"
+    AUTOSCALING_UPSCALE = "AUTOSCALING_UPSCALE"
+    AUTOSCALING_DOWNSCALE = "AUTOSCALING_DOWNSCALE"
+    AUTOSCALING_STABLE = "AUTOSCALING_STABLE"
     REPLICA_STARTUP_FAILED = "REPLICA_STARTUP_FAILED"
     HEALTH_CHECK_FAILED = "HEALTH_CHECK_FAILED"
     INTERNAL_ERROR = "INTERNAL_ERROR"
@@ -755,6 +762,136 @@ OBJ_REF_NOT_SUPPORTED_ERROR = RuntimeError(
     "Use handle.options(_by_reference=True) to enable it."
 )
 
+
+@dataclass(frozen=True)
+class AutoscalingDecisionSummary:
+    timestamp_s: Optional[str]
+    prev_num_replicas: Optional[int]
+    curr_num_replicas: Optional[int]
+    reason: str
+
+
+@dataclass(frozen=True)
+class DeploymentSnapshot:
+    timestamp_s: str
+    app: str
+    deployment: str
+    current_replicas: int
+    target_replicas: int
+    min_replicas: Optional[int]
+    max_replicas: Optional[int]
+    scaling_status: str
+    policy_name: str
+    look_back_period_s: Optional[float]
+    queued_requests: Optional[float]
+    total_requests: float
+    metrics_health: str
+    errors: List[str]
+    decisions: List[AutoscalingDecisionSummary]
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, DeploymentSnapshot):
+            return False
+        return (
+            self.app == other.app
+            and self.deployment == other.deployment
+            and self.current_replicas == other.current_replicas
+            and self.target_replicas == other.target_replicas
+            and self.min_replicas == other.min_replicas
+            and self.max_replicas == other.max_replicas
+            and self.scaling_status == other.scaling_status
+            and self.total_requests == other.total_requests
+        )
+
+    def to_log_dict(self) -> Dict[str, object]:
+        return {
+            "timestamp_s": self.timestamp_s,
+            "app": self.app,
+            "deployment": self.deployment,
+            "current_replicas": self.current_replicas,
+            "target_replicas": self.target_replicas,
+            "min": self.min_replicas,
+            "max": self.max_replicas,
+            "scaling_status": self.scaling_status,
+            "policy_name": self.policy_name,
+            "look_back_period_s": self.look_back_period_s,
+            "metrics": {
+                "queued_requests": self.queued_requests,
+                "total_requests": self.total_requests,
+            },
+            "metrics_health": self.metrics_health,
+            "errors": self.errors,
+            "decisions": [
+                {
+                    "timestamp_s": d.timestamp_s,
+                    "from": d.prev_num_replicas,
+                    "to": d.curr_num_replicas,
+                    "reason": d.reason,
+                }
+                for d in self.decisions
+            ],
+        }
+
+    @staticmethod
+    def format_scaling_status(trigger: DeploymentStatusTrigger) -> str:
+        mapping = {
+            DeploymentStatusTrigger.AUTOSCALING_UPSCALE: "scaling up",
+            DeploymentStatusTrigger.AUTOSCALING_DOWNSCALE: "scaling down",
+            DeploymentStatusTrigger.AUTOSCALING_STABLE: "stable",
+        }
+        return mapping.get(trigger, str(trigger).lower())
+
+    @staticmethod
+    def format_metrics_health_text(
+        *,
+        time_since_last_collected_metrics_s: Optional[float],
+        look_back_period_s: Optional[float],
+    ) -> str:
+        """
+        - < 1s  -> integer milliseconds
+        - >= 1s -> seconds with two decimals
+        """
+        if time_since_last_collected_metrics_s is None:
+            return "unknown"
+        val = float(time_since_last_collected_metrics_s)
+        if val < 1.0:
+            return f"{val * 1000:.0f}ms"
+        return f"{val:.2f}s"
+
+    @staticmethod
+    def summarize_decisions(
+        decisions: Sequence[Any],
+        *,
+        limit: int = AUTOSCALER_SUMMARIZER_DECISION_LIMIT,
+    ) -> List["AutoscalingDecisionSummary"]:
+        """
+        Return summaries of the most recent `limit` decisions.
+        """
+        out: List["AutoscalingDecisionSummary"] = []
+        for d in list(decisions)[-limit:]:
+            if hasattr(d, "dict"):
+                dd = d.dict()
+                ts = dd.get("timestamp_s")
+                prev_num_replicas = dd.get("prev_num_replicas")
+                curr_num_replicas = dd.get("curr_num_replicas")
+                reason = dd.get("reason")
+            else:
+                ts = getattr(d, "timestamp_s", None)
+                prev_num_replicas = getattr(d, "prev_num_replicas", None)
+                curr_num_replicas = getattr(d, "curr_num_replicas", None)
+                reason = getattr(d, "reason", None)
+
+            out.append(
+                AutoscalingDecisionSummary(
+                    timestamp_s=ts,
+                    prev_num_replicas=prev_num_replicas,
+                    curr_num_replicas=curr_num_replicas,
+                    reason=reason or "",
+                )
+            )
+        return out
+
+
 RUNNING_REQUESTS_KEY = "running_requests"
 
 
@@ -836,3 +973,7 @@ class ReplicaMetricReport:
     aggregated_metrics: Dict[str, float]
     metrics: Dict[str, List[float]]
     timestamp: float
+
+
+class AutoscalingSnapshotError(str, Enum):
+    METRICS_UNAVAILABLE = "METRICS_UNAVAILABLE"

@@ -5,13 +5,17 @@ from typing import Any, Dict, List, Optional, Set
 
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
+    AutoscalingSnapshotError,
     DeploymentID,
+    DeploymentSnapshot,
+    DeploymentStatusTrigger,
     HandleMetricReport,
     ReplicaID,
     ReplicaMetricReport,
     TargetCapacityDirection,
 )
 from ray.serve._private.constants import (
+    AUTOSCALER_SUMMARIZER_DECISION_HISTORY_MAX,
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
@@ -19,6 +23,15 @@ from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+@dataclass
+class _DecisionRecord:
+    timestamp_s: str
+    prev_num_replicas: int
+    curr_num_replicas: int
+    reason: str
+    policy_name: Optional[str] = None
 
 
 @dataclass
@@ -80,6 +93,8 @@ class AutoscalingState:
         self._running_replicas: List[ReplicaID] = []
         self._target_capacity: Optional[float] = None
         self._target_capacity_direction: Optional[TargetCapacityDirection] = None
+        self._cached_deployment_snapshot: Optional[DeploymentSnapshot] = None
+        self._decision_history: List[_DecisionRecord] = []
 
     def register(self, info: DeploymentInfo, curr_target_num_replicas: int) -> int:
         """Registers an autoscaling deployment's info.
@@ -237,14 +252,15 @@ class AutoscalingState:
         `_skip_bound_check` is True, then the bounds are not applied.
         """
 
-        autoscaling_context: AutoscalingContext = AutoscalingContext(
+        total_requests = self.get_total_num_requests()
+        ctx: AutoscalingContext = AutoscalingContext(
             deployment_id=self._deployment_id,
             deployment_name=self._deployment_id.name,
             app_name=self._deployment_id.app_name,
             current_num_replicas=len(self._running_replicas),
             target_num_replicas=curr_target_num_replicas,
             running_replicas=self._running_replicas,
-            total_num_requests=self.get_total_num_requests(),
+            total_num_requests=total_requests,
             capacity_adjusted_min_replicas=self.get_num_replicas_lower_bound(),
             capacity_adjusted_max_replicas=self.get_num_replicas_upper_bound(),
             policy_state=self._policy_state.copy(),
@@ -258,12 +274,34 @@ class AutoscalingState:
             last_scale_down_time=None,
         )
 
-        decision_num_replicas, self._policy_state = self._policy(autoscaling_context)
+        decision_num_replicas, self._policy_state = self._policy(ctx)
 
         if _skip_bound_check:
-            return decision_num_replicas
+            target_for_record = decision_num_replicas
+        else:
+            target_for_record = self.apply_bounds(decision_num_replicas)
+        self._decision_history.append(
+            _DecisionRecord(
+                timestamp_s=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                prev_num_replicas=int(ctx.current_num_replicas),
+                curr_num_replicas=int(target_for_record),
+                reason=f"current={ctx.current_num_replicas}, target={target_for_record}",
+                policy_name=getattr(ctx.config.policy, "name", None),
+            )
+        )
+        if len(self._decision_history) > AUTOSCALER_SUMMARIZER_DECISION_HISTORY_MAX:
+            self._decision_history = self._decision_history[
+                -AUTOSCALER_SUMMARIZER_DECISION_HISTORY_MAX:
+            ]
 
-        return self.apply_bounds(decision_num_replicas)
+        self._cached_deployment_snapshot = self._create_deployment_snapshot(
+            ctx=ctx,
+            target_replicas=target_for_record,
+        )
+        return target_for_record
+
+    def get_recent_decisions(self) -> List[_DecisionRecord]:
+        return self._decision_history
 
     def get_total_num_requests(self) -> float:
         """Get average total number of requests aggregated over the past
@@ -299,6 +337,84 @@ class AutoscalingState:
                         ).get(replica_id)
 
         return total_requests
+
+    def _create_deployment_snapshot(
+        self,
+        *,
+        ctx: AutoscalingContext,
+        target_replicas: int,
+    ) -> DeploymentSnapshot:
+        """Create a fully-populated DeploymentSnapshot using data already available in
+        AutoscalingState and the provided context.
+        """
+        current_replicas = ctx.current_num_replicas
+        min_replicas = ctx.capacity_adjusted_min_replicas
+        max_replicas = ctx.capacity_adjusted_max_replicas
+
+        # Aggregate queued requests (best-effort)
+        if self._handle_requests:
+            queued_requests = sum(
+                h.queued_requests for h in self._handle_requests.values()
+            )
+        else:
+            queued_requests = 0.0
+
+        timestamps = [r.timestamp for r in self._replica_requests.values()]
+        timestamps.extend(h.timestamp for h in self._handle_requests.values())
+        if timestamps:
+            time_since_last_collected_metrics_s = time.time() - max(timestamps)
+        else:
+            time_since_last_collected_metrics_s = None
+
+        if target_replicas > current_replicas:
+            scaling_status_raw = DeploymentStatusTrigger.AUTOSCALING_UPSCALE
+        elif target_replicas < current_replicas:
+            scaling_status_raw = DeploymentStatusTrigger.AUTOSCALING_DOWNSCALE
+        else:
+            scaling_status_raw = DeploymentStatusTrigger.AUTOSCALING_STABLE
+        scaling_status = DeploymentSnapshot.format_scaling_status(scaling_status_raw)
+
+        look_back_period_s = getattr(self._config, "look_back_period_s", None)
+        metrics_health = DeploymentSnapshot.format_metrics_health_text(
+            time_since_last_collected_metrics_s=(
+                None
+                if time_since_last_collected_metrics_s is None
+                else float(time_since_last_collected_metrics_s)
+            ),
+            look_back_period_s=look_back_period_s,
+        )
+
+        decisions_summary = DeploymentSnapshot.summarize_decisions(
+            self._decision_history
+        )
+        errors: List[str] = []
+
+        if time_since_last_collected_metrics_s is None:
+            errors.append(AutoscalingSnapshotError.METRICS_UNAVAILABLE)
+
+        return DeploymentSnapshot(
+            timestamp_s=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            app=self._deployment_id.app_name,
+            deployment=self._deployment_id.name,
+            current_replicas=int(current_replicas),
+            target_replicas=int(target_replicas),
+            min_replicas=int(min_replicas) if min_replicas is not None else None,
+            max_replicas=int(max_replicas) if max_replicas is not None else None,
+            scaling_status=scaling_status,
+            policy_name=getattr(ctx.config.policy, "name", None),
+            look_back_period_s=look_back_period_s,
+            queued_requests=float(queued_requests),
+            total_requests=float(ctx.total_num_requests),
+            metrics_health=metrics_health,
+            errors=errors,
+            decisions=decisions_summary,
+        )
+
+    def get_deployment_snapshot(self) -> Optional[DeploymentSnapshot]:
+        """
+        Return the cached deployment snapshot if available.
+        """
+        return self._cached_deployment_snapshot
 
 
 class AutoscalingStateManager:
@@ -397,3 +513,13 @@ class AutoscalingStateManager:
 
         for autoscaling_state in self._autoscaling_states.values():
             autoscaling_state.drop_stale_handle_metrics(alive_serve_actor_ids)
+
+    def get_deployment_snapshot(
+        self, deployment_id: DeploymentID
+    ) -> Optional[DeploymentSnapshot]:
+        state = self._autoscaling_states.get(deployment_id)
+        return state.get_deployment_snapshot() if state else None
+
+    def get_recent_decisions(self, deployment_id: DeploymentID):
+        state = self._autoscaling_states.get(deployment_id)
+        return state.get_recent_decisions() if state else []
