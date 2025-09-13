@@ -5,6 +5,9 @@ from ray import serve
 from ray._common.network_utils import build_address
 from ray.serve._private.common import RequestProtocol
 from ray.serve._private.test_utils import get_application_urls
+from ray.serve.api import _prepare_http_options
+from ray.serve.config import DeploymentMode, ProxyLocation
+from ray.serve.exceptions import RayServeConfigException
 
 
 def test_get_application_urls(serve_instance):
@@ -59,6 +62,43 @@ def test_get_application_urls_with_route_prefix(serve_instance):
     assert get_application_urls("gRPC", app_name="app1", use_localhost=False) == [
         f"{node_ip}:9000"
     ]
+
+
+def test_serve_start(serve_instance):
+    serve.start()  # success with default params
+    with pytest.raises(
+        RayServeConfigException,
+        match=r"{'host': {'previous': '0.0.0.0', 'new': '127.0.0.1'}}",
+    ):
+        serve.start(http_options={"host": "127.0.0.1"})
+
+
+class TestPrepHttpOptions:
+    def test_none_http_options_and_none_proxy_location(self):
+        http_options = _prepare_http_options(proxy_location=None, http_options=None)
+        assert http_options.location == DeploymentMode.EveryNode
+        assert http_options.host == "127.0.0.1"
+
+    def test_none_proxy_location(self):
+        http_options = _prepare_http_options(
+            proxy_location=None, http_options={"host": "0.0.0.0"}
+        )
+        assert http_options.location == DeploymentMode.EveryNode
+        assert http_options.host == "0.0.0.0"
+
+    def test_proxy_location_from_user_set(self):
+        http_options = _prepare_http_options(proxy_location=None, http_options=None)
+        assert http_options.location == DeploymentMode.EveryNode
+
+        http_options = _prepare_http_options(
+            proxy_location="HeadOnly", http_options=None
+        )
+        assert http_options.location == DeploymentMode.HeadOnly
+
+        http_options = _prepare_http_options(
+            proxy_location=ProxyLocation.Disabled, http_options=None
+        )
+        assert http_options.location == DeploymentMode.NoServer
 
 
 if __name__ == "__main__":
