@@ -360,32 +360,6 @@ int main(int argc, char *argv[]) {
   absl::flat_hash_map<ray::LeaseID, std::shared_ptr<ray::raylet::WorkerInterface>>
       leased_workers;
 
-  // Enable subreaper. This is called in `AsyncGetInternalConfig` below, but MSVC does
-  // not allow a macro invocation (#ifdef) in another macro invocation (RAY_CHECK_OK),
-  // so we have to put it here.
-  auto enable_subreaper = [&]() {
-#ifdef __linux__
-    if (ray::SetThisProcessAsSubreaper()) {
-      ray::KnownChildrenTracker::instance().Enable();
-      ray::SetupSigchldHandlerRemoveKnownChildren(main_service);
-      auto runner = ray::PeriodicalRunner::Create(main_service);
-      runner->RunFnPeriodically([runner]() { ray::KillUnknownChildren(); },
-                                /*period_ms=*/10000,
-                                "Raylet.KillUnknownChildren");
-      RAY_LOG(INFO) << "Set this process as subreaper. Will kill unknown children every "
-                       "10 seconds.";
-    } else {
-      RAY_LOG(WARNING) << "Failed to set this process as subreaper. Will not kill "
-                          "unknown children.";
-      ray::SetSigchldIgnore();
-    }
-#else
-    RAY_LOG(WARNING) << "Subreaper is not supported on this platform. Will not "
-                        "kill unknown children.";
-    ray::SetSigchldIgnore();
-#endif
-  };
-
   auto shutted_down = std::make_shared<std::atomic<bool>>(false);
 
   auto shutdown_raylet_after_unregistration = [&main_service,
@@ -452,10 +426,13 @@ int main(int argc, char *argv[]) {
     // Only works on Linux >= 3.4.
     if (RayConfig::instance()
             .kill_child_processes_on_worker_exit_with_raylet_subreaper()) {
-      enable_subreaper();
+      RAY_LOG(WARNING)
+          << "Subreaper-based orphan cleanup is deprecated and ignored. "
+          << "Ray uses per-worker process groups for cleanup. "
+          << "If you rely on subreaper semantics, consider using per-worker PGs "
+          << "or intentionally detaching with setsid().";
     } else {
-      RAY_LOG(INFO) << "Raylet is not set to kill unknown children.";
-      ray::SetSigchldIgnore();
+      RAY_LOG(INFO) << "Using per-worker process group cleanup.";
     }
 
     // Parse the worker port list.
