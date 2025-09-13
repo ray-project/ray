@@ -1,0 +1,117 @@
+import sys
+from typing import Any, Dict
+
+import pytest
+
+import ray
+from ray import serve
+from ray._common.test_utils import SignalActor, wait_for_condition
+from ray.serve._private.common import DeploymentID
+from ray.serve._private.test_utils import (
+    send_signal_on_cancellation,
+)
+
+
+def get_autoscaling_metrics_from_controller(
+    client, deployment_id: DeploymentID
+) -> Dict[str, float]:
+    """Get autoscaling metrics from the controller for testing."""
+    ref = client._controller._dump_all_autoscaling_metrics_for_testing.remote()
+    metrics = ray.get(ref)
+    return metrics.get(deployment_id, {})
+
+
+class TestCustomServeMetrics:
+    """Check that redeploying a deployment doesn't reset its start time."""
+
+    def test_custom_serve_metrics(self, serve_instance):
+        @serve.deployment(
+            autoscaling_config={
+                "min_replicas": 1,
+                "max_replicas": 5,
+                "target_num_ongoing_requests_per_replica": 2,
+                "upscale_delay_s": 2,
+                "downscale_delay_s": 10,
+            }
+        )
+        class DummyMetricIncrementer:
+            def __init__(self):
+                self.counter = 0
+
+            async def __call__(self) -> str:
+                self.counter += 1
+                return "Hello, world"
+
+            async def record_autoscaling_stats(self) -> Dict[str, Any]:
+                # Increments each time the deployment has been called
+                return {"counter": self.counter}
+
+        app_name = "test_custom_metrics_app"
+        handle = serve.run(
+            DummyMetricIncrementer.bind(), name=app_name, route_prefix="/"
+        )
+        dep_id = DeploymentID(name="DummyMetricIncrementer", app_name=app_name)
+
+        # Call deployment 3 times
+        [handle.remote() for _ in range(3)]
+
+        # Wait for controller to receive new metrics
+        wait_for_condition(
+            lambda: "counter"
+            in get_autoscaling_metrics_from_controller(serve_instance, dep_id),
+            timeout=15,
+        )
+        metrics = get_autoscaling_metrics_from_controller(serve_instance, dep_id)
+
+        # The final counter value recorded by the controller should be 3
+        assert metrics["counter"][-1][0].value == 3
+
+    @pytest.mark.asyncio
+    async def test_custom_serve_timeout(self, serve_instance):
+        signal_actor = SignalActor.remote()
+
+        @serve.deployment(
+            autoscaling_config={
+                "min_replicas": 1,
+                "max_replicas": 5,
+                "target_num_ongoing_requests_per_replica": 2,
+                "upscale_delay_s": 2,
+                "downscale_delay_s": 10,
+            }
+        )
+        class DummyMetricTimeout:
+            def __init__(self):
+                self.counter = 0
+
+            async def __call__(self) -> str:
+                self.counter += 1
+                return "Hello, world"
+
+            async def record_autoscaling_stats(self) -> Dict[str, Any]:
+                # Block here until it is forced to cancel due to timeout beyond RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S
+                async with send_signal_on_cancellation(signal_actor):
+                    pass
+
+                return {"counter": self.counter}
+
+        app_name = "test_custom_metrics_app"
+        handle = serve.run(DummyMetricTimeout.bind(), name=app_name, route_prefix="/")
+        dep_id = DeploymentID(name="DummyMetricTimeout", app_name=app_name)
+
+        # Call deployment 3 times
+        [handle.remote() for _ in range(3)]
+
+        # Wait for controller to receive new metrics
+        try:
+            for i in range(5):
+                await signal_actor.wait.remote()
+        except Exception:
+            print("WARN: signal_actor timeout")
+
+        # There should be no counter metric because asyncio timeout would have stopped the method execution
+        metrics = get_autoscaling_metrics_from_controller(serve_instance, dep_id)
+        assert metrics.get("counter", None) is None
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", "-s", __file__]))
