@@ -190,7 +190,14 @@ class Counter(Metric):
         if self._discard_metric:
             self._metric = None
         else:
-            if os.environ.get("RAY_enable_open_telemetry") == "1":
+            if os.environ.get("RAY_enable_open_telemetry") == "0":
+                """
+                For the previous opencensus implementation, we used Sum to support
+                exporting Counter as a gauge metric. We'll drop that feature in the
+                new opentelemetry implementation.
+                """
+                self._metric = CythonSum(self._name, self._description, self._tag_keys)
+            else:
                 """
                 For the new opentelemetry implementation, we'll correctly use Counter
                 rather than Sum.
@@ -198,13 +205,6 @@ class Counter(Metric):
                 self._metric = CythonCount(
                     self._name, self._description, self._tag_keys
                 )
-            else:
-                """
-                For the previous opencensus implementation, we used Sum to support
-                exporting Counter as a gauge metric. We'll drop that feature in the
-                new opentelemetry implementation.
-                """
-                self._metric = CythonSum(self._name, self._description, self._tag_keys)
 
     def __reduce__(self):
         deserializer = self.__class__

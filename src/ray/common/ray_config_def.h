@@ -528,7 +528,7 @@ RAY_CONFIG(std::string, metric_cardinality_level, "legacy")
 
 /// Whether enable OpenTelemetry as the metrics collection backend. The default is
 /// using OpenCensus.
-RAY_CONFIG(bool, enable_open_telemetry, false)
+RAY_CONFIG(bool, enable_open_telemetry, true)
 
 /// Whether to enable Ray Event as the event collection backend. The default is
 /// using the Export API.
