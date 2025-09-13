@@ -57,7 +57,6 @@ class TrainFnUtils(ABC):
                 Defaults to uploading the checkpoint synchronously.
                 This works when no checkpoint is provided but is not useful in that case.
             delete_local_checkpoint_after_upload: Whether to delete the checkpoint after it is uploaded.
-                If not provided, the checkpoint will be uploaded synchronously.
             validate_function: If provided, Ray Train will validate the checkpoint using
                 this function.
             validate_config: Configuration passed to the validate_function. Can contain info

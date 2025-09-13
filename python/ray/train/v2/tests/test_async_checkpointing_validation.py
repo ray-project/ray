@@ -5,13 +5,22 @@ import pytest
 
 import ray
 import ray.cloudpickle as ray_pickle
+from ray.air.config import CheckpointConfig
 from ray.train import Checkpoint, RunConfig, ScalingConfig
+from ray.train.tests.util import create_dict_checkpoint
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.v2.api.exceptions import WorkerGroupError
 from ray.train.v2.api.report_config import CheckpointUploadMode
 
 
-def test_report_mixed_checkpoint_upload_modes(ray_start_4_cpus, tmp_path):
+@pytest.fixture(scope="module", autouse=True)
+def ray_start_4_cpus():
+    ray.init(num_cpus=4)
+    yield
+    ray.shutdown()
+
+
+def test_report_mixed_checkpoint_upload_modes(tmp_path):
     """Run all 10 possible pairs (e.g. (SYNC, ASYNC)) of checkpoint upload modes between 2 workers."""
 
     def get_checkpoint_iteration(checkpoint):
@@ -124,7 +133,6 @@ def test_report_mixed_checkpoint_upload_modes(ray_start_4_cpus, tmp_path):
     ],
 )
 def test_report_delete_local_checkpoint_after_upload(
-    ray_start_4_cpus,
     tmp_path,
     delete_local_checkpoint_after_upload,
     checkpoint_upload_mode,
@@ -176,7 +184,7 @@ def test_report_delete_local_checkpoint_after_upload(
         assert os.path.exists(os.path.join(tmp_path, "my_checkpoint_dir"))
 
 
-def test_report_checkpoint_upload_error(ray_start_4_cpus, monkeypatch, tmp_path):
+def test_report_checkpoint_upload_error(monkeypatch, tmp_path):
     """Check that the trainer shuts down when an error occurs during checkpoint upload."""
 
     def train_fn():
@@ -215,6 +223,115 @@ def test_report_checkpoint_upload_error(ray_start_4_cpus, monkeypatch, tmp_path)
     with pytest.raises(WorkerGroupError) as exc_info:
         trainer.fit()
         assert isinstance(exc_info.value.worker_failures[0], ValueError)
+
+
+def test_report_validate_config_without_validate_function():
+    def train_fn():
+        ray.train.report(metrics={}, checkpoint=None, validate_config={"test": "test"})
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=2),
+    )
+    with pytest.raises(WorkerGroupError) as exc_info:
+        trainer.fit()
+        assert isinstance(exc_info.value.worker_failures[0], ValueError)
+
+
+def test_report_validate_function_keeps_correct_checkpoints(tmp_path):
+    def validate_fn(checkpoint, config):
+        if config and "new_score" in config:
+            return {"score": config["new_score"]}
+        else:
+            return {}
+
+    def train_fn():
+        rank = ray.train.get_context().get_world_rank()
+        checkpoint_dir = os.path.join(
+            tmp_path,
+            "my_checkpoint_dir",
+        )
+        os.makedirs(checkpoint_dir, exist_ok=True)
+        with open(os.path.join(checkpoint_dir, f"shard_{rank}"), "wb") as f:
+            ray_pickle.dump("some_checkpoint_contents", f)
+        ray.train.report(
+            metrics={"score": 1},
+            checkpoint=Checkpoint(checkpoint_dir),
+            checkpoint_upload_mode=CheckpointUploadMode.ASYNC,
+            delete_local_checkpoint_after_upload=False,
+            validate_function=validate_fn,
+            validate_config=None,
+        )
+        with create_dict_checkpoint({}) as cp2:
+            ray.train.report(
+                metrics={"score": 3},
+                checkpoint=cp2,
+                checkpoint_upload_mode=CheckpointUploadMode.SYNC,
+                validate_function=validate_fn,
+                validate_config=None,
+            )
+        with create_dict_checkpoint({}) as cp3:
+            ray.train.report(
+                metrics={"score": 2},
+                checkpoint=cp3,
+                checkpoint_upload_mode=CheckpointUploadMode.SYNC,
+                validate_function=validate_fn,
+                validate_config={"new_score": 5},
+            )
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=2),
+        run_config=RunConfig(
+            storage_path=str(tmp_path),
+            checkpoint_config=CheckpointConfig(
+                num_to_keep=2, checkpoint_score_attribute="score"
+            ),
+        ),
+    )
+    result = trainer.fit()
+    assert result.failed_validations is None
+    assert result.error is None
+    assert result.checkpoint == result.best_checkpoints[0][0]
+    assert len(result.best_checkpoints) == 2
+    assert result.best_checkpoints[0][1] == {"score": 5}
+    assert result.best_checkpoints[1][1] == {"score": 3}
+
+
+def test_report_validate_function_error():
+    def validate_fn(checkpoint, config):
+        if config["rank"] == 0 and config["iteration"] == 0:
+            raise ValueError("validation failed")
+        return {}
+
+    def train_fn():
+        rank = ray.train.get_context().get_world_rank()
+        with create_dict_checkpoint({}) as cp1:
+            ray.train.report(
+                metrics={},
+                checkpoint=cp1,
+                validate_function=validate_fn,
+                validate_config={"rank": rank, "iteration": 0},
+            )
+        with create_dict_checkpoint({}) as cp2:
+            ray.train.report(
+                metrics={},
+                checkpoint=cp2,
+                validate_function=validate_fn,
+                validate_config={"rank": rank, "iteration": 1},
+            )
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=2),
+    )
+    result = trainer.fit()
+    assert len(result.failed_validations) == 1
+    assert isinstance(result.failed_validations[0].validation_failed_error, ValueError)
+    assert result.failed_validations[0].checkpoint == result.best_checkpoints[0][0]
+    assert result.error is None
+    assert result.checkpoint == result.best_checkpoints[1][0]
+    assert len(result.best_checkpoints) == 2
 
 
 if __name__ == "__main__":

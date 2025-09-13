@@ -8,7 +8,6 @@ import pyarrow.fs
 import pytest
 
 import ray
-from ray.air.config import CheckpointConfig
 from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.train import BackendConfig, Checkpoint, RunConfig, ScalingConfig, UserCallback
 from ray.train.backend import Backend
@@ -166,103 +165,6 @@ def test_report_get_all_reported_checkpoints():
     trainer.fit()
 
 
-def test_report_validate_config_without_validate_function():
-    def train_fn():
-        ray.train.report(metrics={}, checkpoint=None, validate_config={"test": "test"})
-
-    trainer = DataParallelTrainer(
-        train_fn,
-        scaling_config=ScalingConfig(num_workers=2),
-    )
-    with pytest.raises(WorkerGroupError) as exc_info:
-        trainer.fit()
-        assert isinstance(exc_info.value.worker_failures[0], ValueError)
-
-
-def test_report_validate_function_keeps_correct_checkpoints():
-    def validate_fn(checkpoint, config):
-        if config and "new_score" in config:
-            return {"score": config["new_score"]}
-        else:
-            return {}
-
-    def train_fn():
-        with create_dict_checkpoint({}) as cp1:
-            ray.train.report(
-                metrics={"score": 1},
-                checkpoint=cp1,
-                validate_function=validate_fn,
-                validate_config=None,
-            )
-        with create_dict_checkpoint({}) as cp2:
-            ray.train.report(
-                metrics={"score": 3},
-                checkpoint=cp2,
-                validate_function=validate_fn,
-                validate_config=None,
-            )
-        with create_dict_checkpoint({}) as cp3:
-            ray.train.report(
-                metrics={"score": 2},
-                checkpoint=cp3,
-                validate_function=validate_fn,
-                validate_config={"new_score": 5},
-            )
-
-    trainer = DataParallelTrainer(
-        train_fn,
-        scaling_config=ScalingConfig(num_workers=2),
-        run_config=RunConfig(
-            checkpoint_config=CheckpointConfig(
-                num_to_keep=2, checkpoint_score_attribute="score"
-            )
-        ),
-    )
-    result = trainer.fit()
-    assert result.failed_validations is None
-    assert result.error is None
-    assert result.checkpoint == result.best_checkpoints[0][0]
-    assert len(result.best_checkpoints) == 2
-    assert result.best_checkpoints[0][1] == {"score": 5}
-    assert result.best_checkpoints[1][1] == {"score": 3}
-
-
-def test_report_validate_function_error():
-    def validate_fn(checkpoint, config):
-        if config["rank"] == 0 and config["iteration"] == 0:
-            raise ValueError("validation failed")
-        return {}
-
-    def train_fn():
-        rank = ray.train.get_context().get_world_rank()
-        with create_dict_checkpoint({}) as cp1:
-            ray.train.report(
-                metrics={},
-                checkpoint=cp1,
-                validate_function=validate_fn,
-                validate_config={"rank": rank, "iteration": 0},
-            )
-        with create_dict_checkpoint({}) as cp2:
-            ray.train.report(
-                metrics={},
-                checkpoint=cp2,
-                validate_function=validate_fn,
-                validate_config={"rank": rank, "iteration": 1},
-            )
-
-    trainer = DataParallelTrainer(
-        train_fn,
-        scaling_config=ScalingConfig(num_workers=2),
-    )
-    result = trainer.fit()
-    assert len(result.failed_validations) == 1
-    assert isinstance(result.failed_validations[0].validation_failed_error, ValueError)
-    assert result.failed_validations[0].checkpoint == result.best_checkpoints[0][0]
-    assert result.error is None
-    assert result.checkpoint == result.best_checkpoints[1][0]
-    assert len(result.best_checkpoints) == 2
-
-
 def test_error(tmp_path):
     def _error_func_rank_0():
         """An example train_fun that raises an error on rank 0."""
@@ -372,7 +274,7 @@ def run_process_for_sigint_abort(abort_terminates):
         # True,
     ],
 )
-def test_sigint_abort(ray_start_4_cpus, spam_sigint):
+def test_sigint_abort(spam_sigint):
     # Use SignalActor to wait for training to start before sending SIGINT.
     SignalActor = create_remote_signal_actor(ray)
     signal_actor = SignalActor.options(
