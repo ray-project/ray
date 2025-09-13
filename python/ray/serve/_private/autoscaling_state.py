@@ -18,7 +18,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.metrics_utils import (
-    merge_timeseries_dicts_instantaneous,
+    merge_timeseries_dicts,
     time_weighted_average,
 )
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
@@ -277,9 +277,12 @@ class AutoscalingState:
             if replica_id in self._replica_requests:
                 metrics_timeseries_dicts.append(
                     {
-                        k: self._replica_requests[replica_id].metrics[k]
-                        for k in self._replica_requests[replica_id].metrics
-                        if k == RUNNING_REQUESTS_KEY  # only collect running requests
+                        metric_name: self._replica_requests[replica_id].metrics[
+                            metric_name
+                        ]
+                        for metric_name in self._replica_requests[replica_id].metrics
+                        if metric_name
+                        == RUNNING_REQUESTS_KEY  # only collect running requests
                     }
                 )
 
@@ -287,28 +290,24 @@ class AutoscalingState:
 
     def _collect_handle_queued_requests(self) -> float:
         """Collect total queued requests from all handles."""
-        total_queued = 0
-        for handle_metric in self._handle_requests.values():
-            total_queued += handle_metric.queued_requests
-        return total_queued
+        total_queued_requests = 0
+        for handle_metric_report in self._handle_requests.values():
+            total_queued_requests += handle_metric_report.queued_requests
+        return total_queued_requests
 
-    def _collect_handle_running_requests(
-        self, metrics_collected_on_replicas: bool
-    ) -> List[Dict[str, List]]:
+    def _collect_handle_running_requests(self) -> List[Dict[str, List]]:
         """Collect running requests metrics from handles when not collected on replicas."""
         metrics_timeseries_dicts = []
 
-        if not metrics_collected_on_replicas:
-            for handle_metric in self._handle_requests.values():
-                for replica_id in self._running_replicas:
-                    metrics_timeseries_dicts.append(
-                        {
-                            k: handle_metric.metrics.get(k, {}).get(replica_id, [])
-                            for k in handle_metric.metrics
-                            if k
-                            == RUNNING_REQUESTS_KEY  # only collect running requests
-                        }
-                    )
+        for handle_metric in self._handle_requests.values():
+            for replica_id in self._running_replicas:
+                metrics_timeseries_dicts.append(
+                    {
+                        k: handle_metric.metrics.get(k, {}).get(replica_id, [])
+                        for k in handle_metric.metrics
+                        if k == RUNNING_REQUESTS_KEY  # only collect running requests
+                    }
+                )
 
         return metrics_timeseries_dicts
 
@@ -321,25 +320,12 @@ class AutoscalingState:
             return 0.0
 
         # Use instantaneous merge approach - no arbitrary windowing needed
-        # TTL is set to 3x metrics interval to prevent unbounded memory growth
-        ttl = 3.0 * self._config.metrics_interval_s
-        aggregated_metrics = merge_timeseries_dicts_instantaneous(
-            *metrics_timeseries_dicts,
-            ttl=ttl,
-        )
-
+        aggregated_metrics = merge_timeseries_dicts(*metrics_timeseries_dicts)
         running_requests_timeseries = aggregated_metrics.get(RUNNING_REQUESTS_KEY, [])
         if running_requests_timeseries:
-            # Use time-weighted average over the last metrics interval
-            # This gives a mathematically correct average of the instantaneous values
-            import time
+            # Use time-weighted average over
 
-            now = time.time()
-            window_start = now - self._config.metrics_interval_s
-
-            avg_running = time_weighted_average(
-                running_requests_timeseries, window_start, now
-            )
+            avg_running = time_weighted_average(running_requests_timeseries)
             return avg_running if avg_running is not None else 0.0
 
         return 0.0
@@ -352,22 +338,20 @@ class AutoscalingState:
         to simple mode.
 
         Processing Steps:
-            1. Collect raw timeseries data from replicas (if available)
+            1. Collect raw timeseries data (eg: running request) from replicas (if available)
             2. Collect queued requests from handles (always tracked at handle level)
-            3. Collect raw timeseries data from handles (if not available from replicas)
-            4. Merge and window the timeseries data for stability
-            5. Calculate average running requests from the merged timeseries
+            3. Collect raw timeseries data (eg: running request) from handles (if not available from replicas)
+            4. Merge timeseries using instantaneous approach for mathematically correct totals
+            5. Calculate time-weighted average running requests from the merged timeseries
 
         Key Differences from Simple Mode:
             - Uses raw timeseries data instead of pre-aggregated metrics
-            - Performs windowing and merging for better stability during metric collection
+            - Performs instantaneous merging for exact gauge semantics
             - Aggregates at the controller level rather than using pre-computed averages
-            - Applies minimum 1.0s window to reduce noise from small metrics intervals
+            - Uses time-weighted averaging over the look_back_period_s interval for accurate calculations
 
-        Metrics Collection Priority:
-            Running requests are collected with the following priority:
-            1. Replica-level metrics (preferred when available)
-            2. Handle-level metrics (fallback when replica metrics unavailable)
+        Metrics Collection:
+            Running requests are collected with either replica-level or handle-level metrics.
 
             Queued requests are always collected from handles regardless of where
             running requests are collected.
@@ -398,11 +382,12 @@ class AutoscalingState:
             # Merged instantaneous total: [(t=0.1, val=3), (t=0.2, val=8), (t=0.8, val=10), (t=0.9, val=11), (t=1.2, val=15), (t=1.5, val=14)]
             merged_timeseries = {"running_requests": [(0.1, 3), (0.2, 8), (0.8, 10), (0.9, 11), (1.2, 15), (1.5, 14)]}
 
-            Step 5: Calculate time-weighted average over last 0.5s (t=1.5 to t=2.0)
-            # Value is constant at 14 over the entire interval
-            avg_running = 14.0
+            Step 5: Calculate time-weighted average over full timeseries (t=0.1 to t=1.5+1.0=2.5)
+            # Time-weighted calculation: (3*0.1 + 8*0.6 + 10*0.1 + 11*0.3 + 15*0.3 + 14*1.0) / 2.4
+            # = (0.3 + 4.8 + 1.0 + 3.3 + 4.5 + 14.0) / 2.4 = 27.9 / 2.4 = 11.625
+            avg_running = 11.625
 
-            Final result: total_requests = avg_running + queued = 14.0 + 5 = 19.0
+            Final result: total_requests = avg_running + queued = 11.625 + 5 = 16.625
 
         Returns:
             Total number of requests (average running + queued) calculated from
@@ -415,10 +400,11 @@ class AutoscalingState:
         # Collect queued requests from handles
         total_requests = self._collect_handle_queued_requests()
 
-        # Collect handle-based running requests if not collected on replicas
-        handle_metrics = self._collect_handle_running_requests(
-            metrics_collected_on_replicas
-        )
+        if not metrics_collected_on_replicas:
+            # Collect handle-based running requests if not collected on replicas
+            handle_metrics = self._collect_handle_running_requests()
+        else:
+            handle_metrics = []
 
         # Combine all running requests metrics
         all_running_metrics = replica_metrics + handle_metrics

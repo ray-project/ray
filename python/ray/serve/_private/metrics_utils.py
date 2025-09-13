@@ -307,53 +307,73 @@ class InMemoryMetricsStore:
         return self._aggregate_reduce(keys, statistics.mean)
 
 
-def _bucket_latest_by_window(
-    series: List[TimeStampedValue],
-    start: float,
-    window_s: float,
-) -> Dict[int, float]:
+def time_weighted_average(
+    step_series: List[TimeStampedValue],
+    window_start: Optional[float] = None,
+    window_end: Optional[float] = None,
+) -> Optional[float]:
     """
-    Map each window index -> latest value seen in that window.
-    Assumes series is sorted by timestamp ascending.
+    Compute time-weighted average of a step function over a time interval.
+
+    Args:
+        step_series: Step function as list of (timestamp, value) points, sorted by time.
+            Values are right-continuous (constant until next change).
+        window_start: Start of averaging window (inclusive). If None, uses the start of the series.
+        window_end: End of averaging window (exclusive). If None, uses the end of the series.
+
+    Returns:
+        Time-weighted average over the interval, or None if no data overlaps.
     """
-    buckets: Dict[int, float] = {}
-    for p in series:
-        w = int((p.timestamp - start) // window_s)
-        buckets[w] = p.value  # overwrite keeps the latest within the window
-    return buckets
+    if not step_series:
+        return None
 
+    # Handle None values by using full timeseries bounds
+    if window_start is None:
+        window_start = step_series[0].timestamp
+    if window_end is None:
+        # Use timestamp after the last point to include the final segment
+        window_end = step_series[-1].timestamp + 1.0
 
-def _merge_two_timeseries(
-    t1: List[TimeStampedValue], t2: List[TimeStampedValue], window_s: float
-) -> List[TimeStampedValue]:
-    """
-    Merge two ascending time series by summing values within a specified time window.
-    If multiple values fall within the same window in a series, the latest value is used.
-    The output contains one point per window that had at least one value, timestamped
-    at the window center.
-    """
-    if window_s <= 0:
-        raise ValueError(f"window_s must be positive, got {window_s}")
+    if window_end <= window_start:
+        return None
 
-    if not t1 and not t2:
-        return []
+    total_weighted_value = 0.0
+    total_duration = 0.0
 
-    # Align windows so each output timestamp sits at the start of its window.
-    # start is snapped to window_s boundary for binning stability
-    earliest = min(x[0].timestamp for x in (t1, t2) if x)
-    start = earliest // window_s * window_s
+    # Find the value at window_start (LOCF)
+    current_value = 0.0  # Default if no data before window_start
+    for point in step_series:
+        if point.timestamp <= window_start:
+            current_value = point.value
+        else:
+            break
 
-    b1 = _bucket_latest_by_window(t1, start, window_s)
-    b2 = _bucket_latest_by_window(t2, start, window_s)
+    current_time = window_start
 
-    windows = sorted(set(b1.keys()) | set(b2.keys()))
+    # Process each segment that overlaps with the window
+    for point in step_series:
+        if point.timestamp <= window_start:
+            continue  # Already processed above
+        if point.timestamp >= window_end:
+            break  # Beyond our window
 
-    merged: List[TimeStampedValue] = []
-    for w in windows:
-        v = b1.get(w, 0.0) + b2.get(w, 0.0)
-        ts_start = start + w * window_s
-        merged.append(TimeStampedValue(timestamp=ts_start, value=v))
-    return merged
+        # Add contribution of current segment
+        segment_end = min(point.timestamp, window_end)
+        duration = segment_end - current_time
+        if duration > 0:
+            total_weighted_value += current_value * duration
+            total_duration += duration
+
+        current_value = point.value
+        current_time = segment_end
+
+    # Add final segment if it extends to window_end
+    if current_time < window_end:
+        duration = window_end - current_time
+        total_weighted_value += current_value * duration
+        total_duration += duration
+
+    return total_weighted_value / total_duration if total_duration > 0 else None
 
 
 def merge_instantaneous_total(
@@ -436,66 +456,7 @@ def merge_instantaneous_total(
     return merged
 
 
-def time_weighted_average(
-    step_series: List[TimeStampedValue],
-    window_start: float,
-    window_end: float,
-) -> Optional[float]:
-    """
-    Compute time-weighted average of a step function over a time interval.
-
-    Args:
-        step_series: Step function as list of (timestamp, value) points, sorted by time.
-            Values are right-continuous (constant until next change).
-        window_start: Start of averaging window (inclusive).
-        window_end: End of averaging window (exclusive).
-
-    Returns:
-        Time-weighted average over the interval, or None if no data overlaps.
-    """
-    if not step_series or window_end <= window_start:
-        return None
-
-    total_weighted_value = 0.0
-    total_duration = 0.0
-
-    # Find the value at window_start (LOCF)
-    current_value = 0.0  # Default if no data before window_start
-    for point in step_series:
-        if point.timestamp <= window_start:
-            current_value = point.value
-        else:
-            break
-
-    current_time = window_start
-
-    # Process each segment that overlaps with the window
-    for point in step_series:
-        if point.timestamp <= window_start:
-            continue  # Already processed above
-        if point.timestamp >= window_end:
-            break  # Beyond our window
-
-        # Add contribution of current segment
-        segment_end = min(point.timestamp, window_end)
-        duration = segment_end - current_time
-        if duration > 0:
-            total_weighted_value += current_value * duration
-            total_duration += duration
-
-        current_value = point.value
-        current_time = segment_end
-
-    # Add final segment if it extends to window_end
-    if current_time < window_end:
-        duration = window_end - current_time
-        total_weighted_value += current_value * duration
-        total_duration += duration
-
-    return total_weighted_value / total_duration if total_duration > 0 else None
-
-
-def merge_timeseries_dicts_instantaneous(
+def merge_timeseries_dicts(
     *timeseries_dicts: DefaultDict[Hashable, List[TimeStampedValue]],
     ttl: Optional[float] = None,
 ) -> DefaultDict[Hashable, List[TimeStampedValue]]:
@@ -523,29 +484,4 @@ def merge_timeseries_dicts_instantaneous(
         # Merge using instantaneous approach
         merged[key] = merge_instantaneous_total(replicas_series, ttl=ttl)
 
-    return merged
-
-
-def merge_timeseries_dicts(
-    *timeseries_dicts: DefaultDict[Hashable, List[TimeStampedValue]],
-    window_s: float,
-) -> DefaultDict[Hashable, List[TimeStampedValue]]:
-    """
-    Merge multiple time-series dictionaries, typically contained within
-    InMemoryMetricsStore().data. For the same key across stores, time series
-    are merged with a windowed sum, where each series keeps only its latest
-    value per window before summing.
-
-    DEPRECATED: This windowed approach has known issues with arbitrary window sizing
-    and temporal alignment bias. Consider using merge_timeseries_dicts_instantaneous
-    for mathematically correct gauge merging.
-    """
-    merged: DefaultDict[Hashable, List[TimeStampedValue]] = defaultdict(list)
-    for timeseries_dict in timeseries_dicts:
-        for key, ts in timeseries_dict.items():
-            if key in merged:
-                merged[key] = _merge_two_timeseries(merged[key], ts, window_s)
-            else:
-                # Window the data, even if the key is unique.
-                merged[key] = _merge_two_timeseries(ts, [], window_s)
     return merged
