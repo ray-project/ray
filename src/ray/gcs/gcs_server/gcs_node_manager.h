@@ -80,6 +80,11 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
                             rpc::GetAllNodeInfoReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle get all node info light rpc request (without labels).
+  void HandleGetAllNodeInfoLight(rpc::GetAllNodeInfoLightRequest request,
+                                 rpc::GetAllNodeInfoLightReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle check alive request for GCS.
   void HandleCheckAlive(rpc::CheckAliveRequest request,
                         rpc::CheckAliveReply *reply,
