@@ -278,7 +278,7 @@ def _validate_deployment_config(
     Rationale:
         These options are only set when Serve first starts. Changing them later would
         require a full Serve restart. The REST endpoint (PUT /api/serve/applications/)
-        ignores modifications to these fields (logging to dashboard_ServeHead.log).
+        ignores modifications to these fields (logging it to dashboard_ServeHead.log).
         For the CLI (`serve deploy`), we fail fast to make this explicit.
 
     Parameters:
