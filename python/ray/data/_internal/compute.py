@@ -125,8 +125,6 @@ class ActorPoolStrategy(ComputeStrategy):
 
         # Validate and set initial_size
         if initial_size is not None:
-            if initial_size < 1:
-                raise ValueError("initial_size must be >= 1", initial_size)
             if initial_size < self.min_size:
                 raise ValueError(
                     f"initial_size ({initial_size}) must be >= min_size ({self.min_size})"
