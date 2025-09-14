@@ -165,6 +165,7 @@ class ReplicaMetricsManager:
         user_callable_wrapper: Optional["UserCallableWrapper"],
     ):
         self._replica_id = replica_id
+        self._deployment_id = replica_id.deployment_id
         self._metrics_pusher = MetricsPusher()
         self._metrics_store = InMemoryMetricsStore()
         self.user_callable_wrapper = user_callable_wrapper
@@ -228,6 +229,16 @@ class ReplicaMetricsManager:
         self._num_ongoing_requests_gauge = metrics.Gauge(
             "serve_replica_processing_queries",
             description="The current number of queries being processed.",
+        )
+
+        self.record_autoscaling_stats_failed_counter = metrics.Counter(
+            f"record_autoscaling_stats_failed",
+            description=f"The number of errored record_autoscaling_stats invocations.",
+            tag_keys=(
+                "app_name",
+                "deployment_name",
+                "replica_id"
+            ),
         )
 
         self.set_autoscaling_config(autoscaling_config)
@@ -347,7 +358,7 @@ class ReplicaMetricsManager:
 
         if not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
             # Keep the legacy window_avg ongoing requests in the merged metrics dict
-            window_avg = self._metrics_store.aggregate_avg([self._replica_id])[0] or 0.0
+            window_avg = self._metrics_store.aggregate_avg([RUNNING_REQUESTS_KEY])[0] or 0.0
             new_aggregated_metrics.update({RUNNING_REQUESTS_KEY: window_avg})
 
         replica_metric_report = ReplicaMetricReport(
@@ -361,7 +372,7 @@ class ReplicaMetricsManager:
         )
 
     def _replica_ongoing_requests(self) -> Dict[ReplicaID, int]:
-        return {self._replica_id: self._num_ongoing_requests}
+        return {RUNNING_REQUESTS_KEY: self._num_ongoing_requests}
 
     async def _add_autoscaling_metrics_point_async(self) -> None:
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
@@ -383,6 +394,13 @@ class ReplicaMetricsManager:
                 )
             except Exception as ex:
                 logger.error(f"Replica autoscaling stats failed. {ex}")
+                self.record_autoscaling_stats_failed_counter.inc(
+                tags={
+                    "app_name": self._deployment_id.app_name,
+                    "deployment_name": self._deployment_id.name,
+                    "replica_id": self._replica_id
+                }
+            )
 
         self._metrics_store.add_metrics_point(
             metrics_dict,
@@ -1603,7 +1621,7 @@ class UserCallableWrapper:
         return result
 
     @_run_user_code
-    async def _call_user_autoscaling_stats(self) -> Dict[str, Any]:
+    async def _call_user_autoscaling_stats(self) -> Dict[str, Union[int, float]]:
         result, _ = await self._call_func_or_gen(self._user_autoscaling_stats)
         return result
 

@@ -32,6 +32,7 @@ class TestCustomServeMetrics:
                 "target_num_ongoing_requests_per_replica": 2,
                 "upscale_delay_s": 2,
                 "downscale_delay_s": 10,
+                "metrics_interval_s": 1
             }
         )
         class DummyMetricIncrementer:
@@ -42,7 +43,7 @@ class TestCustomServeMetrics:
                 self.counter += 1
                 return "Hello, world"
 
-            async def record_autoscaling_stats(self) -> Dict[str, Any]:
+            def record_autoscaling_stats(self) -> Dict[str, Any]:
                 # Increments each time the deployment has been called
                 return {"counter": self.counter}
 
@@ -69,7 +70,6 @@ class TestCustomServeMetrics:
     @pytest.mark.asyncio
     async def test_custom_serve_timeout(self, serve_instance):
         signal_actor = SignalActor.remote()
-
         @serve.deployment(
             autoscaling_config={
                 "min_replicas": 1,
@@ -77,41 +77,28 @@ class TestCustomServeMetrics:
                 "target_num_ongoing_requests_per_replica": 2,
                 "upscale_delay_s": 2,
                 "downscale_delay_s": 10,
+                "metrics_interval_s": 1
             }
         )
         class DummyMetricTimeout:
             def __init__(self):
                 self.counter = 0
-
             async def __call__(self) -> str:
                 self.counter += 1
                 return "Hello, world"
-
             async def record_autoscaling_stats(self) -> Dict[str, Any]:
                 # Block here until it is forced to cancel due to timeout beyond RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S
-                async with send_signal_on_cancellation(signal_actor):
+                while True:
                     pass
-
-                return {"counter": self.counter}
 
         app_name = "test_custom_metrics_app"
         handle = serve.run(DummyMetricTimeout.bind(), name=app_name, route_prefix="/")
         dep_id = DeploymentID(name="DummyMetricTimeout", app_name=app_name)
-
         # Call deployment 3 times
         [handle.remote() for _ in range(3)]
-
-        # Wait for controller to receive new metrics
-        try:
-            for i in range(5):
-                await signal_actor.wait.remote()
-        except Exception:
-            print("WARN: signal_actor timeout")
-
         # There should be no counter metric because asyncio timeout would have stopped the method execution
         metrics = get_autoscaling_metrics_from_controller(serve_instance, dep_id)
         assert metrics.get("counter", None) is None
-
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
