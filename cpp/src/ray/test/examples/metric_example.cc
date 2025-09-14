@@ -29,10 +29,10 @@ void test_metric(const std::string &exec_type, int total_time) {
       "ray_test_histogram", "test histogram", "unit", {1, 10}, {"tag1", "tag2"});
   ray::Sum sum("ray_test_sum", "test sum", "unit", {"tag1", "tag2"});
 
-  std::unordered_map<std::string, std::string> tag_1 = {{"tag1", "increasing"},
-                                                        {"tag2", exec_type}};
-  std::unordered_map<std::string, std::string> tag_2 = {{"tag1", "steady"},
-                                                        {"tag2", exec_type}};
+  std::vector<std::pair<std::string_view, std::string>> tag_1 = {{"tag1", "increasing"},
+                                                                 {"tag2", exec_type}};
+  std::vector<std::pair<std::string_view, std::string>> tag_2 = {{"tag1", "steady"},
+                                                                 {"tag2", exec_type}};
   int num = total_time;
   for (int i = 0; i < num; i++) {
     gauge.Set(i, tag_1);

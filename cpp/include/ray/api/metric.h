@@ -31,7 +31,8 @@ class Metric {
   ///
   /// \param value The value that we record.
   /// \param tags The map tag values that we want to record for this metric record.
-  void Record(double value, const std::unordered_map<std::string, std::string> &tags);
+  void Record(double value,
+              const std::vector<std::pair<std::string_view, std::string>> &tags);
 
  protected:
   void *metric_ = nullptr;
@@ -60,7 +61,8 @@ class Gauge : public Metric {
   ///
   /// \param[in] value Value to set the gauge to.
   /// \param[in] tags Tags to set or override for this gauge.
-  void Set(double value, const std::unordered_map<std::string, std::string> &tags);
+  void Set(double value,
+           const std::vector<std::pair<std::string_view, std::string>> &tags);
 };  // class Gauge
 
 class Histogram : public Metric {
@@ -90,7 +92,8 @@ class Histogram : public Metric {
   ///
   /// \param[in] value The value that we record.
   /// \param[in] tags The map tag values that we want to record
-  void Observe(double value, const std::unordered_map<std::string, std::string> &Tags);
+  void Observe(double value,
+               const std::vector<std::pair<std::string_view, std::string>> &Tags);
 };  // class Histogram
 
 class Counter : public Metric {
@@ -115,7 +118,8 @@ class Counter : public Metric {
   ///
   /// \param[in] value Value to increment the counter by (default=1).
   /// \param[in] tags The map tag values that we want to record
-  void Inc(double value, const std::unordered_map<std::string, std::string> &tags);
+  void Inc(double value,
+           const std::vector<std::pair<std::string_view, std::string>> &tags);
 };  // class Counter
 
 class Sum : public Metric {
