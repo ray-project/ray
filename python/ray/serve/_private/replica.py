@@ -232,13 +232,9 @@ class ReplicaMetricsManager:
         )
 
         self.record_autoscaling_stats_failed_counter = metrics.Counter(
-            f"record_autoscaling_stats_failed",
-            description=f"The number of errored record_autoscaling_stats invocations.",
-            tag_keys=(
-                "app_name",
-                "deployment_name",
-                "replica_id"
-            ),
+            "serve_record_autoscaling_stats_failed",
+            description="The number of errored record_autoscaling_stats invocations.",
+            tag_keys=("app_name", "deployment_name", "replica_id"),
         )
 
         self.set_autoscaling_config(autoscaling_config)
@@ -358,7 +354,9 @@ class ReplicaMetricsManager:
 
         if not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
             # Keep the legacy window_avg ongoing requests in the merged metrics dict
-            window_avg = self._metrics_store.aggregate_avg([RUNNING_REQUESTS_KEY])[0] or 0.0
+            window_avg = (
+                self._metrics_store.aggregate_avg([RUNNING_REQUESTS_KEY])[0] or 0.0
+            )
             new_aggregated_metrics.update({RUNNING_REQUESTS_KEY: window_avg})
 
         replica_metric_report = ReplicaMetricReport(
@@ -388,19 +386,28 @@ class ReplicaMetricsManager:
                     timeout=RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
                 )
                 metrics_dict.update(res)
-            except asyncio.TimeoutError:
+            except asyncio.TimeoutError as timeout_err:
                 logger.error(
                     f"Replica autoscaling stats timed out after {RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S}s."
                 )
-            except Exception as ex:
-                logger.error(f"Replica autoscaling stats failed. {ex}")
                 self.record_autoscaling_stats_failed_counter.inc(
-                tags={
-                    "app_name": self._deployment_id.app_name,
-                    "deployment_name": self._deployment_id.name,
-                    "replica_id": self._replica_id
-                }
-            )
+                    tags={
+                        "app_name": self._deployment_id.app_name,
+                        "deployment_name": self._deployment_id.name,
+                        "replica_id": self._replica_id.unique_id,
+                        "exception_name": timeout_err.__class__.__name__,
+                    }
+                )
+            except Exception as err:
+                logger.error(f"Replica autoscaling stats failed. {err}")
+                self.record_autoscaling_stats_failed_counter.inc(
+                    tags={
+                        "app_name": self._deployment_id.app_name,
+                        "deployment_name": self._deployment_id.name,
+                        "replica_id": self._replica_id.unique_id,
+                        "exception_name": err.__class__.__name__,
+                    }
+                )
 
         self._metrics_store.add_metrics_point(
             metrics_dict,

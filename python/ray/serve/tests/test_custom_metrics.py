@@ -5,11 +5,8 @@ import pytest
 
 import ray
 from ray import serve
-from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.serve._private.common import DeploymentID
-from ray.serve._private.test_utils import (
-    send_signal_on_cancellation,
-)
 
 
 def get_autoscaling_metrics_from_controller(
@@ -32,7 +29,7 @@ class TestCustomServeMetrics:
                 "target_num_ongoing_requests_per_replica": 2,
                 "upscale_delay_s": 2,
                 "downscale_delay_s": 10,
-                "metrics_interval_s": 1
+                "metrics_interval_s": 1,
             }
         )
         class DummyMetricIncrementer:
@@ -69,7 +66,6 @@ class TestCustomServeMetrics:
 
     @pytest.mark.asyncio
     async def test_custom_serve_timeout(self, serve_instance):
-        signal_actor = SignalActor.remote()
         @serve.deployment(
             autoscaling_config={
                 "min_replicas": 1,
@@ -77,15 +73,17 @@ class TestCustomServeMetrics:
                 "target_num_ongoing_requests_per_replica": 2,
                 "upscale_delay_s": 2,
                 "downscale_delay_s": 10,
-                "metrics_interval_s": 1
+                "metrics_interval_s": 1,
             }
         )
         class DummyMetricTimeout:
             def __init__(self):
                 self.counter = 0
+
             async def __call__(self) -> str:
                 self.counter += 1
                 return "Hello, world"
+
             async def record_autoscaling_stats(self) -> Dict[str, Any]:
                 # Block here until it is forced to cancel due to timeout beyond RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S
                 while True:
@@ -99,6 +97,7 @@ class TestCustomServeMetrics:
         # There should be no counter metric because asyncio timeout would have stopped the method execution
         metrics = get_autoscaling_metrics_from_controller(serve_instance, dep_id)
         assert metrics.get("counter", None) is None
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
