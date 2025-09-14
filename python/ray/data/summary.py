@@ -60,7 +60,7 @@ class DatasetSummary:
 
     def to_dataframes(self) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """
-        Convert this summary into two pandas DataFrames: (numerical_df, categorical_df).
+        Convert this summary into two pandas DataFrames: (numerical_df, categorical_df, vector_df).
 
         Returns:
             A tuple of (numerical_df, categorical_df)
