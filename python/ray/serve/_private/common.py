@@ -767,6 +767,14 @@ class AutoscalingDecisionSummary:
     curr_num_replicas: Optional[int]
     reason: str
 
+    def to_log_dict(self) -> Dict[str, Any]:
+        return {
+            "timestamp_s": self.timestamp_s,
+            "from": self.prev_num_replicas,
+            "to": self.curr_num_replicas,
+            "reason": self.reason,
+        }
+
 
 class AutoscalingStatusTrigger(str, Enum):
     UPSCALE = "AUTOSCALING_UPSCALE"
@@ -833,15 +841,7 @@ class DeploymentSnapshot:
             },
             "metrics_health": self.metrics_health,
             "errors": self.errors,
-            "decisions": [
-                {
-                    "timestamp_s": d.timestamp_s,
-                    "from": d.prev_num_replicas,
-                    "to": d.curr_num_replicas,
-                    "reason": d.reason,
-                }
-                for d in self.decisions
-            ],
+            "decisions": [d.to_log_dict() for d in self.decisions],
         }
 
     @staticmethod
