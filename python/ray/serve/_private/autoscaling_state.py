@@ -18,6 +18,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import (
     AUTOSCALER_SUMMARIZER_DECISION_HISTORY_MAX,
+    AUTOSCALER_SUMMARIZER_DECISION_LIMIT,
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
@@ -372,9 +373,9 @@ class AutoscalingState:
             look_back_period_s=look_back_period_s,
         )
 
-        decisions_summary = DeploymentSnapshot.summarize_decisions(
-            self._decision_history
-        )
+        decisions_summary = list(self._decision_history)[
+            -AUTOSCALER_SUMMARIZER_DECISION_LIMIT:
+        ]
         errors: List[str] = []
 
         if time_since_last_collected_metrics_s is None:

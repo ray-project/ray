@@ -1,14 +1,13 @@
 import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from starlette.types import Scope
 
 import ray
 from ray.actor import ActorHandle
 from ray.serve._private.constants import (
-    AUTOSCALER_SUMMARIZER_DECISION_LIMIT,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
@@ -790,6 +789,14 @@ class DecisionRecord:
     reason: str
     policy_name: Optional[str] = None
 
+    def to_log_dict(self) -> Dict[str, Any]:
+        return {
+            "timestamp_s": self.timestamp_s,
+            "from": self.prev_num_replicas,
+            "to": self.curr_num_replicas,
+            "reason": self.reason,
+        }
+
 
 @dataclass(frozen=True)
 class DeploymentSnapshot:
@@ -807,7 +814,7 @@ class DeploymentSnapshot:
     total_requests: float
     metrics_health: str
     errors: List[str]
-    decisions: List[AutoscalingDecisionSummary]
+    decisions: List[DecisionRecord]
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, DeploymentSnapshot):
@@ -869,39 +876,6 @@ class DeploymentSnapshot:
         if val < 1.0:
             return f"{val * 1000:.0f}ms"
         return f"{val:.2f}s"
-
-    @staticmethod
-    def summarize_decisions(
-        decisions: Sequence[DecisionRecord],
-        *,
-        limit: int = AUTOSCALER_SUMMARIZER_DECISION_LIMIT,
-    ) -> List["AutoscalingDecisionSummary"]:
-        """
-        Return summaries of the most recent `limit` decisions.
-        """
-        out: List["AutoscalingDecisionSummary"] = []
-        for d in list(decisions)[-limit:]:
-            if hasattr(d, "dict"):
-                dd = d.dict()
-                ts = dd.get("timestamp_s")
-                prev_num_replicas = dd.get("prev_num_replicas")
-                curr_num_replicas = dd.get("curr_num_replicas")
-                reason = dd.get("reason")
-            else:
-                ts = getattr(d, "timestamp_s", None)
-                prev_num_replicas = getattr(d, "prev_num_replicas", None)
-                curr_num_replicas = getattr(d, "curr_num_replicas", None)
-                reason = getattr(d, "reason", None)
-
-            out.append(
-                AutoscalingDecisionSummary(
-                    timestamp_s=ts,
-                    prev_num_replicas=prev_num_replicas,
-                    curr_num_replicas=curr_num_replicas,
-                    reason=reason or "",
-                )
-            )
-        return out
 
 
 RUNNING_REQUESTS_KEY = "running_requests"
