@@ -7,6 +7,8 @@ import numpy as np
 from ray.data._internal.util import is_null
 from ray.data.block import AggType, Block, BlockAccessor, KeyType, T, U
 from ray.util.annotations import Deprecated, PublicAPI
+import pyarrow.compute as pc
+
 
 if TYPE_CHECKING:
     from ray.data import Schema
@@ -1001,3 +1003,103 @@ def _null_safe_combine(
                 return combine(cur, new)
 
     return _safe_combine
+
+
+class MissingValuePercentage(AggregateFnV2):
+    """Calculates the percentage of null values in a column."""
+
+    def __init__(
+        self,
+        on: str,
+        alias_name: Optional[str] = None,
+    ):
+        # Initialize with a list accumulator [null_count, total_count]
+        super().__init__(
+            alias_name if alias_name else f"missing_pct({str(on)})",
+            on=on,
+            ignore_nulls=False,  # Include nulls for this calculation
+            zero_factory=lambda: [0, 0],  # Our AggType is a simple list
+        )
+
+    def aggregate_block(self, block: Block) -> List[int]:
+        # Use BlockAccessor to work with the block
+        block_acc = BlockAccessor.for_block(block)
+
+        # Convert to Arrow for efficient operations
+        table = block_acc.to_arrow()
+        column = table.column(self._target_col_name)
+
+        # Use PyArrow compute for vectorized counting
+        total_count = len(column)
+
+        null_count = pc.sum(pc.is_null(column, nan_is_null=True).cast("int32")).as_py()
+        # null_count = table[self._target_col_name].null_count
+
+        # Return our accumulator
+        return [null_count, total_count]
+
+    def combine(self, current_accumulator: List[int], new: List[int]) -> List[int]:
+        # Merge two accumulators by summing their components
+        return [
+            current_accumulator[0] + new[0],  # Sum null counts
+            current_accumulator[1] + new[1],  # Sum total counts
+        ]
+
+    def finalize(self, accumulator: List[int]) -> Optional[float]:
+        # Calculate the final percentage
+        if accumulator[1] == 0:
+            return None
+        return (accumulator[0] / accumulator[1]) * 100.0
+
+
+class ZeroPercentage(AggregateFnV2):
+    """Calculates the percentage of zero values in a numeric column."""
+
+    def __init__(
+        self,
+        on: str,
+        ignore_nulls: bool = True,
+        alias_name: Optional[str] = None,
+    ):
+        # Initialize with a list accumulator [zero_count, non_null_count]
+        super().__init__(
+            alias_name if alias_name else f"zero_pct({str(on)})",
+            on=on,
+            ignore_nulls=ignore_nulls,
+            zero_factory=lambda: [0, 0],
+        )
+
+    def aggregate_block(self, block: Block) -> List[int]:
+        # Get BlockAccessor
+        block_acc = BlockAccessor.for_block(block)
+
+        # Convert to Arrow
+        table = block_acc.to_arrow()
+        column = table.column(self._target_col_name)
+
+        count = pc.count(
+            column, mode="only_valid" if self._ignore_nulls else "all"
+        ).as_py()
+
+        if count == 0:
+            return [0, 0]
+
+        # Use PyArrow compute to count zeros
+        # First create a boolean mask for zero values
+        zero_mask = pc.equal(column, 0)
+
+        # Sum the boolean mask to get count of True values (zeros)
+        zero_count = pc.sum(zero_mask).as_py() or 0
+
+        return [zero_count, count]
+
+    def combine(self, current_accumulator: List[int], new: List[int]) -> List[int]:
+        return [
+            current_accumulator[0] + new[0],  # Sum zero counts
+            current_accumulator[1] + new[1],  # Sum non-null counts
+        ]
+
+    def finalize(self, accumulator: List[int]) -> Optional[float]:
+        if accumulator[1] == 0:
+            return None
+        return (accumulator[0] / accumulator[1]) * 100.0
