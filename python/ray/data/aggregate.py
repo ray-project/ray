@@ -1032,8 +1032,7 @@ class MissingValuePercentage(AggregateFnV2):
         # Use PyArrow compute for vectorized counting
         total_count = len(column)
 
-        null_count = pc.sum(pc.is_null(column, nan_is_null=True).cast("int32")).as_py()
-        # null_count = table[self._target_col_name].null_count
+        null_count = pc.sum(pc.is_null(column, nan_is_null=True)).as_py()
 
         # Return our accumulator
         return [null_count, total_count]

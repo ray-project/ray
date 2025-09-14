@@ -91,7 +91,7 @@ def feature_aggregators_for_dataset(
         dataset: A Ray Dataset instance
         columns: A list of columns to include in the summary. If None, all columns will be included.
     Returns:
-        A typle of
+        A tuple of
           - List of numerical col names
           - List of str col names
           - List of vector col names

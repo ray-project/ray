@@ -40,7 +40,7 @@ class NumericalSummary:
 @dataclass
 class VectorSummary:
     """
-    A summary of a categorical column.
+    A summary of a vector column.
     """
 
     column: str
