@@ -330,6 +330,8 @@ def test_spill_reconstruction_errors(ray_start_cluster, object_spilling_config):
         "max_direct_call_object_size": 100,
         "task_retry_delay_ms": 100,
         "object_timeout_milliseconds": 200,
+        # Required for reducing the retry time of RequestWorkerLease
+        "raylet_rpc_server_reconnect_timeout_s": 0,
     }
     cluster = ray_start_cluster
     # Head node with no resources.
