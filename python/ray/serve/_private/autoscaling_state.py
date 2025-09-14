@@ -163,9 +163,6 @@ class AutoscalingState:
     ) -> None:
         """Records average number of ongoing requests at a replica."""
 
-        if not replica_metric_report:
-            return
-
         replica_id = replica_metric_report.replica_id
         send_timestamp = replica_metric_report.timestamp
 
