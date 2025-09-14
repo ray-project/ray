@@ -7,9 +7,10 @@ from typing import Any, Deque, Dict, List, Optional, Set
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     AutoscalingSnapshotError,
+    AutoscalingStatusTrigger,
+    DecisionRecord,
     DeploymentID,
     DeploymentSnapshot,
-    DeploymentStatusTrigger,
     HandleMetricReport,
     ReplicaID,
     ReplicaMetricReport,
@@ -24,15 +25,6 @@ from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-
-@dataclass
-class _DecisionRecord:
-    timestamp_s: str
-    prev_num_replicas: int
-    curr_num_replicas: int
-    reason: str
-    policy_name: Optional[str] = None
 
 
 @dataclass
@@ -95,7 +87,7 @@ class AutoscalingState:
         self._target_capacity: Optional[float] = None
         self._target_capacity_direction: Optional[TargetCapacityDirection] = None
         self._cached_deployment_snapshot: Optional[DeploymentSnapshot] = None
-        self._decision_history: Deque[_DecisionRecord] = deque(
+        self._decision_history: Deque[DecisionRecord] = deque(
             maxlen=AUTOSCALER_SUMMARIZER_DECISION_HISTORY_MAX
         )
 
@@ -284,7 +276,7 @@ class AutoscalingState:
         target_for_record = decision_num_replicas
 
         self._decision_history.append(
-            _DecisionRecord(
+            DecisionRecord(
                 timestamp_s=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 prev_num_replicas=ctx.current_num_replicas,
                 curr_num_replicas=target_for_record,
@@ -299,7 +291,7 @@ class AutoscalingState:
         )
         return target_for_record
 
-    def get_recent_decisions(self) -> List[_DecisionRecord]:
+    def get_recent_decisions(self) -> List[DecisionRecord]:
         return self._decision_history
 
     def get_total_num_requests(self) -> float:
@@ -366,11 +358,11 @@ class AutoscalingState:
             time_since_last_collected_metrics_s = None
 
         if target_replicas > current_replicas:
-            scaling_status_raw = DeploymentStatusTrigger.AUTOSCALING_UPSCALE
+            scaling_status_raw = AutoscalingStatusTrigger.UPSCALE
         elif target_replicas < current_replicas:
-            scaling_status_raw = DeploymentStatusTrigger.AUTOSCALING_DOWNSCALE
+            scaling_status_raw = AutoscalingStatusTrigger.DOWNSCALE
         else:
-            scaling_status_raw = DeploymentStatusTrigger.AUTOSCALING_STABLE
+            scaling_status_raw = AutoscalingStatusTrigger.STABLE
 
         scaling_status = DeploymentSnapshot.format_scaling_status(scaling_status_raw)
 

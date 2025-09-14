@@ -137,9 +137,6 @@ class DeploymentStatusTrigger(str, Enum):
     UPSCALE_COMPLETED = "UPSCALE_COMPLETED"
     DOWNSCALE_COMPLETED = "DOWNSCALE_COMPLETED"
     AUTOSCALING = "AUTOSCALING"
-    AUTOSCALING_UPSCALE = "AUTOSCALING_UPSCALE"
-    AUTOSCALING_DOWNSCALE = "AUTOSCALING_DOWNSCALE"
-    AUTOSCALING_STABLE = "AUTOSCALING_STABLE"
     REPLICA_STARTUP_FAILED = "REPLICA_STARTUP_FAILED"
     HEALTH_CHECK_FAILED = "HEALTH_CHECK_FAILED"
     INTERNAL_ERROR = "INTERNAL_ERROR"
@@ -771,6 +768,21 @@ class AutoscalingDecisionSummary:
     reason: str
 
 
+class AutoscalingStatusTrigger(str, Enum):
+    UPSCALE = "AUTOSCALING_UPSCALE"
+    DOWNSCALE = "AUTOSCALING_DOWNSCALE"
+    STABLE = "AUTOSCALING_STABLE"
+
+
+@dataclass
+class DecisionRecord:
+    timestamp_s: str
+    prev_num_replicas: int
+    curr_num_replicas: int
+    reason: str
+    policy_name: Optional[str] = None
+
+
 @dataclass(frozen=True)
 class DeploymentSnapshot:
     timestamp_s: str
@@ -810,8 +822,8 @@ class DeploymentSnapshot:
             "deployment": self.deployment,
             "current_replicas": self.current_replicas,
             "target_replicas": self.target_replicas,
-            "min": self.min_replicas,
-            "max": self.max_replicas,
+            "min_replicas": self.min_replicas,
+            "max_replicas": self.max_replicas,
             "scaling_status": self.scaling_status,
             "policy_name": self.policy_name,
             "look_back_period_s": self.look_back_period_s,
@@ -833,11 +845,11 @@ class DeploymentSnapshot:
         }
 
     @staticmethod
-    def format_scaling_status(trigger: DeploymentStatusTrigger) -> str:
+    def format_scaling_status(trigger: AutoscalingStatusTrigger) -> str:
         mapping = {
-            DeploymentStatusTrigger.AUTOSCALING_UPSCALE: "scaling up",
-            DeploymentStatusTrigger.AUTOSCALING_DOWNSCALE: "scaling down",
-            DeploymentStatusTrigger.AUTOSCALING_STABLE: "stable",
+            AutoscalingStatusTrigger.UPSCALE: "scaling up",
+            AutoscalingStatusTrigger.DOWNSCALE: "scaling down",
+            AutoscalingStatusTrigger.STABLE: "stable",
         }
         return mapping.get(trigger, str(trigger).lower())
 
@@ -853,14 +865,14 @@ class DeploymentSnapshot:
         """
         if time_since_last_collected_metrics_s is None:
             return "unknown"
-        val = float(time_since_last_collected_metrics_s)
+        val = time_since_last_collected_metrics_s
         if val < 1.0:
             return f"{val * 1000:.0f}ms"
         return f"{val:.2f}s"
 
     @staticmethod
     def summarize_decisions(
-        decisions: Sequence[Any],
+        decisions: Sequence[DecisionRecord],
         *,
         limit: int = AUTOSCALER_SUMMARIZER_DECISION_LIMIT,
     ) -> List["AutoscalingDecisionSummary"]:
