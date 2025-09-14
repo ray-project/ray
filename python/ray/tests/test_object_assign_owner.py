@@ -48,6 +48,7 @@ def test_owner_assign_bug(ray_start_regular):
 )
 def test_owner_assign_when_put(ray_start_cluster, actor_resources):
     system_config = {
+        # Required for reducing the retry time of PubsubLongPolling and to trigger the failure callback for WORKER_OBJECT_LOCATIONS sooner
         "core_worker_rpc_server_reconnect_timeout_s": 0,
         "grpc_client_check_connection_status_interval_milliseconds": 0,
     }

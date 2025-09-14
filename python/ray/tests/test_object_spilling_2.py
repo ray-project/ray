@@ -211,6 +211,7 @@ def test_delete_objects_multi_node(
             "automatic_object_spilling_enabled": True,
             "object_store_full_delay_ms": 100,
             "object_spilling_config": object_spilling_config,
+            # Required for reducing the retry time of PubsubLongPolling and to trigger the failure callback for WORKER_OBJECT_EVICTION sooner
             "core_worker_rpc_server_reconnect_timeout_s": 0,
         },
     )
