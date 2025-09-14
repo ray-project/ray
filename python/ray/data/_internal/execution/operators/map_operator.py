@@ -104,6 +104,12 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         self._ray_remote_args_factory_actor_locality = None
         self._remote_args_for_metrics = copy.deepcopy(self._ray_remote_args)
 
+        # Extract static-only Ray remote args.
+        (
+            self._ray_remote_args_static_only,
+            self._ray_remote_args,
+        ) = _extract_static_only_ray_remote_args(self._ray_remote_args)
+
         # Bundles block references up to the min_rows_per_bundle target.
         self._block_ref_bundler = _BlockRefBundler(min_rows_per_bundle)
 
@@ -349,9 +355,6 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
     ) -> Dict[str, Any]:
         ray_remote_args = copy.deepcopy(self._ray_remote_args)
 
-        # Remove max_calls from the dynamic options.
-        ray_remote_args.pop("max_calls", None)
-
         # Override parameters from user provided remote args function.
         if self._ray_remote_args_fn:
             new_remote_args = self._ray_remote_args_fn()
@@ -541,6 +544,11 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         # 2. The number of active tasks in the progress bar will be more accurate
         #   to reflect the actual data processing tasks.
         return len(self._data_tasks)
+
+    @abstractmethod
+    def get_ray_remote_static_args(self) -> Dict[str, Any]:
+        """Compose the static remote args for initializing the map task."""
+        raise NotImplementedError
 
 
 def _map_task(
@@ -881,3 +889,27 @@ def _create_per_block_limit_transform_fn(per_block_limit: int) -> BlockMapTransf
     """Create a transform function that applies per-block row limits."""
     limit_fn = functools.partial(_per_block_limit_fn, per_block_limit=per_block_limit)
     return BlockMapTransformFn(limit_fn)
+
+
+def _extract_static_only_ray_remote_args(
+    ray_remote_args: Dict[str, Any]
+) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    """Extract static-only Ray remote args, which are only used in ray.remote() decorator but not in options() method.
+    See ray_option_utils.validate_task_options and validate_actor_options for invalid option keys.
+
+    Args:
+        ray_remote_args: The Ray remote args, where static-only args are popped out.
+
+    Returns:
+        A tuple of static-only Ray remote args and the remaining Ray remote args.
+    """
+
+    static_only_keys = ["max_calls", "concurrency_groups"]
+
+    static_only_ray_remote_args = {}
+
+    for arg in static_only_keys:
+        if arg in ray_remote_args:
+            static_only_ray_remote_args[arg] = ray_remote_args.pop(arg)
+
+    return static_only_ray_remote_args, ray_remote_args

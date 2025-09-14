@@ -71,13 +71,20 @@ class TaskPoolMapOperator(MapOperator):
         # NOTE: Unlike static Ray remote args, dynamic arguments extracted from the
         #       blocks themselves are going to be passed inside `fn.options(...)`
         #       invocation
+        ray_remote_static_args = self.get_ray_remote_static_args()
+
+        self._map_task = cached_remote_fn(_map_task, **ray_remote_static_args)
+
+    def get_ray_remote_static_args(self) -> Dict[str, Any]:
+        """Compose the static remote args for initializing the map task."""
+
         ray_remote_static_args = {
+            **(self._ray_remote_args_static_only or {}),
             **(self._ray_remote_args or {}),
             "num_returns": "streaming",
             "_labels": {self._OPERATOR_ID_LABEL_KEY: self.id},
         }
-
-        self._map_task = cached_remote_fn(_map_task, **ray_remote_static_args)
+        return ray_remote_static_args
 
     def _add_bundled_input(self, bundle: RefBundle):
         # Submit the task as a normal Ray task.
