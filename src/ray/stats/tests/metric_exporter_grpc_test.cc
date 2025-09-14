@@ -77,7 +77,7 @@ const auto status_tag_key = TagKey::Register("grpc_client_status");
 
 TEST(OpenCensusProtoExporterTest, adds_global_tags_to_grpc) {
   const stats::TagsType global_tags = {{stats::LanguageKey, "CPP"},
-                                       {stats::WorkerPidKey, "1000"}};
+                                       {stats::WorkerIdKey, "1000"}};
   StatsConfig::instance().SetGlobalTags(global_tags);
 
   auto measure = MeasureInt64::Register(
@@ -118,7 +118,7 @@ TEST(OpenCensusProtoExporterTest, adds_global_tags_to_grpc) {
   std::unordered_map<std::string, std::string> expected_labels = {
       {method_tag_key.name(), "MyService.myMethod"},
       {stats::LanguageKey.name(), "CPP"},
-      {stats::WorkerPidKey.name(), "1000"}};
+      {stats::WorkerIdKey.name(), "1000"}};
   ASSERT_EQ(labels, expected_labels);
 }
 
