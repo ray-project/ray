@@ -1090,6 +1090,7 @@ TEST_P(PinObjectIDsIdempotencyTest, TestHandlePinObjectIDsIdempotency) {
       &reply1,
       [](Status s, std::function<void()> success, std::function<void()> failure) {});
 
+  int64_t primary_bytes = local_object_manager_->GetPrimaryBytes();
   rpc::PinObjectIDsReply reply2;
   node_manager_->HandlePinObjectIDs(
       pin_request,
@@ -1100,6 +1101,7 @@ TEST_P(PinObjectIDsIdempotencyTest, TestHandlePinObjectIDsIdempotency) {
   EXPECT_EQ(reply1.successes(0), object_exists);
   EXPECT_EQ(reply2.successes_size(), 1);
   EXPECT_EQ(reply2.successes(0), object_exists);
+  EXPECT_EQ(local_object_manager_->GetPrimaryBytes(), primary_bytes);
 }
 
 INSTANTIATE_TEST_SUITE_P(PinObjectIDsIdempotencyVariations,
