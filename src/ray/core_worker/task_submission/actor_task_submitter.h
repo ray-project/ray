@@ -286,9 +286,8 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
     int64_t num_restarts_due_to_lineage_reconstructions_ = 0;
     /// Whether this actor exits by spot preemption.
     bool preempted_ = false;
-    /// The RPC client. We use shared_ptr to enable shared_from_this for
-    /// pending client callbacks.
-    std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client_ = nullptr;
+    /// The RPC client address.
+    std::optional<rpc::Address> client_address_;
     /// The intended worker ID of the actor.
     std::string worker_id_;
     /// The actor is out of scope but the death info is not published
