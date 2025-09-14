@@ -759,22 +759,6 @@ OBJ_REF_NOT_SUPPORTED_ERROR = RuntimeError(
 )
 
 
-@dataclass(frozen=True)
-class AutoscalingDecisionSummary:
-    timestamp_s: Optional[str]
-    prev_num_replicas: Optional[int]
-    curr_num_replicas: Optional[int]
-    reason: str
-
-    def to_log_dict(self) -> Dict[str, Any]:
-        return {
-            "timestamp_s": self.timestamp_s,
-            "from": self.prev_num_replicas,
-            "to": self.curr_num_replicas,
-            "reason": self.reason,
-        }
-
-
 class AutoscalingStatusTrigger(str, Enum):
     UPSCALE = "AUTOSCALING_UPSCALE"
     DOWNSCALE = "AUTOSCALING_DOWNSCALE"
