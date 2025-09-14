@@ -549,7 +549,15 @@ class BuildkiteSettingsTest(unittest.TestCase):
         filtered = self._filter_names(
             tests, frequency=Frequency.NIGHTLY, test_filters={"name": "test"}
         )
-        self.assertSequenceEqual(filtered, [])
+        self.assertSequenceEqual(
+            filtered,
+            [
+                ("test_1", False),
+                ("test_2", True),
+                ("test_3", False),
+                ("test_4.kuberay", False),
+            ],
+        )
 
         filtered = self._filter_names(
             tests,
