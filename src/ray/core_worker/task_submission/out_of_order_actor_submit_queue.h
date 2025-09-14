@@ -34,7 +34,7 @@ namespace core {
  */
 class OutofOrderActorSubmitQueue : public IActorSubmitQueue {
  public:
-  OutofOrderActorSubmitQueue();
+  OutofOrderActorSubmitQueue(bool order_initial_submissions);
   /// Add a task into the queue.
   void Emplace(uint64_t position, const TaskSpecification &spec) override;
   /// If a task exists.
@@ -60,8 +60,17 @@ class OutofOrderActorSubmitQueue : public IActorSubmitQueue {
   bool Empty() override;
 
  private:
-  absl::btree_map<uint64_t, std::pair<TaskSpecification, bool>> pending_queue_;
-  absl::btree_map<uint64_t, std::pair<TaskSpecification, bool>> sending_queue_;
+  // XXX.
+  uint64_t high_water_mark_ = 0;
+
+  // XXX.
+  bool order_initial_submissions_;
+
+  // XXX.
+  absl::btree_map<uint64_t, std::pair<TaskSpecification, bool>> waiting_for_dependencies_;
+
+  // XXX.
+  absl::btree_map<uint64_t, std::pair<TaskSpecification, bool>> ready_to_send_;
 };
 }  // namespace core
 }  // namespace ray
