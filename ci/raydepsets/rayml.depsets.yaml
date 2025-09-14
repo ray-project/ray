@@ -1,0 +1,47 @@
+build_arg_sets:
+  py39:
+    PYTHON_VERSION: py39
+    PYTHON_SHORT: "3.9"
+  py310:
+    PYTHON_VERSION: py310
+    PYTHON_SHORT: "3.10"
+  py311:
+    PYTHON_VERSION: py311
+    PYTHON_SHORT: "3.11"
+  py312:
+    PYTHON_VERSION: py312
+    PYTHON_SHORT: "3.12"
+
+
+.common_settings: &common_settings
+  append_flags:
+    - --python-version=${PYTHON_SHORT}
+    - --python-platform=linux
+  build_arg_sets:
+    - py39
+    - py310
+    - py311
+    - py312
+
+depsets:
+  - name: ray_ml_depset_${PYTHON_VERSION}
+    <<: *common_settings
+    requirements:
+      - python/requirements/ml/dl-cpu-requirements.txt
+      - python/requirements/ml/dl-gpu-requirements.txt
+      - python/requirements/ml/core-requirements.txt
+      - python/requirements/ml/data-requirements.txt
+      - python/requirements/ml/rllib-requirements.txt
+      - python/requirements/ml/rllib-test-requirements.txt
+      - python/requirements/ml/train-requirements.txt
+      - python/requirements/ml/train-test-requirements.txt
+      - python/requirements/ml/tune-requirements.txt
+      - python/requirements/ml/tune-test-requirements.txt
+      - python/requirements/docker/ray-docker-requirements.txt
+    constraints:
+      - python/requirements.txt
+      - python/requirements_compiled.txt
+    output: python/deplocks/ml/ray_ml_${PYTHON_VERSION}.lock
+    operation: compile
+    pre_hooks:
+      - ci/raydepsets/pre_hooks/remove-device-specific-constraints.sh
