@@ -67,10 +67,16 @@ class OutofOrderActorSubmitQueue : public IActorSubmitQueue {
   bool order_initial_submissions_;
 
   // XXX.
-  absl::btree_map<uint64_t, std::pair<TaskSpecification, bool>> waiting_for_dependencies_;
+  absl::btree_map<uint64_t, TaskSpecification> waiting_for_dependencies_;
 
   // XXX.
-  absl::btree_map<uint64_t, std::pair<TaskSpecification, bool>> ready_to_send_;
+  absl::btree_map<uint64_t, TaskSpecification> ready_to_send_;
+
+  // XXX.
+  absl::btree_map<uint64_t, TaskSpecification> retries_waiting_for_dependencies_;
+
+  // XXX.
+  absl::btree_map<uint64_t, TaskSpecification> retries_ready_to_send_;
 };
 }  // namespace core
 }  // namespace ray

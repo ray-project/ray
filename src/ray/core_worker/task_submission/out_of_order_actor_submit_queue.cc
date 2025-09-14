@@ -24,41 +24,42 @@ OutofOrderActorSubmitQueue::OutofOrderActorSubmitQueue(bool order_initial_submis
 
 void OutofOrderActorSubmitQueue::Emplace(uint64_t position,
                                          const TaskSpecification &spec) {
-  RAY_CHECK(!ready_to_send_.contains(position));
-  RAY_CHECK(waiting_for_dependencies_
-                .emplace(position, std::make_pair(spec, /*dependency_resolved*/ false))
+  RAY_CHECK(
+      spec.IsRetry()
+          ? retries_waiting_for_dependencies_
+                .emplace(sequence_no, spec)
+                .second
+          : waiting_for_dependencies_
+                .emplace(sequence_no, spec)
                 .second);
 }
 
 bool OutofOrderActorSubmitQueue::Contains(uint64_t position) const {
-  return waiting_for_dependencies_.contains(position) || ready_to_send_.contains(position);
+  return waiting_for_dependencies_.contains(position) || ready_to_send_.contains(position) || retries_waiting_for_dependencies_.contains(position) || retries_ready_to_send_.contains(position);
 }
 
 bool OutofOrderActorSubmitQueue::DependenciesResolved(uint64_t position) const {
-  auto it = waiting_for_dependencies_.find(position);
-  if (it != waiting_for_dependencies_.end()) {
-    return it->second.second;
-  }
-  auto rit = ready_to_send_.find(position);
-  RAY_CHECK(rit != ready_to_send_.end());
-  return rit->second.second;
+  return ready_to_send_.contains(position) || retries_ready_to_send_.contains(position);
 }
 
 void OutofOrderActorSubmitQueue::MarkDependencyFailed(uint64_t position) {
   waiting_for_dependencies_.erase(position);
+  retries_waiting_for_dependencies_.erase(position);
 }
 
 void OutofOrderActorSubmitQueue::MarkTaskCanceled(uint64_t position) {
   waiting_for_dependencies_.erase(position);
   ready_to_send_.erase(position);
+  retries_waiting_for_dependencies_.erase(position);
+  retries_ready_to_send_.erase(position);
 }
 
 bool OutofOrderActorSubmitQueue::Empty() {
-  return waiting_for_dependencies_.empty() && ready_to_send_.empty();
+  return waiting_for_dependencies_.empty() && ready_to_send_.empty() && retries_waiting_for_dependencies_.empty() && retries_ready_to_send_.empty();
 }
 
 void OutofOrderActorSubmitQueue::MarkDependencyResolved(uint64_t position) {
-  // move the task from pending_requests queue to sending_requests queue.
+  // XXX.
   auto it = waiting_for_dependencies_.find(position);
   RAY_CHECK(it != waiting_for_dependencies_.end());
   auto spec = std::move(it->second.first);
