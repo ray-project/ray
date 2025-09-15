@@ -1,6 +1,6 @@
 """Some utility class for Collectives."""
-import logging
 import asyncio
+import logging
 
 import ray
 
