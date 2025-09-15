@@ -64,13 +64,16 @@ import threading
 
 import gymnasium as gym
 import numpy as np
+from gymnasium.spaces import Dict
 
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-from rllib.env.external.single_agent_env_runner_server_for_external_inference import (
-    SingleAgentEnvRunnerServerForExternalInference,
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
+
+from rllib.env.external.multi_agent_env_runner_server_for_external_inference import (
+    MultiAgentEnvRunnerServerForExternalInference,
 )
-from ray.rllib.examples.envs.classes.utils.dummy_external_client import (
-    _dummy_external_client,
+from rllib.examples.envs.classes.utils.dummy_multi_agent_external_client import (
+    _dummy_multi_agent_external_client, policy_mapping_fn,
 )
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
@@ -79,10 +82,11 @@ from ray.rllib.utils.test_utils import (
 from ray.tune.registry import get_trainable_cls
 
 parser = add_rllib_example_script_args(
-    default_reward=450.0, default_iters=200, default_timesteps=2000000
+    default_reward=600.0, default_iters=200, default_timesteps=100000
 )
 parser.set_defaults(
     num_env_runners=1,
+    num_agents=2,
 )
 parser.add_argument(
     "--port",
@@ -105,36 +109,40 @@ if __name__ == "__main__":
     # Start the dummy CartPole "simulation".
     if args.use_dummy_client:
         threading.Thread(
-            target=_dummy_external_client,
+            target=_dummy_multi_agent_external_client,
             args=(
-                # Connect to the first remote EnvRunner, of - if there is no remote one -
+                # Connect to the first remote EnvRunner, or - if there is no remote one -
                 # to the local EnvRunner.
                 args.port
                 + (args.num_env_runners if args.num_env_runners is not None else 1),
             ),
         ).start()
 
+    env_to_access_spaces = MultiAgentCartPole(config={"num_agents": args.num_agents})
+
     # Define the RLlib (server) config.
     base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
         .environment(
-            observation_space=gym.spaces.Box(
-                float("-inf"), float("-inf"), (4,), np.float32
-            ),
-            action_space=gym.spaces.Discrete(2),
+            observation_space=Dict(env_to_access_spaces.observation_spaces),
+            action_space=Dict(env_to_access_spaces.action_spaces),
             # EnvRunners listen on `port` + their worker index.
             env_config={"port": args.port},
         )
         .env_runners(
             # Point RLlib to the custom EnvRunner to be used here.
-            env_runner_cls=SingleAgentEnvRunnerServerForExternalInference,
+            env_runner_cls=MultiAgentEnvRunnerServerForExternalInference,
         )
         .training(
             num_epochs=10,
             vf_loss_coeff=0.01,
         )
         .rl_module(model_config=DefaultModelConfig(vf_share_layers=True))
+        .multi_agent(
+            policies={f"p{i}" for i in range(args.num_agents)},
+            policy_mapping_fn=policy_mapping_fn,
+        )
     )
 
     run_rllib_example_script_experiment(base_config, args)
