@@ -500,20 +500,20 @@ def test_fetch_gpu_object_to_driver(ray_start_regular):
 
     # Case 1: Single tensor
     ref = actor.echo.remote(tensor1)
-    assert torch.equal(ray.get(ref), tensor1)
+    assert torch.equal(ray.get(ref), tensor1, _tensor_transport="object_store")
 
     # Case 2: Multiple tensors
     ref = actor.echo.remote([tensor1, tensor2])
     result = ray.get(ref)
-    assert torch.equal(result[0], tensor1)
-    assert torch.equal(result[1], tensor2)
+    assert torch.equal(result[0], tensor1, _tensor_transport="object_store")
+    assert torch.equal(result[1], tensor2, _tensor_transport="object_store")
 
     # Case 3: Mixed CPU and GPU data
     data = [tensor1, tensor2, 7]
     ref = actor.echo.remote(data)
     result = ray.get(ref)
-    assert torch.equal(result[0], tensor1)
-    assert torch.equal(result[1], tensor2)
+    assert torch.equal(result[0], tensor1, _tensor_transport="object_store")
+    assert torch.equal(result[1], tensor2, _tensor_transport="object_store")
     assert result[2] == 7
 
 
@@ -634,8 +634,8 @@ def test_dynamic_tensor_transport_via_options(
         # If enable_tensor_transport is set to True, then it's okay to use
         # dynamic tensor_transport.
         ref = sender.tensor_method.options(tensor_transport="gloo").remote()
-        tensor = ray.get(ref)
-        result = ray.get(receiver.double.remote(ref))
+        tensor = ray.get(ref, _tensor_transport="object_store")
+        result = ray.get(receiver.double.remote(ref), _tensor_transport="object_store")
         assert result == pytest.approx(tensor * 2)
     else:
         # If enable_tensor_transport is not set, then user cannot use
@@ -688,12 +688,12 @@ def test_app_error_fetch_to_driver(ray_start_regular):
 
     ref = actor.fail.options(tensor_transport="gloo").remote("test_app_error")
     with pytest.raises(Exception, match="test_app_error"):
-        ray.get(ref)
+        ray.get(ref, _tensor_transport="object_store")
 
     # Make sure the driver can receive an exception from the actor.
     small_tensor = torch.tensor([1, 2, 3])
     ref = actor.echo.remote(small_tensor)
-    assert torch.equal(ray.get(ref), small_tensor)
+    assert torch.equal(ray.get(ref, _tensor_transport="object_store"), small_tensor)
 
 
 def test_write_after_save(ray_start_regular):
