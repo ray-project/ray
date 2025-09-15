@@ -395,30 +395,30 @@ class TestRayDockerContainer(RayCITestBase):
         v = DEFAULT_PYTHON_VERSION
         pv = self.get_python_version(v)
         container = RayDockerContainer(v, "cpu", "ray")
-        assert container.get_python_version_tag() == f"-{pv}"
+        assert container._get_python_version_tag() == f"-{pv}"
 
     def test_get_platform_tag(self) -> None:
         v = DEFAULT_PYTHON_VERSION
         container = RayDockerContainer(v, "cpu", "ray")
-        assert container.get_platform_tag() == "-cpu"
+        assert container._get_platform_tag() == "-cpu"
 
         container = RayDockerContainer(v, "cu11.8.0-cudnn8", "ray")
-        assert container.get_platform_tag() == "-cu118"
+        assert container._get_platform_tag() == "-cu118"
 
         container = RayDockerContainer(v, "cu12.3.2-cudnn9", "ray")
-        assert container.get_platform_tag() == "-cu123"
+        assert container._get_platform_tag() == "-cu123"
 
         container = RayDockerContainer(v, "cu12.4.1-cudnn", "ray")
-        assert container.get_platform_tag() == "-cu124"
+        assert container._get_platform_tag() == "-cu124"
 
         container = RayDockerContainer(v, "cu12.5.1-cudnn", "ray")
-        assert container.get_platform_tag() == "-cu125"
+        assert container._get_platform_tag() == "-cu125"
 
         container = RayDockerContainer(v, "cu12.6.3-cudnn", "ray")
-        assert container.get_platform_tag() == "-cu126"
+        assert container._get_platform_tag() == "-cu126"
 
         container = RayDockerContainer(v, "cu12.8.1-cudnn", "ray")
-        assert container.get_platform_tag() == "-cu128"
+        assert container._get_platform_tag() == "-cu128"
 
     def test_should_upload(self) -> None:
         v = DEFAULT_PYTHON_VERSION
