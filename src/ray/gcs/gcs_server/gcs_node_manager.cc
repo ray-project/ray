@@ -325,7 +325,8 @@ void FilterGcsNodeInfo(const rpc::GcsNodeInfo &source,
   destination->Clear();
 
   // Use protobuf's FieldMask utility to merge only specified fields
-  google::protobuf::util::FieldMaskUtil::MergeFields(source, field_mask, destination);
+  google::protobuf::util::FieldMaskUtil::MergeOptions options;
+  google::protobuf::util::FieldMaskUtil::MergeMessageTo(source, field_mask, options, destination);
 }
 
 // Create a static FieldMask for lightweight node info (excludes labels)
@@ -335,25 +336,14 @@ google::protobuf::FieldMask CreateNodeInfoLightFieldMask() {
   // Include all fields except 'labels'
   std::vector<std::string> paths = {"node_id",
                                     "node_manager_address",
-                                    "raylet_socket_name",
-                                    "object_store_socket_name",
                                     "node_manager_port",
                                     "object_manager_port",
                                     "state",
-                                    "node_manager_hostname",
-                                    "metrics_export_port",
-                                    "runtime_env_agent_port",
                                     "resources_total",
-                                    "node_name",
                                     "instance_id",
                                     "node_type_name",
                                     "instance_type_name",
-                                    "start_time_ms",
-                                    "end_time_ms",
-                                    "is_head_node",
-                                    // Note: intentionally exclude "labels"
-                                    "state_snapshot",
-                                    "death_info"};
+                                    "state_snapshot"};
 
   for (const auto &path : paths) {
     field_mask.add_paths(path);
