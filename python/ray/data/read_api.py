@@ -311,8 +311,8 @@ def range_tensor(
         >>> ds = ray.data.range_tensor(1000, shape=(2, 2))
         >>> ds
         Dataset(
-            num_rows=1000,
-            schema={data: ArrowTensorTypeV2(shape=(2, 2), dtype=int64)}
+           num_rows=1000,
+           schema={data: ArrowTensorTypeV2(shape=(2, 2), dtype=int64)}
         )
         >>> ds.map_batches(lambda row: {"data": row["data"] * 2}).take(2)
         [{'data': array([[0, 0],
