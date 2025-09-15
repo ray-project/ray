@@ -25,9 +25,8 @@ package ray.rpc.events;
 // For runtime information associated with this event, see DriverJobExecutionEvent.
 message DriverJobDefinitionEvent {
   message Config {
-    RuntimeEnvInfo runtime_env_info = 1 [deprecated = true];
+    string serialized_runtime_env = 1;
     map<string, string> metadata = 2;
-    string serialized_runtime_env = 3;
   }
 
   bytes job_id = 1;
