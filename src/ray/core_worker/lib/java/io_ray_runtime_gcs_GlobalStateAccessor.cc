@@ -22,7 +22,7 @@
 #include "jni_utils.h"  // NOLINT(build/include_subdir)
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/common.h"
-#include "ray/gcs/gcs_client/global_state_accessor.h"
+#include "ray/gcs_client/global_state_accessor.h"
 
 #ifdef __cplusplus
 extern "C" {
