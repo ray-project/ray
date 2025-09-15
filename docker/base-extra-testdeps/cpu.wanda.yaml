@@ -2,9 +2,9 @@ name: "$IMAGE_TYPE-py$PYTHON_VERSION-cpu-base-extra-testdeps"
 froms: ["cr.ray.io/rayproject/$IMAGE_TYPE-py$PYTHON_VERSION-cpu-base-extra"]
 dockerfile: release/ray_release/byod/byod.Dockerfile
 srcs:
-  - python/deplocks/ray_img/ray_base_extra_testdeps_py$PYTHON_VERSION.lock
+  - release/ray_release/byod/ray_base_extra_testdeps_py$PYTHON_VERSION.lock
 build_args:
   - BASE_IMAGE=cr.ray.io/rayproject/$IMAGE_TYPE-py$PYTHON_VERSION-cpu-base-extra
-  - PIP_REQUIREMENTS=python/deplocks/ray_img/$REQUIREMENTS_FILE
+  - PIP_REQUIREMENTS=release/ray_release/byod/$REQUIREMENTS_FILE
 tags:
   - cr.ray.io/rayproject/$IMAGE_TYPE-py$PYTHON_VERSION-cpu-base-extra-testdeps
