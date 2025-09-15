@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/gcs_client/global_state_accessor.h"
+#include "ray/gcs_client/global_state_accessor.h"
 
 #include <algorithm>
 #include <boost/algorithm/string.hpp>

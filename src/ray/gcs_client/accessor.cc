@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/gcs_client/accessor.h"
+#include "ray/gcs_client/accessor.h"
 
 #include <future>
 #include <memory>
@@ -21,7 +21,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/gcs_client/gcs_client.h"
 #include "ray/util/container_util.h"
 
 namespace ray {

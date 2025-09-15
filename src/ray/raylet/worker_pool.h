@@ -36,7 +36,7 @@
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/runtime_env_manager.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/gcs_client/gcs_client.h"
 #include "ray/ipc/client_connection.h"
 #include "ray/raylet/runtime_env_agent_client.h"
 #include "ray/raylet/worker.h"
