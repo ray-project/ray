@@ -175,11 +175,12 @@ repos:
           # 1091: Not following {file} due to some error
           # 2207: Prefer mapfile or read -a to split command output (or quote to avoid splitting). -- these aren't compatible with macOS's old Bash
 
-  - repo: https://github.com/pocc/pre-commit-hooks
-    rev: v1.3.5
+  - repo: https://github.com/pre-commit/mirrors-clang-format
+    # `rev` specifies a tag on the above repo that mirrors the corresponding clang-format version.
+    # The version should be kept in sync with the version in `ci/lint/format.sh`.
+    rev: v12.0.1
     hooks:
       - id: clang-format
-        args: [--version=12.0.1]
 
   - repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
     rev: v2.11.0
