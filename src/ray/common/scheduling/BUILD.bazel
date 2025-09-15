@@ -69,6 +69,7 @@ ray_cc_library(
         ":resource_instance_set",
         ":resource_set",
         ":scheduling_ids",
+        "//src/ray/common:constants",
         "//src/ray/util:logging",
         "@boost//:range",
         "@com_google_absl//absl/container:flat_hash_map",
