@@ -829,11 +829,11 @@ class ApplicationState:
             Whether the target state has changed.
         """
 
+        target_state_changed = False
         # If the application is being deleted, ignore any build task results to
         # avoid flipping the state back to DEPLOYING/RUNNING.
         if not self._target_state.deleting:
             infos, task_status, msg = self._reconcile_build_app_task()
-            target_state_changed = False
             if task_status == BuildAppStatus.SUCCEEDED:
                 target_state_changed = True
                 self._set_target_state(
