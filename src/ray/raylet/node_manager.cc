@@ -129,7 +129,6 @@ NodeManager::NodeManager(
       store_client_(store_client),
       mutable_object_provider_(std::move(mutable_object_provider)),
       periodical_runner_(PeriodicalRunner::Create(io_service)),
-      report_resources_period_ms_(config.report_resources_period_ms),
       initial_config_(config),
       lease_dependency_manager_(lease_dependency_manager),
       wait_manager_(/*is_object_local*/
@@ -342,6 +341,12 @@ void NodeManager::RegisterGcs() {
         // Flag to see whether a request is running.
         static bool checking = false;
         if (checking) {
+          return;
+        }
+        if (std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - last_get_resource_load_time_)
+                .count() <
+            RayConfig::instance().raylet_liveness_self_check_interval_ms()) {
           return;
         }
         checking = true;
@@ -1570,6 +1575,7 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
 void NodeManager::HandleGetResourceLoad(rpc::GetResourceLoadRequest request,
                                         rpc::GetResourceLoadReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
+  last_get_resource_load_time_ = std::chrono::steady_clock::now();
   auto resources_data = reply->mutable_resources();
   resources_data->set_node_id(self_node_id_.Binary());
   resources_data->set_node_manager_address(initial_config_.node_manager_address);
