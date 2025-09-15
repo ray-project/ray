@@ -139,6 +139,8 @@ class CoreWorkerTest : public ::testing::Test {
         /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
         worker_context->GetWorkerID());
 
+    object_info_publisher_ = object_info_publisher.get();
+
     auto fake_object_info_subscriber = std::make_unique<pubsub::FakeSubscriber>();
 
     reference_counter_ = std::make_shared<ReferenceCounter>(
@@ -283,6 +285,7 @@ class CoreWorkerTest : public ::testing::Test {
   std::shared_ptr<ReferenceCounter> reference_counter_;
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
   ActorTaskSubmitter *actor_task_submitter_;
+  pubsub::Publisher *object_info_publisher_;
   std::shared_ptr<TaskManager> task_manager_;
   std::shared_ptr<CoreWorker> core_worker_;
   ray::observability::FakeMetric fake_task_by_state_counter_;
@@ -653,6 +656,12 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
   EXPECT_EQ(observed_batches[2].size(), 1U);
 }
 
+void FlushLongPollingConnection(pubsub::Publisher *object_info_publisher) {
+  for (const auto &subscriber : object_info_publisher->subscribers_) {
+    subscriber.second->PublishIfPossible(/*force_noop=*/true);
+  }
+}
+
 class CoreWorkerPubsubWorkerObjectEvictionChannelTest
     : public CoreWorkerTest,
       public ::testing::WithParamInterface<bool> {};
@@ -723,6 +732,10 @@ TEST_P(CoreWorkerPubsubWorkerObjectEvictionChannelTest,
     EXPECT_EQ(msg.key_id(), object_id.Binary());
     EXPECT_EQ(msg.sequence_id(), i + 1);
     EXPECT_EQ(msg.worker_object_eviction_message().object_id(), object_id.Binary());
+  }
+
+  if (expected_messages == 0) {
+    FlushLongPollingConnection(object_info_publisher_);
   }
 }
 
@@ -800,6 +813,9 @@ TEST_P(CoreWorkerPubsubWorkerRefRemovedChannelTest, HandlePubsubCommandBatchIdem
     EXPECT_EQ(msg1.key_id(), object_id.Binary());
     EXPECT_EQ(msg1.sequence_id(), 1);
     EXPECT_EQ(msg1.worker_ref_removed_message().borrowed_refs_size(), 0);
+  }
+  if (expected_messages == 0) {
+    FlushLongPollingConnection(object_info_publisher_);
   }
 }
 

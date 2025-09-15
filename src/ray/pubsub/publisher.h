@@ -36,6 +36,14 @@
 namespace ray {
 
 namespace pubsub {
+class Publisher;
+}  // namespace pubsub
+
+namespace core {
+void FlushLongPollingConnection(pubsub::Publisher *object_info_publisher);
+}  // namespace core
+
+namespace pubsub {
 
 class SubscriberState;
 
@@ -333,6 +341,7 @@ class Publisher : public PublisherInterface {
   FRIEND_TEST(PublisherTest, TestUnregisterSubscription);
   FRIEND_TEST(PublisherTest, TestUnregisterSubscriber);
   FRIEND_TEST(PublisherTest, TestRegistrationIdempotency);
+  friend void ray::core::FlushLongPollingConnection(Publisher *object_info_publisher);
   friend class MockPublisher;
   friend class FakePublisher;
 
