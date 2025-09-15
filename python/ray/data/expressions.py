@@ -4,7 +4,7 @@ import functools
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ray.data.block import BatchColumn
 from ray.data.datatype import DataType
@@ -43,6 +43,7 @@ class Operation(Enum):
     EQ = "eq"
     AND = "and"
     OR = "or"
+    NOT = "not"
 
 
 @DeveloperAPI(stability="alpha")
@@ -157,6 +158,10 @@ class Expr(ABC):
         """Logical OR operator (|)."""
         return self._bin(other, Operation.OR)
 
+    def __invert__(self) -> "Expr":
+        """Logical NOT operator (~)."""
+        return UnaryExpr(Operation.NOT, self)
+
 
 @DeveloperAPI(stability="alpha")
 @dataclass(frozen=True, eq=False)
@@ -259,6 +264,183 @@ class BinaryExpr(Expr):
 
 @DeveloperAPI(stability="alpha")
 @dataclass(frozen=True, eq=False)
+class UnaryExpr(Expr):
+    """Expression that represents a unary operation on a single expression.
+
+    This expression type represents an operation with one operand.
+    Currently used primarily for the NOT operation (~).
+
+    Args:
+        op: The operation to perform (from Operation enum)
+        operand: The operand expression
+
+    Example:
+        >>> from ray.data.expressions import col, Operation
+        >>> # Manually create a unary expression (usually done via operators)
+        >>> expr = UnaryExpr(Operation.NOT, col("is_active"))
+        >>> # This is equivalent to: ~col("is_active")
+    """
+
+    op: Operation
+    operand: Expr
+
+    data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
+
+    def structurally_equals(self, other: Any) -> bool:
+        return (
+            isinstance(other, UnaryExpr)
+            and self.op is other.op
+            and self.operand.structurally_equals(other.operand)
+        )
+
+
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False)
+class CaseExpr(Expr):
+    """Expression that represents a conditional case statement.
+
+    This expression type represents a SQL-like CASE WHEN statement with multiple
+    conditional branches and an optional default value. When evaluated, it tests
+    each condition in order and returns the corresponding value for the first
+    condition that evaluates to True.
+
+    Args:
+        when_clauses: List of (condition, value) tuples representing WHEN-THEN pairs
+        default: Default value expression when no conditions match
+
+    Example:
+        >>> from ray.data.expressions import col, lit, when
+        >>> # Create a case expression: CASE WHEN age > 30 THEN 'Senior' ELSE 'Junior' END
+        >>> expr = when(col("age") > 30, lit("Senior")).otherwise(lit("Junior"))
+    """
+
+    when_clauses: List[Tuple[Expr, Expr]]
+    default: Expr
+
+    data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
+
+    def __post_init__(self):
+        """Validate CaseExpr construction."""
+        if not self.when_clauses:
+            raise ValueError(
+                "CaseExpr requires at least one when clause. "
+                "Use when(condition, value).otherwise(default) to create case expressions."
+            )
+
+    def structurally_equals(self, other: Any) -> bool:
+        if not isinstance(other, CaseExpr):
+            return False
+
+        if len(self.when_clauses) != len(other.when_clauses):
+            return False
+
+        # Check each when clause
+        for (self_cond, self_val), (other_cond, other_val) in zip(
+            self.when_clauses, other.when_clauses
+        ):
+            if not (
+                self_cond.structurally_equals(other_cond)
+                and self_val.structurally_equals(other_val)
+            ):
+                return False
+
+        # Check default value
+        return self.default.structurally_equals(other.default)
+
+
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False)
+class WhenExpr(Expr):
+    """Intermediate expression for building case statements with method chaining.
+
+    This class represents an incomplete case statement that can be built
+    incrementally using the .when() method. It maintains a chain of conditions
+    and values, and can be completed with .otherwise() to create a final CaseExpr.
+
+    The method chaining follows the PySpark API pattern:
+    when(condition1, value1).when(condition2, value2).otherwise(default)
+
+    Args:
+        condition: The boolean condition expression for this WHEN clause
+        value: The value expression when this condition is True
+        next_when: Optional link to the next WHEN clause in the chain
+
+    Example:
+        >>> from ray.data.expressions import col, lit, when
+        >>> # Build a case statement using method chaining
+        >>> expr = when(col("age") > 50, lit("Elder")) \
+        ...        .when(col("age") > 30, lit("Adult")) \
+        ...        .otherwise(lit("Young"))
+    """
+
+    condition: Expr
+    value: Expr
+    next_when: Optional["WhenExpr"] = None
+
+    data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
+
+    def when(self, condition: Expr, value: Expr) -> "WhenExpr":
+        """Add another WHEN clause to the case statement.
+
+        Args:
+            condition: The boolean condition expression
+            value: The value expression when the condition is True
+
+        Returns:
+            A new WhenExpr with the additional WHEN clause
+
+        Example:
+            >>> expr = when(col("age") > 30, lit("Adult")) \
+            ...        .when(col("age") > 18, lit("Young"))
+        """
+        return WhenExpr(condition, value, next_when=self)
+
+    def otherwise(self, default: Expr) -> CaseExpr:
+        """Complete the case statement with a default value.
+
+        Args:
+            default: The default value expression when no conditions match
+
+        Returns:
+            A complete CaseExpr representing the full case statement
+
+        Example:
+            >>> expr = when(col("age") > 30, lit("Senior")) \
+            ...        .otherwise(lit("Junior"))
+        """
+        # Build the when_clauses list by traversing the chain
+        when_clauses = []
+        current = self
+        while current is not None:
+            when_clauses.append((current.condition, current.value))
+            current = current.next_when
+
+        # Reverse to get the correct order (first when should be evaluated first)
+        when_clauses.reverse()
+
+        return CaseExpr(when_clauses, default)
+
+    def structurally_equals(self, other: Any) -> bool:
+        if not isinstance(other, WhenExpr):
+            return False
+
+        return (
+            self.condition.structurally_equals(other.condition)
+            and self.value.structurally_equals(other.value)
+            and (
+                self.next_when is None
+                and other.next_when is None
+                or (
+                    self.next_when is not None
+                    and other.next_when is not None
+                    and self.next_when.structurally_equals(other.next_when)
+                )
+            )
+        )
+
+
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False)
 class UDFExpr(Expr):
     """Expression that represents a user-defined function call.
 
@@ -272,7 +454,6 @@ class UDFExpr(Expr):
         fn: The user-defined function to call
         args: List of argument expressions (positional arguments)
         kwargs: Dictionary of keyword argument expressions
-        function_name: Optional name for the function (for debugging)
 
     Example:
         >>> from ray.data.expressions import col, udf
@@ -476,6 +657,49 @@ def lit(value: Any) -> LiteralExpr:
     return LiteralExpr(value)
 
 
+@PublicAPI(stability="beta")
+def when(condition: Expr, value: Expr) -> WhenExpr:
+    """Create conditional case statements using method chaining.
+
+    This function creates case statements similar to PySpark and Polars, using
+    an intuitive method chaining pattern. Chain multiple conditions with .when()
+    and complete with .otherwise() for the default case.
+
+    Args:
+        condition: The boolean condition expression for the first WHEN clause
+        value: The value expression when the condition is True
+
+    Returns:
+        A WhenExpr that can be chained with more .when() calls or completed
+        with .otherwise()
+
+    Example:
+        >>> from ray.data.expressions import col, lit, when
+        >>> # Simple case statement
+        >>> expr = when(col("age") > 30, lit("Senior")).otherwise(lit("Junior"))
+        >>>
+        >>> # Multiple conditions (evaluated in order)
+        >>> expr = when(col("age") > 50, lit("Elder")) \
+        ...        .when(col("age") > 30, lit("Adult")) \
+        ...        .when(col("age") > 18, lit("Young")) \
+        ...        .otherwise(lit("Minor"))
+        >>>
+        >>> # Complex conditions
+        >>> expr = when((col("age") > 30) & (col("income") > 50000), lit("Target")) \
+        ...        .otherwise(lit("Other"))
+        >>>
+        >>> # Use with Dataset operations
+        >>> import ray
+        >>> ds = ray.data.from_items([{"age": 25}, {"age": 35}, {"age": 55}])
+        >>> ds = ds.with_column("age_group",
+        ...     when(col("age") > 50, lit("Elder"))
+        ...     .when(col("age") > 30, lit("Adult"))
+        ...     .otherwise(lit("Young"))
+        ... )
+    """
+    return WhenExpr(condition, value)
+
+
 @DeveloperAPI(stability="alpha")
 def download(uri_column_name: str) -> DownloadExpr:
     """
@@ -517,10 +741,14 @@ __all__ = [
     "ColumnExpr",
     "LiteralExpr",
     "BinaryExpr",
+    "UnaryExpr",
+    "CaseExpr",
+    "WhenExpr",
+    "col",
+    "lit",
+    "when",
     "UDFExpr",
     "udf",
     "DownloadExpr",
-    "col",
-    "lit",
     "download",
 ]
