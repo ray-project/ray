@@ -1165,7 +1165,7 @@ void InternalKVAccessor::AsyncInternalKVMultiGet(
           callback(status, map);
         } else {
           // TODO(ryw): reply.status() is not examined. It's never populated in
-          // src/ray/gcs/gcs_server/gcs_kv_manager.cc either anyway so it's ok for now.
+          // src/ray/gcs/gcs_kv_manager.cc either anyway so it's ok for now.
           // Investigate if we wanna remove that field.
           for (const auto &entry : reply.results()) {
             map[entry.key()] = entry.value();
