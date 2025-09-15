@@ -52,7 +52,6 @@ class ZipOperator(InternalQueueOperatorMixin, PhysicalOperator):
             "Zip",
             [left_input_op, right_input_op],
             data_context,
-            target_max_block_size=None,
         )
 
     def num_outputs_total(self) -> Optional[int]:

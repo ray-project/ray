@@ -13,8 +13,10 @@
 // limitations under the License.
 #pragma once
 
-#include <linux/magic.h>
-#include <mntent.h>
+// TODO(#54703): SysFsCgroupDriver should not be a public target.
+// It will be hidden behind a CgroupManagerFactory which will create
+// an appropriate depending on configuration and platform.
+// #include <mntent.h>
 
 #include <string>
 #include <unordered_set>
@@ -23,12 +25,6 @@
 #include "ray/common/cgroup2/cgroup_driver_interface.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
-
-// Used to identify if a filesystem is mounted using cgroupv2.
-// See: https://docs.kernel.org/admin-guide/cgroup-v2.html#mounting
-#ifndef CGROUP2_SUPER_MAGIC
-#define CGROUP2_SUPER_MAGIC 0x63677270
-#endif
 
 namespace ray {
 
@@ -46,12 +42,9 @@ namespace ray {
 class SysFsCgroupDriver : public CgroupDriverInterface {
  public:
   /**
-   * MOUNTED is defined in mntent.h (and typically refers to /etc/mtab)
-   * @see https://www.gnu.org/software/libc/manual/2.24/html_node/Mount-Information.html
-   *
    * @param mount_file_path only used for testing.
    */
-  explicit SysFsCgroupDriver(std::string mount_file_path = MOUNTED)
+  explicit SysFsCgroupDriver(std::string mount_file_path = kMountFilePath)
       : mount_file_path_(std::move(mount_file_path)) {}
 
   ~SysFsCgroupDriver() override = default;
@@ -120,6 +113,25 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
     @return Status::AlreadyExists if the cgroup already exists.
     */
   Status CreateCgroup(const std::string &cgroup_path) override;
+
+  /**
+    To delete a cgroup using the cgroupv2 vfs, the current user needs to read, write, and
+    execute permissions for the parent cgroup. This can be achieved through cgroup
+    delegation. The cgroup must also have no processes or children.
+
+    @see The relevant manpage section on delegation for more details
+    https://docs.kernel.org/admin-guide/cgroup-v2.html#delegation
+
+    @param cgroup_path the absolute path of the cgroup directory to create.
+
+    @return Status::OK if no errors are encounted.
+    @return Status::NotFound if an ancestor cgroup does not exist.
+    @return Status::PermissionDenied if current user doesn't have read, write, and execute
+    permissions.
+    @return Status::InvalidArgument if the cgroup has children, processes, or for any
+    other reason.
+    */
+  Status DeleteCgroup(const std::string &cgroup_path) override;
 
   /**
     Parses the cgroup.controllers file which has a space separated list of all controllers
@@ -261,5 +273,6 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
   static constexpr std::string_view kCgroupSubtreeControlFilename =
       "cgroup.subtree_control";
   static constexpr std::string_view kCgroupControllersFilename = "cgroup.controllers";
+  static inline std::string kMountFilePath = "/etc/mtab";
 };
 }  // namespace ray
