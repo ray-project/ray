@@ -41,9 +41,6 @@ depsets:
     output: python/deplocks/ray_img/ray_base_extra_testdeps_py${PYTHON_VERSION}.lock
     append_flags:
       - --python-version=${PYTHON_VERSION}
-      - --find-links=.whl/
     build_arg_sets:
       - py39
       - py310
-      - py311
-      - py312
