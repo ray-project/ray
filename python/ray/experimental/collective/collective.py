@@ -205,10 +205,15 @@ def destroy_collective_group(group_or_name: Union[CommunicatorHandle, str]):
     group = manager.remove_remote_communicator(name)
     if group is not None:
         destroy_tasks = [
-            actor.__ray_call__.remote(_do_destroy_collective_group, name)
+            actor.__ray_call__.options(concurrency_group="_ray_system_error").remote(
+                _do_destroy_collective_group, name
+            )
             for actor in group.actors
         ]
-        ray.get(destroy_tasks)
+        try:
+            ray.get(destroy_tasks)
+        except ray.exceptions.ActorDiedError:
+            pass
     else:
         raise ValueError(f"No group with name {name} found.")
 

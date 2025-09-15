@@ -885,5 +885,74 @@ def test_transfer_from_not_actor_creator(ray_start_regular):
     )
 
 
+@ray.remote
+class ErrorActor:
+    def clear_gpu_object_store(self):
+        gpu_object_store = (
+            ray._private.worker.global_worker.gpu_object_manager.gpu_object_store
+        )
+
+        with gpu_object_store._lock:
+            assert len(gpu_object_store._gpu_object_store) > 0
+            gpu_object_store._gpu_object_store.clear()
+
+    @ray.method(tensor_transport="gloo")
+    def send(self, tensor):
+        return tensor
+
+    def recv(self, tensor):
+        return tensor
+
+    @ray.method(concurrency_group="_ray_system")
+    def block_background_thread(self):
+        time.sleep(100)
+
+
+def test_send_fails(ray_start_regular):
+    actors = [ErrorActor.remote() for _ in range(2)]
+    create_collective_group(actors, backend="torch_gloo")
+
+    # The gpu object will be gone when we trigger the transfer
+    # so the send will error out
+    gpu_obj_ref = actors[0].send.remote(torch.randn((100, 100)))
+    ray.get(actors[0].clear_gpu_object_store.remote())
+    result_ref = actors[1].recv.remote(gpu_obj_ref)
+
+    with pytest.raises(ray.exceptions.ActorDiedError):
+        ray.get(result_ref)
+
+
+def test_send_actor_dies(ray_start_regular):
+    actors = [ErrorActor.remote() for _ in range(2)]
+    create_collective_group(actors, backend="torch_gloo")
+
+    # Do a transfer with the sender's background thread blocked,
+    # so the send doesn't happen before the actor is killed
+    gpu_obj_ref = actors[0].send.remote(torch.randn((100, 100)))
+    actors[0].block_background_thread.remote()
+    result_ref = actors[1].recv.remote(gpu_obj_ref)
+    ray.kill(actors[0])
+
+    with pytest.raises(ray.exceptions.ActorDiedError):
+        ray.get(result_ref)
+
+
+def test_recv_actor_dies(ray_start_regular):
+    actors = [ErrorActor.remote() for _ in range(2)]
+    create_collective_group(actors, backend="torch_gloo")
+
+    # Do a transfer with the receiver's background thread blocked,
+    # so the recv doesn't happen before the actor is killed
+    gpu_obj_ref = actors[0].send.remote(torch.randn((100, 100)))
+    actors[1].block_background_thread.remote()
+    result_ref = actors[1].recv.remote(gpu_obj_ref)
+    ray.kill(actors[1])
+
+    with pytest.raises(ray.exceptions.ActorDiedError):
+        ray.get(result_ref)
+    with pytest.raises(ray.exceptions.ActorDiedError):
+        ray.get(actors[0].send.remote(torch.randn((100, 100))))
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
