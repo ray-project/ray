@@ -639,13 +639,6 @@ class ApplicationState:
                 finished=False,
             )
 
-            if self.should_autoscale():
-                self._autoscaling_state_manager.register_application(
-                    self._name,
-                    self._target_state.config,
-                    self._target_state.deployment_infos,
-                )
-
     def _get_live_deployments(self) -> List[str]:
         return self._deployment_state_manager.get_deployments_in_application(self._name)
 
@@ -909,6 +902,13 @@ class ApplicationState:
             )
             status, status_msg = self._determine_app_status()
             self._update_status(status, status_msg)
+
+            if self.should_autoscale():
+                self._autoscaling_state_manager.register_application(
+                    self._name,
+                    self._target_state.config,
+                    self._target_state.deployment_infos,
+                )
 
         # Check if app is ready to be deleted
         if self._target_state.deleting:
@@ -1181,9 +1181,9 @@ class ApplicationStateManager:
         apps_to_be_deleted = []
         any_target_state_changed = False
         for name, app in self._application_states.items():
-            if app.should_autoscale():
-                any_target_state_changed = app.autoscale() or any_target_state_changed
             ready_to_be_deleted, app_target_state_changed = app.update()
+            if app.should_autoscale() and not ready_to_be_deleted:
+                any_target_state_changed = app.autoscale() or any_target_state_changed
             any_target_state_changed = (
                 any_target_state_changed or app_target_state_changed
             )

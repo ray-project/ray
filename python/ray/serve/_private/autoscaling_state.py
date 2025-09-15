@@ -388,6 +388,8 @@ class ApplicationAutoscalingState:
                 updated_decisions[
                     deployment_id
                 ] = deployment_autoscaling_state.apply_bounds(decision_num_replicas)
+            else:
+                updated_decisions[deployment_id] = decision_num_replicas
 
         return updated_decisions
 
