@@ -1778,7 +1778,7 @@
 ########################
 
 - name: jobs_basic_local_working_dir
-  python: "3.10"
+  python: "3.11"
   group: Jobs tests
   working_dir: jobs_tests
 
