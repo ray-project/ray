@@ -128,6 +128,7 @@ TEST_F(ObjectManagerTest, TestFreeObjectsLocalOnlyFalse) {
       .WillOnce(::testing::ReturnRef(node_info_map_));
   EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, Get(remote_node_id_, _))
       .WillOnce(::testing::Return(&remote_node_info));
+
   fake_plasma_client_->objects_in_plasma_[object_id] =
       std::make_pair(std::vector<uint8_t>(1), std::vector<uint8_t>(1));
   object_manager_->FreeObjects({object_id}, false);
