@@ -641,34 +641,44 @@ void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
                                 bool local_only) {
   buffer_pool_.FreeObjects(object_ids);
   if (!local_only) {
+    // NOTE: SpreadFreeObjectsRequest is posted onto the rpc_service_ which is
+    // multithreaded. Hence we cannot directly access remote_object_manager_clients_ as
+    // its not thread safe.
+    std::vector<std::pair<NodeID, std::shared_ptr<rpc::ObjectManagerClientInterface>>>
+        rpc_clients;
     // TODO(#56414): optimize this so we don't have to send a free objects request for
     // every object to every node
     const auto &node_info_map = gcs_client_.Nodes().GetAll();
-    for (const auto &[node_id, node_info] : node_info_map) {
-      if (node_id == self_node_id_ || node_info.state() == rpc::GcsNodeInfo::DEAD) {
+    for (const auto &[node_id, _] : node_info_map) {
+      if (node_id == self_node_id_) {
         continue;
       }
-      if (!remote_object_manager_clients_.contains(node_id)) {
-        auto object_manager_client =
-            object_manager_client_factory_(node_info.node_manager_address(),
-                                           node_info.object_manager_port(),
-                                           client_call_manager_);
-        remote_object_manager_clients_.emplace(node_id, std::move(object_manager_client));
+      auto rpc_client = GetRpcClient(node_id);
+      if (rpc_client != nullptr) {
+        rpc_clients.emplace_back(node_id, std::move(rpc_client));
       }
     }
-    rpc_service_.post([this, object_ids]() { SpreadFreeObjectsRequest(object_ids); },
-                      "ObjectManager.FreeObjects");
+    rpc_service_.post(
+        [this, object_ids, rpc_clients = std::move(rpc_clients)]() {
+          SpreadFreeObjectsRequest(object_ids, rpc_clients);
+        },
+        "ObjectManager.FreeObjects");
   }
 }
 
-void ObjectManager::SpreadFreeObjectsRequest(const std::vector<ObjectID> &object_ids) {
+void ObjectManager::SpreadFreeObjectsRequest(
+    const std::vector<ObjectID> &object_ids,
+    const std::vector<
+        std::pair<NodeID, std::shared_ptr<rpc::ObjectManagerClientInterface>>>
+        &rpc_clients) {
   // This code path should be called from node manager.
   rpc::FreeObjectsRequest free_objects_request;
   for (const auto &e : object_ids) {
     free_objects_request.add_object_ids(e.Binary());
   }
-
-  for (const auto &entry : remote_object_manager_clients_) {
+  for (const auto &entry : rpc_clients) {
+    // NOTE: The callback for FreeObjects is posted back onto the main_service_ hence we
+    // can access remote_object_manager_clients_ here.
     entry.second->FreeObjects(
         free_objects_request,
         [this, node_id = entry.first, free_objects_request](
@@ -686,7 +696,7 @@ void ObjectManager::RetryFreeObjects(
     const rpc::FreeObjectsRequest &free_objects_request) {
   auto delay_ms = ExponentialBackoff::GetBackoffMs(attempt_number, 1000);
   execute_after(
-      rpc_service_,
+      *main_service_,
       [this, node_id, attempt_number, free_objects_request] {
         auto it = remote_object_manager_clients_.find(node_id);
         if (it == remote_object_manager_clients_.end()) {

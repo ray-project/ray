@@ -279,7 +279,11 @@ class ObjectManager : public ObjectManagerInterface,
   /// Spread the Free request to all objects managers.
   ///
   /// \param object_ids the The list of ObjectIDs to be deleted.
-  void SpreadFreeObjectsRequest(const std::vector<ObjectID> &object_ids);
+  void SpreadFreeObjectsRequest(
+      const std::vector<ObjectID> &object_ids,
+      const std::vector<
+          std::pair<NodeID, std::shared_ptr<rpc::ObjectManagerClientInterface>>>
+          &rpc_clients);
 
   /// Pushing a known local object to a remote object manager.
   ///
@@ -400,6 +404,11 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param client_id Remote server client id
   void SendPullRequest(const ObjectID &object_id, const NodeID &client_id);
 
+  /// Retry free objects request
+  ///
+  /// \param node_id Remote node id
+  /// \param attempt_number Attempt number
+  /// \param free_objects_request Free objects request
   void RetryFreeObjects(const NodeID &node_id,
                         uint32_t attempt_number,
                         const rpc::FreeObjectsRequest &free_objects_request);
