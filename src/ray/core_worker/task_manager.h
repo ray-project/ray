@@ -30,7 +30,7 @@
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/core_worker/task_manager_interface.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/gcs_client/gcs_client.h"
 #include "ray/observability/metric_interface.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/counter_map.h"
