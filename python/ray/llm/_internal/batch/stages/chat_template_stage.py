@@ -55,7 +55,7 @@ class ChatTemplateUDF(StatefulStageUDF):
             "PreTrainedTokenizerBase", "ProcessorMixin"
         ] = AutoProcessor.from_pretrained(model_path, trust_remote_code=True)
         self.chat_template = chat_template
-        self.chat_template_kwargs = chat_template_kwargs or {}
+        self.chat_template_kwargs = chat_template_kwargs
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
         """
@@ -87,7 +87,7 @@ class ChatTemplateUDF(StatefulStageUDF):
                     chat_template=self.chat_template,
                     add_generation_prompt=add_generation_prompt,
                     continue_final_message=continue_final_message,
-                    **self.chat_template_kwargs,
+                    **(self.chat_template_kwargs or {}),
                 )
             )
         assert len(batch) == len(prompts)

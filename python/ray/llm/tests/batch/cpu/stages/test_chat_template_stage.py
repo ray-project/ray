@@ -90,10 +90,30 @@ async def test_chat_template_udf_multiple_messages(mock_tokenizer_setup):
 
 
 @pytest.mark.asyncio
-async def test_chat_template_udf_chat_template_kwargs(mock_tokenizer_setup):
+@pytest.mark.parametrize(
+    "chat_template_kwargs, expected_prompt",
+    [
+        ({"enable_thinking": False}, "Answer without thinking"),
+        ({"enable_thinking": True}, "<think>thinking</think>"),
+        ({}, "<think>thinking</think>"),
+        (
+            {"enable_thinking": True, "custom_param": "test_value", "temperature": 0.7},
+            "<think>thinking</think>",
+        ),
+    ],
+)
+async def test_chat_template_udf_chat_template_kwargs(
+    mock_tokenizer_setup, chat_template_kwargs, expected_prompt
+):
     mock_tokenizer = mock_tokenizer_setup
 
+    # Store captured kwargs for verification
+    captured_kwargs = {}
+
     def side_effect_func(conversation, **kwargs):
+        # Capture all kwargs for later verification
+        captured_kwargs.update(kwargs)
+
         enable_thinking = kwargs.get("enable_thinking", True)
         if enable_thinking is False:
             return "Answer without thinking"
@@ -102,13 +122,15 @@ async def test_chat_template_udf_chat_template_kwargs(mock_tokenizer_setup):
 
     mock_tokenizer.apply_chat_template.side_effect = side_effect_func
 
-    # Test with enable_thinking=False
-    udf_no_thinking = ChatTemplateUDF(
+    udf = ChatTemplateUDF(
         data_column="__data",
         expected_input_keys=["messages"],
         model="test-model",
-        chat_template_kwargs={"enable_thinking": False},
+        chat_template_kwargs=chat_template_kwargs,
     )
+
+    # Assert that the chat_template_kwargs were properly stored
+    assert udf.chat_template_kwargs == chat_template_kwargs
 
     batch = {
         "__data": [
@@ -121,61 +143,20 @@ async def test_chat_template_udf_chat_template_kwargs(mock_tokenizer_setup):
     }
 
     results = []
-    async for result in udf_no_thinking(batch):
+    async for result in udf(batch):
         results.extend(result["__data"])
 
     assert len(results) == 1
-    assert results[0]["prompt"] == "Answer without thinking"
+    assert results[0]["prompt"] == expected_prompt
 
-    # Test with enable_thinking=True (explicit)
-    udf_with_thinking = ChatTemplateUDF(
-        data_column="__data",
-        expected_input_keys=["messages"],
-        model="test-model",
-        chat_template_kwargs={"enable_thinking": True},
-    )
-
-    batch_2 = {
-        "__data": [
-            {
-                "messages": MagicMock(
-                    tolist=lambda: [{"role": "user", "content": "Hello AI"}]
-                )
-            }
-        ]
-    }
-
-    results = []
-    async for result in udf_with_thinking(batch_2):
-        results.extend(result["__data"])
-
-    assert len(results) == 1
-    assert results[0]["prompt"] == "<think>thinking</think>"
-
-    # Test with no enable_thinking parameter (default should be True)
-    udf_default = ChatTemplateUDF(
-        data_column="__data",
-        expected_input_keys=["messages"],
-        model="test-model",
-        chat_template_kwargs={},
-    )
-
-    batch_3 = {
-        "__data": [
-            {
-                "messages": MagicMock(
-                    tolist=lambda: [{"role": "user", "content": "Hello AI"}]
-                )
-            }
-        ]
-    }
-
-    results = []
-    async for result in udf_default(batch_3):
-        results.extend(result["__data"])
-
-    assert len(results) == 1
-    assert results[0]["prompt"] == "<think>thinking</think>"
+    # Verify that all chat_template_kwargs were passed through to apply_chat_template
+    for key, value in chat_template_kwargs.items():
+        assert (
+            key in captured_kwargs
+        ), f"Expected kwargs key '{key}' not found in captured kwargs"
+        assert (
+            captured_kwargs[key] == value
+        ), f"Expected '{key}': {value}, but got '{key}': {captured_kwargs[key]}"
 
 
 @pytest.mark.asyncio
