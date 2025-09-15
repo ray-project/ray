@@ -88,6 +88,7 @@ else
 fi
 
 if command -v clang-format >/dev/null; then
+	# This version should be kept in sync with the clang-format version tag in `.pre-commit-config.yaml`.
   CLANG_FORMAT_VERSION=$(clang-format --version | awk '{print $3}')
   tool_version_check "clang-format" "$CLANG_FORMAT_VERSION" "12.0.1"
 else
