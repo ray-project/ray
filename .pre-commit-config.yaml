@@ -176,7 +176,7 @@ repos:
           # 2207: Prefer mapfile or read -a to split command output (or quote to avoid splitting). -- these aren't compatible with macOS's old Bash
 
   - repo: https://github.com/pre-commit/mirrors-clang-format
-	# This version should be kept in sync with the version in `ci/lint/format.sh`.
+    # This version should be kept in sync with the version in `ci/lint/format.sh`.
     rev: v12.0.1
     hooks:
       - id: clang-format
