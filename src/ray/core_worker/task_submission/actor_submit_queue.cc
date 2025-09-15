@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/task_submission/out_of_order_actor_submit_queue.h"
+#include "ray/core_worker/task_submission/actor_submit_queue.h"
 
 #include <utility>
 #include <vector>
@@ -20,38 +20,40 @@
 namespace ray {
 namespace core {
 
-OutofOrderActorSubmitQueue::OutofOrderActorSubmitQueue(bool order_initial_submissions) : order_initial_submissions_(order_initial_submissions) {}
+ActorSubmitQueue::ActorSubmitQueue(bool order_initial_submissions)
+    : order_initial_submissions_(order_initial_submissions) {}
 
-void OutofOrderActorSubmitQueue::Emplace(uint64_t seq_no,
-                                         const TaskSpecification &spec) {
+void ActorSubmitQueue::Emplace(uint64_t seq_no, const TaskSpecification &spec) {
   RAY_CHECK(!ready_to_send_.contains(seq_no));
   RAY_CHECK(!retries_ready_to_send_.contains(seq_no));
   RAY_CHECK(waiting_for_dependencies_.emplace(seq_no, spec).second);
 }
 
-bool OutofOrderActorSubmitQueue::Contains(uint64_t seq_no) const {
-  return waiting_for_dependencies_.contains(seq_no) || ready_to_send_.contains(seq_no) || retries_ready_to_send_.contains(seq_no);
+bool ActorSubmitQueue::Contains(uint64_t seq_no) const {
+  return waiting_for_dependencies_.contains(seq_no) || ready_to_send_.contains(seq_no) ||
+         retries_ready_to_send_.contains(seq_no);
 }
 
-bool OutofOrderActorSubmitQueue::DependenciesResolved(uint64_t seq_no) const {
+bool ActorSubmitQueue::DependenciesResolved(uint64_t seq_no) const {
   return ready_to_send_.contains(seq_no) || retries_ready_to_send_.contains(seq_no);
 }
 
-void OutofOrderActorSubmitQueue::MarkDependencyFailed(uint64_t seq_no) {
+void ActorSubmitQueue::MarkDependencyFailed(uint64_t seq_no) {
   waiting_for_dependencies_.erase(seq_no);
 }
 
-void OutofOrderActorSubmitQueue::MarkTaskCanceled(uint64_t seq_no) {
+void ActorSubmitQueue::MarkTaskCanceled(uint64_t seq_no) {
   waiting_for_dependencies_.erase(seq_no);
   ready_to_send_.erase(seq_no);
   retries_ready_to_send_.erase(seq_no);
 }
 
-bool OutofOrderActorSubmitQueue::Empty() const {
-  return waiting_for_dependencies_.empty() && ready_to_send_.empty() && retries_ready_to_send_.empty();
+bool ActorSubmitQueue::Empty() const {
+  return waiting_for_dependencies_.empty() && ready_to_send_.empty() &&
+         retries_ready_to_send_.empty();
 }
 
-void OutofOrderActorSubmitQueue::MarkDependencyResolved(uint64_t seq_no) {
+void ActorSubmitQueue::MarkDependencyResolved(uint64_t seq_no) {
   // Pop the seq_no entry from waiting_from_dependencies_ and push it onto the
   // appropriate queue.
   auto it = waiting_for_dependencies_.find(seq_no);
@@ -60,17 +62,11 @@ void OutofOrderActorSubmitQueue::MarkDependencyResolved(uint64_t seq_no) {
   auto spec = std::move(it->second);
   waiting_for_dependencies_.erase(it);
 
-  RAY_CHECK(
-      spec.IsRetry()
-          ? retries_ready_to_send_
-                .emplace(seq_no, spec)
-                .second
-          : ready_to_send_
-                .emplace(seq_no, spec)
-                .second);
+  RAY_CHECK(spec.IsRetry() ? retries_ready_to_send_.emplace(seq_no, spec).second
+                           : ready_to_send_.emplace(seq_no, spec).second);
 }
 
-std::vector<TaskID> OutofOrderActorSubmitQueue::ClearAllTasks() {
+std::vector<TaskID> ActorSubmitQueue::ClearAllTasks() {
   std::vector<TaskID> task_ids;
 
   for (auto &[pos, spec] : waiting_for_dependencies_) {
@@ -91,8 +87,7 @@ std::vector<TaskID> OutofOrderActorSubmitQueue::ClearAllTasks() {
   return task_ids;
 }
 
-std::optional<std::pair<TaskSpecification, bool>>
-OutofOrderActorSubmitQueue::PopNextTaskToSend() {
+std::optional<std::pair<TaskSpecification, bool>> ActorSubmitQueue::PopNextTaskToSend() {
   // First try to send any retries that have dependencies resolved.
   // Retries do not respect sequence number ordering.
   auto retry_it = retries_ready_to_send_.begin();
