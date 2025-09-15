@@ -83,7 +83,7 @@ class SetupSpec:
         version = find_version("ray", "_version.py")
         # add .dbg suffix if debug mode is on.
         if build_type == BuildType.DEBUG:
-            self.version: str = f"{version}+dbg"
+            self.version: str = f"{version}"
         elif build_type == BuildType.ASAN:
             self.version: str = f"{version}+asan"
         elif build_type == BuildType.TSAN:
