@@ -19,7 +19,14 @@ def ray_tpu_single_host(monkeypatch):
             resources={"TPU": 8},
         )
 
-        ray.init(address=cluster.address)
+        runtime_env = {
+            "pip": ["jax"],
+            "env_vars": {
+                "JAX_PLATFORMS": "cpu",
+            },
+        }
+
+        ray.init(address=cluster.address, runtime_env=runtime_env)
 
         yield cluster
         ray.shutdown()
@@ -44,7 +51,16 @@ def ray_tpu_multi_host(monkeypatch):
             resources={"TPU": 4},
         )
 
-        ray.init(address=cluster.address)
+        runtime_env = (
+            {
+                "pip": ["jax"],
+                "env_vars": {
+                    "JAX_PLATFORMS": "cpu",
+                },
+            },
+        )
+
+        ray.init(address=cluster.address, runtime_env=runtime_env)
 
         yield cluster
         ray.shutdown()
@@ -78,12 +94,6 @@ def test_minimal_singlehost(ray_tpu_single_host, tmp_path):
         ),
         run_config=RunConfig(
             storage_path=str(tmp_path),
-            worker_runtime_env={
-                "pip": ["jax"],
-                "env_vars": {
-                    "JAX_PLATFORMS": "cpu",
-                },
-            },
         ),
     )
     result = trainer.fit()
@@ -109,12 +119,6 @@ def test_minimal_multihost(ray_tpu_multi_host, tmp_path):
         ),
         run_config=RunConfig(
             storage_path=str(tmp_path),
-            worker_runtime_env={
-                "pip": ["jax"],
-                "env_vars": {
-                    "JAX_PLATFORMS": "cpu",
-                },
-            },
         ),
     )
     result = trainer.fit()
