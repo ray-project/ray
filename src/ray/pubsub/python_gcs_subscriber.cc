@@ -21,7 +21,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/rpc/gcs/gcs_rpc_client.h"
+#include "ray/gcs_client/rpc_client.h"
 
 namespace ray {
 namespace pubsub {
