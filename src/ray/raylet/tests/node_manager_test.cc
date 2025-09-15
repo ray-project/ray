@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "fakes/ray/object_manager/plasma/fake_plasma_client.h"
 #include "fakes/ray/pubsub/subscriber.h"
 #include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "gmock/gmock.h"
@@ -28,13 +29,12 @@
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 #include "mock/ray/object_manager/object_directory.h"
 #include "mock/ray/object_manager/object_manager.h"
-#include "mock/ray/object_manager/plasma/client.h"
 #include "mock/ray/raylet/local_lease_manager.h"
 #include "mock/ray/raylet/worker_pool.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
 #include "ray/common/buffer.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
-#include "ray/object_manager/plasma/client.h"
+#include "ray/observability/fake_metric.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/tests/util.h"
@@ -93,94 +93,6 @@ class FakeLocalObjectManager : public LocalObjectManagerInterface {
 
  private:
   std::shared_ptr<absl::flat_hash_set<ObjectID>> objects_pending_deletion_;
-};
-
-class FakePlasmaClient : public plasma::PlasmaClientInterface {
- public:
-  Status Connect(const std::string &store_socket_name,
-                 const std::string &manager_socket_name = "",
-                 int num_retries = -1) override {
-    return Status::OK();
-  };
-
-  Status CreateAndSpillIfNeeded(const ObjectID &object_id,
-                                const ray::rpc::Address &owner_address,
-                                bool is_mutable,
-                                int64_t data_size,
-                                const uint8_t *metadata,
-                                int64_t metadata_size,
-                                std::shared_ptr<Buffer> *data,
-                                plasma::flatbuf::ObjectSource source,
-                                int device_num = 0) override {
-    return TryCreateImmediately(
-        object_id, owner_address, data_size, metadata, metadata_size, data, source);
-  }
-
-  Status TryCreateImmediately(const ObjectID &object_id,
-                              const ray::rpc::Address &owner_address,
-                              int64_t data_size,
-                              const uint8_t *metadata,
-                              int64_t metadata_size,
-                              std::shared_ptr<Buffer> *data,
-                              plasma::flatbuf::ObjectSource source,
-                              int device_num = 0) override {
-    objects_ids_in_plasma_.emplace(object_id);
-    objects_in_plasma_.emplace(
-        object_id, std::make_pair(std::vector<uint8_t>{}, std::vector<uint8_t>{}));
-    return Status::OK();
-  }
-
-  Status Get(const std::vector<ObjectID> &object_ids,
-             int64_t timeout_ms,
-             std::vector<plasma::ObjectBuffer> *object_buffers) override {
-    for (const auto &id : object_ids) {
-      auto &buffers = objects_in_plasma_[id];
-      plasma::ObjectBuffer shm_buffer{std::make_shared<SharedMemoryBuffer>(
-                                          buffers.first.data(), buffers.first.size()),
-                                      std::make_shared<SharedMemoryBuffer>(
-                                          buffers.second.data(), buffers.second.size())};
-      object_buffers->emplace_back(shm_buffer);
-    }
-    return Status::OK();
-  }
-
-  Status GetExperimentalMutableObject(
-      const ObjectID &object_id,
-      std::unique_ptr<plasma::MutableObject> *mutable_object) override {
-    return Status::OK();
-  }
-
-  Status Release(const ObjectID &object_id) override {
-    objects_ids_in_plasma_.erase(object_id);
-    return Status::OK();
-  }
-
-  Status Contains(const ObjectID &object_id, bool *has_object) override {
-    *has_object = objects_ids_in_plasma_.find(object_id) != objects_ids_in_plasma_.end();
-    return Status::OK();
-  }
-
-  Status Abort(const ObjectID &object_id) override { return Status::OK(); }
-
-  Status Seal(const ObjectID &object_id) override { return Status::OK(); }
-
-  Status Delete(const std::vector<ObjectID> &object_ids) override {
-    for (const auto &id : object_ids) {
-      objects_ids_in_plasma_.erase(id);
-    }
-    return Status::OK();
-  }
-
-  Status Disconnect() override { return Status::OK(); };
-
-  std::string DebugString() { return ""; }
-
-  int64_t store_capacity() { return 1; }
-
- private:
-  absl::flat_hash_set<ObjectID> objects_ids_in_plasma_;
-  absl::flat_hash_map<ObjectID, std::pair<std::vector<uint8_t>, std::vector<uint8_t>>>
-      objects_in_plasma_;
 };
 
 LeaseSpecification BuildLeaseSpec(
@@ -395,6 +307,7 @@ class NodeManagerTest : public ::testing::Test {
     core_worker_subscriber_ = std::make_unique<pubsub::FakeSubscriber>();
     mock_object_directory_ = std::make_unique<MockObjectDirectory>();
     mock_object_manager_ = std::make_unique<MockObjectManager>();
+    fake_task_by_state_counter_ = ray::observability::FakeMetric();
 
     EXPECT_CALL(*mock_object_manager_, GetMemoryCapacity()).WillRepeatedly(Return(0));
 
@@ -418,8 +331,8 @@ class NodeManagerTest : public ::testing::Test {
     local_object_manager_ =
         std::make_unique<FakeLocalObjectManager>(objects_pending_deletion_);
 
-    lease_dependency_manager_ =
-        std::make_unique<LeaseDependencyManager>(*mock_object_manager_);
+    lease_dependency_manager_ = std::make_unique<LeaseDependencyManager>(
+        *mock_object_manager_, fake_task_by_state_counter_);
 
     cluster_resource_scheduler_ = std::make_unique<ClusterResourceScheduler>(
         io_service_,
@@ -521,12 +434,13 @@ class NodeManagerTest : public ::testing::Test {
   std::unique_ptr<MockObjectManager> mock_object_manager_;
   core::experimental::MockMutableObjectProvider *mock_mutable_object_provider_;
   std::shared_ptr<plasma::PlasmaClientInterface> mock_store_client_ =
-      std::make_shared<FakePlasmaClient>();
+      std::make_shared<plasma::FakePlasmaClient>();
 
   std::unique_ptr<NodeManager> node_manager_;
   MockWorkerPool mock_worker_pool_;
   absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::shared_ptr<absl::flat_hash_set<ObjectID>> objects_pending_deletion_;
+  ray::observability::FakeMetric fake_task_by_state_counter_;
 };
 
 TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
@@ -998,6 +912,160 @@ TEST_P(NodeManagerReturnWorkerLeaseIdempotentTest, TestDifferentRequestArgs) {
 INSTANTIATE_TEST_SUITE_P(NodeManagerReturnWorkerLeaseIdempotentVariations,
                          NodeManagerReturnWorkerLeaseIdempotentTest,
                          testing::Combine(testing::Bool(), testing::Bool()));
+
+TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseIdempotent) {
+  auto lease_spec = BuildLeaseSpec({});
+  rpc::RequestWorkerLeaseRequest request;
+  rpc::RequestWorkerLeaseReply reply1;
+  rpc::RequestWorkerLeaseReply reply2;
+  LeaseID lease_id = LeaseID::FromRandom();
+  lease_spec.GetMutableMessage().set_lease_id(lease_id.Binary());
+  request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
+  request.set_backlog_size(1);
+  request.set_grant_or_reject(true);
+  request.set_is_selected_based_on_locality(true);
+  auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
+  PopWorkerCallback pop_worker_callback;
+  EXPECT_CALL(mock_worker_pool_, PopWorker(_, _))
+      .Times(1)
+      .WillOnce([&](const LeaseSpecification &ls, const PopWorkerCallback &callback) {
+        pop_worker_callback = callback;
+      });
+  node_manager_->HandleRequestWorkerLease(
+      request,
+      &reply1,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  pop_worker_callback(worker, PopWorkerStatus::OK, "");
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(leased_workers_[lease_id]->GetGrantedLeaseId(), lease_id);
+  request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
+  node_manager_->HandleRequestWorkerLease(
+      request,
+      &reply2,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(leased_workers_[lease_id]->GetGrantedLeaseId(), lease_id);
+  ASSERT_EQ(leased_workers_[lease_id]->WorkerId(),
+            WorkerID::FromBinary(reply1.worker_address().worker_id()));
+  ASSERT_EQ(reply1.worker_address(), reply2.worker_address());
+}
+
+TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseInfeasibleIdempotent) {
+  auto lease_spec = BuildLeaseSpec({{"CPU", 1}});
+  lease_spec.GetMutableMessage()
+      .mutable_scheduling_strategy()
+      ->mutable_node_affinity_scheduling_strategy()
+      ->set_soft(false);  // Hard constraint
+
+  rpc::RequestWorkerLeaseRequest request;
+  rpc::RequestWorkerLeaseReply reply1;
+  rpc::RequestWorkerLeaseReply reply2;
+  LeaseID lease_id = LeaseID::FromRandom();
+  lease_spec.GetMutableMessage().set_lease_id(lease_id.Binary());
+  request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
+  request.set_backlog_size(1);
+  request.set_grant_or_reject(true);
+  request.set_is_selected_based_on_locality(true);
+  node_manager_->HandleRequestWorkerLease(
+      request,
+      &reply1,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(reply1.canceled(), true);
+  ASSERT_EQ(reply1.failure_type(),
+            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE);
+  request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
+  node_manager_->HandleRequestWorkerLease(
+      request,
+      &reply2,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(reply1.canceled(), reply2.canceled());
+  ASSERT_EQ(reply1.failure_type(), reply2.failure_type());
+  ASSERT_EQ(reply1.scheduling_failure_message(), reply2.scheduling_failure_message());
+}
+
+size_t GetPendingLeaseWorkerCount(const LocalLeaseManager &local_lease_manager) {
+  return local_lease_manager.waiting_lease_queue_.size() +
+         local_lease_manager.leases_to_grant_.size();
+}
+
+TEST_F(NodeManagerTest, RetryHandleCancelWorkerLeaseWhenHasLeaseRequest) {
+  auto lease_spec = BuildLeaseSpec({});
+  rpc::RequestWorkerLeaseRequest request_worker_lease_request;
+  rpc::RequestWorkerLeaseReply request_worker_lease_reply;
+  LeaseID lease_id = LeaseID::FromRandom();
+  lease_spec.GetMutableMessage().set_lease_id(lease_id.Binary());
+  request_worker_lease_request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
+  request_worker_lease_request.set_backlog_size(1);
+  request_worker_lease_request.set_grant_or_reject(true);
+  request_worker_lease_request.set_is_selected_based_on_locality(true);
+  node_manager_->HandleRequestWorkerLease(
+      request_worker_lease_request,
+      &request_worker_lease_reply,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(GetPendingLeaseWorkerCount(*local_lease_manager_), 1);
+  rpc::CancelWorkerLeaseRequest cancel_worker_lease_request;
+  cancel_worker_lease_request.set_lease_id(lease_id.Binary());
+  rpc::CancelWorkerLeaseReply cancel_worker_lease_reply1;
+  rpc::CancelWorkerLeaseReply cancel_worker_lease_reply2;
+  node_manager_->HandleCancelWorkerLease(
+      cancel_worker_lease_request,
+      &cancel_worker_lease_reply1,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(GetPendingLeaseWorkerCount(*local_lease_manager_), 0);
+  node_manager_->HandleCancelWorkerLease(
+      cancel_worker_lease_request,
+      &cancel_worker_lease_reply2,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(GetPendingLeaseWorkerCount(*local_lease_manager_), 0);
+  ASSERT_EQ(cancel_worker_lease_reply1.success(), true);
+  // Due to the message reordering case where the cancel worker lease request
+  // arrives at the raylet before the worker lease request has been received, we
+  // cannot return true on the retry since from the raylet perspective both situations are
+  // equivalent. Even if this returns false, the first request to HandleCancelWorkerLease
+  // will trigger the callback for HandleRequestWorkerLease and remove the pending lease
+  // request which prevents the CancelWorkerLease loop.
+  ASSERT_EQ(cancel_worker_lease_reply2.success(), false);
+}
+
+TEST_F(NodeManagerTest, TestHandleCancelWorkerLeaseNoLeaseIdempotent) {
+  LeaseID lease_id = LeaseID::FromRandom();
+  rpc::CancelWorkerLeaseRequest request;
+  request.set_lease_id(lease_id.Binary());
+  rpc::CancelWorkerLeaseReply reply1;
+  rpc::CancelWorkerLeaseReply reply2;
+  node_manager_->HandleCancelWorkerLease(
+      request,
+      &reply1,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(GetPendingLeaseWorkerCount(*local_lease_manager_), 0);
+  node_manager_->HandleCancelWorkerLease(
+      request,
+      &reply2,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(GetPendingLeaseWorkerCount(*local_lease_manager_), 0);
+  ASSERT_EQ(reply1.success(), false);
+  ASSERT_EQ(reply2.success(), false);
+}
 
 }  // namespace ray::raylet
 

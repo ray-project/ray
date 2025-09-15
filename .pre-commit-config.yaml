@@ -44,12 +44,39 @@ repos:
         args: [ --fix, --exit-non-zero-on-fix ]
       - id: ruff
         args: [ --select, "I", --fix, --exit-non-zero-on-fix ]
-        files: '^python/ray/serve/|^python/ray/train|^python/ray/data|^python/ray/_private/|^python/ray/llm/|^python/ray/tune/|^python/ray/includes/|^python/ray/internal/|^python/ray/ray_operator/|^python/ray/scripts/|^python/ray/streaming/|^python/ray/dag/|^python/ray/tests/'
 
+  # pydoclint-local is for local commits only due to pre-commit-hook only passing
+  # updated files to the hook and overwriting the baseline text file
   - repo: https://github.com/jsh9/pydoclint
     rev: "0.6.6"
     hooks:
       - id: pydoclint
+        name: pydoclint-local
+        stages: [pre-commit, pre-push]
+        args: [
+          --style=google,
+          --baseline=ci/lint/pydoclint-baseline.txt,
+          --exclude=thirdparty|^python/ray/serve/tests/test_config_files/syntax_error\.py$|^python/ray/_private/parameter\.py$,
+          --auto-regenerate-baseline=False,
+          # Current settings (not because we think they're right, but because we
+          # don't want a baseline the size of the codebase)
+          --arg-type-hints-in-docstring=False,
+          --skip-checking-raises=True,
+          --check-return-types=False,
+          --allow-init-docstring=True,
+          --check-class-attributes=False,
+          # --check-style-mismatch=True, # Bring this back once things are a bit cleaner
+        ]
+        types: [python]
+        files: '^python/ray/'
+
+  # pydoclint-ci is for CI, overwrites the baseline text file, and is run with the manual stage flag
+  - repo: https://github.com/jsh9/pydoclint
+    rev: "0.6.6"
+    hooks:
+      - id: pydoclint
+        name: pydoclint-ci
+        stages: [manual]
         args: [
           --style=google,
           --baseline=ci/lint/pydoclint-baseline.txt,

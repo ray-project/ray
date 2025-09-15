@@ -52,7 +52,7 @@
 #include "ray/ipc/raylet_ipc_client_interface.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
-#include "ray/raylet_client/raylet_client_interface.h"
+#include "ray/rpc/raylet/raylet_client_interface.h"
 #include "ray/util/process.h"
 #include "ray/util/shared_lru.h"
 #include "src/ray/protobuf/pubsub.pb.h"
@@ -69,7 +69,7 @@ class TaskCounter {
   enum class TaskStatusType { kPending, kRunning, kFinished };
 
  public:
-  TaskCounter();
+  explicit TaskCounter(ray::observability::MetricInterface &task_by_state_counter);
 
   void BecomeActor(const std::string &actor_name) {
     absl::MutexLock l(&mu_);
@@ -127,6 +127,14 @@ class TaskCounter {
   // Used for actor state tracking.
   std::string actor_name_ ABSL_GUARDED_BY(mu_);
   int64_t num_tasks_running_ ABSL_GUARDED_BY(mu_) = 0;
+
+  // Metric to track the number of tasks by state.
+  // Expected tags:
+  // - State: the task state, as described by rpc::TaskState proto in common.proto
+  // - Name: the name of the function called
+  // - IsRetry: whether the task is a retry
+  // - Source: component reporting, e.g., "core_worker", "executor", or "pull_manager"
+  ray::observability::MetricInterface &task_by_state_counter_;
 };
 
 struct TaskToRetry {
@@ -190,7 +198,8 @@ class CoreWorker {
              std::unique_ptr<ActorManager> actor_manager,
              instrumented_io_context &task_execution_service,
              std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
-             uint32_t pid);
+             uint32_t pid,
+             ray::observability::MetricInterface &task_by_state_counter);
 
   CoreWorker(CoreWorker const &) = delete;
 
@@ -507,6 +516,7 @@ class CoreWorker {
   /// defaults to this worker.
   /// \param[in] inline_small_object Whether to inline create this object if it's
   /// small.
+  /// \param[in] tensor_transport The tensor transport to use for the object.
   /// \return Status.
   Status CreateOwnedAndIncrementLocalRef(
       bool is_experimental_mutable_object,
@@ -516,7 +526,8 @@ class CoreWorker {
       ObjectID *object_id,
       std::shared_ptr<Buffer> *data,
       const std::unique_ptr<rpc::Address> &owner_address = nullptr,
-      bool inline_small_object = true);
+      bool inline_small_object = true,
+      rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into, for an object ID that already exists. After writing to the buffer, the
@@ -1331,9 +1342,7 @@ class CoreWorker {
             const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes =
                 nullptr);
 
-  void TaskManagerRetryTask(TaskSpecification &spec,
-                            bool object_recovery,
-                            uint32_t delay_ms);
+  void AsyncRetryTask(TaskSpecification &spec, uint32_t delay_ms);
 
  private:
   static nlohmann::json OverrideRuntimeEnv(const nlohmann::json &child,
@@ -1887,8 +1896,6 @@ class CoreWorker {
   std::unique_ptr<ShutdownCoordinator> shutdown_coordinator_;
 
   int64_t max_direct_call_object_size_;
-
-  friend class CoreWorkerTest;
 
   TaskCounter task_counter_;
 

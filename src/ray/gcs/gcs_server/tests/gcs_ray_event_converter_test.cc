@@ -19,9 +19,9 @@
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
 #include "src/ray/protobuf/common.pb.h"
-#include "src/ray/protobuf/events_base_event.pb.h"
 #include "src/ray/protobuf/events_event_aggregator_service.pb.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
+#include "src/ray/protobuf/public/events_base_event.pb.h"
 
 namespace ray {
 namespace gcs {

@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ray.data import DataIterator
+from ray.train.v2._internal.data_integration.interfaces import DatasetShardMetadata
 from ray.train.v2._internal.execution import collective_impl
 from ray.train.v2._internal.execution.context import (
     get_train_context as get_internal_train_context,
@@ -13,6 +14,7 @@ from ray.train.v2.api.context import (
     LocalTrainContext,
     TrainContext as ExternalTrainContext,
 )
+from ray.train.v2.api.report_config import CheckpointUploadMode
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +37,8 @@ class TrainFnUtils(ABC):
         metrics: Dict[str, Any],
         checkpoint: Optional["Checkpoint"] = None,
         checkpoint_dir_name: Optional[str] = None,
+        checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
+        delete_local_checkpoint_after_upload: Optional[bool] = None,
     ) -> None:
         """Upload checkpoint to remote storage and put a training result on the result queue.
 
@@ -45,6 +49,10 @@ class TrainFnUtils(ABC):
                 in this iteration. Note: If not set, the checkpoint will
                 be stored in the default storage path. If set, make sure
                 this value is unique for each iteration.
+            checkpoint_upload_mode: The manner in which we want to upload the checkpoint.
+                Defaults to uploading the checkpoint synchronously.
+                This works when no checkpoint is provided but is not useful in that case.
+            delete_local_checkpoint_after_upload: Whether to delete the checkpoint after it is uploaded.
         """
         pass
 
@@ -68,14 +76,11 @@ class TrainFnUtils(ABC):
         pass
 
     @abstractmethod
-    def get_dataset_shard(self, dataset_name: str) -> DataIterator:
+    def get_dataset_shard(self, dataset_info: DatasetShardMetadata) -> DataIterator:
         """Get the dataset shard for this training process.
 
-        This method is used by the public API function :func:`ray.train.get_dataset_shard`.
-        Users should typically call ``ray.train.get_dataset_shard()`` instead of calling this method directly.
-
         Args:
-            dataset_name: The name of the dataset to get the shard for.
+            dataset_info: The metadata of the dataset to get the shard for.
 
         Returns:
             The DataIterator shard for this worker.
@@ -123,22 +128,22 @@ class DistributedTrainFnUtils(TrainFnUtils):
         metrics: Dict[str, Any],
         checkpoint: Optional["Checkpoint"] = None,
         checkpoint_dir_name: Optional[str] = None,
+        checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
+        delete_local_checkpoint_after_upload: Optional[bool] = None,
     ) -> None:
         return get_internal_train_context().report(
-            metrics, checkpoint, checkpoint_dir_name
+            metrics,
+            checkpoint,
+            checkpoint_dir_name,
+            checkpoint_upload_mode,
+            delete_local_checkpoint_after_upload,
         )
 
     def get_checkpoint(self):
         return get_internal_train_context().get_checkpoint()
 
-    def get_dataset_shard(self, dataset_name: str) -> DataIterator:
-        from ray.train.v2._internal.data_integration.interfaces import (
-            DatasetShardMetadata,
-        )
-
-        return get_internal_train_context().get_dataset_shard(
-            DatasetShardMetadata(dataset_name=dataset_name)
-        )
+    def get_dataset_shard(self, dataset_info: DatasetShardMetadata) -> DataIterator:
+        return get_internal_train_context().get_dataset_shard(dataset_info)
 
     def get_context(self) -> DistributedTrainContext:
         return DistributedTrainContext()
@@ -174,6 +179,8 @@ class LocalTrainFnUtils(TrainFnUtils):
         metrics: Dict[str, Any],
         checkpoint: Optional["Checkpoint"] = None,
         checkpoint_dir_name: Optional[str] = None,
+        checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
+        delete_local_checkpoint_after_upload: Optional[bool] = None,
     ) -> None:
         self._last_metrics = metrics
         self._last_checkpoint = checkpoint
@@ -182,7 +189,8 @@ class LocalTrainFnUtils(TrainFnUtils):
     def get_checkpoint(self) -> Optional["Checkpoint"]:
         return self._last_checkpoint
 
-    def get_dataset_shard(self, dataset_name: str) -> DataIterator:
+    def get_dataset_shard(self, dataset_info: DatasetShardMetadata) -> DataIterator:
+        dataset_name = dataset_info.dataset_name
         assert (
             self._dataset_shards is not None and dataset_name in self._dataset_shards
         ), f"Dataset shard {dataset_name} not found."

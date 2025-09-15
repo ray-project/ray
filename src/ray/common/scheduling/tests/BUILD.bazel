@@ -1,0 +1,67 @@
+load("//bazel:ray.bzl", "ray_cc_test")
+
+ray_cc_test(
+    name = "resource_request_test",
+    size = "small",
+    srcs = [
+        "resource_request_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common/scheduling:cluster_resource_data",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "resource_set_test",
+    size = "small",
+    srcs = [
+        "resource_set_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common/scheduling:resource_set",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "resource_instance_set_test",
+    size = "small",
+    srcs = [
+        "resource_instance_set_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common/scheduling:resource_instance_set",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "scheduling_ids_test",
+    size = "small",
+    srcs = [
+        "scheduling_ids_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:ray_config",
+        "//src/ray/common/scheduling:scheduling_ids",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "label_selector_test",
+    size = "small",
+    srcs = [
+        "label_selector_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common/scheduling:label_selector",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
