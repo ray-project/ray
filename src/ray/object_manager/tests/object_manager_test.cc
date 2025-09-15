@@ -26,6 +26,7 @@
 #include "mock/ray/object_manager/object_directory.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/common.h"
@@ -45,8 +46,15 @@ class ObjectManagerTest : public ::testing::Test {
     ObjectManagerConfig config_;
     config_.object_manager_address = "127.0.0.1";
     config_.object_manager_port = 0;
+    config_.timer_freq_ms = RayConfig::instance().object_manager_timer_freq_ms();
+    config_.pull_timeout_ms = RayConfig::instance().object_manager_pull_timeout_ms();
+    config_.object_chunk_size = RayConfig::instance().object_manager_default_chunk_size();
+    config_.max_bytes_in_flight =
+        RayConfig::instance().object_manager_max_bytes_in_flight();
     config_.store_socket_name = "test_store_socket";
+    config_.push_timeout_ms = RayConfig::instance().object_manager_push_timeout_ms();
     config_.rpc_service_threads_number = 1;
+    config_.huge_pages = false;
 
     local_node_id_ = NodeID::FromRandom();
     mock_gcs_client_ = std::make_unique<gcs::MockGcsClient>();
