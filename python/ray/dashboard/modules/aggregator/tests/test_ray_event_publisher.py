@@ -1,7 +1,6 @@
 import asyncio
 import sys
 import uuid
-from typing import Optional
 
 import pytest
 from google.protobuf.timestamp_pb2 import Timestamp
@@ -26,22 +25,16 @@ class MockPublisherClient(PublisherClientInterface):
 
     def __init__(
         self,
-        publish_result: Optional[PublishStats] = None,
         batch_size: int = 1,
-        side_effect=None,
+        side_effect=lambda batch: PublishStats(True, 1, 0),
     ):
-        self.publish_result = publish_result or PublishStats(True, 1, 0)
         self.batch_size = batch_size
         self.publish_calls = []
         self._side_effect = side_effect
 
     async def publish(self, batch) -> PublishStats:
         self.publish_calls.append(batch)
-        if self._side_effect is not None:
-            if asyncio.iscoroutinefunction(self._side_effect):
-                return await self._side_effect(batch)
-            return self._side_effect(batch)
-        return self.publish_result
+        return self._side_effect(batch)
 
     def count_num_events_in_batch(self, batch) -> int:
         return self.batch_size
@@ -115,7 +108,9 @@ class TestRayEventPublisher:
     @pytest.mark.asyncio
     async def test_publish_with_retries_max_retries_exceeded(self, base_kwargs):
         """Test publish that fails all retries and records failed events."""
-        client = MockPublisherClient(publish_result=PublishStats(False, 0, 0))
+        client = MockPublisherClient(
+            side_effect=lambda batch: PublishStats(False, 0, 0)
+        )
         event_buffer = MultiConsumerEventBuffer(max_size=10, max_batch_size=10)
         publisher = RayEventPublisher(
             name=base_kwargs["name"] + str(uuid.uuid4()),
