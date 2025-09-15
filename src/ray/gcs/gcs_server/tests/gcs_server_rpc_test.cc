@@ -21,7 +21,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
-#include "ray/rpc/gcs/gcs_rpc_client.h"
+#include "ray/gcs_client/rpc_client.h"
 
 namespace ray {
 
