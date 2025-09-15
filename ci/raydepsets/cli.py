@@ -173,6 +173,16 @@ class DependencySetManager:
                         node_type="pre_hook",
                     )
                     self.build_graph.add_edge(hook_name, depset.name)
+            if depset.post_hooks:
+                for ind, hook in enumerate(depset.post_hooks):
+                    hook_name = f"{depset.name}_post_hook_{ind+1}"
+                    self.build_graph.add_node(
+                        hook_name,
+                        operation="post_hook",
+                        post_hook=hook,
+                        node_type="post_hook",
+                    )
+                    self.build_graph.add_edge(depset.name, hook_name)
 
     def subgraph_dependency_nodes(self, depset_name: str):
         dependency_nodes = networkx_ancestors(self.build_graph, depset_name)
@@ -189,10 +199,13 @@ class DependencySetManager:
             node_type = self.build_graph.nodes[node]["node_type"]
             if node_type == "pre_hook":
                 pre_hook = self.build_graph.nodes[node]["pre_hook"]
-                self.execute_pre_hook(pre_hook)
+                self.execute_hook(pre_hook, node_type)
             elif node_type == "depset":
                 depset = self.build_graph.nodes[node]["depset"]
                 self.execute_depset(depset)
+            elif node_type == "post_hook":
+                post_hook = self.build_graph.nodes[node]["post_hook"]
+                self.execute_hook(post_hook, node_type)
 
     def exec_uv_cmd(
         self, cmd: str, args: List[str], stdin: Optional[bytes] = None
@@ -204,11 +217,11 @@ class DependencySetManager:
             raise RuntimeError(f"Failed to execute command: {cmd}")
         return status.stdout
 
-    def execute_pre_hook(self, pre_hook: str):
-        status_code = subprocess.call(pre_hook, cwd=self.workspace.dir)
+    def execute_hook(self, hook: str, node_type: str):
+        status_code = subprocess.call(hook, cwd=self.workspace.dir)
         if status_code != 0:
-            raise RuntimeError(f"Failed to execute pre-hook: {pre_hook}")
-        click.echo(f"Executed pre-hook: {pre_hook}")
+            raise RuntimeError(f"Failed to execute {node_type} hook: {hook}")
+        click.echo(f"Executed {node_type} hook: {hook}")
         return status_code
 
     def execute_depset(self, depset: Depset):

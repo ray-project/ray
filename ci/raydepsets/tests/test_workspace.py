@@ -74,7 +74,16 @@ def test_parse_pre_hooks():
         workspace = Workspace(dir=tmpdir)
         config = workspace.load_config(path=Path(tmpdir) / "test.depsets.yaml")
         pre_hook_depset = get_depset_by_name(config.depsets, "pre_hook_test_depset")
-        assert pre_hook_depset.pre_hooks == ["pre-hook-test.sh"]
+        assert pre_hook_depset.pre_hooks == ["hook-test.sh"]
+
+
+def test_parse_post_hooks():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        copy_data_to_tmpdir(tmpdir)
+        workspace = Workspace(dir=tmpdir)
+        config = workspace.load_config(path=Path(tmpdir) / "test.depsets.yaml")
+        post_hook_depset = get_depset_by_name(config.depsets, "post_hook_test_depset")
+        assert post_hook_depset.post_hooks == ["hook-test.sh"]
 
 
 if __name__ == "__main__":

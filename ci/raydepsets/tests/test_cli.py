@@ -385,8 +385,8 @@ class TestCli(unittest.TestCase):
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
             assert manager.build_graph is not None
-            assert len(manager.build_graph.nodes()) == 8
-            assert len(manager.build_graph.edges()) == 4
+            assert len(manager.build_graph.nodes()) == 10
+            assert len(manager.build_graph.edges()) == 5
             # assert that the compile depsets are first
             assert (
                 manager.build_graph.nodes["general_depset__py311_cpu"]["operation"]
@@ -583,23 +583,45 @@ class TestCli(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
-            manager.execute_pre_hook("pre-hook-test.sh")
+            manager.execute_hook("hook-test.sh", "pre_hook")
 
     def test_execute_single_invalid_pre_hook(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
             with self.assertRaises(RuntimeError):
-                manager.execute_pre_hook("pre-hook-error-test.sh")
+                manager.execute_hook("hook-error-test.sh", "pre_hook")
 
     def test_execute_pre_hooks_failure_in_middle(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
             with self.assertRaises(RuntimeError):
-                manager.execute_pre_hook("pre-hook-test.sh")
-                manager.execute_pre_hook("pre-hook-error-test.sh")
-                manager.execute_pre_hook("pre-hook-test.sh")
+                manager.execute_hook("hook-test.sh", "pre_hook")
+                manager.execute_hook("hook-error-test.sh", "pre_hook")
+                manager.execute_hook("hook-test.sh", "pre_hook")
+
+    def test_execute_single_post_hook(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.execute_hook("hook-test.sh", "post_hook")
+
+    def test_execute_single_invalid_post_hook(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            with self.assertRaises(RuntimeError):
+                manager.execute_hook("hook-error-test.sh", "post_hook")
+
+    def test_execute_post_hooks_failure_in_middle(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            with self.assertRaises(RuntimeError):
+                manager.execute_hook("hook-test.sh", "post_hook")
+                manager.execute_hook("hook-error-test.sh", "post_hook")
+                manager.execute_hook("hook-test.sh", "post_hook")
 
     def test_copy_lock_files_to_temp_dir(self):
         with tempfile.TemporaryDirectory() as tmpdir:

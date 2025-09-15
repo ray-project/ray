@@ -2,4 +2,4 @@
 
 set -euo pipefail
 
-echo "Pre-hook test"
+echo "Hook test"

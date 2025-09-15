@@ -2,6 +2,6 @@
 
 set -euo pipefail
 
-echo "Pre-hook test error"
+echo "Hook test error"
 
 exit 1

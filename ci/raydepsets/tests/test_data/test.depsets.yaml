@@ -57,4 +57,11 @@ depsets:
       - requirements_test.txt
     output: requirements_compiled_pre_hook.txt
     pre_hooks:
-      - pre-hook-test.sh
+      - hook-test.sh
+  - name: post_hook_test_depset
+    operation: compile
+    requirements:
+      - requirements_test.txt
+    output: requirements_compiled_post_hook.txt
+    post_hooks:
+      - hook-test.sh
