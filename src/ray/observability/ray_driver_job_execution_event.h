@@ -28,9 +28,11 @@ class RayDriverJobExecutionEvent : public RayEvent<rpc::events::DriverJobExecuti
                              rpc::events::DriverJobExecutionEvent::State state,
                              const std::string &session_name);
 
-  std::string GetResourceId() const override;
-  void Merge(RayEvent<rpc::events::DriverJobExecutionEvent> &&other) override;
-  ray::rpc::events::RayEvent SerializeData() const override;
+  std::string GetEntityId() const override;
+
+ protected:
+  ray::rpc::events::RayEvent SerializeData() && override;
+  void MergeData(RayEvent<rpc::events::DriverJobExecutionEvent> &&other) override;
 };
 
 }  // namespace observability

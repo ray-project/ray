@@ -647,36 +647,6 @@ def test_dynamic_tensor_transport_via_options(
             ref = sender.tensor_method.options(tensor_transport="gloo").remote()
 
 
-def test_gpu_object_ref_in_list_throws_exception(ray_start_regular):
-    """Test that passing GPU ObjectRefs inside lists as task arguments raises an error."""
-
-    print("loc2")
-    actor = GPUTestActor.remote()
-    create_collective_group([actor], backend="torch_gloo")
-
-    tensor = torch.randn((1,))
-
-    # Test: GPU ref passed directly to task should work
-    gpu_ref = actor.echo.remote(tensor)
-    result = actor.double.remote(gpu_ref)
-    assert ray.get(result) == pytest.approx(tensor * 2)
-
-    # Test: GPU ref inside a list should fail during task submission
-    with pytest.raises(
-        ValueError,
-        match="Passing GPU ObjectRefs inside data structures is not yet supported",
-    ):
-        actor.double.remote([gpu_ref])
-
-    # Test: Mixed list with GPU ref and normal data should also fail
-    normal_ref = ray.put("normal_data")
-    with pytest.raises(
-        ValueError,
-        match="Passing GPU ObjectRefs inside data structures is not yet supported",
-    ):
-        actor.double.remote([gpu_ref, normal_ref])
-
-
 def test_app_error_inter_actor(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
@@ -893,6 +863,26 @@ def test_duplicate_objectref_transfer(ray_start_regular):
     assert val1 == pytest.approx(
         val2
     ), f"Results differ: result1={val1}, result2={val2}"
+
+
+def test_transfer_from_not_actor_creator(ray_start_regular):
+    @ray.remote
+    class Actor:
+        @ray.method(tensor_transport="gloo")
+        def create(self):
+            return torch.tensor([1, 2, 3])
+
+        def consume(self, obj):
+            return obj
+
+        def do_transfer(self, a1, a2):
+            create_collective_group([a1, a2], backend="torch_gloo")
+            return ray.get(a1.consume.remote(a2.create.remote()))
+
+    actor = [Actor.remote() for _ in range(3)]
+    assert ray.get(actor[2].do_transfer.remote(actor[0], actor[1])) == pytest.approx(
+        torch.tensor([1, 2, 3])
+    )
 
 
 if __name__ == "__main__":

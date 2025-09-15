@@ -27,9 +27,11 @@ class RayDriverJobDefinitionEvent
   RayDriverJobDefinitionEvent(const rpc::JobTableData &data,
                               const std::string &session_name);
 
-  std::string GetResourceId() const override;
-  void Merge(RayEvent<rpc::events::DriverJobDefinitionEvent> &&other) override;
-  ray::rpc::events::RayEvent SerializeData() const override;
+  std::string GetEntityId() const override;
+
+ protected:
+  ray::rpc::events::RayEvent SerializeData() && override;
+  void MergeData(RayEvent<rpc::events::DriverJobDefinitionEvent> &&other) override;
 };
 
 }  // namespace observability

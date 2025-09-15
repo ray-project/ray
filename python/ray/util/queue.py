@@ -1,7 +1,7 @@
 import asyncio
 import queue
-from typing import Optional, Any, List, Dict
 from collections.abc import Iterable
+from typing import Any, Dict, List, Optional
 
 import ray
 from ray.util.annotations import PublicAPI

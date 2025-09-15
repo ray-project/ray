@@ -14,7 +14,7 @@
 
 syntax = "proto3";
 
-package ray.rpc;
+package ray.rpc.events;
 
 message ActorDefinitionEvent {
   // The ID of the actor that was created.
@@ -25,7 +25,7 @@ message ActorDefinitionEvent {
   bool is_detached = 3;
   // Name of the actor.
   string name = 4;
-  // The actor's namespace. Named `ray_namespace` to avoid confusions when invoked in c++.
+  // The actor's namespace. Named `ray_namespace` to avoid conflicting with c++ keyword.
   string ray_namespace = 5;
   // Serialized runtime_env used to report in the dashboard snapshot. We need to populate
   // it here instead of grabbing it from the task spec because the task spec is cleared

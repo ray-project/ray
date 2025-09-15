@@ -19,9 +19,12 @@ namespace observability {
 
 RayDriverJobDefinitionEvent::RayDriverJobDefinitionEvent(const rpc::JobTableData &data,
                                                          const std::string &session_name)
-    : RayEvent<rpc::events::DriverJobDefinitionEvent>(session_name) {
-  event_type_ = rpc::events::RayEvent::DRIVER_JOB_DEFINITION_EVENT;
-
+    : RayEvent<rpc::events::DriverJobDefinitionEvent>(
+          rpc::events::RayEvent::GCS,
+          rpc::events::RayEvent::DRIVER_JOB_DEFINITION_EVENT,
+          rpc::events::RayEvent::INFO,
+          "",
+          session_name) {
   data_.set_job_id(data.job_id());
   data_.set_driver_pid(data.driver_pid());
   data_.set_driver_node_id(data.driver_address().node_id());
@@ -46,19 +49,17 @@ RayDriverJobDefinitionEvent::RayDriverJobDefinitionEvent(const rpc::JobTableData
       data.config().runtime_env_info().runtime_env_config().log_files());
 }
 
-std::string RayDriverJobDefinitionEvent::GetResourceId() const { return data_.job_id(); }
+std::string RayDriverJobDefinitionEvent::GetEntityId() const { return data_.job_id(); }
 
-void RayDriverJobDefinitionEvent::Merge(
+void RayDriverJobDefinitionEvent::MergeData(
     RayEvent<rpc::events::DriverJobDefinitionEvent> &&other) {
-  // Definition events are static. Merging do not change the event.
+  RAY_LOG(WARNING) << "Merge should not be called for driver job definition event.";
   return;
 }
 
-ray::rpc::events::RayEvent RayDriverJobDefinitionEvent::SerializeData() const {
+ray::rpc::events::RayEvent RayDriverJobDefinitionEvent::SerializeData() && {
   ray::rpc::events::RayEvent event;
-  event.set_source_type(rpc::events::RayEvent::GCS);
-  event.set_severity(rpc::events::RayEvent::INFO);
-  *event.mutable_driver_job_definition_event() = data_;
+  event.mutable_driver_job_definition_event()->Swap(&data_);
   return event;
 }
 

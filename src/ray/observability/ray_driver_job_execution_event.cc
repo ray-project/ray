@@ -21,8 +21,12 @@ RayDriverJobExecutionEvent::RayDriverJobExecutionEvent(
     const rpc::JobTableData &data,
     rpc::events::DriverJobExecutionEvent::State state,
     const std::string &session_name)
-    : RayEvent<rpc::events::DriverJobExecutionEvent>(session_name) {
-  event_type_ = rpc::events::RayEvent::DRIVER_JOB_EXECUTION_EVENT;
+    : RayEvent<rpc::events::DriverJobExecutionEvent>(
+          rpc::events::RayEvent::GCS,
+          rpc::events::RayEvent::DRIVER_JOB_EXECUTION_EVENT,
+          rpc::events::RayEvent::INFO,
+          "",
+          session_name) {
   ray::rpc::events::DriverJobExecutionEvent::StateTimestamp state_timestamp;
   state_timestamp.set_state(state);
   state_timestamp.mutable_timestamp()->CopyFrom(AbslTimeNanosToProtoTimestamp(
@@ -32,9 +36,9 @@ RayDriverJobExecutionEvent::RayDriverJobExecutionEvent(
   data_.set_job_id(data.job_id());
 }
 
-std::string RayDriverJobExecutionEvent::GetResourceId() const { return data_.job_id(); }
+std::string RayDriverJobExecutionEvent::GetEntityId() const { return data_.job_id(); }
 
-void RayDriverJobExecutionEvent::Merge(
+void RayDriverJobExecutionEvent::MergeData(
     RayEvent<rpc::events::DriverJobExecutionEvent> &&other) {
   auto &&other_event = static_cast<RayDriverJobExecutionEvent &&>(other);
   for (auto &state : *other_event.data_.mutable_states()) {
@@ -42,11 +46,9 @@ void RayDriverJobExecutionEvent::Merge(
   }
 }
 
-ray::rpc::events::RayEvent RayDriverJobExecutionEvent::SerializeData() const {
+ray::rpc::events::RayEvent RayDriverJobExecutionEvent::SerializeData() && {
   ray::rpc::events::RayEvent event;
-  event.set_source_type(rpc::events::RayEvent::GCS);
-  event.set_severity(rpc::events::RayEvent::INFO);
-  *event.mutable_driver_job_execution_event() = data_;
+  event.mutable_driver_job_execution_event()->Swap(&data_);
   return event;
 }
 

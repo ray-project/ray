@@ -29,18 +29,21 @@ template <typename T>
 class RayEvent : public RayEventInterface {
  public:
   void Merge(RayEventInterface &&other) override {
-    RAY_CHECK(GetResourceId() == other.GetResourceId());
-    RAY_CHECK(GetEventType() == other.GetEventType());
-    Merge(static_cast<RayEvent<T> &&>(other));
+    RAY_CHECK_EQ(GetEntityId(), other.GetEntityId());
+    RAY_CHECK_EQ(GetEventType(), other.GetEventType());
+    MergeData(static_cast<RayEvent<T> &&>(other));
   }
 
-  ray::rpc::events::RayEvent Serialize() const override {
-    ray::rpc::events::RayEvent event = SerializeData();
+  ray::rpc::events::RayEvent Serialize() && override {
+    ray::rpc::events::RayEvent event = std::move(*this).SerializeData();
     event.set_event_id(UniqueID::FromRandom().Binary());
-    event.set_session_name(session_name_);
+    event.set_source_type(source_type_);
     event.set_event_type(event_type_);
+    event.set_severity(severity_);
+    event.set_message(message_);
+    event.set_session_name(session_name_);
     event.mutable_timestamp()->CopyFrom(AbslTimeNanosToProtoTimestamp(
-        absl::ToInt64Nanoseconds(absl::Now() - absl::UnixEpoch())));
+        absl::ToInt64Nanoseconds(event_timestamp_ - absl::UnixEpoch())));
 
     return event;
   }
@@ -50,13 +53,19 @@ class RayEvent : public RayEventInterface {
   }
 
  protected:
-  RayEvent(const std::string &session_name) : session_name_(session_name) {}
-
-  T data_;  // The nested event message within the RayEvent proto.
+  RayEvent(ray::rpc::events::RayEvent::SourceType source_type,
+           ray::rpc::events::RayEvent::EventType event_type,
+           ray::rpc::events::RayEvent::Severity severity,
+           const std::string &message,
+           const std::string &session_name)
+      : source_type_(source_type),
+  ray::rpc::events::RayEvent::SourceType source_type_;
   ray::rpc::events::RayEvent::EventType event_type_;
+  ray::rpc::events::RayEvent::Severity severity_;
+  std::string message_;
   std::string session_name_;
-  virtual void Merge(RayEvent<T> &&other) = 0;
-  virtual ray::rpc::events::RayEvent SerializeData() const = 0;
+  virtual void MergeData(RayEvent<T> &&other) = 0;
+  virtual ray::rpc::events::RayEvent SerializeData() && = 0;
 };
 
 }  // namespace observability

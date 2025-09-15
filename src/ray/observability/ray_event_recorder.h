@@ -56,7 +56,7 @@ class RayEventRecorder : public RayEventRecorderInterface {
   // Lock for thread safety when modifying the buffer.
   absl::Mutex mutex_;
   // Buffer to store events before sending to the event aggregator.
-  // TODO(can-anyscale): Add a max size for the buffer and overflow recovery logic.
+  // TODO(#56391): Add a max size for the buffer and overflow recovery logic.
   std::vector<std::unique_ptr<RayEventInterface>> buffer_ ABSL_GUARDED_BY(mutex_);
   // Flag to track if exporting has been started
   bool exporting_started_ ABSL_GUARDED_BY(mutex_) = false;

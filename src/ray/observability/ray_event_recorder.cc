@@ -42,10 +42,10 @@ void RayEventRecorder::ExportEvents() {
   }
   rpc::events::AddEventsRequest request;
   rpc::events::RayEventsData ray_event_data;
-  // TODO(can-anyscale): To further optimize the performance, we can merge multiple
+  // TODO(#56391): To further optimize the performance, we can merge multiple
   // events with the same resource ID into a single event.
-  for (auto const &event : buffer_) {
-    rpc::events::RayEvent ray_event = event->Serialize();
+  for (auto &event : buffer_) {
+    rpc::events::RayEvent ray_event = std::move(*event).Serialize();
     *ray_event_data.mutable_events()->Add() = std::move(ray_event);
   }
   *request.mutable_events_data() = std::move(ray_event_data);
@@ -54,20 +54,13 @@ void RayEventRecorder::ExportEvents() {
   event_aggregator_client_.AddEvents(
       request, [](Status status, rpc::events::AddEventsReply reply) {
         if (!status.ok()) {
-          // TODO(can-anyscale): Add a metric to track the number of failed events. Also
+          // TODO(#56391): Add a metric to track the number of failed events. Also
           // add logic for error recovery.
           RAY_LOG(ERROR) << "Failed to record ray event: " << status.ToString();
-        }
-      });
-}
-
-void RayEventRecorder::AddEvents(
     std::vector<std::unique_ptr<RayEventInterface>> &&data_list) {
   absl::MutexLock lock(&mutex_);
-  for (auto &data : data_list) {
-    buffer_.emplace_back(std::move(data));
+  buffer_.reserve(buffer_.size() + data_list.size());
   }
-}
 
 }  // namespace observability
 }  // namespace ray

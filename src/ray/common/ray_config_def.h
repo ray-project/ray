@@ -334,7 +334,9 @@ RAY_CONFIG(uint64_t, object_manager_default_chunk_size, 5 * 1024 * 1024)
 
 /// The maximum number of outbound bytes to allow to be outstanding. This avoids
 /// excessive memory usage during object broadcast to many receivers.
-RAY_CONFIG(int64_t, object_manager_max_bytes_in_flight, (int64_t)2 * 1024 * 1024 * 1024)
+RAY_CONFIG(uint64_t,
+           object_manager_max_bytes_in_flight,
+           ((uint64_t)2) * 1024 * 1024 * 1024)
 
 /// Maximum number of ids in one batch to send to GCS to delete keys.
 RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000)
@@ -527,6 +529,10 @@ RAY_CONFIG(std::string, metric_cardinality_level, "legacy")
 /// Whether enable OpenTelemetry as the metrics collection backend. The default is
 /// using OpenCensus.
 RAY_CONFIG(bool, enable_open_telemetry, false)
+
+/// Whether to enable Ray Event as the event collection backend. The default is
+/// using the Export API.
+RAY_CONFIG(bool, enable_ray_event, false)
 
 /// Comma separated list of components we enable grpc metrics collection for.
 /// Only effective if `enable_metrics_collection` is also true. Will have some performance
@@ -831,9 +837,15 @@ RAY_CONFIG(std::string, REDIS_SERVER_NAME, "")
 //  it will apply to all methods.
 RAY_CONFIG(std::string, testing_asio_delay_us, "")
 
-///  To use this, simply do
-///      export
-///      RAY_testing_rpc_failure="method1=max_num_failures:req_failure_prob:resp_failure_prob,method2=max_num_failures:req_failure_prob:resp_failure_prob"
+/// To use this, simply do
+///     export
+///     RAY_testing_rpc_failure="method1=max_num_failures:req_failure_prob:resp_failure_prob,method2=max_num_failures:req_failure_prob:resp_failure_prob"
+/// If you want to test all rpc failures you can use * as the method name and you can set
+/// -1 max_num_failures to have unlimited failures.
+/// Ex. unlimited failures for all rpc's with 25% request failures and 50% response
+/// failures.
+///     export RAY_testing_rpc_failure="*=-1:25:50"
+/// NOTE: Setting the wildcard will override any configuration for other methods.
 RAY_CONFIG(std::string, testing_rpc_failure, "")
 
 /// The following are configs for the health check. They are borrowed
