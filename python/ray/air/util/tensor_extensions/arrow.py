@@ -1126,8 +1126,8 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
         Convert an ExtensionScalar to a tensor element.
         """
 
-        # Handle None/null values (e.g., from outer joins)
-        if scalar.value is None or not scalar.is_valid:
+        # Handle None/null values
+        if scalar.value is None:
             return None
 
         data = scalar.value.get("data")
