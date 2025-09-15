@@ -358,6 +358,32 @@ def test_ray_init_with_resource_isolation_override_defaults(monkeypatch, ray_shu
     )
 
 
+def test_ray_init_with_correct_events_export_addr_expect_set_correctly(ray_shutdown):
+    ray.init(events_export_address="http://localhost:8000")
+    global_node = ray._private.worker._global_node
+    assert global_node.events_export_address == "http://localhost:8000"
+
+
+def test_ray_init_with_incorrect_events_export_addr_expect_error(ray_shutdown):
+    with pytest.raises(ValueError, match="Invalid events export address: invalid-url."):
+        ray.init(events_export_address="invalid-url")
+
+
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --events-export-address http://localhost:8000"],
+    indirect=True,
+)
+def test_ray_init_connect_to_existing_cluster_with_events_export_addr_expect_error(
+    call_ray_start, ray_shutdown
+):
+    with pytest.raises(
+        ValueError,
+        match="_events_export_address cannot be configured when connecting to an existing cluster.",
+    ):
+        ray.init(address=call_ray_start, events_export_address="http://localhost:8000")
+
+
 @pytest.fixture
 def runtime_env_working_dir():
     with tempfile.TemporaryDirectory() as tmp_dir:

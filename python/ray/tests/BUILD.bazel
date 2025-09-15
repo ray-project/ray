@@ -457,6 +457,7 @@ py_test_module_list(
     size = "medium",
     files = [
         "test_bundle_label_selector.py",
+        "test_http_utils.py",
         "test_label_scheduling.py",
         "test_minimal_install.py",
         "test_path_utils.py",

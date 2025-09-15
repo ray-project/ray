@@ -1560,6 +1560,7 @@ def start_raylet(
     redis_password: Optional[str] = None,
     metrics_agent_port: Optional[int] = None,
     metrics_export_port: Optional[int] = None,
+    events_export_address: Optional[str] = None,
     dashboard_agent_listen_port: Optional[int] = None,
     runtime_env_agent_port: Optional[int] = None,
     use_valgrind: bool = False,
@@ -1623,6 +1624,7 @@ def start_raylet(
         redis_password: The password to use when connecting to Redis.
         metrics_agent_port: The port where metrics agent is bound to.
         metrics_export_port: The port at which metrics are exposed to.
+        events_export_address: An HTTP endpoint to send Ray events to. If not provided, events will not be sent.
         dashboard_agent_listen_port: The port at which the dashboard agent
             listens to for HTTP.
         runtime_env_agent_port: The port at which the runtime env agent
@@ -1832,6 +1834,11 @@ def start_raylet(
         # ray. We should restrict the features within dashboard agent
         # that requires additional dependencies to be downloaded.
         dashboard_agent_command.append("--minimal")
+
+    if events_export_address:
+        dashboard_agent_command.append(
+            f"--events-export-address={events_export_address}"
+        )
 
     runtime_env_agent_command = [
         *_build_python_executable_command_memory_profileable(
