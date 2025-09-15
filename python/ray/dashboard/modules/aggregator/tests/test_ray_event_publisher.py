@@ -1,7 +1,6 @@
 import asyncio
 import sys
 import uuid
-from typing import Optional
 
 import pytest
 from google.protobuf.timestamp_pb2 import Timestamp

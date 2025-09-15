@@ -39,6 +39,7 @@ from ray.core.generated.events_event_aggregator_service_pb2 import (
     TaskEventsMetadata,
 )
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
+from ray.dashboard.modules.aggregator.constants import publisher_tag_key
 from ray.dashboard.modules.aggregator.tests.test_aggregator_agent import (
     get_event_aggregator_grpc_stub,
 )
@@ -511,14 +512,14 @@ def test_metrics_export_event_aggregator_agent(
         metrics_names = metric_descriptors.keys()
         event_aggregator_metrics = [
             "ray_aggregator_agent_events_received_total",
-            "ray_aggregator_agent_http_publisher_published_events_total",
-            "ray_aggregator_agent_http_publisher_filtered_events_total",
-            "ray_aggregator_agent_http_publisher_queue_dropped_events_total",
-            "ray_aggregator_agent_http_publisher_consecutive_failures_since_last_success",
-            "ray_aggregator_agent_http_publisher_time_since_last_success_seconds",
-            "ray_aggregator_agent_http_publisher_publish_duration_seconds_bucket",
-            "ray_aggregator_agent_http_publisher_publish_duration_seconds_count",
-            "ray_aggregator_agent_http_publisher_publish_duration_seconds_sum",
+            "ray_aggregator_agent_published_events_total",
+            "ray_aggregator_agent_filtered_events_total",
+            "ray_aggregator_agent_queue_dropped_events_total",
+            "ray_aggregator_agent_consecutive_failures_since_last_success",
+            "ray_aggregator_agent_time_since_last_success_seconds",
+            "ray_aggregator_agent_publish_latency_seconds_bucket",
+            "ray_aggregator_agent_publish_latency_seconds_count",
+            "ray_aggregator_agent_publish_latency_seconds_sum",
         ]
         return all(metric in metrics_names for metric in event_aggregator_metrics)
 
@@ -526,15 +527,30 @@ def test_metrics_export_event_aggregator_agent(
         _, _, metric_samples = fetch_prometheus(prom_addresses)
         expected_metrics_values = {
             "ray_aggregator_agent_events_received_total": 3.0,
-            "ray_aggregator_agent_http_publisher_published_events_total": 1.0,
-            "ray_aggregator_agent_http_publisher_filtered_events_total": 1.0,
-            "ray_aggregator_agent_http_publisher_queue_dropped_events_total": 1.0,
         }
         for descriptor, expected_value in expected_metrics_values.items():
             samples = [m for m in metric_samples if m.name == descriptor]
             if not samples:
                 return False
             if samples[0].value != expected_value:
+                return False
+        return True
+
+    def test_case_publisher_specific_metrics_correct(publisher_name: str):
+        _, _, metric_samples = fetch_prometheus(prom_addresses)
+        expected_metrics_values = {
+            "ray_aggregator_agent_published_events_total": 1.0,
+            "ray_aggregator_agent_filtered_events_total": 1.0,
+            "ray_aggregator_agent_queue_dropped_events_total": 1.0,
+        }
+        for descriptor, expected_value in expected_metrics_values.items():
+            samples = [m for m in metric_samples if m.name == descriptor]
+            if not samples:
+                return False
+            if (
+                samples[0].value != expected_value
+                or samples[0].labels[publisher_tag_key] != publisher_name
+            ):
                 return False
         return True
 
@@ -586,6 +602,12 @@ def test_metrics_export_event_aggregator_agent(
     wait_for_condition(test_case_stats_exist, timeout=30, retry_interval_ms=1000)
 
     wait_for_condition(test_case_value_correct, timeout=30, retry_interval_ms=1000)
+
+    wait_for_condition(
+        lambda: test_case_publisher_specific_metrics_correct("http_publisher"),
+        timeout=30,
+        retry_interval_ms=1000,
+    )
 
 
 def test_operation_stats(monkeypatch, shutdown_only):

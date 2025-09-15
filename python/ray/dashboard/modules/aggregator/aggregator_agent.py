@@ -4,7 +4,6 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 
 import ray
-from ray.dashboard.modules.aggregator.constants import aggregator_agent_metric_prefix
 import ray.dashboard.utils as dashboard_utils
 from ray._private import ray_constants
 from ray._private.telemetry.open_telemetry_metric_recorder import (
@@ -14,6 +13,10 @@ from ray.core.generated import (
     events_base_event_pb2,
     events_event_aggregator_service_pb2,
     events_event_aggregator_service_pb2_grpc,
+)
+from ray.dashboard.modules.aggregator.constants import (
+    aggregator_agent_metric_prefix,
+    publisher_tag_key,
 )
 from ray.dashboard.modules.aggregator.multi_consumer_event_buffer import (
     MultiConsumerEventBuffer,
@@ -95,6 +98,7 @@ class AggregatorAgent(
             max_size=MAX_EVENT_BUFFER_SIZE,
             max_batch_size=MAX_EVENT_SEND_BATCH_SIZE,
             common_metric_tags=self._common_tags,
+            consumer_tag_key=publisher_tag_key,
         )
         self._executor = ThreadPoolExecutor(
             max_workers=THREAD_POOL_EXECUTOR_MAX_WORKERS,
