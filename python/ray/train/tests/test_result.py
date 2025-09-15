@@ -92,7 +92,12 @@ def test_result_restore(ray_start_4_cpus, tmpdir, mock_s3_bucket_uri, storage, m
 
     # Find the trial directory to restore
     exp_dir = str(URI(storage_path) / exp_name)
-    fs, fs_exp_dir = pyarrow.fs.FileSystem.from_uri(exp_dir)
+    # Handle ABFSS URIs specially since PyArrow doesn't natively support them
+    if exp_dir.startswith("abfss://"):
+        from ray.train._internal.storage import _create_abfss_filesystem
+        fs, fs_exp_dir = _create_abfss_filesystem(exp_dir)
+    else:
+        fs, fs_exp_dir = pyarrow.fs.FileSystem.from_uri(exp_dir)
     for item in fs.get_file_info(pyarrow.fs.FileSelector(fs_exp_dir)):
         if item.type == pyarrow.fs.FileType.Directory and item.base_name.startswith(
             "TorchTrainer"
