@@ -80,15 +80,13 @@ ray_cc_library(
     name = "python_gcs_subscriber",
     srcs = ["python_gcs_subscriber.cc"],
     hdrs = ["python_gcs_subscriber.h"],
-    implementation_deps = [
-        "//src/ray/rpc:gcs_client",
-        "@com_github_grpc_grpc//:grpc++",
-    ],
     deps = [
         "//src/ray/common:status",
+        "//src/ray/gcs_client:rpc_client",
         "//src/ray/protobuf:gcs_service_cc_proto",
         "//src/ray/protobuf:pubsub_cc_proto",
         "//src/ray/util:visibility",
+        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/synchronization",
     ],
 )

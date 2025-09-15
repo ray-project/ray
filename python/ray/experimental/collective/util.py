@@ -1,15 +1,14 @@
-from typing import Tuple, TYPE_CHECKING
-from contextlib import closing
 import socket
+from contextlib import closing
+from typing import TYPE_CHECKING, Tuple
 
 import ray
-
-from ray.util.collective.types import Backend
-from ray.experimental.collective.tensor_transport_manager import TensorTransportManager
-from ray.experimental.collective.nixl_tensor_transport import NixlTensorTransport
 from ray.experimental.collective.collective_tensor_transport import (
     CollectiveTensorTransport,
 )
+from ray.experimental.collective.nixl_tensor_transport import NixlTensorTransport
+from ray.experimental.collective.tensor_transport_manager import TensorTransportManager
+from ray.util.collective.types import Backend
 
 if TYPE_CHECKING:
     import torch
