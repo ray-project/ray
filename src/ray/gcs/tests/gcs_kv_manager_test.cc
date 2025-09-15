@@ -22,9 +22,9 @@
 
 #include "gtest/gtest.h"
 #include "ray/common/test_utils.h"
-#include "ray/gcs/store_client_kv.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
+#include "ray/gcs/store_client_kv.h"
 
 class GcsKVManagerTest : public ::testing::TestWithParam<std::string> {
  public:
