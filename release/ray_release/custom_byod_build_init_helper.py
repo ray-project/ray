@@ -4,7 +4,6 @@ from ray_release.configs.global_config import get_global_config
 from ray_release.logger import logger
 from ray_release.test import Test
 import hashlib
-import os
 
 
 def generate_custom_build_step_key(image: str) -> str:

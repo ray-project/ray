@@ -118,7 +118,6 @@ def get_step(
     global_config: Optional[str] = None,
 ):
     env = env or {}
-    config = get_global_config()
     step = copy.deepcopy(DEFAULT_STEP_TEMPLATE)
 
     cmd = [
