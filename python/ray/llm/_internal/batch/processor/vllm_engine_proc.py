@@ -76,7 +76,7 @@ def build_vllm_engine_processor(
     """Construct a Processor and configure stages.
     Args:
         config: The configuration for the processor.
-        chat_template_kwargs: The optional kwargs to pass apply_chat_template.
+        chat_template_kwargs: The optional kwargs to pass to apply_chat_template.
         preprocess: An optional lambda function that takes a row (dict) as input
             and returns a preprocessed row (dict). The output row must contain the
             required fields for the following processing stages.
