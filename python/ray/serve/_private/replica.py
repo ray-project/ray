@@ -234,7 +234,7 @@ class ReplicaMetricsManager:
         self.record_autoscaling_stats_failed_counter = metrics.Counter(
             "serve_record_autoscaling_stats_failed",
             description="The number of errored record_autoscaling_stats invocations.",
-            tag_keys=("app_name", "deployment_name", "replica_id"),
+            tag_keys=("app_name", "deployment_name", "replica_id", "exception_name"),
         )
 
         self.set_autoscaling_config(autoscaling_config)
