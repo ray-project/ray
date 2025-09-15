@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/gcs_client/gcs_client.h"
 
 #include <chrono>
 #include <memory>
@@ -24,7 +24,7 @@
 
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/ray_config.h"
-#include "ray/gcs/gcs_client/accessor.h"
+#include "ray/gcs_client/accessor.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/util/network_util.h"
 
