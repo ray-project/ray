@@ -19,6 +19,7 @@ from ray._common.pydantic_compat import (
 from ray._common.utils import resources_from_ray_options
 from ray._private.serialization import pickle_dumps
 from ray.serve._private.constants import (
+    DEFAULT_CONSTRUCTOR_RETRY_COUNT,
     DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
     DEFAULT_HEALTH_CHECK_PERIOD_S,
@@ -123,6 +124,8 @@ class DeploymentConfig(BaseModel):
         user_configured_option_names: The names of options manually
             configured by the user.
         request_router_config: Configuration for deployment request router.
+        max_constructor_retry_count: Maximum number of times to retry the
+            deployment constructor. Defaults to 20.
     """
 
     num_replicas: Optional[NonNegativeInt] = Field(
@@ -182,6 +185,11 @@ class DeploymentConfig(BaseModel):
 
     logging_config: Optional[dict] = Field(
         default=None,
+        update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
+    )
+
+    max_constructor_retry_count: PositiveInt = Field(
+        default=DEFAULT_CONSTRUCTOR_RETRY_COUNT,
         update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
     )
 

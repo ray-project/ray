@@ -1865,8 +1865,15 @@ class DeploymentState:
 
     @property
     def _failed_to_start_threshold(self) -> int:
+        # Use global override if set, otherwise use deployment config
+        base_retry_count = (
+            MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT
+            if MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT is not None
+            else self._target_state.info.deployment_config.max_constructor_retry_count
+        )
+
         return min(
-            MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
+            base_retry_count,
             self._target_state.target_num_replicas * MAX_PER_REPLICA_RETRY_COUNT,
         )
 
