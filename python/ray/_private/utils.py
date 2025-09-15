@@ -235,9 +235,11 @@ def set_omp_num_threads_if_unset() -> bool:
     Returns True if OMP_NUM_THREADS is set in this function.
 
     """
+    print("set_omp_num_threads_if_unset start")
     num_threads_from_env = os.environ.get("OMP_NUM_THREADS")
     if num_threads_from_env is not None:
         # No ops if it's set
+        print("set_omp_num_threads_if_unset end")
         return False
 
     # If unset, try setting the correct CPU count assigned.
@@ -263,6 +265,7 @@ def set_omp_num_threads_if_unset() -> bool:
     # For num_cpus >= 1: Set to the floor of the actual assigned cpus.
     omp_num_threads = max(math.floor(num_assigned_cpus), 1)
     os.environ["OMP_NUM_THREADS"] = str(omp_num_threads)
+    print("set_omp_num_threads_if_unset end")
     return True
 
 
@@ -274,6 +277,7 @@ def set_visible_accelerator_ids() -> Mapping[str, Optional[str]]:
     """
     from ray._private.ray_constants import env_bool
 
+    print("set_visible_accelerator_ids start")
     original_visible_accelerator_env_vars = {}
     override_on_zero = env_bool(
         ray._private.accelerators.RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO_ENV_VAR,
@@ -293,6 +297,7 @@ def set_visible_accelerator_ids() -> Mapping[str, Optional[str]]:
             resource_name
         ).set_current_process_visible_accelerator_ids(accelerator_ids)
 
+    print("set_visible_accelerator_ids end")
     return original_visible_accelerator_env_vars
 
 
@@ -300,11 +305,13 @@ def reset_visible_accelerator_env_vars(
     original_visible_accelerator_env_vars: Mapping[str, Optional[str]]
 ) -> None:
     """Reset the visible accelerator env vars to the original values."""
+    print("reset_visible_accelerator_env_vars start")
     for env_var, env_value in original_visible_accelerator_env_vars.items():
         if env_value is None:
             os.environ.pop(env_var, None)
         else:
             os.environ[env_var] = env_value
+    print("reset_visible_accelerator_env_vars end")
 
 
 class Unbuffered(object):

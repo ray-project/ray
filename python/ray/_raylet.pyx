@@ -2311,7 +2311,9 @@ cdef execute_task_with_cancellation_handler(
                 ray._private.utils.reset_visible_accelerator_env_vars(original_visible_accelerator_env_vars)
             if omp_num_threads_overriden:
                 # Reset the OMP_NUM_THREADS environ if it was set.
+                print("pop omp start")
                 os.environ.pop("OMP_NUM_THREADS", None)
+                print("pop omp end")
 
 
     if execution_info.max_calls != 0:

@@ -26,6 +26,8 @@ export BAZEL_PATH="$HOME"/bin/bazel
 # This is required for building with bazel.
 sudo ln -sf "/opt/python/${PYTHON}/bin/python3" /usr/local/bin/python3
 
+export RAY_DEBUG_BUILD=debug
+
 # build ray wheel
 PATH="/opt/python/${PYTHON}/bin:$PATH" RAY_INSTALL_JAVA=0 \
 "/opt/python/${PYTHON}/bin/python" -m pip wheel -v -w dist . --no-deps
