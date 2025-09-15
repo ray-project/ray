@@ -45,7 +45,7 @@ class PublisherTest : public ::testing::Test {
             rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
             rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
         },
-        /*periodical_runner=*/*periodical_runner_,
+        /*periodical_runner=*/periodical_runner_.get(),
         /*get_time_ms=*/[this]() { return current_time_; },
         /*subscriber_timeout_ms=*/subscriber_timeout_ms_,
         /*batch_size*/ 100,

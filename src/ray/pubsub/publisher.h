@@ -255,12 +255,12 @@ class Publisher : public PublisherInterface {
   /// Check out CheckDeadSubscribers for more details.
   /// \param publish_batch_size The batch size of published messages.
   Publisher(const std::vector<rpc::ChannelType> &channels,
-            PeriodicalRunner &periodical_runner,
+            PeriodicalRunnerInterface *periodical_runner,
             std::function<double()> get_time_ms,
             const uint64_t subscriber_timeout_ms,
             int64_t publish_batch_size,
             UniqueID publisher_id = NodeID::FromRandom())
-      : periodical_runner_(&periodical_runner),
+      : periodical_runner_(periodical_runner),
         get_time_ms_(std::move(get_time_ms)),
         subscriber_timeout_ms_(subscriber_timeout_ms),
         publish_batch_size_(publish_batch_size),
@@ -352,7 +352,7 @@ class Publisher : public PublisherInterface {
   // Periodic runner to invoke CheckDeadSubscribers.
   // The pointer must outlive the Publisher.
   // Nonnull in production, may be nullptr in tests.
-  PeriodicalRunner *periodical_runner_;
+  PeriodicalRunnerInterface *periodical_runner_;
 
   /// Callback to get the current time.
   std::function<double()> get_time_ms_;

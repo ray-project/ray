@@ -25,9 +25,9 @@
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/time/clock.h"
 #include "fakes/ray/common/asio/fake_periodical_runner.h"
 #include "fakes/ray/object_manager/plasma/fake_plasma_client.h"
-#include "fakes/ray/pubsub/publisher.h"
 #include "fakes/ray/pubsub/subscriber.h"
 #include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
@@ -48,6 +48,7 @@
 #include "ray/core_worker/task_submission/normal_task_submitter.h"
 #include "ray/ipc/fake_raylet_ipc_client.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/pubsub/publisher.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 
 namespace ray {
@@ -125,15 +126,24 @@ class CoreWorkerTest : public ::testing::Test {
     rpc_address_.set_node_id(NodeID::FromRandom().Binary());
     rpc_address_.set_worker_id(worker_context->GetWorkerID().Binary());
 
-    auto fake_object_info_publisher = std::make_unique<pubsub::FakePublisher>();
-    auto fake_object_info_subscriber = std::make_unique<pubsub::FakeSubscriber>();
+    fake_periodical_runner_ = std::make_unique<FakePeriodicalRunner>();
 
-    // Store pointer to fake publisher for direct access in tests
-    fake_object_info_publisher_ = fake_object_info_publisher.get();
+    auto object_info_publisher = std::make_unique<pubsub::Publisher>(
+        /*channels=*/
+        std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                                      rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+                                      rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
+        /*periodical_runner=*/fake_periodical_runner_.get(),
+        /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
+        /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
+        /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
+        worker_context->GetWorkerID());
+
+    auto fake_object_info_subscriber = std::make_unique<pubsub::FakeSubscriber>();
 
     reference_counter_ = std::make_shared<ReferenceCounter>(
         rpc_address_,
-        fake_object_info_publisher.get(),
+        object_info_publisher.get(),
         fake_object_info_subscriber.get(),
         [](const NodeID &) { return false; },
         false);
@@ -248,7 +258,7 @@ class CoreWorkerTest : public ::testing::Test {
                                                 task_manager_,
                                                 std::move(actor_creator),
                                                 std::move(actor_task_submitter),
-                                                std::move(fake_object_info_publisher),
+                                                std::move(object_info_publisher),
                                                 std::move(fake_object_info_subscriber),
                                                 std::move(lease_request_rate_limiter),
                                                 std::move(normal_task_submitter),
@@ -276,7 +286,7 @@ class CoreWorkerTest : public ::testing::Test {
   std::shared_ptr<TaskManager> task_manager_;
   std::shared_ptr<CoreWorker> core_worker_;
   ray::observability::FakeMetric fake_task_by_state_counter_;
-  pubsub::FakePublisher *fake_object_info_publisher_;
+  std::unique_ptr<FakePeriodicalRunner> fake_periodical_runner_;
 };
 
 std::shared_ptr<RayObject> MakeRayObject(const std::string &data_str,
