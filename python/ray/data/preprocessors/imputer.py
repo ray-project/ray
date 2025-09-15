@@ -1,6 +1,6 @@
 from collections import Counter
 from numbers import Number
-from typing import Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -107,6 +107,7 @@ class SimpleImputer(Preprocessor):
         *,
         output_columns: Optional[List[str]] = None,
     ):
+        super().__init__()
         self.columns = columns
         self.strategy = strategy
         self.fill_value = fill_value
@@ -131,10 +132,19 @@ class SimpleImputer(Preprocessor):
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         if self.strategy == "mean":
-            aggregates = [Mean(col) for col in self.columns]
-            self.stats_ = dataset.aggregate(*aggregates)
+            self.stat_computation_plan.add_aggregator(
+                aggregator_fn=Mean, columns=self.columns
+            )
         elif self.strategy == "most_frequent":
-            self.stats_ = _get_most_frequent_values(dataset, *self.columns)
+            self.stat_computation_plan.add_callable_stat(
+                stat_fn=lambda key_gen: _get_most_frequent_values(
+                    dataset=dataset,
+                    columns=self.columns,
+                    key_gen=key_gen,
+                ),
+                stat_key_fn=lambda col: f"most_frequent({col})",
+                columns=self.columns,
+            )
 
         return self
 
@@ -192,11 +202,11 @@ class SimpleImputer(Preprocessor):
 
 
 def _get_most_frequent_values(
-    dataset: Dataset, *columns: str
+    dataset: Dataset,
+    columns: List[str],
+    key_gen: Callable[[str], str],
 ) -> Dict[str, Union[str, Number]]:
-    columns = list(columns)
-
-    def get_pd_value_counts(df: pd.DataFrame) -> List[Dict[str, Counter]]:
+    def get_pd_value_counts(df: pd.DataFrame) -> Dict[str, List[Counter]]:
         return {col: [Counter(df[col].value_counts().to_dict())] for col in columns}
 
     value_counts = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
@@ -207,6 +217,6 @@ def _get_most_frequent_values(
                 final_counters[col] += counter
 
     return {
-        f"most_frequent({column})": final_counters[column].most_common(1)[0][0]
+        key_gen(column): final_counters[column].most_common(1)[0][0]  # noqa
         for column in columns
     }
