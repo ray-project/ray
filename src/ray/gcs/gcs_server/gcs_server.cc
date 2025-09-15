@@ -316,13 +316,13 @@ void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
   gcs_node_manager_ =
       std::make_unique<GcsNodeManager>(gcs_publisher_.get(),
                                        gcs_table_storage_.get(),
-                                       io_context_provider_.GetDefaultIOContext(),
+                                       io_context_provider_.GetIOContext<GcsNodeManager>(),
                                        &raylet_client_pool_,
                                        rpc_server_.GetClusterId());
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::NodeInfoGrpcService>(
-      io_context_provider_.GetDefaultIOContext(),
+      io_context_provider_.GetIOContext<GcsNodeManager>(),
       *gcs_node_manager_,
       RayConfig::instance().gcs_max_active_rpcs_per_handler()));
 }

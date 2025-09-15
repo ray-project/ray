@@ -41,13 +41,9 @@ struct GcsServerIOContextPolicy {
       return IndexOf("pubsub_io_context");
     } else if constexpr (std::is_same_v<T, syncer::RaySyncer>) {
       return IndexOf("ray_syncer_io_context");
-    } else if constexpr (std::is_same_v<T, GcsInternalKVManager>) {
+    } else {
       // default io context
       return -1;
-    } else {
-      // Due to if-constexpr limitations, this have to be in an else block.
-      // Using this template to put T into compile error message.
-      static_assert(AlwaysFalse<T>, "unknown type");
     }
   }
 
