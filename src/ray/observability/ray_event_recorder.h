@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "absl/container/inlined_vector.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "google/protobuf/timestamp.pb.h"
@@ -21,6 +22,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/observability/ray_event_interface.h"
 #include "ray/observability/ray_event_recorder_interface.h"
+#include "ray/observability/ray_metric_interface.h"
 #include "ray/rpc/event_aggregator_client.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/public/events_base_event.pb.h"
@@ -38,7 +40,8 @@ namespace observability {
 class RayEventRecorder : public RayEventRecorderInterface {
  public:
   RayEventRecorder(rpc::EventAggregatorClient &event_aggregator_client,
-                   instrumented_io_context &io_service);
+                   instrumented_io_context &io_service,
+                   ray::observability::MetricInterface &dropped_events_counter);
   virtual ~RayEventRecorder() = default;
 
   // Start exporting events to the event aggregator by periodically sending events to
@@ -55,9 +58,14 @@ class RayEventRecorder : public RayEventRecorderInterface {
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
   // Lock for thread safety when modifying the buffer.
   absl::Mutex mutex_;
-  // Buffer to store events before sending to the event aggregator.
-  // TODO(#56391): Add a max size for the buffer and overflow recovery logic.
-  std::vector<std::unique_ptr<RayEventInterface>> buffer_ ABSL_GUARDED_BY(mutex_);
+  
+  // Bounded queue to store events before sending to the event aggregator.
+  // When the queue is full, old events are dropped to make room for new ones.
+  // Using InlinedVector for better performance and memory locality. The inline capacity 
+  // is 10% of the max buffer size.
+  size_t max_buffer_size_;
+  absl::InlinedVector<std::unique_ptr<RayEventInterface>, max_buffer_size_ / 10> buffer_ ABSL_GUARDED_BY(mutex_);
+  ray::observability::MetricInterface &dropped_events_counter_;
   // Flag to track if exporting has been started
   bool exporting_started_ ABSL_GUARDED_BY(mutex_) = false;
   // Export events to the event aggregator. This is called periodically by the

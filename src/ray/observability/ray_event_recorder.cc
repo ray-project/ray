@@ -19,10 +19,15 @@
 namespace ray {
 namespace observability {
 
+using std::literals::operator""sv;
+
 RayEventRecorder::RayEventRecorder(rpc::EventAggregatorClient &event_aggregator_client,
-                                   instrumented_io_context &io_service)
+                                   instrumented_io_context &io_service,
+                                   ray::observability::MetricInterface &dropped_events_counter)
     : event_aggregator_client_(event_aggregator_client),
-      periodical_runner_(PeriodicalRunner::Create(io_service)) {}
+      periodical_runner_(PeriodicalRunner::Create(io_service)),
+      max_buffer_size_(RayConfig::instance().ray_event_recorder_max_buffer_size()),
+      dropped_events_counter_(dropped_events_counter) {}
 
 void RayEventRecorder::StartExportingEvents() {
   absl::MutexLock lock(&mutex_);
@@ -64,7 +69,17 @@ void RayEventRecorder::ExportEvents() {
 void RayEventRecorder::AddEvents(
     std::vector<std::unique_ptr<RayEventInterface>> &&data_list) {
   absl::MutexLock lock(&mutex_);
-  buffer_.reserve(buffer_.size() + data_list.size());
+  
+  // If adding all events would exceed capacity, remove enough old events
+  size_t new_size = buffer_.size() + data_list.size();
+  if (new_size > max_buffer_size_) {
+    size_t events_to_remove = new_size - max_buffer_size_;
+    // Remove oldest events from the front
+    buffer_.erase(buffer_.begin(), buffer_.begin() + events_to_remove);
+    dropped_events_counter_.Record(events_to_remove, {{"Source"sv, "gcs"}});
+  }
+  
+  // Add all new events at once
   for (auto &data : data_list) {
     buffer_.emplace_back(std::move(data));
   }

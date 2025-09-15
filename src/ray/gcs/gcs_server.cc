@@ -57,7 +57,8 @@ inline std::ostream &operator<<(std::ostream &str, GcsServer::StorageType val) {
 }
 
 GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
-                     instrumented_io_context &main_service)
+                     instrumented_io_context &main_service,
+                     ray::observability::MetricInterface &event_recorder_dropped_events_counter)
     : io_context_provider_(main_service),
       config_(config),
       storage_type_(GetStorageType()),
@@ -122,7 +123,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           config_.metrics_agent_port, event_aggregator_client_call_manager_)),
       ray_event_recorder_(std::make_unique<observability::RayEventRecorder>(
           *event_aggregator_client_,
-          io_context_provider_.GetIOContext<observability::RayEventRecorder>())),
+          io_context_provider_.GetIOContext<observability::RayEventRecorder>(),
+          event_recorder_dropped_events_counter_)),
       pubsub_periodical_runner_(PeriodicalRunner::Create(
           io_context_provider_.GetIOContext<pubsub::GcsPublisher>())),
       periodical_runner_(

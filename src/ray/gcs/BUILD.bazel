@@ -537,6 +537,7 @@ ray_cc_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":gcs_server_lib",
+        "//src/ray/core_worker:metrics",
         "//src/ray/stats:stats_lib",
         "//src/ray/util:event",
         "//src/ray/util:raii",

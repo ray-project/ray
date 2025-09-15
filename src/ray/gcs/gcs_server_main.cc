@@ -162,7 +162,9 @@ int main(int argc, char *argv[]) {
   gcs_server_config.log_dir = log_dir;
   gcs_server_config.raylet_config_list = config_list;
   gcs_server_config.session_name = session_name;
-  ray::gcs::GcsServer gcs_server(gcs_server_config, main_service);
+  ray::stats::Count event_recorder_dropped_events_counter = ray::core::GetRayEventRecorderDroppedEventsMetric();
+
+  ray::gcs::GcsServer gcs_server(gcs_server_config, main_service, event_recorder_dropped_events_counter);
 
   // Destroy the GCS server on a SIGTERM. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop
