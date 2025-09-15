@@ -713,7 +713,7 @@ class SerializationContext:
             obj_id is not None
         ), "`obj_id` is required, and it is the key to retrieve corresponding tensors from the GPU object store."
         # Regardless of whether `tensors` is empty, we always store the GPU object
-        # in the GPU object store. This ensures that `_get_tensor_meta` is not
+        # in the GPU object store. This ensures that `get_tensor_transport_metadata` is not
         # blocked indefinitely.
         worker = ray._private.worker.global_worker
         gpu_object_manager = worker.gpu_object_manager
