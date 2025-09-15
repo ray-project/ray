@@ -586,61 +586,64 @@ def test_operation_stats(monkeypatch, shutdown_only):
         "ray_operation_queue_time_ms_bucket",
         "ray_operation_active_count",
     ]
-    addr = ray.init()
-    remote_signal = SignalActor.remote()
 
-    @ray.remote
-    class Actor:
-        def __init__(self, signal):
-            self.signal = signal
+    with monkeypatch.context() as m:
+        m.setenv("RAY_emit_main_service_metrics", "1")
+        addr = ray.init()
+        remote_signal = SignalActor.remote()
 
-        def get_worker_id(self):
-            return ray.get_runtime_context().get_worker_id()
+        @ray.remote
+        class Actor:
+            def __init__(self, signal):
+                self.signal = signal
 
-        def wait(self):
-            ray.get(self.signal.wait.remote())
+            def get_worker_id(self):
+                return ray.get_runtime_context().get_worker_id()
 
-    actor = Actor.remote(remote_signal)
-    ray.get(actor.get_worker_id.remote())
-    obj_ref = actor.wait.remote()
+            def wait(self):
+                ray.get(self.signal.wait.remote())
 
-    ray.get(remote_signal.send.remote())
-    ray.get(obj_ref)
+        actor = Actor.remote(remote_signal)
+        ray.get(actor.get_worker_id.remote())
+        obj_ref = actor.wait.remote()
 
-    def verify():
-        metrics = raw_metrics(addr)
+        ray.get(remote_signal.send.remote())
+        ray.get(obj_ref)
 
-        samples = metrics["ray_operation_active_count"]
-        found = False
-        for sample in samples:
-            if (
-                sample.labels["Name"] == "gcs_server_main_io_context"
-                and sample.labels["Component"] == "gcs_server"
-            ):
-                found = True
-        if not found:
-            return False
+        def verify():
+            metrics = raw_metrics(addr)
 
-        found = False
-        for sample in samples:
-            if (
-                sample.labels["Name"] == "raylet_main_io_context"
-                and sample.labels["Component"] == "raylet"
-            ):
-                found = True
-        if not found:
-            return False
-
-        metric_names = set(metrics.keys())
-        for op_metric in operation_metrics:
-            assert op_metric in metric_names
-            samples = metrics[op_metric]
-            components = set()
-            print(components)
+            samples = metrics["ray_operation_active_count"]
+            found = False
             for sample in samples:
-                components.add(sample.labels["Component"])
-            assert {"raylet", "gcs_server"} == components
-        return True
+                if (
+                    sample.labels["Name"] == "gcs_server_main_io_context"
+                    and sample.labels["Component"] == "gcs_server"
+                ):
+                    found = True
+            if not found:
+                return False
+
+            found = False
+            for sample in samples:
+                if (
+                    sample.labels["Name"] == "raylet_main_io_context"
+                    and sample.labels["Component"] == "raylet"
+                ):
+                    found = True
+            if not found:
+                return False
+
+            metric_names = set(metrics.keys())
+            for op_metric in operation_metrics:
+                assert op_metric in metric_names
+                samples = metrics[op_metric]
+                components = set()
+                print(components)
+                for sample in samples:
+                    components.add(sample.labels["Component"])
+                assert {"raylet", "gcs_server"} == components
+            return True
 
         wait_for_condition(verify, timeout=30)
 
