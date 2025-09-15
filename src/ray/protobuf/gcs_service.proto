@@ -278,7 +278,7 @@ message GetAllNodeInfoLightRequest {
 // Reply for getting lightweight node info (without labels)
 message GetAllNodeInfoLightReply {
   GcsStatus status = 1;
-  repeated GcsNodeInfo node_info_list = 2;
+  repeated GcsNodeInfoLight node_info_list = 2;
   // Length of the corresponding resource without truncation.
   int64 total = 3;
   // Number of results filtered out from the source.

@@ -317,40 +317,30 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
   ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
 }
 
-// Utility function to filter GcsNodeInfo using a FieldMask
-void FilterGcsNodeInfo(const rpc::GcsNodeInfo &source,
-                       const google::protobuf::FieldMask &field_mask,
-                       rpc::GcsNodeInfo *destination) {
-  // Start with a default (empty) GcsNodeInfo
+// Utility function to convert GcsNodeInfo to GcsNodeInfoLight
+void ConvertToGcsNodeInfoLight(const rpc::GcsNodeInfo &source,
+                               rpc::GcsNodeInfoLight *destination) {
   destination->Clear();
 
-  // Use protobuf's FieldMask utility to merge only specified fields
-  google::protobuf::util::FieldMaskUtil::MergeOptions options;
-  google::protobuf::util::FieldMaskUtil::MergeMessageTo(source, field_mask, options, destination);
-}
+  // Copy only the fields that are present in GcsNodeInfoLight
+  destination->set_node_id(source.node_id());
+  destination->set_node_manager_address(source.node_manager_address());
+  destination->set_node_manager_port(source.node_manager_port());
+  destination->set_object_manager_port(source.object_manager_port());
+  destination->set_state(source.state());
+  destination->set_instance_id(source.instance_id());
+  destination->set_node_type_name(source.node_type_name());
+  destination->set_instance_type_name(source.instance_type_name());
 
-// Create a static FieldMask for lightweight node info (excludes labels)
-google::protobuf::FieldMask CreateNodeInfoLightFieldMask() {
-  google::protobuf::FieldMask field_mask;
+  // Copy resources map
+  *destination->mutable_resources_total() = source.resources_total();
 
-  // Include all fields except 'labels'
-  std::vector<std::string> paths = {"node_id",
-                                    "node_manager_address",
-                                    "node_manager_port",
-                                    "object_manager_port",
-                                    "state",
-                                    "resources_total",
-                                    "instance_id",
-                                    "node_type_name",
-                                    "instance_type_name",
-                                    "state_snapshot"};
-
-  for (const auto &path : paths) {
-    field_mask.add_paths(path);
+  // Copy state snapshot if present
+  if (source.has_state_snapshot()) {
+    *destination->mutable_state_snapshot() = source.state_snapshot();
   }
-
-  return field_mask;
 }
+
 
 void GcsNodeManager::HandleGetAllNodeInfoLight(
     rpc::GetAllNodeInfoLightRequest request,
@@ -382,8 +372,6 @@ void GcsNodeManager::HandleGetAllNodeInfoLight(
   const size_t total_num_nodes = alive_nodes_.size() + dead_nodes_.size();
   int64_t num_added = 0;
 
-  // Create the field mask for lightweight node info (excludes labels)
-  static const auto light_field_mask = CreateNodeInfoLightFieldMask();
 
   if (request.node_selectors_size() > 0 && only_node_id_filters) {
     // optimized path if request only wants specific node ids
@@ -393,7 +381,7 @@ void GcsNodeManager::HandleGetAllNodeInfoLight(
         auto iter = alive_nodes_.find(node_id);
         if (iter != alive_nodes_.end()) {
           auto *node_info = reply->add_node_info_list();
-          FilterGcsNodeInfo(*iter->second, light_field_mask, node_info);
+          ConvertToGcsNodeInfoLight(*iter->second, node_info);
           ++num_added;
         }
       }
@@ -402,7 +390,7 @@ void GcsNodeManager::HandleGetAllNodeInfoLight(
         auto iter = dead_nodes_.find(node_id);
         if (iter != dead_nodes_.end()) {
           auto *node_info = reply->add_node_info_list();
-          FilterGcsNodeInfo(*iter->second, light_field_mask, node_info);
+          ConvertToGcsNodeInfoLight(*iter->second, node_info);
           ++num_added;
         }
       }
@@ -425,7 +413,7 @@ void GcsNodeManager::HandleGetAllNodeInfoLight(
               node_names.contains(node_info_ptr->node_name()) ||
               node_ip_addresses.contains(node_info_ptr->node_manager_address())) {
             auto *node_info = reply->add_node_info_list();
-            FilterGcsNodeInfo(*node_info_ptr, light_field_mask, node_info);
+            ConvertToGcsNodeInfoLight(*node_info_ptr, node_info);
             num_added += 1;
           }
         }
@@ -473,89 +461,6 @@ std::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetAliveNode(
   return iter->second;
 }
 
-void GcsNodeManager::HandleGetAllNodeInfoLightCached(
-    rpc::GetAllNodeInfoLightRequest request,
-    rpc::GetAllNodeInfoLightReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  int64_t limit =
-      (request.limit() > 0) ? request.limit() : std::numeric_limits<int64_t>::max();
-
-  int total_num_nodes = alive_nodes_light_cached_.size() + dead_nodes_.size();
-
-  // Build set of node ids to filter by if selectors are provided
-  absl::flat_hash_set<NodeID> filter_node_ids;
-  bool has_filters = false;
-  if (!request.node_selectors().empty()) {
-    has_filters = true;
-    for (const auto &selector : request.node_selectors()) {
-      if (selector.has_node_id()) {
-        filter_node_ids.insert(NodeID::FromBinary(selector.node_id()));
-      } else if (selector.has_node_name()) {
-        // Find node by name in cached light nodes
-        for (const auto &[node_id, node] : alive_nodes_light_cached_) {
-          // Note: node_name was filtered out from light version, need to check full node
-          auto full_iter = alive_nodes_.find(node_id);
-          if (full_iter != alive_nodes_.end() &&
-              full_iter->second->node_name() == selector.node_name()) {
-            filter_node_ids.insert(node_id);
-          }
-        }
-      } else if (selector.has_node_ip_address()) {
-        // Find node by IP in cached light nodes
-        for (const auto &[node_id, node] : alive_nodes_light_cached_) {
-          if (node->node_manager_address() == selector.node_ip_address()) {
-            filter_node_ids.insert(node_id);
-          }
-        }
-      }
-    }
-  }
-
-  // Add cached light nodes based on state filter and selectors
-  int64_t num_added = 0;
-  for (const auto &[node_id, node] : alive_nodes_light_cached_) {
-    if (num_added >= limit) break;
-
-    // Check state filter
-    if (request.has_state_filter() && node->state() != request.state_filter()) {
-      continue;
-    }
-
-    // Check node selectors
-    if (has_filters && filter_node_ids.find(node_id) == filter_node_ids.end()) {
-      continue;
-    }
-
-    // Add the pre-filtered cached node directly
-    reply->add_node_info_list()->CopyFrom(*node);
-    num_added++;
-  }
-
-  // Add dead nodes if requested or no state filter
-  if (!request.has_state_filter() ||
-      request.state_filter() == rpc::GcsNodeInfo::DEAD) {
-    for (const auto &[node_id, node] : dead_nodes_) {
-      if (num_added >= limit) break;
-
-      // Check node selectors for dead nodes
-      if (has_filters && filter_node_ids.find(node_id) == filter_node_ids.end()) {
-        continue;
-      }
-
-      // Apply field mask to dead nodes (they're not pre-cached)
-      static google::protobuf::FieldMask light_field_mask = CreateNodeInfoLightFieldMask();
-      auto light_node_info = reply->add_node_info_list();
-      FilterGcsNodeInfo(*node, light_field_mask, light_node_info);
-      num_added++;
-    }
-  }
-
-  reply->set_total(total_num_nodes);
-  reply->set_num_filtered(total_num_nodes - reply->node_info_list_size());
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
-}
-
 rpc::NodeDeathInfo GcsNodeManager::InferDeathInfo(const NodeID &node_id) {
   auto iter = draining_nodes_.find(node_id);
   rpc::NodeDeathInfo death_info;
@@ -589,12 +494,6 @@ void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
   auto iter = alive_nodes_.find(node_id);
   if (iter == alive_nodes_.end()) {
     alive_nodes_.emplace(node_id, node);
-
-    // Create and cache the light version
-    static google::protobuf::FieldMask light_field_mask = CreateNodeInfoLightFieldMask();
-    auto light_node = std::make_shared<rpc::GcsNodeInfo>();
-    FilterGcsNodeInfo(*node, light_field_mask, light_node.get());
-    alive_nodes_light_cached_.emplace(node_id, light_node);
 
     // Notify all listeners.
     for (auto &listener : node_added_listeners_) {
@@ -644,8 +543,6 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     ray_metric_node_failures_total_.Record(1);
     // Remove from alive nodes.
     alive_nodes_.erase(iter);
-    // Remove from cached light nodes.
-    alive_nodes_light_cached_.erase(node_id);
     // Remove from draining nodes if present.
     draining_nodes_.erase(node_id);
     if (death_info->reason() == rpc::NodeDeathInfo::UNEXPECTED_TERMINATION) {
@@ -784,14 +681,6 @@ void GcsNodeManager::UpdateAliveNode(
   }
   if (resource_view_sync_message.is_draining()) {
     snapshot->set_state(rpc::NodeSnapshot::DRAINING);
-  }
-
-  // Update the cached light version as well
-  auto light_iter = alive_nodes_light_cached_.find(node_id);
-  if (light_iter != alive_nodes_light_cached_.end()) {
-    // state_snapshot is included in the light version, so update it
-    auto light_snapshot = light_iter->second->mutable_state_snapshot();
-    light_snapshot->CopyFrom(*snapshot);
   }
 }
 
