@@ -73,9 +73,9 @@ std::shared_ptr<StatsHandle> EventTracker::RecordStart(
   }
 
   if (emit_metrics) {
-    // ray::stats::STATS_operation_count.Record(1, event_context_name.value_or(name));
-    // ray::stats::STATS_operation_active_count.Record(curr_count,
-    //                                                 event_context_name.value_or(name));
+    ray::stats::STATS_operation_count.Record(1, event_context_name.value_or(name));
+    ray::stats::STATS_operation_active_count.Record(curr_count,
+                                                    event_context_name.value_or(name));
   }
 
   return std::make_shared<StatsHandle>(
@@ -96,10 +96,10 @@ void EventTracker::RecordEnd(std::shared_ptr<StatsHandle> handle) {
 
   if (handle->emit_stats) {
     // Update event-specific stats.
-    // ray::stats::STATS_operation_run_time_ms.Record(
-    //     execution_time_ns / 1000000, handle->context_name.value_or(handle->event_name));
-    // ray::stats::STATS_operation_active_count.Record(
-    //     curr_count, handle->context_name.value_or(handle->event_name));
+    ray::stats::STATS_operation_run_time_ms.Record(
+        execution_time_ns / 1000000, handle->context_name.value_or(handle->event_name));
+    ray::stats::STATS_operation_active_count.Record(
+        curr_count, handle->context_name.value_or(handle->event_name));
   }
 
   handle->end_or_execution_recorded = true;
@@ -142,13 +142,13 @@ void EventTracker::RecordExecution(const std::function<void()> &fn,
 
   if (handle->emit_stats) {
     // Update event-specific stats.
-    // ray::stats::STATS_operation_run_time_ms.Record(
-    //     execution_time_ns / 1000000, handle->context_name.value_or(handle->event_name));
-    // ray::stats::STATS_operation_active_count.Record(
-    //     curr_count, handle->context_name.value_or(handle->event_name));
+    ray::stats::STATS_operation_run_time_ms.Record(
+        execution_time_ns / 1000000, handle->context_name.value_or(handle->event_name));
+    ray::stats::STATS_operation_active_count.Record(
+        curr_count, handle->context_name.value_or(handle->event_name));
     // Update global stats.
-    // ray::stats::STATS_operation_queue_time_ms.Record(
-    //     queue_time_ns / 1000000, handle->context_name.value_or(handle->event_name));
+    ray::stats::STATS_operation_queue_time_ms.Record(
+        queue_time_ns / 1000000, handle->context_name.value_or(handle->event_name));
   }
 
   {
