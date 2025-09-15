@@ -624,7 +624,7 @@ def test_metrics_export_event_aggregator_agent(
         "ray_aggregator_agent_queue_dropped_events_total": 1.0,
     }
     wait_for_condition(
-        lambda: test_case_publisher_specific_metrics_correct(
+        lambda: test_case_publisher_specific_metrics_value_correct(
             "http_publisher", expected_http_publisher_metrics_values
         ),
         timeout=30,
@@ -636,7 +636,7 @@ def test_metrics_export_event_aggregator_agent(
         "ray_aggregator_agent_queue_dropped_events_total": 1.0,
     }
     wait_for_condition(
-        lambda: test_case_publisher_specific_metrics_correct(
+        lambda: test_case_publisher_specific_metrics_value_correct(
             "gcs_publisher", expected_gcs_publisher_metrics_values
         ),
         timeout=30,
