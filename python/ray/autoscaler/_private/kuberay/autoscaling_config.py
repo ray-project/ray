@@ -313,7 +313,7 @@ def _get_labels_from_group_spec(group_spec: Dict[str, Any]) -> Dict[str, str]:
 
     try:
         return parse_node_labels_string(labels_str)
-    except Exception as e:
+    except ValueError as e:
         group_name = group_spec.get("groupName", _HEAD_GROUP_NAME)
         logger.error(
             f"Error parsing `labels` in rayStartParam for group {group_name}: {e}"
