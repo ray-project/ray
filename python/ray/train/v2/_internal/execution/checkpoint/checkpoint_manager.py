@@ -19,6 +19,7 @@ from ray.train.v2._internal.execution.callback import (
 from ray.train.v2._internal.execution.context import StorageContext
 from ray.train.v2._internal.execution.storage import _exists_at_fs_path, delete_fs_path
 from ray.train.v2._internal.execution.worker_group import Worker
+from ray.train.v2.api.exceptions import ValidationFailedError
 from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 from ray.train.v2.api.validation_info import ValidationInfo
 
@@ -227,7 +228,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
                         checkpoint=self._pending_training_results[
                             report_number
                         ].checkpoint,
-                        validation_failed_error=e.cause,
+                        validation_failed_error=ValidationFailedError(e.cause),
                     )
                     logger.exception(
                         f"Validation failed for checkpoint {self._pending_training_results[report_number].checkpoint}"
