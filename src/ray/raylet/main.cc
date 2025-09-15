@@ -33,7 +33,7 @@
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
 #include "ray/core_worker/metrics.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/gcs_client/gcs_client.h"
 #include "ray/object_manager/ownership_object_directory.h"
 #include "ray/raylet/local_object_manager.h"
 #include "ray/raylet/local_object_manager_interface.h"

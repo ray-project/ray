@@ -25,7 +25,7 @@
 #include <utility>
 #include <vector>
 
-#include "mock/ray/gcs/gcs_client/gcs_client.h"
+#include "mock/ray/gcs_client/gcs_client.h"
 #include "mock/ray/object_manager/object_manager.h"
 #include "ray/common/id.h"
 #include "ray/common/lease/lease.h"

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/gcs_client/accessor.h"
+#include "ray/gcs_client/accessor.h"
 
 #include "gtest/gtest.h"
 #include "src/ray/protobuf/gcs.pb.h"
