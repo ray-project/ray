@@ -98,3 +98,9 @@ def ray_start_distributed_2_nodes():
     ray.init("auto")
     yield
     ray.shutdown()
+
+
+@pytest.fixture
+def shutdown_only():
+    yield None
+    ray.shutdown()

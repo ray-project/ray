@@ -43,7 +43,7 @@ def test_two_groups_in_one_cluster(ray_start_single_node):
     assert ray.get(w2.get_gloo_timeout.remote(name2)) == time2
 
 
-def test_failure_when_initializing():
+def test_failure_when_initializing(shutdown_only):
     # job1
     ray.init()
     w1 = Worker.remote()
