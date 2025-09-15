@@ -58,8 +58,7 @@ class RayEvent : public RayEventInterface {
            ray::rpc::events::RayEvent::Severity severity,
            const std::string &message,
            const std::string &session_name)
-      : source_type_(source_type),
-  ray::rpc::events::RayEvent::SourceType source_type_;
+      : source_type_(source_type), ray::rpc::events::RayEvent::SourceType source_type_;
   ray::rpc::events::RayEvent::EventType event_type_;
   ray::rpc::events::RayEvent::Severity severity_;
   std::string message_;
