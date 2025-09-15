@@ -25,6 +25,21 @@ def test_zip(ray_start_regular_shared):
         ds.zip(ray.data.range(3)).materialize()
 
 
+def test_zip_multiple_datasets(ray_start_regular_shared):
+    ds1 = ray.data.range(5, override_num_blocks=5)
+    ds2 = ray.data.range(5, override_num_blocks=5).map(
+        column_udf("id", lambda x: x + 1)
+    )
+    ds3 = ray.data.range(5, override_num_blocks=5).map(
+        column_udf("id", lambda x: x + 2)
+    )
+    ds = ds1.zip(ds2, ds3)
+    assert ds.schema().names == ["id", "id_1", "id_2"]
+    assert ds.take() == named_values(
+        ["id", "id_1", "id_2"], [(0, 1, 2), (1, 2, 3), (2, 3, 4), (3, 4, 5), (4, 5, 6)]
+    )
+
+
 @pytest.mark.parametrize(
     "num_blocks1,num_blocks2",
     list(itertools.combinations_with_replacement([1, 2, 4, 16], 2)),

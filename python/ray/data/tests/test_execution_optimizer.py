@@ -821,17 +821,24 @@ def test_zip_operator(ray_start_regular_shared_2_cpus):
 
 
 @pytest.mark.parametrize(
-    "num_blocks1,num_blocks2",
-    list(itertools.combinations_with_replacement(range(1, 12), 2)),
+    "num_blocks1,num_blocks2,num_blocks3",
+    list(itertools.combinations_with_replacement(range(1, 12), 3)),
 )
-def test_zip_e2e(ray_start_regular_shared_2_cpus, num_blocks1, num_blocks2):
+def test_zip_e2e(
+    ray_start_regular_shared_2_cpus, num_blocks1, num_blocks2, num_blocks3
+):
     n = 12
     ds1 = ray.data.range(n, override_num_blocks=num_blocks1)
     ds2 = ray.data.range(n, override_num_blocks=num_blocks2).map(
         column_udf("id", lambda x: x + 1)
     )
-    ds = ds1.zip(ds2)
-    assert ds.take() == named_values(["id", "id_1"], zip(range(n), range(1, n + 1)))
+    ds3 = ray.data.range(n, override_num_blocks=num_blocks3).map(
+        column_udf("id", lambda x: x + 2)
+    )
+    ds = ds1.zip(ds2, ds3)
+    assert ds.take() == named_values(
+        ["id", "id_1", "id_2"], zip(range(n), range(1, n + 1), range(2, n + 2))
+    )
     _check_usage_record(["ReadRange", "Zip"])
 
 

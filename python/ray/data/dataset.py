@@ -3129,7 +3129,7 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=SMJ_API_GROUP)
-    def zip(self, other: "Dataset") -> "Dataset":
+    def zip(self, *other: List["Dataset"]) -> "Dataset":
         """Zip the columns of this dataset with the columns of another.
 
         The datasets must have the same number of rows. Their column sets are
@@ -3148,19 +3148,25 @@ class Dataset:
             >>> import ray
             >>> ds1 = ray.data.range(5)
             >>> ds2 = ray.data.range(5)
-            >>> ds1.zip(ds2).take_batch()
-            {'id': array([0, 1, 2, 3, 4]), 'id_1': array([0, 1, 2, 3, 4])}
+            >>> ds3 = ray.data.range(5)
+            >>> ds1.zip(ds2, ds3).take_batch()
+            {'id': array([0, 1, 2, 3, 4]), 'id_1': array([0, 1, 2, 3, 4]), 'id_2': array([0, 1, 2, 3, 4])}
 
         Args:
-            other: The dataset to zip with on the right hand side.
+            *other: List of datasets to combine with this one. The datasets
+                must have the same row count as this dataset, otherwise the
+                ValueError is raised.
 
         Returns:
             A :class:`Dataset` containing the columns of the second dataset
             concatenated horizontally with the columns of the first dataset,
             with duplicate column names disambiguated with suffixes like ``"_1"``.
+
+        Raises:
+            ValueError: If the datasets have different row counts.
         """
         plan = self._plan.copy()
-        op = Zip(self._logical_plan.dag, other._logical_plan.dag)
+        op = Zip(self._logical_plan.dag, *[other._logical_plan.dag for other in other])
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
