@@ -157,6 +157,57 @@ class Expr(ABC):
         """Logical OR operator (|)."""
         return self._bin(other, Operation.OR)
 
+    def alias(self, name: str) -> "AliasExpr":
+        """Rename the expression.
+
+        This method allows you to assign a new name to an expression result.
+        This is particularly useful when you want to specify the output column name
+        directly within the expression rather than as a separate parameter.
+
+        Args:
+            name: The new name for the expression
+
+        Returns:
+            An AliasExpr that wraps this expression with the specified name
+
+        Example:
+            >>> from ray.data.expressions import col, lit
+            >>> # Create an aliased expression
+            >>> expr = (col("price") * col("quantity")).alias("total")
+            >>> # Can be used with Dataset operations that support named expressions
+        """
+        return AliasExpr(expr=self, alias=name, data_type=self.data_type)
+
+
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False)
+class AliasExpr(Expr):
+    """Expression that represents renaming another expression.
+
+    This expression type wraps another expression and provides it with a new name.
+    When evaluated, it returns the same values as the wrapped expression but
+    allows the result to be assigned to a different column name.
+
+    Args:
+        expr: The expression to rename
+        alias: The new name for the expression
+
+    Example:
+        >>> from ray.data.expressions import col
+        >>> # Create an aliased expression
+        >>> expr = col("price").alias("product_price")
+    """
+
+    expr: Expr
+    alias: str
+
+    def structurally_equals(self, other: Any) -> bool:
+        return (
+            isinstance(other, AliasExpr)
+            and self.expr.structurally_equals(other.expr)
+            and self.alias == other.alias
+        )
+
 
 @DeveloperAPI(stability="alpha")
 @dataclass(frozen=True, eq=False)
@@ -519,6 +570,7 @@ __all__ = [
     "BinaryExpr",
     "UDFExpr",
     "udf",
+    "AliasExpr",
     "DownloadExpr",
     "col",
     "lit",

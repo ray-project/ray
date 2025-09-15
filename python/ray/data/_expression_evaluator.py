@@ -10,6 +10,7 @@ import pyarrow.compute as pc
 
 from ray.data.block import DataBatch
 from ray.data.expressions import (
+    AliasExpr,
     BinaryExpr,
     ColumnExpr,
     Expr,
@@ -57,7 +58,18 @@ def _eval_expr_recursive(
     if isinstance(expr, ColumnExpr):
         return batch[expr.name]
     if isinstance(expr, LiteralExpr):
-        return expr.value
+        # Broadcast literal value to match batch size
+        if isinstance(batch, pd.DataFrame):
+            # For pandas, create a Series with the literal value repeated
+            batch_size = len(batch)
+            return pd.Series([expr.value] * batch_size)
+        elif isinstance(batch, pa.Table):
+            # For Arrow, create an Array with the literal value repeated
+            batch_size = len(batch)
+            return pa.array([expr.value] * batch_size)
+        else:
+            # Fallback for other batch types
+            return expr.value
     if isinstance(expr, BinaryExpr):
         return ops[expr.op](
             _eval_expr_recursive(expr.left, batch, ops),
@@ -79,6 +91,9 @@ def _eval_expr_recursive(
             )
 
         return result
+    if isinstance(expr, AliasExpr):
+        # AliasExpr just evaluates its wrapped expression
+        return _eval_expr_recursive(expr.expr, batch, ops)
     raise TypeError(f"Unsupported expression node: {type(expr).__name__}")
 
 
