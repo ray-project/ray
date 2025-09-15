@@ -4,7 +4,6 @@ dockerfile: docker/ray-llm/Dockerfile
 srcs:
   - python/requirements.txt
   - python/deplocks/llm/rayllm_py311_cu128.lock
-  - python/deplocks/examples/entity_recognition_with_llms/llm_example_py311_cu128.lock
 build_args:
   - BASE_IMAGE=cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cu$CUDA_VERSION-base
 tags:
