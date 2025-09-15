@@ -68,6 +68,29 @@ class RayEventRecorderTest : public ::testing::Test {
   std::unique_ptr<RayEventRecorder> recorder_;
 };
 
+TEST_F(RayEventRecorderTest, TestMergeEvents) {
+  rpc::JobTableData data;
+  data.set_job_id("test_job_id");
+
+  std::vector<std::unique_ptr<RayEventInterface>> events;
+  events.push_back(std::make_unique<RayDriverJobExecutionEvent>(
+      data, rpc::events::DriverJobExecutionEvent::CREATED, "test_session_name"));
+  events.push_back(std::make_unique<RayDriverJobExecutionEvent>(
+      data, rpc::events::DriverJobExecutionEvent::FINISHED, "test_session_name"));
+  recorder_->AddEvents(std::move(events));
+  io_service_.run_one();
+
+  std::vector<rpc::events::RayEvent> recorded_events = fake_client_->GetRecordedEvents();
+  // Only one event should be recorded because the two events are merged into one.
+  ASSERT_EQ(recorded_events.size(), 1);
+  ASSERT_EQ(recorded_events[0].source_type(), rpc::events::RayEvent::GCS);
+  ASSERT_EQ(recorded_events[0].session_name(), "test_session_name");
+  auto states = recorded_events[0].driver_job_execution_event().states();
+  ASSERT_EQ(states.size(), 2);
+  ASSERT_EQ(states[0].state(), rpc::events::DriverJobExecutionEvent::CREATED);
+  ASSERT_EQ(states[1].state(), rpc::events::DriverJobExecutionEvent::FINISHED);
+}
+
 TEST_F(RayEventRecorderTest, TestRecordEvents) {
   rpc::JobTableData data1;
   data1.set_job_id("test_job_id_1");
