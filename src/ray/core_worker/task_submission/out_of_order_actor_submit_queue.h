@@ -1,4 +1,4 @@
-// Copyright 2017 The Ray Authors.
+// Copyright 2025 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,40 +28,49 @@ namespace core {
 /**
  * OutofOrderActorSubmitQueue sends request as soon as the dependencies are resolved.
  *
- * Under the hood, it keeps requests in two queues: pending queue and sending queue.
- * Emplaced request is inserted into pending queue; once the request's dependency
- * is resolved it's moved from pending queue into sending queue.
+ * XXX.
+ *
  */
-class OutofOrderActorSubmitQueue : public IActorSubmitQueue {
+class OutofOrderActorSubmitQueue {
  public:
   OutofOrderActorSubmitQueue(bool order_initial_submissions);
+
   /// Add a task into the queue.
-  void Emplace(uint64_t position, const TaskSpecification &spec) override;
+  void Emplace(uint64_t position, const TaskSpecification &spec);
+
   /// If a task exists.
-  bool Contains(uint64_t position) const override;
+  bool Contains(uint64_t position) const;
+
   /// If the task's dependencies were resolved.
-  bool DependenciesResolved(uint64_t position) const override;
+  bool DependenciesResolved(uint64_t position) const;
+
   /// Mark a task's dependency resolution failed thus remove from the queue.
-  void MarkDependencyFailed(uint64_t position) override;
+  void MarkDependencyFailed(uint64_t position);
+
   /// Make a task's dependency is resolved thus ready to send.
-  void MarkDependencyResolved(uint64_t position) override;
+  void MarkDependencyResolved(uint64_t position);
+
   // Mark a task has been canceled.
   // If a task hasn't been sent yet, this API will guarantee a task won't be
   // popped via PopNextTaskToSend.
-  void MarkTaskCanceled(uint64_t position) override;
+  void MarkTaskCanceled(uint64_t position);
+
   /// Clear the queue and returns all tasks ids that haven't been sent yet.
-  std::vector<TaskID> ClearAllTasks() override;
+  std::vector<TaskID> ClearAllTasks();
+
   /// Find next task to send.
   /// \return
   ///   - nullopt if no task ready to send
   ///   - a pair of task and bool represents the task to be send and if the receiver
   ///     should SKIP THE SCHEDULING QUEUE while executing it.
-  std::optional<std::pair<TaskSpecification, bool>> PopNextTaskToSend() override;
-  bool Empty() override;
+  std::optional<std::pair<TaskSpecification, bool>> PopNextTaskToSend();
+
+  /// XXX.
+  bool Empty() const;
 
  private:
   // XXX.
-  uint64_t high_water_mark_ = 0;
+  uint64_t next_seq_no_ = 0;
 
   // XXX.
   bool order_initial_submissions_;
@@ -71,9 +80,6 @@ class OutofOrderActorSubmitQueue : public IActorSubmitQueue {
 
   // XXX.
   absl::btree_map<uint64_t, TaskSpecification> ready_to_send_;
-
-  // XXX.
-  absl::btree_map<uint64_t, TaskSpecification> retries_waiting_for_dependencies_;
 
   // XXX.
   absl::btree_map<uint64_t, TaskSpecification> retries_ready_to_send_;

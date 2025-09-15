@@ -29,8 +29,6 @@
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_submission/actor_submit_queue.h"
 #include "ray/core_worker/task_submission/dependency_resolver.h"
-#include "ray/core_worker/task_submission/out_of_order_actor_submit_queue.h"
-#include "ray/core_worker/task_submission/sequential_actor_submit_queue.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
@@ -263,11 +261,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
         : max_pending_calls_(max_pending_calls),
           fail_if_actor_unreachable_(fail_if_actor_unreachable),
           owned_(owned) {
-      if (allow_out_of_order_execution) {
-        actor_submit_queue_ = std::make_unique<OutofOrderActorSubmitQueue>();
-      } else {
-        actor_submit_queue_ = std::make_unique<SequentialActorSubmitQueue>();
-      }
+      actor_submit_queue_ = std::make_unique<ActorSubmitQueue>(/*order_initial_submissions=*/!allow_out_of_order_execution);
     }
 
     /// The current state of the actor. If this is ALIVE, then we should have
@@ -297,7 +291,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
     bool is_restartable_ = false;
 
     /// The queue that orders actor requests.
-    std::unique_ptr<IActorSubmitQueue> actor_submit_queue_;
+    std::unique_ptr<ActorSubmitQueue> actor_submit_queue_;
 
     /// Tasks that can't be sent because 1) the callee actor is dead. 2) network error.
     /// For 1) the task will wait for the DEAD state notification, then mark task as
