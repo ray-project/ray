@@ -688,10 +688,8 @@ def test_join_with_unjoinable_non_key_columns(
         ]
     )
 
-    # This should work - join on joinable keys, handle unjoinable non-key columns
-    joined = left_ds.join(right_ds, join_type=join_type, on=("id",), num_partitions=2)
-
     # Verify the join worked and includes unjoinable columns
+    joined = left_ds.join(right_ds, join_type=join_type, on=("id",), num_partitions=2)
     result = joined.take_all()
     result_by_id = {row["id"]: row for row in result}
 
