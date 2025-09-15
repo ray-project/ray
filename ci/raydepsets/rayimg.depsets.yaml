@@ -17,6 +17,8 @@ depsets:
   - name: ray_img_depset_${PYTHON_SHORT}
     packages:
       - ray[all]==100.0.0-dev
+    # requirements:
+    #   - docker/base-deps/requirements.txt
     constraints:
       - python/requirements_compiled.txt
     output: python/deplocks/ray_img/ray_img_py${PYTHON_SHORT}.lock
