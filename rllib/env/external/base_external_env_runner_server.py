@@ -76,6 +76,11 @@ class BaseExternalEnvRunnerServer(
     @abstractmethod
     def base_env_runner_type(self) -> type[EnvRunner]: ...
 
+    @abstractmethod
+    def _increase_sampled_metrics(
+        self, num_env_steps: int, num_episodes_completed: int
+    ) -> None: ...
+
     @override(EnvRunner)
     def assert_healthy(self):
         """Checks that the server socket is open and listening."""
@@ -97,14 +102,15 @@ class BaseExternalEnvRunnerServer(
                             num_episodes_completed += 1
                         else:
                             self._ongoing_episodes_for_metrics[
-                                eps.id_].append(eps)
+                                eps.id_
+                            ].append(eps)
                         num_env_steps += len(eps)
 
                     ret = self._episode_chunks_to_return
                     self._episode_chunks_to_return = None
 
-                    self.base_env_runner_type._increase_sampled_metrics(
-                        self, num_env_steps, num_episodes_completed
+                    self._increase_sampled_metrics(
+                        num_env_steps, num_episodes_completed
                     )
 
                     return ret

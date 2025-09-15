@@ -137,7 +137,10 @@ def _dummy_multi_agent_external_client(port: int = 5556):
                 sock_,
                 {
                     "type": RLlink.EPISODES_AND_GET_STATE.name,
-                    "episodes": [e.get_state() for e in episodes],
+                    "episodes": [
+                        e.get_state(exclude_agent_to_module_mapping_fn=True)
+                        for e in episodes
+                    ],
                     "timesteps": env_steps_per_sample,
                 },
             )
@@ -159,7 +162,9 @@ def _dummy_multi_agent_external_client(port: int = 5556):
                 observations=[obs],
                 observation_space=Dict(env.observation_spaces),
                 action_space=Dict(env.action_spaces),
-                agent_to_module_mapping_fn=policy_mapping_fn,
+                agent_module_ids={
+                    aid: policy_mapping_fn(aid) for aid in env.possible_agents
+                },
             )
             episodes.append(episode)
             shared_data = {}

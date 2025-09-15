@@ -32,6 +32,13 @@ class SingleAgentEnvRunnerServerForExternalInference(
     def base_env_runner_type(self) -> type[EnvRunner]:
         return SingleAgentEnvRunner
 
+    def _increase_sampled_metrics(
+        self, num_env_steps: int, num_episodes_completed: int
+    ) -> None:
+        SingleAgentEnvRunner._increase_sampled_metrics(
+            self, num_env_steps, num_episodes_completed
+        )
+
     @override(EnvRunner)
     def make_module(self) -> None:
         module_spec: RLModuleSpec = self.config.get_rl_module_spec(

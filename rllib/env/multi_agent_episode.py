@@ -22,6 +22,7 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils import force_list
 from ray._common.deprecation import Deprecated
 from ray.rllib.utils.error import MultiAgentEnvError
+from ray.rllib.utils.serialization import gym_space_to_dict
 from ray.rllib.utils.spaces.space_utils import batch
 from ray.rllib.utils.typing import AgentID, ModuleID, MultiAgentDict
 from ray.util.annotations import PublicAPI
@@ -1707,26 +1708,44 @@ class MultiAgentEpisode:
         # Join all components into a final string
         print(header + "\n".join(rows))
 
-    def get_state(self) -> Dict[str, Any]:
+    def get_state(self, exclude_agent_to_module_mapping_fn: bool = False) -> Dict[str, Any]:
         """Returns the state of a multi-agent episode.
 
         Note that from an episode's state the episode itself can
         be recreated.
 
+        Args:
+            exclude_agent_to_module_mapping_fn: Whether to exclude the
+            agent_to_module_mapping_fn from the state to make it serializable via
+            e.g. msgpack. This requires providing an agent_module_ids dict first.
+            (default: False)
+
         Returns: A dicitonary containing pickable data for a
             `MultiAgentEpisode`.
         """
+        if exclude_agent_to_module_mapping_fn and not self._agent_to_module_mapping:
+            raise ValueError(
+                "If agent_to_module_mapping_fn should be excluded from serialization, "
+                "you need to provide the episode with a agent_module_ids dict instead!"
+            )
+
+        mapping_fn = self.agent_to_module_mapping_fn if not exclude_agent_to_module_mapping_fn else None
+
+        env_t_to_agent_t = {
+            aid: buffer.get_state() for aid, buffer in self.env_t_to_agent_t.items()
+        }
+
         return {
             "id_": self.id_,
-            "agent_to_module_mapping_fn": self.agent_to_module_mapping_fn,
+            "agent_to_module_mapping_fn": mapping_fn,
             "_agent_to_module_mapping": self._agent_to_module_mapping,
-            "observation_space": self.observation_space,
-            "action_space": self.action_space,
+            "observation_space": gym_space_to_dict(self.observation_space),
+            "action_space": gym_space_to_dict(self.action_space),
             "env_t_started": self.env_t_started,
             "env_t": self.env_t,
             "agent_t_started": self.agent_t_started,
             # TODO (simon): Check, if we can store the `InfiniteLookbackBuffer`
-            "env_t_to_agent_t": self.env_t_to_agent_t,
+            "env_t_to_agent_t": env_t_to_agent_t,
             "_hanging_actions_end": self._hanging_actions_end,
             "_hanging_extra_model_outputs_end": self._hanging_extra_model_outputs_end,
             "_hanging_rewards_end": self._hanging_rewards_end,
@@ -1770,7 +1789,12 @@ class MultiAgentEpisode:
         episode.env_t_started = state["env_t_started"]
         episode.env_t = state["env_t"]
         episode.agent_t_started = state["agent_t_started"]
-        episode.env_t_to_agent_t = state["env_t_to_agent_t"]
+
+        env_t_to_agent_t = defaultdict(InfiniteLookbackBuffer)
+        for aid, buffer_state in state["env_t_to_agent_t"].items():
+            env_t_to_agent_t[aid] = InfiniteLookbackBuffer.from_state(buffer_state)
+        episode.env_t_to_agent_t = env_t_to_agent_t
+
         episode._hanging_actions_end = state["_hanging_actions_end"]
         episode._hanging_extra_model_outputs_end = state[
             "_hanging_extra_model_outputs_end"
