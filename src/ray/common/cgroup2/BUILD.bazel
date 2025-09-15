@@ -36,9 +36,7 @@ ray_cc_library(
     hdrs = [
         "cgroup_driver_interface.h",
     ],
-    target_compatible_with = [
-        "@platforms//os:linux",
-    ],
+    visibility = ["//visibility:public"],
     deps = [
         "//src/ray/common:status",
         "//src/ray/common:status_or",
@@ -50,32 +48,10 @@ ray_cc_library(
     hdrs = [
         "cgroup_manager_interface.h",
     ],
-    target_compatible_with = [
-        "@platforms//os:linux",
-    ],
+    visibility = ["//visibility:public"],
     deps = [
         "//src/ray/common:status",
         "//src/ray/common:status_or",
-    ],
-)
-
-ray_cc_library(
-    name = "cgroup_manager",
-    srcs = ["cgroup_manager.cc"],
-    hdrs = [
-        "cgroup_manager.h",
-        "scoped_cgroup_operation.h",
-    ],
-    target_compatible_with = [
-        "@platforms//os:linux",
-    ],
-    deps = [
-        ":cgroup_driver_interface",
-        ":cgroup_manager_interface",
-        "//src/ray/common:status",
-        "//src/ray/common:status_or",
-        "//src/ray/util:logging",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -102,6 +78,7 @@ ray_cc_library(
     }),
 )
 
+# Private Targets.
 ray_cc_library(
     name = "fake_cgroup_driver",
     hdrs = [
@@ -110,6 +87,7 @@ ray_cc_library(
     target_compatible_with = [
         "@platforms//os:linux",
     ],
+    visibility = [":__subpackages__"],
     deps = [
         ":cgroup_driver_interface",
         "//src/ray/common:status",
@@ -123,6 +101,7 @@ ray_cc_library(
     target_compatible_with = [
         "@platforms//os:linux",
     ],
+    visibility = [":__subpackages__"],
     deps = [
         "//src/ray/common:id",
         "//src/ray/common:status",
