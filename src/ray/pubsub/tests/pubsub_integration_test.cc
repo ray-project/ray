@@ -107,7 +107,7 @@ class CallbackSubscriberClient final : public pubsub::SubscriberClientInterface 
   ~CallbackSubscriberClient() final = default;
 
   void PubsubLongPolling(
-      const rpc::PubsubLongPollingRequest &request,
+      rpc::PubsubLongPollingRequest &&request,
       const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) final {
     auto *context = new grpc::ClientContext;
     auto *reply = new rpc::PubsubLongPollingReply;
@@ -120,7 +120,7 @@ class CallbackSubscriberClient final : public pubsub::SubscriberClientInterface 
   }
 
   void PubsubCommandBatch(
-      const rpc::PubsubCommandBatchRequest &request,
+      rpc::PubsubCommandBatchRequest &&request,
       const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) final {
     auto *context = new grpc::ClientContext;
     auto *reply = new rpc::PubsubCommandBatchReply;
