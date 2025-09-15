@@ -23,7 +23,7 @@ ray_cc_library(
         "//src/ray/common:status_or",
     ] + select({
         ":is_linux": [
-						":scoped_cgroup_operation",
+            ":scoped_cgroup_operation",
             "//src/ray/util:logging",
             "@com_google_absl//absl/strings",
         ],
@@ -69,8 +69,8 @@ ray_cc_library(
         ":cgroup_driver_interface",
         "//src/ray/common:status",
         "//src/ray/common:status_or",
-				"//src/ray/util:logging",
-				"@com_google_absl//absl/strings",
+        "//src/ray/util:logging",
+        "@com_google_absl//absl/strings",
     ],
 )
 
