@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include <gtest/gtest.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <filesystem>
@@ -153,6 +154,99 @@ TEST_F(SysFsCgroupDriverIntegrationTest,
       << "Failed to cleanup test cgroup at path " << child_cgroup_path << ".\n"
       << "Error: " << strerror(errno);
 }
+
+// Tests for DeleteCgroup
+TEST_F(SysFsCgroupDriverIntegrationTest, DeleteCgroupFailsIfDoesNotExist) {
+  auto cgroup_dir_or_status = TempCgroupDirectory::Create(test_cgroup_path_, S_IRWXU);
+  ASSERT_TRUE(cgroup_dir_or_status.ok()) << cgroup_dir_or_status.ToString();
+  auto cgroup = std::move(cgroup_dir_or_status.value());
+  std::string cgroup_to_delete =
+      cgroup->GetPath() + std::filesystem::path::preferred_separator + "cool_group";
+  SysFsCgroupDriver driver;
+  Status s = driver.DeleteCgroup(cgroup_to_delete);
+  ASSERT_TRUE(s.IsNotFound()) << s.ToString();
+}
+
+TEST_F(SysFsCgroupDriverIntegrationTest, DeleteCgroupFailsIfAncestorCgroupDoesNotExist) {
+  auto cgroup_dir_or_status = TempCgroupDirectory::Create(test_cgroup_path_, S_IRWXU);
+  ASSERT_TRUE(cgroup_dir_or_status.ok()) << cgroup_dir_or_status.ToString();
+  auto cgroup_dir = std::move(cgroup_dir_or_status.value());
+  SysFsCgroupDriver driver;
+  std::string non_existent_path = cgroup_dir->GetPath() +
+                                  std::filesystem::path::preferred_separator + "no" +
+                                  std::filesystem::path::preferred_separator + "bueno";
+  Status s = driver.DeleteCgroup(non_existent_path);
+  EXPECT_TRUE(s.IsNotFound()) << s.ToString();
+}
+
+TEST_F(SysFsCgroupDriverIntegrationTest, DeleteCgroupFailsIfOnlyReadPermissions) {
+  auto cgroup_dir_or_status = TempCgroupDirectory::Create(test_cgroup_path_, S_IRUSR);
+  ASSERT_TRUE(cgroup_dir_or_status.ok()) << cgroup_dir_or_status.ToString();
+  auto cgroup_dir = std::move(cgroup_dir_or_status.value());
+  SysFsCgroupDriver driver;
+  std::string child_cgroup_path =
+      cgroup_dir->GetPath() + std::filesystem::path::preferred_separator + "child";
+  Status s = driver.DeleteCgroup(child_cgroup_path);
+  EXPECT_TRUE(s.IsPermissionDenied()) << s.ToString();
+}
+
+TEST_F(SysFsCgroupDriverIntegrationTest, DeleteCgroupFailsIfOnlyReadWritePermissions) {
+  auto cgroup_dir_or_status =
+      TempCgroupDirectory::Create(test_cgroup_path_, S_IRUSR | S_IWUSR);
+  ASSERT_TRUE(cgroup_dir_or_status.ok()) << cgroup_dir_or_status.ToString();
+  auto cgroup_dir = std::move(cgroup_dir_or_status.value());
+  SysFsCgroupDriver driver;
+  std::string child_cgroup_path =
+      cgroup_dir->GetPath() + std::filesystem::path::preferred_separator + "child";
+  Status s = driver.DeleteCgroup(child_cgroup_path);
+  EXPECT_TRUE(s.IsPermissionDenied()) << s.ToString();
+}
+
+TEST_F(SysFsCgroupDriverIntegrationTest, DeleteCgroupFailsIfCgroupHasChildren) {
+  auto parent_cgroup_dir_or_status =
+      TempCgroupDirectory::Create(test_cgroup_path_, S_IRWXU);
+  ASSERT_TRUE(parent_cgroup_dir_or_status.ok()) << parent_cgroup_dir_or_status.ToString();
+  std::unique_ptr<TempCgroupDirectory> parent_cgroup =
+      std::move(parent_cgroup_dir_or_status.value());
+  auto child_cgroup_dir_or_status =
+      TempCgroupDirectory::Create(parent_cgroup->GetPath(), S_IRWXU);
+  ASSERT_TRUE(child_cgroup_dir_or_status.ok()) << child_cgroup_dir_or_status.ToString();
+  SysFsCgroupDriver driver;
+  Status s = driver.DeleteCgroup(parent_cgroup->GetPath());
+  EXPECT_TRUE(s.IsInvalidArgument()) << s.ToString();
+}
+
+TEST_F(SysFsCgroupDriverIntegrationTest, DeleteCgroupFailsIfCgroupHasProcesses) {
+  auto cgroup_or_status = TempCgroupDirectory::Create(test_cgroup_path_, S_IRWXU);
+  ASSERT_TRUE(cgroup_or_status.ok()) << cgroup_or_status.ToString();
+  auto cgroup = std::move(cgroup_or_status.value());
+  StatusOr<std::pair<pid_t, int>> child_process =
+      StartChildProcessInCgroup(cgroup->GetPath());
+  ASSERT_TRUE(child_process.ok()) << child_process.ToString();
+  auto [child_pid, child_pidfd] = *child_process;
+  SysFsCgroupDriver driver;
+  // Delete fails while process is alive.
+  Status failed_s = driver.DeleteCgroup(cgroup->GetPath());
+  EXPECT_TRUE(failed_s.IsInvalidArgument()) << failed_s.ToString();
+  Status terminate_child =
+      TerminateChildProcessAndWaitForTimeout(child_pid, child_pidfd, 5000);
+  ASSERT_TRUE(terminate_child.ok()) << terminate_child.ToString();
+  // Delete succeeds after child process terminates.
+  Status succeeded_s = driver.DeleteCgroup(cgroup->GetPath());
+  EXPECT_TRUE(succeeded_s.ok()) << succeeded_s.ToString();
+}
+
+TEST_F(SysFsCgroupDriverIntegrationTest,
+       DeleteCgroupSucceedsIfLeafCgroupExistsWithNoProcessesAndCorrectPermissions) {
+  auto cgroup_or_status = TempCgroupDirectory::Create(test_cgroup_path_, S_IRWXU);
+  ASSERT_TRUE(cgroup_or_status.ok()) << cgroup_or_status.ToString();
+  auto cgroup = std::move(cgroup_or_status.value());
+  SysFsCgroupDriver driver;
+  Status s = driver.DeleteCgroup(cgroup->GetPath());
+  EXPECT_TRUE(s.ok()) << s.ToString();
+}
+
+// RemoveController tests
 
 TEST_F(SysFsCgroupDriverIntegrationTest,
        GetAvailableControllersFailsIfCgroupDoesNotExist) {

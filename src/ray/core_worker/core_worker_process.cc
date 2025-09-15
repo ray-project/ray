@@ -33,8 +33,9 @@
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/core_worker_rpc_proxy.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/gcs_client/gcs_client.h"
 #include "ray/ipc/raylet_ipc_client.h"
+#include "ray/object_manager/plasma/client.h"
 #include "ray/rpc/raylet/raylet_client.h"
 #include "ray/stats/stats.h"
 #include "ray/util/container_util.h"
@@ -142,13 +143,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto worker_context = std::make_unique<WorkerContext>(
       options.worker_type, worker_id, GetProcessJobID(options));
   auto pid = getpid();
-
-  // Move worker process into cgroup on startup.
-  AppProcCgroupMetadata app_cgroup_metadata;
-  app_cgroup_metadata.pid = pid;
-  app_cgroup_metadata.max_memory = kUnlimitedCgroupMemory;
-  GetCgroupSetup(options.enable_resource_isolation)
-      .ApplyCgroupContext(app_cgroup_metadata);
 
   RAY_LOG(DEBUG) << "Creating core worker with debug source: " << options.debug_source;
 
@@ -353,6 +347,13 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
             /*min_concurrent_lease_cap_*/ 10);
   }
 
+  // We can turn on exit_on_connection_failure on for the core worker plasma
+  // client to early exit core worker after the raylet's death because on the
+  // raylet side, we never proactively close the plasma store connection even
+  // during shutdown. So any error from the raylet side should be a sign of raylet
+  // death.
+  auto plasma_client = std::shared_ptr<plasma::PlasmaClientInterface>(
+      new plasma::PlasmaClient(/*exit_on_connection_failure*/ true));
   auto plasma_store_provider = std::make_shared<CoreWorkerPlasmaStoreProvider>(
       options.store_socket,
       raylet_ipc_client,
@@ -361,6 +362,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       /*warmup=*/
       (options.worker_type != WorkerType::SPILL_WORKER &&
        options.worker_type != WorkerType::RESTORE_WORKER),
+      /*store_client=*/plasma_client,
+      /*fetch_batch_size=*/RayConfig::instance().worker_fetch_request_size(),
       /*get_current_call_site=*/[this]() {
         auto core_worker = GetCoreWorker();
         return core_worker->CurrentCallSite();
@@ -425,19 +428,29 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       /*put_in_local_plasma_callback=*/
       [this](const RayObject &object, const ObjectID &object_id) {
         auto core_worker = GetCoreWorker();
-        auto put_status =
-            core_worker->PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true);
-        if (!put_status.ok()) {
-          RAY_LOG(WARNING).WithField(object_id)
-              << "Failed to put object in plasma store: " << put_status;
-          return put_status;
+        constexpr int max_retries = 3;
+        int attempt = 0;
+        int64_t backoff_ms = 10;
+        Status put_status;
+        while (attempt++ < max_retries) {
+          put_status =
+              core_worker->PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true);
+          if (put_status.ok()) {
+            return Status::OK();
+          }
+          // Backoff before retrying.
+          std::this_thread::sleep_for(std::chrono::milliseconds(backoff_ms));
+          backoff_ms *= 2;
         }
-        return Status::OK();
+        RAY_LOG(WARNING).WithField(object_id)
+            << "Exhausted plasma put retries (attempts=" << attempt
+            << ") with status: " << put_status;
+        return put_status;
       },
-      /* retry_task_callback= */
-      [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
+      /* async_retry_task_callback=*/
+      [this](TaskSpecification &spec, uint32_t delay_ms) {
         auto core_worker = GetCoreWorker();
-        core_worker->TaskManagerRetryTask(spec, object_recovery, delay_ms);
+        core_worker->AsyncRetryTask(spec, delay_ms);
       },
       /*queue_generator_resubmit=*/
       [this](const TaskSpecification &spec) {
@@ -450,13 +463,17 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       RayConfig::instance().max_lineage_bytes(),
       *task_event_buffer,
       /*get_actor_rpc_client_callback=*/
-      [this](const ActorID &actor_id) {
+      [this](const ActorID &actor_id)
+          -> std::optional<std::shared_ptr<rpc::CoreWorkerClientInterface>> {
         auto core_worker = GetCoreWorker();
         auto addr = core_worker->actor_task_submitter_->GetActorAddress(actor_id);
-        RAY_CHECK(addr.has_value()) << "Actor address not found for actor " << actor_id;
-        return core_worker->core_worker_client_pool_->GetOrConnect(addr.value());
+        if (!addr.has_value()) {
+          return std::nullopt;
+        }
+        return core_worker->core_worker_client_pool_->GetOrConnect(*addr);
       },
-      gcs_client);
+      gcs_client,
+      task_by_state_counter_);
 
   auto on_excess_queueing = [this](const ActorID &actor_id, uint64_t num_queued) {
     auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(
@@ -474,7 +491,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                         timestamp));
   };
 
-  auto actor_creator = std::make_shared<DefaultActorCreator>(gcs_client);
+  auto actor_creator = std::make_shared<ActorCreator>(gcs_client->Actors());
 
   auto actor_task_submitter = std::make_unique<ActorTaskSubmitter>(
       *core_worker_client_pool,
@@ -660,7 +677,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    std::move(actor_manager),
                                    task_execution_service_,
                                    std::move(task_event_buffer),
-                                   pid);
+                                   pid,
+                                   task_by_state_counter_);
   return core_worker;
 }
 
