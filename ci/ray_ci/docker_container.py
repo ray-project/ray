@@ -114,10 +114,10 @@ class DockerContainer(LinuxContainer):
         # e.g. sha-pyversion-platform
         return self.canonical_tag if self.canonical_tag else self._get_image_tags()[0]
 
-    def get_python_version_tag(self) -> str:
+    def _get_python_version_tag(self) -> str:
         return f"-py{self.python_version.replace('.', '')}"  # 3.x -> py3x
 
-    def get_platform_tag(self) -> str:
+    def _get_platform_tag(self) -> str:
         if self.platform == "cpu":
             return "-cpu"
         versions = self.platform.split(".")
@@ -138,7 +138,7 @@ class DockerContainer(LinuxContainer):
 
         versions = self._get_image_version_tags(external)
 
-        platforms = [self.get_platform_tag()]
+        platforms = [self._get_platform_tag()]
         if self.platform == "cpu" and self.image_type == RayType.RAY:
             # no tag is alias to cpu for ray image
             platforms.append("")
@@ -149,7 +149,7 @@ class DockerContainer(LinuxContainer):
                 # no tag is alias to gpu for ray-ml image
                 platforms.append("")
 
-        py_versions = [self.get_python_version_tag()]
+        py_versions = [self._get_python_version_tag()]
         if self.python_version == DEFAULT_PYTHON_VERSION:
             py_versions.append("")
 
