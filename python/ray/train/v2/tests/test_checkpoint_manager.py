@@ -235,7 +235,12 @@ async def test_checkpoint_validation_management(tmp_path):
         ),
     )
     assert checkpoint_manager.has_pending_validations()
-    assert len(checkpoint_manager._checkpoint_results) == 4
+    assert checkpoint_manager._checkpoint_results == [
+        training_results[0],
+        training_results[1],
+        training_results[2],
+        training_results[3],
+    ]
     assert not checkpoint_manager.failed_validations
 
     # Assert checkpoint state after most tasks are done
@@ -254,7 +259,11 @@ async def test_checkpoint_validation_management(tmp_path):
     )
     checkpoint_manager.poll_validations()
     assert checkpoint_manager.has_pending_validations()
-    assert len(checkpoint_manager._checkpoint_results) == 2
+    assert checkpoint_manager._checkpoint_results == [
+        training_results[2],  # keep because pending
+        training_results[3],  # keep because latest
+        training_results[0],  # keep because highest score
+    ]
     assert len(checkpoint_manager.failed_validations) == 1
 
     # Assert checkpoint state after all tasks are done
@@ -263,7 +272,10 @@ async def test_checkpoint_validation_management(tmp_path):
         ray.get(checkpoint_manager._pending_validations[2])
     checkpoint_manager.poll_validations()
     assert not checkpoint_manager.has_pending_validations()
-    assert len(checkpoint_manager._checkpoint_results) == 1
+    assert checkpoint_manager._checkpoint_results == [
+        training_results[3],  # keep because latest
+        training_results[0],  # keep because highest score
+    ]
     assert len(checkpoint_manager.failed_validations) == 2
 
 

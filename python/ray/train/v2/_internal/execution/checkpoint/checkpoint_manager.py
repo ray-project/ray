@@ -135,7 +135,6 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         """
         self._latest_checkpoint_result = checkpoint_result
 
-        self._pending_training_results[self._current_report_index] = checkpoint_result
         if self._checkpoint_config.checkpoint_score_attribute is not None:
             # If we're ordering by a score, insert the checkpoint
             # so that the list remains sorted.
@@ -148,10 +147,11 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             # If no metric is provided, just append (ordering by time of registration).
             self._checkpoint_results.append(checkpoint_result)
 
-        self._save_state_and_delete_old_checkpoints()
-
         # Kick off and track validation task
         if validation_spec and validation_spec.validate_function:
+            self._pending_training_results[
+                self._current_report_index
+            ] = checkpoint_result
 
             # TODO: rate limit this by using a queue?
             self._pending_validations[
@@ -159,6 +159,8 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             ] = run_validate_function.remote(
                 validation_spec, self._latest_checkpoint_result.checkpoint
             )
+
+        self._save_state_and_delete_old_checkpoints()
 
         self._current_report_index += 1
 
@@ -212,8 +214,13 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             if done:
                 try:
                     metrics = ray.get(done[0])
-                    self._pending_training_results[report_number].metrics.update(
-                        metrics
+                    training_result = self._pending_training_results[report_number]
+                    training_result.metrics.update(metrics)
+                    self._checkpoint_results.remove(training_result)
+                    _insert_into_sorted_list(
+                        self._checkpoint_results,
+                        training_result,
+                        key=self._get_checkpoint_score,
                     )
                 except ray.exceptions.RayTaskError as e:
                     self._failed_validations[report_number] = ValidationInfo(
