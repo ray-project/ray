@@ -1938,7 +1938,7 @@ TEST_F(ClusterResourceSchedulerTest, LabelSelectorHardNodeAffinityTest) {
     ASSERT_FALSE(is_infeasible);
   }
 
-  // Scheduling is infeasible when all specified nodes are unavailable.
+  // Scheduling is infeasible when all specified nodes are infeasible..
   {
     NodeResources depleted_node_resources = CreateNodeResources({{ResourceID::CPU(), 0}});
     resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
