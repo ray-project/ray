@@ -288,37 +288,6 @@ Status SysFsCgroupDriver::EnableController(const std::string &cgroup_path,
 
 Status SysFsCgroupDriver::DisableController(const std::string &cgroup_path,
                                             const std::string &controller) {
-  // RAY_RETURN_NOT_OK(CheckCgroup(cgroup_path));
-  // std::string controller_file_path = cgroup_path +
-  //                                    std::filesystem::path::preferred_separator +
-  //                                    std::string(kCgroupSubtreeControlFilename);
-
-  // int fd = open(controller_file_path.c_str(), O_RDWR);
-
-  // if (fd == -1) {
-  //   return Status::InvalidArgument(absl::StrFormat(
-  //       "Failed to disabled controller %s. Could not open %s for cgroup %s with error
-  //       %s", controller, kCgroupSubtreeControlFilename, cgroup_path, strerror(errno)));
-  // }
-
-  // std::string disable_str = absl::StrCat("-", controller);
-
-  // ssize_t bytes_written = write(fd, disable_str.c_str(), disable_str.size());
-
-  // if (bytes_written != static_cast<ssize_t>(disable_str.size())) {
-  //   close(fd);
-  //   return Status::InvalidArgument(
-  //       absl::StrFormat("Failed to disabled controller %s for cgroup %s. Could not
-  //       write "
-  //                       "%s to file %s with error %s",
-  //                       controller,
-  //                       cgroup_path,
-  //                       disable_str,
-  //                       controller_file_path,
-  //                       strerror(errno)));
-  // }
-  // close(fd);
-  // return Status::OK();
   RAY_RETURN_NOT_OK(CheckCgroup(cgroup_path));
   std::string controller_file_path = cgroup_path +
                                      std::filesystem::path::preferred_separator +
