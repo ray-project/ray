@@ -322,7 +322,7 @@ void ClusterLeaseManager::TryScheduleInfeasibleLease() {
         /*requires_object_store_memory*/ false,
         &is_infeasible);
 
-    // There is no node that has available resources to run the request.
+    // There is no node that has feasible resources to run the request.
     // Move on to the next shape.
     if (is_infeasible) {
       RAY_LOG(DEBUG) << "No feasible node found for lease "
