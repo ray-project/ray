@@ -811,9 +811,6 @@ def install_unified_signal_handlers(is_driver: bool):
 
     Only installs on the main thread; logs a warning otherwise.
     """
-    import threading
-
-    import ray
 
     global _unified_signal_installed, _shutdown_in_progress
     if _unified_signal_installed:
@@ -834,11 +831,9 @@ def install_unified_signal_handlers(is_driver: bool):
             os._exit(signum)
             return
         else:
-            # Workers: request graceful drain-and-exit via CoreWorker.
             try:
-                from ray._private.worker import global_worker
+                from ray._private.worker import global_worker  # noqa: F401
 
-                # Map to INTENDED_SYSTEM_EXIT for graceful path.
                 global_worker.core_worker.drain_and_exit_worker(
                     "intentional_system_exit", b"signal: first"
                 )
@@ -848,8 +843,7 @@ def install_unified_signal_handlers(is_driver: bool):
 
     def _force(detail: str):
         try:
-            # Use existing forced path on the CoreWorker wrapper.
-            from ray._private.worker import global_worker
+            from ray._private.worker import global_worker  # noqa: F401
 
             global_worker.core_worker.force_exit_worker("user", detail.encode("utf-8"))
         except Exception:
