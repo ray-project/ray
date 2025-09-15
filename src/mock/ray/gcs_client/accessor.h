@@ -13,7 +13,7 @@
 // limitations under the License.
 #pragma once
 #include "gmock/gmock.h"
-#include "ray/gcs/gcs_client/accessor.h"
+#include "ray/gcs_client/accessor.h"
 
 namespace ray {
 namespace gcs {

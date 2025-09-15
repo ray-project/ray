@@ -16,9 +16,7 @@ build_arg_sets:
 depsets:
   - name: ray_img_depset_${PYTHON_SHORT}
     packages:
-      - ray[all]==100.0.0-dev
-    requirements:
-      - docker/base-deps/requirements.in
+      - ray[all]==100.0.0.dev0
     constraints:
       - python/requirements_compiled.txt
     output: python/deplocks/ray_img/ray_img_py${PYTHON_SHORT}.lock
@@ -32,7 +30,7 @@ depsets:
       - py311
       - py312
     pre_hooks:
-      - ci/build/build-placeholder-wheel.sh
+      - ci/raydepsets/pre_hooks/build-placeholder-wheel.sh ${PYTHON_VERSION}
 
   - name: ray_base_extra_testdeps_${PYTHON_SHORT}
     operation: expand
