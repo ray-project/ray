@@ -138,7 +138,7 @@ DEFINE_int64(system_reserved_cpu_weight,
 DEFINE_int64(system_reserved_memory_bytes,
              -1,
              "The amount of memory in bytes reserved for ray system processes. It will "
-             "be applied as a memory.min constraint to the sytem cgroup. If "
+             "be applied as a memory.min constraint to the system cgroup. If "
              "enable-resource-isolation is true, then this cannot be -1");
 
 DEFINE_string(system_pids,
@@ -304,13 +304,13 @@ int main(int argc, char *argv[]) {
     std::vector<std::string> system_pids_to_move = absl::StrSplit(system_pids, ",");
     system_pids_to_move.emplace_back(std::to_string(ray::GetPID()));
     for (const auto &pid : system_pids_to_move) {
-      RAY_LOG(INFO) << "Moving process into system cgroup: " << pid;
       ray::Status s = cgroup_manager->AddProcessToSystemCgroup(pid);
-      // This should probably still be FATAL. If this is not okay, you passed in a system
-      // process which crashed.
+      // TODO(#54703): This could be upgraded to a RAY_CHECK.
       if (!s.ok()) {
-        RAY_LOG(WARNING)
-            << "Attempted to move process into system cgroup which no longer exists.";
+        RAY_LOG(WARNING) << absl::StrFormat(
+            "Failed to move process %s into system cgroup with error %s",
+            pid,
+            s.ToString());
       }
     }
   }

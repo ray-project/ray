@@ -288,75 +288,72 @@ Status SysFsCgroupDriver::EnableController(const std::string &cgroup_path,
 
 Status SysFsCgroupDriver::DisableController(const std::string &cgroup_path,
                                             const std::string &controller) {
-  RAY_RETURN_NOT_OK(CheckCgroup(cgroup_path));
-  std::string controller_file_path = cgroup_path +
-                                     std::filesystem::path::preferred_separator +
-                                     std::string(kCgroupSubtreeControlFilename);
-
-  int fd = open(controller_file_path.c_str(), O_RDWR);
-
-  if (fd == -1) {
-    return Status::InvalidArgument(absl::StrFormat(
-        "Failed to disabled controller %s. Could not open %s for cgroup %s with error %s",
-        controller,
-        kCgroupSubtreeControlFilename,
-        cgroup_path,
-        strerror(errno)));
-  }
-
-  std::string disable_str = absl::StrCat("-", controller);
-
-  ssize_t bytes_written = write(fd, disable_str.c_str(), disable_str.size());
-
-  if (bytes_written != static_cast<ssize_t>(disable_str.size())) {
-    close(fd);
-    return Status::InvalidArgument(
-        absl::StrFormat("Failed to disabled controller %s for cgroup %s. Could not write "
-                        "%s to file %s with error %s",
-                        controller,
-                        cgroup_path,
-                        disable_str,
-                        controller_file_path,
-                        strerror(errno)));
-  }
-  close(fd);
-  return Status::OK();
   // RAY_RETURN_NOT_OK(CheckCgroup(cgroup_path));
   // std::string controller_file_path = cgroup_path +
   //                                    std::filesystem::path::preferred_separator +
   //                                    std::string(kCgroupSubtreeControlFilename);
 
-  // StatusOr<std::unordered_set<std::string>> enabled_controllers_s =
-  //     ReadControllerFile(controller_file_path);
+  // int fd = open(controller_file_path.c_str(), O_RDWR);
 
-  // RAY_RETURN_NOT_OK(enabled_controllers_s.status());
+  // if (fd == -1) {
+  //   return Status::InvalidArgument(absl::StrFormat(
+  //       "Failed to disabled controller %s. Could not open %s for cgroup %s with error
+  //       %s", controller, kCgroupSubtreeControlFilename, cgroup_path, strerror(errno)));
+  // }
 
-  // auto enabled_controllers = enabled_controllers_s.value();
+  // std::string disable_str = absl::StrCat("-", controller);
 
-  // if (enabled_controllers.find(controller) == enabled_controllers.end()) {
-  //   std::string enabled_controllers_str =
-  //       absl::StrCat("[", absl::StrJoin(enabled_controllers, ", "), "]");
+  // ssize_t bytes_written = write(fd, disable_str.c_str(), disable_str.size());
+
+  // if (bytes_written != static_cast<ssize_t>(disable_str.size())) {
+  //   close(fd);
   //   return Status::InvalidArgument(
-  //       absl::StrFormat("Controller %s is not enabled for cgroup at path %s.\n"
-  //                       "Current enabled controllers are %s. ",
+  //       absl::StrFormat("Failed to disabled controller %s for cgroup %s. Could not
+  //       write "
+  //                       "%s to file %s with error %s",
   //                       controller,
   //                       cgroup_path,
-  //                       enabled_controllers_str));
+  //                       disable_str,
+  //                       controller_file_path,
+  //                       strerror(errno)));
   // }
-
-  // std::ofstream out_file(controller_file_path, std::ios::ate);
-  // if (!out_file.is_open()) {
-  //   return Status::Invalid(absl::StrFormat("Could not open cgroup controllers file at
-  //   %s",
-  //                                          controller_file_path));
-  // }
-  // out_file << ("-" + controller);
-  // out_file.flush();
-  // if (!out_file.good()) {
-  //   return Status::Invalid(absl::StrFormat(
-  //       "Could not write to cgroup controllers file %s", controller_file_path));
-  // }
+  // close(fd);
   // return Status::OK();
+  RAY_RETURN_NOT_OK(CheckCgroup(cgroup_path));
+  std::string controller_file_path = cgroup_path +
+                                     std::filesystem::path::preferred_separator +
+                                     std::string(kCgroupSubtreeControlFilename);
+
+  StatusOr<std::unordered_set<std::string>> enabled_controllers_s =
+      ReadControllerFile(controller_file_path);
+
+  RAY_RETURN_NOT_OK(enabled_controllers_s.status());
+
+  auto enabled_controllers = enabled_controllers_s.value();
+
+  if (enabled_controllers.find(controller) == enabled_controllers.end()) {
+    std::string enabled_controllers_str =
+        absl::StrCat("[", absl::StrJoin(enabled_controllers, ", "), "]");
+    return Status::InvalidArgument(
+        absl::StrFormat("Controller %s is not enabled for cgroup at path %s.\n"
+                        "Current enabled controllers are %s. ",
+                        controller,
+                        cgroup_path,
+                        enabled_controllers_str));
+  }
+
+  std::ofstream out_file(controller_file_path, std::ios::ate);
+  if (!out_file.is_open()) {
+    return Status::Invalid(absl::StrFormat("Could not open cgroup controllers file at %s",
+                                           controller_file_path));
+  }
+  out_file << ("-" + controller);
+  out_file.flush();
+  if (!out_file.good()) {
+    return Status::Invalid(absl::StrFormat(
+        "Could not write to cgroup controllers file %s", controller_file_path));
+  }
+  return Status::OK();
 }
 
 Status SysFsCgroupDriver::AddConstraint(const std::string &cgroup_path,
