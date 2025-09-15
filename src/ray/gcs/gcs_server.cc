@@ -35,6 +35,7 @@
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/gcs/store_client/store_client.h"
 #include "ray/gcs/store_client_kv.h"
+#include "ray/observability/metric_constants.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/rpc/raylet/raylet_client.h"
 #include "ray/stats/stats.h"
@@ -56,9 +57,10 @@ inline std::ostream &operator<<(std::ostream &str, GcsServer::StorageType val) {
   }
 }
 
-GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
-                     instrumented_io_context &main_service,
-                     ray::observability::MetricInterface &event_recorder_dropped_events_counter)
+GcsServer::GcsServer(
+    const ray::gcs::GcsServerConfig &config,
+    instrumented_io_context &main_service,
+    ray::observability::MetricInterface &event_recorder_dropped_events_counter)
     : io_context_provider_(main_service),
       config_(config),
       storage_type_(GetStorageType()),
@@ -124,7 +126,9 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       ray_event_recorder_(std::make_unique<observability::RayEventRecorder>(
           *event_aggregator_client_,
           io_context_provider_.GetIOContext<observability::RayEventRecorder>(),
-          event_recorder_dropped_events_counter_)),
+          RayConfig::instance().ray_event_recorder_max_queued_events(),
+          observability::kMetricSourceGCS,
+          event_recorder_dropped_events_counter)),
       pubsub_periodical_runner_(PeriodicalRunner::Create(
           io_context_provider_.GetIOContext<pubsub::GcsPublisher>())),
       periodical_runner_(

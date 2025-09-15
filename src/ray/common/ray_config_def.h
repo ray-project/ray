@@ -534,7 +534,7 @@ RAY_CONFIG(bool, enable_open_telemetry, false)
 /// using the Export API.
 RAY_CONFIG(bool, enable_ray_event, false)
 
-RAY_CONFIG(uint64_t, ray_event_recorder_max_buffer_size, 10000)
+RAY_CONFIG(uint64_t, ray_event_recorder_max_queued_events, 10000)
 
 /// Comma separated list of components we enable grpc metrics collection for.
 /// Only effective if `enable_metrics_collection` is also true. Will have some performance

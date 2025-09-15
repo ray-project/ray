@@ -14,15 +14,16 @@
 
 #pragma once
 
-#include "absl/container/inlined_vector.h"
+#include <boost/circular_buffer.hpp>
+
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "google/protobuf/timestamp.pb.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/ray_config.h"
+#include "ray/observability/metric_interface.h"
 #include "ray/observability/ray_event_interface.h"
 #include "ray/observability/ray_event_recorder_interface.h"
-#include "ray/observability/ray_metric_interface.h"
 #include "ray/rpc/event_aggregator_client.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/public/events_base_event.pb.h"
@@ -41,6 +42,8 @@ class RayEventRecorder : public RayEventRecorderInterface {
  public:
   RayEventRecorder(rpc::EventAggregatorClient &event_aggregator_client,
                    instrumented_io_context &io_service,
+                   size_t max_buffer_size,
+                   std::string_view metric_source,
                    ray::observability::MetricInterface &dropped_events_counter);
   virtual ~RayEventRecorder() = default;
 
@@ -58,13 +61,14 @@ class RayEventRecorder : public RayEventRecorderInterface {
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
   // Lock for thread safety when modifying the buffer.
   absl::Mutex mutex_;
-  
+
+  // Maximum number of events to store in the buffer (configurable at runtime)
+  size_t max_buffer_size_;
+  std::string_view metric_source_;
   // Bounded queue to store events before sending to the event aggregator.
   // When the queue is full, old events are dropped to make room for new ones.
-  // Using InlinedVector for better performance and memory locality. The inline capacity 
-  // is 10% of the max buffer size.
-  size_t max_buffer_size_;
-  absl::InlinedVector<std::unique_ptr<RayEventInterface>, max_buffer_size_ / 10> buffer_ ABSL_GUARDED_BY(mutex_);
+  boost::circular_buffer<std::unique_ptr<RayEventInterface>> buffer_
+      ABSL_GUARDED_BY(mutex_);
   ray::observability::MetricInterface &dropped_events_counter_;
   // Flag to track if exporting has been started
   bool exporting_started_ ABSL_GUARDED_BY(mutex_) = false;
