@@ -4,7 +4,6 @@ from typing import Any, Dict, Optional, List, Tuple
 
 from ray_release.aws import RELEASE_AWS_BUCKET
 from ray_release.buildkite.concurrency import get_concurrency_group
-from ray_release.configs.global_config import get_global_config
 from ray_release.test import Test, TestState
 from ray_release.config import (
     DEFAULT_ANYSCALE_PROJECT,
