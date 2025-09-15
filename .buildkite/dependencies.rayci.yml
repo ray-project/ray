@@ -24,5 +24,17 @@ steps:
     tags: always
     instance_type: small
     command: ./ci/test_compile_llm_requirements.sh
-    job_env: oss-ci-base_test-py3.11
-    depends_on: oss-ci-base_test-multipy
+    job_env: manylinux
+    depends_on: manylinux
+
+  - label: ":tapioca: build: raydepsets: compile ray img dependencies"
+    key: raydepsets_compile_rayimg_dependencies
+    tags: always
+    instance_type: medium
+    commands:
+      # build placeholder wheel for all python versions
+      - bash ci/build/build-placeholder-wheel.sh
+      # compile rayimg dependencies
+      - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/rayimg.depsets.yaml --check
+    job_env: manylinux
+    depends_on: manylinux

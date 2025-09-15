@@ -1017,7 +1017,8 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
     ObjectID *object_id,
     std::shared_ptr<Buffer> *data,
     const std::unique_ptr<rpc::Address> &owner_address,
-    bool inline_small_object) {
+    bool inline_small_object,
+    rpc::TensorTransport tensor_transport) {
   auto status = WaitForActorRegistered(contained_object_ids);
   if (!status.ok()) {
     return status;
@@ -1036,7 +1037,14 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
                                        data_size + metadata->Size(),
                                        /*is_reconstructable=*/false,
                                        /*add_local_ref=*/true,
-                                       NodeID::FromBinary(rpc_address_.node_id()));
+                                       NodeID::FromBinary(rpc_address_.node_id()),
+                                       /*tensor_transport=*/tensor_transport);
+
+    // Register the callback to free the GPU object when it is out of scope.
+    if (tensor_transport != rpc::TensorTransport::OBJECT_STORE) {
+      reference_counter_->AddObjectOutOfScopeOrFreedCallback(
+          *object_id, options_.free_actor_object_callback);
+    }
   } else {
     // Because in the remote worker's `HandleAssignObjectOwner`,
     // a `WaitForRefRemoved` RPC request will be sent back to
@@ -2096,6 +2104,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       ray_namespace,
       actor_creation_options.max_pending_calls,
       actor_creation_options.allow_out_of_order_execution,
+      actor_creation_options.enable_tensor_transport,
       actor_creation_options.enable_task_events,
       actor_creation_options.labels);
   std::string serialized_actor_handle;
@@ -3788,24 +3797,20 @@ void CoreWorker::ProcessSubscribeForRefRemoved(
     const rpc::WorkerRefRemovedSubMessage &message) {
   const ObjectID &object_id = ObjectID::FromBinary(message.reference().object_id());
 
-  // Set a callback to publish the message when the requested object ID's ref count
-  // goes to 0.
-  auto ref_removed_callback =
-      boost::bind(&ReferenceCounter::HandleRefRemoved, reference_counter_, object_id);
-
   const auto intended_worker_id = WorkerID::FromBinary(message.intended_worker_id());
   if (intended_worker_id != worker_context_->GetWorkerID()) {
     RAY_LOG(INFO) << "The ProcessSubscribeForRefRemoved message is for worker "
                   << intended_worker_id << ", but the current worker is "
                   << worker_context_->GetWorkerID() << ". The RPC will be no-op.";
-    ref_removed_callback(object_id);
+    reference_counter_->PublishRefRemoved(object_id);
     return;
   }
 
   const auto owner_address = message.reference().owner_address();
   ObjectID contained_in_id = ObjectID::FromBinary(message.contained_in_id());
-  reference_counter_->SetRefRemovedCallback(
-      object_id, contained_in_id, owner_address, ref_removed_callback);
+  // So it will call PublishRefRemovedInternal to publish a message when the requested
+  // object ID's ref count goes to 0.
+  reference_counter_->SubscribeRefRemoved(object_id, contained_in_id, owner_address);
 }
 
 void CoreWorker::HandleRemoteCancelTask(rpc::RemoteCancelTaskRequest request,
