@@ -144,13 +144,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       options.worker_type, worker_id, GetProcessJobID(options));
   auto pid = getpid();
 
-  // Move worker process into cgroup on startup.
-  AppProcCgroupMetadata app_cgroup_metadata;
-  app_cgroup_metadata.pid = pid;
-  app_cgroup_metadata.max_memory = kUnlimitedCgroupMemory;
-  GetCgroupSetup(options.enable_resource_isolation)
-      .ApplyCgroupContext(app_cgroup_metadata);
-
   RAY_LOG(DEBUG) << "Creating core worker with debug source: " << options.debug_source;
 
   RAY_LOG(DEBUG).WithField(worker_id) << "Constructing CoreWorker";
@@ -470,11 +463,14 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       RayConfig::instance().max_lineage_bytes(),
       *task_event_buffer,
       /*get_actor_rpc_client_callback=*/
-      [this](const ActorID &actor_id) {
+      [this](const ActorID &actor_id)
+          -> std::optional<std::shared_ptr<rpc::CoreWorkerClientInterface>> {
         auto core_worker = GetCoreWorker();
         auto addr = core_worker->actor_task_submitter_->GetActorAddress(actor_id);
-        RAY_CHECK(addr.has_value()) << "Actor address not found for actor " << actor_id;
-        return core_worker->core_worker_client_pool_->GetOrConnect(addr.value());
+        if (!addr.has_value()) {
+          return std::nullopt;
+        }
+        return core_worker->core_worker_client_pool_->GetOrConnect(*addr);
       },
       gcs_client,
       task_by_state_counter_);
