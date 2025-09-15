@@ -25,9 +25,8 @@
 #include "ray/common/ray_object.h"
 #include "ray/common/status.h"
 #include "ray/common/task/task_common.h"
-#include "ray/common/task/task_spec.h"
 #include "ray/core_worker/common.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/gcs_client/gcs_client.h"
 #include "ray/util/process.h"
 
 namespace ray {
@@ -96,6 +95,7 @@ struct CoreWorkerOptions {
         get_lang_stack(nullptr),
         kill_main(nullptr),
         cancel_async_actor_task(nullptr),
+        actor_shutdown_callback(nullptr),
         is_local_mode(false),
         terminate_asyncio_thread(nullptr),
         serialized_job_config(""),
@@ -106,8 +106,7 @@ struct CoreWorkerOptions {
         entrypoint(""),
         worker_launch_time_ms(-1),
         worker_launched_time_ms(-1),
-        debug_source(""),
-        enable_resource_isolation(false) {}
+        debug_source("") {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
@@ -174,6 +173,8 @@ struct CoreWorkerOptions {
   // Should return a boolean indicating if the task was successfully cancelled or not.
   // If not, the client will retry.
   std::function<bool(const TaskID &task_id)> cancel_async_actor_task;
+  /// Callback to shutdown actor instance before shutdown.
+  std::function<void()> actor_shutdown_callback;
   /// Is local mode being used.
   bool is_local_mode;
   /// The function to destroy asyncio event and loops.
@@ -209,10 +210,6 @@ struct CoreWorkerOptions {
   // Source information for `CoreWorker`, used for debugging and informational purpose,
   // rather than functional purpose.
   std::string debug_source;
-
-  // If true, core worker enables resource isolation through cgroupv2 by reserving
-  // resources for ray system processes.
-  bool enable_resource_isolation = false;
 };
 }  // namespace core
 }  // namespace ray

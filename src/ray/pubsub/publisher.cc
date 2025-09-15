@@ -25,8 +25,6 @@ namespace ray {
 
 namespace pubsub {
 
-namespace pub_internal {
-
 bool EntityState::Publish(const std::shared_ptr<rpc::PubMessage> &msg, size_t msg_size) {
   if (subscribers_.empty()) {
     return false;
@@ -92,16 +90,15 @@ bool EntityState::Publish(const std::shared_ptr<rpc::PubMessage> &msg, size_t ms
   return true;
 }
 
-bool EntityState::AddSubscriber(SubscriberState *subscriber) {
-  return subscribers_.emplace(subscriber->id(), subscriber).second;
+void EntityState::AddSubscriber(SubscriberState *subscriber) {
+  subscribers_.emplace(subscriber->id(), subscriber);
 }
 
-bool EntityState::RemoveSubscriber(const SubscriberID &id) {
-  return subscribers_.erase(id) > 0;
+void EntityState::RemoveSubscriber(const UniqueID &subscriber_id) {
+  subscribers_.erase(subscriber_id);
 }
 
-const absl::flat_hash_map<SubscriberID, SubscriberState *> &EntityState::Subscribers()
-    const {
+const absl::flat_hash_map<UniqueID, SubscriberState *> &EntityState::Subscribers() const {
   return subscribers_;
 }
 
@@ -132,27 +129,25 @@ bool SubscriptionIndex::Publish(const std::shared_ptr<rpc::PubMessage> &pub_mess
   return publish_to_all || publish_to_entity;
 }
 
-bool SubscriptionIndex::AddEntry(const std::string &key_id, SubscriberState *subscriber) {
+void SubscriptionIndex::AddEntry(const std::string &key_id, SubscriberState *subscriber) {
   if (key_id.empty()) {
-    return subscribers_to_all_->AddSubscriber(subscriber);
+    subscribers_to_all_->AddSubscriber(subscriber);
+    return;
   }
 
   auto &subscribing_key_ids = subscribers_to_key_id_[subscriber->id()];
-  const bool key_added = subscribing_key_ids.emplace(key_id).second;
+  subscribing_key_ids.emplace(key_id);
 
   auto sub_it = entities_.find(key_id);
   if (sub_it == entities_.end()) {
     sub_it = entities_.emplace(key_id, CreateEntityState(channel_type_)).first;
   }
-  const bool subscriber_added = sub_it->second->AddSubscriber(subscriber);
-
-  RAY_CHECK(key_added == subscriber_added);
-  return key_added;
+  sub_it->second->AddSubscriber(subscriber);
 }
 
-std::vector<SubscriberID> SubscriptionIndex::GetSubscriberIdsByKeyId(
+std::vector<UniqueID> SubscriptionIndex::GetSubscriberIdsByKeyId(
     const std::string &key_id) const {
-  std::vector<SubscriberID> subscribers;
+  std::vector<UniqueID> subscribers;
   if (!subscribers_to_all_->Subscribers().empty()) {
     for (const auto &[sub_id, sub] : subscribers_to_all_->Subscribers()) {
       subscribers.push_back(sub_id);
@@ -167,15 +162,13 @@ std::vector<SubscriberID> SubscriptionIndex::GetSubscriberIdsByKeyId(
   return subscribers;
 }
 
-bool SubscriptionIndex::EraseSubscriber(const SubscriberID &subscriber_id) {
+void SubscriptionIndex::EraseSubscriber(const UniqueID &subscriber_id) {
   // Erase subscriber of all keys.
-  if (subscribers_to_all_->RemoveSubscriber(subscriber_id)) {
-    return true;
-  }
+  subscribers_to_all_->RemoveSubscriber(subscriber_id);
 
   auto subscribing_key_it = subscribers_to_key_id_.find(subscriber_id);
   if (subscribing_key_it == subscribers_to_key_id_.end()) {
-    return false;
+    return;
   }
 
   // Erase subscriber of individual keys.
@@ -193,53 +186,48 @@ bool SubscriptionIndex::EraseSubscriber(const SubscriberID &subscriber_id) {
     }
   }
   subscribers_to_key_id_.erase(subscribing_key_it);
-  return true;
 }
 
-bool SubscriptionIndex::EraseEntry(const std::string &key_id,
-                                   const SubscriberID &subscriber_id) {
+void SubscriptionIndex::EraseEntry(const std::string &key_id,
+                                   const UniqueID &subscriber_id) {
   // Erase the subscriber of all keys.
   if (key_id.empty()) {
-    return subscribers_to_all_->RemoveSubscriber(subscriber_id);
+    subscribers_to_all_->RemoveSubscriber(subscriber_id);
   }
 
   // Erase keys from the subscriber of individual keys.
-  auto subscribers_to_message_it = subscribers_to_key_id_.find(subscriber_id);
-  if (subscribers_to_message_it == subscribers_to_key_id_.end()) {
-    return false;
+  auto subscribers_to_key_id_it = subscribers_to_key_id_.find(subscriber_id);
+  if (subscribers_to_key_id_it == subscribers_to_key_id_.end()) {
+    return;
   }
-  auto &objects = subscribers_to_message_it->second;
+  auto &objects = subscribers_to_key_id_it->second;
   auto object_it = objects.find(key_id);
   if (object_it == objects.end()) {
-    auto it = entities_.find(key_id);
-    if (it != entities_.end()) {
-      RAY_CHECK(!it->second->Subscribers().contains(subscriber_id));
-    }
-    return false;
+    return;
   }
   objects.erase(object_it);
   if (objects.empty()) {
-    subscribers_to_key_id_.erase(subscribers_to_message_it);
+    subscribers_to_key_id_.erase(subscribers_to_key_id_it);
   }
 
   // Erase subscribers from keys (reverse index).
   auto entity_it = entities_.find(key_id);
-  // If code reaches this line, that means the object id was in the index.
-  RAY_CHECK(entity_it != entities_.end());
+  if (entity_it == entities_.end()) {
+    return;
+  }
   auto &entity = *entity_it->second;
   // If code reaches this line, that means the subscriber id was in the index.
-  RAY_CHECK(entity.RemoveSubscriber(subscriber_id));
+  entity.RemoveSubscriber(subscriber_id);
   if (entity.Subscribers().empty()) {
     entities_.erase(entity_it);
   }
-  return true;
 }
 
 bool SubscriptionIndex::HasKeyId(const std::string &key_id) const {
   return entities_.contains(key_id);
 }
 
-bool SubscriptionIndex::HasSubscriber(const SubscriberID &subscriber_id) const {
+bool SubscriptionIndex::HasSubscriber(const UniqueID &subscriber_id) const {
   if (subscribers_to_all_->Subscribers().contains(subscriber_id)) {
     return true;
   }
@@ -323,12 +311,12 @@ void SubscriberState::PublishIfPossible(bool force_noop) {
   }
 
   // No message should have been added to the reply.
-  RAY_CHECK(long_polling_connection_->pub_messages->empty());
-  *long_polling_connection_->publisher_id = publisher_id_binary_;
+  RAY_CHECK(long_polling_connection_->pub_messages_->empty());
+  *long_polling_connection_->publisher_id_ = publisher_id_binary_;
   int64_t num_total_bytes = 0;
   if (!force_noop) {
     for (auto it = mailbox_.begin(); it != mailbox_.end(); it++) {
-      if (long_polling_connection_->pub_messages->size() >= publish_batch_size_) {
+      if (long_polling_connection_->pub_messages_->size() >= publish_batch_size_) {
         break;
       }
 
@@ -347,11 +335,11 @@ void SubscriberState::PublishIfPossible(bool force_noop) {
       // Avoid sending empty message to the subscriber. The message might have been
       // cleared because the subscribed entity's buffer was full.
       if (msg.inner_message_case() != rpc::PubMessage::INNER_MESSAGE_NOT_SET) {
-        *long_polling_connection_->pub_messages->Add() = msg;
+        *long_polling_connection_->pub_messages_->Add() = msg;
       }
     }
   }
-  long_polling_connection_->send_reply_callback(Status::OK(), nullptr, nullptr);
+  long_polling_connection_->send_reply_callback_(Status::OK(), nullptr, nullptr);
 
   // Clean up & update metadata.
   long_polling_connection_.reset();
@@ -372,8 +360,6 @@ bool SubscriberState::IsActive() const {
   return get_time_ms_() - last_connection_update_time_ms_ < connection_timeout_ms_;
 }
 
-}  // namespace pub_internal
-
 void Publisher::ConnectToSubscriber(
     const rpc::PubsubLongPollingRequest &request,
     std::string *publisher_id,
@@ -381,20 +367,19 @@ void Publisher::ConnectToSubscriber(
     rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(send_reply_callback != nullptr);
 
-  const auto subscriber_id = SubscriberID::FromBinary(request.subscriber_id());
+  const auto subscriber_id = UniqueID::FromBinary(request.subscriber_id());
   RAY_LOG(DEBUG) << "Long polling connection initiated by " << subscriber_id.Hex()
                  << ", publisher_id " << publisher_id_.Hex();
   absl::MutexLock lock(&mutex_);
   auto it = subscribers_.find(subscriber_id);
   if (it == subscribers_.end()) {
     it = subscribers_
-             .emplace(
-                 subscriber_id,
-                 std::make_unique<pub_internal::SubscriberState>(subscriber_id,
-                                                                 get_time_ms_,
-                                                                 subscriber_timeout_ms_,
-                                                                 publish_batch_size_,
-                                                                 publisher_id_))
+             .emplace(subscriber_id,
+                      std::make_unique<SubscriberState>(subscriber_id,
+                                                        get_time_ms_,
+                                                        subscriber_timeout_ms_,
+                                                        publish_batch_size_,
+                                                        publisher_id_))
              .first;
   }
   auto &subscriber = it->second;
@@ -404,26 +389,25 @@ void Publisher::ConnectToSubscriber(
       request, publisher_id, pub_messages, std::move(send_reply_callback));
 }
 
-bool Publisher::RegisterSubscription(const rpc::ChannelType channel_type,
-                                     const SubscriberID &subscriber_id,
+void Publisher::RegisterSubscription(const rpc::ChannelType channel_type,
+                                     const UniqueID &subscriber_id,
                                      const std::optional<std::string> &key_id) {
   absl::MutexLock lock(&mutex_);
   auto it = subscribers_.find(subscriber_id);
   if (it == subscribers_.end()) {
     it = subscribers_
-             .emplace(
-                 subscriber_id,
-                 std::make_unique<pub_internal::SubscriberState>(subscriber_id,
-                                                                 get_time_ms_,
-                                                                 subscriber_timeout_ms_,
-                                                                 publish_batch_size_,
-                                                                 publisher_id_))
+             .emplace(subscriber_id,
+                      std::make_unique<SubscriberState>(subscriber_id,
+                                                        get_time_ms_,
+                                                        subscriber_timeout_ms_,
+                                                        publish_batch_size_,
+                                                        publisher_id_))
              .first;
   }
-  pub_internal::SubscriberState *subscriber = it->second.get();
+  SubscriberState *subscriber = it->second.get();
   auto subscription_index_it = subscription_index_map_.find(channel_type);
   RAY_CHECK(subscription_index_it != subscription_index_map_.end());
-  return subscription_index_it->second.AddEntry(key_id.value_or(""), subscriber);
+  subscription_index_it->second.AddEntry(key_id.value_or(""), subscriber);
 }
 
 void Publisher::Publish(rpc::PubMessage pub_message) {
@@ -431,8 +415,6 @@ void Publisher::Publish(rpc::PubMessage pub_message) {
   const auto channel_type = pub_message.channel_type();
   absl::MutexLock lock(&mutex_);
   auto &subscription_index = subscription_index_map_.at(channel_type);
-  // TODO(sang): Currently messages are lost if publish happens
-  // before there's any subscriber for the object.
   pub_message.set_sequence_id(++next_sequence_id_);
 
   const size_t msg_size = pub_message.ByteSizeLong();
@@ -452,34 +434,22 @@ void Publisher::PublishFailure(const rpc::ChannelType channel_type,
   Publish(pub_message);
 }
 
-bool Publisher::UnregisterSubscription(const rpc::ChannelType channel_type,
-                                       const SubscriberID &subscriber_id,
+void Publisher::UnregisterSubscription(const rpc::ChannelType channel_type,
+                                       const UniqueID &subscriber_id,
                                        const std::optional<std::string> &key_id) {
   absl::MutexLock lock(&mutex_);
   auto subscription_index_it = subscription_index_map_.find(channel_type);
-  RAY_CHECK(subscription_index_it != subscription_index_map_.end());
-  return subscription_index_it->second.EraseEntry(key_id.value_or(""), subscriber_id);
+  if (subscription_index_it != subscription_index_map_.end()) {
+    subscription_index_it->second.EraseEntry(key_id.value_or(""), subscriber_id);
+  }
 }
 
-void Publisher::UnregisterSubscriber(const SubscriberID &subscriber_id) {
+void Publisher::UnregisterSubscriber(const UniqueID &subscriber_id) {
   absl::MutexLock lock(&mutex_);
   UnregisterSubscriberInternal(subscriber_id);
 }
 
-void Publisher::UnregisterAll() {
-  absl::MutexLock lock(&mutex_);
-  // Save the subscriber IDs to be removed, because UnregisterSubscriberInternal()
-  // erases from subscribers_.
-  std::vector<SubscriberID> ids;
-  for (const auto &[id, subscriber] : subscribers_) {
-    ids.push_back(id);
-  }
-  for (const auto &id : ids) {
-    UnregisterSubscriberInternal(id);
-  }
-}
-
-void Publisher::UnregisterSubscriberInternal(const SubscriberID &subscriber_id) {
+void Publisher::UnregisterSubscriberInternal(const UniqueID &subscriber_id) {
   RAY_LOG(DEBUG) << "Unregistering subscriber " << subscriber_id.Hex();
   for (auto &index : subscription_index_map_) {
     index.second.EraseSubscriber(subscriber_id);
@@ -497,7 +467,7 @@ void Publisher::UnregisterSubscriberInternal(const SubscriberID &subscriber_id) 
 
 void Publisher::CheckDeadSubscribers() {
   absl::MutexLock lock(&mutex_);
-  std::vector<SubscriberID> dead_subscribers;
+  std::vector<UniqueID> dead_subscribers;
 
   for (const auto &it : subscribers_) {
     const auto &subscriber = it.second;

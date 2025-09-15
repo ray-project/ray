@@ -29,17 +29,16 @@
 #include "opencensus/stats/stats_exporter.h"
 #include "opencensus/tags/tag_key.h"
 #include "ray/common/ray_config.h"
-#include "ray/telemetry/open_telemetry_metric_recorder.h"
+#include "ray/observability/metric_interface.h"
+#include "ray/observability/open_telemetry_metric_recorder.h"
+#include "ray/stats/tag_defs.h"
 #include "ray/util/logging.h"
 
 namespace ray {
 
 namespace stats {
 
-/// Include tag_defs.h to define tag items
-#include "ray/stats/tag_defs.h"
-
-using OpenTelemetryMetricRecorder = ray::telemetry::OpenTelemetryMetricRecorder;
+using OpenTelemetryMetricRecorder = ray::observability::OpenTelemetryMetricRecorder;
 
 /// StatsConfig per process.
 /// Note that this is not thread-safe. Don't modify its internal values
@@ -107,7 +106,7 @@ class StatsConfig final {
 };
 
 /// A thin wrapper that wraps the `opencensus::tag::measure` for using it simply.
-class Metric {
+class Metric : public observability::MetricInterface {
  public:
   Metric(const std::string &name,
          std::string description,
@@ -124,20 +123,22 @@ class Metric {
   const std::string &GetName() const { return name_; }
 
   /// Record the value for this metric.
-  void Record(double value) { Record(value, TagsType{}); }
+  void Record(double value) override { Record(value, TagsType{}); }
 
   /// Record the value for this metric.
   ///
   /// \param value The value that we record.
   /// \param tags The tag values that we want to record for this metric record.
-  void Record(double value, TagsType tags);
+  void Record(double value, TagsType tags) override;
 
   /// Record the value for this metric.
   ///
   /// \param value The value that we record.
   /// \param tags The map tag values that we want to record for this metric record.
-  void Record(double value, std::unordered_map<std::string_view, std::string> tags);
-  void Record(double value, std::unordered_map<std::string, std::string> tags);
+  void Record(double value,
+              const std::unordered_map<std::string_view, std::string> &tags) override;
+  void Record(double value,
+              const std::unordered_map<std::string, std::string> &tags) override;
 
  protected:
   virtual void RegisterView() = 0;
@@ -163,7 +164,11 @@ class Gauge : public Metric {
         const std::string &description,
         const std::string &unit,
         const std::vector<std::string> &tag_keys = {})
-      : Metric(name, description, unit, tag_keys) {}
+      : Metric(name, description, unit, tag_keys) {
+    if (::RayConfig::instance().enable_open_telemetry()) {
+      RegisterOpenTelemetryMetric();
+    }
+  }
 
  private:
   void RegisterView() override;
@@ -178,7 +183,11 @@ class Histogram : public Metric {
             const std::string &unit,
             const std::vector<double> &boundaries,
             const std::vector<std::string> &tag_keys = {})
-      : Metric(name, description, unit, tag_keys), boundaries_(boundaries) {}
+      : Metric(name, description, unit, tag_keys), boundaries_(boundaries) {
+    if (::RayConfig::instance().enable_open_telemetry()) {
+      RegisterOpenTelemetryMetric();
+    }
+  }
 
  private:
   void RegisterView() override;
@@ -195,7 +204,11 @@ class Count : public Metric {
         const std::string &description,
         const std::string &unit,
         const std::vector<std::string> &tag_keys = {})
-      : Metric(name, description, unit, tag_keys) {}
+      : Metric(name, description, unit, tag_keys) {
+    if (::RayConfig::instance().enable_open_telemetry()) {
+      RegisterOpenTelemetryMetric();
+    }
+  }
 
  private:
   void RegisterView() override;
@@ -209,7 +222,11 @@ class Sum : public Metric {
       const std::string &description,
       const std::string &unit,
       const std::vector<std::string> &tag_keys = {})
-      : Metric(name, description, unit, tag_keys) {}
+      : Metric(name, description, unit, tag_keys) {
+    if (::RayConfig::instance().enable_open_telemetry()) {
+      RegisterOpenTelemetryMetric();
+    }
+  }
 
  private:
   void RegisterView() override;
@@ -317,16 +334,6 @@ inline std::vector<opencensus::tags::TagKey> convert_tags(
   return ret;
 }
 
-inline std::unordered_set<std::string> build_tag_key_set(
-    const std::vector<std::string> &tag_keys) {
-  std::unordered_set<std::string> tag_keys_set;
-  tag_keys_set.reserve(tag_keys.size());
-  for (const auto &tag_key : tag_keys) {
-    tag_keys_set.insert(tag_key);
-  }
-  return tag_keys_set;
-}
-
 /*
   This is a helper class to define a metrics. With this class
   we'll be able to define a multi-view-single-measure metric for
@@ -349,9 +356,7 @@ class Stats {
                            const std::string,
                            const std::vector<opencensus::tags::TagKey>,
                            const std::vector<double> &buckets)> register_func)
-      : name_(measure),
-        tag_keys_(convert_tags(tag_keys)),
-        tag_keys_set_(build_tag_key_set(tag_keys)) {
+      : name_(measure), tag_keys_(convert_tags(tag_keys)) {
     auto stats_init = [register_func, measure, description, buckets, this]() {
       measure_ = std::make_unique<Measure>(Measure::Register(measure, description, ""));
       register_func(measure, description, tag_keys_, buckets);
@@ -381,10 +386,14 @@ class Stats {
 
     absl::flat_hash_map<std::string, std::string> open_telemetry_tags;
     // Insert metric-specific tags that match the expected keys.
+    for (const auto &tag_key : tag_keys_) {
+      open_telemetry_tags[tag_key.name()] = "";
+    }
     for (const auto &tag : open_census_tags) {
       const std::string &key = tag.first.name();
-      if (tag_keys_set_.count(key) != 0) {
-        open_telemetry_tags[key] = tag.second;
+      auto it = open_telemetry_tags.find(key);
+      if (it != open_telemetry_tags.end()) {
+        it->second = tag.second;
       }
     }
     // Add global tags, overwriting any existing tag keys.
@@ -462,7 +471,6 @@ class Stats {
   const std::string name_;
   // TODO: Depricate `tag_keys_` once we have fully migrated away from opencensus
   const std::vector<opencensus::tags::TagKey> tag_keys_;
-  const std::unordered_set<std::string> tag_keys_set_;
   std::unique_ptr<opencensus::stats::Measure<double>> measure_;
 };
 

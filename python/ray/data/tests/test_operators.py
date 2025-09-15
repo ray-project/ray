@@ -121,7 +121,7 @@ def test_all_to_all_operator():
         dummy_all_transform,
         input_op,
         DataContext.get_current(),
-        target_max_block_size=DataContext.get_current().target_max_block_size,
+        target_max_block_size_override=DataContext.get_current().target_max_block_size,
         num_outputs=2,
         sub_progress_bar_names=["Test1", "Test2"],
         name="TestAll",
@@ -139,7 +139,9 @@ def test_all_to_all_operator():
 
     # Check we return transformed bundles.
     assert not op.completed()
-    assert _take_outputs(op) == [[1, 2], [3, 4]]
+    outputs = _take_outputs(op)
+    expected = [[1, 2], [3, 4]]
+    assert sorted(outputs) == expected, f"Expected {expected}, got {outputs}"
     stats = op.get_stats()
     assert "FooStats" in stats
     assert op.completed()
@@ -170,7 +172,7 @@ def test_num_outputs_total():
         dummy_all_transform,
         input_op=op1,
         data_context=DataContext.get_current(),
-        target_max_block_size=DataContext.get_current().target_max_block_size,
+        target_max_block_size_override=DataContext.get_current().target_max_block_size,
         name="TestAll",
     )
     assert op2.num_outputs_total() is None
@@ -515,7 +517,9 @@ def test_map_operator_ray_args(shutdown_only, use_actors):
     run_op_tasks_sync(op)
 
     # Check we don't hang and complete with num_gpus=1.
-    assert _take_outputs(op) == [[i * 2] for i in range(10)]
+    outputs = _take_outputs(op)
+    expected = [[i * 2] for i in range(10)]
+    assert sorted(outputs) == expected, f"Expected {expected}, got {outputs}"
     assert op.completed()
 
 

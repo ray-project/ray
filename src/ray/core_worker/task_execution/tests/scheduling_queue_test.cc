@@ -19,7 +19,7 @@
 
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/test_util.h"
+#include "ray/common/test_utils.h"
 #include "ray/core_worker/task_execution/actor_scheduling_queue.h"
 #include "ray/core_worker/task_execution/normal_scheduling_queue.h"
 #include "ray/core_worker/task_execution/out_of_order_actor_scheduling_queue.h"
@@ -82,6 +82,8 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
         std::move(state_update)));
     return true;
   }
+
+  std::string GetSessionName() const override { return "test-session-name"; }
 
   std::vector<std::unique_ptr<worker::TaskEvent>> task_events;
 };

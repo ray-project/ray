@@ -21,14 +21,9 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/common/bundle_spec.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/scheduling/fixed_point.h"
-#include "ray/common/scheduling/resource_set.h"
-#include "ray/gcs/gcs_client/accessor.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
-#include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
