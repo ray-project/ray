@@ -205,7 +205,7 @@ class DependencySetManager:
         return status.stdout
 
     def execute_pre_hook(self, pre_hook: str):
-        status_code = subprocess.call(pre_hook, cwd=self.workspace.dir)
+        status_code = subprocess.call(pre_hook.split(), cwd=self.workspace.dir)
         if status_code != 0:
             raise RuntimeError(f"Failed to execute pre-hook: {pre_hook}")
         click.echo(f"Executed pre-hook: {pre_hook}")
