@@ -74,6 +74,96 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
             sum_ = sum(map(len, episodes))
             self.assertTrue(sum_ in [128, 129])
 
+    def test_sample_with_env_error(self):
+        class TenStepErrorEnv(gym.Env):
+            """An environment that lets you sample 1 episode and raises an error during the next one.
+
+            The expectation to the env runner is that it will sample one episode and recreate the env
+            to sample the second one.
+            """
+
+            def __init__(self, config):
+                super().__init__()
+                self.step_count = 0
+                self.one_eps_done = False
+                self.observation_space = gym.spaces.Box(low=0, high=1, shape=(1,))
+                self.action_space = gym.spaces.Box(low=0, high=1, shape=(1,))
+
+            def reset(self, seed=None, options=None):
+                self.step_count = 0
+                return self.observation_space.sample(), {
+                    "one_eps_done": self.one_eps_done
+                }
+
+            def step(self, action):
+                self.step_count += 1
+                if self.step_count == 10:
+                    if not self.one_eps_done:
+                        self.one_eps_done = True
+                        return (
+                            self.observation_space.sample(),
+                            0.0,
+                            True,
+                            False,
+                            {"one_eps_done": False},
+                        )
+                    else:
+                        raise Exception("Test error")
+
+                return (
+                    self.observation_space.sample(),
+                    0.0,
+                    False,
+                    False,
+                    {"one_eps_done": self.one_eps_done},
+                )
+
+        config = (
+            AlgorithmConfig()
+            .environment(TenStepErrorEnv)
+            # Vectorize x2 and by default, rollout 64 timesteps per individual env.
+            .env_runners(num_envs_per_env_runner=2, rollout_fragment_length=64)
+            .fault_tolerance(restart_failed_sub_environments=True)
+        )
+        env_runner = SingleAgentEnvRunner(config=config)
+
+        # Sample first episode.
+        # Since both environments are reset at the same step, we should get 2 episodes.
+        episodes = env_runner.sample(num_episodes=2, random_actions=True)
+        self.assertEqual(len(episodes), 2)
+        self.assertEqual(len(episodes[0]), 10)
+        self.assertListEqual(
+            [info["one_eps_done"] for info in episodes[0].infos], [False] * 11
+        )
+
+        # Sample second episode.
+        # This should reset the env under the hood and the sample from a new env.
+        episodes = env_runner.sample(num_episodes=2, random_actions=True)
+        self.assertEqual(len(episodes), 2)
+        self.assertEqual(len(episodes[0]), 10)
+        self.assertListEqual(
+            [info["one_eps_done"] for info in episodes[0].infos], [False] * 11
+        )
+
+        # Sample timesteps
+        episodes = env_runner.sample(num_timesteps=10, random_actions=True)
+        self.assertEqual(len(episodes), 2)
+        self.assertEqual(len(episodes[0]), 5)
+        self.assertEqual(len(episodes[1]), 5)
+        # Because both envs have been reset, one_eps_done should be true
+        self.assertListEqual(
+            [info["one_eps_done"] for info in episodes[0].infos], [True] * 6
+        )
+
+        # Sample timesteps
+        episodes = env_runner.sample(num_timesteps=10, random_actions=True)
+        self.assertEqual(len(episodes), 2)
+        self.assertEqual(len(episodes[0]), 5)
+        self.assertEqual(len(episodes[1]), 5)
+        self.assertListEqual(
+            [info["one_eps_done"] for info in episodes[0].infos], [False] * 6
+        )
+
     def test_async_vector_env(self):
         """Tests, whether SingleAgentGymEnvRunner can run with vector envs."""
 

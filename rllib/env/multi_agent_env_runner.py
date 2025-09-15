@@ -157,9 +157,9 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         """Runs and returns a sample (n timesteps or m episodes) on the env(s).
 
         Args:
-            num_timesteps: The number of timesteps to sample during this call.
+            num_timesteps: The minimum number of timesteps to sample during this call.
                 Note that only one of `num_timetseps` or `num_episodes` may be provided.
-            num_episodes: The number of episodes to sample during this call.
+            num_episodes: The minimum number of episodes to sample during this call.
                 Note that only one of `num_timetseps` or `num_episodes` may be provided.
             explore: If True, will use the RLModule's `forward_exploration()`
                 method to compute actions. If False, will use the RLModule's
@@ -264,9 +264,22 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         force_reset: bool = False,
     ) -> List[MultiAgentEpisode]:
 
+        episodes = self._episodes
+        shared_data = self._shared_data
         done_episodes_to_return: List[MultiAgentEpisode] = []
+        env_ts = 0
+        agent_ts = 0
+        eps = 0
 
-        def _reset_envs():
+        def _reset_envs_and_episodes():
+            """Helper method to reset the envs, ongoing episodes and shared data.
+
+            This resets the global env_ts and agent_ts variables and deletes ongoing episodes.
+            The done episodes are preserved.
+            """
+            nonlocal env_ts, agent_ts, episodes, shared_data
+            env_ts = 0
+            agent_ts = 0
             episodes = self._episodes = [None for _ in range(self.num_envs)]
             shared_data = self._shared_data = {}
             self._reset_envs(episodes, shared_data, explore)
@@ -277,18 +290,12 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
         # Have to reset the env (on all vector sub_envs).
         if force_reset or num_episodes is not None or self._needs_initial_reset:
-            episodes, shared_data = _reset_envs()
-        else:
-            episodes = self._episodes
-            shared_data = self._shared_data
+            _reset_envs_and_episodes()
 
         if num_episodes is not None:
             self._needs_initial_reset = True
 
         # Loop through `num_timesteps` timesteps or `num_episodes` episodes.
-        env_ts = 0
-        agent_ts = 0
-        eps = 0
         while (
             (eps < num_episodes)
             if num_timesteps is None
@@ -364,7 +371,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             results = self._try_env_step(actions_for_env)
             # If the env step fails, reset the envs and continue the loop.
             if results == ENV_STEP_FAILURE:
-                episodes, shared_data = _reset_envs()
+                _reset_envs_and_episodes()
                 continue
 
             observations, rewards, terminateds, truncateds, infos = results
@@ -446,10 +453,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     # Run a last time the `env_to_module` pipeline for these episodes
                     # to postprocess artifacts (e.g. observations to one-hot).
                     done_episodes_to_run_env_to_module.append(episodes[env_index])
-                    # Also early-out if we reach the number of episodes within this
-                    # for-loop.
-                    if eps == num_episodes:
-                        break
 
                     old_episode_id = episodes[env_index].id_
                     # Create a new episode object with no data in it and execute
