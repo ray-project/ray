@@ -41,6 +41,7 @@ class TransportRefsInfo(NamedTuple):
     send_ref: ObjectRef
     recv_ref: ObjectRef
     collective_group_name: Optional[str]
+    backend: str
     timeout: float
 
 
@@ -105,10 +106,7 @@ class GPUObjectManager:
         not_done = []
         done = []
         ref_info_map = {}
-        i = 0
         while True:
-            print(f"running monitor iter {i}")
-            i += 1
             with self._unmonitored_transport_refs_info_lock:
                 for ref_info in self._unmonitored_transport_refs_info:
                     not_done.append(ref_info.send_ref)
@@ -139,12 +137,21 @@ class GPUObjectManager:
         self, failed_ref: ObjectRef, ref_info_map: Dict[str, TransportRefsInfo]
     ):
         from ray.experimental.collective import destroy_collective_group
+        from ray.util.collective.types import Backend
 
         if failed_ref.hex() not in ref_info_map:
             return
         ref_info = ref_info_map.pop(failed_ref.hex())
-        ray.kill(ref_info.src_actor)
-        ray.kill(ref_info.dst_actor)
+        if ref_info.backend == Backend.TORCH_GLOO:
+            ray.kill(ref_info.src_actor)
+            ray.kill(ref_info.dst_actor)
+        elif ref_info.backend == Backend.NCCL:
+            # TODO(dayshah)
+            pass
+        elif ref_info.backend == Backend.NIXL:
+            # TODO(dayshah)
+            pass
+
         if ref_info.collective_group_name:
             try:
                 destroy_collective_group(ref_info.collective_group_name)
@@ -412,6 +419,7 @@ class GPUObjectManager:
                         send_ref=send_ref,
                         recv_ref=recv_ref,
                         collective_group_name=collective_group_name,
+                        backend=gpu_object_meta.tensor_transport_backend,
                         timeout=time.time() + ray_constants.FETCH_FAIL_TIMEOUT_SECONDS,
                     )
                 )
