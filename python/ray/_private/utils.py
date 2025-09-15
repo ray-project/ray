@@ -825,21 +825,14 @@ def install_unified_signal_handlers(is_driver: bool):
         )
         return
 
-    def _graceful():
+    def _graceful(signum: int):
         global _shutdown_in_progress
         if _shutdown_in_progress:
             return
         _shutdown_in_progress = True
         if is_driver:
-            # Best-effort asynchronous shutdown; avoid reentrancy issues.
-            def _bg():
-                try:
-                    ray.shutdown(_exiting_interpreter=True)
-                except Exception:
-                    pass
-
-            t = threading.Thread(target=_bg, daemon=True)
-            t.start()
+            os._exit(signum)
+            return
         else:
             # Workers: request graceful drain-and-exit via CoreWorker.
             try:
@@ -866,17 +859,13 @@ def install_unified_signal_handlers(is_driver: bool):
     def _handler(signum, frame):
         global _shutdown_in_progress
         if not _shutdown_in_progress:
-            _graceful()
+            _graceful(signum)
         else:
             _force(f"Second signal {signum}")
 
-    # For drivers, intercept both SIGINT and SIGTERM. For workers, only install
-    # SIGTERM and let SIGINT use the default behavior (immediate interrupt),
-    # which ensures prompt termination even if Python signal handlers don't run
-    # while the worker is inside the C++ task loop.
     if is_driver:
         signal.signal(signal.SIGINT, _handler)
-    set_sigterm_handler(_handler)
+        set_sigterm_handler(_handler)
     _unified_signal_installed = True
 
 
