@@ -19,8 +19,8 @@ ray_cc_library(
 
 ray_cc_library(
     name = "actor_submit_queue",
-    hdrs = ["actor_submit_queue.h"],
     srcs = ["actor_submit_queue.cc"],
+    hdrs = ["actor_submit_queue.h"],
     visibility = [":__subpackages__"],
     deps = [
         "//src/ray/common:id",

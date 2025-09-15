@@ -34,7 +34,7 @@ namespace core {
  */
 class ActorSubmitQueue {
  public:
-  ActorSubmitQueue(bool order_initial_submissions);
+  explicit ActorSubmitQueue(bool order_initial_submissions);
 
   /// Add a task into the queue.
   void Emplace(uint64_t position, const TaskSpecification &spec);
