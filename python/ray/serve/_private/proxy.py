@@ -29,6 +29,7 @@ from ray.serve._private.constants import (
     HEALTHY_MESSAGE,
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS,
+    RAY_SERVE_PROXY_GC_THRESHOLD,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     REQUEST_LATENCY_BUCKETS_MS,
     SERVE_CONTROLLER_NAME,
@@ -1258,3 +1259,6 @@ def _configure_gc_options():
     # Collect any objects that exist already and exclude them from future GC.
     gc.collect(2)
     gc.freeze()
+
+    # Tune the GC threshold to run less frequently (default is 700).
+    gc.set_threshold(RAY_SERVE_PROXY_GC_THRESHOLD)
