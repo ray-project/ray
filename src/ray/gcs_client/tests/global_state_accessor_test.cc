@@ -22,7 +22,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
-#include "ray/rpc/gcs/gcs_rpc_client.h"
+#include "ray/gcs_client/rpc_client.h"
 #include "ray/util/path_utils.h"
 #include "ray/util/raii.h"
 
