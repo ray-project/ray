@@ -240,6 +240,25 @@
       --join_type {{join_type}}
       --num_partitions 50
 
+###############
+# Wide Schema tests
+###############
+
+- name: wide_schema_pipeline_{{data_type}}
+
+  cluster:
+    cluster_compute: fixed_size_cpu_compute.yaml
+
+  matrix:
+    setup:
+      data_type: [primitives, tensors, objects, nested_structs]
+
+  run:
+    timeout: 300
+    script: >
+      python wide_schema_pipeline_benchmark.py
+      --data-type {{data_type}}
+
 #######################
 # Streaming split tests
 #######################
@@ -473,7 +492,8 @@
 
 # 300 GB image classification parquet data up to 10 GPUs
 # 10 g4dn.12xlarge.
-- name: "batch_inference_{{scaling}}"
+- name: "image_classification_{{scaling}}"
+  group: batch-inference
 
   cluster:
     cluster_compute: "{{scaling}}_gpu_compute.yaml"
@@ -488,11 +508,12 @@
       python gpu_batch_inference.py
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
 
-- name: batch_inference_chaos
+- name: image_classification_chaos
   stable: False
   # Don't use 'nightly_tests/dataset' as the working directory because we need to run
   # the 'setup_chaos.py' script.
   working_dir: nightly_tests
+  group: batch-inference
 
   cluster:
     cluster_compute: dataset/autoscaling_gpu_compute.yaml
@@ -504,9 +525,10 @@
       python dataset/gpu_batch_inference.py
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet --chaos-test
 
-- name: batch_inference_chaos_no_scale_back
+- name: image_classification_chaos_no_scale_back
   stable: False
   working_dir: nightly_tests
+  group: batch-inference
 
   cluster:
     cluster_compute: dataset/autoscaling_gpu_compute.yaml
@@ -520,7 +542,8 @@
 
 
 - name: image_embedding_from_uris_{{case}}
-  frequency: manual
+  frequency: weekly
+  group: batch-inference
 
   matrix:
     setup:
@@ -549,8 +572,9 @@
     script: python image_embedding_from_uris/main.py {{args}}
 
 
-- name: batch_inference_hetero_{{case}}
-  frequency: manual
+- name: image_embedding_from_jsonl_{{case}}
+  frequency: weekly
+  group: batch-inference
 
   matrix:
     setup:
@@ -572,14 +596,46 @@
           args: --inference-concurrency 40 40 --chaos
 
   cluster:
-    cluster_compute: batch_inference_hetero/{{cluster_type}}_cluster_compute.yaml
+    cluster_compute: image_embedding_from_jsonl/{{cluster_type}}_cluster_compute.yaml
     byod:
       post_build_script: byod_install_pybase64.sh
 
   run:
     timeout: 3600
-    script: python batch_inference_hetero/main.py {{args}}
+    script: python image_embedding_from_jsonl/main.py {{args}}
 
+- name: text_embedding_{{case}}
+  frequency: weekly
+  group: batch-inference
+
+  matrix:
+    setup:
+      case: []
+      cluster_type: []
+      args: []
+    adjustments:
+      - with:
+          case: fixed_size
+          cluster_type: fixed_size
+          args: --inference-concurrency 100 100
+      - with:
+          case: autoscaling
+          cluster_type: autoscaling
+          args: --inference-concurrency 1 100
+      - with:
+          case: fixed_size_chaos
+          cluster_type: fixed_size
+          args: --inference-concurrency 100 100 --chaos
+
+  cluster:
+    cluster_compute: text_embedding/{{cluster_type}}_cluster_compute.yaml
+    byod:
+      type: cu123
+      post_build_script: byod_install_text_embedding.sh
+
+  run:
+    timeout: 3600
+    script: python text_embedding/main.py {{args}}
 
 ##############
 # TPCH Queries
