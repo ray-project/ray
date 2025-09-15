@@ -657,6 +657,7 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
 }
 
 void FlushLongPollingConnection(pubsub::Publisher *object_info_publisher) {
+  absl::MutexLock lock(&object_info_publisher->mutex_);
   for (const auto &subscriber : object_info_publisher->subscribers_) {
     subscriber.second->PublishIfPossible(/*force_noop=*/true);
   }
