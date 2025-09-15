@@ -14,17 +14,22 @@ from ray._private.resource_isolation_config import ResourceIsolationConfig
 # If you want to run this test locally, you will need to create a cgroup that
 # the raylet can manage and delegate to the correct user.
 #
+# TODO(#54703): Once implementation is complete, I will add a fixture to this
+# test to check for common errors when running locally (such as cgroup2 not mounted
+# correct). It'll follow the example of
+# src/ray/common/cgroup2/integration_tests/sysfs_cgroup_driver_integration_test_entrypoint.sh
+#
 # Run these commands locally before running the test suite:
 #  sudo mkdir -p /sys/fs/cgroup/resource_isolation_test
 #  sudo chown -R $(whoami):$(whoami) /sys/fs/cgroup/resource_isolation_test/
 #  sudo chmod -R u+rwx /sys/fs/cgroup/resource_isolation_test/
 #  echo $$ | sudo tee /sys/fs/cgroup/resource_isolation_test/cgroup.procs
 #
-# Uncomment the following line.
-# _BASE_CGROUP_PATH = "/sys/fs/cgroup/resource_isolation_test"
-#
 # Comment the following line out.
 _BASE_CGROUP_PATH = "/sys/fs/cgroup"
+#
+# Uncomment the following line.
+_BASE_CGROUP_PATH = "/sys/fs/cgroup/resource_isolation_test"
 
 
 def test_resource_isolation_enabled_creates_cgroup_hierarchy(ray_start_cluster):
@@ -119,8 +124,8 @@ def test_ray_start_resource_isolation_config_default_values(monkeypatch, cleanup
         scripts.start,
         ["--head", "--enable-resource-isolation"],
     )
-    # TODO(#54703): This only checks to see that we start up, it doesn't check to see that we start
-    # up with default values. Need to test the side-effect.
+    # TODO(#54703): Need to rewrite this test to check for side-effects on the cgroup
+    # hierarchy once the rest of the implemetation is complete.
     assert result.exit_code == 0
 
 
@@ -150,17 +155,18 @@ def test_ray_init_with_resource_isolation_default_values(monkeypatch, ray_shutdo
     assert node.resource_isolation_config.is_enabled()
 
 
-def test_ray_init_with_resource_isolation_override_defaults(monkeypatch, ray_shutdown):
+def test_ray_init_with_resource_isolation_override_defaults(ray_shutdown):
     cgroup_path = _BASE_CGROUP_PATH
     system_reserved_cpu = 1
     system_reserved_memory = 1 * 10**9
-    total_system_cpu = 10
-    total_system_memory = 10 * 10**9
     object_store_memory = 1 * 10**9
-    monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: total_system_cpu)
-    monkeypatch.setattr(
-        utils, "get_system_memory", lambda *args, **kwargs: total_system_memory
+    resource_isolation_config = ResourceIsolationConfig(
+        enable_resource_isolation=True,
+        cgroup_path=cgroup_path,
+        system_reserved_cpu=system_reserved_cpu,
+        system_reserved_memory=system_reserved_memory,
     )
+    resource_isolation_config.add_object_store_memory(object_store_memory)
     ray.init(
         address="local",
         enable_resource_isolation=True,
@@ -170,13 +176,17 @@ def test_ray_init_with_resource_isolation_override_defaults(monkeypatch, ray_shu
         object_store_memory=object_store_memory,
     )
     node = ray._private.worker._global_node
-    # TODO(#54703): Need to check side-effects on cgroups.
+    # TODO(#54703): Need to rewrite this test to check for side-effects on the cgroup
+    # hierarchy once the rest of the implemetation is complete.
     assert node is not None
     assert node.resource_isolation_config.is_enabled()
-    assert node.resource_isolation_config.system_reserved_cpu_weight == 1000
+    assert (
+        node.resource_isolation_config.system_reserved_cpu_weight
+        == resource_isolation_config.system_reserved_cpu_weight
+    )
     assert (
         node.resource_isolation_config.system_reserved_memory
-        == system_reserved_memory + object_store_memory
+        == resource_isolation_config.system_reserved_memory
     )
 
 
