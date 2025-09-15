@@ -1,5 +1,5 @@
-import sys
 from contextlib import contextmanager
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -165,6 +165,102 @@ def test_symmetric_run_arg_validation(monkeypatch, cleanup_ray):
                 ]
                 assert len(ray_start_calls) > 0
                 assert "--num-cpus=4" in ray_start_calls[0][0][0]
+
+
+def test_symmetric_run_multi_node(monkeypatch, cleanup_ray):
+    """
+    Test symmetric_run with a simulated 3-node (1 head + 2 workers) cluster.
+    """
+    from ray.scripts.symmetric_run import symmetric_run
+
+    runner = CliRunner()
+    # Non-loopback IP because of multi-node.
+    head_ip = "10.0.0.1"
+    head_port = "6379"
+    address = f"{head_ip}:{head_port}"
+
+    common_args = ["--address", address, "--min-nodes", "3", "--", "echo", "ok"]
+
+    with patch("subprocess.run") as mock_run, patch(
+        "ray.scripts.symmetric_run.check_ray_already_started", return_value=False
+    ):
+
+        # Make subprocess.run succeed by default.
+        mock_run.return_value.returncode = 0
+
+        # ---- Head node ----
+        # If IP == resolved_gcs_host, then is_head == True.
+        with _setup_mock_network_utils(curr_ip=head_ip, head_ip=head_ip):
+            # The head waits for --min-nodes, so mock success.
+            with patch(
+                "ray.scripts.symmetric_run.check_cluster_ready", return_value=True
+            ) as mock_ready:
+                with patch("sys.argv", ["ray.scripts.symmetric_run", *common_args]):
+                    result_head = runner.invoke(symmetric_run, common_args)
+                assert result_head.exit_code == 0
+                # Ensure the head path waited for 3 nodes.
+                mock_ready.assert_called_once()
+                args_called, _kwargs_called = mock_ready.call_args
+                assert args_called[0] == 3  # nnodes
+
+        # ---- Worker node 1 ----
+        with _setup_mock_network_utils(curr_ip=head_ip, head_ip="10.0.0.2"):
+            with patch(
+                "ray.scripts.symmetric_run.check_head_node_ready", return_value=True
+            ):
+                with patch("sys.argv", ["ray.scripts.symmetric_run", *common_args]):
+                    result_w1 = runner.invoke(symmetric_run, common_args)
+                assert result_w1.exit_code == 0
+
+        # ---- Worker node 2 ----
+        with _setup_mock_network_utils(curr_ip=head_ip, head_ip="10.0.0.3"):
+            with patch(
+                "ray.scripts.symmetric_run.check_head_node_ready", return_value=True
+            ):
+                with patch("sys.argv", ["ray.scripts.symmetric_run", *common_args]):
+                    result_w2 = runner.invoke(symmetric_run, common_args)
+                assert result_w2.exit_code == 0
+
+        calls = mock_run.call_args_list
+
+        calls_str = [str(c) for c in calls]
+        start_calls = [s for s in calls_str if "ray" in s and "start" in s]
+        stop_calls = [s for s in calls_str if "ray" in s and "stop" in s]
+
+        assert len(start_calls) == 3, f"Expected 3 ray start calls, got: {start_calls}"
+        assert len(stop_calls) == 3, f"Expected 3 ray stop calls, got: {stop_calls}"
+
+        head_starts = [s for s in start_calls if "--head" in s]
+        worker_starts = [s for s in start_calls if "--address" in s and "--block" in s]
+
+        assert (
+            len(head_starts) == 1
+        ), f"Expected exactly 1 head start, got: {head_starts}"
+        assert (
+            len(worker_starts) == 2
+        ), f"Expected exactly 2 worker starts, got: {worker_starts}"
+
+        # Validate head flags
+        head_call = head_starts[0]
+        assert f"--node-ip-address={head_ip}" in head_call
+        assert f"--port={head_port}" in head_call
+
+        # Validate worker flags
+        for s in worker_starts:
+            # Must connect to the same head address we passed on the CLI.
+            # "ray start --address <address> --block ..."
+            assert "--address" in s
+            assert address in s
+            assert "--block" in s
+
+        # Validate that the entrypoint was invoked once on the head (the
+        # `echo ok` command).
+        non_ray_calls = [
+            s for s in calls_str if not ("ray" in s and ("start" in s or "stop" in s))
+        ]
+        assert any(
+            "['echo', 'ok']" in s for s in non_ray_calls
+        ), f"Entrypoint command was not found in: {non_ray_calls}"
 
 
 if __name__ == "__main__":
