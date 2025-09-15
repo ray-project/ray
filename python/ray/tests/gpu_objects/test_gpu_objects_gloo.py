@@ -500,20 +500,20 @@ def test_fetch_gpu_object_to_driver(ray_start_regular):
 
     # Case 1: Single tensor
     ref = actor.echo.remote(tensor1)
-    assert torch.equal(ray.get(ref), tensor1, _tensor_transport="object_store")
+    assert torch.equal(ray.get(ref, _tensor_transport="object_store"), tensor1)
 
     # Case 2: Multiple tensors
     ref = actor.echo.remote([tensor1, tensor2])
-    result = ray.get(ref)
-    assert torch.equal(result[0], tensor1, _tensor_transport="object_store")
-    assert torch.equal(result[1], tensor2, _tensor_transport="object_store")
+    result = ray.get(ref, _tensor_transport="object_store")
+    assert torch.equal(result[0], tensor1)
+    assert torch.equal(result[1], tensor2)
 
     # Case 3: Mixed CPU and GPU data
     data = [tensor1, tensor2, 7]
     ref = actor.echo.remote(data)
-    result = ray.get(ref)
-    assert torch.equal(result[0], tensor1, _tensor_transport="object_store")
-    assert torch.equal(result[1], tensor2, _tensor_transport="object_store")
+    result = ray.get(ref, _tensor_transport="object_store")
+    assert torch.equal(result[0], tensor1)
+    assert torch.equal(result[1], tensor2)
     assert result[2] == 7
 
 
@@ -822,12 +822,12 @@ def test_send_back_and_dst_warning(ray_start_regular):
         t = src_actor.echo.remote(tensor)
         t1 = src_actor.echo.remote(t)  # Sent back to the source actor
         t2 = dst_actor.echo.remote(t)  # Also sent to another actor
-        ray.get([t1, t2])
+        ray.get([t1, t2], _tensor_transport="object_store")
 
     # Second transmission of ObjectRef `t` to `dst_actor` should not trigger a warning
     # Verify no `pytest.warns` context is used here because no warning should be raised
     t3 = dst_actor.echo.remote(t)
-    ray.get(t3)
+    ray.get(t3, _tensor_transport="object_store")
 
 
 def test_duplicate_objectref_transfer(ray_start_regular):
