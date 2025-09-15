@@ -13,6 +13,7 @@ ray_cc_library(
     deps = [
         "//src/ray/common:asio",
         "//src/ray/common:id",
+        "//src/ray/common:placement_group",
         "//src/ray/common:protobuf_utils",
         "//src/ray/gcs/store_client:redis_store_client",
         "//src/ray/protobuf:usage_cc_proto",
