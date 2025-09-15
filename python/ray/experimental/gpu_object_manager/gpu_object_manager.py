@@ -220,7 +220,6 @@ class GPUObjectManager:
                 None, None, tensor_transport_backend
             )
             __ray_recv__(None, obj_id, tensor_transport_meta, communicator_meta)
-            print(f"recv object {obj_id}")
 
     def trigger_out_of_band_tensor_transfer(
         self, dst_actor: "ray.actor.ActorHandle", task_args: Tuple[Any, ...]
