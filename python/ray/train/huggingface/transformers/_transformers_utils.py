@@ -130,6 +130,8 @@ def prepare_trainer(trainer: "Trainer") -> "Trainer":
         ) -> DataLoader:
             if eval_dataset is None:
                 eval_dataset = self.eval_dataset
+            elif isinstance(eval_dataset, str):
+                eval_dataset = self.eval_dataset[eval_dataset]
 
             if (
                 isinstance(eval_dataset, str)
