@@ -1,5 +1,5 @@
-from contextlib import contextmanager
 import sys
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -203,23 +203,16 @@ def test_symmetric_run_multi_node(monkeypatch, cleanup_ray):
                 args_called, _kwargs_called = mock_ready.call_args
                 assert args_called[0] == 3  # nnodes
 
-        # ---- Worker node 1 ----
-        with _setup_mock_network_utils(curr_ip=head_ip, head_ip="10.0.0.2"):
-            with patch(
-                "ray.scripts.symmetric_run.check_head_node_ready", return_value=True
-            ):
-                with patch("sys.argv", ["ray.scripts.symmetric_run", *common_args]):
-                    result_w1 = runner.invoke(symmetric_run, common_args)
-                assert result_w1.exit_code == 0
-
-        # ---- Worker node 2 ----
-        with _setup_mock_network_utils(curr_ip=head_ip, head_ip="10.0.0.3"):
-            with patch(
-                "ray.scripts.symmetric_run.check_head_node_ready", return_value=True
-            ):
-                with patch("sys.argv", ["ray.scripts.symmetric_run", *common_args]):
-                    result_w2 = runner.invoke(symmetric_run, common_args)
-                assert result_w2.exit_code == 0
+        # ---- Worker nodes ----
+        worker_ips = ["10.0.0.2", "10.0.0.3"]
+        for worker_ip in worker_ips:
+            with _setup_mock_network_utils(curr_ip=head_ip, head_ip=worker_ip):
+                with patch(
+                    "ray.scripts.symmetric_run.check_head_node_ready", return_value=True
+                ):
+                    with patch("sys.argv", ["ray.scripts.symmetric_run", *common_args]):
+                        result_w = runner.invoke(symmetric_run, common_args)
+                    assert result_w.exit_code == 0
 
         calls = mock_run.call_args_list
 
