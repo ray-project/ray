@@ -62,7 +62,6 @@ class HybridSchedulingPolicyTest : public ::testing::Test {
                              avoid_local_node,
                              require_node_available,
                              avoid_gpu_nodes,
-                             /*max_cpu_fraction_per_node*/ 1.0,
                              /*scheduling_context*/ nullptr,
                              /*preferred_node*/ "",
                              schedule_top_k_absolute,

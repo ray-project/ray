@@ -66,20 +66,20 @@ class WaitManager {
                 const WaitCallback &callback,
                 const std::vector<ObjectID> &object_ids,
                 uint64_t num_required_objects)
-        : timeout_ms(timeout_ms),
-          callback(callback),
-          object_ids(object_ids),
-          num_required_objects(num_required_objects) {}
+        : timeout_ms_(timeout_ms),
+          callback_(callback),
+          object_ids_(object_ids),
+          num_required_objects_(num_required_objects) {}
     /// The period of time to wait before invoking the callback.
-    const int64_t timeout_ms;
+    const int64_t timeout_ms_;
     /// The callback invoked when Wait is complete.
-    WaitCallback callback;
+    WaitCallback callback_;
     /// Ordered input object_ids.
-    const std::vector<ObjectID> object_ids;
+    const std::vector<ObjectID> object_ids_;
     /// The number of required objects.
-    const uint64_t num_required_objects;
+    const uint64_t num_required_objects_;
     /// The objects that have been locally available.
-    std::unordered_set<ObjectID> ready;
+    std::unordered_set<ObjectID> ready_;
   };
 
   /// Completion handler for Wait.

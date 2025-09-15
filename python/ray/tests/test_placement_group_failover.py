@@ -1,12 +1,14 @@
-import pytest
 import sys
-import ray
 import time
-from ray._common.test_utils import wait_for_condition
+
+import pytest
+
+import ray
 import ray.cluster_utils
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import get_other_nodes
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util import placement_group_table
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 MB = 1024 * 1024
 

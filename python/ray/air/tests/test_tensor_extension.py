@@ -800,6 +800,32 @@ def test_large_arrow_tensor_array(restore_data_context, tensor_format):
             assert np.asarray(arr).shape == (1000, 550)
 
 
+@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+def test_tensor_array_string_tensors_simple(restore_data_context, tensor_format):
+    """Simple test for fixed-shape string tensor arrays with pandas/arrow roundtrip."""
+    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+
+    # Create fixed-shape string tensor
+    string_tensors = np.array(
+        [["hello", "world"], ["arrow", "pandas"], ["tensor", "string"]]
+    )
+
+    # Create pandas DataFrame with TensorArray
+    df_pandas = pd.DataFrame({"id": [1, 2, 3], "strings": TensorArray(string_tensors)})
+    # Convert to Arrow table
+    arrow_table = pa.Table.from_pandas(df_pandas)
+
+    # Convert back to pandas
+    df_roundtrip = arrow_table.to_pandas(ignore_metadata=True)
+
+    # Verify the roundtrip preserves the data
+    original_strings = df_pandas["strings"].to_numpy()
+    roundtrip_strings = df_roundtrip["strings"].to_numpy()
+
+    np.testing.assert_array_equal(original_strings, roundtrip_strings)
+    np.testing.assert_array_equal(roundtrip_strings, string_tensors)
+
+
 if __name__ == "__main__":
     import sys
 

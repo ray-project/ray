@@ -64,22 +64,22 @@ struct GetRequestQueueTest : public Test {
     Test::SetUp();
     object_id1 = ObjectID::FromRandom();
     object_id2 = ObjectID::FromRandom();
-    object1.object_info.data_size = 10;
-    object1.object_info.metadata_size = 0;
-    object2.object_info.data_size = 10;
-    object2.object_info.metadata_size = 0;
+    object1.object_info_.data_size = 10;
+    object1.object_info_.metadata_size = 0;
+    object2.object_info_.data_size = 10;
+    object2.object_info_.metadata_size = 0;
   }
 
   void TearDown() override { io_context_.stop(); }
 
  protected:
-  void MarkObject(LocalObject &object, ObjectState state) { object.state = state; }
+  void MarkObject(LocalObject &object, ObjectState state) { object.state_ = state; }
 
   void MarkObjectFallbackAllocated(LocalObject &object,
                                    bool fallback_allocated,
                                    MEMFD_TYPE fd) {
-    object.allocation.fallback_allocated = fallback_allocated;
-    object.allocation.fd = fd;
+    object.allocation_.fallback_allocated_ = fallback_allocated;
+    object.allocation_.fd_ = fd;
   }
 
   bool IsGetRequestExist(GetRequestQueue &queue, const ObjectID &object_id) {

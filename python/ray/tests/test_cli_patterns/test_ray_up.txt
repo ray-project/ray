@@ -19,6 +19,7 @@ Acquiring an up-to-date head node
 
 <1/1> Setting up head node
   Prepared bootstrap config
+  Autoscaler v2 is now enabled by default.+
   New status: waiting-for-ssh
   \[1/7\] Waiting for SSH to become available
     Running `uptime` as a test\.

@@ -2,8 +2,8 @@ import pytest
 
 import ray
 from ray.tests.conftest import _ray_start_cluster
+from ray.train import RunConfig, ScalingConfig
 from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
-from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.jax import JaxTrainer
 
 
