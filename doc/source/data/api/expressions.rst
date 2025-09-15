@@ -20,7 +20,6 @@ Public API
     col
     lit
     udf
-    alias
     download
 
 Expression Classes

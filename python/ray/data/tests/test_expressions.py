@@ -88,10 +88,7 @@ def test_alias_functionality(expr, alias_name, expected_alias, should_match_orig
             original_result = eval_expr(expr, test_data)
             aliased_result = eval_expr(aliased_expr, test_data)
             if hasattr(original_result, "equals"):  # For pandas Series
-                assert (
-                    original_result.equals(aliased_result)
-                    or (original_result == aliased_result).all()
-                )
+                assert original_result.equals(aliased_result)
             else:  # For scalars
                 assert original_result == aliased_result
         except (KeyError, TypeError):

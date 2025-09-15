@@ -61,12 +61,10 @@ def _eval_expr_recursive(
         # Broadcast literal value to match batch size
         if isinstance(batch, pd.DataFrame):
             # For pandas, create a Series with the literal value repeated
-            batch_size = len(batch)
-            return pd.Series([expr.value] * batch_size)
+            return pd.Series(expr.value, index=batch.index)
         elif isinstance(batch, pa.Table):
             # For Arrow, create an Array with the literal value repeated
-            batch_size = len(batch)
-            return pa.array([expr.value] * batch_size)
+            return pa.array([expr.value] * len(batch))
         else:
             # Fallback for other batch types
             return expr.value
