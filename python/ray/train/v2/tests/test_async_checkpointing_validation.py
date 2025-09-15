@@ -292,10 +292,10 @@ def test_report_validate_function_keeps_correct_checkpoints(tmp_path):
     result = trainer.fit()
     assert result.failed_validations is None
     assert result.error is None
-    assert result.checkpoint == result.best_checkpoints[0][0]
+    assert result.checkpoint == result.best_checkpoints[1][0]
     assert len(result.best_checkpoints) == 2
-    assert result.best_checkpoints[0][1] == {"score": 5}
-    assert result.best_checkpoints[1][1] == {"score": 3}
+    assert result.best_checkpoints[0][1] == {"score": 3}
+    assert result.best_checkpoints[1][1] == {"score": 5}
 
 
 def test_report_validate_function_error():

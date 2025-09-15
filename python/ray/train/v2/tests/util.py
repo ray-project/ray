@@ -79,6 +79,9 @@ class DummyWorkerGroup(WorkerGroup):
     def shutdown(self):
         self._worker_group_state = None
 
+    def abort(self):
+        pass
+
     # === Test methods ===
     def error_worker(self, worker_index):
         status = self._worker_statuses[worker_index]
