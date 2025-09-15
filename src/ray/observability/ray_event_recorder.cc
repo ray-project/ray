@@ -53,14 +53,22 @@ void RayEventRecorder::ExportEvents() {
 
   event_aggregator_client_.AddEvents(
       request, [](Status status, rpc::events::AddEventsReply reply) {
-    if (!status.ok()) {
-      // TODO(#56391): Add a metric to track the number of failed events. Also
-      // add logic for error recovery.
-      RAY_LOG(ERROR) << "Failed to record ray event: " << status.ToString();
-    std::vector<std::unique_ptr<RayEventInterface>> &&data_list) {
-      absl::MutexLock lock(&mutex_);
-      buffer_.reserve(buffer_.size() + data_list.size());
-    }
+        if (!status.ok()) {
+          // TODO(#56391): Add a metric to track the number of failed events. Also
+          // add logic for error recovery.
+          RAY_LOG(ERROR) << "Failed to record ray event: " << status.ToString();
+        }
+      });
+}
 
-    }  // namespace observability
+void RayEventRecorder::AddEvents(
+    std::vector<std::unique_ptr<RayEventInterface>> &&data_list) {
+  absl::MutexLock lock(&mutex_);
+  buffer_.reserve(buffer_.size() + data_list.size());
+  for (auto &data : data_list) {
+    buffer_.emplace_back(std::move(data));
+  }
+}
+
+}  // namespace observability
 }  // namespace ray

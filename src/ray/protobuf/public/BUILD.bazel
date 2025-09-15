@@ -10,8 +10,6 @@ proto_library(
         ":events_actor_definition_event_proto",
         ":events_actor_lifecycle_event_proto",
         ":events_actor_task_definition_event_proto",
-        ":events_actor_definition_event_proto",
-        ":events_actor_lifecycle_event_proto",
         ":events_driver_job_definition_event_proto",
         ":events_driver_job_execution_event_proto",
         ":events_node_definition_event_proto",

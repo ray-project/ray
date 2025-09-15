@@ -29,8 +29,8 @@ class RayActorLifecycleEvent : public RayEvent<rpc::ActorLifecycleEvent> {
                          const std::string &worker_id,
                          const std::string &session_name);
 
-  std::string GetResourceId() const override;
-  void Merge(RayEvent<rpc::ActorLifecycleEvent> &&other) override;
+  std::string GetEntityId() const override;
+  void MergeData(RayEvent<rpc::ActorLifecycleEvent> &&other) override;
   ray::rpc::events::RayEvent SerializeData() const override;
 };
 

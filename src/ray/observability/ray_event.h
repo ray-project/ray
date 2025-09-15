@@ -58,7 +58,17 @@ class RayEvent : public RayEventInterface {
            ray::rpc::events::RayEvent::Severity severity,
            const std::string &message,
            const std::string &session_name)
-      : source_type_(source_type), ray::rpc::events::RayEvent::SourceType source_type_;
+      : source_type_(source_type),
+        event_type_(event_type),
+        severity_(severity),
+        message_(message),
+        session_name_(session_name) {
+    event_timestamp_ = absl::Now();
+  }
+
+  T data_;  // The nested event message within the RayEvent proto.
+  absl::Time event_timestamp_;
+  ray::rpc::events::RayEvent::SourceType source_type_;
   ray::rpc::events::RayEvent::EventType event_type_;
   ray::rpc::events::RayEvent::Severity severity_;
   std::string message_;

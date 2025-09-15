@@ -28,8 +28,8 @@ class RayActorDefinitionEvent : public RayEvent<rpc::ActorDefinitionEvent> {
   RayActorDefinitionEvent(const rpc::ActorTableData &data,
                           const std::string &session_name);
 
-  std::string GetResourceId() const override;
-  void Merge(RayEvent<rpc::ActorDefinitionEvent> &&other) override;
+  std::string GetEntityId() const override;
+  void MergeData(RayEvent<rpc::ActorDefinitionEvent> &&other) override;
   ray::rpc::events::RayEvent SerializeData() const override;
 };
 

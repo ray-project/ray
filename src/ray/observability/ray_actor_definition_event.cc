@@ -19,9 +19,11 @@ namespace observability {
 
 RayActorDefinitionEvent::RayActorDefinitionEvent(const rpc::ActorTableData &data,
                                                  const std::string &session_name)
-    : RayEvent<rpc::ActorDefinitionEvent>(session_name) {
-  event_type_ = rpc::events::RayEvent::ACTOR_DEFINITION_EVENT;
-
+    : RayEvent<rpc::ActorDefinitionEvent>(rpc::events::RayEvent::GCS,
+                                          rpc::events::RayEvent::ACTOR_DEFINITION_EVENT,
+                                          rpc::events::RayEvent::INFO,
+                                          "",
+                                          session_name) {
   data_.set_actor_id(data.actor_id());
   data_.set_job_id(data.job_id());
   data_.set_is_detached(data.is_detached());
@@ -38,18 +40,16 @@ RayActorDefinitionEvent::RayActorDefinitionEvent(const rpc::ActorTableData &data
                                          data.label_selector().end());
 }
 
-std::string RayActorDefinitionEvent::GetResourceId() const { return data_.actor_id(); }
+std::string RayActorDefinitionEvent::GetEntityId() const { return data_.actor_id(); }
 
-void RayActorDefinitionEvent::Merge(RayEvent<rpc::ActorDefinitionEvent> &&other) {
+void RayActorDefinitionEvent::MergeData(RayEvent<rpc::ActorDefinitionEvent> &&other) {
   // Definition events are static. Merging does not change the event.
   return;
 }
 
 ray::rpc::events::RayEvent RayActorDefinitionEvent::SerializeData() const {
   ray::rpc::events::RayEvent event;
-  event.set_source_type(rpc::events::RayEvent::GCS);
-  event.set_severity(rpc::events::RayEvent::INFO);
-  *event.mutable_actor_definition_event() = data_;
+  event.mutable_actor_definition_event()->Swap(&data_);
   return event;
 }
 

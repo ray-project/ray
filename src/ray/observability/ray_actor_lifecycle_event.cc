@@ -21,8 +21,11 @@ RayActorLifecycleEvent::RayActorLifecycleEvent(const rpc::ActorTableData &data,
                                                rpc::ActorLifecycleEvent::State state,
                                                const std::string &worker_id,
                                                const std::string &session_name)
-    : RayEvent<rpc::ActorLifecycleEvent>(session_name) {
-  event_type_ = rpc::events::RayEvent::ACTOR_LIFECYCLE_EVENT;
+    : RayEvent<rpc::ActorLifecycleEvent>(rpc::events::RayEvent::GCS,
+                                         rpc::events::RayEvent::ACTOR_LIFECYCLE_EVENT,
+                                         rpc::events::RayEvent::INFO,
+                                         "",
+                                         session_name) {
   ray::rpc::ActorLifecycleEvent::StateTransition state_transition;
   state_transition.set_state(state);
   state_transition.mutable_timestamp()->CopyFrom(AbslTimeNanosToProtoTimestamp(
@@ -46,9 +49,9 @@ RayActorLifecycleEvent::RayActorLifecycleEvent(const rpc::ActorTableData &data,
   data_.mutable_states()->Add(std::move(state_transition));
 }
 
-std::string RayActorLifecycleEvent::GetResourceId() const { return data_.actor_id(); }
+std::string RayActorLifecycleEvent::GetEntityId() const { return data_.actor_id(); }
 
-void RayActorLifecycleEvent::Merge(RayEvent<rpc::ActorLifecycleEvent> &&other) {
+void RayActorLifecycleEvent::MergeData(RayEvent<rpc::ActorLifecycleEvent> &&other) {
   auto &&other_event = static_cast<RayActorLifecycleEvent &&>(other);
   for (auto &state : *other_event.data_.mutable_states()) {
     data_.mutable_states()->Add(std::move(state));
@@ -57,9 +60,7 @@ void RayActorLifecycleEvent::Merge(RayEvent<rpc::ActorLifecycleEvent> &&other) {
 
 ray::rpc::events::RayEvent RayActorLifecycleEvent::SerializeData() const {
   ray::rpc::events::RayEvent event;
-  event.set_source_type(rpc::events::RayEvent::GCS);
-  event.set_severity(rpc::events::RayEvent::INFO);
-  *event.mutable_actor_lifecycle_event() = data_;
+  event.mutable_actor_lifecycle_event()->Swap(&data_);
   return event;
 }
 
