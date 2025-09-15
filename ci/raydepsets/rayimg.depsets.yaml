@@ -31,3 +31,5 @@ depsets:
       - py310
       - py311
       - py312
+    pre_hooks:
+      - ci/build/build-placeholder-wheel.sh
