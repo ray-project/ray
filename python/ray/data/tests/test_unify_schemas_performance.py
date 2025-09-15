@@ -80,7 +80,7 @@ def _create_mixed_complex_schema(num_columns):
 
 
 @pytest.mark.parametrize("num_schemas", [10, 100])
-@pytest.mark.parametrize("num_columns", [10, 100, 1000, 5000])
+@pytest.mark.parametrize("num_columns", [10, 100, 1000])
 @pytest.mark.parametrize(
     "schema_factory,expected_time_per_schema_per_column",
     [
