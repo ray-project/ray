@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 _nixl_tensor_transport_manager = None
 _gloo_tensor_transport_manager = None
 _nccl_tensor_transport_manager = None
+_hccl_tensor_transport_manager = None
 
 
 def get_tensor_transport_manager(
@@ -45,6 +46,11 @@ def get_tensor_transport_manager(
         if _nccl_tensor_transport_manager is None:
             _nccl_tensor_transport_manager = CollectiveTensorTransport(tensor_transport)
         return _nccl_tensor_transport_manager
+    elif tensor_transport == Backend.HCCL:
+        global _hccl_tensor_transport_manager
+        if _hccl_tensor_transport_manager is None:
+            _hccl_tensor_transport_manager = CollectiveTensorTransport(tensor_transport)
+        return _hccl_tensor_transport_manager
     else:
         raise ValueError(f"Unsupported tensor transport protocol: {tensor_transport}")
 
@@ -57,6 +63,8 @@ def device_match_transport(device: "torch.device", tensor_transport: Backend) ->
         return device.type == "cpu"
     elif tensor_transport == Backend.NCCL:
         return device.type == "cuda"
+    elif tensor_transport == Backend.HCCL:
+        return device.type == "npu"
     else:
         raise ValueError(f"Unsupported tensor transport protocol: {tensor_transport}")
 

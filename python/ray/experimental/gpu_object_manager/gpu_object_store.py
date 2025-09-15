@@ -25,6 +25,7 @@ TENSOR_TRANSPORT_TO_COLLECTIVE_BACKEND = {
     TensorTransportEnum.NCCL: Backend.NCCL,
     TensorTransportEnum.GLOO: Backend.TORCH_GLOO,
     TensorTransportEnum.NIXL: Backend.NIXL,
+    TensorTransportEnum.HCCL: Backend.HCCL,
 }
 
 
