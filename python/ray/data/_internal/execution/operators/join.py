@@ -120,11 +120,11 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
 
         arrow_join_type = _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP[self._join_type]
 
-        # Get joinable columns
-        joinable_l, unjoinable_l = self._split_joinable_columns(left_seq_partition)
-        joinable_r, unjoinable_r = self._split_joinable_columns(right_seq_partition)
+        # Get supported columns
+        joinable_l, unjoinable_l = _split_unsupported_columns(left_seq_partition)
+        joinable_r, unjoinable_r = _split_unsupported_columns(right_seq_partition)
 
-        # handle joins on non-joinable columns
+        # Handle joins on unsupported columns
         conflicting_columns: Set[str] = set(unjoinable_l.column_names) & set(left_on)
         if conflicting_columns:
             raise ValueError(
@@ -141,24 +141,20 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
                 f"(map, union, list, struct, etc.) which cannot be used for join operations."
             )
 
-        # Index if we have unjoinable columns
+        # Index if we have unsupported columns
         should_index_l = self._should_index_side("left", joinable_l, unjoinable_l)
         should_index_r = self._should_index_side("right", joinable_r, unjoinable_r)
 
-        # Add index columns for back-referencing if we have unjoinable columns
+        # Add index columns for back-referencing if we have unsupported columns
         # TODO: what are the chances of a collision with the index column?
-        index_name_l = self._get_index_col_name(0)
+        index_name_l = "__index_level_left__"
         if should_index_l:
-            joinable_l = self.append_index_column(
-                table=joinable_l, col_name=index_name_l
-            )
-        index_name_r = self._get_index_col_name(1)
+            joinable_l = _append_index_column(table=joinable_l, col_name=index_name_l)
+        index_name_r = "__index_level_right__"
         if should_index_r:
-            joinable_r = self.append_index_column(
-                table=joinable_r, col_name=index_name_r
-            )
+            joinable_r = _append_index_column(table=joinable_r, col_name=index_name_r)
 
-        # Perform the join on joinable columns
+        # Perform the join on supported columns
         joined = joinable_l.join(
             joinable_r,
             join_type=arrow_join_type,
@@ -167,16 +163,16 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
             left_suffix=self._left_columns_suffix,
             right_suffix=self._right_columns_suffix,
         )
-        # Add back unjoinable columns (join type logic is in should_index_* variables)
+        # Add back unsupported columns (join type logic is in should_index_* variables)
         if should_index_l:
-            joined = self._add_back_unjoinable_columns(
+            joined = _add_back_unjoinable_columns(
                 joined_table=joined,
                 unjoinable_table=unjoinable_l,
                 index_col_name=index_name_l,
             )
 
         if should_index_r:
-            joined = self._add_back_unjoinable_columns(
+            joined = _add_back_unjoinable_columns(
                 joined_table=joined,
                 unjoinable_table=unjoinable_r,
                 index_col_name=index_name_r,
@@ -187,62 +183,6 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
     def clear(self, partition_id: int):
         self._left_input_seq_partition_builders.pop(partition_id)
         self._right_input_seq_partition_builders.pop(partition_id)
-
-    def append_index_column(self, table: "pa.Table", col_name: str) -> "pa.Table":
-        import numpy as np
-        import pyarrow as pa
-
-        index_col = pa.array(np.arange(table.num_rows))
-        return table.append_column(col_name, index_col)
-
-    def _add_back_unjoinable_columns(
-        self,
-        joined_table: "pa.Table",
-        unjoinable_table: "pa.Table",
-        index_col_name: str,
-    ) -> "pa.Table":
-        # Extract the index column array and drop the column from the joined table
-        i = joined_table.schema.get_field_index(index_col_name)
-        indices = joined_table.column(i)
-        joined_table = joined_table.remove_column(i)
-
-        # Project the unjoinable columns using the indices and combine with joined table
-        projected = ArrowBlockAccessor(unjoinable_table).take(indices)
-        return ArrowBlockAccessor(joined_table).hstack(projected)
-
-    def _split_joinable_columns(
-        self, table: "pa.Table"
-    ) -> Tuple["pa.Table", "pa.Table"]:
-        """
-        Split a PyArrow table into two tables based on column joinability.
-
-        Separates columns into joinable types and unjoinable types (lists,
-        structs, maps, unions, extension types, etc.) that cannot be
-        directly joined on but should be preserved in results.
-
-        Args:
-            table: Input PyArrow table to split
-
-        Returns:
-            Tuple of (joinable_table, unjoinable_table) where:
-            - joinable_table contains columns with primitive/joinable types
-            - unjoinable_table contains columns with complex/unjoinable types
-        """
-        accessor = ArrowBlockAccessor(table)
-        joinable, unjoinable = [], []
-        for name in accessor.column_names():
-            column: "pa.ChunkedArray" = table.column(name)
-
-            col_type = column.type
-            if _is_column_extension_type(column):
-                col_type = column.type.storage_type
-
-            if is_unjoinable_type(col_type):
-                unjoinable.append(name)
-            else:
-                joinable.append(name)
-
-        return (accessor.select(joinable), accessor.select(unjoinable))
 
     def _get_partition_builder(self, *, input_seq_id: int, partition_id: int):
         if input_seq_id == 0:
@@ -278,7 +218,7 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
         # Must have both joinable and unjoinable columns to need indexing.
         # We cannot rely on row_count because it can return a non-zero row count
         # for an empty-schema.
-        if not (joinable_table.schema and unjoinable_table.schema):
+        if not joinable_table.schema or not unjoinable_table.schema:
             return False
 
         # For semi/anti joins, only index the side that appears in the result
@@ -290,7 +230,73 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
             return self._join_type not in [JoinType.LEFT_SEMI, JoinType.LEFT_ANTI]
 
 
-def is_unjoinable_type(type: "pa.DataType") -> bool:
+def _split_unsupported_columns(table: "pa.Table") -> Tuple["pa.Table", "pa.Table"]:
+    """
+    Split a PyArrow table into two tables based on column joinability.
+
+    Separates columns into joinable types and unjoinable types that cannot be
+    directly joined on but should be preserved in results.
+
+    Args:
+        table: Input PyArrow table to split
+
+    Returns:
+        Tuple of (joinable_table, unjoinable_table) where:
+        - joinable_table contains columns with primitive/joinable types
+        - unjoinable_table contains columns with complex/unjoinable types
+    """
+    supported, unsupported = [], []
+    for idx in range(len(table.columns)):
+        column: "pa.ChunkedArray" = table.column(idx)
+
+        col_type = column.type
+        if _is_column_extension_type(column):
+            col_type = column.type.storage_type
+
+        if _is_pa_join_not_supported(col_type):
+            unsupported.append(idx)
+        else:
+            supported.append(idx)
+
+    return (table.select(supported), table.select(unsupported))
+
+
+def _add_back_unjoinable_columns(
+    joined_table: "pa.Table",
+    unjoinable_table: "pa.Table",
+    index_col_name: str,
+) -> "pa.Table":
+    # Extract the index column array and drop the column from the joined table
+    i = joined_table.schema.get_field_index(index_col_name)
+    indices = joined_table.column(i)
+    joined_table = joined_table.remove_column(i)
+
+    # Project the unjoinable columns using the indices and combine with joined table
+    projected = ArrowBlockAccessor(unjoinable_table).take(indices)
+    return ArrowBlockAccessor(joined_table).hstack(projected)
+
+
+def _append_index_column(table: "pa.Table", col_name: str) -> "pa.Table":
+    import numpy as np
+    import pyarrow as pa
+
+    index_col = pa.array(np.arange(table.num_rows))
+    return table.append_column(col_name, index_col)
+
+
+def _is_pa_join_not_supported(type: "pa.DataType") -> bool:
+    """
+    The latest pyarrow versions do not support joins where the
+    tables contain the following types below (lists,
+    structs, maps, unions, extension types, etc.)
+
+    Args:
+        type: The input type of column.
+
+    Returns:
+        True if the type cannot be present (non join-key) during joins.
+        False if the type can be present.
+    """
     import pyarrow as pa
 
     return (

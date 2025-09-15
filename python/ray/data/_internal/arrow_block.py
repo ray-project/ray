@@ -381,9 +381,8 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def hstack(self, other_block: "pyarrow.Table") -> "pyarrow.Table":
 
         result_table = self._table
-        for column_name in other_block.schema.names:
-            column_data = other_block.column(column_name)
-            result_table = result_table.append_column(column_name, column_data)
+        for name, column in zip(other_block.column_names, other_block.columns):
+            result_table = result_table.append_column(name, column)
 
         return result_table
 
