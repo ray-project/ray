@@ -1,5 +1,5 @@
 import os
-from typing import List
+from typing import List, Optional
 
 from ray_release.configs.global_config import get_global_config
 
@@ -14,21 +14,25 @@ class RayDockerContainer(DockerContainer):
     Container for building and publishing ray docker images
     """
 
-    def run(self, use_base_extra_testdeps: bool = False) -> None:
+    def run(self, base: Optional[str] = None) -> None:
         """
         Build and publish ray docker images
         """
         assert "RAYCI_BUILD_ID" in os.environ, "RAYCI_BUILD_ID not set"
         rayci_build_id = os.environ["RAYCI_BUILD_ID"]
-        base_name = "base" if not use_base_extra_testdeps else "base-extra-testdeps"
+        if base is None:
+            base = "base"
+
         if self.architecture == DEFAULT_ARCHITECTURE:
-            suffix = base_name
+            suffix = base
         else:
-            suffix = f"{base_name}-{self.architecture}"
+            suffix = f"{base}-{self.architecture}"
+
+        image_repo = self.image_type
 
         base_image = (
             f"{_DOCKER_ECR_REPO}:{rayci_build_id}"
-            f"-{self.image_type}-py{self.python_version}-{self.platform}-{suffix}"
+            f"-{image_repo}-py{self.python_version}-{self.platform}-{suffix}"
         )
 
         docker_pull(base_image)
@@ -39,7 +43,7 @@ class RayDockerContainer(DockerContainer):
         )
         constraints_file = "requirements_compiled.txt"
         tag = self._get_canonical_tag()
-        ray_image = f"rayproject/{self.image_type}:{tag}"
+        ray_image = f"rayproject/{image_repo}:{tag}"
         pip_freeze = f"{self.image_type}:{tag}_pip-freeze.txt"
 
         cmds = [
