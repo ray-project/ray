@@ -37,7 +37,7 @@ export const LinkWithArrow = ({ text, to }: LinkWithArrowProps) => {
     <Link
       component={RouterLink}
       sx={{
-        color: "#036DCF",
+        color: "primary.main",
         textDecoration: "none",
         display: "flex",
         flexDirection: "row",
