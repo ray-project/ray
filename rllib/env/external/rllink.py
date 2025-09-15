@@ -84,7 +84,7 @@ def get_rllink_message(sock_):
         # Read the message body
         body = _get_num_bytes(sock_, msg_length)
         # Decode JSON.
-        message = msgpack.unpackb(body, raw=False)  # .loads(body.decode("utf-8"))
+        message = msgpack.unpackb(body, raw=False, strict_map_key=False)
         # Check for proper protocol.
         if "type" not in message:
             raise ConnectionError(
