@@ -1,5 +1,36 @@
 load("//bazel:ray.bzl", "ray_cc_library")
 
+config_setting(
+    name = "is_linux",
+    constraint_values = ["@platforms//os:linux"],
+)
+
+# Public targets.
+ray_cc_library(
+    name = "cgroup_manager",
+    srcs = select({
+        ":is_linux": ["cgroup_manager.cc"],
+        "//conditions:default": ["noop_cgroup_manager.cc"],
+    }),
+    hdrs = [
+        "cgroup_manager.h",
+        "scoped_cgroup_operation.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cgroup_driver_interface",
+        ":cgroup_manager_interface",
+        "//src/ray/common:status",
+        "//src/ray/common:status_or",
+    ] + select({
+        ":is_linux": [
+            "//src/ray/util:logging",
+            "@com_google_absl//absl/strings",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
 ray_cc_library(
     name = "cgroup_driver_interface",
     hdrs = [
@@ -50,20 +81,25 @@ ray_cc_library(
 
 ray_cc_library(
     name = "sysfs_cgroup_driver",
-    srcs = ["sysfs_cgroup_driver.cc"],
+    srcs = select({
+        ":is_linux": ["sysfs_cgroup_driver.cc"],
+        "//conditions:default": ["noop_sysfs_cgroup_driver.cc"],
+    }),
     hdrs = [
         "sysfs_cgroup_driver.h",
     ],
-    target_compatible_with = [
-        "@platforms//os:linux",
-    ],
+    visibility = ["//visibility:public"],
     deps = [
         ":cgroup_driver_interface",
         "//src/ray/common:status",
         "//src/ray/common:status_or",
-        "//src/ray/util:logging",
-        "@com_google_absl//absl/strings",
-    ],
+    ] + select({
+        ":is_linux": [
+            "//src/ray/util:logging",
+            "@com_google_absl//absl/strings",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 ray_cc_library(
