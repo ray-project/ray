@@ -14,8 +14,8 @@
 
 #pragma once
 
-#include "mock/ray/gcs/gcs_client/accessor.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
+#include "mock/ray/gcs_client/accessor.h"
+#include "ray/gcs_client/gcs_client.h"
 
 namespace ray {
 namespace gcs {
@@ -58,6 +58,7 @@ class MockGcsClient : public GcsClient {
     GcsClient::error_accessor_.reset(mock_error_accessor);
     GcsClient::worker_accessor_.reset(mock_worker_accessor);
     GcsClient::placement_group_accessor_.reset(mock_placement_group_accessor);
+    GcsClient::internal_kv_accessor_.reset(mock_internal_kv_accessor);
     GcsClient::task_accessor_.reset(mock_task_accessor);
   }
   MockActorInfoAccessor *mock_actor_accessor;

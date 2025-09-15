@@ -25,6 +25,7 @@
 #include "ray/common/status.h"
 #include "ray/object_manager/grpc_client_manager.h"
 #include "ray/rpc/grpc_client.h"
+#include "ray/rpc/object_manager/object_manager_client_interface.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/object_manager.grpc.pb.h"
 #include "src/ray/protobuf/object_manager.pb.h"
@@ -32,8 +33,8 @@
 namespace ray {
 namespace rpc {
 
-/// Client used for communicating with a remote node manager server.
-class ObjectManagerClient {
+/// Client used for communicating with a remote object manager server.
+class ObjectManagerClient : public ObjectManagerClientInterface {
  public:
   /// Constructor.
   ///
@@ -54,7 +55,8 @@ class ObjectManagerClient {
   VOID_RPC_CLIENT_METHOD(ObjectManagerService,
                          Push,
                          grpc_client_manager_->GetGrpcClient(),
-                         /*method_timeout_ms*/ -1, )
+                         /*method_timeout_ms*/ -1,
+                         override)
 
   /// Pull object from remote object manager
   ///
@@ -63,7 +65,8 @@ class ObjectManagerClient {
   VOID_RPC_CLIENT_METHOD(ObjectManagerService,
                          Pull,
                          grpc_client_manager_->GetGrpcClient(),
-                         /*method_timeout_ms*/ -1, )
+                         /*method_timeout_ms*/ -1,
+                         override)
 
   /// Tell remote object manager to free objects
   ///
@@ -72,7 +75,8 @@ class ObjectManagerClient {
   VOID_RPC_CLIENT_METHOD(ObjectManagerService,
                          FreeObjects,
                          grpc_client_manager_->GetGrpcClient(),
-                         /*method_timeout_ms*/ -1, )
+                         /*method_timeout_ms*/ -1,
+                         override)
 
  private:
   std::unique_ptr<GrpcClientManager<ObjectManagerService>> grpc_client_manager_;
