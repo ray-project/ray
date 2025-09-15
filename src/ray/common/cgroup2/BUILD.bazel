@@ -12,9 +12,7 @@ ray_cc_library(
         ":is_linux": ["cgroup_manager.cc"],
         "//conditions:default": ["noop_cgroup_manager.cc"],
     }),
-    hdrs = [
-        "cgroup_manager.h",
-    ],
+    hdrs = ["cgroup_manager.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":cgroup_driver_interface",
