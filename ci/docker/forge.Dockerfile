@@ -53,11 +53,16 @@ addgroup --gid 992 docker    # buildkite AMI as of 2025-06-07
 npm install -g @bazel/bazelisk
 ln -s /usr/local/bin/bazel /usr/local/bin/bazelisk
 
+# install uv
+curl -LsSf https://astral.sh/uv/0.8.17/install.sh | sh
+
 # A non-root user. Use 2000, which is the same as our buildkite agent VM uses.
 adduser --home /home/forge --uid 2000 forge --gid 100
 usermod -a -G docker0 forge
 usermod -a -G docker1 forge
 usermod -a -G docker forge
+
+chown forge /.python-version
 
 if [[ "$(uname -i)" == "x86_64" ]]; then
   bash install-k8s-tools.sh

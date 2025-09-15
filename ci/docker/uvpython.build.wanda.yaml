@@ -1,0 +1,8 @@
+name: "uv-python"
+froms:
+  - cr.ray.io/rayproject/forge
+dockerfile: ci/docker/uvpython.build.Dockerfile
+build_args:
+  - DEFAULT_PYTHON_VERSION
+tags:
+  - cr.ray.io/rayproject/uv-python
