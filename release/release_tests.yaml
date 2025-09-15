@@ -4778,6 +4778,7 @@
   cluster:
     byod:
       type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      ray_version: 2.49.0
       post_build_script: byod_mcp-ray-serve.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 

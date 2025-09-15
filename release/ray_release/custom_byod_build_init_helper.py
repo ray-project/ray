@@ -29,6 +29,7 @@ def get_images_from_tests(
             test.get_anyscale_byod_image(build_id),
             test.get_anyscale_base_byod_image(build_id),
             test.get_byod_post_build_script(),
+            test.get_ray_version(),
         )
         logger.info(f"To be built: {custom_byod_image_build[0]}")
         custom_byod_images.add(custom_byod_image_build)
@@ -46,7 +47,7 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
         return
     build_config = {"group": "Custom images build", "steps": []}
 
-    for image, base_image, post_build_script in custom_byod_images:
+    for image, base_image, post_build_script, ray_version in custom_byod_images:
         logger.info(
             f"Building custom BYOD image: {image}, base image: {base_image}, post build script: {post_build_script}"
         )
@@ -63,7 +64,7 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
                 f"bazelisk run //release:custom_byod_build -- --image-name {image} --base-image {base_image} --post-build-script {post_build_script}",
             ],
         }
-        step["depends_on"] = get_prerequisite_step(image)
+        step["depends_on"] = "~" if ray_version else get_prerequisite_step(image)
         build_config["steps"].append(step)
 
     logger.info(f"Build config: {build_config}")

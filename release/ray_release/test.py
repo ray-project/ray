@@ -531,6 +531,12 @@ class Test(dict):
         """
         return self.get("python", ".".join(str(v) for v in DEFAULT_PYTHON_VERSION))
 
+    def get_ray_version(self) -> Optional[str]:
+        """
+        Returns the ray version to use for this test
+        """
+        return self.get("ray_version", None)
+
     def get_byod_base_image_tag(self, build_id: Optional[str] = None) -> str:
         """
         Returns the byod image tag to use for this test.
@@ -541,6 +547,9 @@ class Test(dict):
             # TODO(can): this is a temporary backdoor that should be removed
             # once civ2 is fully rolled out.
             return byod_image_tag
+        ray_version = self.get_ray_version()
+        if ray_version:
+            return f"{ray_version}-{self.get_tag_suffix()}"
         build_id = build_id or os.environ.get("RAYCI_BUILD_ID", "")
         if not build_id:
             raise ValueError("RAYCI_BUILD_ID is not set")
