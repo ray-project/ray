@@ -88,6 +88,8 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
   ASSERT_EQ(ray_event_0.node_definition_event().node_id(), node->node_id());
   ASSERT_EQ(ray_event_0.node_definition_event().node_ip_address(),
             node->node_manager_address());
+  ASSERT_EQ(ray_event_0.node_definition_event().start_timestamp().seconds(),
+            node->start_time_ms() / 1000);
   std::map<std::string, std::string> event_labels(
       ray_event_0.node_definition_event().labels().begin(),
       ray_event_0.node_definition_event().labels().end());
