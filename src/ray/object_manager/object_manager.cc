@@ -684,63 +684,35 @@ void ObjectManager::RetryFreeObjects(
     const NodeID &node_id,
     uint32_t attempt_number,
     const rpc::FreeObjectsRequest &free_objects_request) {
-  auto default_unavailable_timeout_callback = [this, node_id]() {
-    auto gcs_check_node_alive = [node_id, this]() {
-      this->gcs_client_.Nodes().AsyncGetAll(
-          [node_id, this](const Status &status, std::vector<rpc::GcsNodeInfo> &&nodes) {
-            if (!status.ok()) {
-              // Will try again when unavailable timeout callback is retried.
-              RAY_LOG(INFO) << "Failed to get node info from GCS";
-              return;
-            }
-            if (nodes.empty() || nodes[0].state() != rpc::GcsNodeInfo::ALIVE) {
-              // The node is dead or GCS doesn't know about this node.
-              // There's only two reasons the GCS doesn't know about the node:
-              // 1. The node isn't registered yet.
-              // 2. The GCS erased the dead node based on
-              //    maximum_gcs_dead_node_cached_count.
-              // In this case, it must be 2 since there's no way for a component to
-              // know about a remote node id until the gcs has registered it.
-              RAY_LOG(INFO).WithField(node_id)
-                  << "Disconnecting object manager client because its node is dead";
-              this->remote_object_manager_clients_.erase(node_id);
-              return;
-            }
-          },
-          -1,
-          {node_id});
-    };
-
-    if (this->gcs_client_.Nodes().IsSubscribedToNodeChange()) {
-      auto *node_info =
-          this->gcs_client_.Nodes().Get(node_id, /*filter_dead_nodes=*/false);
-      if (node_info == nullptr) {
-        // Node could be dead or info may have not made it to the subscriber cache yet.
-        // Check with the GCS to confirm if the node is dead.
-        gcs_check_node_alive();
-        return;
-      }
-      if (node_info->state() == rpc::GcsNodeInfo::DEAD) {
-        RAY_LOG(INFO).WithField(node_id)
-            << "Disconnecting raylet client because its node is dead.";
-        this->remote_object_manager_clients_.erase(node_id);
-        return;
-      }
-      // Node is alive so raylet client is alive.
-      return;
-    }
-    // Not subscribed so ask GCS.
-    gcs_check_node_alive();
+  auto gcs_check_node_alive = [node_id, this]() {
+    this->gcs_client_.Nodes().AsyncGetAll(
+        [node_id, this](const Status &status, std::vector<rpc::GcsNodeInfo> &&nodes) {
+          if (!status.ok()) {
+            RAY_LOG(INFO) << "Failed to get node info from GCS";
+            return;
+          }
+          if (nodes.empty() || nodes[0].state() != rpc::GcsNodeInfo::ALIVE) {
+            // The node is dead or GCS doesn't know about this node.
+            // There's only two reasons the GCS doesn't know about the node:
+            // 1. The node isn't registered yet.
+            // 2. The GCS erased the dead node based on
+            //    maximum_gcs_dead_node_cached_count.
+            // In this case, it must be 2 since there's no way for a component to
+            // know about a remote node id until the gcs has registered it.
+            RAY_LOG(INFO).WithField(node_id)
+                << "Disconnecting object manager client because its node is dead";
+            this->remote_object_manager_clients_.erase(node_id);
+            return;
+          }
+        },
+        -1,
+        {node_id});
   };
 
   auto delay_ms = ExponentialBackoff::GetBackoffMs(attempt_number, 1000);
   execute_after(
       rpc_service_,
-      [this,
-       node_id,
-       attempt_number,
-       default_unavailable_timeout_callback,
-       free_objects_request] {
+      [this, node_id, attempt_number, gcs_check_node_alive, free_objects_request] {
         auto it = remote_object_manager_clients_.find(node_id);
         if (it == remote_object_manager_clients_.end()) {
           return;
@@ -748,15 +720,11 @@ void ObjectManager::RetryFreeObjects(
 
         it->second->FreeObjects(
             free_objects_request,
-            [this,
-             node_id,
-             attempt_number,
-             default_unavailable_timeout_callback,
-             free_objects_request](const Status &status,
-                                   const rpc::FreeObjectsReply &reply) {
+            [this, node_id, attempt_number, gcs_check_node_alive, free_objects_request](
+                const Status &status, const rpc::FreeObjectsReply &reply) {
               if (!status.ok()) {
-                default_unavailable_timeout_callback();
                 if (remote_object_manager_clients_.contains(node_id)) {
+                  gcs_check_node_alive();
                   RetryFreeObjects(node_id, attempt_number + 1, free_objects_request);
                 }
               }
