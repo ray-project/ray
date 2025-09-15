@@ -95,12 +95,15 @@ class Process {
   // Note: if RAY_kill_child_processes_on_worker_exit_with_raylet_subreaper is set to
   // true, Raylet will kill any orphan grandchildren processes when the spawned process
   // dies, *even if* `decouple` is set to `true`.
-  explicit Process(const char *argv[],
-                   void *io_service,
-                   std::error_code &ec,
-                   bool decouple = false,
-                   const ProcessEnvironment &env = {},
-                   bool pipe_to_stdin = false);
+  explicit Process(
+      const char *argv[],
+      void *io_service,
+      std::error_code &ec,
+      bool decouple = false,
+      const ProcessEnvironment &env = {},
+      bool pipe_to_stdin = false,
+      std::function<void(const std::string &)> add_to_cgroup = [](const std::string &) {
+      });
   /// Convenience function to run the given command line and wait for it to finish.
   static std::error_code Call(const std::vector<std::string> &args,
                               const ProcessEnvironment &env = {});

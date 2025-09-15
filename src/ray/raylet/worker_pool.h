@@ -305,21 +305,24 @@ class WorkerPool : public WorkerPoolInterface {
   /// that they are accessible from outside the node.
   /// \param get_time A callback to get the current time in milliseconds.
   /// adding itself into appropriate cgroup.
-  WorkerPool(instrumented_io_context &io_service,
-             const NodeID &node_id,
-             std::string node_address,
-             std::function<int64_t()> get_num_cpus_available,
-             int num_prestarted_python_workers,
-             int maximum_startup_concurrency,
-             int min_worker_port,
-             int max_worker_port,
-             const std::vector<int> &worker_ports,
-             gcs::GcsClient &gcs_client,
-             const WorkerCommandMap &worker_commands,
-             std::string native_library_path,
-             std::function<void()> starting_worker_timeout_callback,
-             int ray_debugger_external,
-             std::function<absl::Time()> get_time);
+  WorkerPool(
+      instrumented_io_context &io_service,
+      const NodeID &node_id,
+      std::string node_address,
+      std::function<int64_t()> get_num_cpus_available,
+      int num_prestarted_python_workers,
+      int maximum_startup_concurrency,
+      int min_worker_port,
+      int max_worker_port,
+      const std::vector<int> &worker_ports,
+      gcs::GcsClient &gcs_client,
+      const WorkerCommandMap &worker_commands,
+      std::string native_library_path,
+      std::function<void()> starting_worker_timeout_callback,
+      int ray_debugger_external,
+      std::function<absl::Time()> get_time,
+      std::function<void(const std::string &)> add_to_cgroup_ = [](const std::string &) {
+      });
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   ~WorkerPool() override;
@@ -909,6 +912,8 @@ class WorkerPool : public WorkerPoolInterface {
   int64_t process_failed_rate_limited_ = 0;
   int64_t process_failed_pending_registration_ = 0;
   int64_t process_failed_runtime_env_setup_failed_ = 0;
+
+  std::function<void(const std::string &)> add_to_cgroup_;
 
   /// Ray metrics
   ray::stats::Sum ray_metric_num_workers_started_{

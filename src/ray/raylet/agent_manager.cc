@@ -67,7 +67,8 @@ void AgentManager::StartAgent() {
               false,
               env,
               /*pipe_to_stdin*/
-              RayConfig::instance().enable_pipe_based_agent_to_parent_health_check());
+              RayConfig::instance().enable_pipe_based_agent_to_parent_health_check(),
+              add_to_cgroup_);
   if (!process_.IsValid() || ec) {
     // The worker failed to start. This is a fatal error.
     RAY_LOG(FATAL) << "Failed to start agent " << options_.agent_name

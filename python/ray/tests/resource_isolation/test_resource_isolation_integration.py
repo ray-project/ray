@@ -43,7 +43,6 @@ def generate_node_id():
 def assert_cgroup_hierarchy_exists_for_node(
     node_id: str, resource_isolation_config: ResourceIsolationConfig
 ):
-    """ """
     base_cgroup_for_node = resource_isolation_config.cgroup_path
     node_cgroup = Path(base_cgroup_for_node) / f"ray_node_{node_id}"
     system_cgroup = node_cgroup / "system"
@@ -113,7 +112,7 @@ def test_ray_start_invalid_resource_isolation_config(cleanup_ray):
 
 
 def test_ray_start_resource_isolation_creates_cgroup_hierarchy_and_cleans_up(
-    monkeypatch, cleanup_ray
+    cleanup_ray,
 ):
     object_store_memory = 1024**3
     system_reserved_memory = 1024**3

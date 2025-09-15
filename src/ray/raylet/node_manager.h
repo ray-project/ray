@@ -718,6 +718,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::unique_ptr<AgentManager> CreateRuntimeEnvAgentManager(
       const NodeID &self_node_id, const NodeManagerConfig &config);
 
+  std::function<void(const std::string &)> AddToSystemCgroupCallbackGenerator(
+      const std::string &agent_name);
+
   /// ID of this node.
   NodeID self_node_id_;
   /// The user-given identifier or name of this node.
@@ -887,6 +890,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Monitors and reports node memory usage and whether it is above threshold.
   std::unique_ptr<MemoryMonitor> memory_monitor_;
 
+  /// This needs to be declared AFTER the runtime_env_agent_manager_,
+  /// dashboard_agent_manager_, and worker_pool_ because they need a reference
+  /// to this interface. This will be destructed after those objects.
   std::unique_ptr<CgroupManagerInterface> cgroup_manager_;
 };
 
