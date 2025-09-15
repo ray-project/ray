@@ -31,9 +31,12 @@ TEST_F(RayActorLifecycleEventTest, TestMergeAndSerialize) {
   data.set_node_id("node-1");
 
   auto event1 = std::make_unique<RayActorLifecycleEvent>(
-      data, rpc::ActorLifecycleEvent::DEPENDENCIES_UNREADY, /*worker_id=*/"", "sess1");
+      data,
+      rpc::events::ActorLifecycleEvent::DEPENDENCIES_UNREADY,
+      /*worker_id=*/"",
+      "sess1");
   auto event2 = std::make_unique<RayActorLifecycleEvent>(
-      data, rpc::ActorLifecycleEvent::ALIVE, /*worker_id=*/"worker-123", "sess1");
+      data, rpc::events::ActorLifecycleEvent::ALIVE, /*worker_id=*/"worker-123", "sess1");
 
   event1->Merge(std::move(*event2));
   auto serialized_event = std::move(*event1).Serialize();
@@ -46,11 +49,13 @@ TEST_F(RayActorLifecycleEventTest, TestMergeAndSerialize) {
 
   const auto &actor_life = serialized_event.actor_lifecycle_event();
   ASSERT_EQ(actor_life.actor_id(), "test_actor_id");
-  ASSERT_EQ(actor_life.states_size(), 2);
-  ASSERT_EQ(actor_life.states(0).state(), rpc::ActorLifecycleEvent::DEPENDENCIES_UNREADY);
-  ASSERT_EQ(actor_life.states(1).state(), rpc::ActorLifecycleEvent::ALIVE);
-  ASSERT_EQ(actor_life.states(1).node_id(), "node-1");
-  ASSERT_EQ(actor_life.states(1).worker_id(), "worker-123");
+  ASSERT_EQ(actor_life.state_transitions_size(), 2);
+  ASSERT_EQ(actor_life.state_transitions(0).state(),
+            rpc::events::ActorLifecycleEvent::DEPENDENCIES_UNREADY);
+  ASSERT_EQ(actor_life.state_transitions(1).state(),
+            rpc::events::ActorLifecycleEvent::ALIVE);
+  ASSERT_EQ(actor_life.state_transitions(1).node_id(), "node-1");
+  ASSERT_EQ(actor_life.state_transitions(1).worker_id(), "worker-123");
 }
 
 }  // namespace observability

@@ -113,7 +113,7 @@ TEST_F(RayEventRecorderTest, TestRecordEvents) {
       std::make_unique<RayActorDefinitionEvent>(actor_def_data, "test_session_name_3"));
   events.push_back(
       std::make_unique<RayActorLifecycleEvent>(actor_life_data,
-                                               rpc::ActorLifecycleEvent::ALIVE,
+                                               rpc::events::ActorLifecycleEvent::ALIVE,
                                                "worker-1",
                                                "test_session_name_4"));
   recorder_->AddEvents(std::move(events));
@@ -155,9 +155,9 @@ TEST_F(RayEventRecorderTest, TestRecordEvents) {
             rpc::events::RayEvent::ACTOR_LIFECYCLE_EVENT);
   ASSERT_TRUE(recorded_events[3].has_actor_lifecycle_event());
   ASSERT_EQ(recorded_events[3].actor_lifecycle_event().actor_id(), "actor_2");
-  ASSERT_EQ(recorded_events[3].actor_lifecycle_event().states_size(), 1);
-  ASSERT_EQ(recorded_events[3].actor_lifecycle_event().states(0).state(),
-            rpc::ActorLifecycleEvent::ALIVE);
+  ASSERT_EQ(recorded_events[3].actor_lifecycle_event().state_transitions_size(), 1);
+  ASSERT_EQ(recorded_events[3].actor_lifecycle_event().state_transitions(0).state(),
+            rpc::events::ActorLifecycleEvent::ALIVE);
 }
 
 }  // namespace observability

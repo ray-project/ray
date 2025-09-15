@@ -20,18 +20,18 @@
 namespace ray {
 namespace observability {
 
-template class RayEvent<rpc::ActorLifecycleEvent>;
+template class RayEvent<rpc::events::ActorLifecycleEvent>;
 
-class RayActorLifecycleEvent : public RayEvent<rpc::ActorLifecycleEvent> {
+class RayActorLifecycleEvent : public RayEvent<rpc::events::ActorLifecycleEvent> {
  public:
   RayActorLifecycleEvent(const rpc::ActorTableData &data,
-                         rpc::ActorLifecycleEvent::State state,
+                         rpc::events::ActorLifecycleEvent::State state,
                          const std::string &worker_id,
                          const std::string &session_name);
 
   std::string GetEntityId() const override;
-  void MergeData(RayEvent<rpc::ActorLifecycleEvent> &&other) override;
-  ray::rpc::events::RayEvent SerializeData() const override;
+  void MergeData(RayEvent<rpc::events::ActorLifecycleEvent> &&other) override;
+  ray::rpc::events::RayEvent SerializeData() && override;
 };
 
 }  // namespace observability

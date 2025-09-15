@@ -21,16 +21,16 @@
 namespace ray {
 namespace observability {
 
-template class RayEvent<rpc::ActorDefinitionEvent>;
+template class RayEvent<rpc::events::ActorDefinitionEvent>;
 
-class RayActorDefinitionEvent : public RayEvent<rpc::ActorDefinitionEvent> {
+class RayActorDefinitionEvent : public RayEvent<rpc::events::ActorDefinitionEvent> {
  public:
   RayActorDefinitionEvent(const rpc::ActorTableData &data,
                           const std::string &session_name);
 
   std::string GetEntityId() const override;
-  void MergeData(RayEvent<rpc::ActorDefinitionEvent> &&other) override;
-  ray::rpc::events::RayEvent SerializeData() const override;
+  void MergeData(RayEvent<rpc::events::ActorDefinitionEvent> &&other) override;
+  ray::rpc::events::RayEvent SerializeData() && override;
 };
 
 }  // namespace observability

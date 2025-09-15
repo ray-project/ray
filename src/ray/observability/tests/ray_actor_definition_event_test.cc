@@ -28,7 +28,7 @@ TEST_F(RayActorDefinitionEventTest, TestSerialize) {
   data.set_is_detached(true);
   data.set_name("MyActor");
   data.set_ray_namespace("test_ns");
-  data.set_serialized_runtime_env("{\\" pip\\":[\\" requests\\"]}");
+  data.set_serialized_runtime_env("{\"pip\":[\"requests\"]}");
   data.set_class_name("MyClass");
   (*data.mutable_required_resources())["CPU"] = 1.0;
   (*data.mutable_required_resources())["GPU"] = 0.5;
