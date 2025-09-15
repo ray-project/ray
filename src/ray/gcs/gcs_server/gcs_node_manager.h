@@ -85,6 +85,11 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
                                  rpc::GetAllNodeInfoLightReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle get all node info light rpc request using cached pre-filtered nodes.
+  void HandleGetAllNodeInfoLightCached(rpc::GetAllNodeInfoLightRequest request,
+                                       rpc::GetAllNodeInfoLightReply *reply,
+                                       rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle check alive request for GCS.
   void HandleCheckAlive(rpc::CheckAliveRequest request,
                         rpc::CheckAliveReply *reply,
@@ -249,6 +254,8 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
 
   /// Alive nodes.
   absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_;
+  /// Cached light version of alive nodes (pre-filtered to exclude expensive fields).
+  absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_light_cached_;
   /// Draining nodes.
   /// This map is used to store the nodes which have received the drain request.
   /// Invariant: its keys should alway be a subset of the keys of `alive_nodes_`,

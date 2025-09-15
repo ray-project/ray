@@ -170,6 +170,42 @@ class GcsNodeManagerBenchmark {
               << "total bytes: " << total_bytes / iterations << std::endl;
   }
 
+  void BenchmarkGetAllNodeInfoLightCached(int iterations) {
+    auto start = std::chrono::high_resolution_clock::now();
+
+    size_t total_bytes = 0;
+    for (int i = 0; i < iterations; ++i) {
+      rpc::GetAllNodeInfoLightRequest request;
+      rpc::GetAllNodeInfoLightReply reply;
+
+      bool callback_called = false;
+      auto send_reply_callback = [&callback_called](Status status,
+                                                    std::function<void()>,
+                                                    std::function<void()>) {
+        callback_called = true;
+      };
+
+      node_manager_->HandleGetAllNodeInfoLightCached(request, &reply, send_reply_callback);
+
+      if (!callback_called) {
+        std::cerr << "Error: Callback not called" << std::endl;
+        return;
+      }
+
+      // Calculate response size
+      for (const auto& node : reply.node_info_list()) {
+        total_bytes += node.ByteSizeLong();
+      }
+    }
+
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+
+    std::cout << "  HandleGetAllNodeInfoLightCached: "
+              << duration.count() / iterations << " us/op, "
+              << "total bytes: " << total_bytes / iterations << std::endl;
+  }
+
  private:
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::unique_ptr<rpc::RayletClientPool> client_pool_;
@@ -205,10 +241,10 @@ void RunBenchmarks() {
 
     benchmark.BenchmarkGetAllNodeInfo(iterations);
     benchmark.BenchmarkGetAllNodeInfoLight(iterations);
+    benchmark.BenchmarkGetAllNodeInfoLightCached(iterations);
 
     // Calculate speedup
-    std::cout << "  Speedup from using Light version: "
-              << "(run both to see comparison)" << std::endl;
+    std::cout << "  Comparison: Light uses FieldMask, LightCached uses pre-filtered cache" << std::endl;
   }
 }
 

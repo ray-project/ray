@@ -473,6 +473,89 @@ std::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetAliveNode(
   return iter->second;
 }
 
+void GcsNodeManager::HandleGetAllNodeInfoLightCached(
+    rpc::GetAllNodeInfoLightRequest request,
+    rpc::GetAllNodeInfoLightReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  int64_t limit =
+      (request.limit() > 0) ? request.limit() : std::numeric_limits<int64_t>::max();
+
+  int total_num_nodes = alive_nodes_light_cached_.size() + dead_nodes_.size();
+
+  // Build set of node ids to filter by if selectors are provided
+  absl::flat_hash_set<NodeID> filter_node_ids;
+  bool has_filters = false;
+  if (!request.node_selectors().empty()) {
+    has_filters = true;
+    for (const auto &selector : request.node_selectors()) {
+      if (selector.has_node_id()) {
+        filter_node_ids.insert(NodeID::FromBinary(selector.node_id()));
+      } else if (selector.has_node_name()) {
+        // Find node by name in cached light nodes
+        for (const auto &[node_id, node] : alive_nodes_light_cached_) {
+          // Note: node_name was filtered out from light version, need to check full node
+          auto full_iter = alive_nodes_.find(node_id);
+          if (full_iter != alive_nodes_.end() &&
+              full_iter->second->node_name() == selector.node_name()) {
+            filter_node_ids.insert(node_id);
+          }
+        }
+      } else if (selector.has_node_ip_address()) {
+        // Find node by IP in cached light nodes
+        for (const auto &[node_id, node] : alive_nodes_light_cached_) {
+          if (node->node_manager_address() == selector.node_ip_address()) {
+            filter_node_ids.insert(node_id);
+          }
+        }
+      }
+    }
+  }
+
+  // Add cached light nodes based on state filter and selectors
+  int64_t num_added = 0;
+  for (const auto &[node_id, node] : alive_nodes_light_cached_) {
+    if (num_added >= limit) break;
+
+    // Check state filter
+    if (request.has_state_filter() && node->state() != request.state_filter()) {
+      continue;
+    }
+
+    // Check node selectors
+    if (has_filters && filter_node_ids.find(node_id) == filter_node_ids.end()) {
+      continue;
+    }
+
+    // Add the pre-filtered cached node directly
+    reply->add_node_info_list()->CopyFrom(*node);
+    num_added++;
+  }
+
+  // Add dead nodes if requested or no state filter
+  if (!request.has_state_filter() ||
+      request.state_filter() == rpc::GcsNodeInfo::DEAD) {
+    for (const auto &[node_id, node] : dead_nodes_) {
+      if (num_added >= limit) break;
+
+      // Check node selectors for dead nodes
+      if (has_filters && filter_node_ids.find(node_id) == filter_node_ids.end()) {
+        continue;
+      }
+
+      // Apply field mask to dead nodes (they're not pre-cached)
+      static google::protobuf::FieldMask light_field_mask = CreateNodeInfoLightFieldMask();
+      auto light_node_info = reply->add_node_info_list();
+      FilterGcsNodeInfo(*node, light_field_mask, light_node_info);
+      num_added++;
+    }
+  }
+
+  reply->set_total(total_num_nodes);
+  reply->set_num_filtered(total_num_nodes - reply->node_info_list_size());
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
+}
+
 rpc::NodeDeathInfo GcsNodeManager::InferDeathInfo(const NodeID &node_id) {
   auto iter = draining_nodes_.find(node_id);
   rpc::NodeDeathInfo death_info;
@@ -506,6 +589,13 @@ void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
   auto iter = alive_nodes_.find(node_id);
   if (iter == alive_nodes_.end()) {
     alive_nodes_.emplace(node_id, node);
+
+    // Create and cache the light version
+    static google::protobuf::FieldMask light_field_mask = CreateNodeInfoLightFieldMask();
+    auto light_node = std::make_shared<rpc::GcsNodeInfo>();
+    FilterGcsNodeInfo(*node, light_field_mask, light_node.get());
+    alive_nodes_light_cached_.emplace(node_id, light_node);
+
     // Notify all listeners.
     for (auto &listener : node_added_listeners_) {
       listener(node);
@@ -554,6 +644,8 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     ray_metric_node_failures_total_.Record(1);
     // Remove from alive nodes.
     alive_nodes_.erase(iter);
+    // Remove from cached light nodes.
+    alive_nodes_light_cached_.erase(node_id);
     // Remove from draining nodes if present.
     draining_nodes_.erase(node_id);
     if (death_info->reason() == rpc::NodeDeathInfo::UNEXPECTED_TERMINATION) {
@@ -692,6 +784,14 @@ void GcsNodeManager::UpdateAliveNode(
   }
   if (resource_view_sync_message.is_draining()) {
     snapshot->set_state(rpc::NodeSnapshot::DRAINING);
+  }
+
+  // Update the cached light version as well
+  auto light_iter = alive_nodes_light_cached_.find(node_id);
+  if (light_iter != alive_nodes_light_cached_.end()) {
+    // state_snapshot is included in the light version, so update it
+    auto light_snapshot = light_iter->second->mutable_state_snapshot();
+    light_snapshot->CopyFrom(*snapshot);
   }
 }
 
