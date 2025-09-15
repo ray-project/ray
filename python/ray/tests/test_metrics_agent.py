@@ -550,21 +550,20 @@ def test_metrics_export_event_aggregator_agent(
                 return False
         return True
 
-    def test_case_publisher_specific_metrics_correct(publisher_name: str):
+    def test_case_publisher_specific_metrics_value_correct(
+        publisher_name: str, expected_metrics_values: dict
+    ):
         _, _, metric_samples = fetch_prometheus(prom_addresses)
-        expected_metrics_values = {
-            "ray_aggregator_agent_published_events_total": 1.0,
-            "ray_aggregator_agent_filtered_events_total": 1.0,
-            "ray_aggregator_agent_queue_dropped_events_total": 1.0,
-        }
         for descriptor, expected_value in expected_metrics_values.items():
-            samples = [m for m in metric_samples if m.name == descriptor]
+            samples = [
+                m
+                for m in metric_samples
+                if m.name == descriptor
+                and m.labels[publisher_tag_key] == publisher_name
+            ]
             if not samples:
                 return False
-            if (
-                samples[0].value != expected_value
-                or samples[0].labels[publisher_tag_key] != publisher_name
-            ):
+            if samples[0].value != expected_value:
                 return False
         return True
 
@@ -619,14 +618,27 @@ def test_metrics_export_event_aggregator_agent(
 
     wait_for_condition(test_case_value_correct, timeout=30, retry_interval_ms=1000)
 
+    expected_http_publisher_metrics_values = {
+        "ray_aggregator_agent_published_events_total": 1.0,
+        "ray_aggregator_agent_filtered_events_total": 1.0,
+        "ray_aggregator_agent_queue_dropped_events_total": 1.0,
+    }
     wait_for_condition(
-        lambda: test_case_publisher_specific_metrics_correct("http_publisher"),
+        lambda: test_case_publisher_specific_metrics_correct(
+            "http_publisher", expected_http_publisher_metrics_values
+        ),
         timeout=30,
         retry_interval_ms=1000,
     )
-
+    print("--------------------------------")
+    expected_gcs_publisher_metrics_values = {
+        "ray_aggregator_agent_published_events_total": 2.0,
+        "ray_aggregator_agent_queue_dropped_events_total": 1.0,
+    }
     wait_for_condition(
-        lambda: test_case_publisher_specific_metrics_correct("gcs_publisher"),
+        lambda: test_case_publisher_specific_metrics_correct(
+            "gcs_publisher", expected_gcs_publisher_metrics_values
+        ),
         timeout=30,
         retry_interval_ms=1000,
     )
