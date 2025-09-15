@@ -164,5 +164,103 @@ async def test_prepare_image_udf_invalid_image_type(mock_image_processor):
             pass
 
 
+# Test that image extraction works consistently with both uniform content types
+# (no system prompt) and mixed content types (with system prompt)
+
+
+@pytest.mark.parametrize(
+    "messages,expected_images,test_description",
+    [
+        # Test with system prompt
+        (
+            [
+                {"role": "system", "content": "You are an assistant"},
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "image": "https://example.com/test-image.jpg",
+                        },
+                        {
+                            "type": "text",
+                            "text": "Can you describe this image in 1 words?",
+                        },
+                    ],
+                },
+            ],
+            ["https://example.com/test-image.jpg"],
+            "with_system_prompt",
+        ),
+        # Test without system prompt
+        (
+            [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "image": "https://example.com/test-image.jpg",
+                        },
+                        {
+                            "type": "text",
+                            "text": "Can you describe this image in 1 words?",
+                        },
+                    ],
+                }
+            ],
+            ["https://example.com/test-image.jpg"],
+            "without_system_prompt",
+        ),
+        # Test multiple images without system prompt
+        (
+            [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image", "image": "https://example.com/image1.jpg"},
+                        {"type": "text", "text": "Describe this image"},
+                    ],
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image", "image": "https://example.com/image2.jpg"},
+                        {"type": "text", "text": "What do you see?"},
+                    ],
+                },
+            ],
+            ["https://example.com/image1.jpg", "https://example.com/image2.jpg"],
+            "multiple_images_no_system_prompt",
+        ),
+        # Test image_url format without system prompt
+        (
+            [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": "https://example.com/image.jpg",
+                        },
+                        {"type": "text", "text": "Describe this image"},
+                    ],
+                }
+            ],
+            ["https://example.com/image.jpg"],
+            "image_url_format_no_system_prompt",
+        ),
+    ],
+    ids=lambda x: x if isinstance(x, str) else None,
+)
+def test_extract_image_info(messages, expected_images, test_description):
+    """Test image extraction with various message structures and formats."""
+    udf = PrepareImageUDF(data_column="__data", expected_input_keys=["messages"])
+
+    image_info = udf.extract_image_info(messages)
+    assert len(image_info) == len(expected_images)
+    assert image_info == expected_images
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
