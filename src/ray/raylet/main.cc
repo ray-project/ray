@@ -242,7 +242,7 @@ int main(int argc, char *argv[]) {
   SetThreadName("raylet");
   // IO Service for node manager.
   instrumented_io_context main_service{
-      /*emit_metrics=*/RayConfig::instance().emit_main_service_metrics(),
+      /*emit_metrics=*/true,
       /*running_on_single_thread=*/true,
       "raylet_main_io_context"};
 
