@@ -86,6 +86,7 @@ def _eval_expr_recursive(
             _eval_expr_recursive(expr.right, batch, ops),
         )
     if isinstance(expr, UnaryExpr):
+        # TODO: Use Visitor pattern here and store ops in shared state.
         return ops[expr.op](_eval_expr_recursive(expr.operand, batch, ops))
 
     if isinstance(expr, UDFExpr):
