@@ -249,7 +249,7 @@ class TrainContext:
                     checkpoint,
                     self.storage_context.build_checkpoint_path_from_name(
                         checkpoint_dir_name
-                    )
+                    ),
                 )
             else:
                 persisted_checkpoint = self.storage_context.persist_current_checkpoint(
@@ -354,7 +354,7 @@ class TrainContext:
                     metrics,
                     checkpoint,
                     delete_local_checkpoint_after_upload,
-                    checkpoint_upload_function
+                    checkpoint_upload_function,
                 )
                 self._wait_then_report(training_result, report_call_index)
 
@@ -378,7 +378,7 @@ class TrainContext:
                             metrics,
                             checkpoint,
                             delete_local_checkpoint_after_upload,
-                            checkpoint_upload_function
+                            checkpoint_upload_function,
                         )
                         self._wait_then_report(training_result, report_call_index)
                     except Exception as e:
