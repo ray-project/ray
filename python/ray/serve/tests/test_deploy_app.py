@@ -949,8 +949,7 @@ def test_application_autoscaling_policy_config(serve_instance_with_signal, polic
         "Wait for 5 seconds. Deployment should scale down to minimum replicas.",
     )
     time.sleep(5)
-    with pytest.raises(RuntimeError, match="timeout"):
-        wait_for_condition(check_num_replicas_gte, name="A", target=1)
+    wait_for_condition(check_num_replicas_gte, name="A", target=1)
 
 
 if __name__ == "__main__":

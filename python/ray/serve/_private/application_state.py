@@ -446,6 +446,7 @@ class ApplicationState:
         return (
             self._target_state.config is not None
             and self._target_state.config.autoscaling_policy is not None
+            and self._build_app_task_info.finished
         )
 
     def autoscale(self) -> bool:
@@ -1181,9 +1182,9 @@ class ApplicationStateManager:
         apps_to_be_deleted = []
         any_target_state_changed = False
         for name, app in self._application_states.items():
-            ready_to_be_deleted, app_target_state_changed = app.update()
-            if app.should_autoscale() and not ready_to_be_deleted:
+            if app.should_autoscale():
                 any_target_state_changed = app.autoscale() or any_target_state_changed
+            ready_to_be_deleted, app_target_state_changed = app.update()
             any_target_state_changed = (
                 any_target_state_changed or app_target_state_changed
             )
