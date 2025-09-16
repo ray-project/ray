@@ -384,7 +384,7 @@ class TestCli(unittest.TestCase):
             manager = _create_test_manager(tmpdir)
             assert manager.build_graph is not None
             assert len(manager.build_graph.nodes()) == 10
-            assert len(manager.build_graph.edges()) == 9
+            assert len(manager.build_graph.edges()) == 5
             # assert that the compile depsets are first
             assert (
                 manager.build_graph.nodes["general_depset__py311_cpu"]["operation"]
