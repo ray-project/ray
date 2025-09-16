@@ -17,7 +17,6 @@ build_arg_sets:
     - --python-version=3.11
     - --unsafe-package ray
     - --python-platform=linux
-    - --unsafe-package ray
   build_arg_sets:
     - cpu
     - cu121
