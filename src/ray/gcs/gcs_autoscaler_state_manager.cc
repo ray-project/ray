@@ -423,7 +423,7 @@ void GcsAutoscalerStateManager::GetNodeStates(
     node_state_proto->mutable_labels()->insert(node_labels.begin(), node_labels.end());
   };
 
-  const auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
+  const auto alive_nodes = gcs_node_manager_.GetAllAliveNodes();
   std::for_each(alive_nodes.begin(), alive_nodes.end(), [&](const auto &gcs_node_info) {
     populate_node_state(*gcs_node_info.second);
   });
@@ -433,7 +433,7 @@ void GcsAutoscalerStateManager::GetNodeStates(
   // reported by dead node should be small.
   // TODO(rickyx): We will need to GC the head nodes in the future.
   // https://github.com/ray-project/ray/issues/35874
-  const auto &dead_nodes = gcs_node_manager_.GetAllDeadNodes();
+  const auto dead_nodes = gcs_node_manager_.GetAllDeadNodes();
   std::for_each(dead_nodes.begin(), dead_nodes.end(), [&](const auto &gcs_node_info) {
     populate_node_state(*gcs_node_info.second);
   });
@@ -462,7 +462,7 @@ void GcsAutoscalerStateManager::HandleDrainNode(
 
   auto maybe_node = gcs_node_manager_.GetAliveNode(node_id);
   if (!maybe_node.has_value()) {
-    if (gcs_node_manager_.GetAllDeadNodes().contains(node_id)) {
+    if (gcs_node_manager_.IsNodeDead(node_id)) {
       // The node is dead so treat it as drained.
       reply->set_is_accepted(true);
     } else {
